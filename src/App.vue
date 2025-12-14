@@ -12,6 +12,7 @@
     <main class="main-content">
       <router-view />
     </main>
+    <ToastNotification />
   </div>
 </template>
 
@@ -19,6 +20,7 @@
 import { onMounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { invoke } from '@tauri-apps/api/core'
+import ToastNotification from '@/components/ToastNotification.vue'
 
 const store = useAppStore()
 

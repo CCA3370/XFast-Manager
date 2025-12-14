@@ -39,11 +39,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useAppStore } from '@/stores/app'
+import { useToastStore } from '@/stores/toast'
 import { invoke } from '@tauri-apps/api/core'
 import ConfirmationModal from '@/components/ConfirmationModal.vue'
 import type { AnalysisResult } from '@/types'
 
 const store = useAppStore()
+const toast = useToastStore()
 const isDragging = ref(false)
 const showConfirmation = ref(false)
 
@@ -52,7 +54,7 @@ async function handleDrop(event: DragEvent) {
   isDragging.value = false
 
   if (!store.xplanePath) {
-    alert('Please set X-Plane path in Settings first')
+    toast.warning('Please set X-Plane path in Settings first')
     return
   }
 
@@ -69,18 +71,18 @@ async function handleDrop(event: DragEvent) {
     })
 
     if (result.errors.length > 0) {
-      alert('Errors during analysis:\n' + result.errors.join('\n'))
+      result.errors.forEach(error => toast.error(error))
     }
 
     if (result.tasks.length > 0) {
       store.setCurrentTasks(result.tasks)
       showConfirmation.value = true
     } else {
-      alert('No valid addons detected')
+      toast.warning('No valid addons detected')
     }
   } catch (error) {
     console.error('Analysis failed:', error)
-    alert('Failed to analyze addons: ' + error)
+    toast.error('Failed to analyze addons: ' + error)
   } finally {
     store.isAnalyzing = false
   }
@@ -94,11 +96,11 @@ async function handleInstall() {
     await invoke('install_addons', {
       tasks: store.currentTasks
     })
-    alert('Installation completed successfully!')
+    toast.success('Installation completed successfully!')
     store.clearTasks()
   } catch (error) {
     console.error('Installation failed:', error)
-    alert('Installation failed: ' + error)
+    toast.error('Installation failed: ' + error)
   } finally {
     store.isInstalling = false
   }
