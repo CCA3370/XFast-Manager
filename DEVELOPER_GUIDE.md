@@ -141,6 +141,8 @@ To generate the required Windows `.ico` from the PNG, run:
 npm run generate:icon
 ```
 
+Note: The Windows bundler requires a `.ico` in the app icons. Make sure `src-tauri/tauri.conf.json`'s `bundle.icon` array includes `"icons/icon.ico"` (in addition to `icons/icon.png`) so the bundler can find and include the .ico during packaging.
+
 ### Archive Extraction Fails
 Check that the archive format is supported (ZIP and 7z currently).
 
