@@ -1,0 +1,32 @@
+{
+  "name": "xfastinstall",
+  "version": "0.1.0",
+  "description": "X-Plane 12 Addon Installer",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "keywords": ["tauri", "x-plane", "installer"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.6",
+    "@types/node": "^25.0.2",
+    "@vitejs/plugin-vue": "^6.0.3",
+    "autoprefixer": "^10.4.22",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.7",
+    "vue": "^3.5.25"
+  },
+  "dependencies": {
+    "@vueuse/core": "^14.1.0",
+    "pinia": "^3.0.4",
+    "vue-router": "^4.6.4"
+  }
+}
