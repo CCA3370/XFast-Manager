@@ -16,7 +16,7 @@
         "height": 700,
         "resizable": true,
         "fullscreen": false,
-        "fileDropEnabled": true
+        "dragDropEnabled": true
       }
     ],
     "security": {

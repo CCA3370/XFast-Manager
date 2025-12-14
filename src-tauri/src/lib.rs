@@ -8,7 +8,7 @@ use analyzer::Analyzer;
 use installer::Installer;
 use models::{AnalysisResult, InstallTask};
 
-use tauri::Manager;
+use tauri::Emitter;
 
 #[tauri::command]
 fn get_cli_args() -> Vec<String> {

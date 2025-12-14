@@ -81,25 +81,30 @@ impl Scanner {
         let mut archive = ZipArchive::new(file)?;
         let mut detected = Vec::new();
 
+        // First pass: collect file info
+        let mut files_info = Vec::new();
         for i in 0..archive.len() {
             let file = archive.by_index(i)?;
-            let file_path = file.name();
+            files_info.push((i, file.name().to_string()));
+        }
 
+        // Second pass: process files
+        for (i, file_path) in files_info {
             // Check for markers in the archive
             if file_path.ends_with(".acf") {
-                if let Some(item) = self.detect_aircraft_in_archive(file_path, zip_path)? {
+                if let Some(item) = self.detect_aircraft_in_archive(&file_path, zip_path)? {
                     detected.push(item);
                 }
             } else if file_path.ends_with("library.txt") {
-                if let Some(item) = self.detect_scenery_library(file_path, zip_path)? {
+                if let Some(item) = self.detect_scenery_library(&file_path, zip_path)? {
                     detected.push(item);
                 }
             } else if file_path.ends_with(".dsf") {
-                if let Some(item) = self.detect_scenery_dsf(file_path, zip_path)? {
+                if let Some(item) = self.detect_scenery_dsf(&file_path, zip_path)? {
                     detected.push(item);
                 }
             } else if file_path.ends_with(".xpl") {
-                if let Some(item) = self.detect_plugin_in_archive(file_path, zip_path)? {
+                if let Some(item) = self.detect_plugin_in_archive(&file_path, zip_path)? {
                     detected.push(item);
                 }
             } else if file_path.ends_with("cycle.json") {
@@ -109,7 +114,7 @@ impl Scanner {
                 use std::io::Read;
                 file.read_to_string(&mut content)?;
                 
-                if let Some(item) = self.detect_navdata_in_archive(file_path, &content, zip_path)? {
+                if let Some(item) = self.detect_navdata_in_archive(&file_path, &content, zip_path)? {
                     detected.push(item);
                 }
             }
@@ -185,7 +190,7 @@ impl Scanner {
     }
 
     // Type B: Scenery Detection
-    fn check_scenery(&self, file_path: &Path, root: &Path) -> Result<Option<DetectedItem>> {
+    fn check_scenery(&self, file_path: &Path, _root: &Path) -> Result<Option<DetectedItem>> {
         let file_name = file_path.file_name().and_then(|s| s.to_str()).unwrap_or("");
         
         if file_name == "library.txt" {
@@ -391,7 +396,7 @@ impl Scanner {
         }))
     }
 
-    fn detect_navdata_in_archive(&self, file_path: &str, content: &str, archive_path: &Path) -> Result<Option<DetectedItem>> {
+    fn detect_navdata_in_archive(&self, _file_path: &str, content: &str, archive_path: &Path) -> Result<Option<DetectedItem>> {
         let cycle: NavdataCycle = serde_json::from_str(content)
             .context("Failed to parse cycle.json")?;
 

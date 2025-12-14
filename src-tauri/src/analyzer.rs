@@ -1,4 +1,3 @@
-use anyhow::Result;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -45,7 +44,7 @@ impl Analyzer {
 
     /// Deduplicate detected items based on path hierarchy
     fn deduplicate(&self, items: Vec<DetectedItem>) -> Vec<DetectedItem> {
-        let mut result = Vec::new();
+        let mut result: Vec<DetectedItem> = Vec::new();
 
         for item in items {
             let item_path = PathBuf::from(&item.path);
