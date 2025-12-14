@@ -1,0 +1,106 @@
+name: CI - build bundles
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    strategy:
+      matrix:
+        include:
+          - name: mac-aarch64
+            runs-on: macos-latest
+            target: aarch64-apple-darwin
+          - name: mac-x86_64
+            runs-on: macos-latest
+            target: x86_64-apple-darwin
+          - name: windows-x86_64
+            runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: linux-x86_64
+            runs-on: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+
+    runs-on: ${{ matrix.runs-on }}
+    env:
+      # keep cargo cache inside workspace to make caching simpler and avoid using runner.* expressions
+      CARGO_HOME: ${{ github.workspace }}/.cargo
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Cache Node modules
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.npm
+            node_modules
+            .vite
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json', 'package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '18'
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Cache Cargo registry & target
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.target }}-
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt,clippy
+
+      - name: Add rust target
+        run: |
+          rustup target add ${{ matrix.target }} || true
+
+      - name: Build Tauri app
+        env:
+          CARGO_BUILD_TARGET: ${{ matrix.target }}
+        run: |
+          # pass --target to tauri build so it builds for the requested target
+          npm run tauri:build -- --target ${{ matrix.target }}
+
+      - name: Show Rust toolchain & target info
+        run: |
+          rustc --version
+          cargo --version
+          rustup target list --installed || true
+          echo "Listing src-tauri/target (top level):"
+          ls -la src-tauri/target || true
+
+      - name: List generated bundles
+        run: |
+          echo "Listing release bundle folder(s):"
+          ls -la src-tauri/target/release/bundle || true
+          ls -la src-tauri/target/${{ matrix.target }}/release/bundle || true
+
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: bundle-${{ matrix.name }}-${{ github.run_id }}
+          path: |
+            src-tauri/target/release/bundle/**
+            src-tauri/target/${{ matrix.target }}/release/bundle/**

@@ -119,13 +119,16 @@ cargo test    # Run unit tests
 ## CI/CD
 
 GitHub Actions workflow (`.github/workflows/ci.yml`) builds for:
-- Windows (x86_64)
-- macOS (x86_64 and ARM64)
-- Linux (x86_64)
 
-Note: The macOS job runs a matrix for `aarch64` and `x86_64`. The workflow attempts to run x86_64 builds under Rosetta when necessary using `arch -x86_64`; if you encounter mac x86 builds failing on the hosted runner, try reproducing locally on an Intel mac or adjust the job to use a self-hosted Intel mac runner.
+The workflow uses modern actions and caches to speed up repeated builds:
+
+Notes:
 
 Artifacts are uploaded for each platform.
+
+## CI
+
+本仓库已在 GitHub Actions 上配置自动构建（文件：`.github/workflows/ci.yml`）。工作流将在主分支 push 时运行，构建 mac (aarch64/x86_64)、Windows 和 Linux 的安装包，并使用缓存（Node / Cargo）加速后续构建，构建产物会作为 artifact 上传以便调试与下载。
 
 ## Troubleshooting
 
