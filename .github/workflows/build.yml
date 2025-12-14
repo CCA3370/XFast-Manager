@@ -98,13 +98,40 @@ jobs:
             PY
             echo "" >> build-files.txt
             echo "Full tree (truncated depth 6):" >> build-files.txt
-            find src-tauri/target -maxdepth 6 -print >> build-files.txt || true
+            # BSD find (macOS) doesn't support -maxdepth; use a portable truncated print
+            find src-tauri/target -print | sed -n '1,200p' >> build-files.txt || true
           else
             echo "src-tauri/target not present" >> build-files.txt
           fi
           # also capture a short workspace listing
           echo "" >> build-files.txt
           ls -la >> build-files.txt || true
+        shell: bash
+
+      - name: Append workspace root target listing (non-Windows)
+        if: always() && matrix.platform != 'windows-latest'
+        run: |
+          echo "\nListing workspace target" >> build-files.txt
+          if [ -d target ]; then
+            python3 - <<'PY' >> build-files.txt || true
+            import os
+            entries = []
+            for root, _, files in os.walk('target'):
+                for name in files:
+                    p = os.path.join(root, name)
+                    try:
+                        entries.append((os.path.getsize(p), p))
+                    except Exception as e:
+                        entries.append((0, f"ERROR {p} {e}"))
+            for s, p in sorted(entries, reverse=True):
+                print(s, p)
+            PY
+            echo "" >> build-files.txt
+            echo "Full tree (truncated):" >> build-files.txt
+            find target -print | sed -n '1,200p' >> build-files.txt || true
+          else
+            echo "target not present" >> build-files.txt
+          fi
         shell: bash
 
       - name: Create build listing (Windows)
@@ -114,8 +141,8 @@ jobs:
           "Listing src-tauri/target" | Out-File build-files.txt -Encoding utf8
           if (Test-Path src-tauri/target) {
             Get-ChildItem -Path src-tauri/target -Recurse -File | ForEach-Object { "{0}`t{1}" -f $_.Length, $_.FullName } | Out-File -FilePath build-files.txt -Append -Encoding utf8
-            "`nFull tree (truncated depth 6):`n" | Out-File -FilePath build-files.txt -Append -Encoding utf8
-            Get-ChildItem -Path src-tauri/target -Recurse -Depth 6 | Out-File -FilePath build-files.txt -Append -Encoding utf8
+            "`nFull tree (truncated):`n" | Out-File -FilePath build-files.txt -Append -Encoding utf8
+            Get-ChildItem -Path src-tauri/target -Recurse | Select-Object -First 200 | Out-File -FilePath build-files.txt -Append -Encoding utf8
           } else {
             "src-tauri/target not present" | Out-File build-files.txt -Append -Encoding utf8
           }
@@ -148,6 +175,10 @@ jobs:
             src-tauri/target/**/release/*
             # Also capture any other files that may have been produced
             src-tauri/target/**/*
+            # Also check root-level cargo target outputs (some cargo invocations output here)
+            target/**/release/bundle/**/*
+            target/**/release/*
+            target/**/*
             # Upload the human-readable listing we produced for debugging
             build-files.txt
           if-no-files-found: warn
