@@ -77,6 +77,51 @@ jobs:
       - name: Build Tauri app
         run: npm run tauri:build -- --target ${{ matrix.target }}
 
+      - name: Create build listing (non-Windows)
+        if: always() && matrix.platform != 'windows-latest'
+        run: |
+          echo "Listing src-tauri/target" > build-files.txt
+          if [ -d src-tauri/target ]; then
+            # print size and path (portable via python3), sort largest-first
+            python3 - <<'PY' >> build-files.txt || true
+            import os
+            entries = []
+            for root, _, files in os.walk('src-tauri/target'):
+                for name in files:
+                    p = os.path.join(root, name)
+                    try:
+                        entries.append((os.path.getsize(p), p))
+                    except Exception as e:
+                        entries.append((0, f"ERROR {p} {e}"))
+            for s, p in sorted(entries, reverse=True):
+                print(s, p)
+            PY
+            echo "" >> build-files.txt
+            echo "Full tree (truncated depth 6):" >> build-files.txt
+            find src-tauri/target -maxdepth 6 -print >> build-files.txt || true
+          else
+            echo "src-tauri/target not present" >> build-files.txt
+          fi
+          # also capture a short workspace listing
+          echo "" >> build-files.txt
+          ls -la >> build-files.txt || true
+        shell: bash
+
+      - name: Create build listing (Windows)
+        if: always() && matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          "Listing src-tauri/target" | Out-File build-files.txt -Encoding utf8
+          if (Test-Path src-tauri/target) {
+            Get-ChildItem -Path src-tauri/target -Recurse -File | ForEach-Object { "{0}`t{1}" -f $_.Length, $_.FullName } | Out-File -FilePath build-files.txt -Append -Encoding utf8
+            "`nFull tree (truncated depth 6):`n" | Out-File -FilePath build-files.txt -Append -Encoding utf8
+            Get-ChildItem -Path src-tauri/target -Recurse -Depth 6 | Out-File -FilePath build-files.txt -Append -Encoding utf8
+          } else {
+            "src-tauri/target not present" | Out-File build-files.txt -Append -Encoding utf8
+          }
+          "`nWorkspace listing:`n" | Out-File -FilePath build-files.txt -Append -Encoding utf8
+          Get-ChildItem -Path . -Force | Out-File -FilePath build-files.txt -Append -Encoding utf8
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         if: always()
@@ -86,10 +131,32 @@ jobs:
             # Primary (target-triple specific) bundle outputs
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*
             src-tauri/target/${{ matrix.target }}/release/*
+            # Common installer/file extensions (explicit)
+            src-tauri/target/**/release/**/*.msi
+            src-tauri/target/**/release/**/*.exe
+            src-tauri/target/**/release/**/*.dmg
+            src-tauri/target/**/release/**/*.app
+            src-tauri/target/**/release/**/*.AppImage
+            src-tauri/target/**/release/**/*.deb
+            src-tauri/target/**/release/**/*.zip
+            src-tauri/target/**/release/**/*.tar.gz
             # Fallback locations (some toolchains place bundles under target/release)
             src-tauri/target/release/bundle/**/*
             src-tauri/target/release/*
             # Generic catch-all for any release artifacts under src-tauri/target
             src-tauri/target/**/release/bundle/**/*
             src-tauri/target/**/release/*
+            # Also capture any other files that may have been produced
+            src-tauri/target/**/*
+            # Upload the human-readable listing we produced for debugging
+            build-files.txt
+          if-no-files-found: warn
+
+      - name: Upload build listing artifact
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: build-listing-${{ matrix.platform }}-${{ matrix.target }}
+          path: |
+            build-files.txt
           if-no-files-found: warn
