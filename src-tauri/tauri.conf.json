@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "XFastInstall - X-Plane 12 Addon Installer",
+        "title": "XFastInstall - X-Plane Addon Installer",
         "width": 1000,
         "height": 700,
         "resizable": true,

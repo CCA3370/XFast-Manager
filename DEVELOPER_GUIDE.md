@@ -118,10 +118,12 @@ cargo test    # Run unit tests
 
 ## CI/CD
 
-GitHub Actions workflow (`.github/workflows/build.yml`) builds for:
+GitHub Actions workflow (`.github/workflows/ci.yml`) builds for:
 - Windows (x86_64)
 - macOS (x86_64 and ARM64)
 - Linux (x86_64)
+
+Note: The macOS job runs a matrix for `aarch64` and `x86_64`. The workflow attempts to run x86_64 builds under Rosetta when necessary using `arch -x86_64`; if you encounter mac x86 builds failing on the hosted runner, try reproducing locally on an Intel mac or adjust the job to use a self-hosted Intel mac runner.
 
 Artifacts are uploaded for each platform.
 
