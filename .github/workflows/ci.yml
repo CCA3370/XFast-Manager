@@ -49,10 +49,17 @@ jobs:
           node-version: '18'
 
       - name: Install frontend deps
-        run: npm ci
+        # `npm ci` fails when there is no package-lock.json (we don't have one in this repo),
+        # so use `npm install` which works in both cases. Use options to reduce noise.
+        run: npm install --no-audit --prefer-offline --no-fund
 
       - name: Build frontend
         run: npm run build
+
+      - name: Generate icon (Windows)
+        # create `src-tauri/icons/icon.ico` from PNG so Windows builds have an icon
+        # running on non-Windows is harmless and kept simple
+        run: npm run generate:icon || true
 
       - name: Cache Cargo registry & target
         uses: actions/cache@v5
