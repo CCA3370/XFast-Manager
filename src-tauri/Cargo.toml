@@ -25,4 +25,4 @@ winreg = "0.52"
 
 [lib]
 name = "xfastinstall_lib"
-crate-type = ["lib", "cdylib", "staticlib"]
+crate-type = ["lib"]
