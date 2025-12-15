@@ -1,13 +1,13 @@
 <template>
   <div class="home-view p-8">
     <div class="max-w-4xl mx-auto">
-      <h2 class="text-3xl font-bold mb-6">X-Plane 12 Addon Installer</h2>
+      <h2 class="text-3xl font-bold mb-6">X-Plane Addon Installer</h2>
       
       <div 
         v-if="!store.xplanePath"
         class="alert bg-yellow-900/50 border border-yellow-700 rounded p-4 mb-6"
       >
-        <p>⚠️ Please set your X-Plane 12 path in <router-link to="/settings" class="underline">Settings</router-link> first.</p>
+        <p>⚠️ Please set your X-Plane path in <router-link to="/settings" class="underline">Settings</router-link> first.</p>
       </div>
 
       <div

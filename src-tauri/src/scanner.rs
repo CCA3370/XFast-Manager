@@ -381,7 +381,7 @@ impl Scanner {
         })?;
 
         // Determine install path based on name
-        let (install_path, display_name) = if cycle.name.contains("X-Plane 12") || cycle.name.contains("X-Plane 11") {
+        let (install_path, display_name) = if cycle.name.contains("X-Plane") || cycle.name.contains("X-Plane 11") {
             (parent.to_path_buf(), format!("Navdata: {}", cycle.name))
         } else if cycle.name.contains("X-Plane GNS430") {
             (parent.to_path_buf(), format!("Navdata GNS430: {}", cycle.name))
@@ -400,7 +400,7 @@ impl Scanner {
         let cycle: NavdataCycle = serde_json::from_str(content)
             .context("Failed to parse cycle.json")?;
 
-        let display_name = if cycle.name.contains("X-Plane 12") || cycle.name.contains("X-Plane 11") {
+        let display_name = if cycle.name.contains("X-Plane") || cycle.name.contains("X-Plane 11") {
             format!("Navdata: {}", cycle.name)
         } else if cycle.name.contains("X-Plane GNS430") {
             format!("Navdata GNS430: {}", cycle.name)

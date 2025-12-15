@@ -1,6 +1,6 @@
-# XFastInstall - X-Plane 12 Addon Installer
+# XFastInstall - X-Plane Addon Installer
 
-A modern, cross-platform X-Plane 12 addon installer built with Tauri 2, Rust, and Vue 3.
+A modern, cross-platform X-Plane addon installer built with Tauri 2, Rust, and Vue 3.
 
 ## Features
 
@@ -38,7 +38,7 @@ npm run tauri:build
 
 ## Usage
 
-1. **Configure X-Plane Path**: Go to Settings and select your X-Plane 12 installation directory
+1. **Configure X-Plane Path**: Go to Settings and select your X-Plane installation directory
 2. **Install Addons**: Drag and drop addon files or folders onto the home screen
 3. **Review & Confirm**: Review detected addons and their install locations
 4. **Install**: Click Install to complete the installation
@@ -54,19 +54,19 @@ On Windows, you can register a right-click context menu:
 
 ### Aircraft (Type A)
 - **Marker**: `*.acf` file
-- **Installation**: `X-Plane 12/Aircraft/`
+- **Installation**: `X-Plane/Aircraft/`
 
 ### Scenery (Type B)
 - **Marker**: `library.txt` or `*.dsf` file
-- **Installation**: `X-Plane 12/Custom Scenery/`
+- **Installation**: `X-Plane/Custom Scenery/`
 
 ### Plugins (Type C)
 - **Marker**: `*.xpl` file
-- **Installation**: `X-Plane 12/Resources/plugins/`
+- **Installation**: `X-Plane/Resources/plugins/`
 
 ### Navdata (Type D)
 - **Marker**: `cycle.json` file
-- **Installation**: `X-Plane 12/Custom Data/` or `X-Plane 12/Custom Data/GNS430/`
+- **Installation**: `X-Plane/Custom Data/` or `X-Plane/Custom Data/GNS430/`
 
 ## Tech Stack
 

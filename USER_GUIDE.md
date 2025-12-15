@@ -2,7 +2,7 @@
 
 ## What is XFastInstall?
 
-XFastInstall is a smart installer for X-Plane 12 addons that automatically detects what type of addon you're trying to install (Aircraft, Scenery, Plugin, or Navdata) and puts it in the right place.
+XFastInstall is a smart installer for X-Plane addons that automatically detects what type of addon you're trying to install (Aircraft, Scenery, Plugin, or Navdata) and puts it in the right place.
 
 ## Getting Started
 
@@ -10,9 +10,9 @@ XFastInstall is a smart installer for X-Plane 12 addons that automatically detec
 
 1. **Launch XFastInstall**
 2. **Go to Settings** (click the Settings link in the top right)
-3. **Set your X-Plane 12 Path**:
-   - Click "Browse" to select your X-Plane 12 installation folder
-   - Example: `C:\X-Plane 12\` or `/Applications/X-Plane 12/`
+3. **Set your X-Plane Path**:
+   - Click "Browse" to select your X-Plane installation folder
+   - Example: `C:\X-Plane\` or `/Applications/X-Plane/`
    - Click "Save"
 
 ### Installing Addons
@@ -34,22 +34,22 @@ XFastInstall is a smart installer for X-Plane 12 addons that automatically detec
 
 ### Aircraft
 - **Identified by**: `.acf` files
-- **Installs to**: `X-Plane 12/Aircraft/`
+- **Installs to**: `X-Plane/Aircraft/`
 - **Example**: An Airbus A330 package with an `.acf` file
 
 ### Scenery
 - **Identified by**: `library.txt` or `.dsf` files
-- **Installs to**: `X-Plane 12/Custom Scenery/`
+- **Installs to**: `X-Plane/Custom Scenery/`
 - **Example**: Airport scenery packages
 
 ### Plugins
 - **Identified by**: `.xpl` files
-- **Installs to**: `X-Plane 12/Resources/plugins/`
+- **Installs to**: `X-Plane/Resources/plugins/`
 - **Example**: Better Pushback, AutoGate, etc.
 
 ### Navigation Data
 - **Identified by**: `cycle.json` files
-- **Installs to**: `X-Plane 12/Custom Data/` or `X-Plane 12/Custom Data/GNS430/`
+- **Installs to**: `X-Plane/Custom Data/` or `X-Plane/Custom Data/GNS430/`
 - **Example**: Navigraph cycle updates
 
 ## Smart Features
@@ -80,10 +80,10 @@ Your file/folder might not contain recognizable addon markers. Make sure it cont
 - `cycle.json` for navdata
 
 ### "Please set X-Plane path in Settings first"
-You need to configure where X-Plane 12 is installed before you can install addons.
+You need to configure where X-Plane is installed before you can install addons.
 
 ### Installation Failed
-- Check that X-Plane 12 is not running
+- Check that X-Plane is not running
 - Make sure you have write permissions to the X-Plane folder
 - Check that the archive is not corrupted
 

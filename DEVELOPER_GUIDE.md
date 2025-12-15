@@ -66,22 +66,22 @@ npm run tauri:build
 ### Type A: Aircraft
 - **Marker**: `*.acf` file
 - **Logic**: Install parent folder of `.acf` file
-- **Target**: `X-Plane 12/Aircraft/`
+- **Target**: `X-Plane/Aircraft/`
 
 ### Type B: Scenery
 - **Marker 1**: `library.txt` → Install immediate parent
 - **Marker 2**: `*.dsf` → Go up 2 levels from `.dsf`
-- **Target**: `X-Plane 12/Custom Scenery/`
+- **Target**: `X-Plane/Custom Scenery/`
 
 ### Type C: Plugins
 - **Marker**: `*.xpl` file
 - **Logic**: Check for platform folders (win_x64, etc.), go up if found
-- **Target**: `X-Plane 12/Resources/plugins/`
+- **Target**: `X-Plane/Resources/plugins/`
 
 ### Type D: Navdata
 - **Marker**: `cycle.json`
 - **Logic**: Parse JSON to determine X-Plane version
-- **Target**: `X-Plane 12/Custom Data/` or `X-Plane 12/Custom Data/GNS430/`
+- **Target**: `X-Plane/Custom Data/` or `X-Plane/Custom Data/GNS430/`
 
 ## Deduplication Algorithm
 

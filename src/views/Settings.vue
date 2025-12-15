@@ -4,12 +4,12 @@
       <h2 class="text-3xl font-bold mb-6">Settings</h2>
 
       <div class="settings-card bg-aviation-gray rounded-lg p-6 mb-6">
-        <h3 class="text-xl font-semibold mb-4">X-Plane 12 Installation Path</h3>
+        <h3 class="text-xl font-semibold mb-4">X-Plane Installation Path</h3>
         <div class="flex gap-4">
           <input
             v-model="xplanePathInput"
             type="text"
-            placeholder="/path/to/X-Plane 12"
+            placeholder="/path/to/X-Plane"
             class="flex-1 px-4 py-2 bg-gray-800 border border-gray-600 rounded focus:outline-none focus:border-blue-500"
           />
           <button
@@ -81,7 +81,7 @@ async function selectFolder() {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: 'Select X-Plane 12 Folder'
+      title: 'Select X-Plane Folder'
     })
     
     if (selected) {

@@ -1,7 +1,7 @@
 {
   "name": "xfastinstall",
   "version": "0.1.0",
-  "description": "X-Plane 12 Addon Installer",
+  "description": "X-Plane Addon Installer",
   "type": "module",
   "scripts": {
     "preinstall": "node scripts/install-rollup-native.js",
