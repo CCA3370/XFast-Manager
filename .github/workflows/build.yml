@@ -111,11 +111,11 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Install Rust
-        shell: powershell
-        run: |
-          iex ((New-Object System.Net.WebClient).DownloadString('https://sh.rustup.rs')) -Args '-y'
-          $env:Path += ";$env:USERPROFILE\.cargo\bin"
-          rustup default stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
 
       - name: Build frontend & tauri bundle
         shell: powershell
