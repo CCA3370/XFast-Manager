@@ -36,6 +36,16 @@ jobs:
       - name: Install frontend deps
         run: npm ci || npm install --no-audit --prefer-offline
 
+      - name: Install rollup native optional dep (x86_64)
+        if: matrix.arch == 'x86_64'
+        # Some npm versions don't install optional native deps correctly on CI; install the platform-specific rollup native package explicitly.
+        run: npm install @rollup/rollup-darwin-x64 --no-save
+
+      - name: Install rollup native optional dep (aarch64)
+        if: matrix.arch == 'aarch64'
+        # Ensure rollup native for Apple Silicon is present to avoid `@rollup/rollup-darwin-arm64` MODULE_NOT_FOUND errors during vite build.
+        run: npm install @rollup/rollup-darwin-arm64 --no-save
+
       - name: Cache Cargo and target
         id: cache-cargo
         uses: actions/cache@v5
@@ -99,13 +109,7 @@ jobs:
       - name: Install frontend deps
         run: npm ci || npm install --no-audit --prefer-offline
 
-      - name: Install rollup native optional dep (x86_64)
-        if: matrix.arch == 'x86_64'
-        run: npm install @rollup/rollup-darwin-x64 --no-save
-
-      - name: Install rollup native optional dep (aarch64)
-        if: matrix.arch == 'aarch64'
-        run: npm install @rollup/rollup-darwin-arm64 --no-save
+      # (no platform-specific rollup install needed for Windows job)
 
       - name: Cache Cargo and target
         id: cache-cargo
