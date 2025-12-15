@@ -131,10 +131,14 @@ jobs:
 
   build-macos:
     name: Build macOS (x86_64 + aarch64)
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        arch: [ x86_64, aarch64 ]
+        include:
+          - arch: x86_64
+            runner: macos-15-intel
+          - arch: aarch64
+            runner: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
