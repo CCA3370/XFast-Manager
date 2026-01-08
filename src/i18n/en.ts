@@ -23,7 +23,7 @@ export default {
     title: 'X-Plane Addon Installer',
     subtitle: 'Quick installation of X-Plane plugins and add-ons',
     setPathFirst: 'Please set X-Plane path first',
-    goToSettings: 'Go to Settings to configure installation path',
+    goToSettings: 'Go to Settings',
     dropFilesHere: 'Drop files here',
     supportedFormats: 'Supports .zip, .7z, .rar files, or folders',
     autoDetect: 'Auto detect',
@@ -80,7 +80,12 @@ export default {
     refreshLogs: 'Refresh',
     openLogFolder: 'Open Folder',
     copyLogs: 'Copy',
-    logsCopied: 'Logs copied to clipboard'
+    logsCopied: 'Logs copied to clipboard',
+    logLevel: 'Log Level',
+    logLevelDesc: 'Control logging verbosity',
+    logLevelBasic: 'Basic',
+    logLevelFull: 'Full',
+    logLevelDebug: 'Debug'
   },
   modal: {
     confirmInstallation: 'Confirm Installation',
@@ -119,6 +124,11 @@ export default {
     installationFailed: 'Installation failed',
     installing: 'Installing',
     failedToInstall: 'Failed to install',
-    scanFailed: 'Failed to scan'
+    scanFailed: 'Failed to scan',
+    taskAborted: 'Task aborted',
+    xplanePathNotSet: 'X-Plane path not set',
+    passwordRequired: 'Password required',
+    passwordEntered: 'Password entered',
+    passwordCanceled: 'User canceled password input'
   }
 }

@@ -9,7 +9,9 @@
       "WebFetch(domain:docs.rs)",
       "WebFetch(domain:github.com)",
       "Bash(copy \"C:\\\\Users\\\\Administrator\\\\Desktop\\\\XFastInstall-Tauri\\\\src-tauri\\\\icons\\\\icon.png\" \"C:\\\\Users\\\\Administrator\\\\Desktop\\\\XFastInstall-Tauri\\\\public\\\\icon.png\")",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(npx vite build:*)",
+      "Bash(node node_modules/vite/bin/vite.js:*)"
     ]
   }
 }

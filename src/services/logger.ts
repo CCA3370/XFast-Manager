@@ -1,10 +1,26 @@
 import { invoke } from '@tauri-apps/api/core'
+import { useAppStore } from '@/stores/app'
 
 class Logger {
+  /**
+   * Check if a message should be logged based on current log level
+   */
+  private shouldLog(messageLevel: 'basic' | 'full' | 'debug'): boolean {
+    const store = useAppStore()
+    const currentLevel = store.logLevel
+
+    // Map levels to numeric values for comparison
+    const levels = { basic: 0, full: 1, debug: 2 }
+    return levels[messageLevel] <= levels[currentLevel]
+  }
+
   /**
    * Log an info message
    */
   async info(message: string, context?: string): Promise<void> {
+    // Info messages default to 'full' level
+    if (!this.shouldLog('full')) return
+
     try {
       await invoke('log_from_frontend', { level: 'info', message, context })
     } catch (e) {
@@ -13,7 +29,7 @@ class Logger {
   }
 
   /**
-   * Log an error message
+   * Log an error message (always logged, even in basic mode)
    */
   async error(message: string, context?: string): Promise<void> {
     try {
@@ -28,8 +44,37 @@ class Logger {
    * Log a user operation
    */
   async operation(action: string, details?: string): Promise<void> {
+    // Operations default to 'full' level
+    if (!this.shouldLog('full')) return
+
     const message = details ? `${action}: ${details}` : action
     await this.info(message, 'user-action')
+  }
+
+  /**
+   * Log a basic-level message (always logged except in off mode)
+   */
+  async basic(message: string, context?: string): Promise<void> {
+    if (!this.shouldLog('basic')) return
+
+    try {
+      await invoke('log_from_frontend', { level: 'info', message, context })
+    } catch (e) {
+      console.debug('Failed to log basic:', e)
+    }
+  }
+
+  /**
+   * Log a debug-level message (only in debug mode)
+   */
+  async debug(message: string, context?: string): Promise<void> {
+    if (!this.shouldLog('debug')) return
+
+    try {
+      await invoke('log_from_frontend', { level: 'info', message: `[DEBUG] ${message}`, context })
+    } catch (e) {
+      console.debug('Failed to log debug:', e)
+    }
   }
 
   /**
@@ -104,3 +149,5 @@ export const logger = new Logger()
 export const logInfo = (message: string, context?: string) => logger.info(message, context)
 export const logError = (message: string, context?: string) => logger.error(message, context)
 export const logOperation = (action: string, details?: string) => logger.operation(action, details)
+export const logBasic = (message: string, context?: string) => logger.basic(message, context)
+export const logDebug = (message: string, context?: string) => logger.debug(message, context)

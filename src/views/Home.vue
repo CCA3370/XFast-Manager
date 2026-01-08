@@ -194,7 +194,7 @@ import ConfirmationModal from '@/components/ConfirmationModal.vue'
 import PasswordModal from '@/components/PasswordModal.vue'
 import AnimatedText from '@/components/AnimatedText.vue'
 import type { AnalysisResult, InstallProgress } from '@/types'
-import { logOperation, logError } from '@/services/logger'
+import { logOperation, logError, logDebug, logBasic } from '@/services/logger'
 
 const { t } = useI18n()
 
@@ -321,15 +321,20 @@ onBeforeUnmount(() => {
 })
 
 async function analyzeFiles(paths: string[], passwords?: Record<string, string>) {
+  // Log incoming files
+  logOperation(t('log.filesDropped'), t('log.fileCount', { count: paths.length }))
+  logDebug(`Analyzing paths: ${paths.join(', ')}`, 'analysis')
+
   if (!store.xplanePath) {
     console.log('No X-Plane path set')
+    // Log the abort reason - toast.warning will also log via the store
+    logOperation(t('log.taskAborted'), t('log.xplanePathNotSet'))
     toast.warning(t('home.pathNotSet'))
     return
   }
 
   store.isAnalyzing = true
-  // Non-blocking log call (don't await to improve startup speed)
-  logOperation(t('log.filesDropped'), t('log.fileCount', { count: paths.length }))
+  logDebug(`Starting analysis with X-Plane path: ${store.xplanePath}`, 'analysis')
 
   try {
     console.log('Paths to analyze:', paths)
@@ -341,9 +346,13 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
     })
 
     console.log('Analysis result:', result)
+    logDebug(`Analysis returned ${result.tasks.length} tasks, ${result.errors.length} errors`, 'analysis')
 
     // Check if any archives require passwords
     if (result.passwordRequired && result.passwordRequired.length > 0) {
+      // Log password requirement
+      logOperation(t('log.passwordRequired'), t('log.fileCount', { count: result.passwordRequired.length }))
+      logDebug(`Password required for: ${result.passwordRequired.join(', ')}`, 'analysis')
       // Store the original paths for re-analysis after password input
       pendingAnalysisPaths.value = paths
       passwordRequiredPaths.value = result.passwordRequired
@@ -357,6 +366,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
     }
 
     if (result.errors.length > 0) {
+      logDebug(`Errors during analysis: ${result.errors.join('; ')}`, 'analysis')
       // Show errors as a modal popup; keep other notifications as toasts
       modal.showError(result.errors.join('\n'))
     }
@@ -366,6 +376,8 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
       const allowedTasks = result.tasks.filter(task => store.installPreferences[task.type])
       const ignoredCount = result.tasks.length - allowedTasks.length
 
+      logDebug(`Filtered tasks: ${allowedTasks.length} allowed, ${ignoredCount} ignored`, 'analysis')
+
       if (ignoredCount > 0) {
         toast.info(t('home.ignoredTasks', { count: ignoredCount }))
       }
@@ -374,13 +386,16 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
         store.setCurrentTasks(allowedTasks)
         showConfirmation.value = true
         // Non-blocking log call
+        logBasic(t('log.analysisCompleted'), 'analysis')
         logOperation(t('log.analysisCompleted'), t('log.taskCount', { count: allowedTasks.length }))
+        logDebug(`Task types: ${allowedTasks.map(t => t.type).join(', ')}`, 'analysis')
       } else if (ignoredCount > 0) {
         toast.warning(t('home.allIgnored'))
       } else {
         toast.warning(t('home.noValidAddons'))
       }
     } else {
+      logDebug('No valid addons detected in analysis', 'analysis')
       toast.warning(t('home.noValidAddons'))
     }
   } catch (error) {
@@ -396,6 +411,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
 // Handle password modal submit
 async function handlePasswordSubmit(passwords: Record<string, string>) {
   showPasswordModal.value = false
+  logOperation(t('log.passwordEntered'), t('log.fileCount', { count: Object.keys(passwords).length }))
   // Merge new passwords with previously collected ones
   const allPasswords = { ...collectedPasswords.value, ...passwords }
   // Re-analyze with passwords
@@ -405,6 +421,7 @@ async function handlePasswordSubmit(passwords: Record<string, string>) {
 // Handle password modal cancel
 function handlePasswordCancel() {
   showPasswordModal.value = false
+  logOperation(t('log.taskAborted'), t('log.passwordCanceled'))
   pendingAnalysisPaths.value = []
   passwordRequiredPaths.value = []
   collectedPasswords.value = {}
@@ -414,15 +431,25 @@ async function handleInstall() {
   showConfirmation.value = false
   store.isInstalling = true
   // Non-blocking log call
+  logBasic(t('log.installationStarted'), 'installation')
   logOperation(t('log.installationStarted'), t('log.taskCount', { count: store.currentTasks.length }))
+  logDebug(`Installing ${store.currentTasks.length} tasks: ${store.currentTasks.map(t => t.name).join(', ')}`, 'installation')
 
   try {
     // Use getTasksWithOverwrite() to include overwrite settings
+    const tasksWithOverwrite = store.getTasksWithOverwrite()
+    const overwriteCount = tasksWithOverwrite.filter(t => t.shouldOverwrite).length
+    if (overwriteCount > 0) {
+      logDebug(`${overwriteCount} tasks will overwrite existing files`, 'installation')
+    }
+
     await invoke('install_addons', {
-      tasks: store.getTasksWithOverwrite()
+      tasks: tasksWithOverwrite
     })
     // Non-blocking log call
+    logBasic(t('log.installationCompleted'), 'installation')
     logOperation(t('log.installationCompleted'))
+    logDebug('All tasks installed successfully', 'installation')
     toast.success(t('home.installationCompleted'))
     store.clearTasks()
   } catch (error) {

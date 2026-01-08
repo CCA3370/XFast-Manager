@@ -91,20 +91,30 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { listen } from '@tauri-apps/api/event'
 import { syncLocaleToBackend } from '@/i18n'
+import { logBasic, logDebug } from '@/services/logger'
 import ToastNotification from '@/components/ToastNotification.vue'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 import ThemeSwitcher from '@/components/ThemeSwitcher.vue'
 import AnimatedText from '@/components/AnimatedText.vue'
 import ErrorModal from '@/components/ErrorModal.vue'
 
+const { t } = useI18n()
 const store = useAppStore()
 const router = useRouter()
 
 onMounted(async () => {
+  // Log app startup (basic level - always logged)
+  logBasic(t('log.appStarted'), 'app')
+  logDebug('Loading app store and initializing', 'app')
+
   store.loadXplanePath()
+
+  logDebug(`X-Plane path loaded: ${store.xplanePath || '(not set)'}`, 'app')
+  logDebug(`Log level: ${store.logLevel}`, 'app')
 
   // Non-blocking sync locale to backend (moved from i18n module top-level)
   syncLocaleToBackend()
@@ -114,6 +124,8 @@ onMounted(async () => {
   try {
     await listen<string[]>('cli-args', async (event) => {
       console.log('CLI args event received:', event.payload)
+      logBasic(t('log.launchedWithArgs'), 'app')
+      logDebug(`CLI args: ${event.payload.join(', ')}`, 'app')
       if (event.payload && event.payload.length > 0) {
         store.setPendingCliArgs(event.payload)
         await router.push('/')

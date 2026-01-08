@@ -64,7 +64,7 @@
       </section>
 
       <!-- 2. Grid for Preferences & System -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 h-full">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         
         <!-- Installation Preferences (Left Column) -->
         <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 flex flex-col">
@@ -150,60 +150,99 @@
         </div>
       </div>
 
-      <!-- 3. Logs Section -->
+      <!-- 3. Logs Section (Collapsible) -->
       <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
-        <div class="p-4 space-y-3">
-          <!-- Header with buttons -->
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-              <div class="w-8 h-8 bg-amber-100 dark:bg-amber-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-amber-600 dark:text-amber-400">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                </svg>
-              </div>
+        <!-- Header (clickable to expand/collapse) -->
+        <div
+          class="p-4 flex items-center justify-between cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-gray-700/30 rounded-xl transition-colors"
+          @click="toggleLogsExpanded"
+        >
+          <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 bg-amber-100 dark:bg-amber-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-amber-600 dark:text-amber-400">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+              </svg>
+            </div>
+            <div>
               <h3 class="text-sm font-semibold text-gray-900 dark:text-white"><AnimatedText>{{ $t('settings.logs') }}</AnimatedText></h3>
+              <p class="text-xs text-gray-500 dark:text-gray-400"><AnimatedText>{{ $t('settings.logLevelDesc') }}</AnimatedText></p>
+            </div>
+          </div>
+
+          <!-- Expand/Collapse indicator -->
+          <svg
+            class="w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform duration-200"
+            :class="{ 'rotate-180': logsExpanded }"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+          </svg>
+        </div>
+
+        <!-- Collapsible content -->
+        <transition name="collapse">
+          <div v-if="logsExpanded" class="px-4 pb-4 space-y-3">
+            <!-- Log Level Selector -->
+            <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5">
+              <div class="flex-1">
+                <label class="text-xs font-medium text-gray-700 dark:text-gray-300"><AnimatedText>{{ $t('settings.logLevel') }}</AnimatedText></label>
+              </div>
+              <div class="flex items-center space-x-2">
+                <button
+                  v-for="level in ['basic', 'full', 'debug']"
+                  :key="level"
+                  @click.stop="store.setLogLevel(level)"
+                  class="px-3 py-1 text-xs rounded-md transition-all duration-200 border"
+                  :class="store.logLevel === level
+                    ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
+                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'"
+                >
+                  <AnimatedText>{{ $t(`settings.logLevel${level.charAt(0).toUpperCase() + level.slice(1)}`) }}</AnimatedText>
+                </button>
+              </div>
             </div>
 
-            <div class="flex items-center space-x-2">
+            <!-- Action buttons -->
+            <div class="flex items-center justify-end space-x-2">
               <button
-                @click="refreshLogs"
+                @click.stop="refreshLogs"
                 class="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
               >
                 <AnimatedText>{{ $t('settings.refreshLogs') }}</AnimatedText>
               </button>
               <button
-                @click="handleOpenLogFolder"
+                @click.stop="handleOpenLogFolder"
                 class="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
               >
                 <AnimatedText>{{ $t('settings.openLogFolder') }}</AnimatedText>
               </button>
               <button
-                @click="handleCopyLogs"
+                @click.stop="handleCopyLogs"
                 class="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
               >
                 <AnimatedText>{{ $t('settings.copyLogs') }}</AnimatedText>
               </button>
             </div>
-          </div>
 
-          <!-- Log viewer -->
-          <div class="h-40 overflow-y-auto bg-gray-900 rounded-lg p-3 font-mono text-xs scrollbar-thin">
-            <div v-if="recentLogs.length === 0" class="text-gray-500 text-center py-4">
-              {{ $t('settings.noLogs') }}
+            <!-- Log viewer -->
+            <div class="h-48 overflow-y-auto bg-gray-900 rounded-lg p-3 font-mono text-xs scrollbar-thin">
+              <div v-if="recentLogs.length === 0" class="text-gray-500 text-center py-4">
+                {{ $t('settings.noLogs') }}
+              </div>
+              <div
+                v-for="(log, index) in recentLogs"
+                :key="index"
+                class="leading-relaxed whitespace-pre-wrap break-all"
+                :class="getLogColorClass(log)"
+              >{{ log }}</div>
             </div>
-            <div
-              v-for="(log, index) in recentLogs"
-              :key="index"
-              class="leading-relaxed whitespace-pre-wrap break-all"
-              :class="getLogColorClass(log)"
-            >{{ log }}</div>
-          </div>
 
-          <!-- Log path -->
-          <div class="text-[10px] text-gray-400 dark:text-gray-500 truncate" :title="logPath">
-            {{ logPath }}
+            <!-- Log path -->
+            <div class="text-[10px] text-gray-400 dark:text-gray-500 truncate" :title="logPath">
+              {{ logPath }}
+            </div>
           </div>
-        </div>
+        </transition>
       </section>
     </div>
   </div>
@@ -236,6 +275,7 @@ let saveTimeout: ReturnType<typeof setTimeout> | null = null
 // Logs state
 const recentLogs = ref<string[]>([])
 const logPath = ref('')
+const logsExpanded = ref(false)
 
 const addonTypes = [AddonType.Aircraft, AddonType.Scenery, AddonType.SceneryLibrary, AddonType.Plugin, AddonType.Navdata]
 
@@ -330,6 +370,13 @@ async function toggleContextMenu() {
 }
 
 // Log functions
+function toggleLogsExpanded() {
+  logsExpanded.value = !logsExpanded.value
+  if (logsExpanded.value) {
+    refreshLogs()
+  }
+}
+
 async function refreshLogs() {
   recentLogs.value = await logger.getRecentLogs(50)
 }
@@ -360,3 +407,26 @@ function getLogColorClass(log: string): string {
   return 'text-gray-300'
 }
 </script>
+
+<style scoped>
+/* Collapse transition */
+.collapse-enter-active,
+.collapse-leave-active {
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.collapse-enter-from,
+.collapse-leave-to {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.collapse-enter-to,
+.collapse-leave-from {
+  opacity: 1;
+  max-height: 400px;
+}
+</style>

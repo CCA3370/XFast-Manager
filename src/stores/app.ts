@@ -1,12 +1,17 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { AddonType, type InstallTask } from '@/types'
+
+export type LogLevel = 'basic' | 'full' | 'debug'
 
 export const useAppStore = defineStore('app', () => {
   const xplanePath = ref<string>('')
   const currentTasks = ref<InstallTask[]>([])
   const isAnalyzing = ref(false)
   const isInstalling = ref(false)
+
+  // Log level setting (basic, full, debug)
+  const logLevel = ref<LogLevel>('full')
 
   // Pending CLI arguments to be processed by Home.vue
   const pendingCliArgs = ref<string[] | null>(null)
@@ -41,6 +46,12 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  // Load log level
+  const savedLogLevel = localStorage.getItem('logLevel')
+  if (savedLogLevel && ['basic', 'full', 'debug'].includes(savedLogLevel)) {
+    logLevel.value = savedLogLevel as LogLevel
+  }
+
   function setXplanePath(path: string) {
     xplanePath.value = path
     localStorage.setItem('xplanePath', path)
@@ -57,6 +68,11 @@ export const useAppStore = defineStore('app', () => {
   function togglePreference(type: AddonType) {
     installPreferences.value[type] = !installPreferences.value[type]
     localStorage.setItem('installPreferences', JSON.stringify(installPreferences.value))
+  }
+
+  function setLogLevel(level: LogLevel) {
+    logLevel.value = level
+    localStorage.setItem('logLevel', level)
   }
 
   function setCurrentTasks(tasks: InstallTask[]) {
@@ -113,12 +129,14 @@ export const useAppStore = defineStore('app', () => {
     isAnalyzing,
     isInstalling,
     installPreferences,
+    logLevel,
     overwriteSettings,
     hasConflicts,
     pendingCliArgs,
     setXplanePath,
     loadXplanePath,
     togglePreference,
+    setLogLevel,
     setCurrentTasks,
     clearTasks,
     setTaskOverwrite,

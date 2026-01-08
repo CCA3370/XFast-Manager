@@ -80,7 +80,12 @@ export default {
     refreshLogs: '刷新',
     openLogFolder: '打开文件夹',
     copyLogs: '复制',
-    logsCopied: '日志已复制到剪贴板'
+    logsCopied: '日志已复制到剪贴板',
+    logLevel: '日志级别',
+    logLevelDesc: '控制日志记录详细程度',
+    logLevelBasic: '基本',
+    logLevelFull: '完整',
+    logLevelDebug: '调试'
   },
   modal: {
     confirmInstallation: '确认安装',
@@ -119,6 +124,11 @@ export default {
     installationFailed: '安装失败',
     installing: '正在安装',
     failedToInstall: '安装失败',
-    scanFailed: '扫描失败'
+    scanFailed: '扫描失败',
+    taskAborted: '任务终止',
+    xplanePathNotSet: '未设置 X-Plane 路径',
+    passwordRequired: '需要输入密码',
+    passwordEntered: '密码已输入',
+    passwordCanceled: '用户取消密码输入'
   }
 }

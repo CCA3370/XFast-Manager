@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { logger } from '@/services/logger'
 
 export interface Toast {
   id: string
@@ -14,6 +15,13 @@ export const useToastStore = defineStore('toast', () => {
     const id = Date.now().toString() + Math.random()
     toasts.value.push({ id, message, type })
     // Toast removal is handled by animationend event in ToastNotification.vue
+
+    // Automatically log toast messages
+    if (type === 'error') {
+      logger.error(`[Toast] ${message}`, 'ui')
+    } else {
+      logger.info(`[Toast:${type}] ${message}`, 'ui')
+    }
   }
 
   function remove(id: string) {
