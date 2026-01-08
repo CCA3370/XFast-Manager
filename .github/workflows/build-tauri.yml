@@ -8,6 +8,7 @@ on:
 env:
   CARGO_INCREMENTAL: 1
   CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: 3
 
 jobs:
   build-windows-portable:
@@ -35,7 +36,9 @@ jobs:
         with:
           workspaces: src-tauri -> target
           cache-all-crates: true
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-targets: true
+          cache-bin: true
+          shared-key: windows-release
 
       - name: Build Tauri (Portable EXE)
         run: npm run tauri:build
@@ -44,5 +47,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: XFastInstall-windows-portable
-          path: src-tauri/target/release/xfastinstall.exe
+          path: '**/target/release/xfastinstall.exe'
           if-no-files-found: error
