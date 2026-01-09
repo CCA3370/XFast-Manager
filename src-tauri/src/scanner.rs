@@ -159,22 +159,19 @@ impl Scanner {
             .context("Failed to create secure temp directory")?;
 
         // Extract to temp (with password if provided)
-        let file = std::fs::File::open(archive_path)
+        let mut file = std::fs::File::open(archive_path)
             .context("Failed to open 7z archive")?;
         
-        let mut sz = sevenz_rust2::Archive::read(file)
+        let password_bytes = password.map(|p| p.as_bytes()).unwrap_or_default();
+        let mut sz = sevenz_rust2::Archive::read(&mut file, password_bytes)
             .map_err(|e| anyhow::anyhow!("Failed to read 7z archive: {}", e))?;
         
-        // Set password if provided
-        if let Some(pwd) = password {
-            sz.set_password(pwd);
-        }
-        
-        sz.extract(temp_dir.path())
-            .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;;
+        sz.extract_all(temp_dir.path())
+            .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
 
         // Sanitize the file path to prevent path traversal
-        let safe_file_path = file_path.replace("..", "").trim_start_matches('/').trim_start_matches('\\');
+        let sanitized = file_path.replace("..", "");
+        let safe_file_path = sanitized.trim_start_matches('/').trim_start_matches('\\');
         let target_file = temp_dir.path().join(safe_file_path);
         let content = fs::read_to_string(&target_file)
             .context("Failed to read file from 7z")?;
@@ -284,7 +281,8 @@ impl Scanner {
         }
 
         // Sanitize the file path to prevent path traversal
-        let safe_file_path = target_file.replace("..", "").trim_start_matches('/').trim_start_matches('\\');
+        let sanitized = target_file.replace("..", "");
+        let safe_file_path = sanitized.trim_start_matches('/').trim_start_matches('\\');
         let file_path = temp_dir.path().join(safe_file_path);
         let content = fs::read_to_string(&file_path)
             .context("Failed to read file from RAR")?;
