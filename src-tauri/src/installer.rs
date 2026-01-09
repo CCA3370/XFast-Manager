@@ -844,13 +844,8 @@ impl Installer {
             .context("Failed to create secure temp directory")?;
 
         // Extract with password if provided
-        if let Some(pwd) = password {
-            sevenz_rust2::decompress_file_with_password(archive, temp_dir.path(), pwd.into())
-                .map_err(|e| anyhow::anyhow!("Failed to extract 7z with password: {}", e))?;
-        } else {
-            sevenz_rust2::decompress_file(archive, temp_dir.path())
-                .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
-        }
+        sevenz_rust2::decompress(archive, temp_dir.path(), password.map(|p| p.as_bytes().to_vec()))
+            .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
 
         // Determine source path (with or without internal_root)
         let source_path = if let Some(internal_root) = internal_root {
@@ -889,11 +884,10 @@ impl Installer {
             .context("Failed to create secure temp directory")?;
 
         // Extract using the typestate pattern (with password if provided)
-        let archive_builder = unrar::Archive::new(archive);
         let archive_builder = if let Some(pwd) = password {
-            archive_builder.with_password(pwd.to_string())
+            unrar::Archive::with_password(archive, pwd.to_string())
         } else {
-            archive_builder
+            unrar::Archive::new(archive)
         };
 
         let mut arch = archive_builder

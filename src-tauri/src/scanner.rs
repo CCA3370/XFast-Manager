@@ -159,13 +159,8 @@ impl Scanner {
             .context("Failed to create secure temp directory")?;
 
         // Extract to temp (with password if provided)
-        if let Some(pwd) = password {
-            sevenz_rust2::decompress_file_with_password(archive_path, temp_dir.path(), pwd.into())
-                .map_err(|e| anyhow::anyhow!("Failed to extract 7z with password: {}", e))?;
-        } else {
-            sevenz_rust2::decompress_file(archive_path, temp_dir.path())
-                .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
-        }
+        sevenz_rust2::decompress(archive_path, temp_dir.path(), password.map(|p| p.as_bytes().to_vec()))
+            .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
 
         // Sanitize the file path to prevent path traversal
         let safe_file_path = file_path.replace("..", "").trim_start_matches('/').trim_start_matches('\\');
@@ -180,14 +175,13 @@ impl Scanner {
     /// Scan a RAR archive without extraction
     fn scan_rar(&self, archive_path: &Path, password: Option<&str>) -> Result<Vec<DetectedItem>> {
         // Create archive with or without password
-        let archive_builder = unrar::Archive::new(archive_path);
-        let archive = if let Some(pwd) = password {
-            archive_builder.with_password(pwd.to_string())
+        let archive_builder = if let Some(pwd) = password {
+            unrar::Archive::with_password(archive_path, pwd.to_string())
         } else {
-            archive_builder
+            unrar::Archive::new(archive_path)
         };
 
-        let archive = archive
+        let archive = archive_builder
             .open_for_listing()
             .map_err(|e| {
                 let err_str = format!("{:?}", e);
@@ -256,11 +250,10 @@ impl Scanner {
             .context("Failed to create secure temp directory")?;
 
         // Extract to temp using the typestate pattern (with password if provided)
-        let archive_builder = unrar::Archive::new(archive_path);
         let archive_builder = if let Some(pwd) = password {
-            archive_builder.with_password(pwd.to_string())
+            unrar::Archive::with_password(archive_path, pwd.to_string())
         } else {
-            archive_builder
+            unrar::Archive::new(archive_path)
         };
 
         let mut archive = archive_builder

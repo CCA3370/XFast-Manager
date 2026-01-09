@@ -305,7 +305,7 @@ impl Analyzer {
             Err(_) => return (None, None),
         };
 
-        let archive = match ZipArchive::new(file) {
+        let mut archive = match ZipArchive::new(file) {
             Ok(a) => a,
             Err(_) => return (None, None),
         };
