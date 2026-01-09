@@ -160,8 +160,21 @@ impl Scanner {
 
         // Extract to temp (with password if provided)
         if let Some(pwd) = password {
-            sevenz_rust2::decompress_file_with_password(archive_path, temp_dir.path(), pwd.into())
-                .map_err(|e| anyhow::anyhow!("Failed to extract 7z with password: {}", e))?;
+            let mut reader = sevenz_rust2::SevenZReader::open(archive_path, sevenz_rust2::Password::from(pwd))
+                .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
+            reader.for_each_entries(|entry, reader| {
+                let dest_path = temp_dir.path().join(entry.name());
+                if entry.is_directory() {
+                    std::fs::create_dir_all(&dest_path)?;
+                } else {
+                    if let Some(parent) = dest_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    let mut file = std::fs::File::create(&dest_path)?;
+                    std::io::copy(reader, &mut file)?;
+                }
+                Ok(true)
+            }).map_err(|e| anyhow::anyhow!("Failed to extract 7z with password: {}", e))?;
         } else {
             sevenz_rust2::decompress_file(archive_path, temp_dir.path())
                 .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
