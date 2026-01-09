@@ -844,15 +844,13 @@ impl Installer {
             .context("Failed to create secure temp directory")?;
 
         // Extract with password if provided
-        let mut file = std::fs::File::open(archive)
-            .context("Failed to open 7z archive")?;
-        
-        let password_bytes = password.map(|p| p.as_bytes()).unwrap_or_default();
-        let mut sz = sevenz_rust2::Archive::read(&mut file, password_bytes)
-            .map_err(|e| anyhow::anyhow!("Failed to read 7z archive: {}", e))?;
-        
-        sz.extract_all(temp_dir.path())
-            .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;;
+        if let Some(pwd) = password {
+            sevenz_rust2::decompress_file_with_password(archive, temp_dir.path(), pwd.into())
+                .map_err(|e| anyhow::anyhow!("Failed to extract 7z with password: {}", e))?;
+        } else {
+            sevenz_rust2::decompress_file(archive, temp_dir.path())
+                .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
+        }
 
         // Determine source path (with or without internal_root)
         let source_path = if let Some(internal_root) = internal_root {
