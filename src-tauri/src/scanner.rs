@@ -159,8 +159,19 @@ impl Scanner {
             .context("Failed to create secure temp directory")?;
 
         // Extract to temp (with password if provided)
-        sevenz_rust2::decompress(archive_path, temp_dir.path(), password.map(|p| p.as_bytes().to_vec()))
-            .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
+        let file = std::fs::File::open(archive_path)
+            .context("Failed to open 7z archive")?;
+        
+        let mut sz = sevenz_rust2::Archive::read(file)
+            .map_err(|e| anyhow::anyhow!("Failed to read 7z archive: {}", e))?;
+        
+        // Set password if provided
+        if let Some(pwd) = password {
+            sz.set_password(pwd);
+        }
+        
+        sz.extract(temp_dir.path())
+            .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;;
 
         // Sanitize the file path to prevent path traversal
         let safe_file_path = file_path.replace("..", "").trim_start_matches('/').trim_start_matches('\\');
@@ -176,7 +187,7 @@ impl Scanner {
     fn scan_rar(&self, archive_path: &Path, password: Option<&str>) -> Result<Vec<DetectedItem>> {
         // Create archive with or without password
         let archive_builder = if let Some(pwd) = password {
-            unrar::Archive::with_password(archive_path, pwd.to_string())
+            unrar::Archive::with_password(archive_path, pwd)
         } else {
             unrar::Archive::new(archive_path)
         };
@@ -251,7 +262,7 @@ impl Scanner {
 
         // Extract to temp using the typestate pattern (with password if provided)
         let archive_builder = if let Some(pwd) = password {
-            unrar::Archive::with_password(archive_path, pwd.to_string())
+            unrar::Archive::with_password(archive_path, pwd)
         } else {
             unrar::Archive::new(archive_path)
         };
