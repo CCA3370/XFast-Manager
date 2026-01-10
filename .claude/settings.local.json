@@ -24,7 +24,9 @@
       "Bash(npm run test:*)",
       "Bash(npm run:*)",
       "Bash(/c/Users/18811/.cargo/bin/cargo.exe check --lib)",
-      "Bash(/c/Users/18811/.cargo/bin/cargo.exe test analyzer::tests --lib)"
+      "Bash(/c/Users/18811/.cargo/bin/cargo.exe test analyzer::tests --lib)",
+      "WebFetch(domain:crates.io)",
+      "WebFetch(domain:lib.rs)"
     ]
   }
 }

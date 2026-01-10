@@ -375,6 +375,32 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
 
     if (result.errors.length > 0) {
       logDebug(`Errors during analysis: ${result.errors.join('; ')}`, 'analysis')
+      // Check if errors indicate wrong password
+      const hasPasswordError = result.errors.some(err =>
+        err.includes('password') || err.includes('Password') || err.includes('Wrong password')
+      )
+
+      if (hasPasswordError && passwords) {
+        // Increment retry counter only on password error
+        passwordRetryCount.value++
+
+        // Check if we've exceeded retry limit
+        if (passwordRetryCount.value > MAX_PASSWORD_RETRIES) {
+          logOperation(t('log.taskAborted'), t('log.passwordMaxRetries'))
+          toast.error(t('password.maxRetries'))
+          modal.showError(result.errors.join('\n'))
+          resetPasswordState()
+          store.isAnalyzing = false
+          return
+        }
+
+        // Show password modal again for retry
+        toast.error(t('password.wrongPassword'))
+        showPasswordModal.value = true
+        store.isAnalyzing = false
+        return
+      }
+
       // Show errors as a modal popup; keep other notifications as toasts
       modal.showError(result.errors.join('\n'))
     }
@@ -425,17 +451,7 @@ async function handlePasswordSubmit(passwords: Record<string, string>) {
   // Merge new passwords with previously collected ones
   const allPasswords = { ...collectedPasswords.value, ...passwords }
 
-  // Increment retry counter
-  passwordRetryCount.value++
-
-  // Check if we've exceeded retry limit
-  if (passwordRetryCount.value > MAX_PASSWORD_RETRIES) {
-    logOperation(t('log.taskAborted'), t('log.passwordMaxRetries'))
-    toast.error(t('password.maxRetries'))
-    resetPasswordState()
-    return
-  }
-
+  // Note: retry counter is incremented only when password is wrong (in analyzeFiles)
   // Re-analyze with passwords
   await analyzeFiles(pendingAnalysisPaths.value, allPasswords)
 }

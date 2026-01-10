@@ -20,7 +20,15 @@ impl std::fmt::Display for PasswordRequiredError {
 impl std::error::Error for PasswordRequiredError {}
 
 /// Scans a directory or archive and detects addon types based on markers
+///
+/// Scanner is thread-safe as it contains no mutable state.
+/// All methods are stateless and can be called concurrently.
 pub struct Scanner;
+
+// Explicitly mark Scanner as Send and Sync for thread safety
+// This is safe because Scanner has no internal state
+unsafe impl Send for Scanner {}
+unsafe impl Sync for Scanner {}
 
 impl Scanner {
     pub fn new() -> Self {
@@ -72,8 +80,12 @@ impl Scanner {
     fn scan_directory(&self, dir: &Path) -> Result<Vec<DetectedItem>> {
         let mut detected = Vec::new();
 
-        // Walk through the directory
-        for entry in WalkDir::new(dir).follow_links(false) {
+        // Walk through the directory with depth limit for performance
+        // Most X-Plane addons are within 15 levels deep
+        for entry in WalkDir::new(dir)
+            .follow_links(false)
+            .max_depth(15)
+        {
             let entry = entry?;
             let path = entry.path();
 
@@ -112,9 +124,21 @@ impl Scanner {
             "zip" => self.scan_zip(archive_path, password),
             "7z" => self.scan_7z(archive_path, password),
             "rar" => self.scan_rar(archive_path, password),
+            "" => {
+                // No extension
+                let msg = format!("File has no extension: {}", archive_path.display());
+                crate::logger::log_error(&msg, Some("scanner"));
+                Err(anyhow::anyhow!(msg))
+            }
             _ => {
-                eprintln!("Archive format {} not supported", extension);
-                Ok(vec![])
+                // Unsupported format
+                let msg = format!(
+                    "Unsupported archive format '.{}' for file: {}. Supported formats: .zip, .7z, .rar",
+                    extension,
+                    archive_path.display()
+                );
+                crate::logger::log_error(&msg, Some("scanner"));
+                Err(anyhow::anyhow!(msg))
             }
         }
     }
@@ -217,10 +241,10 @@ impl Scanner {
                 .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
         }
 
-        // Sanitize the file path to prevent path traversal
-        let sanitized = file_path.replace("..", "");
-        let safe_file_path = sanitized.trim_start_matches('/').trim_start_matches('\\');
-        let target_file = temp_dir.path().join(safe_file_path);
+        // Sanitize the file path to prevent path traversal using proper sanitization
+        let safe_path = crate::installer::sanitize_path(Path::new(file_path))
+            .ok_or_else(|| anyhow::anyhow!("Unsafe path in 7z archive: {}", file_path))?;
+        let target_file = temp_dir.path().join(safe_path);
         let content = fs::read_to_string(&target_file)
             .context("Failed to read file from 7z")?;
 
@@ -334,10 +358,10 @@ impl Scanner {
             };
         }
 
-        // Sanitize the file path to prevent path traversal
-        let sanitized = target_file.replace("..", "");
-        let safe_file_path = sanitized.trim_start_matches('/').trim_start_matches('\\');
-        let file_path = temp_dir.path().join(safe_file_path);
+        // Sanitize the file path to prevent path traversal using proper sanitization
+        let safe_path = crate::installer::sanitize_path(Path::new(target_file))
+            .ok_or_else(|| anyhow::anyhow!("Unsafe path in RAR archive: {}", target_file))?;
+        let file_path = temp_dir.path().join(safe_path);
         let content = fs::read_to_string(&file_path)
             .context("Failed to read file from RAR")?;
 
@@ -346,24 +370,36 @@ impl Scanner {
     }
 
     /// Scan a ZIP archive
-    fn scan_zip(&self, zip_path: &Path, _password: Option<&str>) -> Result<Vec<DetectedItem>> {
+    fn scan_zip(&self, zip_path: &Path, password: Option<&str>) -> Result<Vec<DetectedItem>> {
         use zip::ZipArchive;
 
-        // Note: zip crate requires password per-file, not at archive level
-        // Password-protected ZIP handling would need to be done differently
         let file = fs::File::open(zip_path)?;
         let mut archive = ZipArchive::new(file)?;
         let mut detected = Vec::new();
 
-        // First pass: collect file info
+        // Convert password to bytes if provided
+        let password_bytes = password.map(|p| p.as_bytes());
+
+        // First pass: collect file info and check for encryption
         let mut files_info = Vec::new();
+        let mut has_encrypted = false;
         for i in 0..archive.len() {
             let file = archive.by_index(i)?;
-            files_info.push((i, file.name().to_string()));
+            if file.encrypted() {
+                has_encrypted = true;
+            }
+            files_info.push((i, file.name().to_string(), file.encrypted()));
+        }
+
+        // If any file is encrypted but no password provided, request password
+        if has_encrypted && password_bytes.is_none() {
+            return Err(anyhow::anyhow!(PasswordRequiredError {
+                archive_path: zip_path.to_string_lossy().to_string(),
+            }));
         }
 
         // Second pass: process files
-        for (i, file_path) in files_info {
+        for (i, file_path, is_encrypted) in files_info {
             // Skip ignored paths (__MACOSX, .DS_Store, etc.)
             let path = Path::new(&file_path);
             if Self::should_ignore_path(path) {
@@ -389,10 +425,30 @@ impl Scanner {
                 }
             } else if file_path.ends_with("cycle.json") {
                 // Need to read the file content
-                let mut file = archive.by_index(i)?;
                 let mut content = String::new();
                 use std::io::Read;
-                file.read_to_string(&mut content)?;
+
+                // Try to read with or without password
+                if is_encrypted {
+                    if let Some(pwd) = password_bytes {
+                        match archive.by_index_decrypt(i, pwd) {
+                            Ok(Ok(mut file)) => {
+                                file.read_to_string(&mut content)?;
+                            }
+                            Ok(Err(_)) => {
+                                // Wrong password
+                                return Err(anyhow::anyhow!("Wrong password for archive: {}", zip_path.display()));
+                            }
+                            Err(e) => return Err(e.into()),
+                        }
+                    } else {
+                        // Should not reach here due to earlier check
+                        continue;
+                    }
+                } else {
+                    let mut file = archive.by_index(i)?;
+                    file.read_to_string(&mut content)?;
+                }
 
                 if let Some(item) = self.detect_navdata_in_archive(&file_path, &content, zip_path)? {
                     detected.push(item);
@@ -552,14 +608,23 @@ impl Scanner {
     fn find_scenery_root_from_dsf(&self, dsf_path: &Path) -> Option<PathBuf> {
         let mut current = dsf_path.parent()?;
 
-        // Search upward for "Earth nav data" folder (max 10 levels to prevent infinite loop)
-        for _ in 0..10 {
+        // Search upward for "Earth nav data" folder (max 20 levels for deeply nested structures)
+        for level in 0..20 {
             if let Some(name) = current.file_name().and_then(|s| s.to_str()) {
                 if name == "Earth nav data" {
                     // Found it! Go one level up to get scenery root
                     return current.parent().map(|p| p.to_path_buf());
                 }
             }
+
+            // Log warning if we're getting deep
+            if level == 15 {
+                crate::logger::log_info(
+                    &format!("Deep directory nesting detected while searching for 'Earth nav data': {:?}", dsf_path),
+                    Some("scanner")
+                );
+            }
+
             current = current.parent()?;
         }
 
@@ -657,14 +722,23 @@ impl Scanner {
     fn find_scenery_root_from_archive_path(&self, dsf_path: &Path) -> Option<PathBuf> {
         let mut current = dsf_path.parent()?;
 
-        // Search upward for "Earth nav data" folder
-        for _ in 0..10 {
+        // Search upward for "Earth nav data" folder (max 20 levels for deeply nested structures)
+        for level in 0..20 {
             if let Some(name) = current.file_name().and_then(|s| s.to_str()) {
                 if name == "Earth nav data" {
                     // Found it! Go one level up to get scenery root
                     return current.parent().map(|p| p.to_path_buf());
                 }
             }
+
+            // Log warning if we're getting deep
+            if level == 15 {
+                crate::logger::log_info(
+                    &format!("Deep directory nesting in archive while searching for 'Earth nav data': {:?}", dsf_path),
+                    Some("scanner")
+                );
+            }
+
             match current.parent() {
                 Some(p) if !p.as_os_str().is_empty() => current = p,
                 _ => break,

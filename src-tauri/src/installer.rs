@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use std::fs;
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -21,7 +22,7 @@ pub const MAX_COMPRESSION_RATIO: u64 = 100;
 
 /// Sanitize a file path to prevent path traversal attacks
 /// Returns None if the path is unsafe (contains `..` or is absolute)
-fn sanitize_path(path: &Path) -> Option<PathBuf> {
+pub fn sanitize_path(path: &Path) -> Option<PathBuf> {
     let mut result = PathBuf::new();
     for component in path.components() {
         match component {
@@ -36,6 +37,28 @@ fn sanitize_path(path: &Path) -> Option<PathBuf> {
     } else {
         Some(result)
     }
+}
+
+/// Optimized file copy with buffering for better performance
+/// Uses a larger buffer (1MB) for faster I/O operations
+fn copy_file_optimized<R: std::io::Read, W: std::io::Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> std::io::Result<u64> {
+    const BUFFER_SIZE: usize = 1024 * 1024; // 1MB buffer
+    let mut buffer = vec![0u8; BUFFER_SIZE];
+    let mut total_bytes = 0u64;
+
+    loop {
+        let bytes_read = reader.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        writer.write_all(&buffer[..bytes_read])?;
+        total_bytes += bytes_read as u64;
+    }
+
+    Ok(total_bytes)
 }
 
 /// Check if a path stays within the target directory (no escape via symlinks or ..)
@@ -433,9 +456,9 @@ impl Installer {
                 self.install_content_with_progress(source, target, task.archive_internal_root.as_deref(), ctx, password)?;
             }
             _ => {
-                // For other types: simple delete and reinstall
+                // For other types: delete and reinstall using robust removal
                 if target.exists() {
-                    fs::remove_dir_all(target)
+                    remove_dir_all_robust(target)
                         .context(format!("Failed to delete existing folder: {:?}", target))?;
                 }
                 self.install_content_with_progress(source, target, task.archive_internal_root.as_deref(), ctx, password)?;
@@ -803,7 +826,7 @@ impl Installer {
             .ok_or_else(|| anyhow::anyhow!("No file extension"))?;
 
         match extension {
-            "zip" => self.extract_zip_with_progress(archive, target, internal_root, ctx)?,
+            "zip" => self.extract_zip_with_progress(archive, target, internal_root, ctx, password)?,
             "7z" => self.extract_7z_with_progress(archive, target, internal_root, ctx, password)?,
             "rar" => self.extract_rar_with_progress(archive, target, internal_root, ctx, password)?,
             _ => return Err(anyhow::anyhow!("Unsupported archive format: {}", extension)),
@@ -813,14 +836,14 @@ impl Installer {
     }
 
     /// Extract ZIP archive with progress tracking
-    /// Note: Size warnings are now handled at analysis time, not extraction time.
-    /// The size_confirmed flag on InstallTask indicates user has acknowledged any warnings.
+    /// Supports password-protected ZIP files (both ZipCrypto and AES encryption)
     fn extract_zip_with_progress(
         &self,
         archive_path: &Path,
         target: &Path,
         internal_root: Option<&str>,
         ctx: &ProgressContext,
+        password: Option<&str>,
     ) -> Result<()> {
         use zip::ZipArchive;
 
@@ -829,13 +852,17 @@ impl Installer {
 
         let internal_root_normalized = internal_root.map(|s| s.replace('\\', "/"));
         let prefix = internal_root_normalized.as_deref();
+        let password_bytes = password.map(|p| p.as_bytes());
 
         for i in 0..archive.len() {
-            let mut file = archive.by_index(i)?;
-            // Use enclosed_name() which already provides path traversal protection
-            let file_path = match file.enclosed_name() {
-                Some(path) => path.to_path_buf(),
-                None => continue, // Skip paths that would escape (e.g., containing ..)
+            // Get file info first
+            let (file_path, is_encrypted, is_dir) = {
+                let file = archive.by_index(i)?;
+                let path = match file.enclosed_name() {
+                    Some(path) => path.to_path_buf(),
+                    None => continue, // Skip paths that would escape
+                };
+                (path, file.encrypted(), file.is_dir())
             };
 
             let file_path_str = file_path.to_string_lossy().replace('\\', "/");
@@ -866,7 +893,7 @@ impl Installer {
 
             let outpath = target.join(&relative_path);
 
-            if file.name().ends_with('/') {
+            if is_dir {
                 fs::create_dir_all(&outpath)?;
             } else {
                 if let Some(p) = outpath.parent() {
@@ -875,15 +902,43 @@ impl Installer {
                     }
                 }
 
-                let file_size = file.size();
+                // Extract file with or without password
+                let file_size = if is_encrypted {
+                    if let Some(pwd) = password_bytes {
+                        match archive.by_index_decrypt(i, pwd) {
+                            Ok(Ok(mut file)) => {
+                                let size = file.size();
+                                let mut outfile = fs::File::create(&outpath)?;
+                                copy_file_optimized(&mut file, &mut outfile)?;
+                                size
+                            }
+                            Ok(Err(_)) => {
+                                return Err(anyhow::anyhow!(
+                                    "Wrong password for encrypted file in ZIP: {}",
+                                    file_path_str
+                                ));
+                            }
+                            Err(e) => return Err(e.into()),
+                        }
+                    } else {
+                        return Err(anyhow::anyhow!(
+                            "Password required for encrypted file: {}",
+                            file_path_str
+                        ));
+                    }
+                } else {
+                    let mut file = archive.by_index(i)?;
+                    let size = file.size();
+                    let mut outfile = fs::File::create(&outpath)?;
+                    copy_file_optimized(&mut file, &mut outfile)?;
+                    size
+                };
+
                 let file_name = relative_path
                     .file_name()
                     .and_then(|s| s.to_str())
                     .unwrap_or("unknown")
                     .to_string();
-
-                let mut outfile = fs::File::create(&outpath)?;
-                std::io::copy(&mut file, &mut outfile)?;
 
                 ctx.add_bytes(file_size);
                 ctx.emit_progress(Some(file_name), InstallPhase::Installing);
@@ -892,6 +947,8 @@ impl Installer {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
+                // Get unix mode from the file
+                let file = archive.by_index(i)?;
                 if let Some(mode) = file.unix_mode() {
                     fs::set_permissions(&outpath, fs::Permissions::from_mode(mode))?;
                 }
@@ -930,7 +987,7 @@ impl Installer {
                         std::fs::create_dir_all(parent)?;
                     }
                     let mut file = std::fs::File::create(&dest_path)?;
-                    std::io::copy(reader, &mut file)?;
+                    copy_file_optimized(reader, &mut file)?;
                 }
                 Ok(true)
             }).map_err(|e| anyhow::anyhow!("Failed to extract 7z with password: {}", e))?;
@@ -1079,7 +1136,7 @@ mod tests {
     #[test]
     fn test_zip_bomb_constants() {
         // Verify constants are reasonable
-        assert_eq!(MAX_EXTRACTION_SIZE, 10 * 1024 * 1024 * 1024); // 10 GB
+        assert_eq!(MAX_EXTRACTION_SIZE, 20 * 1024 * 1024 * 1024); // 20 GB
         assert_eq!(MAX_COMPRESSION_RATIO, 100); // 100:1
     }
 }

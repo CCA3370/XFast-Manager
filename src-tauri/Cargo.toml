@@ -25,6 +25,7 @@ dirs = "5"
 rayon = "1.10"
 unrar = "0.5"
 tempfile = "3"
+dashmap = "6"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

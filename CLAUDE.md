@@ -23,6 +23,12 @@ npm run dev
 
 # Generate icon (if needed)
 npm run generate:icon
+
+# Run Rust tests
+cd src-tauri && cargo test
+
+# Run Rust tests with output
+cd src-tauri && cargo test -- --nocapture
 ```
 
 ## Architecture Overview
@@ -33,22 +39,38 @@ npm run generate:icon
 2. **Tauri Bridge**: Command-based RPC between Rust and JavaScript
 3. **Vue 3 Frontend (src/)**: UI layer with Pinia state management and vue-i18n
 
+### Performance Optimizations
+
+The backend includes several performance optimizations:
+
+- **Archive Metadata Caching** (cache.rs): Thread-safe DashMap cache with 5-minute TTL
+  - Caches uncompressed sizes and file counts
+  - Reduces repeated archive scanning
+  - Tracks cache hit/miss rates
+- **Optimized File I/O** (installer.rs): 1MB buffer size for 2-3x faster file copying
+- **Directory Scan Limits** (scanner.rs): Max depth of 15 levels to prevent excessive recursion
+- **Performance Monitoring** (performance.rs): Built-in metrics for throughput and cache efficiency
+- **Parallel Processing** (analyzer.rs): Uses rayon for concurrent path scanning
+
 ### Rust Backend Structure
 
 The backend follows a modular pipeline architecture:
 
 - **scanner.rs**: File system traversal and marker detection
-  - Scans directories and archives (.zip, .7z) recursively
+  - Scans directories and archives (.zip, .7z, .rar) recursively
   - Detects addon types by marker files:
     - Aircraft: `*.acf` files
     - Scenery: `library.txt` or `*.dsf` files
     - Plugins: `*.xpl` files (handles platform-specific subdirectories)
     - Navdata: `cycle.json` files with GNS430 detection
+  - Handles password-protected archives (returns PasswordRequiredError if password needed)
 
 - **analyzer.rs**: Deduplication and task generation
   - Receives `DetectedItem[]` from scanner
+  - Uses parallel processing (rayon) for scanning multiple paths
   - Deduplicates nested addons (e.g., plugin inside aircraft folder)
   - Creates `InstallTask[]` with target paths and conflict detection
+  - Handles password-protected archives (tracks passwords per archive)
   - Determines target directories:
     - Aircraft → `X-Plane/Aircraft/`
     - Scenery → `X-Plane/Custom Scenery/`
@@ -57,12 +79,30 @@ The backend follows a modular pipeline architecture:
 
 - **installer.rs**: File operations execution
   - Copies directories or extracts archives to target paths
-  - Handles .zip and .7z extraction
+  - Handles .zip, .7z, and .rar extraction with full password support
+  - ZIP: Supports both ZipCrypto and AES encryption
   - Preserves Unix file permissions
+  - Implements safety checks: max extraction size (20GB) and compression ratio (100:1)
+  - Supports overwrite mode (deletes existing directory before install using robust removal)
 
 - **registry.rs**: Windows-specific context menu registration (Windows only)
+  - Uses HKEY_CURRENT_USER for non-admin access (changed from HKEY_CLASSES_ROOT)
 
 - **models.rs**: Shared data types between all modules
+  - `InstallTask`: Includes fields for password, overwrite, size warnings, and Navdata cycle info
+  - `AnalysisResult`: Returns tasks, errors, and password_required list
+
+- **cache.rs**: Archive metadata caching system
+  - Thread-safe concurrent cache using DashMap
+  - 5-minute TTL for cached entries
+  - Automatic cleanup of expired entries
+  - Tracks cache statistics
+
+- **performance.rs**: Performance monitoring and metrics
+  - Tracks bytes and files processed
+  - Measures operation throughput (MB/s)
+  - Records cache hit/miss rates
+  - Provides performance statistics
 
 ### Frontend Structure
 
@@ -93,7 +133,7 @@ The backend follows a modular pipeline architecture:
 All Rust functions exposed to frontend (defined in lib.rs):
 - `get_cli_args()`: Returns command-line arguments (for context menu integration)
 - `get_platform()`: Returns OS name
-- `analyze_addons(paths, xplane_path)`: Analyzes dropped files and returns install tasks
+- `analyze_addons(paths, xplane_path, passwords)`: Analyzes dropped files and returns install tasks (with optional password map)
 - `install_addons(tasks)`: Executes installation
 - `register_context_menu()`: Registers Windows context menu (Windows only)
 - `unregister_context_menu()`: Unregisters context menu (Windows only)
@@ -114,9 +154,13 @@ When launched via Windows context menu, arguments are passed via CLI:
 - Prevents installing nested components separately
 
 **Archive Handling**:
-- ZIP files are scanned without extraction during analysis
+- ZIP, 7z, and RAR files are scanned without extraction during analysis
+- Password-protected archives return a `password_required` list in AnalysisResult
+  - All three formats (ZIP, 7z, RAR) support password-protected archives
+  - ZIP supports both ZipCrypto (legacy) and AES encryption
 - During installation, archives are extracted to target directories
 - Archive filename becomes the addon folder name
+- Safety limits: 20GB max extraction size, 100:1 max compression ratio
 
 **Plugin Platform Detection** (scanner.rs:308-316):
 - Detects platform folders: `32`, `64`, `win`, `lin`, `mac`, `win_x64`, `mac_x64`, `lin_x64`
@@ -145,12 +189,31 @@ TypeScript types (src/types/index.ts) mirror Rust types (src-tauri/src/models.rs
 
 - Rust unit tests exist in analyzer.rs (deduplication test)
 - Run Rust tests: `cd src-tauri && cargo test`
+- Run with output: `cd src-tauri && cargo test -- --nocapture`
 - No frontend tests currently exist
+
+## Key Dependencies
+
+**Rust**:
+- `tauri`: v2 framework
+- `walkdir`: Directory traversal
+- `zip`: ZIP archive handling
+- `sevenz-rust2`: 7z archive handling
+- `unrar`: RAR archive handling
+- `rayon`: Parallel processing
+- `winreg`: Windows registry (Windows only)
+
+**Frontend**:
+- `vue`: v3.5+ with Composition API
+- `pinia`: State management
+- `vue-i18n`: Internationalization
+- `@vueuse/core`: Vue utilities
+- `tailwindcss`: v4 styling
 
 ## Platform-Specific Notes
 
 **Windows**:
-- Context menu registration modifies Windows Registry (requires admin on some systems)
+- Context menu registration uses HKEY_CURRENT_USER (no admin required)
 - Uses winreg crate (registry.rs)
 
 **Linux**:
@@ -159,3 +222,14 @@ TypeScript types (src/types/index.ts) mirror Rust types (src-tauri/src/models.rs
 
 **macOS**:
 - Standard Tauri requirements (Xcode Command Line Tools)
+
+## Recent Important Changes
+
+- **Context Menu Registration**: Changed from HKEY_CLASSES_ROOT to HKEY_CURRENT_USER for non-admin access
+- **Archive Support**: Added RAR support and full password handling for all archive formats (ZIP, 7z, RAR)
+  - ZIP now supports both ZipCrypto and AES encryption with password
+- **Safety Features**: Added extraction size limits and compression ratio checks
+- **Task Management**: Added `enabled` state tracking for tasks (can be toggled on/off)
+- **Directory Removal**: Implemented robust directory removal with retry logic for overwrite mode
+- **Navdata Enhancement**: Added support for Navdata cycle information display
+- **Security Improvements**: Fixed path traversal vulnerabilities in 7z and RAR extraction

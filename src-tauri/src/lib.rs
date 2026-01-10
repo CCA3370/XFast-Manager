@@ -1,7 +1,9 @@
 mod analyzer;
+mod cache;
 mod installer;
 mod logger;
 mod models;
+mod performance;
 mod registry;
 mod scanner;
 
@@ -148,7 +150,6 @@ pub fn run() {
                     &format!("{}: {:?}", logger::tr(logger::LogMsg::LaunchedWithArgs), args),
                     Some("app"),
                 );
-                println!("Launched with arguments: {:?}", args);
                 // Emit event to frontend
                 app.emit("cli-args", args.clone()).ok();
             }

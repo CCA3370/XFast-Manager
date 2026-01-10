@@ -403,29 +403,84 @@ impl Analyzer {
         self.check_size_warning(archive_size, total_uncompressed)
     }
 
-    /// Estimate 7z file uncompressed size (approximate)
+    /// Estimate 7z file uncompressed size
     fn estimate_7z_size(&self, archive_path: &Path) -> (Option<u64>, Option<String>) {
         let archive_size = match fs::metadata(archive_path) {
             Ok(m) => m.len(),
             Err(_) => return (None, None),
         };
 
-        // For 7z, we estimate based on typical compression ratios (3-5x)
-        // This is a rough estimate since 7z doesn't store uncompressed size in headers easily
-        let estimated_uncompressed = archive_size.saturating_mul(4);
+        // Check cache first
+        if let Some(cached) = crate::cache::get_cached_metadata(archive_path) {
+            return self.check_size_warning(archive_size, cached.uncompressed_size);
+        }
+
+        // Try to read actual uncompressed size from 7z archive
+        let estimated_uncompressed = match sevenz_rust2::Archive::open(archive_path) {
+            Ok(archive) => {
+                // Sum up uncompressed sizes of all files
+                let mut total: u64 = 0;
+                let file_count = archive.files.len();
+                for entry in &archive.files {
+                    total = total.saturating_add(entry.size());
+                }
+
+                // Cache the result
+                if total > 0 {
+                    crate::cache::cache_metadata(archive_path, total, file_count);
+                    total
+                } else {
+                    // Fallback to estimation if no size info
+                    archive_size.saturating_mul(5)
+                }
+            }
+            Err(_) => {
+                // If we can't open the archive, use conservative estimate
+                archive_size.saturating_mul(5)
+            }
+        };
 
         self.check_size_warning(archive_size, estimated_uncompressed)
     }
 
-    /// Estimate RAR file uncompressed size (approximate)
+    /// Estimate RAR file uncompressed size
     fn estimate_rar_size(&self, archive_path: &Path) -> (Option<u64>, Option<String>) {
         let archive_size = match fs::metadata(archive_path) {
             Ok(m) => m.len(),
             Err(_) => return (None, None),
         };
 
-        // For RAR, estimate based on typical compression ratios
-        let estimated_uncompressed = archive_size.saturating_mul(4);
+        // Check cache first
+        if let Some(cached) = crate::cache::get_cached_metadata(archive_path) {
+            return self.check_size_warning(archive_size, cached.uncompressed_size);
+        }
+
+        // Try to read actual uncompressed size from RAR archive
+        let estimated_uncompressed = match unrar::Archive::new(archive_path).open_for_listing() {
+            Ok(archive) => {
+                let mut total: u64 = 0;
+                let mut file_count: usize = 0;
+                for entry in archive {
+                    if let Ok(e) = entry {
+                        total = total.saturating_add(e.unpacked_size);
+                        file_count += 1;
+                    }
+                }
+
+                // Cache the result
+                if total > 0 {
+                    crate::cache::cache_metadata(archive_path, total, file_count);
+                    total
+                } else {
+                    // Fallback to estimation if no size info
+                    archive_size.saturating_mul(5)
+                }
+            }
+            Err(_) => {
+                // If we can't open the archive, use conservative estimate
+                archive_size.saturating_mul(5)
+            }
+        };
 
         self.check_size_warning(archive_size, estimated_uncompressed)
     }
@@ -435,7 +490,8 @@ impl Analyzer {
         let mut warning = None;
 
         // Check compression ratio (potential zip bomb)
-        if archive_size > 0 {
+        // Only check if both sizes are non-zero to avoid division by zero
+        if archive_size > 0 && estimated_uncompressed > 0 {
             let ratio = estimated_uncompressed / archive_size;
             if ratio > MAX_COMPRESSION_RATIO {
                 warning = Some(format!(
