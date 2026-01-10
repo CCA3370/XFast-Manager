@@ -1,6 +1,5 @@
 use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicU64, Ordering};
-use once_cell::sync::Lazy;
 
 /// Performance metrics for operations
 #[derive(Debug, Clone)]

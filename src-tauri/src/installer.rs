@@ -1,14 +1,10 @@
 use anyhow::{Context, Result};
 use std::fs;
-use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
-
-#[cfg(target_os = "windows")]
-use std::os::windows::fs::MetadataExt;
 
 use crate::logger;
 use crate::logger::{tr, LogMsg};
@@ -41,7 +37,7 @@ pub fn sanitize_path(path: &Path) -> Option<PathBuf> {
 
 /// Optimized file copy with buffering for better performance
 /// Uses a larger buffer (1MB) for faster I/O operations
-fn copy_file_optimized<R: std::io::Read, W: std::io::Write>(
+fn copy_file_optimized<R: std::io::Read + ?Sized, W: std::io::Write>(
     reader: &mut R,
     writer: &mut W,
 ) -> std::io::Result<u64> {
@@ -906,19 +902,18 @@ impl Installer {
                 let file_size = if is_encrypted {
                     if let Some(pwd) = password_bytes {
                         match archive.by_index_decrypt(i, pwd) {
-                            Ok(Ok(mut file)) => {
+                            Ok(mut file) => {
                                 let size = file.size();
                                 let mut outfile = fs::File::create(&outpath)?;
                                 copy_file_optimized(&mut file, &mut outfile)?;
                                 size
                             }
-                            Ok(Err(_)) => {
+                            Err(_) => {
                                 return Err(anyhow::anyhow!(
                                     "Wrong password for encrypted file in ZIP: {}",
                                     file_path_str
                                 ));
                             }
-                            Err(e) => return Err(e.into()),
                         }
                     } else {
                         return Err(anyhow::anyhow!(

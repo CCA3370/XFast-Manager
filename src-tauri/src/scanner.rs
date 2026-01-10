@@ -432,14 +432,13 @@ impl Scanner {
                 if is_encrypted {
                     if let Some(pwd) = password_bytes {
                         match archive.by_index_decrypt(i, pwd) {
-                            Ok(Ok(mut file)) => {
+                            Ok(mut file) => {
                                 file.read_to_string(&mut content)?;
                             }
-                            Ok(Err(_)) => {
+                            Err(_) => {
                                 // Wrong password
                                 return Err(anyhow::anyhow!("Wrong password for archive: {}", zip_path.display()));
                             }
-                            Err(e) => return Err(e.into()),
                         }
                     } else {
                         // Should not reach here due to earlier check
