@@ -135,6 +135,9 @@ impl Analyzer {
             result.extend(deduped);
         }
 
+        // Apply priority filtering: remove plugins inside aircraft/scenery
+        result = self.filter_by_priority(result);
+
         result
     }
 
@@ -190,6 +193,48 @@ impl Analyzer {
             }
         }
 
+        result
+    }
+
+    /// Filter items by priority: plugins inside aircraft/scenery are removed
+    /// Priority: Aircraft, Scenery, SceneryLibrary, Navdata > Plugin
+    fn filter_by_priority(&self, items: Vec<DetectedItem>) -> Vec<DetectedItem> {
+        let high_priority_types = [
+            AddonType::Aircraft,
+            AddonType::Scenery,
+            AddonType::SceneryLibrary,
+            AddonType::Navdata,
+        ];
+
+        // Separate high-priority and low-priority items
+        let (high_priority, low_priority): (Vec<_>, Vec<_>) = items
+            .into_iter()
+            .partition(|item| high_priority_types.contains(&item.addon_type));
+
+        // Filter low-priority items: remove if nested inside any high-priority item
+        let filtered_low_priority: Vec<DetectedItem> = low_priority
+            .into_iter()
+            .filter(|low_item| {
+                let low_path = self.get_effective_path(low_item);
+
+                // Check if this low-priority item is inside any high-priority item
+                !high_priority.iter().any(|high_item| {
+                    // Must be from the same source (same archive or same directory tree)
+                    if !self.same_source(low_item, high_item) {
+                        return false;
+                    }
+
+                    let high_path = self.get_effective_path(high_item);
+
+                    // If low-priority item is under high-priority path, filter it out
+                    low_path.starts_with(&high_path) && low_path != high_path
+                })
+            })
+            .collect();
+
+        // Merge results
+        let mut result = high_priority;
+        result.extend(filtered_low_priority);
         result
     }
 
@@ -429,12 +474,14 @@ mod tests {
                 path: "/test/A330".to_string(),
                 display_name: "A330".to_string(),
                 archive_internal_root: None,
+                navdata_info: None,
             },
             DetectedItem {
                 addon_type: AddonType::Aircraft,
                 path: "/test/A330/variant".to_string(),
                 display_name: "A330 Variant".to_string(),
                 archive_internal_root: None,
+                navdata_info: None,
             },
         ];
 
@@ -449,64 +496,83 @@ mod tests {
     fn test_deduplication_different_types() {
         let analyzer = Analyzer::new();
 
-        // Different types from same directory tree - should keep both
+        // Aircraft contains a plugin - plugin should be filtered out
         let items = vec![
             DetectedItem {
                 addon_type: AddonType::Aircraft,
                 path: "/test/A330".to_string(),
                 display_name: "A330".to_string(),
                 archive_internal_root: None,
+                navdata_info: None,
             },
             DetectedItem {
                 addon_type: AddonType::Plugin,
                 path: "/test/A330/plugins/fms".to_string(),
                 display_name: "FMS".to_string(),
                 archive_internal_root: None,
+                navdata_info: None,
             },
         ];
 
         let result = analyzer.deduplicate(items);
 
-        // Should have both because they are different types
-        assert_eq!(result.len(), 2);
+        // Should only have Aircraft, plugin is filtered out
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].addon_type, AddonType::Aircraft);
     }
 
     #[test]
     fn test_deduplication_archive_multi_type() {
         let analyzer = Analyzer::new();
 
-        // Multiple types from same archive - should keep all
+        // Archive with aircraft and independent plugin/scenery
         let items = vec![
             DetectedItem {
                 addon_type: AddonType::Aircraft,
                 path: "/test/package.zip".to_string(),
                 display_name: "A330".to_string(),
                 archive_internal_root: Some("A330".to_string()),
+                navdata_info: None,
             },
             DetectedItem {
                 addon_type: AddonType::Plugin,
                 path: "/test/package.zip".to_string(),
                 display_name: "FMS Plugin".to_string(),
-                archive_internal_root: Some("plugins/fms".to_string()),
+                archive_internal_root: Some("A330/plugins/fms".to_string()),
+                navdata_info: None,
+            },
+            DetectedItem {
+                addon_type: AddonType::Plugin,
+                path: "/test/package.zip".to_string(),
+                display_name: "Standalone Plugin".to_string(),
+                archive_internal_root: Some("plugins/standalone".to_string()),
+                navdata_info: None,
             },
             DetectedItem {
                 addon_type: AddonType::Scenery,
                 path: "/test/package.zip".to_string(),
                 display_name: "Airport".to_string(),
                 archive_internal_root: Some("scenery/airport".to_string()),
-            },
-            DetectedItem {
-                addon_type: AddonType::SceneryLibrary,
-                path: "/test/package.zip".to_string(),
-                display_name: "Library".to_string(),
-                archive_internal_root: Some("library".to_string()),
+                navdata_info: None,
             },
         ];
 
         let result = analyzer.deduplicate(items);
 
-        // Should have all four because they are different types
-        assert_eq!(result.len(), 4);
+        // Should have: Aircraft, Standalone Plugin, Scenery (3 items)
+        // FMS Plugin is filtered because it's inside Aircraft
+        assert_eq!(result.len(), 3);
+
+        let types: Vec<AddonType> = result.iter().map(|i| i.addon_type.clone()).collect();
+        assert!(types.contains(&AddonType::Aircraft));
+        assert!(types.contains(&AddonType::Scenery));
+
+        // Check that standalone plugin is kept
+        let plugins: Vec<_> = result.iter()
+            .filter(|i| i.addon_type == AddonType::Plugin)
+            .collect();
+        assert_eq!(plugins.len(), 1);
+        assert_eq!(plugins[0].display_name, "Standalone Plugin");
     }
 
     #[test]
@@ -520,12 +586,14 @@ mod tests {
                 path: "/test/package.zip".to_string(),
                 display_name: "MainPlugin".to_string(),
                 archive_internal_root: Some("plugins".to_string()),
+                navdata_info: None,
             },
             DetectedItem {
                 addon_type: AddonType::Plugin,
                 path: "/test/package.zip".to_string(),
                 display_name: "SubPlugin".to_string(),
                 archive_internal_root: Some("plugins/sub".to_string()),
+                navdata_info: None,
             },
         ];
 
@@ -555,6 +623,8 @@ mod tests {
                 estimated_size: None,
                 size_warning: None,
                 size_confirmed: false,
+                existing_navdata_info: None,
+                new_navdata_info: None,
             },
             InstallTask {
                 id: "2".to_string(),
@@ -569,6 +639,8 @@ mod tests {
                 estimated_size: None,
                 size_warning: None,
                 size_confirmed: false,
+                existing_navdata_info: None,
+                new_navdata_info: None,
             },
         ];
 
@@ -597,6 +669,8 @@ mod tests {
                 estimated_size: None,
                 size_warning: None,
                 size_confirmed: false,
+                existing_navdata_info: None,
+                new_navdata_info: None,
             },
             InstallTask {
                 id: "2".to_string(),
@@ -611,6 +685,8 @@ mod tests {
                 estimated_size: None,
                 size_warning: None,
                 size_confirmed: false,
+                existing_navdata_info: None,
+                new_navdata_info: None,
             },
         ];
 
@@ -639,6 +715,8 @@ mod tests {
                 estimated_size: None,
                 size_warning: None,
                 size_confirmed: false,
+                existing_navdata_info: None,
+                new_navdata_info: None,
             },
             InstallTask {
                 id: "2".to_string(),
@@ -653,6 +731,8 @@ mod tests {
                 estimated_size: None,
                 size_warning: None,
                 size_confirmed: false,
+                existing_navdata_info: None,
+                new_navdata_info: None,
             },
             InstallTask {
                 id: "3".to_string(),
@@ -667,6 +747,8 @@ mod tests {
                 estimated_size: None,
                 size_warning: None,
                 size_confirmed: false,
+                existing_navdata_info: None,
+                new_navdata_info: None,
             },
         ];
 
@@ -674,5 +756,115 @@ mod tests {
 
         // Should only have one task since all target paths are the same
         assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_plugin_inside_scenery_filtered() {
+        let analyzer = Analyzer::new();
+
+        let items = vec![
+            DetectedItem {
+                addon_type: AddonType::Scenery,
+                path: "/test/KSEA".to_string(),
+                display_name: "KSEA".to_string(),
+                archive_internal_root: None,
+                navdata_info: None,
+            },
+            DetectedItem {
+                addon_type: AddonType::Plugin,
+                path: "/test/KSEA/plugins/lighting".to_string(),
+                display_name: "Lighting".to_string(),
+                archive_internal_root: None,
+                navdata_info: None,
+            },
+        ];
+
+        let result = analyzer.deduplicate(items);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].addon_type, AddonType::Scenery);
+    }
+
+    #[test]
+    fn test_standalone_plugin_kept() {
+        let analyzer = Analyzer::new();
+
+        let items = vec![
+            DetectedItem {
+                addon_type: AddonType::Aircraft,
+                path: "/test/A330".to_string(),
+                display_name: "A330".to_string(),
+                archive_internal_root: None,
+                navdata_info: None,
+            },
+            DetectedItem {
+                addon_type: AddonType::Plugin,
+                path: "/test/BetterPushback".to_string(),
+                display_name: "BetterPushback".to_string(),
+                archive_internal_root: None,
+                navdata_info: None,
+            },
+        ];
+
+        let result = analyzer.deduplicate(items);
+
+        // Both should be kept
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn test_archive_complex_priority() {
+        let analyzer = Analyzer::new();
+
+        let items = vec![
+            DetectedItem {
+                addon_type: AddonType::Aircraft,
+                path: "/test/pack.zip".to_string(),
+                display_name: "A330".to_string(),
+                archive_internal_root: Some("aircraft/A330".to_string()),
+                navdata_info: None,
+            },
+            DetectedItem {
+                addon_type: AddonType::Plugin,
+                path: "/test/pack.zip".to_string(),
+                display_name: "Systems".to_string(),
+                archive_internal_root: Some("aircraft/A330/plugins/systems".to_string()),
+                navdata_info: None,
+            },
+            DetectedItem {
+                addon_type: AddonType::SceneryLibrary,
+                path: "/test/pack.zip".to_string(),
+                display_name: "Library".to_string(),
+                archive_internal_root: Some("library".to_string()),
+                navdata_info: None,
+            },
+            DetectedItem {
+                addon_type: AddonType::Plugin,
+                path: "/test/pack.zip".to_string(),
+                display_name: "LibPlugin".to_string(),
+                archive_internal_root: Some("library/plugins/helper".to_string()),
+                navdata_info: None,
+            },
+            DetectedItem {
+                addon_type: AddonType::Plugin,
+                path: "/test/pack.zip".to_string(),
+                display_name: "Standalone".to_string(),
+                archive_internal_root: Some("plugins/standalone".to_string()),
+                navdata_info: None,
+            },
+        ];
+
+        let result = analyzer.deduplicate(items);
+
+        // Should have: Aircraft, SceneryLibrary, Standalone Plugin (3 items)
+        assert_eq!(result.len(), 3);
+
+        let plugin_names: Vec<String> = result.iter()
+            .filter(|i| i.addon_type == AddonType::Plugin)
+            .map(|i| i.display_name.clone())
+            .collect();
+
+        assert_eq!(plugin_names.len(), 1);
+        assert_eq!(plugin_names[0], "Standalone");
     }
 }

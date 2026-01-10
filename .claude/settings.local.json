@@ -11,7 +11,20 @@
       "Bash(copy \"C:\\\\Users\\\\Administrator\\\\Desktop\\\\XFastInstall-Tauri\\\\src-tauri\\\\icons\\\\icon.png\" \"C:\\\\Users\\\\Administrator\\\\Desktop\\\\XFastInstall-Tauri\\\\public\\\\icon.png\")",
       "Bash(dir:*)",
       "Bash(npx vite build:*)",
-      "Bash(node node_modules/vite/bin/vite.js:*)"
+      "Bash(node node_modules/vite/bin/vite.js:*)",
+      "Bash(where cargo:*)",
+      "Bash(if [ -f \"$HOME/.cargo/bin/cargo\" ])",
+      "Bash(then \"$HOME/.cargo/bin/cargo\" --version)",
+      "Bash(elif [ -f \"/c/Users/18811/.cargo/bin/cargo.exe\" ])",
+      "Bash(then \"/c/Users/18811/.cargo/bin/cargo.exe\" --version)",
+      "Bash(else echo \"Cargo not found\")",
+      "Bash(fi)",
+      "Bash(/c/Users/18811/.cargo/bin/cargo.exe test deduplicate --lib)",
+      "Bash(/c/Users/18811/.cargo/bin/cargo.exe test --lib analyzer::tests --no-fail-fast)",
+      "Bash(npm run test:*)",
+      "Bash(npm run:*)",
+      "Bash(/c/Users/18811/.cargo/bin/cargo.exe check --lib)",
+      "Bash(/c/Users/18811/.cargo/bin/cargo.exe test analyzer::tests --lib)"
     ]
   }
 }

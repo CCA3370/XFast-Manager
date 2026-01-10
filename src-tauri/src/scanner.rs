@@ -600,6 +600,7 @@ impl Scanner {
             path: archive_path.to_string_lossy().to_string(),
             display_name,
             archive_internal_root: internal_root,
+            navdata_info: None,
         }))
     }
 
