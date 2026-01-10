@@ -457,15 +457,29 @@ function resetPasswordState() {
 
 async function handleInstall() {
   showConfirmation.value = false
+
+  // Filter only enabled tasks
+  const enabledTasks = store.currentTasks.filter(task => store.getTaskEnabled(task.id))
+
+  if (enabledTasks.length === 0) {
+    toast.warning(t('home.noTasksEnabled'))
+    return
+  }
+
   store.isInstalling = true
   // Non-blocking log call
   logBasic(t('log.installationStarted'), 'installation')
-  logOperation(t('log.installationStarted'), t('log.taskCount', { count: store.currentTasks.length }))
-  logDebug(`Installing ${store.currentTasks.length} tasks: ${store.currentTasks.map(t => t.name).join(', ')}`, 'installation')
+  logOperation(t('log.installationStarted'), t('log.taskCount', { count: enabledTasks.length }))
+  logDebug(`Installing ${enabledTasks.length} tasks: ${enabledTasks.map(t => t.displayName).join(', ')}`, 'installation')
 
   try {
-    // Use getTasksWithOverwrite() to include overwrite settings
-    const tasksWithOverwrite = store.getTasksWithOverwrite()
+    // Prepare enabled tasks with overwrite settings
+    const tasksWithOverwrite = enabledTasks.map(task => ({
+      ...task,
+      shouldOverwrite: store.getTaskOverwrite(task.id) ?? false,
+      sizeConfirmed: store.getTaskSizeConfirmed(task.id) ?? false
+    }))
+
     const overwriteCount = tasksWithOverwrite.filter(t => t.shouldOverwrite).length
     if (overwriteCount > 0) {
       logDebug(`${overwriteCount} tasks will overwrite existing files`, 'installation')

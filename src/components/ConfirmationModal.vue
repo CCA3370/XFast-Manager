@@ -60,23 +60,12 @@
               v-for="task in store.currentTasks"
               :key="task.id"
               class="task-item bg-gradient-to-r from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-white/10 rounded-lg p-3 mb-2 hover:border-blue-400/30 transition-all duration-200"
+              :class="{ 'opacity-50': !store.getTaskEnabled(task.id) }"
             >
-              <div class="flex items-start justify-between">
+              <div class="flex items-start justify-between gap-3">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 mb-1">
                     <span class="type-badge" :class="getTypeBadgeClass(task.type)">
-                      <svg v-if="task.type === 'Aircraft'" class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
-                      </svg>
-                      <svg v-else-if="task.type === 'Scenery'" class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"></path>
-                      </svg>
-                      <svg v-else-if="task.type === 'Plugin'" class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"></path>
-                      </svg>
-                      <svg v-else class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                      </svg>
                       {{ task.type }}
                     </span>
                     <span class="font-medium text-white text-sm truncate">{{ task.displayName }}</span>
@@ -149,6 +138,17 @@
                       </div>
                     </div>
                   </div>
+                </div>
+                <!-- Task Enable Toggle (right side) -->
+                <div class="flex-shrink-0">
+                  <label class="toggle-switch toggle-switch-sm">
+                    <input
+                      type="checkbox"
+                      :checked="store.getTaskEnabled(task.id)"
+                      @change="toggleTaskEnabled(task.id)"
+                    >
+                    <span class="toggle-slider"></span>
+                  </label>
                 </div>
               </div>
             </div>
@@ -231,6 +231,9 @@ function parseSizeWarning(warning: string): { type: 'ratio' | 'size', message: s
 
 // Check if install button should be disabled
 const installDisabled = computed(() => {
+  // Disable if no tasks are enabled
+  if (store.enabledTasksCount === 0) return true
+  // Disable if there are size warnings that haven't been confirmed
   return store.hasSizeWarnings && !store.allSizeWarningsConfirmed
 })
 
@@ -258,6 +261,12 @@ function toggleTaskSizeConfirm(taskId: string) {
   store.setTaskSizeConfirmed(taskId, !currentValue)
 }
 
+// Toggle individual task enabled state
+function toggleTaskEnabled(taskId: string) {
+  const currentValue = store.getTaskEnabled(taskId)
+  store.setTaskEnabled(taskId, !currentValue)
+}
+
 // Update global toggle to reflect individual states
 function updateGlobalToggleState() {
   const conflictingTasks = store.currentTasks.filter(t => t.conflictExists)
@@ -275,6 +284,8 @@ function getTypeBadgeClass(type: AddonType) {
       return 'bg-blue-600'
     case AddonType.Scenery:
       return 'bg-green-600'
+    case AddonType.SceneryLibrary:
+      return 'bg-teal-600'
     case AddonType.Plugin:
       return 'bg-purple-600'
     case AddonType.Navdata:
@@ -394,7 +405,6 @@ function getTypeBadgeClass(type: AddonType) {
 .type-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
   padding: 0.2rem 0.5rem;
   border-radius: 0.375rem;
   font-size: 0.65rem;
@@ -411,6 +421,11 @@ function getTypeBadgeClass(type: AddonType) {
 
 .type-badge.bg-green-600 {
   background: linear-gradient(135deg, rgba(34, 197, 94, 0.8), rgba(74, 222, 128, 0.8));
+  color: white;
+}
+
+.type-badge.bg-teal-600 {
+  background: linear-gradient(135deg, rgba(13, 148, 136, 0.8), rgba(20, 184, 166, 0.8));
   color: white;
 }
 

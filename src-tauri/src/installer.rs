@@ -6,6 +6,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::fs::MetadataExt;
+
 use crate::logger;
 use crate::logger::{tr, LogMsg};
 use crate::models::{AddonType, InstallPhase, InstallProgress, InstallTask};
@@ -69,6 +72,64 @@ fn path_is_safe(target: &Path, path: &Path) -> bool {
     };
 
     path_to_check.starts_with(&target_canonical)
+}
+
+/// Remove read-only attribute from a file (Windows only)
+#[cfg(target_os = "windows")]
+fn remove_readonly_attribute(path: &Path) -> Result<()> {
+    let metadata = fs::metadata(path)?;
+    let mut permissions = metadata.permissions();
+
+    // Check if file is read-only
+    if permissions.readonly() {
+        permissions.set_readonly(false);
+        fs::set_permissions(path, permissions)
+            .context(format!("Failed to remove read-only attribute from: {:?}", path))?;
+    }
+    Ok(())
+}
+
+/// Remove read-only attribute from a file (non-Windows platforms)
+#[cfg(not(target_os = "windows"))]
+fn remove_readonly_attribute(_path: &Path) -> Result<()> {
+    // On Unix-like systems, we handle permissions differently
+    Ok(())
+}
+
+/// Robustly remove a directory and all its contents, handling read-only files
+fn remove_dir_all_robust(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    // First pass: remove read-only attributes from all files
+    for entry in walkdir::WalkDir::new(path).follow_links(false) {
+        if let Ok(entry) = entry {
+            let entry_path = entry.path();
+            if entry_path.is_file() {
+                // Try to remove read-only attribute, but don't fail if it doesn't work
+                let _ = remove_readonly_attribute(entry_path);
+            }
+        }
+    }
+
+    // Second pass: try to delete the directory
+    match fs::remove_dir_all(path) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            // If deletion still fails, provide detailed error information
+            let err_msg = format!(
+                "Failed to delete directory: {:?}\nError: {}\n\
+                This may be caused by:\n\
+                - Files being used by another program (X-Plane, file explorer, antivirus)\n\
+                - Insufficient permissions\n\
+                - System files or protected folders\n\
+                Please close any programs that might be using these files and try again.",
+                path, e
+            );
+            Err(anyhow::anyhow!(err_msg))
+        }
+    }
 }
 
 /// Directory statistics for backup verification
@@ -403,7 +464,7 @@ impl Installer {
 
         // Step 3: Delete target folder (only after backup is verified)
         if target.exists() {
-            fs::remove_dir_all(target)
+            remove_dir_all_robust(target)
                 .context(format!("Failed to delete existing aircraft folder: {:?}", target))?;
         }
 
@@ -478,14 +539,14 @@ impl Installer {
             backup.liveries_path = Some(liveries_dst);
         }
 
-        // Backup *_pref.txt files from root directory only
+        // Backup *_prefs.txt files from root directory only
         for entry in fs::read_dir(target)? {
             let entry = entry?;
             let path = entry.path();
 
             if path.is_file() {
                 if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                    if name.ends_with("_pref.txt") {
+                    if name.ends_with("_prefs.txt") {
                         let original_size = fs::metadata(&path)?.len();
                         let backup_path = temp_dir.join(name);
                         fs::copy(&path, &backup_path)
@@ -616,7 +677,7 @@ impl Installer {
             }
         }
 
-        // Restore *_pref.txt files (always overwrite - restore user preferences)
+        // Restore *_prefs.txt files (always overwrite - restore user preferences)
         for (filename, backup_path) in &backup.pref_files {
             let target_path = target.join(filename);
             fs::copy(backup_path, &target_path)
@@ -646,6 +707,8 @@ impl Installer {
                 // Only copy if target doesn't exist (skip existing)
                 if !target_path.exists() {
                     fs::copy(&source_path, &target_path)?;
+                    // Remove read-only attribute from copied file
+                    let _ = remove_readonly_attribute(&target_path);
                 }
             }
         }
@@ -671,6 +734,9 @@ impl Installer {
             } else {
                 fs::copy(&source_path, &target_path)
                     .context(format!("Failed to copy {:?} to {:?}", source_path, target_path))?;
+
+                // Remove read-only attribute from copied file to avoid future deletion issues
+                let _ = remove_readonly_attribute(&target_path);
             }
         }
 
@@ -710,6 +776,9 @@ impl Installer {
 
                 fs::copy(source_path, &target_path)
                     .context(format!("Failed to copy {:?}", source_path))?;
+
+                // Remove read-only attribute from copied file to avoid future deletion issues
+                let _ = remove_readonly_attribute(&target_path);
 
                 ctx.add_bytes(file_size);
                 ctx.emit_progress(Some(file_name), InstallPhase::Installing);

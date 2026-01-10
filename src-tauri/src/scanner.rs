@@ -27,6 +27,32 @@ impl Scanner {
         Scanner
     }
 
+    /// Check if a path should be ignored during scanning
+    fn should_ignore_path(path: &Path) -> bool {
+        // Check each component of the path
+        for component in path.components() {
+            if let Some(name) = component.as_os_str().to_str() {
+                // Ignore __MACOSX folders (macOS metadata)
+                if name == "__MACOSX" {
+                    return true;
+                }
+                // Ignore .DS_Store files (macOS metadata)
+                if name == ".DS_Store" {
+                    return true;
+                }
+                // Ignore Thumbs.db (Windows thumbnail cache)
+                if name == "Thumbs.db" {
+                    return true;
+                }
+                // Ignore desktop.ini (Windows folder settings)
+                if name == "desktop.ini" {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// Scan a path (file or directory) and detect all addon types
     pub fn scan_path(&self, path: &Path, password: Option<&str>) -> Result<Vec<DetectedItem>> {
         let mut detected_items = Vec::new();
@@ -50,6 +76,11 @@ impl Scanner {
         for entry in WalkDir::new(dir).follow_links(false) {
             let entry = entry?;
             let path = entry.path();
+
+            // Skip ignored paths (__MACOSX, .DS_Store, etc.)
+            if Self::should_ignore_path(path) {
+                continue;
+            }
 
             if !entry.file_type().is_file() {
                 continue;
@@ -121,6 +152,12 @@ impl Scanner {
 
         // Process files using the same logic as ZIP
         for file_path in &files {
+            // Skip ignored paths (__MACOSX, .DS_Store, etc.)
+            let path = Path::new(file_path);
+            if Self::should_ignore_path(path) {
+                continue;
+            }
+
             if file_path.ends_with(".acf") {
                 if let Some(item) = self.detect_aircraft_in_archive(file_path, archive_path)? {
                     detected.push(item);
@@ -231,6 +268,12 @@ impl Scanner {
 
         // Process files using the same logic as ZIP
         for file_path in &files {
+            // Skip ignored paths (__MACOSX, .DS_Store, etc.)
+            let path = Path::new(file_path);
+            if Self::should_ignore_path(path) {
+                continue;
+            }
+
             if file_path.ends_with(".acf") {
                 if let Some(item) = self.detect_aircraft_in_archive(file_path, archive_path)? {
                     detected.push(item);
@@ -321,6 +364,12 @@ impl Scanner {
 
         // Second pass: process files
         for (i, file_path) in files_info {
+            // Skip ignored paths (__MACOSX, .DS_Store, etc.)
+            let path = Path::new(&file_path);
+            if Self::should_ignore_path(path) {
+                continue;
+            }
+
             // Check for markers in the archive
             if file_path.ends_with(".acf") {
                 if let Some(item) = self.detect_aircraft_in_archive(&file_path, zip_path)? {
@@ -344,7 +393,7 @@ impl Scanner {
                 let mut content = String::new();
                 use std::io::Read;
                 file.read_to_string(&mut content)?;
-                
+
                 if let Some(item) = self.detect_navdata_in_archive(&file_path, &content, zip_path)? {
                     detected.push(item);
                 }

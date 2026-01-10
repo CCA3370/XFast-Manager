@@ -31,6 +31,9 @@ export const useAppStore = defineStore('app', () => {
   // Size confirmation per task (taskId -> confirmed)
   const sizeConfirmations = ref<Record<string, boolean>>({})
 
+  // Task enabled state per task (taskId -> enabled), default all enabled
+  const taskEnabledState = ref<Record<string, boolean>>({})
+
   // Check if any task has conflicts
   const hasConflicts = computed(() => {
     return currentTasks.value.some(task => task.conflictExists === true)
@@ -46,6 +49,11 @@ export const useAppStore = defineStore('app', () => {
     const tasksWithWarnings = currentTasks.value.filter(task => task.sizeWarning)
     if (tasksWithWarnings.length === 0) return true
     return tasksWithWarnings.every(task => sizeConfirmations.value[task.id] === true)
+  })
+
+  // Get count of enabled tasks
+  const enabledTasksCount = computed(() => {
+    return currentTasks.value.filter(task => getTaskEnabled(task.id)).length
   })
 
   // Load settings
@@ -92,15 +100,21 @@ export const useAppStore = defineStore('app', () => {
 
   function setCurrentTasks(tasks: InstallTask[]) {
     currentTasks.value = tasks
-    // Reset overwrite settings and size confirmations when tasks change
+    // Reset overwrite settings, size confirmations, and enable all tasks by default
     overwriteSettings.value = {}
     sizeConfirmations.value = {}
+    taskEnabledState.value = {}
+    // Enable all tasks by default
+    tasks.forEach(task => {
+      taskEnabledState.value[task.id] = true
+    })
   }
 
   function clearTasks() {
     currentTasks.value = []
     overwriteSettings.value = {}
     sizeConfirmations.value = {}
+    taskEnabledState.value = {}
   }
 
   // Set overwrite for a specific task
@@ -150,6 +164,23 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  // Set task enabled state
+  function setTaskEnabled(taskId: string, enabled: boolean) {
+    taskEnabledState.value[taskId] = enabled
+  }
+
+  // Get task enabled state (default true)
+  function getTaskEnabled(taskId: string): boolean {
+    return taskEnabledState.value[taskId] ?? true
+  }
+
+  // Toggle all tasks enabled/disabled
+  function setAllTasksEnabled(enabled: boolean) {
+    for (const task of currentTasks.value) {
+      taskEnabledState.value[task.id] = enabled
+    }
+  }
+
   // Set pending CLI args for Home.vue to process
   function setPendingCliArgs(args: string[]) {
     pendingCliArgs.value = args
@@ -169,9 +200,11 @@ export const useAppStore = defineStore('app', () => {
     logLevel,
     overwriteSettings,
     sizeConfirmations,
+    taskEnabledState,
     hasConflicts,
     hasSizeWarnings,
     allSizeWarningsConfirmed,
+    enabledTasksCount,
     pendingCliArgs,
     setXplanePath,
     loadXplanePath,
@@ -186,6 +219,9 @@ export const useAppStore = defineStore('app', () => {
     setTaskSizeConfirmed,
     getTaskSizeConfirmed,
     confirmAllSizeWarnings,
+    setTaskEnabled,
+    getTaskEnabled,
+    setAllTasksEnabled,
     setPendingCliArgs,
     clearPendingCliArgs,
   }
