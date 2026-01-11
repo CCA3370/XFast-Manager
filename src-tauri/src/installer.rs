@@ -785,6 +785,7 @@ impl Installer {
     }
 
     /// Copy directory contents, skipping files that already exist in target
+    #[allow(dead_code)]
     fn merge_directory_skip_existing(&self, source: &Path, target: &Path) -> Result<()> {
         if !target.exists() {
             fs::create_dir_all(target)?;
@@ -814,6 +815,7 @@ impl Installer {
     }
 
     /// Copy a directory recursively
+    #[allow(dead_code)]
     fn copy_directory(&self, source: &Path, target: &Path) -> Result<()> {
         if !target.exists() {
             fs::create_dir_all(target)?;

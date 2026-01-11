@@ -53,6 +53,7 @@ pub fn cache_metadata(path: &Path, uncompressed_size: u64, _file_count: usize) {
 }
 
 /// Clear all expired cache entries
+#[allow(dead_code)]
 pub fn clear_expired_entries() {
     ARCHIVE_CACHE.retain(|_, metadata| {
         metadata.cached_at.elapsed()
@@ -62,11 +63,13 @@ pub fn clear_expired_entries() {
 }
 
 /// Clear all cache entries
+#[allow(dead_code)]
 pub fn clear_all() {
     ARCHIVE_CACHE.clear();
 }
 
 /// Get the number of cached entries
+#[allow(dead_code)]
 pub fn cache_size() -> usize {
     ARCHIVE_CACHE.len()
 }

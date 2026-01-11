@@ -15,6 +15,7 @@ pub fn record_cache_miss() {
 }
 
 /// Get cache statistics (hits, misses)
+#[allow(dead_code)]
 pub fn get_cache_stats() -> (u64, u64) {
     let hits = CACHE_HITS.load(Ordering::Relaxed);
     let misses = CACHE_MISSES.load(Ordering::Relaxed);
@@ -22,6 +23,7 @@ pub fn get_cache_stats() -> (u64, u64) {
 }
 
 /// Get cache hit rate as a percentage (0.0 - 1.0)
+#[allow(dead_code)]
 pub fn get_cache_hit_rate() -> f64 {
     let hits = CACHE_HITS.load(Ordering::Relaxed);
     let misses = CACHE_MISSES.load(Ordering::Relaxed);
@@ -34,6 +36,7 @@ pub fn get_cache_hit_rate() -> f64 {
 }
 
 /// Reset cache statistics (useful for testing)
+#[allow(dead_code)]
 pub fn reset_cache_stats() {
     CACHE_HITS.store(0, Ordering::Relaxed);
     CACHE_MISSES.store(0, Ordering::Relaxed);
