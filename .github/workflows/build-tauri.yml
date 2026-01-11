@@ -9,8 +9,11 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
   CARGO_NET_RETRY: 3
-  CARGO_PROFILE_RELEASE_LTO: true
+  CARGO_PROFILE_RELEASE_LTO: fat
   CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 1
+  CARGO_PROFILE_RELEASE_OPT_LEVEL: 3
+  CARGO_PROFILE_RELEASE_STRIP: symbols
+  CARGO_PROFILE_RELEASE_PANIC: abort
 
 jobs:
   build-windows-portable:
@@ -25,22 +28,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Install JS dependencies
         run: npm ci
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust build cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-          cache-all-crates: true
-          cache-targets: true
-          cache-bin: true
-          shared-key: windows-release
 
       - name: Build Tauri (Portable EXE)
         run: npm run tauri:build

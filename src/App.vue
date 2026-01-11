@@ -119,6 +119,44 @@ onMounted(async () => {
   // Non-blocking sync locale to backend (moved from i18n module top-level)
   syncLocaleToBackend()
 
+  // Disable context menu and devtools shortcuts in production
+  if (import.meta.env.PROD) {
+    // Disable right-click context menu
+    document.addEventListener('contextmenu', (e) => {
+      e.preventDefault()
+      return false
+    })
+
+    // Disable F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U (devtools shortcuts)
+    document.addEventListener('keydown', (e) => {
+      // F12
+      if (e.key === 'F12') {
+        e.preventDefault()
+        return false
+      }
+      // Ctrl+Shift+I (Inspector)
+      if (e.ctrlKey && e.shiftKey && e.key === 'I') {
+        e.preventDefault()
+        return false
+      }
+      // Ctrl+Shift+J (Console)
+      if (e.ctrlKey && e.shiftKey && e.key === 'J') {
+        e.preventDefault()
+        return false
+      }
+      // Ctrl+Shift+C (Element picker)
+      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+        e.preventDefault()
+        return false
+      }
+      // Ctrl+U (View source)
+      if (e.ctrlKey && e.key === 'u') {
+        e.preventDefault()
+        return false
+      }
+    })
+  }
+
   // Listen for cli-args events from Rust (emitted during setup)
   // Removed invoke('get_cli_args') to avoid duplicate calls and improve startup speed
   try {

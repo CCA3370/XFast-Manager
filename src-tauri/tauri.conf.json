@@ -16,12 +16,14 @@
         "height": 500,
         "resizable": false,
         "fullscreen": false,
-        "dragDropEnabled": true
+        "dragDropEnabled": true,
+        "devtools": false
       }
     ],
     "security": {
       "csp": null
-    }
+    },
+    "withGlobalTauri": false
   },
   "bundle": {
     "active": true,
@@ -33,7 +35,15 @@
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
-      "timestampUrl": ""
+      "timestampUrl": "",
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
+      "nsis": {
+        "compression": "lzma",
+        "installerIcon": "icons/icon.ico",
+        "installMode": "perUser"
+      }
     }
   }
 }

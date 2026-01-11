@@ -38,7 +38,9 @@ name = "xfastinstall_lib"
 crate-type = ["lib"]
 
 [profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-strip = true
+opt-level = 3          # Optimize for speed (fastest runtime performance)
+lto = "fat"            # Full link-time optimization (best performance)
+codegen-units = 1      # Single codegen unit (better optimization)
+strip = "symbols"      # Strip symbols (smaller binary, no performance impact)
+panic = "abort"        # Abort on panic (smaller binary, faster)
+overflow-checks = false # Disable overflow checks for maximum speed
