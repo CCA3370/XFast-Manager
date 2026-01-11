@@ -137,7 +137,12 @@ impl Analyzer {
             crate::log_debug!(&format!("Task types: {}", task_types.join(", ")), "analysis");
         }
 
-        AnalysisResult { tasks, errors, password_required }
+        AnalysisResult {
+            tasks,
+            errors,
+            password_required,
+            nested_password_required: HashMap::new(),
+        }
     }
 
     /// Deduplicate install tasks based on target_path
@@ -382,6 +387,7 @@ impl Analyzer {
             display_name: item.display_name,
             conflict_exists: if conflict_exists { Some(true) } else { None },
             archive_internal_root: item.archive_internal_root,
+            extraction_chain: item.extraction_chain,
             should_overwrite: false, // Default to false, controlled by frontend
             password,
             estimated_size,

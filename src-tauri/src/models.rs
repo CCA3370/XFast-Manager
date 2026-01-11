@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "PascalCase")]
@@ -10,6 +11,31 @@ pub enum AddonType {
     SceneryLibrary,
     Plugin,
     Navdata,
+}
+
+/// Represents a nested archive within another archive
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NestedArchiveInfo {
+    /// Path within parent archive (e.g., "aircraft/A330.zip")
+    pub internal_path: String,
+    /// Password for this specific nested archive (if different from parent)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+    /// Archive format: "zip", "7z", or "rar"
+    pub format: String,
+}
+
+/// Extraction chain for nested archives (outer to inner order)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractionChain {
+    /// Ordered list of archives to extract (outer to inner)
+    /// First element is the outermost archive
+    pub archives: Vec<NestedArchiveInfo>,
+    /// Final internal root after all extractions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_internal_root: Option<String>,
 }
 
 /// Navdata cycle information for display
@@ -38,6 +64,9 @@ pub struct InstallTask {
     /// e.g., "MyScenery" if archive contains "MyScenery/Earth nav data/..."
     #[serde(skip_serializing_if = "Option::is_none")]
     pub archive_internal_root: Option<String>,
+    /// For nested archives: extraction chain (takes precedence over archive_internal_root)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extraction_chain: Option<ExtractionChain>,
     /// Whether to overwrite existing folder (delete before install)
     #[serde(default)]
     pub should_overwrite: bool,
@@ -75,6 +104,10 @@ pub struct AnalysisResult {
     /// List of archive paths that require a password
     #[serde(default)]
     pub password_required: Vec<String>,
+    /// Map of nested archive paths to their parent archive
+    /// Key format: "parent.zip/nested.zip", Value: "parent.zip"
+    #[serde(default)]
+    pub nested_password_required: HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,6 +127,8 @@ pub struct DetectedItem {
     pub display_name: String,
     /// For archives: the root folder path inside the archive
     pub archive_internal_root: Option<String>,
+    /// For nested archives: extraction chain (takes precedence over archive_internal_root)
+    pub extraction_chain: Option<ExtractionChain>,
     /// For Navdata: cycle info from the new navdata to be installed
     pub navdata_info: Option<NavdataInfo>,
 }

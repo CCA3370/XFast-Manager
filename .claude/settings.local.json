@@ -31,7 +31,8 @@
       "Bash(tasklist:*)",
       "Bash(findstr:*)",
       "Bash(cargo clippy:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(grep:*)"
     ]
   }
 }
