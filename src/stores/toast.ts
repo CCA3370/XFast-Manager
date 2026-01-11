@@ -10,6 +10,8 @@ export interface Toast {
 
 // Maximum number of toasts to display at once
 const MAX_TOASTS = 3
+// Toast display duration (matches CSS animation duration) + buffer
+const TOAST_DURATION = 3500
 
 export const useToastStore = defineStore('toast', () => {
   const toasts = ref<Toast[]>([])
@@ -22,7 +24,12 @@ export const useToastStore = defineStore('toast', () => {
 
     const id = Date.now().toString() + Math.random()
     toasts.value.push({ id, message, type })
-    // Toast removal is handled by animationend event in ToastNotification.vue
+
+    // Fallback timer to ensure toast is removed even if animationend doesn't fire
+    // (can happen if animation is interrupted by theme change, DOM updates, etc.)
+    setTimeout(() => {
+      remove(id)
+    }, TOAST_DURATION)
 
     // Automatically log toast messages
     if (type === 'error') {

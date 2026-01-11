@@ -15,66 +15,54 @@ class Logger {
   }
 
   /**
-   * Log an info message
+   * Log an info message (fire-and-forget)
    */
-  async info(message: string, context?: string): Promise<void> {
+  info(message: string, context?: string): void {
     // Info messages default to 'full' level
     if (!this.shouldLog('full')) return
 
-    try {
-      await invoke('log_from_frontend', { level: 'info', message, context })
-    } catch (e) {
-      console.debug('Failed to log info:', e)
-    }
+    invoke('log_from_frontend', { level: 'info', message, context })
+      .catch((e) => console.debug('Failed to log info:', e))
   }
 
   /**
-   * Log an error message (always logged, even in basic mode)
+   * Log an error message (always logged, even in basic mode) (fire-and-forget)
    */
-  async error(message: string, context?: string): Promise<void> {
-    try {
-      await invoke('log_from_frontend', { level: 'error', message, context })
-      console.error(`[${context ?? 'error'}]`, message)
-    } catch (e) {
-      console.debug('Failed to log error:', e)
-    }
+  error(message: string, context?: string): void {
+    invoke('log_from_frontend', { level: 'error', message, context })
+      .catch((e) => console.debug('Failed to log error:', e))
+    console.error(`[${context ?? 'error'}]`, message)
   }
 
   /**
-   * Log a user operation
+   * Log a user operation (fire-and-forget)
    */
-  async operation(action: string, details?: string): Promise<void> {
+  operation(action: string, details?: string): void {
     // Operations default to 'full' level
     if (!this.shouldLog('full')) return
 
     const message = details ? `${action}: ${details}` : action
-    await this.info(message, 'user-action')
+    this.info(message, 'user-action')
   }
 
   /**
-   * Log a basic-level message (always logged except in off mode)
+   * Log a basic-level message (always logged except in off mode) (fire-and-forget)
    */
-  async basic(message: string, context?: string): Promise<void> {
+  basic(message: string, context?: string): void {
     if (!this.shouldLog('basic')) return
 
-    try {
-      await invoke('log_from_frontend', { level: 'info', message, context })
-    } catch (e) {
-      console.debug('Failed to log basic:', e)
-    }
+    invoke('log_from_frontend', { level: 'info', message, context })
+      .catch((e) => console.debug('Failed to log basic:', e))
   }
 
   /**
-   * Log a debug-level message (only in debug mode)
+   * Log a debug-level message (only in debug mode) (fire-and-forget)
    */
-  async debug(message: string, context?: string): Promise<void> {
+  debug(message: string, context?: string): void {
     if (!this.shouldLog('debug')) return
 
-    try {
-      await invoke('log_from_frontend', { level: 'debug', message, context })
-    } catch (e) {
-      console.debug('Failed to log debug:', e)
-    }
+    invoke('log_from_frontend', { level: 'debug', message, context })
+      .catch((e) => console.debug('Failed to log debug:', e))
   }
 
   /**

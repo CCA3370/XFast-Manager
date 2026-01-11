@@ -52,28 +52,6 @@ pub fn cache_metadata(path: &Path, uncompressed_size: u64, _file_count: usize) {
     ARCHIVE_CACHE.insert(key, metadata);
 }
 
-/// Clear all expired cache entries
-#[allow(dead_code)]
-pub fn clear_expired_entries() {
-    ARCHIVE_CACHE.retain(|_, metadata| {
-        metadata.cached_at.elapsed()
-            .map(|elapsed| elapsed < CACHE_TTL)
-            .unwrap_or(false)
-    });
-}
-
-/// Clear all cache entries
-#[allow(dead_code)]
-pub fn clear_all() {
-    ARCHIVE_CACHE.clear();
-}
-
-/// Get the number of cached entries
-#[allow(dead_code)]
-pub fn cache_size() -> usize {
-    ARCHIVE_CACHE.len()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

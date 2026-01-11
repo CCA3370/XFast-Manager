@@ -97,6 +97,9 @@ export default {
     configFilePatterns: '配置文件匹配规则',
     addPattern: '添加规则',
     patternHelpText: '使用 * 作为通配符（例如：*_prefs.txt、*.cfg、*settings*）。规则匹配机模根目录下的文件名。',
+    patternUnbalancedBracket: '方括号 [] 不匹配',
+    patternUnbalancedBrace: '花括号 {} 不匹配',
+    patternInvalidSlash: '无效的模式：包含 //',
   },
   modal: {
     confirmInstallation: '确认安装',

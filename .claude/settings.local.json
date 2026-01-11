@@ -30,7 +30,8 @@
       "Bash(cargo build:*)",
       "Bash(tasklist:*)",
       "Bash(findstr:*)",
-      "Bash(cargo clippy:*)"
+      "Bash(cargo clippy:*)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }

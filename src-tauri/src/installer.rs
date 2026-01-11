@@ -175,7 +175,10 @@ impl ProgressContext {
 
     fn emit_progress(&self, current_file: Option<String>, phase: InstallPhase) {
         // Throttle: emit at most every 16ms (60fps for smooth animation)
-        let mut last = self.last_emit.lock().unwrap();
+        let mut last = match self.last_emit.lock() {
+            Ok(guard) => guard,
+            Err(_) => return, // Skip progress update if lock is poisoned
+        };
         let now = Instant::now();
         if now.duration_since(*last).as_millis() < 16 {
             return;
@@ -778,64 +781,6 @@ impl Installer {
                     // Update progress
                     ctx.add_bytes(size);
                 }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Copy directory contents, skipping files that already exist in target
-    #[allow(dead_code)]
-    fn merge_directory_skip_existing(&self, source: &Path, target: &Path) -> Result<()> {
-        if !target.exists() {
-            fs::create_dir_all(target)?;
-        }
-
-        for entry in fs::read_dir(source)? {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            let source_path = entry.path();
-            let file_name = entry.file_name();
-            let target_path = target.join(&file_name);
-
-            if file_type.is_dir() {
-                // Recursively merge subdirectories
-                self.merge_directory_skip_existing(&source_path, &target_path)?;
-            } else {
-                // Only copy if target doesn't exist (skip existing)
-                if !target_path.exists() {
-                    fs::copy(&source_path, &target_path)?;
-                    // Remove read-only attribute from copied file
-                    let _ = remove_readonly_attribute(&target_path);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Copy a directory recursively
-    #[allow(dead_code)]
-    fn copy_directory(&self, source: &Path, target: &Path) -> Result<()> {
-        if !target.exists() {
-            fs::create_dir_all(target)?;
-        }
-
-        for entry in fs::read_dir(source)? {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            let source_path = entry.path();
-            let file_name = entry.file_name();
-            let target_path = target.join(&file_name);
-
-            if file_type.is_dir() {
-                self.copy_directory(&source_path, &target_path)?;
-            } else {
-                fs::copy(&source_path, &target_path)
-                    .context(format!("Failed to copy {:?} to {:?}", source_path, target_path))?;
-
-                // Remove read-only attribute from copied file to avoid future deletion issues
-                let _ = remove_readonly_attribute(&target_path);
             }
         }
 

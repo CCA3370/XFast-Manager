@@ -193,7 +193,13 @@ pub fn run() {
 
                 // Bring window to front
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.set_focus().ok();
+                    if let Err(e) = window.set_focus() {
+                        logger::log_debug(
+                            &format!("Failed to focus window: {}", e),
+                            Some("app"),
+                            Some("lib.rs"),
+                        );
+                    }
                 }
             }
         }))

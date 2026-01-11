@@ -97,6 +97,9 @@ export default {
     configFilePatterns: 'Configuration File Match Rules',
     addPattern: 'Add Rule',
     patternHelpText: 'Use * as wildcard (e.g., *_prefs.txt, *.cfg, *settings*). Rules match filenames in aircraft root folder.',
+    patternUnbalancedBracket: 'Unbalanced brackets []',
+    patternUnbalancedBrace: 'Unbalanced braces {}',
+    patternInvalidSlash: 'Invalid pattern: contains //',
   },
   modal: {
     confirmInstallation: 'Confirm Installation',

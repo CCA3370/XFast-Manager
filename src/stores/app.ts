@@ -284,6 +284,12 @@ export const useAppStore = defineStore('app', () => {
   // Clear pending CLI args after processing
   function clearPendingCliArgs() {
     pendingCliArgs.value = null
+    // Also clear any pending batch timer
+    if (cliArgsBatchTimer) {
+      clearTimeout(cliArgsBatchTimer)
+      cliArgsBatchTimer = null
+    }
+    cliArgsBatch.value = []
   }
 
   // Set installation result

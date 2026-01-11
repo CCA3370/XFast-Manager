@@ -221,23 +221,29 @@
                 </label>
 
                 <div class="space-y-1.5">
-                  <div v-for="(pattern, index) in configPatterns" :key="index"
-                       class="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5">
-                    <input
-                      v-model="configPatterns[index]"
-                      type="text"
-                      class="flex-1 px-2 py-1 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      placeholder="*_prefs.txt"
-                    >
-                    <button
-                      @click="removePattern(index)"
-                      class="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors"
-                      :title="$t('common.delete')"
-                    >
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                      </svg>
-                    </button>
+                  <div v-for="(pattern, index) in configPatterns" :key="index">
+                    <div class="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg border transition-colors"
+                         :class="patternErrors[index] ? 'border-red-300 dark:border-red-500/50' : 'border-gray-100 dark:border-white/5'">
+                      <input
+                        v-model="configPatterns[index]"
+                        type="text"
+                        class="flex-1 px-2 py-1 text-xs bg-white dark:bg-gray-800 border rounded text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                        :class="patternErrors[index] ? 'border-red-300 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'"
+                        placeholder="*_prefs.txt"
+                      >
+                      <button
+                        @click="removePattern(index)"
+                        class="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors"
+                        :title="$t('common.delete')"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                      </button>
+                    </div>
+                    <p v-if="patternErrors[index]" class="mt-0.5 ml-2 text-xs text-red-500 dark:text-red-400">
+                      {{ patternErrors[index] }}
+                    </p>
                   </div>
                 </div>
 
@@ -409,6 +415,7 @@ const logContainer = ref<HTMLElement | null>(null)
 
 // Config patterns state
 const configPatterns = ref<string[]>([])
+const patternErrors = ref<Record<number, string>>({})
 const backupExpanded = ref(false)
 const preferencesExpanded = ref(false) // Default collapsed
 
@@ -523,10 +530,68 @@ watch(xplanePathInput, async (newValue) => {
 
 // Watch config patterns and save to store
 watch(configPatterns, (newPatterns) => {
-  // Filter out empty patterns
-  const filtered = newPatterns.filter(p => p.trim() !== '')
-  store.setConfigFilePatterns(filtered)
+  // Validate and filter patterns
+  const errors: Record<number, string> = {}
+  const validPatterns: string[] = []
+
+  newPatterns.forEach((pattern, index) => {
+    const trimmed = pattern.trim()
+    if (trimmed === '') return
+
+    // Validate glob pattern
+    const error = validateGlobPattern(trimmed)
+    if (error) {
+      errors[index] = error
+    } else {
+      validPatterns.push(trimmed)
+    }
+  })
+
+  patternErrors.value = errors
+
+  // Only save valid patterns
+  if (Object.keys(errors).length === 0) {
+    store.setConfigFilePatterns(validPatterns)
+  }
 }, { deep: true })
+
+// Validate a glob pattern and return error message if invalid
+function validateGlobPattern(pattern: string): string | null {
+  // Check for empty pattern
+  if (!pattern || pattern.trim() === '') {
+    return null // Empty is OK, will be filtered
+  }
+
+  // Check for unbalanced brackets
+  let bracketDepth = 0
+  let braceDepth = 0
+
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern[i]
+    const prevChar = i > 0 ? pattern[i - 1] : ''
+
+    // Skip escaped characters
+    if (prevChar === '\\') continue
+
+    if (char === '[') bracketDepth++
+    if (char === ']') bracketDepth--
+    if (char === '{') braceDepth++
+    if (char === '}') braceDepth--
+
+    // Check for negative depth (closing before opening)
+    if (bracketDepth < 0) return t('settings.patternUnbalancedBracket')
+    if (braceDepth < 0) return t('settings.patternUnbalancedBrace')
+  }
+
+  // Check final balance
+  if (bracketDepth !== 0) return t('settings.patternUnbalancedBracket')
+  if (braceDepth !== 0) return t('settings.patternUnbalancedBrace')
+
+  // Check for invalid characters in pattern
+  if (pattern.includes('//')) return t('settings.patternInvalidSlash')
+
+  return null
+}
 
 // Add a new pattern
 function addPattern() {
@@ -545,12 +610,36 @@ async function selectFolder() {
       multiple: false,
       title: t('settings.selectXplaneFolder')
     })
-    
+
     if (selected) {
-      xplanePathInput.value = selected as string
-      // Immediate save on selection
+      const selectedPath = selected as string
+
+      // Validate path before saving
+      pathError.value = null
+      saveStatus.value = 'saving'
+
+      try {
+        const isValid = await invoke<boolean>('validate_xplane_path', { path: selectedPath })
+        if (!isValid) {
+          const exists = await invoke<boolean>('check_path_exists', { path: selectedPath })
+          if (!exists) {
+            pathError.value = t('settings.pathNotExist')
+          } else {
+            pathError.value = t('settings.notValidXplanePath')
+          }
+          saveStatus.value = null
+          // Still update input to show what was selected
+          xplanePathInput.value = selectedPath
+          return
+        }
+      } catch (error) {
+        console.error('Failed to validate path:', error)
+      }
+
+      // Path is valid, save it
+      xplanePathInput.value = selectedPath
       if (saveTimeout) clearTimeout(saveTimeout)
-      store.setXplanePath(xplanePathInput.value)
+      store.setXplanePath(selectedPath)
       saveStatus.value = 'saved'
       setTimeout(() => { saveStatus.value = null }, 2000)
     }

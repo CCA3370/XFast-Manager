@@ -424,17 +424,43 @@ impl Analyzer {
 
         let file = match fs::File::open(archive_path) {
             Ok(f) => f,
-            Err(_) => return (None, None),
+            Err(e) => {
+                logger::log_debug(
+                    &format!("Failed to open ZIP for size estimation: {}", e),
+                    Some("analyzer"),
+                    Some("analyzer.rs"),
+                );
+                // Fall back to conservative estimate
+                if let Ok(meta) = fs::metadata(archive_path) {
+                    return self.check_size_warning(meta.len(), meta.len().saturating_mul(5));
+                }
+                return (None, None);
+            }
         };
 
         let archive_size = match file.metadata() {
             Ok(m) => m.len(),
-            Err(_) => return (None, None),
+            Err(e) => {
+                logger::log_debug(
+                    &format!("Failed to get ZIP metadata: {}", e),
+                    Some("analyzer"),
+                    Some("analyzer.rs"),
+                );
+                return (None, None);
+            }
         };
 
         let mut archive = match ZipArchive::new(file) {
             Ok(a) => a,
-            Err(_) => return (None, None),
+            Err(e) => {
+                logger::log_debug(
+                    &format!("Failed to read ZIP archive for size estimation: {}", e),
+                    Some("analyzer"),
+                    Some("analyzer.rs"),
+                );
+                // Fall back to conservative estimate (5x compressed size)
+                return self.check_size_warning(archive_size, archive_size.saturating_mul(5));
+            }
         };
 
         // Calculate total uncompressed size
@@ -445,6 +471,11 @@ impl Analyzer {
             }
         }
 
+        // If we couldn't get any size info, use conservative estimate
+        if total_uncompressed == 0 && archive.len() > 0 {
+            total_uncompressed = archive_size.saturating_mul(5);
+        }
+
         self.check_size_warning(archive_size, total_uncompressed)
     }
 
@@ -452,7 +483,14 @@ impl Analyzer {
     fn estimate_7z_size(&self, archive_path: &Path) -> (Option<u64>, Option<String>) {
         let archive_size = match fs::metadata(archive_path) {
             Ok(m) => m.len(),
-            Err(_) => return (None, None),
+            Err(e) => {
+                logger::log_debug(
+                    &format!("Failed to get 7z metadata: {}", e),
+                    Some("analyzer"),
+                    Some("analyzer.rs"),
+                );
+                return (None, None);
+            }
         };
 
         // Check cache first
@@ -479,7 +517,12 @@ impl Analyzer {
                     archive_size.saturating_mul(5)
                 }
             }
-            Err(_) => {
+            Err(e) => {
+                logger::log_debug(
+                    &format!("Failed to open 7z for size estimation: {}", e),
+                    Some("analyzer"),
+                    Some("analyzer.rs"),
+                );
                 // If we can't open the archive, use conservative estimate
                 archive_size.saturating_mul(5)
             }
@@ -492,7 +535,14 @@ impl Analyzer {
     fn estimate_rar_size(&self, archive_path: &Path) -> (Option<u64>, Option<String>) {
         let archive_size = match fs::metadata(archive_path) {
             Ok(m) => m.len(),
-            Err(_) => return (None, None),
+            Err(e) => {
+                logger::log_debug(
+                    &format!("Failed to get RAR metadata: {}", e),
+                    Some("analyzer"),
+                    Some("analyzer.rs"),
+                );
+                return (None, None);
+            }
         };
 
         // Check cache first
@@ -521,7 +571,12 @@ impl Analyzer {
                     archive_size.saturating_mul(5)
                 }
             }
-            Err(_) => {
+            Err(e) => {
+                logger::log_debug(
+                    &format!("Failed to open RAR for size estimation: {:?}", e),
+                    Some("analyzer"),
+                    Some("analyzer.rs"),
+                );
                 // If we can't open the archive, use conservative estimate
                 archive_size.saturating_mul(5)
             }

@@ -230,6 +230,15 @@ let unlistenCliArgs: UnlistenFn | null = null
 // Watch for pending CLI args changes
 watch(() => store.pendingCliArgs, async (args) => {
   if (args && args.length > 0) {
+    // If currently analyzing or installing, re-queue args to batch for later processing
+    // This ensures multiple rapid CLI inputs are merged and processed together
+    if (store.isAnalyzing || store.isInstalling) {
+      console.log('Analysis in progress, re-queueing args for later')
+      store.addCliArgsToBatch(args)
+      store.clearPendingCliArgs()
+      return
+    }
+
     console.log('Processing pending CLI args from watcher:', args)
     const argsCopy = [...args]
     store.clearPendingCliArgs()
@@ -364,6 +373,11 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
   // Log incoming files
   logOperation(t('log.filesDropped'), t('log.fileCount', { count: paths.length }))
   logDebug(`Analyzing paths: ${paths.join(', ')}`, 'analysis')
+
+  // Reset password retry counter for new analysis (not a retry with passwords)
+  if (!passwords || Object.keys(passwords).length === 0) {
+    passwordRetryCount.value = 0
+  }
 
   if (!store.xplanePath) {
     console.log('No X-Plane path set')
