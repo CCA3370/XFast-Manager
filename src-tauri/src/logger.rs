@@ -11,6 +11,7 @@ const TRIM_TARGET_SIZE: u64 = 2 * 1024 * 1024; // Trim to 2MB when exceeds max
 #[derive(Clone, Copy)]
 pub enum LogLevel {
     Info,
+    Debug,
     Error,
 }
 
@@ -18,6 +19,7 @@ impl LogLevel {
     fn as_str(&self) -> &'static str {
         match self {
             LogLevel::Info => "INFO",
+            LogLevel::Debug => "DEBUG",
             LogLevel::Error => "ERROR",
         }
     }
@@ -46,6 +48,7 @@ pub enum LogMsg {
     AnalysisStarted,
     AnalysisCompleted,
     ScanFailed,
+    CannotInstallFromXPlane,
 }
 
 impl LogMsg {
@@ -61,6 +64,7 @@ impl LogMsg {
                 LogMsg::AnalysisStarted => "Analysis started",
                 LogMsg::AnalysisCompleted => "Analysis completed",
                 LogMsg::ScanFailed => "Failed to scan",
+                LogMsg::CannotInstallFromXPlane => "Cannot install from X-Plane directory. Please drag files from outside X-Plane folder",
             },
             Locale::Zh => match self {
                 LogMsg::AppStarted => "XFastInstall 已启动",
@@ -72,6 +76,7 @@ impl LogMsg {
                 LogMsg::AnalysisStarted => "开始分析",
                 LogMsg::AnalysisCompleted => "分析完成",
                 LogMsg::ScanFailed => "扫描失败",
+                LogMsg::CannotInstallFromXPlane => "无法从 X-Plane 目录内安装。请拖入 X-Plane 目录外的文件或压缩包",
             },
         }
     }
@@ -80,6 +85,7 @@ impl LogMsg {
 struct LoggerInner {
     log_path: PathBuf,
     locale: Locale,
+    is_first_log: bool,
 }
 
 impl LoggerInner {
@@ -97,6 +103,7 @@ impl LoggerInner {
         Self {
             log_path: log_dir.join("xfastinstall.log"),
             locale: Locale::default(),
+            is_first_log: true,
         }
     }
 
@@ -108,7 +115,7 @@ impl LoggerInner {
         self.locale
     }
 
-    fn write_log(&self, level: LogLevel, message: &str, context: Option<&str>) {
+    fn write_log(&mut self, level: LogLevel, message: &str, context: Option<&str>, location: Option<&str>) {
         // Rotate if needed before writing
         self.rotate_if_needed();
 
@@ -117,7 +124,15 @@ impl LoggerInner {
         let ctx = context
             .map(|c| format!(" [{}]", c))
             .unwrap_or_default();
-        let line = format!("[{}] [{}]{} {}\n", timestamp, level_str, ctx, message);
+
+        // Add location info for DEBUG level
+        let loc = if matches!(level, LogLevel::Debug) {
+            location.map(|l| format!(" [{}]", l)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let line = format!("[{}] [{}]{}{} {}\n", timestamp, level_str, ctx, loc, message);
 
         match OpenOptions::new()
             .create(true)
@@ -125,6 +140,12 @@ impl LoggerInner {
             .open(&self.log_path)
         {
             Ok(mut file) => {
+                // Add newline before first log entry of this session
+                if self.is_first_log {
+                    let _ = file.write_all(b"\n");
+                    self.is_first_log = false;
+                }
+
                 if let Err(e) = file.write_all(line.as_bytes()) {
                     eprintln!("Failed to write log: {}", e);
                 }
@@ -249,15 +270,32 @@ pub fn tr(msg: LogMsg) -> String {
 }
 
 pub fn log_info(message: &str, context: Option<&str>) {
-    if let Ok(logger) = LOGGER.lock() {
-        logger.write_log(LogLevel::Info, message, context);
+    if let Ok(mut logger) = LOGGER.lock() {
+        logger.write_log(LogLevel::Info, message, context, None);
+    }
+}
+
+pub fn log_debug(message: &str, context: Option<&str>, location: Option<&str>) {
+    if let Ok(mut logger) = LOGGER.lock() {
+        logger.write_log(LogLevel::Debug, message, context, location);
     }
 }
 
 pub fn log_error(message: &str, context: Option<&str>) {
-    if let Ok(logger) = LOGGER.lock() {
-        logger.write_log(LogLevel::Error, message, context);
+    if let Ok(mut logger) = LOGGER.lock() {
+        logger.write_log(LogLevel::Error, message, context, None);
     }
+}
+
+/// Macro for debug logging with automatic file and line number
+#[macro_export]
+macro_rules! log_debug {
+    ($msg:expr) => {
+        $crate::logger::log_debug($msg, None, Some(concat!(file!(), ":", line!())))
+    };
+    ($msg:expr, $ctx:expr) => {
+        $crate::logger::log_debug($msg, Some($ctx), Some(concat!(file!(), ":", line!())))
+    };
 }
 
 pub fn get_recent_logs(count: usize) -> Vec<String> {

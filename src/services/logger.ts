@@ -71,7 +71,7 @@ class Logger {
     if (!this.shouldLog('debug')) return
 
     try {
-      await invoke('log_from_frontend', { level: 'info', message: `[DEBUG] ${message}`, context })
+      await invoke('log_from_frontend', { level: 'debug', message, context })
     } catch (e) {
       console.debug('Failed to log debug:', e)
     }

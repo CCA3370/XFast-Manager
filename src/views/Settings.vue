@@ -335,7 +335,10 @@
             </div>
 
             <!-- Log viewer -->
-            <div class="h-48 overflow-y-auto bg-gray-900 rounded-lg p-3 font-mono text-xs scrollbar-thin">
+            <div
+              ref="logContainer"
+              class="h-48 overflow-y-auto bg-gray-900 rounded-lg p-3 font-mono text-xs scrollbar-thin"
+            >
               <div v-if="recentLogs.length === 0" class="text-gray-500 text-center py-4">
                 {{ $t('settings.noLogs') }}
               </div>
@@ -402,6 +405,7 @@ let saveTimeout: ReturnType<typeof setTimeout> | null = null
 const recentLogs = ref<string[]>([])
 const logPath = ref('')
 const logsExpanded = ref(false)
+const logContainer = ref<HTMLElement | null>(null)
 
 // Config patterns state
 const configPatterns = ref<string[]>([])
@@ -409,6 +413,16 @@ const backupExpanded = ref(false)
 const preferencesExpanded = ref(false) // Default collapsed
 
 const addonTypes = [AddonType.Aircraft, AddonType.Scenery, AddonType.SceneryLibrary, AddonType.Plugin, AddonType.Navdata]
+
+// Scroll log container to bottom
+function scrollLogsToBottom() {
+  // Use setTimeout to ensure DOM is fully rendered and transition is complete
+  setTimeout(() => {
+    if (logContainer.value) {
+      logContainer.value.scrollTop = logContainer.value.scrollHeight
+    }
+  }, 100) // Wait 100ms for transition
+}
 
 // Master toggle computed
 const allPreferencesEnabled = computed(() => {
@@ -576,6 +590,8 @@ function toggleLogsExpanded() {
 
 async function refreshLogs() {
   recentLogs.value = await logger.getRecentLogs(50)
+  // Scroll to bottom after logs are loaded
+  scrollLogsToBottom()
 }
 
 async function handleOpenLogFolder() {
@@ -598,6 +614,8 @@ async function handleCopyLogs() {
 function getLogColorClass(log: string): string {
   if (log.includes('[ERROR]')) {
     return 'text-red-400'
+  } else if (log.includes('[DEBUG]')) {
+    return 'text-purple-400'
   } else if (log.includes('[user-action]')) {
     return 'text-blue-400'
   }

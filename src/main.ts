@@ -21,3 +21,14 @@ app.use(pinia)
 app.use(router)
 app.use(i18n)
 app.mount('#app')
+
+// Hide loading screen after Vue app is mounted
+setTimeout(() => {
+  const loadingScreen = document.getElementById('loading-screen')
+  if (loadingScreen) {
+    loadingScreen.classList.add('fade-out')
+    setTimeout(() => {
+      loadingScreen.remove()
+    }, 300)
+  }
+}, 100)

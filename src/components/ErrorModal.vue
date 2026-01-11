@@ -1,24 +1,25 @@
 <template>
   <Teleport to="body">
-    <!-- Backdrop -->
-    <transition name="backdrop-fade">
-      <div
-        v-if="modal.errorModal.visible"
-        class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
-        @click="close"
-      ></div>
-    </transition>
-
-    <!-- Modal card -->
-    <transition name="modal-scale">
-      <div
-        v-if="modal.errorModal.visible"
-        class="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
-      >
+    <Transition
+      name="modal"
+      @enter="onEnter"
+      @leave="onLeave"
+      :css="false"
+    >
+      <div v-if="modal.errorModal.visible" class="fixed inset-0 z-50 flex items-center justify-center">
+        <!-- Backdrop -->
         <div
+          ref="backdrop"
+          class="modal-backdrop absolute inset-0 bg-black/50 backdrop-blur-sm"
+          @click="close"
+        ></div>
+
+        <!-- Modal card -->
+        <div
+          ref="card"
           role="dialog"
           aria-modal="true"
-          class="bg-gradient-to-tr from-gray-800/95 to-gray-900/95 text-gray-100 rounded-2xl shadow-2xl max-w-md w-full p-6 mx-4 pointer-events-auto"
+          class="modal-card relative bg-gradient-to-tr from-gray-800/95 to-gray-900/95 text-gray-100 rounded-2xl shadow-2xl max-w-md w-full p-6 mx-4"
         >
           <div class="flex items-start justify-between">
             <div class="flex items-center space-x-3">
@@ -52,8 +53,9 @@
               class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-md text-sm text-gray-200 transition flex items-center space-x-2"
               :aria-label="t('copy.copy')"
             >
-              <svg class="w-4 h-4 text-gray-200" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16h8M8 12h8M8 8h8M3 20h18" />
+              <svg class="w-4 h-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
               </svg>
               <span class="text-sm">{{ $t('copy.copy') }}</span>
             </button>
@@ -61,7 +63,7 @@
           </div>
         </div>
       </div>
-    </transition>
+    </Transition>
   </Teleport>
 </template>
 
@@ -73,6 +75,8 @@ import { useI18n } from 'vue-i18n'
 
 const modal = useModalStore()
 const okBtn = ref<HTMLElement | null>(null)
+const backdrop = ref<HTMLElement | null>(null)
+const card = ref<HTMLElement | null>(null)
 const toast = useToastStore()
 const { t } = useI18n()
 
@@ -89,6 +93,87 @@ async function copyAll() {
     console.error('Copy failed', e)
     toast.error(t('copy.copyFailed') as string)
   }
+}
+
+// JavaScript-based animations
+function onEnter(el: Element, done: () => void) {
+  const element = el as HTMLElement
+  const backdropEl = backdrop.value
+  const cardEl = card.value
+
+  if (!backdropEl || !cardEl) {
+    done()
+    return
+  }
+
+  // Set initial state
+  element.style.opacity = '0'
+  backdropEl.style.opacity = '0'
+  cardEl.style.opacity = '0'
+  cardEl.style.transform = 'scale(0.85) translateY(-30px)'
+
+  // Force reflow
+  element.offsetHeight
+
+  // Animate backdrop faster (starts immediately)
+  element.style.transition = 'opacity 0.15s ease-out'
+  backdropEl.style.transition = 'opacity 0.15s ease-out'
+
+  // Animate card slower (with bounce)
+  cardEl.style.transition = 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)'
+
+  // Start backdrop animation immediately
+  requestAnimationFrame(() => {
+    element.style.opacity = '1'
+    backdropEl.style.opacity = '1'
+
+    // Delay card animation slightly so backdrop appears first
+    setTimeout(() => {
+      cardEl.style.opacity = '1'
+      cardEl.style.transform = 'scale(1) translateY(0)'
+    }, 50) // 50ms delay for card
+  })
+
+  setTimeout(done, 450) // Total animation time
+}
+
+function onLeave(el: Element, done: () => void) {
+  const element = el as HTMLElement
+  const backdropEl = element.querySelector('.modal-backdrop') as HTMLElement
+  const cardEl = element.querySelector('.modal-card') as HTMLElement
+
+  if (!backdropEl || !cardEl) {
+    done()
+    return
+  }
+
+  // Set transition properties first
+  element.style.transition = 'opacity 0.3s ease-in'
+  backdropEl.style.transition = 'opacity 0.3s ease-in'
+  cardEl.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.6, 1)'
+
+  // Listen for transition end on the card element
+  const handleTransitionEnd = () => {
+    cardEl.removeEventListener('transitionend', handleTransitionEnd)
+    done()
+  }
+  cardEl.addEventListener('transitionend', handleTransitionEnd)
+
+  // Fallback timeout in case transitionend doesn't fire
+  const fallbackTimeout = setTimeout(() => {
+    cardEl.removeEventListener('transitionend', handleTransitionEnd)
+    done()
+  }, 350)
+
+  // Use double requestAnimationFrame to ensure transition is applied
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      element.style.opacity = '0'
+      backdropEl.style.opacity = '0'
+      cardEl.style.opacity = '0'
+      cardEl.style.transform = 'scale(0.9) translateY(10px)'
+    })
+  })
 }
 
 function onKey(e: KeyboardEvent) {
@@ -113,51 +198,18 @@ watch(() => modal.errorModal.visible, async (v) => {
 </script>
 
 <style scoped>
-.allow-select { user-select: text; }
-
-/* Backdrop fade */
-.backdrop-fade-enter-active,
-.backdrop-fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-.backdrop-fade-enter-from,
-.backdrop-fade-leave-to {
-  opacity: 0;
-}
-
-/* Modal scale + fade */
-.modal-scale-enter-active {
-  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
-}
-.modal-scale-leave-active {
-  transition: transform 0.15s ease, opacity 0.15s ease;
-}
-.modal-scale-enter-from {
-  transform: scale(0.9);
-  opacity: 0;
-}
-.modal-scale-enter-to {
-  transform: scale(1);
-  opacity: 1;
-}
-.modal-scale-leave-from {
-  transform: scale(1);
-  opacity: 1;
-}
-.modal-scale-leave-to {
-  transform: scale(0.9);
-  opacity: 0;
+.allow-select {
+  user-select: text;
 }
 
 /* Ensure long messages can scroll */
-.allow-select::-webkit-scrollbar { height: 8px; width: 8px; }
-.allow-select::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 6px; }
+.allow-select::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
 
-/* Respect user preference for reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  .backdrop-fade-enter-active, .backdrop-fade-leave-active,
-  .modal-scale-enter-active, .modal-scale-leave-active {
-    transition: none !important;
-  }
+.allow-select::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.08);
+  border-radius: 6px;
 }
 </style>

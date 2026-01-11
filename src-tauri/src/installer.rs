@@ -485,7 +485,7 @@ impl Installer {
         config_patterns: &[String],
     ) -> Result<()> {
         // Step 1: Create backup of important files
-        let backup = self.backup_aircraft_data(target, backup_liveries, backup_config_files, config_patterns)?;
+        let backup = self.backup_aircraft_data(target, backup_liveries, backup_config_files, config_patterns, ctx)?;
 
         // Step 2: VERIFY backup is complete and valid BEFORE deleting
         if let Some(ref backup_data) = backup {
@@ -504,7 +504,7 @@ impl Installer {
 
         // Step 5: Restore backup and verify
         let restore_verified = if let Some(ref backup_data) = backup {
-            match self.restore_aircraft_backup(backup_data, target) {
+            match self.restore_aircraft_backup(backup_data, target, ctx) {
                 Ok(()) => {
                     match self.verify_restore(backup_data, target) {
                         Ok(()) => true,
@@ -545,10 +545,14 @@ impl Installer {
         backup_liveries: bool,
         backup_config_files: bool,
         config_patterns: &[String],
+        ctx: &ProgressContext,
     ) -> Result<Option<AircraftBackup>> {
         if !target.exists() {
             return Ok(None);
         }
+
+        // Update progress: Starting backup
+        ctx.emit_progress(Some("Backing up aircraft data...".to_string()), InstallPhase::Installing);
 
         // Create temp directory for backup
         let temp_dir = std::env::temp_dir().join(format!("xfastinstall_backup_{}", uuid::Uuid::new_v4()));
@@ -567,12 +571,14 @@ impl Installer {
         if backup_liveries {
             let liveries_src = target.join("liveries");
             if liveries_src.exists() && liveries_src.is_dir() {
+                ctx.emit_progress(Some("Backing up liveries...".to_string()), InstallPhase::Installing);
+
                 // Record original info for verification
                 let original_info = self.get_directory_info(&liveries_src)?;
                 backup.original_liveries_info = Some(original_info);
 
                 let liveries_dst = temp_dir.join("liveries");
-                self.copy_directory(&liveries_src, &liveries_dst)
+                self.copy_directory_with_progress(&liveries_src, &liveries_dst, ctx)
                     .context("Failed to backup liveries folder")?;
                 backup.liveries_path = Some(liveries_dst);
             }
@@ -580,6 +586,8 @@ impl Installer {
 
         // Backup config files from root directory only if enabled
         if backup_config_files && !config_patterns.is_empty() {
+            ctx.emit_progress(Some("Backing up config files...".to_string()), InstallPhase::Installing);
+
             for entry in fs::read_dir(target)? {
                 let entry = entry?;
                 let path = entry.path();
@@ -593,6 +601,9 @@ impl Installer {
                                 .context(format!("Failed to backup {}", name))?;
                             backup.pref_files.push((name.to_string(), backup_path.clone()));
                             backup.original_pref_sizes.push((name.to_string(), original_size));
+
+                            // Update progress for each config file
+                            ctx.add_bytes(original_size);
                         }
                     }
                 }
@@ -704,25 +715,70 @@ impl Installer {
     }
 
     /// Restore aircraft backup data
-    fn restore_aircraft_backup(&self, backup: &AircraftBackup, target: &Path) -> Result<()> {
+    fn restore_aircraft_backup(&self, backup: &AircraftBackup, target: &Path, ctx: &ProgressContext) -> Result<()> {
+        ctx.emit_progress(Some("Restoring backup...".to_string()), InstallPhase::Installing);
+
         // Restore liveries folder (skip existing - don't overwrite new content)
         if let Some(ref liveries_backup) = backup.liveries_path {
+            ctx.emit_progress(Some("Restoring liveries...".to_string()), InstallPhase::Installing);
+
             let liveries_target = target.join("liveries");
 
             if liveries_target.exists() {
                 // Merge: copy only files that don't exist in new content
-                self.merge_directory_skip_existing(liveries_backup, &liveries_target)?;
+                self.merge_directory_skip_existing_with_progress(liveries_backup, &liveries_target, ctx)?;
             } else {
                 // No new liveries folder, restore entire backup
-                self.copy_directory(liveries_backup, &liveries_target)?;
+                self.copy_directory_with_progress(liveries_backup, &liveries_target, ctx)?;
             }
         }
 
         // Restore *_prefs.txt files (always overwrite - restore user preferences)
-        for (filename, backup_path) in &backup.pref_files {
-            let target_path = target.join(filename);
-            fs::copy(backup_path, &target_path)
-                .context(format!("Failed to restore pref file: {}", filename))?;
+        if !backup.pref_files.is_empty() {
+            ctx.emit_progress(Some("Restoring config files...".to_string()), InstallPhase::Installing);
+
+            for (filename, backup_path) in &backup.pref_files {
+                let target_path = target.join(filename);
+                let size = fs::metadata(backup_path)?.len();
+                fs::copy(backup_path, &target_path)
+                    .context(format!("Failed to restore pref file: {}", filename))?;
+
+                // Update progress for each config file
+                ctx.add_bytes(size);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Copy directory contents, skipping files that already exist in target (with progress)
+    fn merge_directory_skip_existing_with_progress(&self, source: &Path, target: &Path, ctx: &ProgressContext) -> Result<()> {
+        if !target.exists() {
+            fs::create_dir_all(target)?;
+        }
+
+        for entry in fs::read_dir(source)? {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            let source_path = entry.path();
+            let file_name = entry.file_name();
+            let target_path = target.join(&file_name);
+
+            if file_type.is_dir() {
+                // Recursively merge subdirectories
+                self.merge_directory_skip_existing_with_progress(&source_path, &target_path, ctx)?;
+            } else {
+                // Only copy if target doesn't exist (skip existing)
+                if !target_path.exists() {
+                    let size = fs::metadata(&source_path)?.len();
+                    fs::copy(&source_path, &target_path)?;
+                    // Remove read-only attribute from copied file
+                    let _ = remove_readonly_attribute(&target_path);
+
+                    // Update progress
+                    ctx.add_bytes(size);
+                }
+            }
         }
 
         Ok(())

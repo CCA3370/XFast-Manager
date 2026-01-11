@@ -33,13 +33,41 @@ impl Analyzer {
             Some("analyzer"),
         );
 
+        crate::log_debug!(&format!("Analyzing paths: {:?}", paths), "analysis");
+        crate::log_debug!(&format!("X-Plane path: {}", xplane_path), "analysis");
+
         let passwords_ref = passwords.as_ref();
+        let xplane_root = Path::new(xplane_path);
 
         // Parallel scan all paths using rayon for better performance
         let results: Vec<_> = paths
             .par_iter()
             .map(|path_str| {
                 let path = Path::new(path_str);
+
+                // Check if the path is a directory inside X-Plane's installation target directories
+                // This prevents users from accidentally dragging existing addon folders
+                if path.is_dir() && path.starts_with(xplane_root) {
+                    // Check if it's in one of the target directories
+                    let is_in_target_dir = [
+                        "Aircraft",
+                        "Custom Scenery",
+                        "Custom Data",
+                    ].iter().any(|target| {
+                        let target_path = xplane_root.join(target);
+                        path.starts_with(&target_path)
+                    }) || {
+                        // Special check for Resources/plugins
+                        let plugins_path = xplane_root.join("Resources").join("plugins");
+                        path.starts_with(&plugins_path)
+                    };
+
+                    if is_in_target_dir {
+                        let error_msg = tr(LogMsg::CannotInstallFromXPlane);
+                        return (path_str.clone(), Err(anyhow::anyhow!(error_msg)), None);
+                    }
+                }
+
                 let password = passwords_ref.and_then(|p| p.get(path_str).map(|s| s.as_str()));
                 (path_str.clone(), self.scanner.scan_path(path, password), password.map(|s| s.to_string()))
             })
@@ -70,9 +98,17 @@ impl Analyzer {
                         );
                         password_required.push(pwd_err.archive_path.clone());
                     } else {
-                        let error_msg = format!("{} {}: {}", tr(LogMsg::ScanFailed), path_str, e);
+                        // Format error message for better readability
+                        let error_msg = format!("{}\n  {}\n  {}",
+                            tr(LogMsg::ScanFailed),
+                            path_str,
+                            e
+                        );
                         logger::log_error(&error_msg, Some("analyzer"));
-                        errors.push(error_msg);
+
+                        // For frontend display, use a cleaner format
+                        let display_msg = format!("{}: {}", tr(LogMsg::ScanFailed), e);
+                        errors.push(display_msg);
                     }
                 }
             }
@@ -94,6 +130,12 @@ impl Analyzer {
             &format!("{}: {} task(s)", tr(LogMsg::AnalysisCompleted), tasks.len()),
             Some("analyzer"),
         );
+
+        crate::log_debug!(&format!("Analysis returned {} tasks, {} errors", tasks.len(), errors.len()), "analysis");
+        if !tasks.is_empty() {
+            let task_types: Vec<String> = tasks.iter().map(|t| format!("{:?}", t.addon_type)).collect();
+            crate::log_debug!(&format!("Task types: {}", task_types.join(", ")), "analysis");
+        }
 
         AnalysisResult { tasks, errors, password_required }
     }

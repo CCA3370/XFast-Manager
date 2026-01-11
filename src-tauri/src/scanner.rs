@@ -78,10 +78,51 @@ impl Scanner {
     /// Scan a directory recursively
     fn scan_directory(&self, dir: &Path) -> Result<Vec<DetectedItem>> {
         let mut detected = Vec::new();
+        let mut plugin_dirs: HashSet<PathBuf> = HashSet::new();
         let mut skip_dirs: HashSet<PathBuf> = HashSet::new();
 
-        // Walk through the directory with depth limit for performance
-        // Most X-Plane addons are within 15 levels deep
+        // First pass: Find all plugin directories
+        // This ensures .acf/.dsf files inside plugins are not detected as separate addons
+        for entry in WalkDir::new(dir)
+            .follow_links(false)
+            .max_depth(15)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+
+            // Skip ignored paths
+            if Self::should_ignore_path(path) {
+                continue;
+            }
+
+            if !entry.file_type().is_file() {
+                continue;
+            }
+
+            // Check for .xpl files to identify plugin directories
+            if path.extension().and_then(|s| s.to_str()) == Some("xpl") {
+                let parent = path.parent();
+                if let Some(p) = parent {
+                    let parent_name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+
+                    // Check if parent is platform-specific folder
+                    let plugin_root = if matches!(
+                        parent_name,
+                        "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
+                    ) {
+                        // Go up one more level
+                        p.parent().unwrap_or(p).to_path_buf()
+                    } else {
+                        p.to_path_buf()
+                    };
+
+                    plugin_dirs.insert(plugin_root);
+                }
+            }
+        }
+
+        // Second pass: Detect all addon types, skipping files inside plugin directories
         let mut walker = WalkDir::new(dir)
             .follow_links(false)
             .max_depth(15)
@@ -100,6 +141,12 @@ impl Scanner {
             }
 
             // Check if path is within a detected plugin directory
+            // Skip .acf and .dsf files inside plugin directories
+            let is_inside_plugin = plugin_dirs.iter().any(|plugin_dir| {
+                path.starts_with(plugin_dir) && path != plugin_dir
+            });
+
+            // Check if path is within a skip directory
             let mut should_skip = false;
             for skip_dir in &skip_dirs {
                 if path.starts_with(skip_dir) && path != skip_dir {
@@ -120,7 +167,14 @@ impl Scanner {
             }
 
             // Check for different addon types based on file markers
-            // When detected, add the plugin root to skip_dirs to avoid scanning subdirectories
+            // Skip .acf and .dsf if they're inside plugin directories
+            let file_ext = path.extension().and_then(|s| s.to_str());
+
+            if (file_ext == Some("acf") || file_ext == Some("dsf")) && is_inside_plugin {
+                // Skip .acf/.dsf files inside plugin directories
+                continue;
+            }
+
             if let Some(item) = self.check_aircraft(path, dir)? {
                 let root = PathBuf::from(&item.path);
                 skip_dirs.insert(root);
@@ -164,21 +218,10 @@ impl Scanner {
             "zip" => self.scan_zip(archive_path, password),
             "7z" => self.scan_7z(archive_path, password),
             "rar" => self.scan_rar(archive_path, password),
-            "" => {
-                // No extension
-                let msg = format!("File has no extension: {}", archive_path.display());
-                crate::logger::log_error(&msg, Some("scanner"));
-                Err(anyhow::anyhow!(msg))
-            }
             _ => {
-                // Unsupported format
-                let msg = format!(
-                    "Unsupported archive format '.{}' for file: {}. Supported formats: .zip, .7z, .rar",
-                    extension,
-                    archive_path.display()
-                );
-                crate::logger::log_error(&msg, Some("scanner"));
-                Err(anyhow::anyhow!(msg))
+                // Silently skip non-archive files (no extension or unsupported format)
+                // Return empty result instead of error
+                Ok(Vec::new())
             }
         }
     }
@@ -214,11 +257,45 @@ impl Scanner {
             .map(|entry| entry.name().to_string())
             .collect();
 
-        // Process files using the same logic as ZIP
+        // Identify all plugin directories first
+        let mut plugin_dirs: HashSet<PathBuf> = HashSet::new();
+        for file_path in &files {
+            if file_path.ends_with(".xpl") {
+                let path = PathBuf::from(file_path);
+                if let Some(parent) = path.parent() {
+                    let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
+
+                    // Check if parent is platform-specific folder
+                    let plugin_root = if matches!(
+                        parent_name,
+                        "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
+                    ) {
+                        // Go up one more level
+                        parent.parent().unwrap_or(parent).to_path_buf()
+                    } else {
+                        parent.to_path_buf()
+                    };
+
+                    plugin_dirs.insert(plugin_root);
+                }
+            }
+        }
+
+        // Process files, skipping .acf/.dsf inside plugin directories
         for file_path in &files {
             // Skip ignored paths (__MACOSX, .DS_Store, etc.)
             let path = Path::new(file_path);
             if Self::should_ignore_path(path) {
+                continue;
+            }
+
+            // Check if this file is inside a plugin directory
+            let is_inside_plugin = plugin_dirs.iter().any(|plugin_dir| {
+                path.starts_with(plugin_dir) && path != plugin_dir
+            });
+
+            // Skip .acf and .dsf files inside plugin directories
+            if (file_path.ends_with(".acf") || file_path.ends_with(".dsf")) && is_inside_plugin {
                 continue;
             }
 
@@ -330,11 +407,45 @@ impl Scanner {
             }
         }
 
-        // Process files using the same logic as ZIP
+        // Identify all plugin directories first
+        let mut plugin_dirs: HashSet<PathBuf> = HashSet::new();
+        for file_path in &files {
+            if file_path.ends_with(".xpl") {
+                let path = PathBuf::from(file_path);
+                if let Some(parent) = path.parent() {
+                    let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
+
+                    // Check if parent is platform-specific folder
+                    let plugin_root = if matches!(
+                        parent_name,
+                        "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
+                    ) {
+                        // Go up one more level
+                        parent.parent().unwrap_or(parent).to_path_buf()
+                    } else {
+                        parent.to_path_buf()
+                    };
+
+                    plugin_dirs.insert(plugin_root);
+                }
+            }
+        }
+
+        // Process files, skipping .acf/.dsf inside plugin directories
         for file_path in &files {
             // Skip ignored paths (__MACOSX, .DS_Store, etc.)
             let path = Path::new(file_path);
             if Self::should_ignore_path(path) {
+                continue;
+            }
+
+            // Check if this file is inside a plugin directory
+            let is_inside_plugin = plugin_dirs.iter().any(|plugin_dir| {
+                path.starts_with(plugin_dir) && path != plugin_dir
+            });
+
+            // Skip .acf and .dsf files inside plugin directories
+            if (file_path.ends_with(".acf") || file_path.ends_with(".dsf")) && is_inside_plugin {
                 continue;
             }
 
@@ -438,11 +549,45 @@ impl Scanner {
             }));
         }
 
-        // Second pass: process files
+        // Identify all plugin directories first
+        let mut plugin_dirs: HashSet<PathBuf> = HashSet::new();
+        for (_, file_path, _) in &files_info {
+            if file_path.ends_with(".xpl") {
+                let path = PathBuf::from(file_path);
+                if let Some(parent) = path.parent() {
+                    let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
+
+                    // Check if parent is platform-specific folder
+                    let plugin_root = if matches!(
+                        parent_name,
+                        "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
+                    ) {
+                        // Go up one more level
+                        parent.parent().unwrap_or(parent).to_path_buf()
+                    } else {
+                        parent.to_path_buf()
+                    };
+
+                    plugin_dirs.insert(plugin_root);
+                }
+            }
+        }
+
+        // Second pass: process files, skipping .acf/.dsf inside plugin directories
         for (i, file_path, is_encrypted) in files_info {
             // Skip ignored paths (__MACOSX, .DS_Store, etc.)
             let path = Path::new(&file_path);
             if Self::should_ignore_path(path) {
+                continue;
+            }
+
+            // Check if this file is inside a plugin directory
+            let is_inside_plugin = plugin_dirs.iter().any(|plugin_dir| {
+                path.starts_with(plugin_dir) && path != plugin_dir
+            });
+
+            // Skip .acf and .dsf files inside plugin directories
+            if (file_path.ends_with(".acf") || file_path.ends_with(".dsf")) && is_inside_plugin {
                 continue;
             }
 
@@ -512,11 +657,21 @@ impl Scanner {
 
         // If .acf is in root, use the root folder name
         // Otherwise, use the immediate parent folder
-        let install_path = if parent == root {
+        let mut install_path = if parent == root {
             root.to_path_buf()
         } else {
             parent.to_path_buf()
         };
+
+        // Special case: if the parent folder is named "_TCAS_AI_", go up one more level
+        // This is for AI traffic aircraft that are part of a larger aircraft package
+        if let Some(parent_name) = install_path.file_name().and_then(|s| s.to_str()) {
+            if parent_name == "_TCAS_AI_" {
+                if let Some(grandparent) = install_path.parent() {
+                    install_path = grandparent.to_path_buf();
+                }
+            }
+        }
 
         let display_name = install_path
             .file_name()
@@ -538,7 +693,7 @@ impl Scanner {
         let parent = path.parent();
 
         // Determine the aircraft root folder inside the archive
-        let (display_name, internal_root) = if let Some(p) = parent {
+        let (display_name, internal_root) = if let Some(mut p) = parent {
             if p.as_os_str().is_empty() {
                 // .acf is in archive root, use archive name as display name
                 // Internal root is empty (extract all to target)
@@ -551,6 +706,17 @@ impl Scanner {
                     None,
                 )
             } else {
+                // Special case: if the parent folder is named "_TCAS_AI_", go up one more level
+                if let Some(parent_name) = p.file_name().and_then(|s| s.to_str()) {
+                    if parent_name == "_TCAS_AI_" {
+                        if let Some(grandparent) = p.parent() {
+                            if !grandparent.as_os_str().is_empty() {
+                                p = grandparent;
+                            }
+                        }
+                    }
+                }
+
                 // Get the top-level folder in the archive
                 let components: Vec<_> = p.components().collect();
                 let top_folder = components.first()

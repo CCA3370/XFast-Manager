@@ -39,6 +39,8 @@ export default {
     installationFailed: 'Installation failed',
     pathNotSet: 'Please set X-Plane path in Settings first',
     pathNotSetDesc: 'X-Plane path is used for automatic location detection',
+    cannotInstallFromXPlane: 'Cannot install from X-Plane directory',
+    cannotInstallFromXPlaneDesc: 'Please drag files or archives from outside X-Plane folder. Cannot drag existing folders from within X-Plane.',
     ignoredTasks: '{count} add-ons ignored due to settings',
     allIgnored: 'All detected add-ons were ignored due to settings',
     taskProgress: 'Task {current}'
@@ -160,6 +162,7 @@ export default {
   completion: {
     allSuccess: 'Installation Complete',
     partialSuccess: 'Installation Complete (Partial Failure)',
+    allFailed: 'Installation Failed',
     successful: 'Successful',
     failed: 'Failed',
     failedTasks: 'Failed Tasks',

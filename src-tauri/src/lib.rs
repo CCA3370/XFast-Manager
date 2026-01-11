@@ -33,6 +33,9 @@ async fn analyze_addons(
 ) -> Result<AnalysisResult, String> {
     // Run the analysis in a blocking thread pool to avoid blocking the async runtime
     tokio::task::spawn_blocking(move || {
+        log_debug!(&format!("Analyzing paths: {:?}", paths), "analysis");
+        log_debug!(&format!("Starting analysis with X-Plane path: {}", xplane_path), "analysis");
+
         let analyzer = Analyzer::new();
         Ok(analyzer.analyze(paths, &xplane_path, passwords))
     })
@@ -47,6 +50,8 @@ async fn install_addons(app_handle: tauri::AppHandle, tasks: Vec<InstallTask>) -
 
     // Run the installation in a blocking thread pool to avoid blocking the async runtime
     tokio::task::spawn_blocking(move || {
+        log_debug!(&format!("Installing {} tasks: {}", tasks.len(), tasks.iter().map(|t| &t.display_name).cloned().collect::<Vec<_>>().join(", ")), "installation");
+
         let installer = Installer::new(app_handle_clone);
         installer
             .install(tasks)
@@ -78,6 +83,10 @@ fn log_from_frontend(level: String, message: String, context: Option<String>) {
     let ctx = context.as_deref();
     match level.to_lowercase().as_str() {
         "error" => logger::log_error(&message, ctx),
+        "debug" => {
+            // For frontend debug logs, we don't have file/line info, so pass None
+            logger::log_debug(&message, ctx, Some("frontend"))
+        },
         _ => logger::log_info(&message, ctx),
     }
 }

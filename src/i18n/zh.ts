@@ -39,6 +39,8 @@ export default {
     installationFailed: '安装失败',
     pathNotSet: '请先在设置中配置X-Plane路径',
     pathNotSetDesc: 'X-Plane 路径用于自动识别安装位置',
+    cannotInstallFromXPlane: '无法从 X-Plane 目录内安装',
+    cannotInstallFromXPlaneDesc: '请拖入 X-Plane 目录外的文件或压缩包。不能直接拖入 X-Plane 内已存在的文件夹。',
     ignoredTasks: '根据设置忽略了 {count} 个插件',
     allIgnored: '根据设置，所有检测到的插件均被忽略',
     taskProgress: '任务 {current}'
@@ -160,6 +162,7 @@ export default {
   completion: {
     allSuccess: '安装完成',
     partialSuccess: '安装完成（部分失败）',
+    allFailed: '安装失败',
     successful: '成功',
     failed: '失败',
     failedTasks: '失败的任务',
