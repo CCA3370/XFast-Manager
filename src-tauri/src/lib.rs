@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use analyzer::Analyzer;
 use installer::Installer;
-use models::{AnalysisResult, InstallTask};
+use models::{AnalysisResult, InstallResult, InstallTask};
 
 use tauri::Emitter;
 
@@ -41,7 +41,7 @@ async fn analyze_addons(
 }
 
 #[tauri::command]
-async fn install_addons(app_handle: tauri::AppHandle, tasks: Vec<InstallTask>) -> Result<(), String> {
+async fn install_addons(app_handle: tauri::AppHandle, tasks: Vec<InstallTask>) -> Result<InstallResult, String> {
     // Clone app_handle for the blocking task
     let app_handle_clone = app_handle.clone();
 

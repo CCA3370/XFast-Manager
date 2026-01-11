@@ -156,5 +156,13 @@ export default {
     passwordEntered: '密码已输入',
     passwordCanceled: '用户取消密码输入',
     passwordMaxRetries: '密码尝试次数已达上限'
+  },
+  completion: {
+    allSuccess: '安装完成',
+    partialSuccess: '安装完成（部分失败）',
+    successful: '成功',
+    failed: '失败',
+    failedTasks: '失败的任务',
+    confirm: '确认'
   }
 }

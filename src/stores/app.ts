@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import { AddonType, type InstallTask } from '@/types'
+import { AddonType, type InstallTask, type InstallResult } from '@/types'
 
 export type LogLevel = 'basic' | 'full' | 'debug'
 
@@ -15,6 +15,10 @@ export const useAppStore = defineStore('app', () => {
 
   // Pending CLI arguments to be processed by Home.vue
   const pendingCliArgs = ref<string[] | null>(null)
+
+  // Installation result state
+  const installResult = ref<InstallResult | null>(null)
+  const showCompletion = ref(false)
 
   // Default: all enabled
   const installPreferences = ref<Record<AddonType, boolean>>({
@@ -255,6 +259,18 @@ export const useAppStore = defineStore('app', () => {
     pendingCliArgs.value = null
   }
 
+  // Set installation result
+  function setInstallResult(result: InstallResult) {
+    installResult.value = result
+    showCompletion.value = true
+  }
+
+  // Clear installation result
+  function clearInstallResult() {
+    installResult.value = null
+    showCompletion.value = false
+  }
+
   return {
     xplanePath,
     currentTasks,
@@ -270,6 +286,8 @@ export const useAppStore = defineStore('app', () => {
     allSizeWarningsConfirmed,
     enabledTasksCount,
     pendingCliArgs,
+    installResult,
+    showCompletion,
     setXplanePath,
     loadXplanePath,
     togglePreference,
@@ -292,5 +310,7 @@ export const useAppStore = defineStore('app', () => {
     getConfigFilePatterns,
     setPendingCliArgs,
     clearPendingCliArgs,
+    setInstallResult,
+    clearInstallResult,
   }
 })

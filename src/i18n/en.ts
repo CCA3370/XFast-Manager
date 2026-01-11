@@ -156,5 +156,13 @@ export default {
     passwordEntered: 'Password entered',
     passwordCanceled: 'User canceled password input',
     passwordMaxRetries: 'Maximum password attempts exceeded'
+  },
+  completion: {
+    allSuccess: 'Installation Complete',
+    partialSuccess: 'Installation Complete (Partial Failure)',
+    successful: 'Successful',
+    failed: 'Failed',
+    failedTasks: 'Failed Tasks',
+    confirm: 'Confirm'
   }
 }

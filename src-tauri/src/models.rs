@@ -131,3 +131,24 @@ pub enum InstallPhase {
     /// Finalizing
     Finalizing,
 }
+
+/// Result of a single task installation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskResult {
+    pub task_id: String,
+    pub task_name: String,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
+/// Overall installation result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallResult {
+    pub total_tasks: usize,
+    pub successful_tasks: usize,
+    pub failed_tasks: usize,
+    pub task_results: Vec<TaskResult>,
+}

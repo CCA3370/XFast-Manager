@@ -70,3 +70,17 @@ export interface InstallProgress {
   currentFile?: string;
   phase: InstallPhase;
 }
+
+export interface TaskResult {
+  taskId: string;
+  taskName: string;
+  success: boolean;
+  errorMessage?: string;
+}
+
+export interface InstallResult {
+  totalTasks: number;
+  successfulTasks: number;
+  failedTasks: number;
+  taskResults: TaskResult[];
+}

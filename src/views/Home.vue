@@ -37,15 +37,16 @@
       <!-- Main Action Area (Flexible Height) -->
       <div class="flex-1 min-h-0 overflow-hidden bg-white/60 dark:bg-gray-800/40 backdrop-blur-xl border-2 border-dashed border-gray-300 dark:border-gray-600/50 rounded-2xl p-6 text-center transition-all duration-500 hover:border-blue-400 dark:hover:border-blue-500/50 hover:bg-white/80 dark:hover:bg-gray-800/60 shadow-sm dark:shadow-none flex flex-col items-center justify-center relative drop-zone-card"
         :class="{
-          'drag-over ring-4 ring-blue-500/20 border-blue-500 scale-[1.02]': isDragging,
+          'drag-over ring-4 ring-4-blue-500/20 border-blue-500 scale-[1.02]': isDragging && !store.showCompletion,
           'animate-pulse border-blue-400': store.isAnalyzing,
-          'debug-drop': debugDropFlash
+          'debug-drop': debugDropFlash,
+          'pointer-events-none': store.showCompletion
         }"
       >
           <!-- Hover Gradient -->
           <div class="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-purple-50/50 dark:from-blue-600/5 dark:to-purple-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
 
-          <div class="relative z-10 flex flex-col items-center justify-center space-y-4">
+          <div v-if="!store.isAnalyzing && !store.isInstalling && !store.showCompletion" class="relative z-10 flex flex-col items-center justify-center space-y-4">
             <!-- Icon -->
             <div class="w-16 h-16 rounded-full bg-blue-50 dark:bg-gray-700/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-500 relative">
               <div class="absolute inset-0 bg-blue-500/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -94,12 +95,11 @@
           </div>
 
         <!-- Progress Overlays -->
-        <transition name="fade">
-          <div v-if="store.isAnalyzing || store.isInstalling" class="absolute inset-0 z-20 bg-white/90 dark:bg-gray-900/80 backdrop-blur-md rounded-2xl flex items-center justify-center p-6 transition-colors duration-300">
+        <transition name="fade" mode="out-in">
+          <div v-if="store.isAnalyzing" key="analyzing" class="absolute inset-0 z-20 bg-white/90 dark:bg-gray-900/80 backdrop-blur-md rounded-2xl flex items-center justify-center p-6 transition-colors duration-300">
             <div class="w-full max-w-md space-y-4 text-center">
-              
               <!-- Analyzing State -->
-              <div v-if="store.isAnalyzing" class="space-y-4">
+              <div class="space-y-4">
                 <div class="relative w-20 h-20 mx-auto">
                   <div class="absolute inset-0 border-4 border-blue-200 dark:border-blue-500/30 rounded-full"></div>
                   <div class="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
@@ -114,12 +114,16 @@
                   <p class="text-gray-500 dark:text-gray-400 mt-2"><AnimatedText>{{ $t('home.pleaseWait') }}</AnimatedText></p>
                 </div>
               </div>
+            </div>
+          </div>
 
+          <div v-else-if="store.isInstalling" key="installing" class="absolute inset-0 z-20 bg-white/90 dark:bg-gray-900/80 backdrop-blur-md rounded-2xl flex items-center justify-center p-6 transition-colors duration-300">
+            <div class="w-full max-w-md space-y-4 text-center">
               <!-- Installing State with Progress -->
-              <div v-if="store.isInstalling" class="space-y-3">
+              <div class="space-y-3">
                 <!-- Circular Progress -->
-                <div class="relative w-20 h-20 mx-auto progress-container">
-                  <svg class="w-full h-full -rotate-90" style="overflow: visible;">
+                <div class="relative w-20 h-20 mx-auto">
+                  <svg class="w-full h-full -rotate-90" viewBox="0 0 80 80">
                     <circle cx="40" cy="40" r="36" stroke-width="5" fill="none"
                       class="text-emerald-500/20 dark:text-emerald-500/30" stroke="currentColor"/>
                     <circle cx="40" cy="40" r="36" stroke-width="5" fill="none"
@@ -157,7 +161,15 @@
                   {{ $t('home.taskProgress', { current: progressStore.formatted.taskProgress }) }}
                 </p>
               </div>
+            </div>
+          </div>
 
+          <div v-else-if="store.showCompletion" key="completion" class="absolute inset-0 z-20 bg-white dark:bg-gray-900 rounded-2xl flex items-center justify-center p-6 transition-colors duration-300 pointer-events-auto">
+            <div class="w-full max-w-md">
+              <CompletionView
+                :result="store.installResult!"
+                @confirm="handleCompletionConfirm"
+              />
             </div>
           </div>
         </transition>
@@ -188,7 +200,8 @@ import type { UnlistenFn } from '@tauri-apps/api/event'
 import ConfirmationModal from '@/components/ConfirmationModal.vue'
 import PasswordModal from '@/components/PasswordModal.vue'
 import AnimatedText from '@/components/AnimatedText.vue'
-import type { AnalysisResult, InstallProgress } from '@/types'
+import CompletionView from '@/components/CompletionView.vue'
+import type { AnalysisResult, InstallProgress, InstallResult } from '@/types'
 import { logOperation, logError, logDebug, logBasic } from '@/services/logger'
 
 const { t } = useI18n()
@@ -217,10 +230,18 @@ let unlistenCliArgs: UnlistenFn | null = null
 // Global listeners for drag/drop visual feedback
 function onWindowDragOver(e: DragEvent) {
   e.preventDefault()
+  // Ignore drag events when installing or showing completion
+  if (store.isInstalling || store.showCompletion) {
+    return
+  }
   isDragging.value = true
 }
 
 function onWindowDragLeave(e: DragEvent) {
+  // Ignore drag events when installing or showing completion
+  if (store.isInstalling || store.showCompletion) {
+    return
+  }
   // Only set to false if leaving the window
   if (!e.relatedTarget) {
     isDragging.value = false
@@ -230,6 +251,10 @@ function onWindowDragLeave(e: DragEvent) {
 function onWindowDrop(e: DragEvent) {
   console.log('Window drop event (HTML5)', e)
   e.preventDefault()
+  // Ignore drop events when installing or showing completion
+  if (store.isInstalling || store.showCompletion) {
+    return
+  }
   isDragging.value = false
   debugDropFlash.value = true
   setTimeout(() => (debugDropFlash.value = false), 800)
@@ -245,6 +270,12 @@ onMounted(async () => {
     const webview = getCurrentWebviewWindow()
     unlistenDragDrop = await webview.onDragDropEvent(async (event) => {
       console.log('Tauri drag-drop event:', event)
+
+      // Ignore all drag-drop events when installing or showing completion
+      if (store.isInstalling || store.showCompletion) {
+        console.log('Ignoring drag-drop event (installing or showing completion)')
+        return
+      }
 
       if (event.payload.type === 'over') {
         isDragging.value = true
@@ -496,25 +527,43 @@ async function handleInstall() {
       logDebug(`${overwriteCount} tasks will overwrite existing files`, 'installation')
     }
 
-    await invoke('install_addons', {
+    const result = await invoke<InstallResult>('install_addons', {
       tasks: tasksWithOverwrite
     })
-    // Non-blocking log call
+
+    // Log results
     logBasic(t('log.installationCompleted'), 'installation')
-    logOperation(t('log.installationCompleted'))
-    logDebug('All tasks installed successfully', 'installation')
-    toast.success(t('home.installationCompleted'))
-    store.clearTasks()
+    logOperation(`${result.successfulTasks}/${result.totalTasks} tasks completed successfully`)
+
+    // Log failed tasks if any
+    if (result.failedTasks > 0) {
+      result.taskResults
+        .filter(r => !r.success)
+        .forEach(r => {
+          logError(`${r.taskName}: ${r.errorMessage}`, 'installation')
+        })
+    }
+
+    // Set isInstalling to false before showing completion to ensure smooth transition
+    store.isInstalling = false
     progressStore.reset()
+
+    // Save installation result (this will show completion view)
+    store.setInstallResult(result)
+
   } catch (error) {
     console.error('Installation failed:', error)
     // Non-blocking log call
     logError(`${t('log.installationFailed')}: ${error}`, 'installation')
     modal.showError(t('home.installationFailed') + ': ' + String(error))
-  } finally {
     store.isInstalling = false
     progressStore.reset()
   }
+}
+
+function handleCompletionConfirm() {
+  store.clearInstallResult()
+  store.clearTasks()
 }
 </script>
 

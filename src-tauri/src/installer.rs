@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::logger;
 use crate::logger::{tr, LogMsg};
-use crate::models::{AddonType, InstallPhase, InstallProgress, InstallTask};
+use crate::models::{AddonType, InstallPhase, InstallProgress, InstallResult, InstallTask, TaskResult};
 
 /// Maximum allowed extraction size (20 GB) - archives larger than this will show a warning
 pub const MAX_EXTRACTION_SIZE: u64 = 20 * 1024 * 1024 * 1024;
@@ -239,13 +239,16 @@ impl Installer {
     }
 
     /// Install a list of tasks with progress reporting
-    pub fn install(&self, tasks: Vec<InstallTask>) -> Result<()> {
+    pub fn install(&self, tasks: Vec<InstallTask>) -> Result<InstallResult> {
         logger::log_info(
             &format!("{}: {} task(s)", tr(LogMsg::InstallationStarted), tasks.len()),
             Some("installer"),
         );
 
         let mut ctx = ProgressContext::new(self.app_handle.clone(), tasks.len());
+        let mut task_results = Vec::new();
+        let mut successful = 0;
+        let mut failed = 0;
 
         // Phase 1: Calculate total size
         ctx.emit_progress(None, InstallPhase::Calculating);
@@ -263,19 +266,43 @@ impl Installer {
                 Some("installer"),
             );
 
-            if let Err(e) = self.install_task_with_progress(task, &ctx) {
-                logger::log_error(
-                    &format!("{} {}: {}", tr(LogMsg::InstallationFailed), task.display_name, e),
-                    Some("installer"),
-                );
-                return Err(e);
+            match self.install_task_with_progress(task, &ctx) {
+                Ok(_) => {
+                    successful += 1;
+                    task_results.push(TaskResult {
+                        task_id: task.id.clone(),
+                        task_name: task.display_name.clone(),
+                        success: true,
+                        error_message: None,
+                    });
+                }
+                Err(e) => {
+                    failed += 1;
+                    let error_msg = format!("{}", e);
+                    logger::log_error(
+                        &format!("{} {}: {}", tr(LogMsg::InstallationFailed), task.display_name, error_msg),
+                        Some("installer"),
+                    );
+                    task_results.push(TaskResult {
+                        task_id: task.id.clone(),
+                        task_name: task.display_name.clone(),
+                        success: false,
+                        error_message: Some(error_msg),
+                    });
+                }
             }
         }
 
         // Phase 3: Finalize
         ctx.emit_final(InstallPhase::Finalizing);
         logger::log_info(&tr(LogMsg::InstallationCompleted), Some("installer"));
-        Ok(())
+
+        Ok(InstallResult {
+            total_tasks: tasks.len(),
+            successful_tasks: successful,
+            failed_tasks: failed,
+            task_results,
+        })
     }
 
     /// Calculate total size of all tasks for progress tracking
