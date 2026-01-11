@@ -90,6 +90,7 @@ fn remove_readonly_attribute(_path: &Path) -> Result<()> {
 }
 
 /// Robustly remove a directory and all its contents, handling read-only files
+/// Includes retry logic with exponential backoff for Windows file locking issues
 fn remove_dir_all_robust(path: &Path) -> Result<()> {
     if !path.exists() {
         return Ok(());
@@ -106,23 +107,37 @@ fn remove_dir_all_robust(path: &Path) -> Result<()> {
         }
     }
 
-    // Second pass: try to delete the directory
-    match fs::remove_dir_all(path) {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            // If deletion still fails, provide detailed error information
-            let err_msg = format!(
-                "Failed to delete directory: {:?}\nError: {}\n\
-                This may be caused by:\n\
-                - Files being used by another program (X-Plane, file explorer, antivirus)\n\
-                - Insufficient permissions\n\
-                - System files or protected folders\n\
-                Please close any programs that might be using these files and try again.",
-                path, e
-            );
-            Err(anyhow::anyhow!(err_msg))
+    // Try to delete with retries (handles temporary file locks from antivirus, indexing, etc.)
+    const MAX_RETRIES: u32 = 3;
+    const INITIAL_DELAY_MS: u64 = 100;
+
+    let mut last_error = None;
+    for attempt in 0..=MAX_RETRIES {
+        match fs::remove_dir_all(path) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                last_error = Some(e);
+                if attempt < MAX_RETRIES {
+                    // Exponential backoff: 100ms, 200ms, 400ms
+                    let delay = INITIAL_DELAY_MS * (1 << attempt);
+                    std::thread::sleep(std::time::Duration::from_millis(delay));
+                }
+            }
         }
     }
+
+    // All retries failed, provide detailed error information
+    let e = last_error.unwrap();
+    let err_msg = format!(
+        "Failed to delete directory: {:?}\nError: {}\n\
+        This may be caused by:\n\
+        - Files being used by another program (X-Plane, file explorer, antivirus)\n\
+        - Insufficient permissions\n\
+        - System files or protected folders\n\
+        Please close any programs that might be using these files and try again.",
+        path, e
+    );
+    Err(anyhow::anyhow!(err_msg))
 }
 
 /// Directory statistics for backup verification
