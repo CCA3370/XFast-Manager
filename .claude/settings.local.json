@@ -33,7 +33,9 @@
       "Bash(cargo clippy:*)",
       "mcp__ide__getDiagnostics",
       "Bash(grep:*)",
-      "Bash(cargo doc:*)"
+      "Bash(cargo doc:*)",
+      "Bash(unzip:*)",
+      "Bash(7z l:*)"
     ]
   }
 }

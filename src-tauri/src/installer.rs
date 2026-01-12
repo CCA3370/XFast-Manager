@@ -1257,8 +1257,15 @@ impl Installer {
 
                 // Check prefix filter
                 let relative_path = if let Some(prefix) = prefix {
-                    file_path_str.strip_prefix(prefix)
-                        .and_then(|s| s.strip_prefix('/').or(Some(s)))
+                    // Ensure prefix ends with '/' for proper matching
+                    let prefix_with_slash = if prefix.ends_with('/') {
+                        prefix.to_string()
+                    } else {
+                        format!("{}/", prefix)
+                    };
+
+                    // Strip prefix and return relative path
+                    file_path_str.strip_prefix(&prefix_with_slash)
                         .map(|s| s.to_string())?
                 } else {
                     file_path_str.clone()
