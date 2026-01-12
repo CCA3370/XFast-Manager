@@ -1248,6 +1248,14 @@ impl Installer {
         let internal_root_normalized = internal_root.map(|s| s.replace('\\', "/"));
         let prefix = internal_root_normalized.as_deref();
 
+        // Debug: Log extraction parameters
+        crate::logger::log_debug(
+            &format!("extract_zip_from_archive: target={:?}, internal_root={:?}, archive_len={}",
+                target, internal_root, archive.len()),
+            Some("installer"),
+            None,
+        );
+
         // Collect all file entries
         let entries: Vec<_> = (0..archive.len())
             .filter_map(|i| {
@@ -1264,6 +1272,15 @@ impl Installer {
                         format!("{}/", prefix)
                     };
 
+                    // Debug: Log file matching
+                    let matched = file_path_str.strip_prefix(&prefix_with_slash);
+                    crate::logger::log_debug(
+                        &format!("File: '{}', Prefix: '{}', Matched: {:?}",
+                            file_path_str, prefix_with_slash, matched.is_some()),
+                        Some("installer"),
+                        None,
+                    );
+
                     // Strip prefix and return relative path
                     file_path_str.strip_prefix(&prefix_with_slash)
                         .map(|s| s.to_string())?
@@ -1274,6 +1291,13 @@ impl Installer {
                 Some((i, relative_path, file.is_dir(), file.encrypted()))
             })
             .collect();
+
+        // Debug: Log collected entries
+        crate::logger::log_debug(
+            &format!("Collected {} entries after filtering", entries.len()),
+            Some("installer"),
+            None,
+        );
 
         // Create directories first
         for (_, relative_path, is_dir, _) in &entries {
