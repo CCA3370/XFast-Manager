@@ -623,20 +623,11 @@ impl Installer {
             }
         }
 
-        // Extract files in parallel
-        let target_arc = Arc::new(target.to_path_buf());
-        let password_arc = Arc::new(password.map(|p| p.to_vec()));
-        let archive_path = Arc::new(
-            archive.by_index(0)
-                .ok()
-                .and_then(|f| Some(f.name().to_string()))
-                .unwrap_or_default()
-        );
-
-        use rayon::prelude::*;
-
-        // For encrypted archives, we need to reopen for each thread
-        // For now, extract sequentially if encrypted
+        // Extract files sequentially
+        // Note: Parallel extraction for in-memory archives is complex because
+        // ZipArchive requires mutable access. For file-based archives, we can
+        // open multiple handles, but for in-memory Cursor, we cannot easily clone.
+        // Sequential extraction is still fast due to in-memory access.
         if entries.iter().any(|(_, _, _, encrypted)| *encrypted) {
             // Sequential extraction for encrypted files
             for (i, relative_path, is_dir, is_encrypted) in entries {
@@ -671,10 +662,7 @@ impl Installer {
                 }
             }
         } else {
-            // Parallel extraction for non-encrypted files
-            // Note: This requires reopening the archive for each thread
-            // For in-memory archives, this is not straightforward
-            // So we fall back to sequential for now
+            // Sequential extraction for non-encrypted files
             for (i, relative_path, is_dir, _) in entries {
                 if is_dir {
                     continue;
@@ -761,10 +749,26 @@ impl Installer {
                 let nested_archive_path = extract_target.join(&archive_info.internal_path);
 
                 if !nested_archive_path.exists() {
+                    // Provide detailed error with directory listing
+                    let mut available_files = Vec::new();
+                    if let Ok(entries) = fs::read_dir(&extract_target) {
+                        for entry in entries.flatten().take(10) {
+                            if let Some(name) = entry.file_name().to_str() {
+                                available_files.push(name.to_string());
+                            }
+                        }
+                    }
+
                     return Err(anyhow::anyhow!(
-                        "Nested archive not found after extraction: {} (expected at {:?})",
+                        "Nested archive not found after extraction: {}\nExpected at: {:?}\nExtracted to: {:?}\nAvailable files: {}",
                         archive_info.internal_path,
-                        nested_archive_path
+                        nested_archive_path,
+                        extract_target,
+                        if available_files.is_empty() {
+                            "(none)".to_string()
+                        } else {
+                            available_files.join(", ")
+                        }
                     ));
                 }
 
@@ -832,6 +836,16 @@ impl Installer {
     ) -> Result<()> {
         use zip::ZipArchive;
         use std::io::{Cursor, Read};
+
+        // Check file size before loading into memory (limit: 200MB)
+        const MAX_MEMORY_SIZE: u64 = 200 * 1024 * 1024;
+        let metadata = fs::metadata(zip_path)?;
+        if metadata.len() > MAX_MEMORY_SIZE {
+            return Err(anyhow::anyhow!(
+                "ZIP file too large for memory optimization ({} MB > 200 MB)",
+                metadata.len() / 1024 / 1024
+            ));
+        }
 
         // Read the ZIP file into memory
         let mut zip_data = Vec::new();

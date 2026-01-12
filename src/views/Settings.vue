@@ -261,6 +261,21 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
                   <AnimatedText>{{ $t('settings.patternHelpText') }}</AnimatedText>
                 </p>
+
+                <!-- Auto-save status (similar to X-Plane path) -->
+                <div class="h-4 flex items-center justify-end px-1">
+                  <transition name="fade">
+                    <div v-if="patternSaveStatus" class="flex items-center text-[10px] font-medium space-x-1" :class="patternSaveStatus === 'saved' ? 'text-emerald-500' : 'text-gray-400'">
+                      <svg v-if="patternSaveStatus === 'saved'" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <svg v-else class="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                      </svg>
+                      <span>{{ patternSaveStatus === 'saved' ? $t('settings.saved') : $t('settings.saving') }}</span>
+                    </div>
+                  </transition>
+                </div>
               </div>
             </div>
           </transition>
@@ -418,6 +433,8 @@ const configPatterns = ref<string[]>([])
 const patternErrors = ref<Record<number, string>>({})
 const backupExpanded = ref(false)
 const preferencesExpanded = ref(false) // Default collapsed
+const patternSaveStatus = ref<'saving' | 'saved' | null>(null)
+let patternSaveTimeout: ReturnType<typeof setTimeout> | null = null
 
 const addonTypes = [AddonType.Aircraft, AddonType.Scenery, AddonType.SceneryLibrary, AddonType.Plugin, AddonType.Navdata]
 
@@ -485,6 +502,10 @@ onBeforeUnmount(() => {
     clearTimeout(saveTimeout)
     saveTimeout = null
   }
+  if (patternSaveTimeout) {
+    clearTimeout(patternSaveTimeout)
+    patternSaveTimeout = null
+  }
 })
 
 // Auto-save logic with path validation
@@ -528,8 +549,16 @@ watch(xplanePathInput, async (newValue) => {
   }
 })
 
-// Watch config patterns and save to store
+// Watch config patterns and save to store with debounce
 watch(configPatterns, (newPatterns) => {
+  // Clear previous timeout
+  if (patternSaveTimeout) {
+    clearTimeout(patternSaveTimeout)
+  }
+
+  // Show saving status
+  patternSaveStatus.value = 'saving'
+
   // Validate and filter patterns
   const errors: Record<number, string> = {}
   const validPatterns: string[] = []
@@ -549,10 +578,22 @@ watch(configPatterns, (newPatterns) => {
 
   patternErrors.value = errors
 
-  // Only save valid patterns
-  if (Object.keys(errors).length === 0) {
-    store.setConfigFilePatterns(validPatterns)
-  }
+  // Debounce save (1 second)
+  patternSaveTimeout = setTimeout(() => {
+    // Only save valid patterns
+    if (Object.keys(errors).length === 0) {
+      store.setConfigFilePatterns(validPatterns)
+      patternSaveStatus.value = 'saved'
+
+      // Hide saved status after 2 seconds
+      setTimeout(() => {
+        patternSaveStatus.value = null
+      }, 2000)
+    } else {
+      // If there are errors, don't show saved status
+      patternSaveStatus.value = null
+    }
+  }, 1000) // 1 second debounce
 }, { deep: true })
 
 // Validate a glob pattern and return error message if invalid

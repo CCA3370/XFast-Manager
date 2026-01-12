@@ -74,6 +74,32 @@ impl ScanContext {
         self.parent_chain.pop();
         self.depth = self.depth.saturating_sub(1);
     }
+
+    /// Get password for a nested archive by checking the password map
+    /// Tries multiple key formats: full path, nested path, and filename
+    fn get_nested_password(&self, parent_path: &str, nested_path: &str) -> Option<String> {
+        // Try full nested path: "parent.zip/nested.zip"
+        let full_key = format!("{}/{}", parent_path, nested_path);
+        if let Some(pwd) = self.passwords.get(&full_key) {
+            return Some(pwd.clone());
+        }
+
+        // Try just the nested path
+        if let Some(pwd) = self.passwords.get(nested_path) {
+            return Some(pwd.clone());
+        }
+
+        // Try just the filename
+        if let Some(filename) = Path::new(nested_path).file_name() {
+            if let Some(filename_str) = filename.to_str() {
+                if let Some(pwd) = self.passwords.get(filename_str) {
+                    return Some(pwd.clone());
+                }
+            }
+        }
+
+        None
+    }
 }
 
 /// Check if a filename is an archive file
@@ -389,6 +415,7 @@ impl Scanner {
     }
 
     /// Scan a nested archive within a 7z file (extract to temp)
+    /// Optimized: If nested archive is ZIP, load into memory for faster scanning
     fn scan_nested_archive_in_7z(
         &self,
         parent_path: &Path,
@@ -430,25 +457,70 @@ impl Scanner {
         let temp_archive_path = temp_dir.path().join(nested_path);
 
         if !temp_archive_path.exists() {
-            return Err(anyhow::anyhow!("Nested archive not found after extraction: {}", nested_path));
+            // Provide detailed error with directory listing
+            let mut available_files = Vec::new();
+            if let Ok(entries) = fs::read_dir(temp_dir.path()) {
+                for entry in entries.flatten().take(10) {
+                    if let Some(name) = entry.file_name().to_str() {
+                        available_files.push(name.to_string());
+                    }
+                }
+            }
+
+            return Err(anyhow::anyhow!(
+                "Nested archive not found after extraction: {}\nExpected at: {:?}\nAvailable files: {}",
+                nested_path,
+                temp_archive_path,
+                if available_files.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    available_files.join(", ")
+                }
+            ));
         }
 
         // Get archive format
         let format = get_archive_format(nested_path)
             .ok_or_else(|| anyhow::anyhow!("Unknown archive format: {}", nested_path))?;
 
-        // Build nested archive info
+        // Check if this nested archive has its own password
+        let nested_password = ctx.get_nested_password(
+            &parent_path.to_string_lossy().to_string(),
+            nested_path
+        );
+
+        // Build nested archive info with password if available
         let nested_info = NestedArchiveInfo {
             internal_path: nested_path.to_string(),
-            password: None,
-            format,
+            password: nested_password.clone(),
+            format: format.clone(),
         };
 
         // Push to context chain
         ctx.push_archive(nested_info.clone());
 
-        // Recursively scan the nested archive
-        let nested_result = self.scan_path_with_context(&temp_archive_path, ctx);
+        // OPTIMIZATION: If nested archive is ZIP, try to load into memory
+        let nested_result = if format == "zip" {
+            crate::logger::log_info(
+                &format!("Optimizing: Loading nested ZIP from 7z into memory for scanning"),
+                Some("scanner"),
+            );
+
+            match self.try_scan_zip_from_file_to_memory(&temp_archive_path, parent_path, ctx) {
+                Ok(items) => Ok(items),
+                Err(e) => {
+                    crate::logger::log_info(
+                        &format!("Memory optimization failed, using standard scan: {}", e),
+                        Some("scanner"),
+                    );
+                    // Fallback to standard scan
+                    self.scan_path_with_context(&temp_archive_path, ctx)
+                }
+            }
+        } else {
+            // For non-ZIP, use standard scan
+            self.scan_path_with_context(&temp_archive_path, ctx)
+        };
 
         // Pop from context chain
         ctx.pop_archive();
@@ -471,6 +543,39 @@ impl Scanner {
             }
             Err(e) => Err(e),
         }
+    }
+
+    /// Try to scan a ZIP file by loading it into memory (optimization)
+    fn try_scan_zip_from_file_to_memory(
+        &self,
+        zip_path: &Path,
+        parent_path: &Path,
+        ctx: &mut ScanContext,
+    ) -> Result<Vec<DetectedItem>> {
+        use zip::ZipArchive;
+        use std::io::{Cursor, Read};
+
+        // Check file size before loading into memory (limit: 200MB)
+        const MAX_MEMORY_SIZE: u64 = 200 * 1024 * 1024;
+        let metadata = fs::metadata(zip_path)?;
+        if metadata.len() > MAX_MEMORY_SIZE {
+            return Err(anyhow::anyhow!(
+                "ZIP file too large for memory optimization ({} MB > 200 MB)",
+                metadata.len() / 1024 / 1024
+            ));
+        }
+
+        // Read ZIP file into memory
+        let mut zip_data = Vec::new();
+        let mut file = fs::File::open(zip_path)?;
+        file.read_to_end(&mut zip_data)?;
+
+        // Create in-memory ZIP archive
+        let cursor = Cursor::new(zip_data);
+        let mut archive = ZipArchive::new(cursor)?;
+
+        // Scan using in-memory method
+        self.scan_zip_in_memory(&mut archive, parent_path, ctx, zip_path.to_string_lossy().as_ref())
     }
 
     /// Scan a RAR archive with context (supports nested archives via temp extraction)
@@ -544,6 +649,7 @@ impl Scanner {
     }
 
     /// Scan a nested archive within a RAR file (extract to temp)
+    /// Optimized: If nested archive is ZIP, load into memory for faster scanning
     fn scan_nested_archive_in_rar(
         &self,
         parent_path: &Path,
@@ -586,25 +692,70 @@ impl Scanner {
         let temp_archive_path = temp_dir.path().join(nested_path);
 
         if !temp_archive_path.exists() {
-            return Err(anyhow::anyhow!("Nested archive not found after extraction: {}", nested_path));
+            // Provide detailed error with directory listing
+            let mut available_files = Vec::new();
+            if let Ok(entries) = fs::read_dir(temp_dir.path()) {
+                for entry in entries.flatten().take(10) {
+                    if let Some(name) = entry.file_name().to_str() {
+                        available_files.push(name.to_string());
+                    }
+                }
+            }
+
+            return Err(anyhow::anyhow!(
+                "Nested archive not found after extraction: {}\nExpected at: {:?}\nAvailable files: {}",
+                nested_path,
+                temp_archive_path,
+                if available_files.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    available_files.join(", ")
+                }
+            ));
         }
 
         // Get archive format
         let format = get_archive_format(nested_path)
             .ok_or_else(|| anyhow::anyhow!("Unknown archive format: {}", nested_path))?;
 
-        // Build nested archive info
+        // Check if this nested archive has its own password
+        let nested_password = ctx.get_nested_password(
+            &parent_path.to_string_lossy().to_string(),
+            nested_path
+        );
+
+        // Build nested archive info with password if available
         let nested_info = NestedArchiveInfo {
             internal_path: nested_path.to_string(),
-            password: None,
-            format,
+            password: nested_password.clone(),
+            format: format.clone(),
         };
 
         // Push to context chain
         ctx.push_archive(nested_info.clone());
 
-        // Recursively scan the nested archive
-        let nested_result = self.scan_path_with_context(&temp_archive_path, ctx);
+        // OPTIMIZATION: If nested archive is ZIP, try to load into memory
+        let nested_result = if format == "zip" {
+            crate::logger::log_info(
+                &format!("Optimizing: Loading nested ZIP from RAR into memory for scanning"),
+                Some("scanner"),
+            );
+
+            match self.try_scan_zip_from_file_to_memory(&temp_archive_path, parent_path, ctx) {
+                Ok(items) => Ok(items),
+                Err(e) => {
+                    crate::logger::log_info(
+                        &format!("Memory optimization failed, using standard scan: {}", e),
+                        Some("scanner"),
+                    );
+                    // Fallback to standard scan
+                    self.scan_path_with_context(&temp_archive_path, ctx)
+                }
+            }
+        } else {
+            // For non-ZIP, use standard scan
+            self.scan_path_with_context(&temp_archive_path, ctx)
+        };
 
         // Pop from context chain
         ctx.pop_archive();
@@ -1043,10 +1194,16 @@ impl Scanner {
         let format = get_archive_format(nested_path)
             .ok_or_else(|| anyhow::anyhow!("Unknown archive format: {}", nested_path))?;
 
-        // Build nested archive info
+        // Check if this nested archive has its own password
+        let nested_password = ctx.get_nested_password(
+            &parent_path.to_string_lossy().to_string(),
+            nested_path
+        );
+
+        // Build nested archive info with password if available
         let nested_info = NestedArchiveInfo {
             internal_path: nested_path.to_string(),
-            password: None, // Will be set if password required
+            password: nested_password.clone(),
             format,
         };
 
@@ -1065,12 +1222,12 @@ impl Scanner {
                 Err(e) => Err(anyhow::anyhow!("Failed to open nested ZIP: {}", e)),
             }
         } else {
-            // For 7z/RAR, we need to extract to temp file (will implement in Phase 3)
+            // For 7z/RAR nested in ZIP, write to temp file and scan
             crate::logger::log_info(
-                &format!("Nested {} archives not yet supported, skipping: {}", nested_info.format, nested_path),
+                &format!("Scanning nested {} archive from ZIP (using temp file)", nested_info.format),
                 Some("scanner"),
             );
-            Ok(Vec::new())
+            self.scan_nested_non_zip_from_memory(nested_data, &nested_info.format, parent_path, ctx)
         };
 
         // Pop from context chain
@@ -1139,7 +1296,7 @@ impl Scanner {
         }
 
         // Process files
-        for (_, file_path) in files_info {
+        for (file_index, file_path) in files_info {
             let path = Path::new(&file_path);
             if Self::should_ignore_path(path) {
                 continue;
@@ -1170,11 +1327,59 @@ impl Scanner {
                 if let Some(item) = self.detect_plugin_in_archive(&file_path, parent_path)? {
                     detected.push(item);
                 }
+            } else if file_path.ends_with("cycle.json") {
+                // Read cycle.json from nested archive
+                use std::io::Read;
+
+                if let Ok(mut file) = archive.by_index(file_index) {
+                    let mut content = String::new();
+                    if file.read_to_string(&mut content).is_ok() {
+                        if let Some(item) = self.detect_navdata_in_archive(&file_path, &content, parent_path)? {
+                            detected.push(item);
+                        }
+                    }
+                }
             }
-            // Note: cycle.json reading from nested archives not implemented yet
         }
 
         Ok(detected)
+    }
+
+    /// Scan a non-ZIP archive (7z/RAR) that was extracted from memory
+    /// Writes the data to a temp file, scans it, then cleans up
+    fn scan_nested_non_zip_from_memory(
+        &self,
+        archive_data: Vec<u8>,
+        format: &str,
+        parent_path: &Path,
+        ctx: &mut ScanContext,
+    ) -> Result<Vec<DetectedItem>> {
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+
+        // Create a temporary file with appropriate extension
+        let extension = match format {
+            "7z" => ".7z",
+            "rar" => ".rar",
+            _ => return Err(anyhow::anyhow!("Unsupported format: {}", format)),
+        };
+
+        let mut temp_file = NamedTempFile::with_suffix(extension)
+            .context("Failed to create temp file for nested archive")?;
+
+        // Write archive data to temp file
+        temp_file.write_all(&archive_data)
+            .context("Failed to write nested archive to temp file")?;
+        temp_file.flush()?;
+
+        // Get the temp file path
+        let temp_path = temp_file.path();
+
+        // Scan the temp file
+        let result = self.scan_path_with_context(temp_path, ctx);
+
+        // Temp file is automatically deleted when NamedTempFile drops
+        result
     }
 
     /// Scan a ZIP archive
