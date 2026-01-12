@@ -94,6 +94,13 @@ pub struct InstallTask {
     pub backup_config_files: bool,
     /// Glob patterns for config files to backup (Aircraft only)
     pub config_file_patterns: Vec<String>,
+    /// File hashes collected during scanning (for verification)
+    /// Key: relative path within addon, Value: FileHash
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_hashes: Option<HashMap<String, FileHash>>,
+    /// Whether hash verification is enabled for this task
+    #[serde(default = "default_true")]
+    pub enable_verification: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -163,6 +170,8 @@ pub enum InstallPhase {
     Calculating,
     /// Installing files
     Installing,
+    /// Verifying installed files
+    Verifying,
     /// Finalizing
     Finalizing,
 }
@@ -176,6 +185,9 @@ pub struct TaskResult {
     pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
+    /// Verification statistics (if verification was performed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_stats: Option<VerificationStats>,
 }
 
 /// Overall installation result
@@ -186,4 +198,51 @@ pub struct InstallResult {
     pub successful_tasks: usize,
     pub failed_tasks: usize,
     pub task_results: Vec<TaskResult>,
+}
+
+/// Hash algorithm used for verification
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum HashAlgorithm {
+    Crc32,   // For ZIP and RAR
+    Sha256,  // For 7z (computed during extraction)
+}
+
+/// File hash information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileHash {
+    /// Relative path within the addon (e.g., "A330/A330.acf")
+    pub path: String,
+    /// Hash value as hex string
+    pub hash: String,
+    /// Algorithm used
+    pub algorithm: HashAlgorithm,
+}
+
+/// Verification result for a single file
+#[derive(Debug, Clone)]
+pub struct FileVerificationResult {
+    pub path: String,
+    pub expected_hash: String,
+    pub actual_hash: Option<String>,
+    pub success: bool,
+    pub retry_count: u8,
+    pub error: Option<String>,
+}
+
+/// Verification statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerificationStats {
+    pub total_files: usize,
+    pub verified_files: usize,
+    pub failed_files: usize,
+    pub retried_files: usize,
+    pub skipped_files: usize,
+}
+
+/// Default value for enable_verification
+fn default_true() -> bool {
+    true
 }

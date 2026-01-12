@@ -5611,6 +5611,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "crc32fast",
  "dashmap",
  "dirs 5.0.1",
  "glob",
@@ -5619,6 +5620,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sevenz-rust2",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

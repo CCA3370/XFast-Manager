@@ -1,11 +1,13 @@
 mod analyzer;
 mod cache;
+mod hash_collector;
 mod installer;
 mod logger;
 mod models;
 mod performance;
 mod registry;
 mod scanner;
+mod verifier;
 
 use std::collections::HashMap;
 

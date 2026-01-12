@@ -136,7 +136,10 @@ impl Analyzer {
             .collect();
 
         // Deduplicate tasks by target path (e.g., multiple .acf files in same aircraft folder)
-        let tasks = self.deduplicate_by_target_path(tasks);
+        let mut tasks = self.deduplicate_by_target_path(tasks);
+
+        // Collect file hashes for verification
+        self.collect_hashes_for_tasks(&mut tasks);
 
         logger::log_info(
             &format!("{}: {} task(s)", tr(LogMsg::AnalysisCompleted), tasks.len()),
@@ -410,6 +413,44 @@ impl Analyzer {
             backup_liveries: true, // Default to true (safe)
             backup_config_files: true, // Default to true (safe)
             config_file_patterns: vec!["*_prefs.txt".to_string()], // Default pattern
+            file_hashes: None, // Will be populated by hash collector
+            enable_verification: true, // Enable by default
+        }
+    }
+
+    /// Collect file hashes for all tasks
+    fn collect_hashes_for_tasks(&self, tasks: &mut [InstallTask]) {
+        let hash_collector = crate::hash_collector::HashCollector::new();
+
+        for task in tasks.iter_mut() {
+            if !task.enable_verification {
+                continue;
+            }
+
+            match hash_collector.collect_hashes(task) {
+                Ok(hashes) => {
+                    if !hashes.is_empty() {
+                        logger::log_info(
+                            &format!("Collected {} hashes for task: {}", hashes.len(), task.display_name),
+                            Some("analyzer")
+                        );
+                        task.file_hashes = Some(hashes);
+                    } else {
+                        logger::log_info(
+                            &format!("No hashes collected for task: {} (will compute during extraction)", task.display_name),
+                            Some("analyzer")
+                        );
+                    }
+                }
+                Err(e) => {
+                    logger::log_error(
+                        &format!("Failed to collect hashes for {}: {}", task.display_name, e),
+                        Some("analyzer")
+                    );
+                    // Don't fail the task, just disable verification
+                    task.enable_verification = false;
+                }
+            }
         }
     }
 
@@ -648,6 +689,7 @@ mod tests {
                 path: "/test/A330".to_string(),
                 display_name: "A330".to_string(),
                 archive_internal_root: None,
+                extraction_chain: None,
                 navdata_info: None,
             },
             DetectedItem {
@@ -655,6 +697,7 @@ mod tests {
                 path: "/test/A330/variant".to_string(),
                 display_name: "A330 Variant".to_string(),
                 archive_internal_root: None,
+                extraction_chain: None,
                 navdata_info: None,
             },
         ];
@@ -677,6 +720,7 @@ mod tests {
                 path: "/test/A330".to_string(),
                 display_name: "A330".to_string(),
                 archive_internal_root: None,
+                extraction_chain: None,
                 navdata_info: None,
             },
             DetectedItem {
@@ -684,6 +728,7 @@ mod tests {
                 path: "/test/A330/plugins/fms".to_string(),
                 display_name: "FMS".to_string(),
                 archive_internal_root: None,
+                extraction_chain: None,
                 navdata_info: None,
             },
         ];
@@ -706,6 +751,7 @@ mod tests {
                 path: "/test/package.zip".to_string(),
                 display_name: "A330".to_string(),
                 archive_internal_root: Some("A330".to_string()),
+                extraction_chain: None,
                 navdata_info: None,
             },
             DetectedItem {
@@ -713,6 +759,7 @@ mod tests {
                 path: "/test/package.zip".to_string(),
                 display_name: "FMS Plugin".to_string(),
                 archive_internal_root: Some("A330/plugins/fms".to_string()),
+                extraction_chain: None,
                 navdata_info: None,
             },
             DetectedItem {
@@ -720,6 +767,7 @@ mod tests {
                 path: "/test/package.zip".to_string(),
                 display_name: "Standalone Plugin".to_string(),
                 archive_internal_root: Some("plugins/standalone".to_string()),
+                extraction_chain: None,
                 navdata_info: None,
             },
             DetectedItem {
@@ -727,6 +775,7 @@ mod tests {
                 path: "/test/package.zip".to_string(),
                 display_name: "Airport".to_string(),
                 archive_internal_root: Some("scenery/airport".to_string()),
+                extraction_chain: None,
                 navdata_info: None,
             },
         ];
@@ -760,6 +809,7 @@ mod tests {
                 path: "/test/package.zip".to_string(),
                 display_name: "MainPlugin".to_string(),
                 archive_internal_root: Some("plugins".to_string()),
+                extraction_chain: None,
                 navdata_info: None,
             },
             DetectedItem {
@@ -767,6 +817,7 @@ mod tests {
                 path: "/test/package.zip".to_string(),
                 display_name: "SubPlugin".to_string(),
                 archive_internal_root: Some("plugins/sub".to_string()),
+                extraction_chain: None,
                 navdata_info: None,
             },
         ];
@@ -802,6 +853,9 @@ mod tests {
                 backup_liveries: true,
                 backup_config_files: true,
                 config_file_patterns: vec!["*_prefs.txt".to_string()],
+                extraction_chain: None,
+                file_hashes: None,
+                enable_verification: true,
             },
             InstallTask {
                 id: "2".to_string(),
@@ -821,6 +875,9 @@ mod tests {
                 backup_liveries: true,
                 backup_config_files: true,
                 config_file_patterns: vec!["*_prefs.txt".to_string()],
+                extraction_chain: None,
+                file_hashes: None,
+                enable_verification: true,
             },
         ];
 
@@ -854,6 +911,9 @@ mod tests {
                 backup_liveries: true,
                 backup_config_files: true,
                 config_file_patterns: vec!["*_prefs.txt".to_string()],
+                extraction_chain: None,
+                file_hashes: None,
+                enable_verification: true,
             },
             InstallTask {
                 id: "2".to_string(),
@@ -873,6 +933,9 @@ mod tests {
                 backup_liveries: true,
                 backup_config_files: true,
                 config_file_patterns: vec!["*_prefs.txt".to_string()],
+                extraction_chain: None,
+                file_hashes: None,
+                enable_verification: true,
             },
         ];
 
@@ -906,6 +969,9 @@ mod tests {
                 backup_liveries: true,
                 backup_config_files: true,
                 config_file_patterns: vec!["*_prefs.txt".to_string()],
+                extraction_chain: None,
+                file_hashes: None,
+                enable_verification: true,
             },
             InstallTask {
                 id: "2".to_string(),
@@ -925,6 +991,9 @@ mod tests {
                 backup_liveries: true,
                 backup_config_files: true,
                 config_file_patterns: vec!["*_prefs.txt".to_string()],
+                extraction_chain: None,
+                file_hashes: None,
+                enable_verification: true,
             },
             InstallTask {
                 id: "3".to_string(),
@@ -944,6 +1013,9 @@ mod tests {
                 backup_liveries: true,
                 backup_config_files: true,
                 config_file_patterns: vec!["*_prefs.txt".to_string()],
+                extraction_chain: None,
+                file_hashes: None,
+                enable_verification: true,
             },
         ];
 
@@ -963,6 +1035,7 @@ mod tests {
                 path: "/test/KSEA".to_string(),
                 display_name: "KSEA".to_string(),
                 archive_internal_root: None,
+                extraction_chain: None,
                 navdata_info: None,
             },
             DetectedItem {
@@ -970,6 +1043,7 @@ mod tests {
                 path: "/test/KSEA/plugins/lighting".to_string(),
                 display_name: "Lighting".to_string(),
                 archive_internal_root: None,
+                extraction_chain: None,
                 navdata_info: None,
             },
         ];
@@ -990,6 +1064,7 @@ mod tests {
                 path: "/test/A330".to_string(),
                 display_name: "A330".to_string(),
                 archive_internal_root: None,
+                extraction_chain: None,
                 navdata_info: None,
             },
             DetectedItem {
@@ -997,6 +1072,7 @@ mod tests {
                 path: "/test/BetterPushback".to_string(),
                 display_name: "BetterPushback".to_string(),
                 archive_internal_root: None,
+                extraction_chain: None,
                 navdata_info: None,
             },
         ];
@@ -1017,6 +1093,7 @@ mod tests {
                 path: "/test/pack.zip".to_string(),
                 display_name: "A330".to_string(),
                 archive_internal_root: Some("aircraft/A330".to_string()),
+                extraction_chain: None,
                 navdata_info: None,
             },
             DetectedItem {
@@ -1024,6 +1101,7 @@ mod tests {
                 path: "/test/pack.zip".to_string(),
                 display_name: "Systems".to_string(),
                 archive_internal_root: Some("aircraft/A330/plugins/systems".to_string()),
+                extraction_chain: None,
                 navdata_info: None,
             },
             DetectedItem {
@@ -1031,6 +1109,7 @@ mod tests {
                 path: "/test/pack.zip".to_string(),
                 display_name: "Library".to_string(),
                 archive_internal_root: Some("library".to_string()),
+                extraction_chain: None,
                 navdata_info: None,
             },
             DetectedItem {
@@ -1038,6 +1117,7 @@ mod tests {
                 path: "/test/pack.zip".to_string(),
                 display_name: "LibPlugin".to_string(),
                 archive_internal_root: Some("library/plugins/helper".to_string()),
+                extraction_chain: None,
                 navdata_info: None,
             },
             DetectedItem {
@@ -1045,6 +1125,7 @@ mod tests {
                 path: "/test/pack.zip".to_string(),
                 display_name: "Standalone".to_string(),
                 archive_internal_root: Some("plugins/standalone".to_string()),
+                extraction_chain: None,
                 navdata_info: None,
             },
         ];
