@@ -286,13 +286,36 @@ impl Installer {
 
             match self.install_task_with_progress(task, &ctx) {
                 Ok(_) => {
-                    successful += 1;
-                    task_results.push(TaskResult {
-                        task_id: task.id.clone(),
-                        task_name: task.display_name.clone(),
-                        success: true,
-                        error_message: None,
-                    });
+                    // Verify installation by checking for typical files
+                    match self.verify_installation(task) {
+                        Ok(_) => {
+                            successful += 1;
+                            logger::log_info(
+                                &format!("{}: {}", tr(LogMsg::InstallationCompleted), task.display_name),
+                                Some("installer"),
+                            );
+                            task_results.push(TaskResult {
+                                task_id: task.id.clone(),
+                                task_name: task.display_name.clone(),
+                                success: true,
+                                error_message: None,
+                            });
+                        }
+                        Err(verify_err) => {
+                            failed += 1;
+                            let error_msg = format!("Verification failed: {}", verify_err);
+                            logger::log_error(
+                                &format!("{} {}: {}", tr(LogMsg::InstallationFailed), task.display_name, error_msg),
+                                Some("installer"),
+                            );
+                            task_results.push(TaskResult {
+                                task_id: task.id.clone(),
+                                task_name: task.display_name.clone(),
+                                success: false,
+                                error_message: Some(error_msg),
+                            });
+                        }
+                    }
                 }
                 Err(e) => {
                     failed += 1;
@@ -335,6 +358,133 @@ impl Installer {
             }
         }
         Ok(total)
+    }
+
+    /// Verify that the installation was successful by checking for typical files
+    /// Returns Ok(()) if verification passes, Err with details if it fails
+    fn verify_installation(&self, task: &InstallTask) -> Result<()> {
+        use walkdir::WalkDir;
+
+        let target = Path::new(&task.target_path);
+
+        // Check if target directory exists
+        if !target.exists() {
+            return Err(anyhow::anyhow!(
+                "Installation verification failed: Target directory does not exist: {:?}",
+                target
+            ));
+        }
+
+        // Check if target directory is empty
+        let mut has_files = false;
+        for entry in WalkDir::new(target).max_depth(5).into_iter().filter_map(|e| e.ok()) {
+            if entry.file_type().is_file() {
+                has_files = true;
+                break;
+            }
+        }
+
+        if !has_files {
+            return Err(anyhow::anyhow!(
+                "Installation verification failed: Target directory is empty: {:?}",
+                target
+            ));
+        }
+
+        // Type-specific verification: check for typical marker files
+        match task.addon_type {
+            crate::models::AddonType::Aircraft => {
+                // Check for .acf files
+                let mut found_acf = false;
+                for entry in WalkDir::new(target).max_depth(3).into_iter().filter_map(|e| e.ok()) {
+                    if entry.file_type().is_file() {
+                        if let Some(ext) = entry.path().extension() {
+                            if ext == "acf" {
+                                found_acf = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if !found_acf {
+                    return Err(anyhow::anyhow!(
+                        "Installation verification failed: No .acf file found in aircraft directory: {:?}",
+                        target
+                    ));
+                }
+            }
+            crate::models::AddonType::Scenery => {
+                // Check for Earth nav data folder and .dsf files
+                let earth_nav_data = target.join("Earth nav data");
+                if !earth_nav_data.exists() {
+                    return Err(anyhow::anyhow!(
+                        "Installation verification failed: No 'Earth nav data' folder found in scenery directory: {:?}",
+                        target
+                    ));
+                }
+
+                // Check for at least one .dsf file
+                let mut found_dsf = false;
+                for entry in WalkDir::new(&earth_nav_data).max_depth(5).into_iter().filter_map(|e| e.ok()) {
+                    if entry.file_type().is_file() {
+                        if let Some(ext) = entry.path().extension() {
+                            if ext == "dsf" {
+                                found_dsf = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if !found_dsf {
+                    return Err(anyhow::anyhow!(
+                        "Installation verification failed: No .dsf file found in scenery directory: {:?}",
+                        target
+                    ));
+                }
+            }
+            crate::models::AddonType::SceneryLibrary => {
+                // Check for library.txt
+                let library_txt = target.join("library.txt");
+                if !library_txt.exists() {
+                    return Err(anyhow::anyhow!(
+                        "Installation verification failed: No library.txt found in scenery library directory: {:?}",
+                        target
+                    ));
+                }
+            }
+            crate::models::AddonType::Plugin => {
+                // Check for .xpl files (in platform-specific folders or root)
+                let mut found_xpl = false;
+                for entry in WalkDir::new(target).max_depth(3).into_iter().filter_map(|e| e.ok()) {
+                    if entry.file_type().is_file() {
+                        if let Some(ext) = entry.path().extension() {
+                            if ext == "xpl" {
+                                found_xpl = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if !found_xpl {
+                    return Err(anyhow::anyhow!(
+                        "Installation verification failed: No .xpl file found in plugin directory: {:?}",
+                        target
+                    ));
+                }
+            }
+            crate::models::AddonType::Navdata => {
+                // Check for cycle.json
+                let cycle_json = target.join("cycle.json");
+                if !cycle_json.exists() {
+                    return Err(anyhow::anyhow!(
+                        "Installation verification failed: No cycle.json found in navdata directory: {:?}",
+                        target
+                    ));
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Get total size of files in a directory

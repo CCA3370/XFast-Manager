@@ -538,6 +538,14 @@ impl Scanner {
                     item.path = parent_path.to_string_lossy().to_string();
                     item.extraction_chain = Some(chain);
                     item.archive_internal_root = None;
+
+                    // Update display_name to use the nested archive's filename (without extension)
+                    // This prevents creating folders like "Scenery/.zip"
+                    if let Some(nested_filename) = Path::new(nested_path).file_stem() {
+                        if let Some(name_str) = nested_filename.to_str() {
+                            item.display_name = name_str.to_string();
+                        }
+                    }
                 }
                 Ok(items)
             }
@@ -773,6 +781,14 @@ impl Scanner {
                     item.path = parent_path.to_string_lossy().to_string();
                     item.extraction_chain = Some(chain);
                     item.archive_internal_root = None;
+
+                    // Update display_name to use the nested archive's filename (without extension)
+                    // This prevents creating folders like "Scenery/.zip"
+                    if let Some(nested_filename) = Path::new(nested_path).file_stem() {
+                        if let Some(name_str) = nested_filename.to_str() {
+                            item.display_name = name_str.to_string();
+                        }
+                    }
                 }
                 Ok(items)
             }
@@ -1251,6 +1267,14 @@ impl Scanner {
                     item.path = parent_path.to_string_lossy().to_string();
                     item.extraction_chain = Some(chain);
                     item.archive_internal_root = None; // Replaced by extraction_chain
+
+                    // Update display_name to use the nested archive's filename (without extension)
+                    // This prevents creating folders like "Scenery/.zip"
+                    if let Some(nested_filename) = Path::new(nested_path).file_stem() {
+                        if let Some(name_str) = nested_filename.to_str() {
+                            item.display_name = name_str.to_string();
+                        }
+                    }
                 }
                 Ok(items)
             }

@@ -32,7 +32,8 @@
       "Bash(findstr:*)",
       "Bash(cargo clippy:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(cargo doc:*)"
     ]
   }
 }
