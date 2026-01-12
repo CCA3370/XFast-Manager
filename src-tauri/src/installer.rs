@@ -1124,19 +1124,8 @@ impl Installer {
     ) -> Result<()> {
         use tempfile::TempDir;
 
-        // For single-layer chains, use the optimized path
-        if chain.archives.len() == 1 {
-            // Just extract with internal_root
-            return self.extract_archive_with_progress(
-                source,
-                target,
-                chain.final_internal_root.as_deref(),
-                ctx,
-                outermost_password,
-            );
-        }
-
-        // For multi-layer chains, check if we can use the memory-optimized path
+        // For multi-layer chains (including single-layer nested archives),
+        // check if we can use the memory-optimized path
         let all_zip = chain.archives.iter().all(|a| a.format == "zip");
 
         if all_zip {

@@ -35,7 +35,8 @@
       "Bash(grep:*)",
       "Bash(cargo doc:*)",
       "Bash(unzip:*)",
-      "Bash(7z l:*)"
+      "Bash(7z l:*)",
+      "Bash(cargo clean:*)"
     ]
   }
 }
