@@ -1452,8 +1452,9 @@ impl Scanner {
         // First pass: collect file info and check for encryption
         let mut files_info = Vec::new();
         let mut has_encrypted = false;
+
+        // Try to read archive entries - if this fails due to encryption, request password
         for i in 0..archive.len() {
-            // Use by_index_raw to avoid triggering decryption errors
             match archive.by_index_raw(i) {
                 Ok(file) => {
                     if file.encrypted() {
@@ -1462,12 +1463,22 @@ impl Scanner {
                     files_info.push((i, file.name().to_string(), file.encrypted()));
                 }
                 Err(e) => {
-                    // If we can't read the file info, it might be corrupted or encrypted
+                    // Check if error is related to encryption/password
                     let err_str = format!("{:?}", e);
                     if err_str.contains("password") || err_str.contains("Password")
-                        || err_str.contains("encrypted") || err_str.contains("InvalidPassword") {
-                        has_encrypted = true;
+                        || err_str.contains("encrypted") || err_str.contains("Encrypted")
+                        || err_str.contains("InvalidPassword") || err_str.contains("decrypt") {
+                        // This is an encryption error - request password if not provided
+                        if password_bytes.is_none() {
+                            return Err(anyhow::anyhow!(PasswordRequiredError {
+                                archive_path: zip_path.to_string_lossy().to_string(),
+                            }));
+                        } else {
+                            // Password was provided but still failed - wrong password
+                            return Err(anyhow::anyhow!("Wrong password for archive: {}", zip_path.display()));
+                        }
                     } else {
+                        // Other error - propagate it
                         return Err(anyhow::anyhow!("Failed to read ZIP entry {}: {}", i, e));
                     }
                 }
