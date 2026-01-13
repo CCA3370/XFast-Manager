@@ -1139,19 +1139,43 @@ impl Scanner {
         let mut has_encrypted = false;
 
         for i in 0..archive.len() {
-            let file = archive.by_index(i)?;
-            let name = file.name().to_string();
+            // Use by_index_raw to avoid triggering decryption errors
+            match archive.by_index_raw(i) {
+                Ok(file) => {
+                    let name = file.name().to_string();
 
-            if file.encrypted() {
-                has_encrypted = true;
+                    if file.encrypted() {
+                        has_encrypted = true;
+                    }
+
+                    // Check if this is a nested archive
+                    if !file.is_dir() && is_archive_file(&name) {
+                        nested_archives.push((i, name.clone(), file.encrypted()));
+                    }
+
+                    files_info.push((i, name, file.encrypted()));
+                }
+                Err(e) => {
+                    // Check if error is related to encryption/password
+                    let err_str = format!("{:?}", e);
+                    if err_str.contains("password") || err_str.contains("Password")
+                        || err_str.contains("encrypted") || err_str.contains("Encrypted")
+                        || err_str.contains("InvalidPassword") || err_str.contains("decrypt") {
+                        // This is an encryption error - request password if not provided
+                        if password_bytes.is_none() {
+                            return Err(anyhow::anyhow!(PasswordRequiredError {
+                                archive_path: zip_path.to_string_lossy().to_string(),
+                            }));
+                        } else {
+                            // Password was provided but still failed - wrong password
+                            return Err(anyhow::anyhow!("Wrong password for archive: {}", zip_path.display()));
+                        }
+                    } else {
+                        // Other error - propagate it
+                        return Err(anyhow::anyhow!("Failed to read ZIP entry {}: {}", i, e));
+                    }
+                }
             }
-
-            // Check if this is a nested archive
-            if !file.is_dir() && is_archive_file(&name) {
-                nested_archives.push((i, name.clone(), file.encrypted()));
-            }
-
-            files_info.push((i, name, file.encrypted()));
         }
 
         // If any file is encrypted but no password provided, request password
