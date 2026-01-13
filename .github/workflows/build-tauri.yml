@@ -6,14 +6,8 @@ on:
   workflow_dispatch:
 
 env:
-  CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
   CARGO_NET_RETRY: 3
-  CARGO_PROFILE_RELEASE_LTO: fat
-  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 1
-  CARGO_PROFILE_RELEASE_OPT_LEVEL: 3
-  CARGO_PROFILE_RELEASE_STRIP: symbols
-  CARGO_PROFILE_RELEASE_PANIC: abort
 
 jobs:
   build-windows-portable:
@@ -24,10 +18,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check if debug build
+        id: check_debug
+        shell: bash
+        run: |
+          if [[ "${{ github.event.head_commit.message }}" == *"dbuild"* ]]; then
+            echo "is_debug=true" >> $GITHUB_OUTPUT
+            echo "🚀 Debug build mode enabled (fast build)"
+          else
+            echo "is_debug=false" >> $GITHUB_OUTPUT
+            echo "📦 Release build mode (optimized)"
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: 'npm'
 
       - name: Install JS dependencies
         run: npm ci
@@ -35,15 +42,91 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build Tauri (Portable EXE)
-        run: npm run tauri:build
+      - name: Cache Rust dependencies (Debug mode)
+        if: steps.check_debug.outputs.is_debug == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v1-rust-debug"
+          shared-key: "debug-build"
+          cache-on-failure: true
+          save-if: true
 
-      - name: Rename EXE
+      - name: Cache Rust dependencies (Release mode)
+        if: steps.check_debug.outputs.is_debug == 'false'
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v1-rust-release"
+          shared-key: "release-build"
+          cache-on-failure: false
+
+      - name: Set debug build environment
+        if: steps.check_debug.outputs.is_debug == 'true'
+        shell: bash
+        run: |
+          # Enable incremental compilation for faster rebuilds
+          echo "CARGO_INCREMENTAL=1" >> $GITHUB_ENV
+          # Use debug profile (much faster compilation)
+          echo "TAURI_BUILD_PROFILE=debug" >> $GITHUB_ENV
+          # Reduce optimization level for faster compilation
+          echo "CARGO_PROFILE_DEV_OPT_LEVEL=1" >> $GITHUB_ENV
+          # Use more codegen units for parallel compilation (max parallelism)
+          echo "CARGO_PROFILE_DEV_CODEGEN_UNITS=256" >> $GITHUB_ENV
+          # Disable LTO for faster linking
+          echo "CARGO_PROFILE_DEV_LTO=off" >> $GITHUB_ENV
+          # Keep debug symbols minimal
+          echo "CARGO_PROFILE_DEV_DEBUG=1" >> $GITHUB_ENV
+          # Use dynamic linking for faster builds
+          echo "RUSTFLAGS=-C prefer-dynamic" >> $GITHUB_ENV
+          echo "BUILD_MODE=debug" >> $GITHUB_ENV
+
+      - name: Set release build environment
+        if: steps.check_debug.outputs.is_debug == 'false'
+        shell: bash
+        run: |
+          # Disable incremental for smaller artifacts
+          echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
+          # Full optimization
+          echo "CARGO_PROFILE_RELEASE_LTO=fat" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=3" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_STRIP=symbols" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
+          echo "BUILD_MODE=release" >> $GITHUB_ENV
+
+      - name: Build Tauri (Debug - Fast)
+        if: steps.check_debug.outputs.is_debug == 'true'
+        run: |
+          echo "🚀 Building in DEBUG mode for fast iteration..."
+          npm run tauri build -- --debug
+
+      - name: Build Tauri (Release - Optimized)
+        if: steps.check_debug.outputs.is_debug == 'false'
+        run: |
+          echo "📦 Building in RELEASE mode with full optimizations..."
+          npm run tauri:build
+
+      - name: Rename EXE (Debug)
+        if: steps.check_debug.outputs.is_debug == 'true'
+        run: Rename-Item -Path "target/debug/xfastinstall.exe" -NewName "XFastInstall-debug.exe" -Force
+
+      - name: Rename EXE (Release)
+        if: steps.check_debug.outputs.is_debug == 'false'
         run: Rename-Item -Path "target/release/xfastinstall.exe" -NewName "XFastInstall.exe" -Force
 
-      - name: Upload Portable EXE
+      - name: Upload Debug Build
+        if: steps.check_debug.outputs.is_debug == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: XFastInstall-windows-debug
+          path: 'target/debug/XFastInstall-debug.exe'
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Release Build
+        if: steps.check_debug.outputs.is_debug == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: XFastInstall-windows-portable
           path: 'target/release/XFastInstall.exe'
           if-no-files-found: error
+
