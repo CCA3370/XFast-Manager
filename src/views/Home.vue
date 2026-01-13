@@ -179,6 +179,7 @@
       <PasswordModal
         v-if="showPasswordModal"
         :archive-paths="passwordRequiredPaths"
+        :error-message="passwordErrorMessage"
         @confirm="handlePasswordSubmit"
         @cancel="handlePasswordCancel"
       />
@@ -220,6 +221,7 @@ const passwordRequiredPaths = ref<string[]>([])
 const pendingAnalysisPaths = ref<string[]>([])
 const collectedPasswords = ref<Record<string, string>>({})
 const passwordRetryCount = ref(0)
+const passwordErrorMessage = ref('')
 const MAX_PASSWORD_RETRIES = 3
 
 // Password rate limiting
@@ -432,11 +434,11 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
     if (result.errors.length > 0) {
       logDebug(`Errors during analysis: ${result.errors.join('; ')}`, 'analysis')
       // Check if errors indicate wrong password
-      const hasPasswordError = result.errors.some(err =>
-        err.includes('password') || err.includes('Password') || err.includes('Wrong password')
+      const passwordErrors = result.errors.filter(err =>
+        err.includes('Wrong password') || err.includes('password') || err.includes('Password')
       )
 
-      if (hasPasswordError && passwords) {
+      if (passwordErrors.length > 0 && passwords) {
         // Increment retry counter BEFORE checking limit to prevent race condition
         passwordRetryCount.value++
 
@@ -450,8 +452,14 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
           return
         }
 
-        // Show password modal again for retry
-        toast.error(t('password.wrongPassword'))
+        // 从错误信息中提取密码错误的文件路径
+        const wrongPasswordPaths = extractWrongPasswordPaths(passwordErrors)
+        if (wrongPasswordPaths.length > 0) {
+          passwordRequiredPaths.value = wrongPasswordPaths
+        }
+
+        // 设置错误提示并重新显示密码模态框
+        passwordErrorMessage.value = t('password.wrongPassword')
         showPasswordModal.value = true
         store.isAnalyzing = false
         return
@@ -526,6 +534,7 @@ async function handlePasswordSubmit(passwords: Record<string, string>) {
   )
 
   showPasswordModal.value = false
+  passwordErrorMessage.value = ''  // 清除错误提示
   logOperation(t('log.passwordEntered'), t('log.fileCount', { count: Object.keys(passwords).length }))
   // Merge new passwords with previously collected ones
   const allPasswords = { ...collectedPasswords.value, ...passwords }
@@ -539,7 +548,32 @@ async function handlePasswordSubmit(passwords: Record<string, string>) {
 function handlePasswordCancel() {
   showPasswordModal.value = false
   logOperation(t('log.taskAborted'), t('log.passwordCanceled'))
+
+  // 取消后继续分析不需要密码的文件
+  const nonPasswordPaths = pendingAnalysisPaths.value.filter(
+    p => !passwordRequiredPaths.value.includes(p)
+  )
+
   resetPasswordState()
+
+  // 如果有不需要密码的文件，继续分析它们
+  if (nonPasswordPaths.length > 0) {
+    analyzeFiles(nonPasswordPaths)
+  }
+}
+
+// 从错误信息中提取密码错误的文件路径
+function extractWrongPasswordPaths(errors: string[]): string[] {
+  const paths: string[] = []
+  for (const err of errors) {
+    // 匹配 "Wrong password for archive: {path}" 格式
+    const match = err.match(/Wrong password for archive:\s*(.+)$/i)
+    if (match && match[1]) {
+      paths.push(match[1].trim())
+    }
+  }
+  // 如果无法提取，返回当前的 passwordRequiredPaths
+  return paths.length > 0 ? paths : passwordRequiredPaths.value
 }
 
 // Reset password state
@@ -548,6 +582,7 @@ function resetPasswordState() {
   passwordRequiredPaths.value = []
   collectedPasswords.value = {}
   passwordRetryCount.value = 0
+  passwordErrorMessage.value = ''
 }
 
 async function handleInstall() {
