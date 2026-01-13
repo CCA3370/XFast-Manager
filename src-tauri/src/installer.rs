@@ -477,7 +477,7 @@ impl Installer {
         let verifier = crate::verifier::FileVerifier::new();
         let mut failed_files = verifier.verify_files(target, &expected_hashes)?;
 
-        let initial_failed_count = failed_files.len();
+        let _initial_failed_count = failed_files.len();
         let mut retried_count = 0;
 
         // Phase 3: Retry failed files (up to 3 times)
@@ -499,7 +499,7 @@ impl Installer {
         if !failed_files.is_empty() {
             self.log_verification_failures(&failed_files);
 
-            let stats = crate::models::VerificationStats {
+            let _stats = crate::models::VerificationStats {
                 total_files: total_expected,
                 verified_files: total_expected - failed_files.len(),
                 failed_files: failed_files.len(),
@@ -1137,7 +1137,7 @@ impl Installer {
         ctx: &ProgressContext,
         outermost_password: Option<&str>,
     ) -> Result<()> {
-        use tempfile::TempDir;
+        
 
         // For multi-layer chains (including single-layer nested archives),
         // check if we can use the memory-optimized path
@@ -1177,7 +1177,7 @@ impl Installer {
         let mut current_password = outermost_password.map(|s| s.as_bytes().to_vec());
 
         // Navigate through all layers
-        for (index, archive_info) in chain.archives.iter().enumerate() {
+        for (_index, archive_info) in chain.archives.iter().enumerate() {
             let cursor = Cursor::new(&current_archive_data);
             let mut archive = ZipArchive::new(cursor)?;
 
@@ -1238,10 +1238,10 @@ impl Installer {
         archive: &mut zip::ZipArchive<R>,
         target: &Path,
         internal_root: Option<&str>,
-        ctx: &ProgressContext,
+        _ctx: &ProgressContext,
         password: Option<&[u8]>,
     ) -> Result<()> {
-        use std::sync::Arc;
+        
 
         let internal_root_normalized = internal_root.map(|s| s.replace('\\', "/"));
         let prefix = internal_root_normalized.as_deref();
@@ -1690,7 +1690,7 @@ impl Installer {
         backup_config_files: bool,
         config_file_patterns: &[String],
     ) -> Result<()> {
-        use tempfile::Builder;
+        
         use uuid::Uuid;
 
         // Step 1: Backup liveries and config files if requested

@@ -356,7 +356,7 @@ impl Scanner {
 
     /// Scan a 7z archive with context (supports nested archives via temp extraction)
     fn scan_7z_with_context(&self, archive_path: &Path, ctx: &mut ScanContext, password: Option<&str>) -> Result<Vec<DetectedItem>> {
-        use tempfile::Builder;
+        
 
         // First, scan the archive normally for direct addon markers
         let mut detected = self.scan_7z(archive_path, password)?;
@@ -587,7 +587,7 @@ impl Scanner {
 
     /// Scan a RAR archive with context (supports nested archives via temp extraction)
     fn scan_rar_with_context(&self, archive_path: &Path, ctx: &mut ScanContext, password: Option<&str>) -> Result<Vec<DetectedItem>> {
-        use tempfile::Builder;
+        
 
         // First, scan the archive normally for direct addon markers
         let mut detected = self.scan_rar(archive_path, password)?;
@@ -1211,7 +1211,7 @@ impl Scanner {
                     }
                     Err(e) => {
                         // Check if it's a password error for nested archive
-                        if let Some(pwd_err) = e.downcast_ref::<PasswordRequiredError>() {
+                        if let Some(_pwd_err) = e.downcast_ref::<PasswordRequiredError>() {
                             // Convert to nested password error
                             return Err(anyhow::anyhow!(NestedPasswordRequiredError {
                                 parent_archive: zip_path.to_string_lossy().to_string(),
@@ -1242,7 +1242,7 @@ impl Scanner {
         parent_password: Option<&[u8]>,
         is_encrypted: bool,
     ) -> Result<Vec<DetectedItem>> {
-        use std::io::{Cursor, Read};
+        use std::io::Read;
 
         // Read nested archive into memory
         let mut nested_data = Vec::new();
@@ -1343,8 +1343,8 @@ impl Scanner {
         &self,
         archive: &mut zip::ZipArchive<std::io::Cursor<Vec<u8>>>,
         parent_path: &Path,
-        ctx: &mut ScanContext,
-        nested_path: &str,
+        _ctx: &mut ScanContext,
+        _nested_path: &str,
     ) -> Result<Vec<DetectedItem>> {
         let mut detected = Vec::new();
 
@@ -1431,7 +1431,7 @@ impl Scanner {
         &self,
         archive_data: Vec<u8>,
         format: &str,
-        parent_path: &Path,
+        _parent_path: &Path,
         ctx: &mut ScanContext,
     ) -> Result<Vec<DetectedItem>> {
         use tempfile::NamedTempFile;
