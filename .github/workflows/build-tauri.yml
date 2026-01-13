@@ -18,16 +18,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check if debug build
-        id: check_debug
+      - name: Check if fast build
+        id: check_fast
         shell: bash
         run: |
           if [[ "${{ github.event.head_commit.message }}" == *"dbuild"* ]]; then
-            echo "is_debug=true" >> $GITHUB_OUTPUT
-            echo "🚀 Debug build mode enabled (fast build)"
+            echo "is_fast=true" >> $GITHUB_OUTPUT
+            echo "🚀 Fast build mode enabled (optimized for speed)"
           else
-            echo "is_debug=false" >> $GITHUB_OUTPUT
-            echo "📦 Release build mode (optimized)"
+            echo "is_fast=false" >> $GITHUB_OUTPUT
+            echo "📦 Standard build mode (optimized for size)"
           fi
 
       - name: Setup Node.js
@@ -42,91 +42,91 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust dependencies (Debug mode)
-        if: steps.check_debug.outputs.is_debug == 'true'
+      - name: Cache Rust dependencies (Fast mode)
+        if: steps.check_fast.outputs.is_fast == 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: "v1-rust-debug"
-          shared-key: "debug-build"
+          prefix-key: "v1-rust-fast"
+          shared-key: "fast-build"
           cache-on-failure: true
           save-if: true
 
-      - name: Cache Rust dependencies (Release mode)
-        if: steps.check_debug.outputs.is_debug == 'false'
+      - name: Cache Rust dependencies (Standard mode)
+        if: steps.check_fast.outputs.is_fast == 'false'
         uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: "v1-rust-release"
-          shared-key: "release-build"
+          prefix-key: "v1-rust-standard"
+          shared-key: "standard-build"
           cache-on-failure: false
 
-      - name: Set debug build environment
-        if: steps.check_debug.outputs.is_debug == 'true'
+      - name: Set fast build environment
+        if: steps.check_fast.outputs.is_fast == 'true'
         shell: bash
         run: |
           # Enable incremental compilation for faster rebuilds
           echo "CARGO_INCREMENTAL=1" >> $GITHUB_ENV
-          # Use debug profile (much faster compilation)
-          echo "TAURI_BUILD_PROFILE=debug" >> $GITHUB_ENV
-          # Reduce optimization level for faster compilation
-          echo "CARGO_PROFILE_DEV_OPT_LEVEL=1" >> $GITHUB_ENV
-          # Use more codegen units for parallel compilation (max parallelism)
-          echo "CARGO_PROFILE_DEV_CODEGEN_UNITS=256" >> $GITHUB_ENV
-          # Disable LTO for faster linking
-          echo "CARGO_PROFILE_DEV_LTO=off" >> $GITHUB_ENV
-          # Keep debug symbols minimal
-          echo "CARGO_PROFILE_DEV_DEBUG=1" >> $GITHUB_ENV
-          # Use dynamic linking for faster builds
-          echo "RUSTFLAGS=-C prefer-dynamic" >> $GITHUB_ENV
-          echo "BUILD_MODE=debug" >> $GITHUB_ENV
+          # Use more codegen units for parallel compilation (faster build)
+          echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16" >> $GITHUB_ENV
+          # Use thin LTO instead of fat LTO (faster linking)
+          echo "CARGO_PROFILE_RELEASE_LTO=thin" >> $GITHUB_ENV
+          # Reduce optimization level slightly for faster compilation
+          echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=2" >> $GITHUB_ENV
+          # Still strip symbols
+          echo "CARGO_PROFILE_RELEASE_STRIP=symbols" >> $GITHUB_ENV
+          # Keep panic=abort
+          echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
+          echo "BUILD_MODE=fast" >> $GITHUB_ENV
 
-      - name: Set release build environment
-        if: steps.check_debug.outputs.is_debug == 'false'
+      - name: Set standard build environment
+        if: steps.check_fast.outputs.is_fast == 'false'
         shell: bash
         run: |
-          # Disable incremental for smaller artifacts
+          # Disable incremental for smaller artifacts and reproducibility
           echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
-          # Full optimization
-          echo "CARGO_PROFILE_RELEASE_LTO=fat" >> $GITHUB_ENV
+          # Single codegen unit for maximum optimization
           echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1" >> $GITHUB_ENV
+          # Fat LTO for maximum runtime performance
+          echo "CARGO_PROFILE_RELEASE_LTO=fat" >> $GITHUB_ENV
+          # Maximum optimization for best runtime performance
           echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=3" >> $GITHUB_ENV
+          # Strip symbols
           echo "CARGO_PROFILE_RELEASE_STRIP=symbols" >> $GITHUB_ENV
+          # Panic abort for smaller binary
           echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
-          echo "BUILD_MODE=release" >> $GITHUB_ENV
+          # Additional optimizations for maximum performance
+          echo "RUSTFLAGS=-C target-cpu=x86-64-v2" >> $GITHUB_ENV
+          echo "BUILD_MODE=standard" >> $GITHUB_ENV
 
-      - name: Build Tauri (Debug - Fast)
-        if: steps.check_debug.outputs.is_debug == 'true'
+      - name: Build Tauri (Fast)
+        if: steps.check_fast.outputs.is_fast == 'true'
         run: |
-          echo "🚀 Building in DEBUG mode for fast iteration..."
-          npm run tauri build -- --debug
-
-      - name: Build Tauri (Release - Optimized)
-        if: steps.check_debug.outputs.is_debug == 'false'
-        run: |
-          echo "📦 Building in RELEASE mode with full optimizations..."
+          echo "🚀 Building in FAST mode (incremental + thin LTO + parallel codegen)..."
           npm run tauri:build
 
-      - name: Rename EXE (Debug)
-        if: steps.check_debug.outputs.is_debug == 'true'
-        run: Rename-Item -Path "target/debug/xfastinstall.exe" -NewName "XFastInstall-debug.exe" -Force
+      - name: Build Tauri (Standard)
+        if: steps.check_fast.outputs.is_fast == 'false'
+        run: |
+          echo "📦 Building in STANDARD mode (fat LTO + single codegen unit)..."
+          npm run tauri:build
 
-      - name: Rename EXE (Release)
-        if: steps.check_debug.outputs.is_debug == 'false'
+      - name: Rename EXE
         run: Rename-Item -Path "target/release/xfastinstall.exe" -NewName "XFastInstall.exe" -Force
 
-      - name: Upload Debug Build
-        if: steps.check_debug.outputs.is_debug == 'true'
+      - name: Upload Fast Build
+        if: steps.check_fast.outputs.is_fast == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: XFastInstall-windows-debug
-          path: 'target/debug/XFastInstall-debug.exe'
+          name: XFastInstall-windows-fast
+          path: 'target/release/XFastInstall.exe'
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload Release Build
-        if: steps.check_debug.outputs.is_debug == 'false'
+      - name: Upload Standard Build
+        if: steps.check_fast.outputs.is_fast == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: XFastInstall-windows-portable
           path: 'target/release/XFastInstall.exe'
           if-no-files-found: error
+
 
