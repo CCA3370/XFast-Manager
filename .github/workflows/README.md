@@ -129,15 +129,58 @@ RUSTFLAGS=-C target-cpu=x86-64-v2      # Modern CPU instructions
 ## Cache Strategy
 
 ### Fast Mode Cache
-- **Prefix**: `v1-rust-fast`
-- **Shared key**: `fast-build`
+- **Prefix**: `v2-rust-fast`
+- **Cache key**: Based on `Cargo.lock` hash
 - **Cache on failure**: Yes (to speed up retry builds)
 - **Save always**: Yes
+- **Cached directories**:
+  - `~/.cargo/bin/` - Cargo binaries
+  - `~/.cargo/registry/` - Downloaded crates
+  - `~/.cargo/git/` - Git dependencies
+  - `target/` - Build artifacts and incremental compilation data
 
 ### Production Mode Cache
-- **Prefix**: `v1-rust-standard`
-- **Shared key**: `standard-build`
+- **Prefix**: `v2-rust-standard`
+- **Cache key**: Based on `Cargo.lock` hash
 - **Cache on failure**: No (avoid caching broken builds)
+- **Cached directories**: Same as fast mode
+
+### How Incremental Compilation Works
+
+When `CARGO_INCREMENTAL=1` is enabled (fast mode only):
+
+1. **First build**: Compiles everything from scratch, saves incremental data to `target/release/incremental/`
+2. **Second build**: Reuses unchanged compilation units, only recompiles modified code
+3. **Cache restoration**: GitHub Actions restores the entire `target/` directory from cache
+4. **Speed improvement**: ~50-70% faster for small changes
+
+### Verifying Cache is Working
+
+Check the build logs for these indicators:
+
+```
+🔍 Checking cache status...
+✅ Incremental cache found!
+✅ Build cache found!
+📦 Cached crates: 150
+```
+
+If you see "No incremental cache found", it's the first build or cache was cleared.
+
+### Cache Invalidation
+
+Cache is automatically invalidated when:
+- `Cargo.lock` changes (new dependencies)
+- Switching between fast/standard modes (different prefix keys)
+- Manual cache deletion in GitHub Actions UI
+
+### Cache Size
+
+Typical cache sizes:
+- **Fast mode**: ~500-800 MB (includes incremental data)
+- **Standard mode**: ~300-500 MB (no incremental data)
+
+GitHub Actions provides 10 GB of cache storage per repository.
 
 ---
 
@@ -208,13 +251,41 @@ For typical operations in XFastInstall:
 
 ## Troubleshooting
 
+### Cache Not Working / Slow Builds
+
+If fast builds are not using cache properly:
+
+1. **Check cache logs**: Look for "Cache restored" messages in the workflow logs
+2. **Verify cache key**: Ensure `Cargo.lock` hasn't changed
+3. **Check cache size**: Go to **Actions** → **Caches** to see stored caches
+4. **Clear old caches**: Delete caches with prefix `v1-rust-*` (old version)
+5. **Force rebuild**: Delete all caches and push a new commit
+
+**Expected behavior**:
+- First `dbuild` commit: ~10-15 minutes (no cache)
+- Second `dbuild` commit: ~5-8 minutes (with cache)
+- Third `dbuild` commit: ~3-5 minutes (with incremental cache)
+
 ### Cache Issues
 
 If builds are slower than expected, clear the cache:
 
 1. Go to **Actions** → **Caches**
-2. Delete caches with prefix `v1-rust-fast` or `v1-rust-standard`
+2. Delete caches with prefix `v2-rust-fast` or `v2-rust-standard`
 3. Push a new commit to rebuild cache
+
+### Incremental Compilation Not Working
+
+Check the build logs for:
+```
+✅ Fast build environment configured
+📊 Incremental: ON, Codegen units: 16, LTO: thin, Opt-level: 2
+```
+
+If you see this but builds are still slow:
+1. Check if `Cargo.lock` changed (invalidates cache)
+2. Check if you switched from standard to fast mode (different cache)
+3. Verify `target/release/incremental/` exists in cache logs
 
 ### Fast Build Not Triggered
 
@@ -230,6 +301,13 @@ git commit -m "fix: issue"
 ### Build Artifacts Not Found
 
 Both modes output to `target/release/XFastInstall.exe`
+
+### Cache Size Too Large
+
+If cache exceeds GitHub's 10 GB limit:
+1. Delete old caches manually
+2. Consider using `cargo clean` before caching
+3. Exclude unnecessary directories from cache
 
 ---
 
