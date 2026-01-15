@@ -176,6 +176,31 @@
                 <p class="text-xs text-center text-gray-500 dark:text-gray-400 progress-text">
                   {{ $t('home.taskProgress', { current: progressStore.formatted.taskProgress }) }}
                 </p>
+
+                <!-- Task Control Buttons -->
+                <div class="flex justify-center gap-3 mt-4">
+                  <!-- Skip Button -->
+                  <button
+                    @click="handleSkipTask"
+                    class="px-4 py-2 bg-yellow-500/10 hover:bg-yellow-500/20 dark:bg-yellow-500/20 dark:hover:bg-yellow-500/30 text-yellow-700 dark:text-yellow-400 text-sm font-medium rounded-lg transition-all duration-200 border border-yellow-500/30 hover:border-yellow-500/50 flex items-center gap-2 shadow-sm hover:shadow-md"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path>
+                    </svg>
+                    <AnimatedText>{{ $t('taskControl.skipTask') }}</AnimatedText>
+                  </button>
+
+                  <!-- Cancel Button -->
+                  <button
+                    @click="handleCancelInstallation"
+                    class="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 dark:bg-red-500/20 dark:hover:bg-red-500/30 text-red-700 dark:text-red-400 text-sm font-medium rounded-lg transition-all duration-200 border border-red-500/30 hover:border-red-500/50 flex items-center gap-2 shadow-sm hover:shadow-md"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                    <AnimatedText>{{ $t('taskControl.cancelAll') }}</AnimatedText>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -666,7 +691,9 @@ async function handleInstall() {
     }
 
     const result = await invoke<InstallResult>('install_addons', {
-      tasks: tasksWithOverwrite
+      tasks: tasksWithOverwrite,
+      atomicInstallEnabled: store.atomicInstallEnabled,
+      xplanePath: store.xplanePath
     })
 
     // Log results
@@ -703,6 +730,85 @@ async function handleInstall() {
     store.isInstalling = false
     progressStore.reset()
   }
+}
+
+// Handle skip current task
+async function handleSkipTask() {
+  const confirmed = await showConfirmDialog({
+    title: t('taskControl.skipConfirmTitle'),
+    message: t('taskControl.skipConfirmMessage'),
+    warning: t('taskControl.skipWarningClean'),
+    confirmText: t('taskControl.confirmSkip'),
+    cancelText: t('common.cancel'),
+    type: 'warning'
+  })
+
+  if (confirmed) {
+    try {
+      await invoke('skip_current_task')
+      toastStore.add({
+        type: 'info',
+        message: t('taskControl.taskSkipped')
+      })
+    } catch (error) {
+      console.error('Failed to skip task:', error)
+      toastStore.add({
+        type: 'error',
+        message: String(error)
+      })
+    }
+  }
+}
+
+// Handle cancel all tasks
+async function handleCancelInstallation() {
+  const confirmed = await showConfirmDialog({
+    title: t('taskControl.cancelConfirmTitle'),
+    message: t('taskControl.cancelConfirmMessage'),
+    warning: t('taskControl.cancelWarningClean'),
+    confirmText: t('taskControl.confirmCancel'),
+    cancelText: t('common.cancel'),
+    type: 'danger'
+  })
+
+  if (confirmed) {
+    try {
+      await invoke('cancel_installation')
+      toastStore.add({
+        type: 'info',
+        message: t('taskControl.tasksCancelled')
+      })
+    } catch (error) {
+      console.error('Failed to cancel installation:', error)
+      toastStore.add({
+        type: 'error',
+        message: String(error)
+      })
+    }
+  }
+}
+
+// Show confirm dialog helper
+function showConfirmDialog(options: {
+  title: string
+  message: string
+  warning?: string
+  confirmText: string
+  cancelText: string
+  type: 'warning' | 'danger'
+}): Promise<boolean> {
+  return new Promise((resolve) => {
+    modalStore.showConfirm({
+      title: options.title,
+      message: options.message,
+      warning: options.warning,
+      confirmText: options.confirmText,
+      cancelText: options.cancelText,
+      type: options.type,
+      onConfirm: () => resolve(true),
+      onCancel: () => resolve(false)
+    })
+  })
 }
 
 function handleCompletionConfirm() {

@@ -294,6 +294,96 @@
         </section>
       </div>
 
+      <!-- 2.5. Atomic Installation Mode -->
+      <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
+        <div
+          class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
+          @click="atomicExpanded = !atomicExpanded"
+        >
+          <div class="flex items-center space-x-3 flex-1">
+            <div class="w-8 h-8 bg-indigo-100 dark:bg-indigo-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-indigo-600 dark:text-indigo-400">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+              </svg>
+            </div>
+            <div class="flex-1">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                <AnimatedText>{{ $t('settings.atomicInstallTitle') }}</AnimatedText>
+              </h3>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                <AnimatedText>{{ $t('settings.atomicInstallDesc') }}</AnimatedText>
+              </p>
+            </div>
+          </div>
+
+          <!-- Toggle Switch -->
+          <div class="flex items-center space-x-3">
+            <button
+              @click.stop="store.toggleAtomicInstall()"
+              class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+              :class="store.atomicInstallEnabled ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'"
+            >
+              <span
+                class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                :class="store.atomicInstallEnabled ? 'translate-x-4.5' : 'translate-x-0.5'"
+              ></span>
+            </button>
+
+            <!-- Expand/Collapse indicator -->
+            <svg
+              class="w-5 h-5 text-gray-400 transition-transform duration-200"
+              :class="{ 'rotate-180': atomicExpanded }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Expanded content -->
+        <transition name="expand">
+          <div v-if="atomicExpanded" class="px-4 pb-4 space-y-3">
+            <div class="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-200 dark:border-indigo-500/20 rounded-lg p-3 space-y-2">
+              <h4 class="text-xs font-semibold text-indigo-900 dark:text-indigo-300">
+                <AnimatedText>{{ $t('settings.atomicInstallExplain') }}</AnimatedText>
+              </h4>
+              <ul class="text-xs text-indigo-800 dark:text-indigo-200 space-y-1.5">
+                <li class="flex items-start space-x-2">
+                  <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                  <span><AnimatedText>{{ $t('settings.atomicInstallBenefit1') }}</AnimatedText></span>
+                </li>
+                <li class="flex items-start space-x-2">
+                  <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                  <span><AnimatedText>{{ $t('settings.atomicInstallBenefit2') }}</AnimatedText></span>
+                </li>
+                <li class="flex items-start space-x-2">
+                  <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                  <span><AnimatedText>{{ $t('settings.atomicInstallBenefit3') }}</AnimatedText></span>
+                </li>
+                <li class="flex items-start space-x-2">
+                  <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                  <span><AnimatedText>{{ $t('settings.atomicInstallBenefit4') }}</AnimatedText></span>
+                </li>
+              </ul>
+            </div>
+
+            <p class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20">
+              <AnimatedText>{{ $t('settings.atomicInstallNote') }}</AnimatedText>
+            </p>
+          </div>
+        </transition>
+      </section>
+
       <!-- 3. Aircraft Backup Configuration -->
       <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
           <div
@@ -551,6 +641,7 @@ const patternErrors = ref<Record<number, string>>({})
 const backupExpanded = ref(false)
 const preferencesExpanded = ref(false) // Default collapsed
 const verificationExpanded = ref(false) // Default collapsed
+const atomicExpanded = ref(false) // Default collapsed
 const patternSaveStatus = ref<'saving' | 'saved' | null>(null)
 
 const addonTypes = [AddonType.Aircraft, AddonType.Scenery, AddonType.SceneryLibrary, AddonType.Plugin, AddonType.Navdata]

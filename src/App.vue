@@ -85,6 +85,7 @@
     <!-- Global Components -->
     <ToastNotification />
     <ErrorModal />
+    <ConfirmModal />
   </div>
 </template>
 
@@ -101,6 +102,7 @@ import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 import ThemeSwitcher from '@/components/ThemeSwitcher.vue'
 import AnimatedText from '@/components/AnimatedText.vue'
 import ErrorModal from '@/components/ErrorModal.vue'
+import ConfirmModal from '@/components/ConfirmModal.vue'
 
 const { t } = useI18n()
 const store = useAppStore()

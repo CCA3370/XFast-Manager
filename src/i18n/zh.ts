@@ -121,6 +121,15 @@ export default {
     experimentalWarning: '⚠️ 这些功能可能导致系统不稳定或性能下降，请根据实际情况测试',
     currentCpuCores: '当前CPU核心数',
     estimatedThreads: '预计使用线程数',
+    atomicInstall: '原子安装模式',
+    atomicInstallDesc: '启用后，安装过程将更加安全可靠',
+    atomicInstallTitle: '原子安装模式',
+    atomicInstallExplain: '原子安装模式说明',
+    atomicInstallBenefit1: '先将文件解压/复制到临时目录',
+    atomicInstallBenefit2: '使用原子操作移动文件，确保操作完整性',
+    atomicInstallBenefit3: '如果安装失败，原有文件不会损坏',
+    atomicInstallBenefit4: '对于覆盖安装，会保留旧���件直到新文件完全就绪',
+    atomicInstallNote: '注意：原子安装需要更多磁盘空间（临时目录）'
   },
   modal: {
     confirmInstallation: '确认安装',
@@ -189,6 +198,27 @@ export default {
     passwordCanceled: '用户取消密码输入',
     passwordMaxRetries: '密码尝试次数已达上限'
   },
+  taskControl: {
+    skipTask: '跳过当前任务',
+    cancelAll: '取消所有任务',
+    confirmSkip: '确认跳过',
+    confirmCancel: '确认取消',
+    skipWarning: '跳过此任务将导致原有文件丢失',
+    cancelWarning: '取消任务将导致部分原有文件丢失',
+    skipWarningClean: '⚠️ 跳过此任务将导致原有文件丢失',
+    cancelWarningClean: '⚠️ 取消任务将导致部分原有文件丢失',
+    skipConfirmTitle: '确认跳过任务',
+    cancelConfirmTitle: '确认取消所有任务',
+    skipConfirmMessage: '确定要跳过当前任务吗？',
+    cancelConfirmMessage: '确定要取消所有剩余任务吗？',
+    currentTask: '当前任务',
+    remainingTasks: '剩余任务',
+    cleanupInProgress: '正在清理已处理的文件...',
+    taskSkipped: '任务已跳过',
+    tasksCancelled: '任务已取消',
+    filesWillBeDeleted: '已处理的文件将被删除',
+    originalFilesWarning: '如果是干净安装或覆盖安装，原有文件可能已被删除'
+  },
   completion: {
     allSuccess: '安装完成',
     partialSuccess: '安装完成（部分失败）',
@@ -205,6 +235,8 @@ export default {
     fileNotFound: '文件未找到',
     passwordError: '密码错误',
     extractionFailed: '解压失败',
-    networkError: '网络错误'
+    networkError: '网络错误',
+    cancelledByUser: '用户取消',
+    skippedByUser: '用户跳过'
   }
 }

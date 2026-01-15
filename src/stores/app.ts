@@ -45,6 +45,9 @@ export const useAppStore = defineStore('app', () => {
     directory: true,
   })
 
+  // Atomic installation mode (default: disabled)
+  const atomicInstallEnabled = ref(false)
+
   // Overwrite settings per task (taskId -> shouldOverwrite)
   const overwriteSettings = ref<Record<string, boolean>>({})
 
@@ -148,6 +151,17 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  // Load atomic install setting
+  const savedAtomicInstall = localStorage.getItem('atomicInstallEnabled')
+  if (savedAtomicInstall !== null) {
+    try {
+      atomicInstallEnabled.value = JSON.parse(savedAtomicInstall)
+    } catch (e) {
+      console.error('Failed to parse atomic install setting, using default', e)
+      localStorage.removeItem('atomicInstallEnabled')
+    }
+  }
+
   function setXplanePath(path: string) {
     xplanePath.value = path
     localStorage.setItem('xplanePath', path)
@@ -169,6 +183,11 @@ export const useAppStore = defineStore('app', () => {
   function toggleVerificationPreference(sourceType: string) {
     verificationPreferences.value[sourceType] = !verificationPreferences.value[sourceType]
     localStorage.setItem('verificationPreferences', JSON.stringify(verificationPreferences.value))
+  }
+
+  function toggleAtomicInstall() {
+    atomicInstallEnabled.value = !atomicInstallEnabled.value
+    localStorage.setItem('atomicInstallEnabled', JSON.stringify(atomicInstallEnabled.value))
   }
 
   function setLogLevel(level: LogLevel) {
@@ -353,6 +372,7 @@ export const useAppStore = defineStore('app', () => {
     isInstalling,
     installPreferences,
     verificationPreferences,
+    atomicInstallEnabled,
     logLevel,
     overwriteSettings,
     sizeConfirmations,
@@ -369,6 +389,7 @@ export const useAppStore = defineStore('app', () => {
     loadXplanePath,
     togglePreference,
     toggleVerificationPreference,
+    toggleAtomicInstall,
     setLogLevel,
     setCurrentTasks,
     clearTasks,

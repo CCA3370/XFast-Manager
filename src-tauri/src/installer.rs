@@ -6,11 +6,12 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::logger;
 use crate::logger::{tr, LogMsg};
 use crate::models::{AddonType, InstallPhase, InstallProgress, InstallResult, InstallTask, TaskResult};
+use crate::task_control::TaskControl;
 
 /// Maximum allowed extraction size (20 GB) - archives larger than this will show a warning
 pub const MAX_EXTRACTION_SIZE: u64 = 20 * 1024 * 1024 * 1024;
@@ -297,30 +298,38 @@ impl ProgressContext {
 
 pub struct Installer {
     app_handle: AppHandle,
+    task_control: TaskControl,
 }
 
 impl Installer {
     pub fn new(app_handle: AppHandle) -> Self {
-        Installer { app_handle }
+        // Get TaskControl from app state
+        let task_control = app_handle.state::<TaskControl>().inner().clone();
+        Installer { app_handle, task_control }
     }
 
     /// Install a list of tasks with progress reporting
-    pub fn install(&self, tasks: Vec<InstallTask>) -> Result<InstallResult> {
+    pub fn install(&self, tasks: Vec<InstallTask>, atomic_install_enabled: bool, xplane_path: String) -> Result<InstallResult> {
         let install_start = Instant::now();
         crate::log_debug!(
-            &format!("[TIMING] Installation started: {} tasks", tasks.len()),
+            &format!("[TIMING] Installation started: {} tasks (atomic: {})", tasks.len(), atomic_install_enabled),
             "installer_timing"
         );
 
         logger::log_info(
-            &format!("{}: {} task(s)", tr(LogMsg::InstallationStarted), tasks.len()),
+            &format!("{}: {} task(s) (atomic mode: {})", tr(LogMsg::InstallationStarted), tasks.len(), atomic_install_enabled),
             Some("installer"),
         );
+
+        // Reset task control at start of installation
+        self.task_control.reset();
 
         let mut ctx = ProgressContext::new(self.app_handle.clone(), tasks.len());
         let mut task_results = Vec::new();
         let mut successful = 0;
         let mut failed = 0;
+        let mut cancelled = 0;
+        let mut skipped = 0;
 
         // Phase 1: Calculate total size
         let calc_start = Instant::now();
@@ -348,6 +357,24 @@ impl Installer {
         );
 
         for (index, task) in tasks.iter().enumerate() {
+            // Check for cancellation before starting each task
+            if self.task_control.is_cancelled() {
+                logger::log_info("Installation cancelled by user", Some("installer"));
+
+                // Mark remaining tasks as cancelled
+                for remaining_task in tasks.iter().skip(index) {
+                    cancelled += 1;
+                    task_results.push(TaskResult {
+                        task_id: remaining_task.id.clone(),
+                        task_name: remaining_task.display_name.clone(),
+                        success: false,
+                        error_message: Some("Cancelled by user".to_string()),
+                        verification_stats: None,
+                    });
+                }
+                break;
+            }
+
             let task_start = Instant::now();
             crate::log_debug!(
                 &format!("[TIMING] Task {} started: {}", index + 1, task.display_name),
@@ -363,8 +390,40 @@ impl Installer {
                 Some("installer"),
             );
 
-            match self.install_task_with_progress(task, &ctx) {
+            // Track target path for potential cleanup
+            self.task_control.add_processed_path(PathBuf::from(&task.target_path));
+
+            match self.install_task_with_progress(task, &ctx, atomic_install_enabled, &xplane_path) {
                 Ok(_) => {
+                    // Check for skip request after installation but before verification
+                    if self.task_control.is_skip_requested() {
+                        logger::log_info(
+                            &format!("Task skipped by user: {}", task.display_name),
+                            Some("installer")
+                        );
+
+                        // Cleanup the installed files
+                        if let Err(e) = self.cleanup_task(task) {
+                            logger::log_error(
+                                &format!("Failed to cleanup skipped task: {}", e),
+                                Some("installer")
+                            );
+                        }
+
+                        skipped += 1;
+                        task_results.push(TaskResult {
+                            task_id: task.id.clone(),
+                            task_name: task.display_name.clone(),
+                            success: false,
+                            error_message: Some("Skipped by user".to_string()),
+                            verification_stats: None,
+                        });
+
+                        // Reset skip flag for next task
+                        self.task_control.reset_skip();
+                        continue;
+                    }
+
                     crate::log_debug!(
                         &format!("[TIMING] Task {} installation completed in {:.2}ms: {}",
                             index + 1,
@@ -480,10 +539,12 @@ impl Installer {
         }
 
         crate::log_debug!(
-            &format!("[TIMING] Installation phase completed in {:.2}ms: {} successful, {} failed",
+            &format!("[TIMING] Installation phase completed in {:.2}ms: {} successful, {} failed, {} skipped, {} cancelled",
                 install_phase_start.elapsed().as_secs_f64() * 1000.0,
                 successful,
-                failed
+                failed,
+                skipped,
+                cancelled
             ),
             "installer_timing"
         );
@@ -500,11 +561,13 @@ impl Installer {
         );
 
         crate::log_debug!(
-            &format!("[TIMING] Installation completed in {:.2}ms: {} total tasks, {} successful, {} failed",
+            &format!("[TIMING] Installation completed in {:.2}ms: {} total tasks, {} successful, {} failed, {} skipped, {} cancelled",
                 install_start.elapsed().as_secs_f64() * 1000.0,
                 tasks.len(),
                 successful,
-                failed
+                failed,
+                skipped,
+                cancelled
             ),
             "installer_timing"
         );
@@ -512,7 +575,7 @@ impl Installer {
         Ok(InstallResult {
             total_tasks: tasks.len(),
             successful_tasks: successful,
-            failed_tasks: failed,
+            failed_tasks: failed + skipped + cancelled,
             task_results,
         })
     }
@@ -1314,7 +1377,7 @@ impl Installer {
     }
 
     /// Install a single task with progress tracking
-    fn install_task_with_progress(&self, task: &InstallTask, ctx: &ProgressContext) -> Result<()> {
+    fn install_task_with_progress(&self, task: &InstallTask, ctx: &ProgressContext, atomic_install_enabled: bool, xplane_path: &str) -> Result<()> {
         let source = Path::new(&task.source_path);
         let target = Path::new(&task.target_path);
         let password = task.password.as_deref();
@@ -1339,7 +1402,7 @@ impl Installer {
                 "installer_timing"
             );
 
-            // Nested archive: use recursive extraction
+            // Nested archive: use recursive extraction (no atomic install for nested archives)
             if !task.should_overwrite && target.exists() {
                 // Clean install mode for nested archives
                 crate::log_debug!(
@@ -1355,8 +1418,15 @@ impl Installer {
                 );
                 self.install_content_with_extraction_chain(source, target, chain, ctx, password)?;
             }
+        } else if atomic_install_enabled {
+            // Atomic installation mode
+            crate::log_debug!(
+                "[TIMING] Using atomic installation mode",
+                "installer_timing"
+            );
+            self.install_task_atomic(task, source, target, ctx, password, xplane_path)?;
         } else {
-            // Regular installation (non-nested)
+            // Regular installation (non-nested, non-atomic)
             if !task.should_overwrite && target.exists() {
                 crate::log_debug!(
                     "[TIMING] Clean install mode for regular archive",
@@ -3097,6 +3167,100 @@ impl Installer {
         self.copy_directory_with_progress(&source_path, target, ctx)?;
 
         // TempDir automatically cleans up when dropped
+        Ok(())
+    }
+
+    /// Cleanup a task by removing its target directory
+    /// Used when a task is cancelled or skipped
+    fn cleanup_task(&self, task: &InstallTask) -> Result<()> {
+        let target = Path::new(&task.target_path);
+
+        if !target.exists() {
+            return Ok(());
+        }
+
+        logger::log_info(
+            &format!("Cleaning up task: {}", task.display_name),
+            Some("installer")
+        );
+
+        // For Navdata, we should NOT delete the entire Custom Data folder
+        // Just log a warning
+        if matches!(task.addon_type, AddonType::Navdata) {
+            logger::log_info(
+                "Navdata cleanup skipped - Custom Data folder preserved",
+                Some("installer")
+            );
+            return Ok(());
+        }
+
+        // For other types, delete the target directory
+        remove_dir_all_robust(target)
+            .context(format!("Failed to cleanup task directory: {:?}", target))?;
+
+        logger::log_info(
+            &format!("Cleanup completed: {}", task.display_name),
+            Some("installer")
+        );
+
+        Ok(())
+    }
+
+    /// Install a task using atomic installation mode
+    fn install_task_atomic(
+        &self,
+        task: &InstallTask,
+        source: &Path,
+        target: &Path,
+        ctx: &ProgressContext,
+        password: Option<&str>,
+        xplane_path: &str,
+    ) -> Result<()> {
+        use crate::atomic_installer::AtomicInstaller;
+
+        // Use X-Plane root path directly from settings
+        let xplane_root = Path::new(xplane_path);
+
+        // Create atomic installer with X-Plane root and progress context
+        let mut atomic = AtomicInstaller::new(
+            target,
+            xplane_root,
+            self.app_handle.clone(),
+            ctx.total_tasks,
+            ctx.current_task_index,
+        )?;
+
+        // Step 1: Extract/copy to temp directory
+        logger::log_info(
+            &format!("Atomic install: Extracting to temp directory: {:?}", atomic.temp_dir()),
+            Some("installer")
+        );
+
+        self.install_content_with_progress(
+            source,
+            atomic.temp_dir(),
+            task.archive_internal_root.as_deref(),
+            ctx,
+            password
+        )?;
+
+        // Step 2: Perform atomic installation based on scenario
+        if !target.exists() {
+            // Scenario 1: Fresh installation
+            atomic.install_fresh()?;
+        } else if !task.should_overwrite {
+            // Scenario 2: Clean installation (should_overwrite=false means clean install)
+            atomic.install_clean(task)?;
+        } else {
+            // Scenario 3: Overwrite installation (should_overwrite=true means merge)
+            atomic.install_overwrite()?;
+        }
+
+        logger::log_info(
+            "Atomic installation completed successfully",
+            Some("installer")
+        );
+
         Ok(())
     }
 }

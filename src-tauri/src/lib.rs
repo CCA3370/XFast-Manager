@@ -1,4 +1,5 @@
 mod analyzer;
+mod atomic_installer;
 mod cache;
 mod hash_collector;
 mod installer;
@@ -7,6 +8,7 @@ mod models;
 mod performance;
 mod registry;
 mod scanner;
+mod task_control;
 mod verifier;
 
 use std::collections::HashMap;
@@ -14,8 +16,9 @@ use std::collections::HashMap;
 use analyzer::Analyzer;
 use installer::Installer;
 use models::{AnalysisResult, InstallResult, InstallTask};
+use task_control::TaskControl;
 
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, State};
 
 #[tauri::command]
 fn get_cli_args() -> Vec<String> {
@@ -47,7 +50,12 @@ async fn analyze_addons(
 }
 
 #[tauri::command]
-async fn install_addons(app_handle: tauri::AppHandle, tasks: Vec<InstallTask>) -> Result<InstallResult, String> {
+async fn install_addons(
+    app_handle: tauri::AppHandle,
+    tasks: Vec<InstallTask>,
+    atomic_install_enabled: Option<bool>,
+    xplane_path: String,
+) -> Result<InstallResult, String> {
     // Clone app_handle for the blocking task
     let app_handle_clone = app_handle.clone();
 
@@ -57,11 +65,25 @@ async fn install_addons(app_handle: tauri::AppHandle, tasks: Vec<InstallTask>) -
 
         let installer = Installer::new(app_handle_clone);
         installer
-            .install(tasks)
+            .install(tasks, atomic_install_enabled.unwrap_or(false), xplane_path)
             .map_err(|e| format!("Installation failed: {}", e))
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn cancel_installation(task_control: State<'_, TaskControl>) -> Result<(), String> {
+    task_control.request_cancel_all();
+    logger::log_info("Installation cancellation requested", Some("task_control"));
+    Ok(())
+}
+
+#[tauri::command]
+async fn skip_current_task(task_control: State<'_, TaskControl>) -> Result<(), String> {
+    task_control.request_skip_current();
+    logger::log_info("Current task skip requested", Some("task_control"));
+    Ok(())
 }
 
 #[tauri::command]
@@ -211,6 +233,8 @@ pub fn run() {
             get_platform,
             analyze_addons,
             install_addons,
+            cancel_installation,
+            skip_current_task,
             register_context_menu,
             unregister_context_menu,
             is_context_menu_registered,
@@ -224,6 +248,9 @@ pub fn run() {
             validate_xplane_path
         ])
         .setup(|app| {
+            // Initialize TaskControl state
+            app.manage(TaskControl::new());
+
             // Log application startup
             logger::log_info(&logger::tr(logger::LogMsg::AppStarted), Some("app"));
 

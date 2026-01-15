@@ -2,8 +2,23 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { logger } from '@/services/logger'
 
+interface ConfirmOptions {
+  title: string
+  message: string
+  warning?: string
+  confirmText: string
+  cancelText: string
+  type: 'warning' | 'danger'
+  onConfirm: () => void
+  onCancel: () => void
+}
+
 export const useModalStore = defineStore('modal', () => {
   const errorModal = ref({ visible: false, title: '', message: '' })
+  const confirmModal = ref<{
+    visible: boolean
+    options: ConfirmOptions | null
+  }>({ visible: false, options: null })
 
   function showError(message: string, title = '') {
     // Deduplicate error messages by splitting on newlines and removing duplicates
@@ -20,5 +35,37 @@ export const useModalStore = defineStore('modal', () => {
     errorModal.value.visible = false
   }
 
-  return { errorModal, showError, closeError }
+  function showConfirm(options: ConfirmOptions) {
+    confirmModal.value = { visible: true, options }
+  }
+
+  function closeConfirm() {
+    confirmModal.value.visible = false
+    confirmModal.value.options = null
+  }
+
+  function confirmAction() {
+    if (confirmModal.value.options?.onConfirm) {
+      confirmModal.value.options.onConfirm()
+    }
+    closeConfirm()
+  }
+
+  function cancelAction() {
+    if (confirmModal.value.options?.onCancel) {
+      confirmModal.value.options.onCancel()
+    }
+    closeConfirm()
+  }
+
+  return {
+    errorModal,
+    showError,
+    closeError,
+    confirmModal,
+    showConfirm,
+    closeConfirm,
+    confirmAction,
+    cancelAction
+  }
 })

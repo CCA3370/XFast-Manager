@@ -5615,6 +5615,7 @@ dependencies = [
  "dashmap",
  "dirs 5.0.1",
  "glob",
+ "libc",
  "once_cell",
  "rayon",
  "serde",
@@ -5631,6 +5632,7 @@ dependencies = [
  "unrar",
  "uuid",
  "walkdir",
+ "winapi",
  "winreg 0.52.0",
  "zip",
 ]

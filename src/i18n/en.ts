@@ -108,6 +108,15 @@ export default {
     verifyRar: 'RAR Archives',
     verifyDirectory: 'Directories',
     rarVerificationNote: 'RAR format verification not supported (library limitation)',
+    atomicInstall: 'Atomic Installation Mode',
+    atomicInstallDesc: 'When enabled, the installation process will be safer and more reliable',
+    atomicInstallTitle: 'Atomic Installation Mode',
+    atomicInstallExplain: 'Atomic Installation Mode Explanation',
+    atomicInstallBenefit1: 'Extract/copy files to temporary directory first',
+    atomicInstallBenefit2: 'Use atomic operations to move files, ensuring operation integrity',
+    atomicInstallBenefit3: 'If installation fails, original files will not be corrupted',
+    atomicInstallBenefit4: 'For overwrite installations, old files are kept until new files are fully ready',
+    atomicInstallNote: 'Note: Atomic installation requires more disk space (temporary directory)'
   },
   modal: {
     confirmInstallation: 'Confirm Installation',
@@ -176,6 +185,27 @@ export default {
     passwordCanceled: 'User canceled password input',
     passwordMaxRetries: 'Maximum password attempts exceeded'
   },
+  taskControl: {
+    skipTask: 'Skip Current Task',
+    cancelAll: 'Cancel All Tasks',
+    confirmSkip: 'Confirm Skip',
+    confirmCancel: 'Confirm Cancel',
+    skipWarning: 'Skipping this task will cause original files to be lost',
+    cancelWarning: 'Cancelling tasks will cause some original files to be lost',
+    skipWarningClean: '⚠️ Skipping this task will cause original files to be lost',
+    cancelWarningClean: '⚠️ Cancelling tasks will cause some original files to be lost',
+    skipConfirmTitle: 'Confirm Skip Task',
+    cancelConfirmTitle: 'Confirm Cancel All Tasks',
+    skipConfirmMessage: 'Are you sure you want to skip the current task?',
+    cancelConfirmMessage: 'Are you sure you want to cancel all remaining tasks?',
+    currentTask: 'Current Task',
+    remainingTasks: 'Remaining Tasks',
+    cleanupInProgress: 'Cleaning up processed files...',
+    taskSkipped: 'Task Skipped',
+    tasksCancelled: 'Tasks Cancelled',
+    filesWillBeDeleted: 'Processed files will be deleted',
+    originalFilesWarning: 'If this is a clean install or overwrite, original files may have been deleted'
+  },
   completion: {
     allSuccess: 'Installation Complete',
     partialSuccess: 'Installation Complete (Partial Failure)',
@@ -192,6 +222,8 @@ export default {
     fileNotFound: 'File Not Found',
     passwordError: 'Password Error',
     extractionFailed: 'Extraction Failed',
-    networkError: 'Network Error'
+    networkError: 'Network Error',
+    cancelledByUser: 'Cancelled by User',
+    skippedByUser: 'Skipped by User'
   }
 }
