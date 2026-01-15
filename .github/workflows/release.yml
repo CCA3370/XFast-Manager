@@ -111,6 +111,8 @@ jobs:
     name: Build and Release
     needs: prepare-release
     runs-on: windows-latest
+    permissions:
+      contents: write
     
     steps:
       - name: Checkout
