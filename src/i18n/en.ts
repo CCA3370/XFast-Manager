@@ -116,7 +116,7 @@ export default {
     atomicInstallBenefit2: 'Use atomic operations to move files, ensuring operation integrity',
     atomicInstallBenefit3: 'If installation fails, original files will not be corrupted',
     atomicInstallBenefit4: 'For overwrite installations, old files are kept until new files are fully ready',
-    atomicInstallNote: 'Note: Atomic installation requires more disk space (temporary directory)'
+    atomicInstallNote: 'Note: Atomic installation requires more disk space (temporary directory) and may slightly impact installation speed'
   },
   modal: {
     confirmInstallation: 'Confirm Installation',

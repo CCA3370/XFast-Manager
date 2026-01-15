@@ -128,8 +128,8 @@ export default {
     atomicInstallBenefit1: '先将文件解压/复制到临时目录',
     atomicInstallBenefit2: '使用原子操作移动文件，确保操作完整性',
     atomicInstallBenefit3: '如果安装失败，原有文件不会损坏',
-    atomicInstallBenefit4: '对于覆盖安装，会保留旧���件直到新文件完全就绪',
-    atomicInstallNote: '注意：原子安装需要更多磁盘空间（临时目录）'
+    atomicInstallBenefit4: '对于覆盖安装，会保留原始文件直到新文件完全就绪',
+    atomicInstallNote: '注意：原子安装需要更多磁盘空间（临时目录），并可能对安装速度稍有影响'
   },
   modal: {
     confirmInstallation: '确认安装',
