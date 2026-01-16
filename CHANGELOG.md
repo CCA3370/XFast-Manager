@@ -7,6 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-01-16
+
+### ✨ Added
+
+#### 🗑️ Delete Source After Install
+- **Automatic Source Cleanup** - New option to automatically delete source files after successful installation
+  - Only deletes files from successfully completed tasks
+  - Only deletes files where addons were detected
+  - Files/folders with no detected addons are preserved
+  - Failed installation tasks won't trigger deletion
+- **Smart Parent Directory Detection** - Prevents deletion when detected addon root is a parent of the input path
+  - Example: Dragging `PLUGIN/win_x64` but detecting `PLUGIN` as root won't delete the directory
+  - Shows notification when deletion is skipped for safety
+- **Settings UI** - New expandable section in Settings with detailed feature explanation
+  - Toggle switch to enable/disable the feature
+  - Four-point feature explanation with benefits
+  - Only visible on Windows systems
+
+#### 🛡️ Enhanced Safety Features
+- **Disk Root Protection** - Automatically ignores and filters out addons detected at disk root directories
+  - Prevents accidental installation from `C:\`, `D:\`, `/`, etc.
+  - Logs warning and adds to error list
+  - Cross-platform support (Windows and Unix/Linux)
+
+#### 📋 Windows Integration Improvements
+- **Expandable Details** - Windows Integration section now shows detailed feature explanation
+  - Click to expand/collapse
+  - Four-point benefit list
+  - Better user understanding of the feature
+
+#### 🔧 UI/UX Improvements
+- **Dynamic Version Display** - Settings page now shows app version from `Cargo.toml`
+  - Automatically synced with build version
+  - No more hardcoded version numbers
+- **Better Installation Mode Description** - Clarified installation modes in CHANGELOG
+  - Separated "New Installation" from existing target scenarios
+  - Clear distinction between Clean Install and Direct Overwrite
+
+### 🐛 Fixed
+- **Button Click Issues** - Fixed skip and cancel task buttons not responding
+  - Corrected variable names (`toastStore` → `toast`, `modalStore` → `modal`)
+  - Proper toast notification methods (`toast.info()`, `toast.error()`)
+- **TypeScript Warnings** - Resolved all TypeScript type warnings
+  - Fixed `import.meta.env` type issues by adding `vite-env.d.ts`
+  - Removed unused variables in `ConfirmModal.vue`
+  - Fixed drag-drop event type checking in `Home.vue`
+  - Fixed unused imports in `Settings.vue`
+  - Fixed log level type assertion
+
+### 🔄 Changed
+- **Production Environment Check** - Updated from `import.meta.env.PROD` to `import.meta.env.MODE === 'production'`
+- **Atomic Installation Position** - Moved atomic installation toggle below Windows Integration section for better organization
+
+### 🏗️ Technical
+- **Backend Architecture**:
+  - Added `original_input_path` field to `InstallTask` and `DetectedItem` models
+  - Implemented `delete_source_file()` method in installer with parent directory checking
+  - Added `is_disk_root()` helper function in analyzer
+  - Enhanced `install_addons` command to accept `delete_source_after_install` parameter
+- **Frontend Architecture**:
+  - Added `deleteSourceAfterInstall` state to app store with localStorage persistence
+  - Implemented event listener for `source-deletion-skipped` notifications
+  - Added internationalization support for new features (English and Chinese)
+- **Type Safety**:
+  - Created `vite-env.d.ts` for proper Vite type definitions
+  - Fixed all TypeScript compilation warnings
+
 ## [0.1.1] - 2026-01-16
 
 ### 🎉 Initial Release

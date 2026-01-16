@@ -56,6 +56,10 @@ pub struct InstallTask {
     #[serde(rename = "type")]
     pub addon_type: AddonType,
     pub source_path: String,
+    /// Original input path (the file/folder that was dragged or right-clicked)
+    /// This is used for deletion after successful installation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_input_path: Option<String>,
     pub target_path: String,
     pub display_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -131,6 +135,8 @@ pub struct NavdataCycle {
 pub struct DetectedItem {
     pub addon_type: AddonType,
     pub path: String,
+    /// Original input path (the file/folder that was dragged or right-clicked)
+    pub original_input_path: String,
     pub display_name: String,
     /// For archives: the root folder path inside the archive
     pub archive_internal_root: Option<String>,

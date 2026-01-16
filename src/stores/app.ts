@@ -48,6 +48,9 @@ export const useAppStore = defineStore('app', () => {
   // Atomic installation mode (default: disabled)
   const atomicInstallEnabled = ref(false)
 
+  // Delete source files after successful installation (default: disabled)
+  const deleteSourceAfterInstall = ref(false)
+
   // Overwrite settings per task (taskId -> shouldOverwrite)
   const overwriteSettings = ref<Record<string, boolean>>({})
 
@@ -162,6 +165,17 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  // Load delete source after install setting
+  const savedDeleteSource = localStorage.getItem('deleteSourceAfterInstall')
+  if (savedDeleteSource !== null) {
+    try {
+      deleteSourceAfterInstall.value = JSON.parse(savedDeleteSource)
+    } catch (e) {
+      console.error('Failed to parse delete source setting, using default', e)
+      localStorage.removeItem('deleteSourceAfterInstall')
+    }
+  }
+
   function setXplanePath(path: string) {
     xplanePath.value = path
     localStorage.setItem('xplanePath', path)
@@ -188,6 +202,11 @@ export const useAppStore = defineStore('app', () => {
   function toggleAtomicInstall() {
     atomicInstallEnabled.value = !atomicInstallEnabled.value
     localStorage.setItem('atomicInstallEnabled', JSON.stringify(atomicInstallEnabled.value))
+  }
+
+  function toggleDeleteSourceAfterInstall() {
+    deleteSourceAfterInstall.value = !deleteSourceAfterInstall.value
+    localStorage.setItem('deleteSourceAfterInstall', JSON.stringify(deleteSourceAfterInstall.value))
   }
 
   function setLogLevel(level: LogLevel) {
@@ -373,6 +392,7 @@ export const useAppStore = defineStore('app', () => {
     installPreferences,
     verificationPreferences,
     atomicInstallEnabled,
+    deleteSourceAfterInstall,
     logLevel,
     overwriteSettings,
     sizeConfirmations,
@@ -390,6 +410,7 @@ export const useAppStore = defineStore('app', () => {
     togglePreference,
     toggleVerificationPreference,
     toggleAtomicInstall,
+    toggleDeleteSourceAfterInstall,
     setLogLevel,
     setCurrentTasks,
     clearTasks,

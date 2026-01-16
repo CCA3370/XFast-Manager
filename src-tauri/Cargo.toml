@@ -1,6 +1,6 @@
 [package]
 name = "xfastinstall"
-version = "0.1.0"
+version = "0.2.0"
 description = "X-Plane Addon Installer"
 authors = ["XFastInstall Team"]
 edition = "2021"

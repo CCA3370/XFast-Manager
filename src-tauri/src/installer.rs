@@ -309,7 +309,7 @@ impl Installer {
     }
 
     /// Install a list of tasks with progress reporting
-    pub fn install(&self, tasks: Vec<InstallTask>, atomic_install_enabled: bool, xplane_path: String) -> Result<InstallResult> {
+    pub fn install(&self, tasks: Vec<InstallTask>, atomic_install_enabled: bool, xplane_path: String, delete_source_after_install: bool) -> Result<InstallResult> {
         let install_start = Instant::now();
         crate::log_debug!(
             &format!("[TIMING] Installation started: {} tasks (atomic: {})", tasks.len(), atomic_install_enabled),
@@ -482,6 +482,18 @@ impl Installer {
                                 error_message: None,
                                 verification_stats,
                             });
+
+                            // Delete source file after successful installation if enabled
+                            if delete_source_after_install {
+                                if let Some(original_path) = &task.original_input_path {
+                                    if let Err(e) = self.delete_source_file(original_path, &task.source_path) {
+                                        logger::log_error(
+                                            &format!("Failed to delete source file {}: {}", original_path, e),
+                                            Some("installer"),
+                                        );
+                                    }
+                                }
+                            }
                         }
                         Err(verify_err) => {
                             crate::log_debug!(
@@ -3259,6 +3271,64 @@ impl Installer {
         logger::log_info(
             "Atomic installation completed successfully",
             Some("installer")
+        );
+
+        Ok(())
+    }
+
+    /// Delete source file after successful installation
+    /// Checks if the source path is a parent directory of the original input path
+    /// to avoid deleting directories that contain the detected addon
+    fn delete_source_file(&self, original_input_path: &str, source_path: &str) -> Result<()> {
+        let original_path = Path::new(original_input_path);
+        let source_path_buf = Path::new(source_path);
+
+        // Check if source_path is a parent (or ancestor) of original_input_path
+        // This happens when we drag a subdirectory but the addon root is detected higher up
+        // Example: drag "PLUGIN/win_x64" but addon root is "PLUGIN"
+        if source_path_buf.starts_with(original_path) && source_path_buf != original_path {
+            logger::log_info(
+                &format!("Skipping deletion: detected addon root ({}) is a parent of input path ({})",
+                    source_path, original_input_path),
+                Some("installer"),
+            );
+
+            // Emit a notification to the frontend
+            if let Err(e) = self.app_handle.emit("source-deletion-skipped", original_input_path) {
+                logger::log_error(
+                    &format!("Failed to emit source-deletion-skipped event: {}", e),
+                    Some("installer"),
+                );
+            }
+
+            return Ok(());
+        }
+
+        // Delete the source file/directory
+        if original_path.is_file() {
+            logger::log_info(
+                &format!("Deleting source file: {}", original_input_path),
+                Some("installer"),
+            );
+            fs::remove_file(original_path)
+                .with_context(|| format!("Failed to delete source file: {}", original_input_path))?;
+        } else if original_path.is_dir() {
+            logger::log_info(
+                &format!("Deleting source directory: {}", original_input_path),
+                Some("installer"),
+            );
+            remove_dir_all_robust(original_path)
+                .with_context(|| format!("Failed to delete source directory: {}", original_input_path))?;
+        } else {
+            logger::log_error(
+                &format!("Source path does not exist or is not accessible: {}", original_input_path),
+                Some("installer"),
+            );
+        }
+
+        logger::log_info(
+            &format!("Successfully deleted source: {}", original_input_path),
+            Some("installer"),
         );
 
         Ok(())

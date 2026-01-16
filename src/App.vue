@@ -122,7 +122,7 @@ onMounted(async () => {
   syncLocaleToBackend()
 
   // Disable context menu and devtools shortcuts in production
-  if (import.meta.env.PROD) {
+  if (import.meta.env.MODE === 'production') {
     // Disable right-click context menu
     document.addEventListener('contextmenu', (e) => {
       e.preventDefault()

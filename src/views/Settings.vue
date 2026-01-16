@@ -83,33 +83,266 @@
         <!-- Windows Integration (Left Column, Windows only) -->
         <transition name="slide-up">
           <section v-if="isWindows" class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
-            <div class="p-4">
+            <div
+              class="p-4 cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
+              @click="windowsIntegrationExpanded = !windowsIntegrationExpanded"
+            >
               <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-3">
+                <div class="flex items-center space-x-3 flex-1">
                   <div class="w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center flex-shrink-0 text-gray-600 dark:text-gray-300">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path>
                     </svg>
                   </div>
-                  <div>
+                  <div class="flex-1">
                     <h3 class="text-sm font-semibold text-gray-900 dark:text-white"><AnimatedText>{{ $t('settings.windowsIntegration') }}</AnimatedText></h3>
                     <p class="text-xs text-gray-500 dark:text-gray-400"><AnimatedText>{{ $t('settings.windowsIntegrationDesc') }}</AnimatedText></p>
                   </div>
                 </div>
 
-                <button
-                  @click="toggleContextMenu"
-                  :disabled="isProcessing"
-                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-gray-900"
-                  :class="isContextRegistered ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'"
-                >
-                  <span
-                    class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-300 shadow-sm"
-                    :class="isContextRegistered ? 'translate-x-4.5' : 'translate-x-0.5'"
-                  />
-                </button>
+                <div class="flex items-center space-x-3">
+                  <button
+                    @click.stop="toggleContextMenu"
+                    :disabled="isProcessing"
+                    class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-gray-900"
+                    :class="isContextRegistered ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'"
+                  >
+                    <span
+                      class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-300 shadow-sm"
+                      :class="isContextRegistered ? 'translate-x-4.5' : 'translate-x-0.5'"
+                    />
+                  </button>
+
+                  <!-- Expand/Collapse indicator -->
+                  <svg
+                    class="w-5 h-5 text-gray-400 transition-transform duration-200"
+                    :class="{ 'rotate-180': windowsIntegrationExpanded }"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                  </svg>
+                </div>
               </div>
             </div>
+
+            <!-- Expanded content -->
+            <transition name="expand">
+              <div v-if="windowsIntegrationExpanded" class="px-4 pb-4 space-y-3">
+                <div class="bg-blue-50/50 dark:bg-blue-500/5 border border-blue-200 dark:border-blue-500/20 rounded-lg p-3 space-y-2">
+                  <h4 class="text-xs font-semibold text-blue-900 dark:text-blue-300">
+                    <AnimatedText>{{ $t('settings.windowsIntegrationExplain') }}</AnimatedText>
+                  </h4>
+                  <ul class="text-xs text-blue-800 dark:text-blue-200 space-y-1.5">
+                    <li class="flex items-start space-x-2">
+                      <svg class="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <span><AnimatedText>{{ $t('settings.windowsIntegrationBenefit1') }}</AnimatedText></span>
+                    </li>
+                    <li class="flex items-start space-x-2">
+                      <svg class="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <span><AnimatedText>{{ $t('settings.windowsIntegrationBenefit2') }}</AnimatedText></span>
+                    </li>
+                    <li class="flex items-start space-x-2">
+                      <svg class="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <span><AnimatedText>{{ $t('settings.windowsIntegrationBenefit3') }}</AnimatedText></span>
+                    </li>
+                    <li class="flex items-start space-x-2">
+                      <svg class="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <span><AnimatedText>{{ $t('settings.windowsIntegrationBenefit4') }}</AnimatedText></span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </transition>
+          </section>
+        </transition>
+
+        <!-- Atomic Installation Mode (Windows only) -->
+        <transition name="slide-up">
+          <section v-if="isWindows" class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
+            <div
+              class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
+              @click="atomicExpanded = !atomicExpanded"
+            >
+              <div class="flex items-center space-x-3 flex-1">
+                <div class="w-8 h-8 bg-indigo-100 dark:bg-indigo-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-indigo-600 dark:text-indigo-400">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                  </svg>
+                </div>
+                <div class="flex-1">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                    <AnimatedText>{{ $t('settings.atomicInstallTitle') }}</AnimatedText>
+                  </h3>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">
+                    <AnimatedText>{{ $t('settings.atomicInstallDesc') }}</AnimatedText>
+                  </p>
+                </div>
+              </div>
+
+              <!-- Toggle Switch -->
+              <div class="flex items-center space-x-3">
+                <button
+                  @click.stop="store.toggleAtomicInstall()"
+                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                  :class="store.atomicInstallEnabled ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'"
+                >
+                  <span
+                    class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                    :class="store.atomicInstallEnabled ? 'translate-x-4.5' : 'translate-x-0.5'"
+                  ></span>
+                </button>
+
+                <!-- Expand/Collapse indicator -->
+                <svg
+                  class="w-5 h-5 text-gray-400 transition-transform duration-200"
+                  :class="{ 'rotate-180': atomicExpanded }"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </div>
+            </div>
+
+            <!-- Expanded content -->
+            <transition name="expand">
+              <div v-if="atomicExpanded" class="px-4 pb-4 space-y-3">
+                <div class="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-200 dark:border-indigo-500/20 rounded-lg p-3 space-y-2">
+                  <h4 class="text-xs font-semibold text-indigo-900 dark:text-indigo-300">
+                    <AnimatedText>{{ $t('settings.atomicInstallExplain') }}</AnimatedText>
+                  </h4>
+                  <ul class="text-xs text-indigo-800 dark:text-indigo-200 space-y-1.5">
+                    <li class="flex items-start space-x-2">
+                      <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <span><AnimatedText>{{ $t('settings.atomicInstallBenefit1') }}</AnimatedText></span>
+                    </li>
+                    <li class="flex items-start space-x-2">
+                      <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <span><AnimatedText>{{ $t('settings.atomicInstallBenefit2') }}</AnimatedText></span>
+                    </li>
+                    <li class="flex items-start space-x-2">
+                      <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <span><AnimatedText>{{ $t('settings.atomicInstallBenefit3') }}</AnimatedText></span>
+                    </li>
+                    <li class="flex items-start space-x-2">
+                      <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <span><AnimatedText>{{ $t('settings.atomicInstallBenefit4') }}</AnimatedText></span>
+                    </li>
+                  </ul>
+                </div>
+
+                <p class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20">
+                  <AnimatedText>{{ $t('settings.atomicInstallNote') }}</AnimatedText>
+                </p>
+              </div>
+            </transition>
+          </section>
+        </transition>
+
+        <!-- Delete Source After Install (Windows only) -->
+        <transition name="slide-up">
+          <section v-if="isWindows" class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
+            <div
+              class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
+              @click="deleteSourceExpanded = !deleteSourceExpanded"
+            >
+              <div class="flex items-center space-x-3 flex-1">
+                <div class="w-8 h-8 bg-red-100 dark:bg-red-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-red-600 dark:text-red-400">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                  </svg>
+                </div>
+                <div class="flex-1">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                    <AnimatedText>{{ $t('settings.deleteSourceTitle') }}</AnimatedText>
+                  </h3>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">
+                    <AnimatedText>{{ $t('settings.deleteSourceDesc') }}</AnimatedText>
+                  </p>
+                </div>
+              </div>
+
+              <!-- Toggle Switch -->
+              <div class="flex items-center space-x-3">
+                <button
+                  @click.stop="store.toggleDeleteSourceAfterInstall()"
+                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                  :class="store.deleteSourceAfterInstall ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'"
+                >
+                  <span
+                    class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                    :class="store.deleteSourceAfterInstall ? 'translate-x-4.5' : 'translate-x-0.5'"
+                  ></span>
+                </button>
+
+                <!-- Expand/Collapse indicator -->
+                <svg
+                  class="w-5 h-5 text-gray-400 transition-transform duration-200"
+                  :class="{ 'rotate-180': deleteSourceExpanded }"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </div>
+            </div>
+
+            <!-- Expanded content -->
+            <transition name="expand">
+              <div v-if="deleteSourceExpanded" class="px-4 pb-4 space-y-3">
+                <div class="bg-red-50/50 dark:bg-red-500/5 border border-red-200 dark:border-red-500/20 rounded-lg p-3 space-y-2">
+                  <h4 class="text-xs font-semibold text-red-900 dark:text-red-300">
+                    <AnimatedText>{{ $t('settings.deleteSourceExplain') }}</AnimatedText>
+                  </h4>
+                  <ul class="text-xs text-red-800 dark:text-red-200 space-y-1.5">
+                    <li class="flex items-start space-x-2">
+                      <svg class="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <span><AnimatedText>{{ $t('settings.deleteSourceBenefit1') }}</AnimatedText></span>
+                    </li>
+                    <li class="flex items-start space-x-2">
+                      <svg class="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <span><AnimatedText>{{ $t('settings.deleteSourceBenefit2') }}</AnimatedText></span>
+                    </li>
+                    <li class="flex items-start space-x-2">
+                      <svg class="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <span><AnimatedText>{{ $t('settings.deleteSourceBenefit3') }}</AnimatedText></span>
+                    </li>
+                    <li class="flex items-start space-x-2">
+                      <svg class="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <span><AnimatedText>{{ $t('settings.deleteSourceBenefit4') }}</AnimatedText></span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </transition>
           </section>
         </transition>
 
@@ -294,96 +527,6 @@
         </section>
       </div>
 
-      <!-- 2.5. Atomic Installation Mode -->
-      <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
-        <div
-          class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
-          @click="atomicExpanded = !atomicExpanded"
-        >
-          <div class="flex items-center space-x-3 flex-1">
-            <div class="w-8 h-8 bg-indigo-100 dark:bg-indigo-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-indigo-600 dark:text-indigo-400">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
-              </svg>
-            </div>
-            <div class="flex-1">
-              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-                <AnimatedText>{{ $t('settings.atomicInstallTitle') }}</AnimatedText>
-              </h3>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
-                <AnimatedText>{{ $t('settings.atomicInstallDesc') }}</AnimatedText>
-              </p>
-            </div>
-          </div>
-
-          <!-- Toggle Switch -->
-          <div class="flex items-center space-x-3">
-            <button
-              @click.stop="store.toggleAtomicInstall()"
-              class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-              :class="store.atomicInstallEnabled ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'"
-            >
-              <span
-                class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                :class="store.atomicInstallEnabled ? 'translate-x-4.5' : 'translate-x-0.5'"
-              ></span>
-            </button>
-
-            <!-- Expand/Collapse indicator -->
-            <svg
-              class="w-5 h-5 text-gray-400 transition-transform duration-200"
-              :class="{ 'rotate-180': atomicExpanded }"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-            </svg>
-          </div>
-        </div>
-
-        <!-- Expanded content -->
-        <transition name="expand">
-          <div v-if="atomicExpanded" class="px-4 pb-4 space-y-3">
-            <div class="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-200 dark:border-indigo-500/20 rounded-lg p-3 space-y-2">
-              <h4 class="text-xs font-semibold text-indigo-900 dark:text-indigo-300">
-                <AnimatedText>{{ $t('settings.atomicInstallExplain') }}</AnimatedText>
-              </h4>
-              <ul class="text-xs text-indigo-800 dark:text-indigo-200 space-y-1.5">
-                <li class="flex items-start space-x-2">
-                  <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                  </svg>
-                  <span><AnimatedText>{{ $t('settings.atomicInstallBenefit1') }}</AnimatedText></span>
-                </li>
-                <li class="flex items-start space-x-2">
-                  <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                  </svg>
-                  <span><AnimatedText>{{ $t('settings.atomicInstallBenefit2') }}</AnimatedText></span>
-                </li>
-                <li class="flex items-start space-x-2">
-                  <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                  </svg>
-                  <span><AnimatedText>{{ $t('settings.atomicInstallBenefit3') }}</AnimatedText></span>
-                </li>
-                <li class="flex items-start space-x-2">
-                  <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                  </svg>
-                  <span><AnimatedText>{{ $t('settings.atomicInstallBenefit4') }}</AnimatedText></span>
-                </li>
-              </ul>
-            </div>
-
-            <p class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20">
-              <AnimatedText>{{ $t('settings.atomicInstallNote') }}</AnimatedText>
-            </p>
-          </div>
-        </transition>
-      </section>
-
       <!-- 3. Aircraft Backup Configuration -->
       <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
           <div
@@ -442,7 +585,7 @@
                 </label>
 
                 <div class="space-y-1.5">
-                  <div v-for="(pattern, index) in configPatterns" :key="index">
+                  <div v-for="(_pattern, index) in configPatterns" :key="index">
                     <div class="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg border transition-colors"
                          :class="patternErrors[index] ? 'border-red-300 dark:border-red-500/50' : 'border-gray-100 dark:border-white/5'">
                       <input
@@ -527,7 +670,7 @@
               </div>
               <div class="flex items-center space-x-2">
                 <button
-                  v-for="level in ['basic', 'full', 'debug']"
+                  v-for="level in (['basic', 'full', 'debug'] as const)"
                   :key="level"
                   @click.stop="store.setLogLevel(level)"
                   class="px-3 py-1 text-xs rounded-md transition-all duration-200 border"
@@ -595,7 +738,7 @@
           <div>
             <h3 class="text-base font-bold text-gray-900 dark:text-white">XFastInstall</h3>
             <p class="text-xs text-gray-500 dark:text-gray-400">
-              v0.1.0 • © 2026
+              v{{ appVersion }} • © 2026
             </p>
           </div>
         </div>
@@ -605,7 +748,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useToastStore } from '@/stores/toast'
 import { useModalStore } from '@/stores/modal'
 import { useAppStore } from '@/stores/app'
@@ -627,6 +770,7 @@ const isContextRegistered = ref(false)
 const isProcessing = ref(false)
 const saveStatus = ref<'saving' | 'saved' | null>(null)
 const pathError = ref<string | null>(null)
+const appVersion = ref('0.1.1')
 let saveTimeout: ReturnType<typeof setTimeout> | null = null
 
 // Logs state
@@ -642,6 +786,8 @@ const backupExpanded = ref(false)
 const preferencesExpanded = ref(false) // Default collapsed
 const verificationExpanded = ref(false) // Default collapsed
 const atomicExpanded = ref(false) // Default collapsed
+const deleteSourceExpanded = ref(false) // Default collapsed
+const windowsIntegrationExpanded = ref(false) // Default collapsed
 const patternSaveStatus = ref<'saving' | 'saved' | null>(null)
 
 const addonTypes = [AddonType.Aircraft, AddonType.Scenery, AddonType.SceneryLibrary, AddonType.Plugin, AddonType.Navdata]
@@ -687,6 +833,9 @@ onMounted(async () => {
   try {
     const platform = await invoke<string>('get_platform')
     isWindows.value = platform === 'windows'
+
+    // Get app version
+    appVersion.value = await invoke<string>('get_app_version')
 
     // Check if context menu is already registered (Windows only)
     if (isWindows.value) {

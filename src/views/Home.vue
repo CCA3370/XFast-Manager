@@ -390,7 +390,7 @@ onMounted(async () => {
 
       if (event.payload.type === 'over') {
         isDragging.value = true
-      } else if (event.payload.type === 'leave' || event.payload.type === 'cancel') {
+      } else if (event.payload.type === 'leave') {
         isDragging.value = false
       } else if (event.payload.type === 'drop') {
         isDragging.value = false
@@ -432,6 +432,21 @@ onMounted(async () => {
     console.log('CLI args listener registered in Home.vue')
   } catch (error) {
     console.error('Failed to setup CLI args listener:', error)
+  }
+
+  // Listen for source deletion skipped events
+  try {
+    const unlistenDeletionSkipped = await listen<string>('source-deletion-skipped', (event) => {
+      const path = event.payload
+      toast.info(t('home.sourceDeletionSkipped', { path }))
+    })
+    // Store unlisten function for cleanup
+    onBeforeUnmount(() => {
+      unlistenDeletionSkipped()
+    })
+    console.log('Source deletion skipped listener registered')
+  } catch (error) {
+    console.error('Failed to setup source deletion skipped listener:', error)
   }
 
   // Note: Pending CLI args are now handled by the watcher above
@@ -693,7 +708,8 @@ async function handleInstall() {
     const result = await invoke<InstallResult>('install_addons', {
       tasks: tasksWithOverwrite,
       atomicInstallEnabled: store.atomicInstallEnabled,
-      xplanePath: store.xplanePath
+      xplanePath: store.xplanePath,
+      deleteSourceAfterInstall: store.deleteSourceAfterInstall
     })
 
     // Log results
@@ -746,16 +762,10 @@ async function handleSkipTask() {
   if (confirmed) {
     try {
       await invoke('skip_current_task')
-      toastStore.add({
-        type: 'info',
-        message: t('taskControl.taskSkipped')
-      })
+      toast.info(t('taskControl.taskSkipped'))
     } catch (error) {
       console.error('Failed to skip task:', error)
-      toastStore.add({
-        type: 'error',
-        message: String(error)
-      })
+      toast.error(String(error))
     }
   }
 }
@@ -774,16 +784,10 @@ async function handleCancelInstallation() {
   if (confirmed) {
     try {
       await invoke('cancel_installation')
-      toastStore.add({
-        type: 'info',
-        message: t('taskControl.tasksCancelled')
-      })
+      toast.info(t('taskControl.tasksCancelled'))
     } catch (error) {
       console.error('Failed to cancel installation:', error)
-      toastStore.add({
-        type: 'error',
-        message: String(error)
-      })
+      toast.error(String(error))
     }
   }
 }
@@ -798,7 +802,7 @@ function showConfirmDialog(options: {
   type: 'warning' | 'danger'
 }): Promise<boolean> {
   return new Promise((resolve) => {
-    modalStore.showConfirm({
+    modal.showConfirm({
       title: options.title,
       message: options.message,
       warning: options.warning,
