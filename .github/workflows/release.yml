@@ -15,6 +15,8 @@ jobs:
     name: Prepare Release
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.get-version.outputs.version }}
       tag: ${{ steps.get-version.outputs.tag }}
