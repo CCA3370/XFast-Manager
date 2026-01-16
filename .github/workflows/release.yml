@@ -78,9 +78,9 @@ jobs:
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
           
           # Extract the changelog section for this version
-          # This will extract everything between [VERSION] and the next [VERSION] or end of file
-          CHANGELOG=$(awk -v ver="## \[$VERSION\]" '
-            $0 ~ ver { found=1; print; next }  # include the header line itself
+          # Use index() for literal string matching (not regex) to avoid escaping issues
+          CHANGELOG=$(awk -v ver="## [$VERSION]" '
+            index($0, ver) == 1 { found=1; print; next }
             found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' | head -c 65000)
