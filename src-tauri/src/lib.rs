@@ -31,6 +31,11 @@ fn get_platform() -> String {
 }
 
 #[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[tauri::command]
 async fn analyze_addons(
     paths: Vec<String>,
     xplane_path: String,
@@ -55,6 +60,7 @@ async fn install_addons(
     tasks: Vec<InstallTask>,
     atomic_install_enabled: Option<bool>,
     xplane_path: String,
+    delete_source_after_install: Option<bool>,
 ) -> Result<InstallResult, String> {
     // Clone app_handle for the blocking task
     let app_handle_clone = app_handle.clone();
@@ -65,7 +71,7 @@ async fn install_addons(
 
         let installer = Installer::new(app_handle_clone);
         installer
-            .install(tasks, atomic_install_enabled.unwrap_or(false), xplane_path)
+            .install(tasks, atomic_install_enabled.unwrap_or(false), xplane_path, delete_source_after_install.unwrap_or(false))
             .map_err(|e| format!("Installation failed: {}", e))
     })
     .await
@@ -231,6 +237,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_cli_args,
             get_platform,
+            get_app_version,
             analyze_addons,
             install_addons,
             cancel_installation,

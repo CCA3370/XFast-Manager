@@ -72,7 +72,6 @@
               {{ modal.confirmModal.options.cancelText }}
             </button>
             <button
-              ref="confirmBtn"
               @click="handleConfirm"
               class="px-4 py-2 rounded-lg text-white font-medium transition"
               :class="{
@@ -95,7 +94,6 @@ import { useModalStore } from '@/stores/modal'
 import gsap from 'gsap'
 
 const modal = useModalStore()
-const confirmBtn = ref<HTMLElement | null>(null)
 const cancelBtn = ref<HTMLElement | null>(null)
 const backdrop = ref<HTMLElement | null>(null)
 const card = ref<HTMLElement | null>(null)
@@ -109,7 +107,7 @@ function handleCancel() {
 }
 
 // GSAP animations
-function onEnter(el: Element, done: () => void) {
+function onEnter(_el: Element, done: () => void) {
   const tl = gsap.timeline({ onComplete: done })
 
   tl.fromTo(
@@ -126,7 +124,7 @@ function onEnter(el: Element, done: () => void) {
   )
 }
 
-function onLeave(el: Element, done: () => void) {
+function onLeave(_el: Element, done: () => void) {
   const tl = gsap.timeline({ onComplete: done })
 
   tl.to(card.value, {

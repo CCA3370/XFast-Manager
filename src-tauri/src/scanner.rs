@@ -173,11 +173,19 @@ impl Scanner {
 
     /// Scan a path (file or directory) and detect all addon types
     pub fn scan_path(&self, path: &Path, password: Option<&str>) -> Result<Vec<DetectedItem>> {
+        let original_input_path = path.to_string_lossy().to_string();
         let mut ctx = ScanContext::new();
         if let Some(pwd) = password {
             ctx.passwords.insert(path.to_string_lossy().to_string(), pwd.to_string());
         }
-        self.scan_path_with_context(path, &mut ctx)
+        let mut items = self.scan_path_with_context(path, &mut ctx)?;
+
+        // Set original_input_path for all detected items
+        for item in &mut items {
+            item.original_input_path = original_input_path.clone();
+        }
+
+        Ok(items)
     }
 
     /// Internal method: Scan a path with context (supports nested archives)
@@ -2325,6 +2333,7 @@ impl Scanner {
             .to_string();
 
         Ok(Some(DetectedItem {
+            original_input_path: String::new(),
             addon_type: AddonType::Aircraft,
             path: install_path.to_string_lossy().to_string(),
             display_name,
@@ -2388,6 +2397,7 @@ impl Scanner {
         };
 
         Ok(Some(DetectedItem {
+            original_input_path: String::new(),
             addon_type: AddonType::Aircraft,
             path: archive_path.to_string_lossy().to_string(),
             display_name,
@@ -2425,6 +2435,7 @@ impl Scanner {
             .to_string();
 
         Ok(Some(DetectedItem {
+            original_input_path: String::new(),
             addon_type: AddonType::SceneryLibrary,
             path: parent.to_string_lossy().to_string(),
             display_name,
@@ -2447,6 +2458,7 @@ impl Scanner {
                 .to_string();
 
             Ok(Some(DetectedItem {
+            original_input_path: String::new(),
                 addon_type: AddonType::Scenery,
                 path: install_dir.to_string_lossy().to_string(),
                 display_name,
@@ -2524,6 +2536,7 @@ impl Scanner {
         };
 
         Ok(Some(DetectedItem {
+            original_input_path: String::new(),
             addon_type: AddonType::SceneryLibrary,
             path: archive_path.to_string_lossy().to_string(),
             display_name,
@@ -2566,6 +2579,7 @@ impl Scanner {
         };
 
         Ok(Some(DetectedItem {
+            original_input_path: String::new(),
             addon_type: AddonType::Scenery,
             path: archive_path.to_string_lossy().to_string(),
             display_name,
@@ -2638,6 +2652,7 @@ impl Scanner {
             .to_string();
 
         Ok(Some(DetectedItem {
+            original_input_path: String::new(),
             addon_type: AddonType::Plugin,
             path: install_path.to_string_lossy().to_string(),
             display_name,
@@ -2691,6 +2706,7 @@ impl Scanner {
         };
 
         Ok(Some(DetectedItem {
+            original_input_path: String::new(),
             addon_type: AddonType::Plugin,
             path: archive_path.to_string_lossy().to_string(),
             display_name,
@@ -2733,6 +2749,7 @@ impl Scanner {
         };
 
         Ok(Some(DetectedItem {
+            original_input_path: String::new(),
             addon_type: AddonType::Navdata,
             path: install_path.to_string_lossy().to_string(),
             display_name,
@@ -2776,6 +2793,7 @@ impl Scanner {
         };
 
         Ok(Some(DetectedItem {
+            original_input_path: String::new(),
             addon_type: AddonType::Navdata,
             path: archive_path.to_string_lossy().to_string(),
             display_name,

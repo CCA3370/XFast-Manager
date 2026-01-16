@@ -40,7 +40,8 @@
       "Bash(npx vue-tsc:*)",
       "Bash(find:*)",
       "Bash(git checkout:*)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "Bash(cat:*)"
     ]
   }
 }

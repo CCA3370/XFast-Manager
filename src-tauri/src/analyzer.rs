@@ -143,8 +143,27 @@ impl Analyzer {
         // Deduplicate detected items by source path hierarchy
         let deduplicated = self.deduplicate(all_detected);
 
+        // Filter out items where the source path is a disk root directory
+        let filtered: Vec<DetectedItem> = deduplicated
+            .into_iter()
+            .filter(|item| {
+                let path = Path::new(&item.path);
+                let is_root = Self::is_disk_root(path);
+
+                if is_root {
+                    logger::log_info(
+                        &format!("Ignoring addon at disk root: {}", item.path),
+                        Some("analyzer"),
+                    );
+                    errors.push(format!("Ignored addon at disk root: {} ({})", item.display_name, item.path));
+                }
+
+                !is_root
+            })
+            .collect();
+
         // Convert to install tasks, passing archive passwords
-        let tasks: Vec<InstallTask> = deduplicated
+        let tasks: Vec<InstallTask> = filtered
             .into_iter()
             .map(|item| self.create_install_task(item, xplane_path, &archive_passwords, verification_preferences.as_ref()))
             .collect();
@@ -509,6 +528,7 @@ impl Analyzer {
             id: Uuid::new_v4().to_string(),
             addon_type: item.addon_type,
             source_path: item.path,
+            original_input_path: Some(item.original_input_path),
             target_path: target_path.to_string_lossy().to_string(),
             display_name: item.display_name,
             conflict_exists: if conflict_exists { Some(true) } else { None },
@@ -783,6 +803,37 @@ impl Analyzer {
         }
 
         (Some(estimated_uncompressed), warning)
+    }
+
+    /// Check if a path is a disk root directory
+    /// Returns true for paths like "C:\", "D:\", "/", etc.
+    fn is_disk_root(path: &Path) -> bool {
+        // Normalize the path
+        let path_str = path.to_string_lossy();
+
+        // Windows: Check for drive root (e.g., "C:\", "D:\")
+        #[cfg(target_os = "windows")]
+        {
+            // Match patterns like "C:\", "D:\", etc.
+            if path_str.len() == 3 && path_str.chars().nth(1) == Some(':') && path_str.ends_with('\\') {
+                return true;
+            }
+            // Also match "C:", "D:" without trailing backslash
+            if path_str.len() == 2 && path_str.chars().nth(1) == Some(':') {
+                return true;
+            }
+        }
+
+        // Unix: Check for root directory "/"
+        #[cfg(not(target_os = "windows"))]
+        {
+            if path_str == "/" {
+                return true;
+            }
+        }
+
+        // Use Path::parent() to check if it has no parent (which means it's a root)
+        path.parent().is_none()
     }
 }
 
