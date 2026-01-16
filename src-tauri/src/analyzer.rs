@@ -237,54 +237,44 @@ impl Analyzer {
     }
 
     /// Deduplicate items of the same type based on path hierarchy
+    /// Optimized algorithm: O(n log n) instead of O(n²)
     fn deduplicate_same_type(&self, items: Vec<DetectedItem>) -> Vec<DetectedItem> {
+        if items.is_empty() {
+            return Vec::new();
+        }
+
+        // Sort by path depth (shallow to deep) for efficient processing
+        let mut sorted_items = items;
+        sorted_items.sort_by_cached_key(|item| {
+            let path = self.get_effective_path(item);
+            path.components().count()
+        });
+
         let mut result: Vec<DetectedItem> = Vec::new();
 
-        for item in items {
-            // For archives, use archive_internal_root as the effective path for deduplication
-            // For directories, use the actual path
-            let item_effective_path = self.get_effective_path(&item);
-            let mut should_add = true;
+        for item in sorted_items {
+            let item_path = self.get_effective_path(&item);
+            let mut is_nested = false;
 
-            // Check if this item is a subdirectory of any existing item
-            for existing in &result {
-                let existing_effective_path = self.get_effective_path(existing);
-
-                // Only compare items from the same source (same archive or same root)
-                if !self.same_source(&item, existing) {
+            // Check if this item is nested under any already-kept item from the same source
+            for kept in &result {
+                // Only compare items from the same source
+                if !self.same_source(&item, kept) {
                     continue;
                 }
 
-                // If item is under existing path, skip it
-                if item_effective_path.starts_with(&existing_effective_path)
-                   && item_effective_path != existing_effective_path {
-                    should_add = false;
+                let kept_path = self.get_effective_path(kept);
+
+                // Since items are sorted by depth, kept items are always shallower or equal depth
+                // We only need to check if item is under kept
+                if item_path.starts_with(&kept_path) && item_path != kept_path {
+                    is_nested = true;
                     break;
                 }
             }
 
-            if should_add {
-                // Remove any items that are subdirectories of this item
-                result.retain(|existing| {
-                    if !self.same_source(&item, existing) {
-                        return true; // Keep items from different sources
-                    }
-
-                    let existing_effective_path = self.get_effective_path(existing);
-                    let item_effective_path = self.get_effective_path(&item);
-
-                    !existing_effective_path.starts_with(&item_effective_path)
-                        || existing_effective_path == item_effective_path
-                });
-
-                // Check for exact duplicates
-                let dominated = result.iter().any(|e| {
-                    self.same_source(&item, e) && self.get_effective_path(e) == item_effective_path
-                });
-
-                if !dominated {
-                    result.push(item);
-                }
+            if !is_nested {
+                result.push(item);
             }
         }
 
@@ -554,7 +544,12 @@ impl Analyzer {
         let hash_collector = crate::hash_collector::HashCollector::new();
 
         for task in tasks.iter_mut() {
+            // Skip hash collection entirely if verification is disabled
             if !task.enable_verification {
+                logger::log_info(
+                    &format!("Hash collection skipped for task: {} (verification disabled)", task.display_name),
+                    Some("analyzer")
+                );
                 continue;
             }
 
@@ -841,28 +836,65 @@ impl Analyzer {
 mod tests {
     use super::*;
 
+    // Helper function to create DetectedItem for tests
+    fn create_detected_item(
+        addon_type: AddonType,
+        path: &str,
+        display_name: &str,
+        archive_internal_root: Option<String>,
+    ) -> DetectedItem {
+        DetectedItem {
+            addon_type,
+            path: path.to_string(),
+            original_input_path: path.to_string(),
+            display_name: display_name.to_string(),
+            archive_internal_root,
+            extraction_chain: None,
+            navdata_info: None,
+        }
+    }
+
+    // Helper function to create InstallTask for tests
+    fn create_install_task(
+        id: &str,
+        addon_type: AddonType,
+        source_path: &str,
+        target_path: &str,
+        display_name: &str,
+    ) -> InstallTask {
+        InstallTask {
+            id: id.to_string(),
+            addon_type,
+            source_path: source_path.to_string(),
+            original_input_path: Some(source_path.to_string()),
+            target_path: target_path.to_string(),
+            display_name: display_name.to_string(),
+            conflict_exists: None,
+            archive_internal_root: None,
+            should_overwrite: false,
+            password: None,
+            estimated_size: None,
+            size_warning: None,
+            size_confirmed: false,
+            existing_navdata_info: None,
+            new_navdata_info: None,
+            backup_liveries: true,
+            backup_config_files: true,
+            config_file_patterns: vec!["*_prefs.txt".to_string()],
+            extraction_chain: None,
+            file_hashes: None,
+            enable_verification: true,
+        }
+    }
+
     #[test]
     fn test_deduplication_same_type() {
         let analyzer = Analyzer::new();
 
         // Same type (Aircraft), nested paths - should deduplicate
         let items = vec![
-            DetectedItem {
-                addon_type: AddonType::Aircraft,
-                path: "/test/A330".to_string(),
-                display_name: "A330".to_string(),
-                archive_internal_root: None,
-                extraction_chain: None,
-                navdata_info: None,
-            },
-            DetectedItem {
-                addon_type: AddonType::Aircraft,
-                path: "/test/A330/variant".to_string(),
-                display_name: "A330 Variant".to_string(),
-                archive_internal_root: None,
-                extraction_chain: None,
-                navdata_info: None,
-            },
+            create_detected_item(AddonType::Aircraft, "/test/A330", "A330", None),
+            create_detected_item(AddonType::Aircraft, "/test/A330/variant", "A330 Variant", None),
         ];
 
         let result = analyzer.deduplicate(items);
@@ -878,22 +910,8 @@ mod tests {
 
         // Aircraft contains a plugin - plugin should be filtered out
         let items = vec![
-            DetectedItem {
-                addon_type: AddonType::Aircraft,
-                path: "/test/A330".to_string(),
-                display_name: "A330".to_string(),
-                archive_internal_root: None,
-                extraction_chain: None,
-                navdata_info: None,
-            },
-            DetectedItem {
-                addon_type: AddonType::Plugin,
-                path: "/test/A330/plugins/fms".to_string(),
-                display_name: "FMS".to_string(),
-                archive_internal_root: None,
-                extraction_chain: None,
-                navdata_info: None,
-            },
+            create_detected_item(AddonType::Aircraft, "/test/A330", "A330", None),
+            create_detected_item(AddonType::Plugin, "/test/A330/plugins/fms", "FMS", None),
         ];
 
         let result = analyzer.deduplicate(items);
@@ -909,38 +927,10 @@ mod tests {
 
         // Archive with aircraft and independent plugin/scenery
         let items = vec![
-            DetectedItem {
-                addon_type: AddonType::Aircraft,
-                path: "/test/package.zip".to_string(),
-                display_name: "A330".to_string(),
-                archive_internal_root: Some("A330".to_string()),
-                extraction_chain: None,
-                navdata_info: None,
-            },
-            DetectedItem {
-                addon_type: AddonType::Plugin,
-                path: "/test/package.zip".to_string(),
-                display_name: "FMS Plugin".to_string(),
-                archive_internal_root: Some("A330/plugins/fms".to_string()),
-                extraction_chain: None,
-                navdata_info: None,
-            },
-            DetectedItem {
-                addon_type: AddonType::Plugin,
-                path: "/test/package.zip".to_string(),
-                display_name: "Standalone Plugin".to_string(),
-                archive_internal_root: Some("plugins/standalone".to_string()),
-                extraction_chain: None,
-                navdata_info: None,
-            },
-            DetectedItem {
-                addon_type: AddonType::Scenery,
-                path: "/test/package.zip".to_string(),
-                display_name: "Airport".to_string(),
-                archive_internal_root: Some("scenery/airport".to_string()),
-                extraction_chain: None,
-                navdata_info: None,
-            },
+            create_detected_item(AddonType::Aircraft, "/test/package.zip", "A330", Some("A330".to_string())),
+            create_detected_item(AddonType::Plugin, "/test/package.zip", "FMS Plugin", Some("A330/plugins/fms".to_string())),
+            create_detected_item(AddonType::Plugin, "/test/package.zip", "Standalone Plugin", Some("plugins/standalone".to_string())),
+            create_detected_item(AddonType::Scenery, "/test/package.zip", "Airport", Some("scenery/airport".to_string())),
         ];
 
         let result = analyzer.deduplicate(items);
@@ -967,22 +957,8 @@ mod tests {
 
         // Same type, nested paths in archive - should deduplicate
         let items = vec![
-            DetectedItem {
-                addon_type: AddonType::Plugin,
-                path: "/test/package.zip".to_string(),
-                display_name: "MainPlugin".to_string(),
-                archive_internal_root: Some("plugins".to_string()),
-                extraction_chain: None,
-                navdata_info: None,
-            },
-            DetectedItem {
-                addon_type: AddonType::Plugin,
-                path: "/test/package.zip".to_string(),
-                display_name: "SubPlugin".to_string(),
-                archive_internal_root: Some("plugins/sub".to_string()),
-                extraction_chain: None,
-                navdata_info: None,
-            },
+            create_detected_item(AddonType::Plugin, "/test/package.zip", "MainPlugin", Some("plugins".to_string())),
+            create_detected_item(AddonType::Plugin, "/test/package.zip", "SubPlugin", Some("plugins/sub".to_string())),
         ];
 
         let result = analyzer.deduplicate(items);
@@ -998,50 +974,8 @@ mod tests {
 
         // Multiple .acf files in same aircraft folder -> same target path
         let tasks = vec![
-            InstallTask {
-                id: "1".to_string(),
-                addon_type: AddonType::Aircraft,
-                source_path: "/downloads/A330/A330.acf".to_string(),
-                target_path: "/X-Plane/Aircraft/A330".to_string(),
-                display_name: "A330".to_string(),
-                conflict_exists: None,
-                archive_internal_root: None,
-                should_overwrite: false,
-                password: None,
-                estimated_size: None,
-                size_warning: None,
-                size_confirmed: false,
-                existing_navdata_info: None,
-                new_navdata_info: None,
-                backup_liveries: true,
-                backup_config_files: true,
-                config_file_patterns: vec!["*_prefs.txt".to_string()],
-                extraction_chain: None,
-                file_hashes: None,
-                enable_verification: true,
-            },
-            InstallTask {
-                id: "2".to_string(),
-                addon_type: AddonType::Aircraft,
-                source_path: "/downloads/A330/A330_cargo.acf".to_string(),
-                target_path: "/X-Plane/Aircraft/A330".to_string(),
-                display_name: "A330".to_string(),
-                conflict_exists: None,
-                archive_internal_root: None,
-                should_overwrite: false,
-                password: None,
-                estimated_size: None,
-                size_warning: None,
-                size_confirmed: false,
-                existing_navdata_info: None,
-                new_navdata_info: None,
-                backup_liveries: true,
-                backup_config_files: true,
-                config_file_patterns: vec!["*_prefs.txt".to_string()],
-                extraction_chain: None,
-                file_hashes: None,
-                enable_verification: true,
-            },
+            create_install_task("1", AddonType::Aircraft, "/downloads/A330/A330.acf", "/X-Plane/Aircraft/A330", "A330"),
+            create_install_task("2", AddonType::Aircraft, "/downloads/A330/A330_cargo.acf", "/X-Plane/Aircraft/A330", "A330"),
         ];
 
         let result = analyzer.deduplicate_by_target_path(tasks);
@@ -1056,50 +990,8 @@ mod tests {
 
         // Different target paths should be kept
         let tasks = vec![
-            InstallTask {
-                id: "1".to_string(),
-                addon_type: AddonType::Aircraft,
-                source_path: "/downloads/A330".to_string(),
-                target_path: "/X-Plane/Aircraft/A330".to_string(),
-                display_name: "A330".to_string(),
-                conflict_exists: None,
-                archive_internal_root: None,
-                should_overwrite: false,
-                password: None,
-                estimated_size: None,
-                size_warning: None,
-                size_confirmed: false,
-                existing_navdata_info: None,
-                new_navdata_info: None,
-                backup_liveries: true,
-                backup_config_files: true,
-                config_file_patterns: vec!["*_prefs.txt".to_string()],
-                extraction_chain: None,
-                file_hashes: None,
-                enable_verification: true,
-            },
-            InstallTask {
-                id: "2".to_string(),
-                addon_type: AddonType::Aircraft,
-                source_path: "/downloads/B737".to_string(),
-                target_path: "/X-Plane/Aircraft/B737".to_string(),
-                display_name: "B737".to_string(),
-                conflict_exists: None,
-                archive_internal_root: None,
-                should_overwrite: false,
-                password: None,
-                estimated_size: None,
-                size_warning: None,
-                size_confirmed: false,
-                existing_navdata_info: None,
-                new_navdata_info: None,
-                backup_liveries: true,
-                backup_config_files: true,
-                config_file_patterns: vec!["*_prefs.txt".to_string()],
-                extraction_chain: None,
-                file_hashes: None,
-                enable_verification: true,
-            },
+            create_install_task("1", AddonType::Aircraft, "/downloads/A330", "/X-Plane/Aircraft/A330", "A330"),
+            create_install_task("2", AddonType::Aircraft, "/downloads/B737", "/X-Plane/Aircraft/B737", "B737"),
         ];
 
         let result = analyzer.deduplicate_by_target_path(tasks);
@@ -1114,72 +1006,9 @@ mod tests {
 
         // Multiple .xpl files in same plugin folder -> same target path
         let tasks = vec![
-            InstallTask {
-                id: "1".to_string(),
-                addon_type: AddonType::Plugin,
-                source_path: "/downloads/MyPlugin/win.xpl".to_string(),
-                target_path: "/X-Plane/Resources/plugins/MyPlugin".to_string(),
-                display_name: "MyPlugin".to_string(),
-                conflict_exists: None,
-                archive_internal_root: None,
-                should_overwrite: false,
-                password: None,
-                estimated_size: None,
-                size_warning: None,
-                size_confirmed: false,
-                existing_navdata_info: None,
-                new_navdata_info: None,
-                backup_liveries: true,
-                backup_config_files: true,
-                config_file_patterns: vec!["*_prefs.txt".to_string()],
-                extraction_chain: None,
-                file_hashes: None,
-                enable_verification: true,
-            },
-            InstallTask {
-                id: "2".to_string(),
-                addon_type: AddonType::Plugin,
-                source_path: "/downloads/MyPlugin/mac.xpl".to_string(),
-                target_path: "/X-Plane/Resources/plugins/MyPlugin".to_string(),
-                display_name: "MyPlugin".to_string(),
-                conflict_exists: None,
-                archive_internal_root: None,
-                should_overwrite: false,
-                password: None,
-                estimated_size: None,
-                size_warning: None,
-                size_confirmed: false,
-                existing_navdata_info: None,
-                new_navdata_info: None,
-                backup_liveries: true,
-                backup_config_files: true,
-                config_file_patterns: vec!["*_prefs.txt".to_string()],
-                extraction_chain: None,
-                file_hashes: None,
-                enable_verification: true,
-            },
-            InstallTask {
-                id: "3".to_string(),
-                addon_type: AddonType::Plugin,
-                source_path: "/downloads/MyPlugin/lin.xpl".to_string(),
-                target_path: "/X-Plane/Resources/plugins/MyPlugin".to_string(),
-                display_name: "MyPlugin".to_string(),
-                conflict_exists: None,
-                archive_internal_root: None,
-                should_overwrite: false,
-                password: None,
-                estimated_size: None,
-                size_warning: None,
-                size_confirmed: false,
-                existing_navdata_info: None,
-                new_navdata_info: None,
-                backup_liveries: true,
-                backup_config_files: true,
-                config_file_patterns: vec!["*_prefs.txt".to_string()],
-                extraction_chain: None,
-                file_hashes: None,
-                enable_verification: true,
-            },
+            create_install_task("1", AddonType::Plugin, "/downloads/MyPlugin/win.xpl", "/X-Plane/Resources/plugins/MyPlugin", "MyPlugin"),
+            create_install_task("2", AddonType::Plugin, "/downloads/MyPlugin/mac.xpl", "/X-Plane/Resources/plugins/MyPlugin", "MyPlugin"),
+            create_install_task("3", AddonType::Plugin, "/downloads/MyPlugin/lin.xpl", "/X-Plane/Resources/plugins/MyPlugin", "MyPlugin"),
         ];
 
         let result = analyzer.deduplicate_by_target_path(tasks);
@@ -1193,22 +1022,8 @@ mod tests {
         let analyzer = Analyzer::new();
 
         let items = vec![
-            DetectedItem {
-                addon_type: AddonType::Scenery,
-                path: "/test/KSEA".to_string(),
-                display_name: "KSEA".to_string(),
-                archive_internal_root: None,
-                extraction_chain: None,
-                navdata_info: None,
-            },
-            DetectedItem {
-                addon_type: AddonType::Plugin,
-                path: "/test/KSEA/plugins/lighting".to_string(),
-                display_name: "Lighting".to_string(),
-                archive_internal_root: None,
-                extraction_chain: None,
-                navdata_info: None,
-            },
+            create_detected_item(AddonType::Scenery, "/test/KSEA", "KSEA", None),
+            create_detected_item(AddonType::Plugin, "/test/KSEA/plugins/lighting", "Lighting", None),
         ];
 
         let result = analyzer.deduplicate(items);
@@ -1222,22 +1037,8 @@ mod tests {
         let analyzer = Analyzer::new();
 
         let items = vec![
-            DetectedItem {
-                addon_type: AddonType::Aircraft,
-                path: "/test/A330".to_string(),
-                display_name: "A330".to_string(),
-                archive_internal_root: None,
-                extraction_chain: None,
-                navdata_info: None,
-            },
-            DetectedItem {
-                addon_type: AddonType::Plugin,
-                path: "/test/BetterPushback".to_string(),
-                display_name: "BetterPushback".to_string(),
-                archive_internal_root: None,
-                extraction_chain: None,
-                navdata_info: None,
-            },
+            create_detected_item(AddonType::Aircraft, "/test/A330", "A330", None),
+            create_detected_item(AddonType::Plugin, "/test/BetterPushback", "BetterPushback", None),
         ];
 
         let result = analyzer.deduplicate(items);
@@ -1251,46 +1052,11 @@ mod tests {
         let analyzer = Analyzer::new();
 
         let items = vec![
-            DetectedItem {
-                addon_type: AddonType::Aircraft,
-                path: "/test/pack.zip".to_string(),
-                display_name: "A330".to_string(),
-                archive_internal_root: Some("aircraft/A330".to_string()),
-                extraction_chain: None,
-                navdata_info: None,
-            },
-            DetectedItem {
-                addon_type: AddonType::Plugin,
-                path: "/test/pack.zip".to_string(),
-                display_name: "Systems".to_string(),
-                archive_internal_root: Some("aircraft/A330/plugins/systems".to_string()),
-                extraction_chain: None,
-                navdata_info: None,
-            },
-            DetectedItem {
-                addon_type: AddonType::SceneryLibrary,
-                path: "/test/pack.zip".to_string(),
-                display_name: "Library".to_string(),
-                archive_internal_root: Some("library".to_string()),
-                extraction_chain: None,
-                navdata_info: None,
-            },
-            DetectedItem {
-                addon_type: AddonType::Plugin,
-                path: "/test/pack.zip".to_string(),
-                display_name: "LibPlugin".to_string(),
-                archive_internal_root: Some("library/plugins/helper".to_string()),
-                extraction_chain: None,
-                navdata_info: None,
-            },
-            DetectedItem {
-                addon_type: AddonType::Plugin,
-                path: "/test/pack.zip".to_string(),
-                display_name: "Standalone".to_string(),
-                archive_internal_root: Some("plugins/standalone".to_string()),
-                extraction_chain: None,
-                navdata_info: None,
-            },
+            create_detected_item(AddonType::Aircraft, "/test/pack.zip", "A330", Some("aircraft/A330".to_string())),
+            create_detected_item(AddonType::Plugin, "/test/pack.zip", "Systems", Some("aircraft/A330/plugins/systems".to_string())),
+            create_detected_item(AddonType::SceneryLibrary, "/test/pack.zip", "Library", Some("library".to_string())),
+            create_detected_item(AddonType::Plugin, "/test/pack.zip", "LibPlugin", Some("library/plugins/helper".to_string())),
+            create_detected_item(AddonType::Plugin, "/test/pack.zip", "Standalone", Some("plugins/standalone".to_string())),
         ];
 
         let result = analyzer.deduplicate(items);

@@ -220,7 +220,8 @@
 
         <!-- Completion Animation Overlay (on top of completion view) -->
         <transition name="fade">
-          <div v-if="store.showCompletionAnimation" class="absolute inset-0 z-30 flex items-start justify-center pt-[80px] pointer-events-none">
+          <div v-if="store.showCompletionAnimation" class="absolute inset-0 z-30 flex items-start justify-center pointer-events-none"
+               :class="store.installResult && store.installResult.failedTasks === 0 ? 'pt-[80px]' : 'pt-[40px]'">
             <div class="w-full max-w-md">
                 <!-- Success Icon with Animation -->
                 <div v-if="store.installResult && store.installResult.failedTasks === 0" class="relative w-20 h-20 mx-auto">
@@ -313,6 +314,7 @@ const MIN_PASSWORD_ATTEMPT_DELAY_MS = 1000 // 1 second between attempts
 let unlistenDragDrop: UnlistenFn | null = null
 let unlistenProgress: UnlistenFn | null = null
 let unlistenCliArgs: UnlistenFn | null = null
+let unlistenDeletionSkipped: UnlistenFn | null = null
 
 // Watch for pending CLI args changes
 watch(() => store.pendingCliArgs, async (args) => {
@@ -436,13 +438,9 @@ onMounted(async () => {
 
   // Listen for source deletion skipped events
   try {
-    const unlistenDeletionSkipped = await listen<string>('source-deletion-skipped', (event) => {
+    unlistenDeletionSkipped = await listen<string>('source-deletion-skipped', (event) => {
       const path = event.payload
       toast.info(t('home.sourceDeletionSkipped', { path }))
-    })
-    // Store unlisten function for cleanup
-    onBeforeUnmount(() => {
-      unlistenDeletionSkipped()
     })
     console.log('Source deletion skipped listener registered')
   } catch (error) {
@@ -468,7 +466,68 @@ onBeforeUnmount(() => {
   if (unlistenCliArgs) {
     unlistenCliArgs()
   }
+  if (unlistenDeletionSkipped) {
+    unlistenDeletionSkipped()
+  }
 })
+
+// DEV: Test function to simulate installation results
+function testCompletionView(scenario: 'all-success' | 'partial-failure' | 'all-failed') {
+  const mockResult: InstallResult = {
+    totalTasks: 0,
+    successfulTasks: 0,
+    failedTasks: 0,
+    taskResults: []
+  }
+
+  if (scenario === 'all-success') {
+    mockResult.totalTasks = 5
+    mockResult.successfulTasks = 5
+    mockResult.failedTasks = 0
+    mockResult.taskResults = [
+      { taskId: '1', taskName: 'Aircraft A320', success: true },
+      { taskId: '2', taskName: 'Scenery KSFO', success: true },
+      { taskId: '3', taskName: 'Plugin AutoGate', success: true },
+      { taskId: '4', taskName: 'Livery Pack', success: true },
+      { taskId: '5', taskName: 'Navdata Cycle 2401', success: true }
+    ]
+  } else if (scenario === 'partial-failure') {
+    mockResult.totalTasks = 8
+    mockResult.successfulTasks = 5
+    mockResult.failedTasks = 3
+    mockResult.taskResults = [
+      { taskId: '1', taskName: 'Aircraft A320', success: true },
+      { taskId: '2', taskName: 'Scenery KSFO', success: true },
+      { taskId: '3', taskName: 'Plugin AutoGate', success: false, errorMessage: 'Password required for encrypted file' },
+      { taskId: '4', taskName: 'Livery Pack', success: true },
+      { taskId: '5', taskName: 'Navdata Cycle 2401', success: false, errorMessage: 'Failed to extract: compression ratio exceeded safety limit' },
+      { taskId: '6', taskName: 'Aircraft B737', success: true },
+      { taskId: '7', taskName: 'Scenery EGLL', success: false, errorMessage: 'Disk space insufficient: need 2.5GB, available 1.2GB' },
+      { taskId: '8', taskName: 'Plugin XPUIPC', success: true }
+    ]
+  } else if (scenario === 'all-failed') {
+    mockResult.totalTasks = 6
+    mockResult.successfulTasks = 0
+    mockResult.failedTasks = 6
+    mockResult.taskResults = [
+      { taskId: '1', taskName: 'Aircraft A320', success: false, errorMessage: 'Password required for encrypted file' },
+      { taskId: '2', taskName: 'Scenery KSFO', success: false, errorMessage: 'Failed to create directory: permission denied' },
+      { taskId: '3', taskName: 'Plugin AutoGate', success: false, errorMessage: 'Unsupported archive format: .rar' },
+      { taskId: '4', taskName: 'Livery Pack', success: false, errorMessage: 'Verification failed: hash mismatch detected' },
+      { taskId: '5', taskName: 'Navdata Cycle 2401', success: false, errorMessage: 'File not found: cycle.json missing in archive' },
+      { taskId: '6', taskName: 'Aircraft B737', success: false, errorMessage: 'Failed to extract: corrupt archive detected' }
+    ]
+  }
+
+  store.setInstallResult(mockResult)
+  store.isInstalling = false
+  progressStore.reset()
+}
+
+// DEV: Expose test function to window for console access
+if (import.meta.env.DEV) {
+  (window as any).testCompletion = testCompletionView
+}
 
 async function analyzeFiles(paths: string[], passwords?: Record<string, string>) {
   // Log incoming files

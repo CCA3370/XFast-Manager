@@ -82,7 +82,7 @@
 
         <!-- Windows Integration (Left Column, Windows only) -->
         <transition name="slide-up">
-          <section v-if="isWindows" class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
+          <section v-if="store.isWindows" class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
             <div
               class="p-4 cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
               @click="windowsIntegrationExpanded = !windowsIntegrationExpanded"
@@ -105,11 +105,11 @@
                     @click.stop="toggleContextMenu"
                     :disabled="isProcessing"
                     class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-gray-900"
-                    :class="isContextRegistered ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'"
+                    :class="store.isContextMenuRegistered ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'"
                   >
                     <span
                       class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-300 shadow-sm"
-                      :class="isContextRegistered ? 'translate-x-4.5' : 'translate-x-0.5'"
+                      :class="store.isContextMenuRegistered ? 'translate-x-4.5' : 'translate-x-0.5'"
                     />
                   </button>
 
@@ -168,7 +168,7 @@
 
         <!-- Atomic Installation Mode (Windows only) -->
         <transition name="slide-up">
-          <section v-if="isWindows" class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
+          <section v-if="store.isWindows" class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
             <div
               class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
               @click="atomicExpanded = !atomicExpanded"
@@ -260,7 +260,7 @@
 
         <!-- Delete Source After Install (Windows only) -->
         <transition name="slide-up">
-          <section v-if="isWindows" class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
+          <section v-if="store.isWindows" class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
             <div
               class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
               @click="deleteSourceExpanded = !deleteSourceExpanded"
@@ -347,10 +347,10 @@
         </transition>
 
         <!-- Placeholder for non-Windows (to maintain grid layout) -->
-        <div v-if="!isWindows"></div>
+        <div v-if="!store.isWindows"></div>
 
         <!-- Installation Preferences (Right Column or Full Width on non-Windows) -->
-        <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300" :class="{ 'md:col-span-2': !isWindows }">
+        <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300" :class="{ 'md:col-span-2': !store.isWindows }">
           <div
             class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
             @click="preferencesExpanded = !preferencesExpanded"
@@ -417,7 +417,7 @@
         </section>
 
         <!-- 2.5. Verification Preferences -->
-        <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300" :class="{ 'md:col-span-2': !isWindows }">
+        <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300" :class="{ 'md:col-span-2': !store.isWindows }">
           <div
             class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
             @click="verificationExpanded = !verificationExpanded"
@@ -765,8 +765,6 @@ const toast = useToastStore()
 const modal = useModalStore()
 
 const xplanePathInput = ref('')
-const isWindows = ref(false)
-const isContextRegistered = ref(false)
 const isProcessing = ref(false)
 const saveStatus = ref<'saving' | 'saved' | null>(null)
 const pathError = ref<string | null>(null)
@@ -831,18 +829,24 @@ onMounted(async () => {
   xplanePathInput.value = store.xplanePath
 
   try {
-    const platform = await invoke<string>('get_platform')
-    isWindows.value = platform === 'windows'
-
     // Get app version
     appVersion.value = await invoke<string>('get_app_version')
-
-    // Check if context menu is already registered (Windows only)
-    if (isWindows.value) {
-      isContextRegistered.value = await invoke<boolean>('is_context_menu_registered')
-    }
   } catch (error) {
-    console.error('Failed to get platform:', error)
+    console.error('Failed to get app version:', error)
+  }
+
+  // Check and sync context menu registration status (Windows only)
+  if (store.isWindows) {
+    try {
+      const actualStatus = await invoke<boolean>('is_context_menu_registered')
+      // If stored status doesn't match actual status, update it
+      if (store.isContextMenuRegistered !== actualStatus) {
+        console.log(`Context menu status mismatch: stored=${store.isContextMenuRegistered}, actual=${actualStatus}. Syncing...`)
+        store.isContextMenuRegistered = actualStatus
+      }
+    } catch (error) {
+      console.error('Failed to check context menu status:', error)
+    }
   }
 
   // Load logs
@@ -1050,14 +1054,40 @@ async function toggleContextMenu() {
   if (isProcessing.value) return
   isProcessing.value = true
   try {
-    if (!isContextRegistered.value) {
-      await invoke('register_context_menu')
-      toast.success(t('settings.contextMenuRegistered'))
-      isContextRegistered.value = true
+    if (!store.isContextMenuRegistered) {
+      // Register context menu
+      try {
+        await invoke('register_context_menu')
+        toast.success(t('settings.contextMenuRegistered'))
+        store.isContextMenuRegistered = true
+      } catch (error) {
+        // If already registered, just update the state
+        const errorMsg = String(error).toLowerCase()
+        if (errorMsg.includes('already') || errorMsg.includes('exist')) {
+          console.log('Context menu already registered, updating state')
+          store.isContextMenuRegistered = true
+          toast.info(t('settings.contextMenuRegistered'))
+        } else {
+          throw error
+        }
+      }
     } else {
-      await invoke('unregister_context_menu')
-      toast.success(t('settings.contextMenuUnregistered'))
-      isContextRegistered.value = false
+      // Unregister context menu
+      try {
+        await invoke('unregister_context_menu')
+        toast.success(t('settings.contextMenuUnregistered'))
+        store.isContextMenuRegistered = false
+      } catch (error) {
+        // If already unregistered, just update the state
+        const errorMsg = String(error).toLowerCase()
+        if (errorMsg.includes('not found') || errorMsg.includes('not exist') || errorMsg.includes('not registered')) {
+          console.log('Context menu already unregistered, updating state')
+          store.isContextMenuRegistered = false
+          toast.info(t('settings.contextMenuUnregistered'))
+        } else {
+          throw error
+        }
+      }
     }
   } catch (error) {
     modal.showError(t('common.error') + ': ' + String(error))

@@ -171,6 +171,54 @@ impl Scanner {
         path.ends_with("desktop.ini")
     }
 
+    /// Check if a path should be skipped based on skip_dirs
+    /// Optimized: O(1) average case with HashSet lookup for exact matches,
+    /// O(n) worst case for prefix checking (but only when needed)
+    #[inline]
+    fn should_skip_path(path: &Path, skip_dirs: &HashSet<PathBuf>) -> bool {
+        // Fast path: check if path is exactly in skip_dirs
+        if skip_dirs.contains(path) {
+            return false; // Don't skip the root itself, only its children
+        }
+
+        // Check if path is a child of any skip_dir
+        // This is still O(n) but we can optimize by checking ancestors
+        for ancestor in path.ancestors().skip(1) {
+            if skip_dirs.contains(ancestor) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Check if a file path is inside any plugin directory
+    /// Optimized: Uses path ancestors for efficient checking
+    #[inline]
+    fn is_path_inside_plugin_dirs(file_path: &Path, plugin_dirs: &HashSet<PathBuf>) -> bool {
+        // Check each ancestor to see if it's a plugin directory
+        for ancestor in file_path.ancestors().skip(1) {
+            if plugin_dirs.contains(ancestor) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Check if a string path is inside any plugin directory (for archive paths)
+    /// Optimized: Direct string prefix checking with HashSet
+    #[inline]
+    fn is_archive_path_inside_plugin_dirs(file_path: &str, plugin_dirs: &HashSet<String>) -> bool {
+        // Check if file_path starts with any plugin_dir
+        // Since plugin_dirs is typically small, this is acceptable
+        for plugin_dir in plugin_dirs {
+            if file_path.starts_with(plugin_dir) && file_path.len() > plugin_dir.len() {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Scan a path (file or directory) and detect all addon types
     pub fn scan_path(&self, path: &Path, password: Option<&str>) -> Result<Vec<DetectedItem>> {
         let original_input_path = path.to_string_lossy().to_string();
@@ -241,11 +289,7 @@ impl Scanner {
             }
 
             // Check if this directory should be skipped
-            let should_skip = skip_dirs.iter().any(|skip_dir| {
-                current_dir.starts_with(skip_dir) && current_dir != *skip_dir
-            });
-
-            if should_skip {
+            if Self::should_skip_path(&current_dir, &skip_dirs) {
                 continue;
             }
 
@@ -303,16 +347,10 @@ impl Scanner {
             // Second pass on files: detect addons
             for file_path in &files {
                 // Check if inside a detected plugin directory
-                let is_inside_plugin = plugin_dirs.iter().any(|plugin_dir| {
-                    file_path.starts_with(plugin_dir) && file_path != plugin_dir
-                });
+                let is_inside_plugin = Self::is_path_inside_plugin_dirs(file_path, &plugin_dirs);
 
                 // Check if inside a skip directory
-                let is_inside_skip = skip_dirs.iter().any(|skip_dir| {
-                    file_path.starts_with(skip_dir) && file_path != skip_dir
-                });
-
-                if is_inside_skip {
+                if Self::should_skip_path(file_path, &skip_dirs) {
                     continue;
                 }
 
@@ -355,11 +393,7 @@ impl Scanner {
 
             // Add subdirectories to queue (only if not in skip_dirs)
             for subdir in subdirs {
-                let should_skip_subdir = skip_dirs.iter().any(|skip_dir| {
-                    subdir.starts_with(skip_dir)
-                });
-
-                if !should_skip_subdir {
+                if !Self::should_skip_path(&subdir, &skip_dirs) {
                     queue.push_back((subdir, depth + 1));
                 }
             }
@@ -561,10 +595,7 @@ impl Scanner {
             }
 
             if marker_type == "acf" || marker_type == "dsf" {
-                let is_inside_plugin = plugin_dirs.iter().any(|plugin_dir| {
-                    file_path.starts_with(plugin_dir) && file_path.len() > plugin_dir.len()
-                });
-                if is_inside_plugin {
+                if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
                     continue;
                 }
             }
@@ -1255,10 +1286,7 @@ impl Scanner {
 
             // Check if .acf/.dsf is inside a plugin directory
             if marker_type == "acf" || marker_type == "dsf" {
-                let is_inside_plugin = plugin_dirs.iter().any(|plugin_dir| {
-                    file_path.starts_with(plugin_dir) && file_path.len() > plugin_dir.len()
-                });
-                if is_inside_plugin {
+                if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
                     continue;
                 }
             }
@@ -1485,10 +1513,7 @@ impl Scanner {
 
             // Check if .acf/.dsf is inside a plugin directory
             if marker_type == "acf" || marker_type == "dsf" {
-                let is_inside_plugin = plugin_dirs.iter().any(|plugin_dir| {
-                    file_path.starts_with(plugin_dir) && file_path.len() > plugin_dir.len()
-                });
-                if is_inside_plugin {
+                if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
                     continue;
                 }
             }
@@ -1737,10 +1762,7 @@ impl Scanner {
 
             // Check if .acf/.dsf is inside a plugin directory
             if marker_type == "acf" || marker_type == "dsf" {
-                let is_inside_plugin = plugin_dirs.iter().any(|plugin_dir| {
-                    file_path.starts_with(plugin_dir) && file_path.len() > plugin_dir.len()
-                });
-                if is_inside_plugin {
+                if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
                     continue;
                 }
             }
@@ -2036,9 +2058,7 @@ impl Scanner {
                 continue;
             }
 
-            let is_inside_plugin = plugin_dirs.iter().any(|plugin_dir| {
-                path.starts_with(plugin_dir) && path != plugin_dir
-            });
+            let is_inside_plugin = Self::is_path_inside_plugin_dirs(&path, &plugin_dirs);
 
             if (file_path.ends_with(".acf") || file_path.ends_with(".dsf")) && is_inside_plugin {
                 continue;
@@ -2236,10 +2256,7 @@ impl Scanner {
 
             // Check if .acf/.dsf is inside a plugin directory
             if marker_type == "acf" || marker_type == "dsf" {
-                let is_inside_plugin = plugin_dirs.iter().any(|plugin_dir| {
-                    file_path.starts_with(plugin_dir) && file_path.len() > plugin_dir.len()
-                });
-                if is_inside_plugin {
+                if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
                     continue;
                 }
             }
