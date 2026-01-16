@@ -27,13 +27,25 @@ pub const MAX_MEMORY_ZIP_SIZE: u64 = 200 * 1024 * 1024;
 /// Optimized for modern SSDs and network storage
 const IO_BUFFER_SIZE: usize = 4 * 1024 * 1024;
 
-/// Check if a filename matches any of the given glob patterns
-fn matches_any_pattern(filename: &str, patterns: &[String]) -> bool {
-    patterns.iter().any(|pattern| {
-        Pattern::new(pattern)
-            .map(|p| p.matches(filename))
-            .unwrap_or(false)
-    })
+/// Pre-compiled glob patterns for efficient matching
+struct CompiledPatterns {
+    patterns: Vec<Pattern>,
+}
+
+impl CompiledPatterns {
+    /// Create new compiled patterns from string patterns
+    fn new(pattern_strings: &[String]) -> Self {
+        let patterns = pattern_strings
+            .iter()
+            .filter_map(|s| Pattern::new(s).ok())
+            .collect();
+        CompiledPatterns { patterns }
+    }
+
+    /// Check if filename matches any of the compiled patterns
+    fn matches(&self, filename: &str) -> bool {
+        self.patterns.iter().any(|p| p.matches(filename))
+    }
 }
 
 /// Sanitize a file path to prevent path traversal attacks
@@ -638,13 +650,16 @@ impl Installer {
 
     /// Get total size of config files matching patterns in a directory
     fn get_config_files_size(&self, dir: &Path, patterns: &[String]) -> u64 {
+        // Pre-compile patterns once for efficiency
+        let compiled = CompiledPatterns::new(patterns);
+
         let mut total = 0u64;
         if let Ok(entries) = fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_file() {
                     if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                        if matches_any_pattern(name, patterns) {
+                        if compiled.matches(name) {
                             if let Ok(metadata) = fs::metadata(&path) {
                                 total += metadata.len();
                             }
@@ -670,81 +685,29 @@ impl Installer {
         ctx.emit_progress(Some("Marker files OK".to_string()), InstallPhase::Verifying);
 
         // Phase 2: Hash verification (if enabled and hashes available)
+        // IMPORTANT: When verification is disabled, skip ALL hash operations to save time
         if !task.enable_verification {
             logger::log_info(
-                "Hash verification disabled for this task",
+                "Hash verification disabled for this task - skipping all hash operations",
                 Some("installer")
             );
             return Ok(None);
         }
 
-        // For 7z archives without hashes, compute them from installed files
-        // This serves as a baseline for retry verification
-        //
-        // IMPORTANT LIMITATION: This approach cannot detect corruption during initial extraction.
-        // It only verifies that re-extraction produces consistent results.
-        //
-        // Why this limitation exists:
-        // - 7z format doesn't provide hash metadata (unlike ZIP's CRC32)
-        // - Computing hashes during extraction would require modifying the entire call chain
-        // - The current approach is a pragmatic compromise
-        //
-        // What this DOES detect:
-        // - File system corruption after installation
-        // - Inconsistent re-extraction (if retry produces different files)
-        // - Missing or incomplete files
-        //
-        // What this CANNOT detect:
-        // - Corruption during initial extraction (if the same corruption happens consistently)
-        //
-        // For true integrity verification of 7z archives, users should:
-        // - Verify the archive itself before installation (external tools)
-        // - Use ZIP format instead (which provides CRC32 metadata)
+        // Get expected hashes (must be available at this point)
+        // Note: For 7z archives, hashes should have been computed during extraction if verification was enabled
         let expected_hashes = match &task.file_hashes {
             Some(hashes) if !hashes.is_empty() => hashes.clone(),
             _ => {
-                // Check if this was a 7z archive
-                let source = Path::new(&task.source_path);
-                let is_7z = source.is_file() &&
-                    source.extension().and_then(|s| s.to_str()) == Some("7z");
-
-                if is_7z {
-                    logger::log_info(
-                        "Computing SHA256 hashes for 7z archive from installed files",
-                        Some("installer")
-                    );
-
-                    // Compute hashes from installed files as baseline
-                    match self.compute_installed_file_hashes(target) {
-                        Ok(hashes) if !hashes.is_empty() => {
-                            logger::log_info(
-                                &format!("Computed {} SHA256 hashes for 7z verification", hashes.len()),
-                                Some("installer")
-                            );
-                            hashes
-                        }
-                        Ok(_) => {
-                            logger::log_info(
-                                "No files to verify for 7z archive",
-                                Some("installer")
-                            );
-                            return Ok(None);
-                        }
-                        Err(e) => {
-                            logger::log_error(
-                                &format!("Failed to compute hashes for 7z: {}", e),
-                                Some("installer")
-                            );
-                            return Ok(None); // Don't fail installation, just skip verification
-                        }
-                    }
-                } else {
-                    logger::log_info(
-                        "No hashes available for verification",
-                        Some("installer")
-                    );
-                    return Ok(None);
-                }
+                // No hashes available - this can happen for:
+                // 1. 7z/RAR archives (hashes computed during extraction)
+                // 2. Hash collection failed during analysis
+                // 3. Empty archives
+                logger::log_info(
+                    "No hashes available for verification - skipping hash verification",
+                    Some("installer")
+                );
+                return Ok(None);
             }
         };
 
@@ -1260,24 +1223,70 @@ impl Installer {
     }
 
     /// Re-extract single file from RAR (requires full re-extraction to temp)
-    /// Note: Currently disabled due to unrar crate API limitations.
-    /// The unrar crate doesn't provide an easy way to extract a single file.
     fn re_extract_from_rar(
         &self,
-        _archive_path: &Path,
-        _target: &Path,
+        archive_path: &Path,
+        target: &Path,
         relative_path: &str,
-        _internal_root: Option<&str>,
+        internal_root: Option<&str>,
         _extraction_chain: Option<&crate::models::ExtractionChain>,
-        _password: Option<&str>,
+        password: Option<&str>,
     ) -> Result<()> {
-        // Note: unrar crate doesn't support easy single-file extraction
-        // For now, we skip retry for RAR files
-        // TODO: Implement full RAR re-extraction if needed
-        Err(anyhow::anyhow!(
-            "RAR single-file retry not supported yet: {}",
-            relative_path
-        ))
+        // Create secure temp directory
+        let temp_dir = tempfile::Builder::new()
+            .prefix("xfi_rar_retry_")
+            .tempdir()
+            .context("Failed to create temp directory for RAR retry")?;
+
+        // Extract using the typestate pattern (with password if provided)
+        let archive_builder = if let Some(pwd) = password {
+            unrar::Archive::with_password(archive_path, pwd)
+        } else {
+            unrar::Archive::new(archive_path)
+        };
+
+        let mut arch = archive_builder
+            .open_for_processing()
+            .map_err(|e| anyhow::anyhow!("Failed to open RAR for retry: {:?}", e))?;
+
+        // Extract all files to temp directory
+        while let Some(header) = arch.read_header()
+            .map_err(|e| anyhow::anyhow!("Failed to read RAR header: {:?}", e))?
+        {
+            arch = if header.entry().is_file() {
+                header.extract_with_base(temp_dir.path())
+                    .map_err(|e| anyhow::anyhow!("Failed to extract RAR entry: {:?}", e))?
+            } else {
+                header.skip()
+                    .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
+            };
+        }
+
+        // Determine the source path in temp directory
+        let source_file = if let Some(root) = internal_root {
+            let root_normalized = root.replace('\\', "/");
+            temp_dir.path().join(&root_normalized).join(relative_path)
+        } else {
+            temp_dir.path().join(relative_path)
+        };
+
+        if !source_file.exists() {
+            return Err(anyhow::anyhow!(
+                "File not found after RAR extraction: {}",
+                relative_path
+            ));
+        }
+
+        // Copy to target
+        let target_file = target.join(relative_path);
+        if let Some(parent) = target_file.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        fs::copy(&source_file, &target_file)
+            .context(format!("Failed to copy RAR file: {}", relative_path))?;
+
+        Ok(())
     }
 
     /// Log verification failures with appropriate detail level
@@ -1323,13 +1332,25 @@ impl Installer {
 
     /// Get total size of files in a directory
     fn get_directory_size(&self, dir: &Path) -> Result<u64> {
+        // Check cache first
+        if let Some(cached) = crate::cache::get_cached_directory_metadata(dir) {
+            return Ok(cached.total_size);
+        }
+
+        // Calculate size if not cached
         let mut size = 0u64;
+        let mut file_count = 0usize;
         for entry in walkdir::WalkDir::new(dir).follow_links(false) {
             let entry = entry?;
             if entry.file_type().is_file() {
                 size += entry.metadata()?.len();
+                file_count += 1;
             }
         }
+
+        // Cache the result
+        crate::cache::cache_directory_metadata(dir, size, file_count);
+
         Ok(size)
     }
 
@@ -2305,13 +2326,16 @@ impl Installer {
         if backup_config_files && !config_patterns.is_empty() {
             ctx.emit_progress(Some("Backing up config files...".to_string()), InstallPhase::Installing);
 
+            // Pre-compile patterns once for efficiency
+            let compiled = CompiledPatterns::new(config_patterns);
+
             for entry in fs::read_dir(target)? {
                 let entry = entry?;
                 let path = entry.path();
 
                 if path.is_file() {
                     if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                        if matches_any_pattern(name, config_patterns) {
+                        if compiled.matches(name) {
                             let original_size = fs::metadata(&path)?.len();
                             let backup_path = temp_dir.join(name);
                             fs::copy(&path, &backup_path)

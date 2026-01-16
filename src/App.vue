@@ -95,6 +95,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { listen } from '@tauri-apps/api/event'
+import { invoke } from '@tauri-apps/api/core'
 import { syncLocaleToBackend } from '@/i18n'
 import { logBasic, logDebug } from '@/services/logger'
 import ToastNotification from '@/components/ToastNotification.vue'
@@ -117,6 +118,21 @@ onMounted(async () => {
 
   logDebug(`X-Plane path loaded: ${store.xplanePath || '(not set)'}`, 'app')
   logDebug(`Log level: ${store.logLevel}`, 'app')
+
+  // Detect platform and context menu status at startup (once)
+  try {
+    const platform = await invoke<string>('get_platform')
+    store.isWindows = platform === 'windows'
+    logDebug(`Platform detected: ${platform}`, 'app')
+
+    // Check context menu registration status (Windows only)
+    if (store.isWindows) {
+      store.isContextMenuRegistered = await invoke<boolean>('is_context_menu_registered')
+      logDebug(`Context menu registered: ${store.isContextMenuRegistered}`, 'app')
+    }
+  } catch (error) {
+    console.error('Failed to detect platform:', error)
+  }
 
   // Non-blocking sync locale to backend (moved from i18n module top-level)
   syncLocaleToBackend()

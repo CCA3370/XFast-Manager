@@ -13,6 +13,10 @@ export const useAppStore = defineStore('app', () => {
   const isAnalyzing = ref(false)
   const isInstalling = ref(false)
 
+  // Platform detection (initialized at app startup)
+  const isWindows = ref(false)
+  const isContextMenuRegistered = ref(false)
+
   // Log level setting (basic, full, debug)
   const logLevel = ref<LogLevel>('full')
 
@@ -389,6 +393,8 @@ export const useAppStore = defineStore('app', () => {
     currentTasks,
     isAnalyzing,
     isInstalling,
+    isWindows,
+    isContextMenuRegistered,
     installPreferences,
     verificationPreferences,
     atomicInstallEnabled,

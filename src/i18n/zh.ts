@@ -242,16 +242,27 @@ export default {
     failed: '失败',
     failedTasks: '失败的任务',
     confirm: '确认',
+    viewFailedTasks: '查看详情',
     // Error reasons
     unknownError: '未知错误',
-    verificationFailed: '内容校验失败',
+    passwordRequired: '需要密码',
+    wrongPassword: '密码错误',
+    passwordError: '密码错误',
+    pathTraversal: '路径不安全',
+    unsupportedFormat: '格式不支持',
+    corruptArchive: '压缩包损坏',
+    compressionRatio: '压缩比异常',
+    sizeLimitExceeded: '文件过大',
+    verificationFailed: '校验失败',
     diskSpaceFull: '磁盘空间不足',
     permissionDenied: '权限不足',
+    createDirFailed: '创建目录失败',
+    copyFileFailed: '复制文件失败',
+    removeFailed: '删除失败',
     fileNotFound: '文件未找到',
-    passwordError: '密码错误',
     extractionFailed: '解压失败',
-    networkError: '网络错误',
     cancelledByUser: '用户取消',
-    skippedByUser: '用户跳过'
+    skippedByUser: '用户跳过',
+    networkError: '网络错误'
   }
 }

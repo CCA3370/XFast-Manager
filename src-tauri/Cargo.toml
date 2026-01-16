@@ -1,8 +1,8 @@
 [package]
 name = "xfastinstall"
-version = "0.2.0"
+version = "0.3.0"
 description = "X-Plane Addon Installer"
-authors = ["XFastInstall Team"]
+authors = ["3370Tech"]
 edition = "2021"
 
 [build-dependencies]
