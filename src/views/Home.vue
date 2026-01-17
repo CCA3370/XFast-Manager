@@ -7,6 +7,14 @@
     </div>
 
     <div class="w-full z-10 flex flex-col flex-1 min-h-0 gap-3">
+      <!-- Update Banner -->
+      <UpdateBanner
+        :visible="updateStore.showUpdateBanner"
+        :update-info="updateStore.updateInfo"
+        @view-release="updateStore.openReleaseUrl"
+        @dismiss="updateStore.dismissUpdate"
+      />
+
       <!-- Warning Alert (Compact) -->
       <transition name="slide-down">
         <div
@@ -275,6 +283,7 @@ import { useAppStore } from '@/stores/app'
 import { useToastStore } from '@/stores/toast'
 import { useModalStore } from '@/stores/modal'
 import { useProgressStore } from '@/stores/progress'
+import { useUpdateStore } from '@/stores/update'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -284,6 +293,7 @@ import ConfirmationModal from '@/components/ConfirmationModal.vue'
 import PasswordModal from '@/components/PasswordModal.vue'
 import AnimatedText from '@/components/AnimatedText.vue'
 import CompletionView from '@/components/CompletionView.vue'
+import UpdateBanner from '@/components/UpdateBanner.vue'
 import type { AnalysisResult, InstallProgress, InstallResult } from '@/types'
 import { logOperation, logError, logDebug, logBasic } from '@/services/logger'
 
@@ -292,6 +302,7 @@ const { t } = useI18n()
 const store = useAppStore()
 const toast = useToastStore()
 const modal = useModalStore()
+const updateStore = useUpdateStore()
 const progressStore = useProgressStore()
 const isDragging = ref(false)
 const showConfirmation = ref(false)

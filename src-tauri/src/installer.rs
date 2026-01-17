@@ -3095,6 +3095,7 @@ impl Installer {
 
     /// Compute SHA256 hashes for all files in installed directory
     /// Used for 7z archives where hashes aren't available from metadata
+    #[allow(dead_code)]
     fn compute_installed_file_hashes(&self, target_dir: &Path) -> Result<HashMap<String, crate::models::FileHash>> {
         use walkdir::WalkDir;
 

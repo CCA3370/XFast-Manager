@@ -1,6 +1,6 @@
 {
   "productName": "XFastInstall",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "identifier": "com.xfastinstall.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -39,6 +39,11 @@
       "webviewInstallMode": {
         "type": "embedBootstrapper"
       }
+    }
+  },
+  "plugins": {
+    "http": {
+      "scope": ["https://api.github.com/repos/CCA3370/*"]
     }
   }
 }

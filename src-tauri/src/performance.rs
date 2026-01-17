@@ -1,3 +1,11 @@
+//! Performance monitoring and metrics collection
+//!
+//! This module provides utilities for tracking cache performance,
+//! file operations, and timing measurements. These are currently
+//! not actively used but are available for future performance analysis.
+
+#![allow(dead_code)]
+
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 

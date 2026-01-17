@@ -114,3 +114,12 @@ export interface InstallResult {
   failedTasks: number;
   taskResults: TaskResult[];
 }
+
+export interface UpdateInfo {
+  currentVersion: string;
+  latestVersion: string;
+  isUpdateAvailable: boolean;
+  releaseNotes: string;
+  releaseUrl: string;
+  publishedAt: string;
+}

@@ -94,6 +94,7 @@ import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { useUpdateStore } from '@/stores/update'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { syncLocaleToBackend } from '@/i18n'
@@ -107,6 +108,7 @@ import ConfirmModal from '@/components/ConfirmModal.vue'
 
 const { t } = useI18n()
 const store = useAppStore()
+const updateStore = useUpdateStore()
 const router = useRouter()
 
 onMounted(async () => {
@@ -136,6 +138,14 @@ onMounted(async () => {
 
   // Non-blocking sync locale to backend (moved from i18n module top-level)
   syncLocaleToBackend()
+
+  // Check for updates (non-blocking, delayed to avoid affecting startup performance)
+  setTimeout(() => {
+    if (updateStore.autoCheckEnabled) {
+      logDebug('Auto-checking for updates...', 'app')
+      updateStore.checkForUpdates(false)
+    }
+  }, 3000) // 3 second delay
 
   // Disable context menu and devtools shortcuts in production
   if (import.meta.env.MODE === 'production') {

@@ -90,6 +90,7 @@ impl AtomicInstaller {
     }
 
     /// Get the target directory path
+    #[allow(dead_code)]
     pub fn target_dir(&self) -> &Path {
         &self.target_dir
     }
@@ -321,6 +322,7 @@ impl AtomicInstaller {
     }
 
     /// Rollback installation if something goes wrong
+    #[allow(dead_code)]
     pub fn rollback(&mut self) -> Result<()> {
         logger::log_error(
             "Rolling back atomic installation",

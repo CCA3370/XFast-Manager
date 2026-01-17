@@ -9,6 +9,7 @@ mod performance;
 mod registry;
 mod scanner;
 mod task_control;
+mod updater;
 mod verifier;
 
 use std::collections::HashMap;
@@ -33,6 +34,11 @@ fn get_platform() -> String {
 #[tauri::command]
 fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[tauri::command]
+async fn open_url(url: String) -> Result<(), String> {
+    opener::open(&url).map_err(|e| format!("Failed to open URL: {}", e))
 }
 
 #[tauri::command]
@@ -205,6 +211,17 @@ fn validate_xplane_path(path: String) -> Result<bool, String> {
     Ok(exe_path.exists())
 }
 
+#[tauri::command]
+async fn check_for_updates(manual: bool, include_pre_release: bool) -> Result<updater::UpdateInfo, String> {
+    let checker = updater::UpdateChecker::new();
+    checker.check_for_updates(manual, include_pre_release).await
+}
+
+#[tauri::command]
+fn get_last_check_time() -> Option<i64> {
+    updater::get_last_check_time()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -238,6 +255,7 @@ pub fn run() {
             get_cli_args,
             get_platform,
             get_app_version,
+            open_url,
             analyze_addons,
             install_addons,
             cancel_installation,
@@ -252,7 +270,9 @@ pub fn run() {
             open_log_folder,
             set_log_locale,
             check_path_exists,
-            validate_xplane_path
+            validate_xplane_path,
+            check_for_updates,
+            get_last_check_time
         ])
         .setup(|app| {
             // Initialize TaskControl state

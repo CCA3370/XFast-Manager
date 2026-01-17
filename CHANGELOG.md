@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-01-17
+
+### Added
+- **Automatic Update Check** - GitHub-based version checking with 24-hour cache
+  - Auto-check on app startup (can be disabled in settings)
+  - Manual check button in settings page
+  - Support for stable releases and pre-releases (Beta/RC)
+  - Update notification banner on home page with download link
+- **Update Settings** - Comprehensive update configuration in settings page
+  - Toggle auto-check on startup
+  - Toggle pre-release inclusion
+  - View last check time
+  - Expandable section with feature explanation
+
+### Changed
+- **Settings Layout** - Moved auto update check section above logs section
+- **Update Banner Design** - Unified styling with other notification banners
+- **Button Labels** - Changed "View Details" to "Download" for clarity
+
+### Fixed
+- **Compilation Warnings** - Resolved all Rust compiler warnings
+- **Update Check Errors** - Graceful handling when no stable releases exist
+
+### Dependencies
+- Added `semver`, `reqwest`, `opener`, `tauri-plugin-http`
+
 ## [0.3.0] - 2026-01-17
 
 ### ⚡ Performance Improvements

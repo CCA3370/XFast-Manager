@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime};
 #[derive(Clone, Debug)]
 pub struct ArchiveMetadata {
     pub uncompressed_size: u64,
+    #[allow(dead_code)]
     pub file_count: usize,
     pub cached_at: SystemTime,
 }
@@ -15,6 +16,7 @@ pub struct ArchiveMetadata {
 #[derive(Clone, Debug)]
 pub struct DirectoryMetadata {
     pub total_size: u64,
+    #[allow(dead_code)]
     pub file_count: usize,
     pub cached_at: SystemTime,
     pub last_modified: SystemTime,
@@ -121,6 +123,7 @@ pub fn cache_directory_metadata(path: &Path, total_size: u64, file_count: usize)
 }
 
 /// Clear all caches (useful for testing or manual cache invalidation)
+#[allow(dead_code)]
 pub fn clear_all_caches() {
     ARCHIVE_CACHE.clear();
     DIRECTORY_CACHE.clear();

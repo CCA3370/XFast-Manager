@@ -251,5 +251,33 @@ export default {
     cancelledByUser: 'Cancelled',
     skippedByUser: 'Skipped',
     networkError: 'Network Error'
+  },
+  update: {
+    // Banner
+    newVersionAvailable: 'New Version Available',
+    viewDetails: 'Download',
+    dismiss: 'Dismiss',
+    today: 'Today',
+    yesterday: 'Yesterday',
+    // Settings page
+    checkForUpdates: 'Check for Updates',
+    checking: 'Checking...',
+    upToDate: 'You are up to date',
+    checkFailed: 'Failed to check for updates',
+    updateAvailableNotification: 'New version v{version} available, check the home page for details',
+    lastChecked: 'Last checked',
+    justNow: 'Just now',
+    minutesAgo: '{minutes} minutes ago',
+    hoursAgo: '{hours} hours ago',
+    daysAgo: '{days} days ago',
+    // Settings options
+    autoUpdateCheck: 'Automatic Update Check',
+    autoUpdateCheckDesc: 'Automatically check for new versions on startup',
+    autoUpdateCheckExplain: 'Automatic Update Check Explanation',
+    autoUpdateCheckBenefit1: 'Automatically check for new versions on startup (once per 24 hours)',
+    autoUpdateCheckBenefit2: 'No user data collected, only sends requests to GitHub API',
+    autoUpdateCheckBenefit3: 'Shows a banner notification on the home page when a new version is found',
+    includePreRelease: 'Include Pre-releases',
+    includePreReleaseDesc: 'Include Beta/RC and other pre-release versions when checking for updates'
   }
 }

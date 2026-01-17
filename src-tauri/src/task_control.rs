@@ -64,6 +64,7 @@ impl TaskControl {
     }
 
     /// Get all processed paths
+    #[allow(dead_code)]
     pub fn get_processed_paths(&self) -> Vec<PathBuf> {
         self.processed_paths
             .lock()
@@ -72,6 +73,7 @@ impl TaskControl {
     }
 
     /// Clear processed paths
+    #[allow(dead_code)]
     pub fn clear_processed_paths(&self) {
         if let Ok(mut paths) = self.processed_paths.lock() {
             paths.clear();

@@ -264,5 +264,33 @@ export default {
     cancelledByUser: '用户取消',
     skippedByUser: '用户跳过',
     networkError: '网络错误'
+  },
+  update: {
+    // 横幅
+    newVersionAvailable: '发现新版本',
+    viewDetails: '前往下载',
+    dismiss: '关闭',
+    today: '今天',
+    yesterday: '昨天',
+    // 设置页面
+    checkForUpdates: '立即检查更新',
+    checking: '检查中...',
+    upToDate: '已是最新版本',
+    checkFailed: '检查更新失败',
+    updateAvailableNotification: '发现新版本 v{version}，请前往首页查看',
+    lastChecked: '上次检查',
+    justNow: '刚刚',
+    minutesAgo: '{minutes} 分钟前',
+    hoursAgo: '{hours} 小时前',
+    daysAgo: '{days} 天前',
+    // 设置选项
+    autoUpdateCheck: '自动更新检查',
+    autoUpdateCheckDesc: '启动时自动检查新版本',
+    autoUpdateCheckExplain: '自动更新检查说明',
+    autoUpdateCheckBenefit1: '应用启动时自动检查新版本（24小时内只检查一次）',
+    autoUpdateCheckBenefit2: '不收集任何用户数据，仅向 GitHub API 发送请求',
+    autoUpdateCheckBenefit3: '发现新版本时在首页显示横幅通知',
+    includePreRelease: '包含预发布版本',
+    includePreReleaseDesc: '检查更新时包含 Beta/RC 等预发布版本'
   }
 }

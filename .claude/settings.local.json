@@ -43,7 +43,11 @@
       "Bash(node -e:*)",
       "Bash(cat:*)",
       "Bash(git fetch:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(timeout /t 30 /nobreak)",
+      "Bash(netstat:*)",
+      "Bash(start xfastinstall.exe)",
+      "Bash(npm install:*)"
     ]
   }
 }
