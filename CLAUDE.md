@@ -249,6 +249,54 @@ TypeScript types (src/types/index.ts) mirror Rust types (src-tauri/src/models.rs
 - Run with output: `cd src-tauri && cargo test -- --nocapture`
 - No frontend tests currently exist
 
+## Changelog Requirements
+
+**IMPORTANT**: After completing any changes, you MUST update CHANGELOG.md following the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
+
+### Guidelines
+
+- Add entries under the `[Unreleased]` section
+- Use appropriate categories:
+  - `Added` - New features
+  - `Changed` - Changes to existing functionality
+  - `Deprecated` - Soon-to-be removed features
+  - `Removed` - Removed features
+  - `Fixed` - Bug fixes
+  - `Security` - Security improvements
+- Describe the **user-facing effect**, not implementation details
+- Focus on **what changed** and **why it matters** to users
+- Use clear, concise language
+- Include relevant context (e.g., which component, which setting)
+
+### Examples
+
+**Good entries:**
+- `Added automatic update check with 24-hour cache`
+- `Fixed memory leak in event listener cleanup`
+- `Changed context menu registration to use HKEY_CURRENT_USER for non-admin access`
+- `Removed outdated documentation files`
+
+**Bad entries (too technical):**
+- `Refactored deduplication algorithm to use O(n log n) complexity`
+- `Added tokio::task::spawn_blocking for CPU-intensive tasks`
+- `Fixed variable name from toastStore to toast`
+
+### When to Update
+
+Update CHANGELOG.md for:
+- New features or functionality
+- Bug fixes
+- UI/UX improvements
+- Breaking changes
+- Dependency updates (if significant)
+- Performance improvements (if user-noticeable)
+
+Do NOT update for:
+- Code refactoring without user-visible changes
+- Internal code cleanup
+- Comment or documentation updates in code
+- Minor code style changes
+
 ## Key Dependencies
 
 **Rust**:
