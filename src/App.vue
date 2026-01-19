@@ -9,14 +9,6 @@
       <div class="relative container mx-auto px-6 h-16 flex justify-between items-center">
         <!-- Logo -->
         <div class="flex items-center space-x-3 group cursor-default">
-          <div class="relative w-8 h-8 flex items-center justify-center">
-            <div class="absolute inset-0 bg-blue-500 rounded-lg blur opacity-40 group-hover:opacity-60 transition-opacity"></div>
-            <img
-              src="/icon.png"
-              alt="XFastInstall"
-              class="relative w-full h-full rounded-lg shadow-lg transform group-hover:scale-110 transition-transform duration-500"
-            />
-          </div>
           <h1 class="text-lg font-bold tracking-wide">
             <span class="text-gray-900 dark:text-white transition-colors">XFast</span><span class="text-blue-600 dark:text-blue-400 transition-colors">Install</span>
           </h1>
@@ -29,7 +21,7 @@
             class="relative px-4 py-2 rounded-lg group overflow-hidden transition-all duration-300"
             :class="$route.path === '/' ? 'text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
           >
-            <div 
+            <div
               class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
               :class="$route.path === '/' ? 'scale-x-100 opacity-100' : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'"
             ></div>
@@ -40,13 +32,32 @@
               <AnimatedText>{{ $t('common.home') }}</AnimatedText>
             </span>
           </router-link>
-          
+
+          <!-- Scenery Manager Link (only show when auto-sort is enabled) -->
+          <router-link
+            v-if="store.autoSortScenery"
+            to="/scenery"
+            class="relative px-4 py-2 rounded-lg group overflow-hidden transition-all duration-300"
+            :class="$route.path === '/scenery' ? 'text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
+          >
+            <div
+              class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+              :class="$route.path === '/scenery' ? 'scale-x-100 opacity-100' : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'"
+            ></div>
+            <span class="relative flex items-center space-x-2 font-medium z-10">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
+              </svg>
+              <AnimatedText>{{ $t('sceneryManager.navTitle') }}</AnimatedText>
+            </span>
+          </router-link>
+
           <router-link
             to="/settings"
             class="relative px-4 py-2 rounded-lg group overflow-hidden transition-all duration-300"
             :class="$route.path === '/settings' ? 'text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
           >
-            <div 
+            <div
               class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
               :class="$route.path === '/settings' ? 'scale-x-100 opacity-100' : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'"
             ></div>

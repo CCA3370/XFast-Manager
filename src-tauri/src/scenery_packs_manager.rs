@@ -504,6 +504,78 @@ impl SceneryPacksManager {
 
         Ok(counts)
     }
+
+    /// Sort scenery_packs.ini based entirely on index sort_order
+    /// This is used by the scenery manager after manual reordering
+    pub fn auto_sort_from_index(&self) -> Result<()> {
+        let index_manager = SceneryIndexManager::new(&self.xplane_path);
+        let index = index_manager.load_index()?;
+
+        if index.packages.is_empty() {
+            logger::log_info("No scenery packages in index, nothing to sort", Some("scenery_packs"));
+            return Ok(());
+        }
+
+        // Create backup if ini exists
+        if self.ini_path.exists() {
+            if let Err(e) = self.backup_ini() {
+                logger::log_info(&format!("Failed to create backup: {}", e), Some("scenery_packs"));
+            }
+        }
+
+        // Build entries from index, sorted by sort_order
+        let mut packages: Vec<_> = index.packages.values().collect();
+        packages.sort_by_key(|p| p.sort_order);
+
+        let mut entries: Vec<SceneryPackEntry> = Vec::new();
+        let mut global_airports_inserted = false;
+
+        for info in packages {
+            // Insert *GLOBAL_AIRPORTS* before the first DefaultAirport entry
+            // (DefaultAirport has priority 2)
+            if !global_airports_inserted && info.category.priority() >= SceneryCategory::DefaultAirport.priority() {
+                entries.push(SceneryPackEntry {
+                    enabled: true,
+                    path: "*GLOBAL_AIRPORTS*".to_string(),
+                    is_global_airports: true,
+                });
+                global_airports_inserted = true;
+            }
+
+            entries.push(SceneryPackEntry {
+                enabled: info.enabled,
+                path: format!("Custom Scenery/{}/", info.folder_name),
+                is_global_airports: false,
+            });
+        }
+
+        // If *GLOBAL_AIRPORTS* wasn't inserted yet, add it at the end
+        if !global_airports_inserted {
+            entries.push(SceneryPackEntry {
+                enabled: true,
+                path: "*GLOBAL_AIRPORTS*".to_string(),
+                is_global_airports: true,
+            });
+        }
+
+        // Write sorted entries
+        self.write_ini(&entries)?;
+
+        logger::log_info(
+            &format!("Sorted {} scenery entries from index", entries.len()),
+            Some("scenery_packs")
+        );
+
+        Ok(())
+    }
+
+    /// Apply index state (enabled/sort_order) to scenery_packs.ini
+    /// This preserves the order from the index and applies enabled states
+    pub fn apply_from_index(&self) -> Result<()> {
+        // This is essentially the same as auto_sort_from_index
+        // but we call it explicitly to make the intent clear
+        self.auto_sort_from_index()
+    }
 }
 
 /// Parse a single entry line from scenery_packs.ini

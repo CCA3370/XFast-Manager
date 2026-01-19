@@ -319,6 +319,16 @@ pub struct SceneryPackageInfo {
     pub indexed_at: SystemTime,
     pub required_libraries: Vec<String>,
     pub missing_libraries: Vec<String>,
+    /// Library names exported by this package (from library.txt EXPORT lines)
+    /// Only populated for Library category scenery packages
+    #[serde(default)]
+    pub exported_library_names: Vec<String>,
+    /// Whether this scenery package is enabled in scenery_packs.ini
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Sort order in scenery_packs.ini (lower = higher priority)
+    #[serde(default)]
+    pub sort_order: u32,
 }
 
 /// DSF file header information
@@ -362,6 +372,29 @@ pub struct SceneryIndexStats {
     pub by_category: HashMap<String, usize>,
     #[serde(with = "systemtime_serde")]
     pub last_updated: SystemTime,
+}
+
+/// Entry for scenery manager UI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneryManagerEntry {
+    pub folder_name: String,
+    pub category: SceneryCategory,
+    pub sub_priority: u8,
+    pub enabled: bool,
+    pub sort_order: u32,
+    pub missing_libraries: Vec<String>,
+    pub required_libraries: Vec<String>,
+}
+
+/// Data for scenery manager UI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneryManagerData {
+    pub entries: Vec<SceneryManagerEntry>,
+    pub total_count: usize,
+    pub enabled_count: usize,
+    pub missing_deps_count: usize,
 }
 
 // SystemTime serialization helper

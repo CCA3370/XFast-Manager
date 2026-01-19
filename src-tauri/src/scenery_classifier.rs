@@ -116,6 +116,7 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
             0,
             Vec::new(),
             Vec::new(),
+            Vec::new(),
         )?);
     }
 
@@ -166,13 +167,31 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
     // 1. Has apt.dat OR (DSF with WorldEditor creation_agent) → Airport
     if has_apt_dat {
         crate::log_debug!(&format!("  ✓ Classified as Airport (has apt.dat)"), "scenery_classifier");
-        let (required_libraries, missing_libraries) = if let Some(ref header) = dsf_header_opt {
-            let required = extract_required_libraries(&header.object_references);
-            let missing = check_missing_libraries_from_refs(&header.object_references, xplane_path)?;
-            (required, missing)
+
+        // Extract required libraries but don't check for missing ones yet
+        // (will be done after index is built)
+        let required_libraries = if let Some(ref header) = dsf_header_opt {
+            extract_required_libraries(&header.object_references)
         } else {
-            (Vec::new(), Vec::new())
+            Vec::new()
         };
+
+        // Parse library.txt if exists to get exported library names
+        let exported_library_names = if has_library_txt {
+            let library_txt_path = scenery_path.join("library.txt");
+            crate::scenery_index::parse_library_exports(&library_txt_path)
+                .into_iter()
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        if !exported_library_names.is_empty() {
+            crate::log_debug!(
+                &format!("  Airport also exports libraries: {:?}", exported_library_names),
+                "scenery_classifier"
+            );
+        }
 
         return Ok(build_package_info(
             folder_name,
@@ -183,7 +202,8 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
             has_library_txt,
             texture_count,
             required_libraries,
-            missing_libraries,
+            Vec::new(), // missing_libraries will be filled later
+            exported_library_names,
         )?);
     }
 
@@ -192,7 +212,24 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
             if agent.to_lowercase().contains("worldeditor") {
                 crate::log_debug!(&format!("  ✓ Classified as Airport (WorldEditor without apt.dat)"), "scenery_classifier");
                 let required = extract_required_libraries(&header.object_references);
-                let missing = check_missing_libraries_from_refs(&header.object_references, xplane_path)?;
+
+                // Parse library.txt if exists to get exported library names
+                let exported_library_names = if has_library_txt {
+                    let library_txt_path = scenery_path.join("library.txt");
+                    crate::scenery_index::parse_library_exports(&library_txt_path)
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
+
+                if !exported_library_names.is_empty() {
+                    crate::log_debug!(
+                        &format!("  Airport also exports libraries: {:?}", exported_library_names),
+                        "scenery_classifier"
+                    );
+                }
+
                 return Ok(build_package_info(
                     folder_name,
                     SceneryCategory::Airport,
@@ -202,7 +239,8 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
                     has_library_txt,
                     texture_count,
                     required,
-                    missing,
+                    Vec::new(), // missing_libraries will be filled later
+                    exported_library_names,
                 )?);
             }
         }
@@ -213,7 +251,24 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
         if header.is_overlay {
             crate::log_debug!(&format!("  ✓ Classified as Overlay (sim/overlay without apt.dat)"), "scenery_classifier");
             let required = extract_required_libraries(&header.object_references);
-            let missing = check_missing_libraries_from_refs(&header.object_references, xplane_path)?;
+
+            // Parse library.txt if exists to get exported library names
+            let exported_library_names = if has_library_txt {
+                let library_txt_path = scenery_path.join("library.txt");
+                crate::scenery_index::parse_library_exports(&library_txt_path)
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+
+            if !exported_library_names.is_empty() {
+                crate::log_debug!(
+                    &format!("  Overlay also exports libraries: {:?}", exported_library_names),
+                    "scenery_classifier"
+                );
+            }
+
             return Ok(build_package_info(
                 folder_name,
                 SceneryCategory::Overlay,
@@ -223,7 +278,8 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
                 has_library_txt,
                 texture_count,
                 required,
-                missing,
+                Vec::new(), // missing_libraries will be filled later
+                exported_library_names,
             )?);
         }
     }
@@ -266,6 +322,17 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
             SceneryCategory::Library
         };
 
+        // Parse library.txt to get exported library names
+        let library_txt_path = scenery_path.join("library.txt");
+        let exported_library_names = crate::scenery_index::parse_library_exports(&library_txt_path)
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        crate::log_debug!(
+            &format!("  Library exports: {:?}", exported_library_names),
+            "scenery_classifier"
+        );
+
         return Ok(build_package_info(
             folder_name,
             category,
@@ -276,6 +343,7 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
             texture_count,
             Vec::new(),
             Vec::new(),
+            exported_library_names,
         )?);
     }
 
@@ -309,11 +377,28 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
 
         let (required_libraries, missing_libraries) = if let Some(ref header) = dsf_header_opt {
             let required = extract_required_libraries(&header.object_references);
-            let missing = check_missing_libraries_from_refs(&header.object_references, xplane_path)?;
+            let missing = check_missing_libraries_from_refs(&header.object_references, xplane_path, scenery_path)?;
             (required, missing)
         } else {
             (Vec::new(), Vec::new())
         };
+
+        // Parse library.txt if exists to get exported library names
+        let exported_library_names = if has_library_txt {
+            let library_txt_path = scenery_path.join("library.txt");
+            crate::scenery_index::parse_library_exports(&library_txt_path)
+                .into_iter()
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        if !exported_library_names.is_empty() {
+            crate::log_debug!(
+                &format!("  Mesh/Orthophotos also exports libraries: {:?}", exported_library_names),
+                "scenery_classifier"
+            );
+        }
 
         return Ok(build_package_info(
             folder_name,
@@ -325,6 +410,7 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
             texture_count,
             required_libraries,
             missing_libraries,
+            exported_library_names,
         )?);
     }
 
@@ -332,11 +418,28 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
         crate::log_debug!(&format!("  ✓ Classified as Mesh (has TERRAIN_DEF)"), "scenery_classifier");
         let (required_libraries, missing_libraries) = if let Some(ref header) = dsf_header_opt {
             let required = extract_required_libraries(&header.object_references);
-            let missing = check_missing_libraries_from_refs(&header.object_references, xplane_path)?;
+            let missing = check_missing_libraries_from_refs(&header.object_references, xplane_path, scenery_path)?;
             (required, missing)
         } else {
             (Vec::new(), Vec::new())
         };
+
+        // Parse library.txt if exists to get exported library names
+        let exported_library_names = if has_library_txt {
+            let library_txt_path = scenery_path.join("library.txt");
+            crate::scenery_index::parse_library_exports(&library_txt_path)
+                .into_iter()
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        if !exported_library_names.is_empty() {
+            crate::log_debug!(
+                &format!("  Mesh also exports libraries: {:?}", exported_library_names),
+                "scenery_classifier"
+            );
+        }
 
         return Ok(build_package_info(
             folder_name,
@@ -348,11 +451,30 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
             texture_count,
             required_libraries,
             missing_libraries,
+            exported_library_names,
         )?);
     }
 
     // Default: Other
     crate::log_debug!(&format!("  ✓ Classified as Other (no clear indicators)"), "scenery_classifier");
+
+    // Parse library.txt if exists to get exported library names
+    let exported_library_names = if has_library_txt {
+        let library_txt_path = scenery_path.join("library.txt");
+        crate::scenery_index::parse_library_exports(&library_txt_path)
+            .into_iter()
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+
+    if !exported_library_names.is_empty() {
+        crate::log_debug!(
+            &format!("  Other also exports libraries: {:?}", exported_library_names),
+            "scenery_classifier"
+        );
+    }
+
     Ok(build_package_info(
         folder_name,
         SceneryCategory::Other,
@@ -363,6 +485,7 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
         texture_count,
         Vec::new(),
         Vec::new(),
+        exported_library_names,
     )?)
 }
 
@@ -892,11 +1015,18 @@ fn extract_library_name(obj_path: &str) -> Option<String> {
         return Some(first_component.to_string());
     }
 
-    // Skip generic local folders
+    // Skip generic local folders (common subdirectories within scenery packages)
     if matches!(
         first_component,
         "objects" | "facades" | "vegetation" | "roads" | "textures" | "terrain"
+        | "forests" | "lines" | "beaches" | "orthophotos" | "earth nav data"
+        | "Earth nav data" | "plugins" | "documentation" | "doc" | "docs"
     ) {
+        return None;
+    }
+
+    // If the path has only one component (no slash), it's likely a local file, not a library reference
+    if !obj_path.contains('/') {
         return None;
     }
 
@@ -905,30 +1035,67 @@ fn extract_library_name(obj_path: &str) -> Option<String> {
 }
 
 /// Check for missing libraries from object references
-fn check_missing_libraries_from_refs(object_refs: &[String], xplane_path: &Path) -> Result<Vec<String>> {
-    let custom_scenery_path = xplane_path.join("Custom Scenery");
+fn check_missing_libraries_from_refs(
+    object_refs: &[String],
+    xplane_path: &Path,
+    scenery_path: &Path,
+) -> Result<Vec<String>> {
     let mut missing = Vec::new();
+
+    // Get the current scenery folder name to exclude self-references
+    let current_folder_name = scenery_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+
+    crate::log_debug!(
+        &format!("  Checking libraries for scenery: {}", current_folder_name),
+        "scenery_classifier"
+    );
+
+    // Build library index from all library.txt files
+    let library_index = crate::scenery_index::build_library_index(xplane_path);
 
     let required = extract_required_libraries(object_refs);
 
-    for lib_name in required {
-        let lib_path = custom_scenery_path.join(&lib_name);
-        if !lib_path.exists() {
-            // Also check case-insensitive
-            let exists = std::fs::read_dir(&custom_scenery_path)
-                .ok()
-                .map(|entries| {
-                    entries.filter_map(|e| e.ok()).any(|e| {
-                        e.file_name()
-                            .to_string_lossy()
-                            .eq_ignore_ascii_case(&lib_name)
-                    })
-                })
-                .unwrap_or(false);
+    crate::log_debug!(
+        &format!("  Required libraries: {:?}", required),
+        "scenery_classifier"
+    );
 
-            if !exists {
-                missing.push(lib_name);
-            }
+    for lib_name in required {
+        // Skip if this is a reference to the current scenery package itself (case-insensitive)
+        if lib_name.eq_ignore_ascii_case(current_folder_name) {
+            crate::log_debug!(
+                &format!("  ✓ Skipping self-reference: {} (matches current folder: {})", lib_name, current_folder_name),
+                "scenery_classifier"
+            );
+            continue;
+        }
+
+        // Check if this is a subdirectory within the current scenery package
+        let subdir_path = scenery_path.join(&lib_name);
+        if subdir_path.exists() && subdir_path.is_dir() {
+            crate::log_debug!(
+                &format!("  ✓ Skipping internal subdirectory: {} (exists in current package)", lib_name),
+                "scenery_classifier"
+            );
+            continue;
+        }
+
+        // Check if this library name is in the library index
+        if let Some(folder_name) = library_index.get(&lib_name) {
+            crate::log_debug!(
+                &format!("  ✓ Found library '{}' in folder '{}'", lib_name, folder_name),
+                "scenery_classifier"
+            );
+        } else {
+            // Library not found in index, mark as missing
+            crate::log_debug!(
+                &format!("  ✗ Missing library: {}", lib_name),
+                "scenery_classifier"
+            );
+            missing.push(lib_name);
         }
     }
 
@@ -952,6 +1119,7 @@ fn build_package_info(
     texture_count: usize,
     required_libraries: Vec<String>,
     missing_libraries: Vec<String>,
+    exported_library_names: Vec<String>,
 ) -> Result<SceneryPackageInfo> {
     // Calculate sub-priority based on category and folder name
     let sub_priority = calculate_sub_priority(&category, &folder_name);
@@ -970,6 +1138,9 @@ fn build_package_info(
         indexed_at: SystemTime::now(),
         required_libraries,
         missing_libraries,
+        exported_library_names,
+        enabled: true,   // Default to enabled
+        sort_order: 0,   // Will be assigned during index rebuild
     })
 }
 

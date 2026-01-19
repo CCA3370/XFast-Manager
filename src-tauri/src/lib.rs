@@ -19,7 +19,7 @@ use std::collections::HashMap;
 
 use analyzer::Analyzer;
 use installer::Installer;
-use models::{AnalysisResult, InstallResult, InstallTask, SceneryIndexStats, SceneryPackageInfo};
+use models::{AnalysisResult, InstallResult, InstallTask, SceneryIndexStats, SceneryManagerData, SceneryPackageInfo};
 use scenery_index::SceneryIndexManager;
 use scenery_packs_manager::SceneryPacksManager;
 use task_control::TaskControl;
@@ -181,6 +181,43 @@ fn open_log_folder() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), String> {
+    let scenery_path = std::path::PathBuf::from(&xplane_path)
+        .join("Custom Scenery")
+        .join(&folder_name);
+
+    if !scenery_path.exists() {
+        return Err(format!("Scenery folder not found: {}", folder_name));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(scenery_path)
+            .spawn()
+            .map_err(|e| format!("Failed to open folder: {}", e))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(scenery_path)
+            .spawn()
+            .map_err(|e| format!("Failed to open folder: {}", e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(scenery_path)
+            .spawn()
+            .map_err(|e| format!("Failed to open folder: {}", e))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 fn set_log_locale(locale: String) {
     logger::set_locale(&locale);
 }
@@ -330,6 +367,76 @@ async fn sync_scenery_packs_with_folder(xplane_path: String) -> Result<usize, St
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+#[tauri::command]
+async fn get_scenery_manager_data(xplane_path: String) -> Result<SceneryManagerData, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        let index_manager = SceneryIndexManager::new(xplane_path);
+
+        index_manager
+            .get_manager_data()
+            .map_err(|e| format!("Failed to get scenery manager data: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn update_scenery_entry(
+    xplane_path: String,
+    folder_name: String,
+    enabled: Option<bool>,
+    sort_order: Option<u32>,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        let index_manager = SceneryIndexManager::new(xplane_path);
+
+        index_manager
+            .update_entry(&folder_name, enabled, sort_order)
+            .map_err(|e| format!("Failed to update scenery entry: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn move_scenery_entry(
+    xplane_path: String,
+    folder_name: String,
+    new_sort_order: u32,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        let index_manager = SceneryIndexManager::new(xplane_path);
+
+        index_manager
+            .move_entry(&folder_name, new_sort_order)
+            .map_err(|e| format!("Failed to move scenery entry: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn apply_scenery_changes(xplane_path: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        let manager = SceneryPacksManager::new(xplane_path);
+
+        logger::log_info("Applying scenery changes to ini", Some("scenery"));
+
+        manager
+            .apply_from_index()
+            .map_err(|e| format!("Failed to apply scenery changes: {}", e))?;
+
+        logger::log_info("Scenery changes applied successfully", Some("scenery"));
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -376,6 +483,7 @@ pub fn run() {
             get_log_path,
             get_all_logs,
             open_log_folder,
+            open_scenery_folder,
             set_log_locale,
             set_log_level,
             check_path_exists,
@@ -387,7 +495,12 @@ pub fn run() {
             sort_scenery_packs,
             rebuild_scenery_index,
             get_scenery_index_stats,
-            sync_scenery_packs_with_folder
+            sync_scenery_packs_with_folder,
+            // Scenery manager commands
+            get_scenery_manager_data,
+            update_scenery_entry,
+            move_scenery_entry,
+            apply_scenery_changes
         ])
         .setup(|app| {
             // Initialize TaskControl state

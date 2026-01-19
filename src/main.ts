@@ -10,6 +10,7 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', component: Home },
+    { path: '/scenery', component: () => import('./views/SceneryManager.vue') },
     { path: '/settings', component: () => import('./views/Settings.vue') },
   ],
 })

@@ -1,10 +1,5 @@
 <template>
   <div class="settings-view h-full flex flex-col p-5 overflow-hidden">
-    <!-- Header -->
-    <div class="mb-4 flex-shrink-0">
-      <h2 class="text-2xl font-bold text-gray-900 dark:text-white"><AnimatedText>{{ $t('common.settings') }}</AnimatedText></h2>
-    </div>
-
     <!-- Scrollable Content Area -->
     <div class="flex-1 overflow-y-auto space-y-4 pr-1">
       
@@ -837,43 +832,23 @@
               </ul>
             </div>
 
-            <!-- Buttons Row -->
-            <div class="flex gap-2">
-              <!-- Rebuild Index Button (Small) -->
-              <button
-                @click="handleRebuildIndex"
-                :disabled="isRebuildingIndex || !store.xplanePath"
-                class="px-3 py-2 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-1.5"
-                :title="$t('settings.rebuildIndexTooltip')"
-              >
-                <svg v-if="!isRebuildingIndex" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                </svg>
-                <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                </svg>
-                <span class="text-xs">
-                  <AnimatedText>{{ isRebuildingIndex ? $t('settings.rebuilding') : $t('settings.rebuildIndex') }}</AnimatedText>
-                </span>
-              </button>
-
-              <!-- Sort Now Button -->
-              <button
-                @click="handleSortSceneryNow"
-                :disabled="isSortingScenery || !store.xplanePath"
-                class="flex-1 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
-              >
-                <svg v-if="!isSortingScenery" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path>
-                </svg>
-                <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                </svg>
-                <span>
-                  <AnimatedText>{{ isSortingScenery ? $t('settings.sorting') : $t('settings.sortNow') }}</AnimatedText>
-                </span>
-              </button>
-            </div>
+            <!-- Rebuild Index Button -->
+            <button
+              @click="handleRebuildIndex"
+              :disabled="isRebuildingIndex || !store.xplanePath"
+              class="w-full px-4 py-2 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+              :title="$t('settings.rebuildIndexTooltip')"
+            >
+              <svg v-if="!isRebuildingIndex" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              </svg>
+              <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              </svg>
+              <span>
+                <AnimatedText>{{ isRebuildingIndex ? $t('settings.rebuilding') : $t('settings.rebuildIndex') }}</AnimatedText>
+              </span>
+            </button>
 
             <!-- Note about X-Plane path -->
             <p v-if="!store.xplanePath" class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20">
@@ -1044,7 +1019,6 @@ const deleteSourceExpanded = ref(false) // Default collapsed
 const windowsIntegrationExpanded = ref(false) // Default collapsed
 const patternSaveStatus = ref<'saving' | 'saved' | null>(null)
 const sceneryAutoSortExpanded = ref(false) // Default collapsed
-const isSortingScenery = ref(false)
 const isRebuildingIndex = ref(false)
 
 const addonTypes = [AddonType.Aircraft, AddonType.Scenery, AddonType.SceneryLibrary, AddonType.Plugin, AddonType.Navdata]
@@ -1403,21 +1377,6 @@ async function handleCheckUpdate() {
 }
 
 // Scenery auto-sorting functions
-async function handleSortSceneryNow() {
-  if (isSortingScenery.value || !store.xplanePath) return
-
-  isSortingScenery.value = true
-  try {
-    await invoke('sort_scenery_packs', { xplanePath: store.xplanePath })
-    toast.success(t('settings.scenerySorted'))
-  } catch (error) {
-    console.error('Failed to sort scenery packs:', error)
-    modal.showError(t('settings.scenerySortFailed') + ': ' + String(error))
-  } finally {
-    isSortingScenery.value = false
-  }
-}
-
 async function handleRebuildIndex() {
   if (isRebuildingIndex.value || !store.xplanePath) return
 

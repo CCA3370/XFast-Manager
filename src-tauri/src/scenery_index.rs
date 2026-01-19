@@ -4,12 +4,13 @@
 //! with cache invalidation based on directory modification times.
 
 use crate::logger;
-use crate::models::{SceneryIndex, SceneryIndexStats, SceneryPackageInfo};
+use crate::models::{SceneryIndex, SceneryIndexStats, SceneryManagerData, SceneryManagerEntry, SceneryPackageInfo};
 use crate::scenery_classifier::classify_scenery;
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -231,6 +232,9 @@ impl SceneryIndexManager {
             return Err(anyhow!("Custom Scenery folder not found"));
         }
 
+        // Read enabled states from existing ini before rebuilding
+        let enabled_states = self.read_enabled_states_from_ini()?;
+
         // Collect all scenery folders (including symlinks and .lnk shortcuts)
         let scenery_folders: Vec<PathBuf> = fs::read_dir(&custom_scenery_path)?
             .filter_map(|e| e.ok())
@@ -273,13 +277,13 @@ impl SceneryIndexManager {
 
         // Classify all packages
         // Use sequential processing in debug log mode for ordered logs, parallel otherwise
-        let packages: HashMap<String, SceneryPackageInfo> = if logger::is_debug_enabled() {
+        let mut packages_vec: Vec<SceneryPackageInfo> = if logger::is_debug_enabled() {
             // Sequential processing for ordered debug logs
             scenery_folders
                 .iter()
                 .filter_map(|folder| {
                     match classify_scenery(folder, &self.xplane_path) {
-                        Ok(info) => Some((info.folder_name.clone(), info)),
+                        Ok(info) => Some(info),
                         Err(e) => {
                             logger::log_info(&format!("Failed to classify {:?}: {}", folder, e), Some("scenery_index"));
                             None
@@ -293,7 +297,7 @@ impl SceneryIndexManager {
                 .par_iter()
                 .filter_map(|folder| {
                     match classify_scenery(folder, &self.xplane_path) {
-                        Ok(info) => Some((info.folder_name.clone(), info)),
+                        Ok(info) => Some(info),
                         Err(e) => {
                             logger::log_info(&format!("Failed to classify {:?}: {}", folder, e), Some("scenery_index"));
                             None
@@ -303,6 +307,28 @@ impl SceneryIndexManager {
                 .collect()
         };
 
+        // Sort packages by category priority, sub-priority, then folder name
+        packages_vec.sort_by(|a, b| {
+            let priority_a = (a.category.priority(), a.sub_priority);
+            let priority_b = (b.category.priority(), b.sub_priority);
+            match priority_a.cmp(&priority_b) {
+                std::cmp::Ordering::Equal => a.folder_name.to_lowercase().cmp(&b.folder_name.to_lowercase()),
+                other => other,
+            }
+        });
+
+        // Assign sort_order and apply enabled states from ini
+        let packages: HashMap<String, SceneryPackageInfo> = packages_vec
+            .into_iter()
+            .enumerate()
+            .map(|(index, mut info)| {
+                info.sort_order = index as u32;
+                // Apply enabled state from ini (default to true for new packages)
+                info.enabled = enabled_states.get(&info.folder_name).copied().unwrap_or(true);
+                (info.folder_name.clone(), info)
+            })
+            .collect();
+
         let index = SceneryIndex {
             version: INDEX_VERSION,
             packages,
@@ -311,6 +337,49 @@ impl SceneryIndexManager {
 
         self.save_index(&index)?;
         logger::log_info(&format!("Scenery index rebuilt with {} packages", index.packages.len()), Some("scenery_index"));
+
+        // Update missing libraries for all packages using the complete index
+        let index = self.update_missing_libraries(index)?;
+
+        Ok(index)
+    }
+
+    /// Update missing libraries for all packages using the complete index
+    fn update_missing_libraries(&self, mut index: SceneryIndex) -> Result<SceneryIndex> {
+        logger::log_info("Updating missing libraries for all packages...", Some("scenery_index"));
+
+        // Build library index from the complete scenery index
+        let library_index = build_library_index_from_scenery_index(&index);
+
+        // Update each package's missing_libraries
+        for (folder_name, package_info) in index.packages.iter_mut() {
+            let mut missing = Vec::new();
+
+            for lib_name in &package_info.required_libraries {
+                // Skip self-references
+                if lib_name.eq_ignore_ascii_case(folder_name) {
+                    continue;
+                }
+
+                // Check if this is a subdirectory within the current scenery package
+                let scenery_path = self.xplane_path.join("Custom Scenery").join(folder_name);
+                let subdir_path = scenery_path.join(lib_name);
+                if subdir_path.exists() && subdir_path.is_dir() {
+                    continue;
+                }
+
+                // Check if this library name is in the library index
+                if !library_index.contains_key(lib_name) {
+                    missing.push(lib_name.clone());
+                }
+            }
+
+            package_info.missing_libraries = missing;
+        }
+
+        // Save the updated index
+        self.save_index(&index)?;
+        logger::log_info("Missing libraries updated for all packages", Some("scenery_index"));
 
         Ok(index)
     }
@@ -507,6 +576,149 @@ impl SceneryIndexManager {
         })
     }
 
+    /// Read enabled states from scenery_packs.ini
+    pub fn read_enabled_states_from_ini(&self) -> Result<HashMap<String, bool>> {
+        let ini_path = self.xplane_path.join("Custom Scenery").join("scenery_packs.ini");
+        let mut enabled_states = HashMap::new();
+
+        if !ini_path.exists() {
+            return Ok(enabled_states);
+        }
+
+        let file = fs::File::open(&ini_path)?;
+        let reader = BufReader::new(file);
+
+        for line in reader.lines() {
+            let line = line?;
+            let trimmed = line.trim();
+
+            // Skip empty lines and header lines
+            if trimmed.is_empty()
+                || trimmed == "I"
+                || trimmed.starts_with("1000")
+                || trimmed == "SCENERY"
+            {
+                continue;
+            }
+
+            // Parse SCENERY_PACK or SCENERY_PACK_DISABLED lines
+            let (enabled, path_part) = if trimmed.starts_with("SCENERY_PACK_DISABLED ") {
+                (false, trimmed.strip_prefix("SCENERY_PACK_DISABLED ").unwrap_or(""))
+            } else if trimmed.starts_with("SCENERY_PACK ") {
+                (true, trimmed.strip_prefix("SCENERY_PACK ").unwrap_or(""))
+            } else {
+                continue;
+            };
+
+            // Extract folder name from path
+            let path = path_part.trim().trim_end_matches('/').trim_end_matches('\\');
+            if path.contains("*GLOBAL_AIRPORTS*") {
+                continue;
+            }
+
+            if let Some(folder_name) = path.rsplit(&['/', '\\'][..]).next() {
+                enabled_states.insert(folder_name.to_string(), enabled);
+            }
+        }
+
+        Ok(enabled_states)
+    }
+
+    /// Update a single entry's enabled state and/or sort_order
+    pub fn update_entry(&self, folder_name: &str, enabled: Option<bool>, sort_order: Option<u32>) -> Result<()> {
+        let mut index = self.load_index()?;
+
+        if let Some(info) = index.packages.get_mut(folder_name) {
+            if let Some(e) = enabled {
+                info.enabled = e;
+            }
+            if let Some(s) = sort_order {
+                info.sort_order = s;
+            }
+            index.last_updated = SystemTime::now();
+            self.save_index(&index)?;
+        }
+
+        Ok(())
+    }
+
+    /// Move an entry from one position to another, auto-adjusting other entries
+    pub fn move_entry(&self, folder_name: &str, new_sort_order: u32) -> Result<()> {
+        let mut index = self.load_index()?;
+
+        // Get current sort_order
+        let current_sort_order = match index.packages.get(folder_name) {
+            Some(info) => info.sort_order,
+            None => return Err(anyhow!("Package not found: {}", folder_name)),
+        };
+
+        if current_sort_order == new_sort_order {
+            return Ok(()); // No change needed
+        }
+
+        // Adjust sort_orders of other entries
+        if new_sort_order < current_sort_order {
+            // Moving up: increment sort_order of entries in between
+            for info in index.packages.values_mut() {
+                if info.sort_order >= new_sort_order && info.sort_order < current_sort_order {
+                    info.sort_order += 1;
+                }
+            }
+        } else {
+            // Moving down: decrement sort_order of entries in between
+            for info in index.packages.values_mut() {
+                if info.sort_order > current_sort_order && info.sort_order <= new_sort_order {
+                    info.sort_order -= 1;
+                }
+            }
+        }
+
+        // Set the new sort_order for the moved entry
+        if let Some(info) = index.packages.get_mut(folder_name) {
+            info.sort_order = new_sort_order;
+        }
+
+        index.last_updated = SystemTime::now();
+        self.save_index(&index)?;
+
+        Ok(())
+    }
+
+    /// Get scenery manager data for UI
+    pub fn get_manager_data(&self) -> Result<SceneryManagerData> {
+        let index = self.load_index()?;
+
+        // Convert to manager entries and sort by sort_order
+        let mut entries: Vec<SceneryManagerEntry> = index
+            .packages
+            .values()
+            .map(|info| SceneryManagerEntry {
+                folder_name: info.folder_name.clone(),
+                category: info.category.clone(),
+                sub_priority: info.sub_priority,
+                enabled: info.enabled,
+                sort_order: info.sort_order,
+                missing_libraries: info.missing_libraries.clone(),
+                required_libraries: info.required_libraries.clone(),
+            })
+            .collect();
+
+        // Sort by sort_order
+        entries.sort_by_key(|e| e.sort_order);
+
+        // Calculate statistics
+        let total_count = entries.len();
+        let enabled_count = entries.iter().filter(|e| e.enabled).count();
+        let missing_deps_count = entries.iter().filter(|e| !e.missing_libraries.is_empty()).count();
+
+        Ok(SceneryManagerData {
+            entries,
+            total_count,
+            enabled_count,
+            missing_deps_count,
+        })
+    }
+
     /// Create an empty index
     fn create_empty_index(&self) -> SceneryIndex {
         SceneryIndex {
@@ -551,6 +763,124 @@ fn get_index_file_path() -> PathBuf {
 
     // Fallback to current directory
     PathBuf::from("scenery_index.json")
+}
+
+/// Parse library.txt file and extract all exported library names
+/// Returns a set of library name prefixes that this library exports
+pub fn parse_library_exports(library_txt_path: &Path) -> HashSet<String> {
+    let mut library_names = HashSet::new();
+
+    // Check if library.txt exists
+    if !library_txt_path.exists() {
+        return library_names;
+    }
+
+    // Read and parse library.txt
+    if let Ok(file) = fs::File::open(library_txt_path) {
+        let reader = BufReader::new(file);
+
+        for line in reader.lines().flatten() {
+            let trimmed = line.trim();
+
+            // Look for EXPORT lines (may have space or tab after EXPORT)
+            if trimmed.starts_with("EXPORT") && trimmed.len() > 6 {
+                // Skip "EXPORT" and any whitespace
+                let after_export = &trimmed[6..].trim_start();
+
+                // Format: <virtual_path> <actual_path>
+                // We want the first component of <virtual_path>
+                let parts: Vec<&str> = after_export.split_whitespace().collect();
+                if !parts.is_empty() {
+                    let virtual_path = parts[0];
+                    // Extract first path component (library name)
+                    // Support both forward slash and backslash
+                    let first_component = virtual_path
+                        .split(&['/', '\\'][..])
+                        .next();
+
+                    if let Some(component) = first_component {
+                        if !component.is_empty() {
+                            library_names.insert(component.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    library_names
+}
+
+/// Build a library name index from scenery index
+/// Returns a HashMap mapping library names to folder names
+pub fn build_library_index_from_scenery_index(index: &SceneryIndex) -> HashMap<String, String> {
+    let mut library_index: HashMap<String, String> = HashMap::new();
+
+    for (folder_name, package_info) in &index.packages {
+        // Only process packages with exported library names
+        if !package_info.exported_library_names.is_empty() {
+            for lib_name in &package_info.exported_library_names {
+                library_index.insert(lib_name.clone(), folder_name.clone());
+            }
+        }
+    }
+
+    logger::log_info(
+        &format!("Built library index from scenery index with {} entries", library_index.len()),
+        Some("library_index")
+    );
+
+    library_index
+}
+
+/// Build a library name index for all scenery packages in Custom Scenery
+/// Returns a HashMap mapping library names to folder names
+pub fn build_library_index(xplane_path: &Path) -> HashMap<String, String> {
+    let mut library_index: HashMap<String, String> = HashMap::new();
+    let custom_scenery_path = xplane_path.join("Custom Scenery");
+
+    if !custom_scenery_path.exists() {
+        return library_index;
+    }
+
+    // Scan all folders in Custom Scenery
+    if let Ok(entries) = fs::read_dir(&custom_scenery_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+
+            // Check if it's a directory
+            if path.metadata().map(|m| m.is_dir()).unwrap_or(false) {
+                let folder_name = match path.file_name().and_then(|s| s.to_str()) {
+                    Some(name) => name.to_string(),
+                    None => continue,
+                };
+
+                // Check for library.txt
+                let library_txt = path.join("library.txt");
+                if library_txt.exists() {
+                    // Parse library.txt and get all exported library names
+                    let exported_names = parse_library_exports(&library_txt);
+
+                    logger::log_info(
+                        &format!("Library folder '{}' exports: {:?}", folder_name, exported_names),
+                        Some("library_index")
+                    );
+
+                    // Map each exported library name to this folder
+                    for lib_name in exported_names {
+                        library_index.insert(lib_name, folder_name.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    logger::log_info(
+        &format!("Built library index with {} entries", library_index.len()),
+        Some("library_index")
+    );
+
+    library_index
 }
 
 #[cfg(test)]
