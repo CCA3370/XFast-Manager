@@ -326,12 +326,23 @@ impl SceneryIndexManager {
                 .collect()
         };
 
-        // Sort packages by category priority, sub-priority, then folder name
+        // Sort packages by category priority, sub-priority, then tile count for select categories, then folder name
         packages_vec.sort_by(|a, b| {
             let priority_a = (a.category.priority(), a.sub_priority);
             let priority_b = (b.category.priority(), b.sub_priority);
             match priority_a.cmp(&priority_b) {
-                std::cmp::Ordering::Equal => a.folder_name.to_lowercase().cmp(&b.folder_name.to_lowercase()),
+                std::cmp::Ordering::Equal => {
+                    if a.category == b.category
+                        && matches!(a.category, SceneryCategory::Overlay | SceneryCategory::Orthophotos | SceneryCategory::Mesh)
+                    {
+                        match a.earth_nav_tile_count.cmp(&b.earth_nav_tile_count) {
+                            std::cmp::Ordering::Equal => a.folder_name.to_lowercase().cmp(&b.folder_name.to_lowercase()),
+                            other => other,
+                        }
+                    } else {
+                        a.folder_name.to_lowercase().cmp(&b.folder_name.to_lowercase())
+                    }
+                }
                 other => other,
             }
         });
@@ -786,8 +797,17 @@ impl SceneryIndexManager {
 
             match priority_a.cmp(&priority_b) {
                 std::cmp::Ordering::Equal => {
-                    // If priorities are equal, sort by folder name (case-insensitive)
-                    name_a.to_lowercase().cmp(&name_b.to_lowercase())
+                    if info_a.category == info_b.category
+                        && matches!(info_a.category, SceneryCategory::Overlay | SceneryCategory::Orthophotos | SceneryCategory::Mesh)
+                    {
+                        match info_a.earth_nav_tile_count.cmp(&info_b.earth_nav_tile_count) {
+                            std::cmp::Ordering::Equal => name_a.to_lowercase().cmp(&name_b.to_lowercase()),
+                            other => other,
+                        }
+                    } else {
+                        // If priorities are equal, sort by folder name (case-insensitive)
+                        name_a.to_lowercase().cmp(&name_b.to_lowercase())
+                    }
                 }
                 other => other,
             }

@@ -315,6 +315,9 @@ pub struct SceneryPackageInfo {
     pub has_textures: bool,
     pub has_objects: bool,
     pub texture_count: usize,
+    /// Number of 10-degree tile folders under Earth nav data (e.g., "+30+110")
+    #[serde(default)]
+    pub earth_nav_tile_count: u32,
     #[serde(with = "systemtime_serde")]
     pub indexed_at: SystemTime,
     pub required_libraries: Vec<String>,

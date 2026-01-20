@@ -6,6 +6,7 @@
 use crate::models::{DsfHeader, SceneryCategory, SceneryPackageInfo};
 use anyhow::{anyhow, Result};
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -114,6 +115,7 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
             false,
             false,
             0,
+            0,
             Vec::new(),
             Vec::new(),
             Vec::new(),
@@ -201,6 +203,7 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
             !dsf_files.is_empty(),
             has_library_txt,
             texture_count,
+            0,
             required_libraries,
             Vec::new(), // missing_libraries will be filled later
             exported_library_names,
@@ -238,6 +241,7 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
                     true,
                     has_library_txt,
                     texture_count,
+                    0,
                     required,
                     Vec::new(), // missing_libraries will be filled later
                     exported_library_names,
@@ -269,6 +273,8 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
                 );
             }
 
+            let tile_count = count_earth_nav_tile_folders(scenery_path)?;
+
             return Ok(build_package_info(
                 folder_name,
                 SceneryCategory::Overlay,
@@ -277,6 +283,7 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
                 true,
                 has_library_txt,
                 texture_count,
+                tile_count,
                 required,
                 Vec::new(), // missing_libraries will be filled later
                 exported_library_names,
@@ -341,6 +348,7 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
             !dsf_files.is_empty(),
             true,
             texture_count,
+            0,
             Vec::new(),
             Vec::new(),
             exported_library_names,
@@ -400,6 +408,8 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
             );
         }
 
+        let tile_count = count_earth_nav_tile_folders(scenery_path)?;
+
         return Ok(build_package_info(
             folder_name,
             category,
@@ -408,6 +418,7 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
             !dsf_files.is_empty(),
             has_library_txt,
             texture_count,
+            tile_count,
             required_libraries,
             missing_libraries,
             exported_library_names,
@@ -441,6 +452,8 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
             );
         }
 
+        let tile_count = count_earth_nav_tile_folders(scenery_path)?;
+
         return Ok(build_package_info(
             folder_name,
             SceneryCategory::Mesh,
@@ -449,6 +462,7 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
             true,
             has_library_txt,
             texture_count,
+            tile_count,
             required_libraries,
             missing_libraries,
             exported_library_names,
@@ -483,6 +497,7 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
         !dsf_files.is_empty(),
         has_library_txt,
         texture_count,
+        0,
         Vec::new(),
         Vec::new(),
         exported_library_names,
@@ -949,6 +964,66 @@ fn count_texture_files(scenery_path: &Path) -> Result<usize> {
     Ok(count)
 }
 
+fn is_ten_degree_tile_folder_name(name: &str) -> bool {
+    if name.len() != 7 {
+        return false;
+    }
+
+    let bytes = name.as_bytes();
+    if (bytes[0] != b'+' && bytes[0] != b'-') || (bytes[3] != b'+' && bytes[3] != b'-') {
+        return false;
+    }
+
+    let lat_str = &name[1..3];
+    let lon_str = &name[4..7];
+
+    if !lat_str.chars().all(|c| c.is_ascii_digit()) || !lon_str.chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+
+    let lat: u32 = match lat_str.parse() {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    let lon: u32 = match lon_str.parse() {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+
+    if lat > 90 || lon > 180 {
+        return false;
+    }
+
+    lat % 10 == 0 && lon % 10 == 0
+}
+
+fn count_earth_nav_tile_folders(scenery_path: &Path) -> Result<u32> {
+    let earth_nav_path = scenery_path.join("Earth nav data");
+    if !earth_nav_path.exists() {
+        return Ok(0);
+    }
+
+    let mut count = 0u32;
+    for entry in fs::read_dir(&earth_nav_path)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+
+        let file_name = entry.file_name();
+        let name = match file_name.to_str() {
+            Some(value) => value,
+            None => continue,
+        };
+
+        if is_ten_degree_tile_folder_name(name) {
+            count += 1;
+        }
+    }
+
+    Ok(count)
+}
+
 /// Extract library names from object references
 fn extract_required_libraries(object_refs: &[String]) -> Vec<String> {
     object_refs
@@ -1117,6 +1192,7 @@ fn build_package_info(
     has_dsf: bool,
     has_library_txt: bool,
     texture_count: usize,
+    earth_nav_tile_count: u32,
     required_libraries: Vec<String>,
     missing_libraries: Vec<String>,
     exported_library_names: Vec<String>,
@@ -1135,6 +1211,7 @@ fn build_package_info(
         has_textures: texture_count > 0,
         has_objects: scenery_path.join("objects").exists(),
         texture_count,
+        earth_nav_tile_count,
         indexed_at: SystemTime::now(),
         required_libraries,
         missing_libraries,
