@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div class="toast-container">
+    <div class="toast-container" :class="{ 'toast-container-scenery': isSceneryPage }">
       <transition-group name="toast">
         <div
           v-for="toast in toasts"
@@ -51,12 +51,16 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useToastStore } from '@/stores/toast'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
+const route = useRoute()
 const toastStore = useToastStore()
 const toasts = computed(() => toastStore.toasts)
+
+const isSceneryPage = computed(() => route.path === '/scenery')
 
 function getToastClass(type: string) {
   switch (type) {
@@ -100,6 +104,11 @@ function removeToast(id: string) {
   gap: 0.75rem;
   max-width: 360px;
   pointer-events: none;
+}
+
+/* Lower position for scenery page to avoid blocking action buttons */
+.toast-container-scenery {
+  top: 8rem;
 }
 
 .toast {

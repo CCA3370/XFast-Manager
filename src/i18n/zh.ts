@@ -340,12 +340,23 @@ export default {
     resetConfirm: '确定要重置所有更改吗？',
     noXplanePath: '请先设置 X-Plane 路径',
     openFolderFailed: '打开文件夹失败',
+    filterMissingLibs: '筛选缺少库的地景',
+    filterOnly: '仅显示问题地景',
+    showAll: '显示全部',
+    noMissingLibs: '没有缺少库的地景',
+    categoryFixedHighPriority: '高优先级库',
     categoryAirport: '机场',
     categoryDefaultAirport: '默认机场',
     categoryLibrary: '库',
     categoryOverlay: '叠加层',
     categoryOrthophotos: '正射影像',
     categoryMesh: '网格',
-    categoryOther: '其他'
+    categoryOther: '其他',
+    autoSort: '自动排序',
+    autoSortConfirm: '自动排序将覆盖所有手动排序的内容，确定要继续吗？',
+    autoSortDone: '已重置排序，点击"应用更改"写入文件',
+    autoSortNoChange: '排序已是最优，无需更改',
+    autoSortFailed: '自动排序失败',
+    moreActions: '更多操作'
   }
 }

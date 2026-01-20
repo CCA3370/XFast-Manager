@@ -124,22 +124,49 @@ function onEnter(_el: Element, done: () => void) {
   )
 }
 
-function onLeave(_el: Element, done: () => void) {
-  const tl = gsap.timeline({ onComplete: done })
+function onLeave(el: Element, done: () => void) {
+  const element = el as HTMLElement
+  const backdropEl = element.querySelector('.modal-backdrop') as HTMLElement
+  const cardEl = element.querySelector('.modal-card') as HTMLElement
 
-  tl.to(card.value, {
-    opacity: 0,
-    scale: 0.95,
-    y: 10,
-    duration: 0.2,
-    ease: 'power2.in'
+  if (!backdropEl || !cardEl) {
+    done()
+    return
+  }
+
+  // Set transition properties first
+  element.style.transition = 'opacity 0.3s ease-in'
+  backdropEl.style.transition = 'opacity 0.3s ease-in'
+  cardEl.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.6, 1)'
+
+  // Fallback timeout in case transitionend doesn't fire
+  let fallbackTimeout: ReturnType<typeof setTimeout> | null = null
+
+  // Listen for transition end on the card element
+  const handleTransitionEnd = () => {
+    cardEl.removeEventListener('transitionend', handleTransitionEnd)
+    if (fallbackTimeout) {
+      clearTimeout(fallbackTimeout)
+      fallbackTimeout = null
+    }
+    done()
+  }
+  cardEl.addEventListener('transitionend', handleTransitionEnd)
+
+  fallbackTimeout = setTimeout(() => {
+    cardEl.removeEventListener('transitionend', handleTransitionEnd)
+    done()
+  }, 350)
+
+  // Use double requestAnimationFrame to ensure transition is applied
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      element.style.opacity = '0'
+      backdropEl.style.opacity = '0'
+      cardEl.style.opacity = '0'
+      cardEl.style.transform = 'scale(0.9) translateY(10px)'
+    })
   })
-
-  tl.to(
-    backdrop.value,
-    { opacity: 0, duration: 0.15, ease: 'power2.in' },
-    '-=0.1'
-  )
 }
 
 // Focus management

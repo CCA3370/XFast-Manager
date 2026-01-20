@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import type { SceneryManagerData, SceneryManagerEntry } from '@/types'
+import type { SceneryManagerData, SceneryManagerEntry, SceneryCategory } from '@/types'
 import { useAppStore } from './app'
 
 export const useSceneryStore = defineStore('scenery', () => {
@@ -16,6 +16,17 @@ export const useSceneryStore = defineStore('scenery', () => {
   // Track original state for change detection
   const originalEntries = ref<SceneryManagerEntry[]>([])
 
+  // Collapsed groups state (persisted to localStorage)
+  // Default: all groups are expanded (false = expanded, true = collapsed)
+  const collapsedGroups = ref<Record<SceneryCategory, boolean>>(
+    JSON.parse(localStorage.getItem('sceneryGroupsCollapsed') || '{}')
+  )
+
+  // Watch for changes and persist to localStorage
+  watch(collapsedGroups, (newVal) => {
+    localStorage.setItem('sceneryGroupsCollapsed', JSON.stringify(newVal))
+  }, { deep: true })
+
   // Computed properties
   const entries = computed(() => data.value?.entries ?? [])
   const totalCount = computed(() => data.value?.totalCount ?? 0)
@@ -27,8 +38,31 @@ export const useSceneryStore = defineStore('scenery', () => {
     return [...entries.value].sort((a, b) => a.sortOrder - b.sortOrder)
   })
 
-  // Check if there are unsaved changes
+  // Group entries by category
+  const groupedEntries = computed(() => {
+    const groups: Record<SceneryCategory, SceneryManagerEntry[]> = {
+      FixedHighPriority: [],
+      Airport: [],
+      DefaultAirport: [],
+      Library: [],
+      Other: [],
+      Overlay: [],
+      Orthophotos: [],
+      Mesh: []
+    }
+
+    for (const entry of sortedEntries.value) {
+      groups[entry.category].push(entry)
+    }
+
+    return groups
+  })
+
+  // Check if there are unsaved changes (either local changes or index differs from ini)
   const hasChanges = computed(() => {
+    // If index differs from ini, we have changes to apply
+    if (data.value?.needsSync) return true
+
     if (!data.value || originalEntries.value.length === 0) return false
 
     const current = entries.value
@@ -90,7 +124,8 @@ export const useSceneryStore = defineStore('scenery', () => {
         xplanePath: appStore.xplanePath,
         folderName,
         enabled: entry.enabled,
-        sortOrder: null
+        sortOrder: null,
+        category: null
       })
     } catch (e) {
       // Revert on error
@@ -101,48 +136,85 @@ export const useSceneryStore = defineStore('scenery', () => {
     }
   }
 
-  // Move an entry to a new position
-  async function moveEntry(folderName: string, newSortOrder: number) {
-    if (!data.value || !appStore.xplanePath) return
+  // Update category for an entry
+  async function updateCategory(folderName: string, newCategory: SceneryCategory) {
+    if (!data.value) return
+
+    const entry = data.value.entries.find(e => e.folderName === folderName)
+    if (!entry) return
+
+    const oldCategory = entry.category
 
     try {
-      await invoke('move_scenery_entry', {
+      // Update locally first for immediate UI feedback
+      entry.category = newCategory
+
+      // Update in backend
+      await invoke('update_scenery_entry', {
         xplanePath: appStore.xplanePath,
         folderName,
-        newSortOrder
+        enabled: null,
+        sortOrder: null,
+        category: newCategory
       })
-
-      // Reload data to get updated sort orders
-      await loadData()
     } catch (e) {
+      // Revert on error
+      entry.category = oldCategory
       error.value = String(e)
-      console.error('Failed to move entry:', e)
+      console.error('Failed to update category:', e)
+      throw e
     }
   }
 
-  // Reorder entries after drag-and-drop (batch update)
+  // Apply a local sort order without persisting immediately
+  function applyLocalOrder(newOrder: SceneryManagerEntry[]) {
+    if (!data.value) return
+    data.value.entries = newOrder.map((entry, index) => ({
+      ...entry,
+      sortOrder: index
+    }))
+  }
+
+  // Move an entry locally to a new position (no persistence until apply)
+  async function moveEntry(folderName: string, newSortOrder: number) {
+    if (!data.value) return
+
+    const ordered = [...sortedEntries.value]
+    const currentIndex = ordered.findIndex(e => e.folderName === folderName)
+    if (currentIndex === -1) return
+
+    const targetIndex = Math.min(Math.max(newSortOrder, 0), ordered.length - 1)
+    const [moved] = ordered.splice(currentIndex, 1)
+    ordered.splice(targetIndex, 0, moved)
+    applyLocalOrder(ordered)
+  }
+
+  // Reorder entries after drag-and-drop (staged locally)
   async function reorderEntries(newOrder: SceneryManagerEntry[]) {
+    applyLocalOrder(newOrder)
+  }
+
+  async function persistPendingSortOrder() {
     if (!data.value || !appStore.xplanePath) return
 
-    try {
-      // Update sort_order for each entry based on new position
-      for (let i = 0; i < newOrder.length; i++) {
-        const entry = newOrder[i]
-        if (entry.sortOrder !== i) {
-          await invoke('update_scenery_entry', {
-            xplanePath: appStore.xplanePath,
-            folderName: entry.folderName,
-            enabled: null,
-            sortOrder: i
-          })
-        }
-      }
+    // Ensure sortOrder fields are aligned with current order
+    data.value.entries = data.value.entries
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((entry, index) => ({
+        ...entry,
+        sortOrder: index
+      }))
 
-      // Reload data to get updated state
-      await loadData()
-    } catch (e) {
-      error.value = String(e)
-      console.error('Failed to reorder entries:', e)
+    for (const entry of data.value.entries) {
+      const original = originalEntries.value.find(e => e.folderName === entry.folderName)
+      if (!original || original.sortOrder !== entry.sortOrder) {
+        await invoke('update_scenery_entry', {
+          xplanePath: appStore.xplanePath,
+          folderName: entry.folderName,
+          enabled: null,
+          sortOrder: entry.sortOrder
+        })
+      }
     }
   }
 
@@ -157,6 +229,9 @@ export const useSceneryStore = defineStore('scenery', () => {
     error.value = null
 
     try {
+      // Persist any staged sort order changes before applying
+      await persistPendingSortOrder()
+
       await invoke('apply_scenery_changes', {
         xplanePath: appStore.xplanePath
       })
@@ -164,6 +239,8 @@ export const useSceneryStore = defineStore('scenery', () => {
       // Update original state after successful save
       if (data.value) {
         originalEntries.value = JSON.parse(JSON.stringify(data.value.entries))
+        // Mark as synced since we just wrote to ini
+        data.value.needsSync = false
       }
     } catch (e) {
       error.value = String(e)
@@ -195,10 +272,12 @@ export const useSceneryStore = defineStore('scenery', () => {
     isLoading,
     isSaving,
     error,
+    collapsedGroups,
 
     // Computed
     entries,
     sortedEntries,
+    groupedEntries,
     totalCount,
     enabledCount,
     missingDepsCount,
@@ -207,6 +286,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     // Actions
     loadData,
     toggleEnabled,
+    updateCategory,
     moveEntry,
     reorderEntries,
     applyChanges,

@@ -301,19 +301,19 @@ async fn get_scenery_classification(
 }
 
 #[tauri::command]
-async fn sort_scenery_packs(xplane_path: String) -> Result<(), String> {
+async fn sort_scenery_packs(xplane_path: String) -> Result<bool, String> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
-        let manager = SceneryPacksManager::new(xplane_path);
+        let index_manager = SceneryIndexManager::new(xplane_path);
 
-        logger::log_info("Starting scenery_packs.ini auto-sort", Some("scenery"));
+        logger::log_info("Resetting scenery index sort order", Some("scenery"));
 
-        manager
-            .auto_sort()
-            .map_err(|e| format!("Failed to sort scenery packs: {}", e))?;
+        let has_changes = index_manager
+            .reset_sort_order()
+            .map_err(|e| format!("Failed to reset sort order: {}", e))?;
 
-        logger::log_info("Scenery_packs.ini sorted successfully", Some("scenery"));
-        Ok(())
+        logger::log_info("Scenery index sort order reset successfully", Some("scenery"));
+        Ok(has_changes)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
@@ -387,13 +387,14 @@ async fn update_scenery_entry(
     folder_name: String,
     enabled: Option<bool>,
     sort_order: Option<u32>,
+    category: Option<models::SceneryCategory>,
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
         let index_manager = SceneryIndexManager::new(xplane_path);
 
         index_manager
-            .update_entry(&folder_name, enabled, sort_order)
+            .update_entry(&folder_name, enabled, sort_order, category)
             .map_err(|e| format!("Failed to update scenery entry: {}", e))
     })
     .await

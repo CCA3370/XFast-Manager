@@ -56,7 +56,12 @@
       "Bash(done)",
       "Bash(xxd:*)",
       "Bash(rustc:*)",
-      "Bash(./test_dsf_parser.exe:*)"
+      "Bash(./test_dsf_parser.exe:*)",
+      "Bash(exit 0)",
+      "Bash(Get-Process)",
+      "Bash(Where-Object {$_ProcessName -like \"*xfastinstall*\" -or $_ProcessName -like \"*node*\"})",
+      "Bash(Stop-Process -Force -ErrorAction SilentlyContinue)",
+      "Bash(Start-Sleep -Seconds 2)"
     ]
   }
 }

@@ -4,7 +4,7 @@
 //! with cache invalidation based on directory modification times.
 
 use crate::logger;
-use crate::models::{SceneryIndex, SceneryIndexStats, SceneryManagerData, SceneryManagerEntry, SceneryPackageInfo};
+use crate::models::{SceneryCategory, SceneryIndex, SceneryIndexStats, SceneryManagerData, SceneryManagerEntry, SceneryPackageInfo};
 use crate::scenery_classifier::classify_scenery;
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
@@ -624,8 +624,8 @@ impl SceneryIndexManager {
         Ok(enabled_states)
     }
 
-    /// Update a single entry's enabled state and/or sort_order
-    pub fn update_entry(&self, folder_name: &str, enabled: Option<bool>, sort_order: Option<u32>) -> Result<()> {
+    /// Update a single entry's enabled state, sort_order, and/or category
+    pub fn update_entry(&self, folder_name: &str, enabled: Option<bool>, sort_order: Option<u32>, category: Option<SceneryCategory>) -> Result<()> {
         let mut index = self.load_index()?;
 
         if let Some(info) = index.packages.get_mut(folder_name) {
@@ -634,6 +634,9 @@ impl SceneryIndexManager {
             }
             if let Some(s) = sort_order {
                 info.sort_order = s;
+            }
+            if let Some(c) = category {
+                info.category = c;
             }
             index.last_updated = SystemTime::now();
             self.save_index(&index)?;
@@ -684,9 +687,174 @@ impl SceneryIndexManager {
         Ok(())
     }
 
+    /// Update sort_order for all packages based on a sorted list of folder names
+    /// This is used after auto-sort to sync the index with the new order
+    pub fn update_sort_order_from_list(&self, sorted_folder_names: &[String]) -> Result<()> {
+        let mut index = self.load_index()?;
+
+        for (new_order, folder_name) in sorted_folder_names.iter().enumerate() {
+            if let Some(info) = index.packages.get_mut(folder_name) {
+                info.sort_order = new_order as u32;
+            }
+        }
+
+        index.last_updated = SystemTime::now();
+        self.save_index(&index)?;
+
+        Ok(())
+    }
+
+    /// Reset sort_order for all packages based on category priority
+    /// This recalculates the sort order using the classification algorithm
+    /// without writing to the ini file
+    /// Returns true if the sort order was changed, false if it was already correct
+    pub fn reset_sort_order(&self) -> Result<bool> {
+        let mut index = self.load_index()?;
+
+        if index.packages.is_empty() {
+            return Ok(false);
+        }
+
+        // Store original sort_order for comparison
+        let original_order: std::collections::HashMap<String, u32> = index
+            .packages
+            .iter()
+            .map(|(name, info)| (name.clone(), info.sort_order))
+            .collect();
+
+        // Collect packages and sort by category priority, then by folder name
+        let mut packages: Vec<(&String, &SceneryPackageInfo)> = index.packages.iter().collect();
+        packages.sort_by(|(name_a, info_a), (name_b, info_b)| {
+            let priority_a = (info_a.category.priority(), info_a.sub_priority);
+            let priority_b = (info_b.category.priority(), info_b.sub_priority);
+
+            match priority_a.cmp(&priority_b) {
+                std::cmp::Ordering::Equal => {
+                    // If priorities are equal, sort by folder name (case-insensitive)
+                    name_a.to_lowercase().cmp(&name_b.to_lowercase())
+                }
+                other => other,
+            }
+        });
+
+        // Update sort_order based on sorted position and check for changes
+        let sorted_names: Vec<String> = packages.iter().map(|(name, _)| (*name).clone()).collect();
+        let mut has_changes = false;
+
+        for (new_order, folder_name) in sorted_names.iter().enumerate() {
+            if let Some(info) = index.packages.get_mut(folder_name) {
+                let new_order_u32 = new_order as u32;
+                if info.sort_order != new_order_u32 {
+                    has_changes = true;
+                    info.sort_order = new_order_u32;
+                }
+            }
+        }
+
+        if has_changes {
+            index.last_updated = SystemTime::now();
+            self.save_index(&index)?;
+
+            logger::log_info(
+                &format!("Reset sort order for {} packages", sorted_names.len()),
+                Some("scenery_index")
+            );
+        } else {
+            logger::log_info(
+                "Sort order is already correct, no changes needed",
+                Some("scenery_index")
+            );
+        }
+
+        Ok(has_changes)
+    }
+
+    /// Check if the index differs from the ini file
+    /// Returns true if they are different and need to be synced
+    fn check_needs_sync(&self, index: &SceneryIndex) -> bool {
+        let ini_path = self.xplane_path.join("Custom Scenery").join("scenery_packs.ini");
+
+        if !ini_path.exists() {
+            // If ini doesn't exist but we have packages, we need to sync
+            return !index.packages.is_empty();
+        }
+
+        // Read ini file and build ordered list of (folder_name, enabled)
+        let file = match fs::File::open(&ini_path) {
+            Ok(f) => f,
+            Err(_) => return !index.packages.is_empty(),
+        };
+        let reader = BufReader::new(file);
+
+        let mut ini_entries: Vec<(String, bool)> = Vec::new();
+
+        for line in reader.lines() {
+            let line = match line {
+                Ok(l) => l,
+                Err(_) => continue,
+            };
+            let trimmed = line.trim();
+
+            // Skip empty lines and header lines
+            if trimmed.is_empty()
+                || trimmed == "I"
+                || trimmed.starts_with("1000")
+                || trimmed == "SCENERY"
+            {
+                continue;
+            }
+
+            // Parse SCENERY_PACK or SCENERY_PACK_DISABLED lines
+            let (enabled, path_part) = if trimmed.starts_with("SCENERY_PACK_DISABLED ") {
+                (false, trimmed.strip_prefix("SCENERY_PACK_DISABLED ").unwrap_or(""))
+            } else if trimmed.starts_with("SCENERY_PACK ") {
+                (true, trimmed.strip_prefix("SCENERY_PACK ").unwrap_or(""))
+            } else {
+                continue;
+            };
+
+            // Extract folder name from path
+            let path = path_part.trim().trim_end_matches('/').trim_end_matches('\\');
+            if path.contains("*GLOBAL_AIRPORTS*") {
+                continue;
+            }
+
+            if let Some(folder_name) = path.rsplit(&['/', '\\'][..]).next() {
+                ini_entries.push((folder_name.to_string(), enabled));
+            }
+        }
+
+        // Build ordered list from index sorted by sort_order
+        let mut index_entries: Vec<(String, bool)> = index
+            .packages
+            .values()
+            .map(|info| (info.folder_name.clone(), info.enabled))
+            .collect();
+        index_entries.sort_by_key(|(name, _)| {
+            index.packages.get(name).map(|i| i.sort_order).unwrap_or(u32::MAX)
+        });
+
+        // Compare lengths first
+        if ini_entries.len() != index_entries.len() {
+            return true;
+        }
+
+        // Compare each entry (order and enabled state)
+        for (ini_entry, index_entry) in ini_entries.iter().zip(index_entries.iter()) {
+            if ini_entry.0 != index_entry.0 || ini_entry.1 != index_entry.1 {
+                return true;
+            }
+        }
+
+        false
+    }
+
     /// Get scenery manager data for UI
     pub fn get_manager_data(&self) -> Result<SceneryManagerData> {
         let index = self.load_index()?;
+
+        // Check if index differs from ini
+        let needs_sync = self.check_needs_sync(&index);
 
         // Convert to manager entries and sort by sort_order
         let mut entries: Vec<SceneryManagerEntry> = index
@@ -716,6 +884,7 @@ impl SceneryIndexManager {
             total_count,
             enabled_count,
             missing_deps_count,
+            needs_sync,
         })
     }
 

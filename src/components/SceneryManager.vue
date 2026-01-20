@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSceneryStore } from '@/stores/scenery'
 import { useToastStore } from '@/stores/toast'
+import { useModalStore } from '@/stores/modal'
 import SceneryEntryCard from './SceneryEntryCard.vue'
 import draggable from 'vuedraggable'
 
@@ -17,6 +18,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const sceneryStore = useSceneryStore()
 const toastStore = useToastStore()
+const modalStore = useModalStore()
 
 const drag = ref(false)
 
@@ -24,7 +26,7 @@ const drag = ref(false)
 const localEntries = computed({
   get: () => sceneryStore.sortedEntries,
   set: (value) => {
-    // Update will be handled by drag end
+    sceneryStore.reorderEntries(value)
   }
 })
 
@@ -77,10 +79,18 @@ async function handleApplyChanges() {
 
 function handleClose() {
   if (sceneryStore.hasChanges) {
-    if (confirm(t('sceneryManager.unsavedChangesWarning'))) {
-      sceneryStore.resetChanges()
-      emit('close')
-    }
+    modalStore.showConfirm({
+      title: t('sceneryManager.unsavedChanges'),
+      message: t('sceneryManager.unsavedChangesWarning'),
+      confirmText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      type: 'warning',
+      onConfirm: () => {
+        sceneryStore.resetChanges()
+        emit('close')
+      },
+      onCancel: () => {}
+    })
   } else {
     emit('close')
   }

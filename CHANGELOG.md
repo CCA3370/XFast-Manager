@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Scenery Manager Grouping** - Added collapsible category groups to scenery manager
+  - Scenery entries are now organized into 8 collapsible groups by category
+  - Groups display category name and count (e.g., "机场 (162)")
+  - Click group headers to expand/collapse, state persists to localStorage
+  - Support for cross-group drag-and-drop to change scenery category
+  - Within-group drag-and-drop to reorder scenery
+  - Smooth collapse/expand animations with rotating chevron icons
+
 ### Fixed
 - **SAM Library Detection** - Fixed incorrect SAM library detection
   - SAM detection now uses enhanced pattern matching with multiple rules

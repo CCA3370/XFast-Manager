@@ -11,6 +11,7 @@ const props = defineProps<{
   entry: SceneryManagerEntry
   index: number
   totalCount: number
+  disableReorder?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -120,7 +121,7 @@ async function handleSearchMissingLibs() {
     @dblclick="handleDoubleClick"
   >
     <!-- Drag handle -->
-    <div class="cursor-grab active:cursor-grabbing text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 drag-handle select-none">
+    <div v-if="!props.disableReorder" class="cursor-grab active:cursor-grabbing text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 drag-handle select-none">
       <svg class="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
       </svg>
@@ -166,7 +167,7 @@ async function handleSearchMissingLibs() {
     </span>
 
     <!-- Move buttons -->
-    <div class="flex-shrink-0 flex gap-0.5">
+    <div v-if="!props.disableReorder" class="flex-shrink-0 flex gap-0.5">
       <button
         @click="emit('move-up', entry.folderName)"
         :disabled="isFirst"

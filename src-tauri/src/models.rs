@@ -395,6 +395,8 @@ pub struct SceneryManagerData {
     pub total_count: usize,
     pub enabled_count: usize,
     pub missing_deps_count: usize,
+    /// Whether the index differs from the ini file and needs to be synced
+    pub needs_sync: bool,
 }
 
 // SystemTime serialization helper

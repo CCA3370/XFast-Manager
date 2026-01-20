@@ -176,4 +176,5 @@ export interface SceneryManagerData {
   totalCount: number;
   enabledCount: number;
   missingDepsCount: number;
+  needsSync: boolean;
 }

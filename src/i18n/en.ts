@@ -327,12 +327,23 @@ export default {
     resetConfirm: 'Are you sure you want to reset all changes?',
     noXplanePath: 'Please set X-Plane path first',
     openFolderFailed: 'Failed to open folder',
+    filterMissingLibs: 'Filter scenery with missing libraries',
+    filterOnly: 'Problematic Only',
+    showAll: 'Show All',
+    noMissingLibs: 'No scenery with missing libraries',
+    categoryFixedHighPriority: 'High Priority Library',
     categoryAirport: 'Airport',
     categoryDefaultAirport: 'Default Airport',
     categoryLibrary: 'Library',
     categoryOverlay: 'Overlay',
     categoryOrthophotos: 'Orthophotos',
     categoryMesh: 'Mesh',
-    categoryOther: 'Other'
+    categoryOther: 'Other',
+    autoSort: 'Auto Sort',
+    autoSortConfirm: 'Auto sort will overwrite all manual sorting. Are you sure you want to continue?',
+    autoSortDone: 'Sort order reset. Click "Apply Changes" to save.',
+    autoSortNoChange: 'Sort order is already optimal, no changes needed',
+    autoSortFailed: 'Auto sort failed',
+    moreActions: 'More Actions'
   }
 }
