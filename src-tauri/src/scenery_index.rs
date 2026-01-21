@@ -4,7 +4,10 @@
 //! with cache invalidation based on directory modification times.
 
 use crate::logger;
-use crate::models::{SceneryCategory, SceneryIndex, SceneryIndexStats, SceneryManagerData, SceneryManagerEntry, SceneryPackageInfo};
+use crate::models::{
+    SceneryCategory, SceneryIndex, SceneryIndexStats, SceneryManagerData, SceneryManagerEntry,
+    SceneryPackageInfo,
+};
 use crate::scenery_classifier::classify_scenery;
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
@@ -21,7 +24,7 @@ fn resolve_shortcut(lnk_path: &Path) -> Option<PathBuf> {
     use std::ptr;
     use winapi::shared::guiddef::GUID;
     use winapi::shared::minwindef::MAX_PATH;
-    use winapi::shared::winerror::{S_OK, S_FALSE, RPC_E_CHANGED_MODE};
+    use winapi::shared::winerror::{RPC_E_CHANGED_MODE, S_FALSE, S_OK};
     use winapi::um::combaseapi::{CoCreateInstance, CoInitializeEx, CoUninitialize};
     use winapi::um::objbase::COINIT_APARTMENTTHREADED;
     use winapi::um::objidl::IPersistFile;
@@ -45,13 +48,13 @@ fn resolve_shortcut(lnk_path: &Path) -> Option<PathBuf> {
             // COM already initialized with different threading model, try to continue anyway
             logger::log_info(
                 &format!("  COM already initialized with different threading model"),
-                Some("scenery_index")
+                Some("scenery_index"),
             );
             false
         } else {
             logger::log_info(
                 &format!("  Failed to initialize COM, HRESULT: 0x{:08X}", hr),
-                Some("scenery_index")
+                Some("scenery_index"),
             );
             return None;
         };
@@ -104,7 +107,7 @@ fn resolve_shortcut(lnk_path: &Path) -> Option<PathBuf> {
 
                         logger::log_info(
                             &format!("  Shortcut target (COM API): {:?}", target_str),
-                            Some("scenery_index")
+                            Some("scenery_index"),
                         );
 
                         let path = PathBuf::from(target_str);
@@ -114,13 +117,13 @@ fn resolve_shortcut(lnk_path: &Path) -> Option<PathBuf> {
                     } else {
                         logger::log_info(
                             &format!("  GetPath failed with HRESULT: 0x{:08X}", hr),
-                            Some("scenery_index")
+                            Some("scenery_index"),
                         );
                     }
                 } else {
                     logger::log_info(
                         &format!("  Failed to load shortcut file, HRESULT: 0x{:08X}", hr),
-                        Some("scenery_index")
+                        Some("scenery_index"),
                     );
                 }
 
@@ -128,7 +131,7 @@ fn resolve_shortcut(lnk_path: &Path) -> Option<PathBuf> {
             } else {
                 logger::log_info(
                     &format!("  Failed to query IPersistFile, HRESULT: 0x{:08X}", hr),
-                    Some("scenery_index")
+                    Some("scenery_index"),
                 );
             }
 
@@ -136,7 +139,7 @@ fn resolve_shortcut(lnk_path: &Path) -> Option<PathBuf> {
         } else {
             logger::log_info(
                 &format!("  Failed to create IShellLink, HRESULT: 0x{:08X}", hr),
-                Some("scenery_index")
+                Some("scenery_index"),
             );
         }
 
@@ -152,7 +155,6 @@ fn resolve_shortcut(lnk_path: &Path) -> Option<PathBuf> {
 fn resolve_shortcut(_lnk_path: &Path) -> Option<PathBuf> {
     None
 }
-
 
 const INDEX_VERSION: u32 = 1;
 
@@ -199,7 +201,10 @@ impl SceneryIndexManager {
 
             // Check version compatibility
             if index.version != INDEX_VERSION {
-                logger::log_info("Index version mismatch, rebuilding index", Some("scenery_index"));
+                logger::log_info(
+                    "Index version mismatch, rebuilding index",
+                    Some("scenery_index"),
+                );
                 return Ok(self.create_empty_index());
             }
 
@@ -228,7 +233,9 @@ impl SceneryIndexManager {
     /// Update or add a single package in the index
     pub fn update_package(&self, package_info: SceneryPackageInfo) -> Result<()> {
         let mut index = self.load_index()?;
-        index.packages.insert(package_info.folder_name.clone(), package_info);
+        index
+            .packages
+            .insert(package_info.folder_name.clone(), package_info);
         index.last_updated = SystemTime::now();
         self.save_index(&index)?;
         Ok(())
@@ -251,8 +258,15 @@ impl SceneryIndexManager {
             return Err(anyhow!("Custom Scenery folder not found"));
         }
 
-        // Read enabled states from existing ini before rebuilding
-        let enabled_states = self.read_enabled_states_from_ini()?;
+        // Preserve enabled states from existing index before rebuilding
+        let existing_index = self
+            .load_index()
+            .unwrap_or_else(|_| self.create_empty_index());
+        let enabled_states: HashMap<String, bool> = existing_index
+            .packages
+            .iter()
+            .map(|(name, info)| (name.clone(), info.enabled))
+            .collect();
 
         // Collect all scenery folders (including symlinks and .lnk shortcuts)
         let scenery_folders: Vec<PathBuf> = fs::read_dir(&custom_scenery_path)?
@@ -261,23 +275,30 @@ impl SceneryIndexManager {
                 let path = e.path();
 
                 // Check if it's a .lnk file (Windows shortcut)
-                if path.extension().map_or(false, |ext| ext.eq_ignore_ascii_case("lnk")) {
+                if path
+                    .extension()
+                    .map_or(false, |ext| ext.eq_ignore_ascii_case("lnk"))
+                {
+                    let shortcut_name = path
+                        .file_name()
+                        .map(|name| name.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "<unknown>".to_string());
                     logger::log_info(
-                        &format!("Attempting to resolve shortcut: {:?}", path.file_name().unwrap()),
-                        Some("scenery_index")
+                        &format!("Attempting to resolve shortcut: {:?}", shortcut_name),
+                        Some("scenery_index"),
                     );
 
                     // Try to resolve the shortcut
                     if let Some(target) = resolve_shortcut(&path) {
                         logger::log_info(
-                            &format!("✓ Resolved shortcut {:?} -> {:?}", path.file_name().unwrap(), target),
-                            Some("scenery_index")
+                            &format!("✓ Resolved shortcut {:?} -> {:?}", shortcut_name, target),
+                            Some("scenery_index"),
                         );
                         return Some(target);
                     } else {
                         logger::log_info(
                             &format!("✗ Failed to resolve shortcut: {:?}", path),
-                            Some("scenery_index")
+                            Some("scenery_index"),
                         );
                         return None;
                     }
@@ -292,7 +313,13 @@ impl SceneryIndexManager {
             })
             .collect();
 
-        logger::log_info(&format!("Rebuilding scenery index for {} packages", scenery_folders.len()), Some("scenery_index"));
+        logger::log_info(
+            &format!(
+                "Rebuilding scenery index for {} packages",
+                scenery_folders.len()
+            ),
+            Some("scenery_index"),
+        );
 
         // Classify all packages
         // Use sequential processing in debug log mode for ordered logs, parallel otherwise
@@ -300,13 +327,14 @@ impl SceneryIndexManager {
             // Sequential processing for ordered debug logs
             scenery_folders
                 .iter()
-                .filter_map(|folder| {
-                    match classify_scenery(folder, &self.xplane_path) {
-                        Ok(info) => Some(info),
-                        Err(e) => {
-                            logger::log_info(&format!("Failed to classify {:?}: {}", folder, e), Some("scenery_index"));
-                            None
-                        }
+                .filter_map(|folder| match classify_scenery(folder, &self.xplane_path) {
+                    Ok(info) => Some(info),
+                    Err(e) => {
+                        logger::log_info(
+                            &format!("Failed to classify {:?}: {}", folder, e),
+                            Some("scenery_index"),
+                        );
+                        None
                     }
                 })
                 .collect()
@@ -314,13 +342,14 @@ impl SceneryIndexManager {
             // Parallel processing for better performance when not in debug mode
             scenery_folders
                 .par_iter()
-                .filter_map(|folder| {
-                    match classify_scenery(folder, &self.xplane_path) {
-                        Ok(info) => Some(info),
-                        Err(e) => {
-                            logger::log_info(&format!("Failed to classify {:?}: {}", folder, e), Some("scenery_index"));
-                            None
-                        }
+                .filter_map(|folder| match classify_scenery(folder, &self.xplane_path) {
+                    Ok(info) => Some(info),
+                    Err(e) => {
+                        logger::log_info(
+                            &format!("Failed to classify {:?}: {}", folder, e),
+                            Some("scenery_index"),
+                        );
+                        None
                     }
                 })
                 .collect()
@@ -333,28 +362,41 @@ impl SceneryIndexManager {
             match priority_a.cmp(&priority_b) {
                 std::cmp::Ordering::Equal => {
                     if a.category == b.category
-                        && matches!(a.category, SceneryCategory::Overlay | SceneryCategory::Orthophotos | SceneryCategory::Mesh)
+                        && matches!(
+                            a.category,
+                            SceneryCategory::Overlay
+                                | SceneryCategory::Orthophotos
+                                | SceneryCategory::Mesh
+                        )
                     {
                         match a.earth_nav_tile_count.cmp(&b.earth_nav_tile_count) {
-                            std::cmp::Ordering::Equal => a.folder_name.to_lowercase().cmp(&b.folder_name.to_lowercase()),
+                            std::cmp::Ordering::Equal => a
+                                .folder_name
+                                .to_lowercase()
+                                .cmp(&b.folder_name.to_lowercase()),
                             other => other,
                         }
                     } else {
-                        a.folder_name.to_lowercase().cmp(&b.folder_name.to_lowercase())
+                        a.folder_name
+                            .to_lowercase()
+                            .cmp(&b.folder_name.to_lowercase())
                     }
                 }
                 other => other,
             }
         });
 
-        // Assign sort_order and apply enabled states from ini
+        // Assign sort_order and apply enabled states from index
         let packages: HashMap<String, SceneryPackageInfo> = packages_vec
             .into_iter()
             .enumerate()
             .map(|(index, mut info)| {
                 info.sort_order = index as u32;
                 // Apply enabled state from ini (default to true for new packages)
-                info.enabled = enabled_states.get(&info.folder_name).copied().unwrap_or(true);
+                info.enabled = enabled_states
+                    .get(&info.folder_name)
+                    .copied()
+                    .unwrap_or(true);
                 (info.folder_name.clone(), info)
             })
             .collect();
@@ -366,7 +408,13 @@ impl SceneryIndexManager {
         };
 
         self.save_index(&index)?;
-        logger::log_info(&format!("Scenery index rebuilt with {} packages", index.packages.len()), Some("scenery_index"));
+        logger::log_info(
+            &format!(
+                "Scenery index rebuilt with {} packages",
+                index.packages.len()
+            ),
+            Some("scenery_index"),
+        );
 
         // Update missing libraries for all packages using the complete index
         let index = self.update_missing_libraries(index)?;
@@ -376,7 +424,10 @@ impl SceneryIndexManager {
 
     /// Update missing libraries for all packages using the complete index
     fn update_missing_libraries(&self, mut index: SceneryIndex) -> Result<SceneryIndex> {
-        logger::log_info("Updating missing libraries for all packages...", Some("scenery_index"));
+        logger::log_info(
+            "Updating missing libraries for all packages...",
+            Some("scenery_index"),
+        );
 
         // Build library index from the complete scenery index
         let library_index = build_library_index_from_scenery_index(&index);
@@ -409,7 +460,10 @@ impl SceneryIndexManager {
 
         // Save the updated index
         self.save_index(&index)?;
-        logger::log_info("Missing libraries updated for all packages", Some("scenery_index"));
+        logger::log_info(
+            "Missing libraries updated for all packages",
+            Some("scenery_index"),
+        );
 
         Ok(index)
     }
@@ -430,7 +484,10 @@ impl SceneryIndexManager {
                 let path = e.path();
 
                 // Check if it's a .lnk file (Windows shortcut)
-                if path.extension().map_or(false, |ext| ext.eq_ignore_ascii_case("lnk")) {
+                if path
+                    .extension()
+                    .map_or(false, |ext| ext.eq_ignore_ascii_case("lnk"))
+                {
                     // Try to resolve the shortcut
                     if let Some(target) = resolve_shortcut(&path) {
                         // Use the target folder name (not the .lnk filename)
@@ -486,7 +543,10 @@ impl SceneryIndexManager {
             .collect();
 
         if !packages_to_update.is_empty() {
-            logger::log_info(&format!("Updating {} scenery packages", packages_to_update.len()), Some("scenery_index"));
+            logger::log_info(
+                &format!("Updating {} scenery packages", packages_to_update.len()),
+                Some("scenery_index"),
+            );
 
             // Classify updated packages
             // Use sequential processing in debug log mode for ordered logs, parallel otherwise
@@ -494,17 +554,13 @@ impl SceneryIndexManager {
                 // Sequential processing for ordered debug logs
                 packages_to_update
                     .iter()
-                    .filter_map(|folder| {
-                        classify_scenery(folder, &self.xplane_path).ok()
-                    })
+                    .filter_map(|folder| classify_scenery(folder, &self.xplane_path).ok())
                     .collect()
             } else {
                 // Parallel processing for better performance when not in debug mode
                 packages_to_update
                     .par_iter()
-                    .filter_map(|folder| {
-                        classify_scenery(folder, &self.xplane_path).ok()
-                    })
+                    .filter_map(|folder| classify_scenery(folder, &self.xplane_path).ok())
                     .collect()
             };
 
@@ -514,7 +570,7 @@ impl SceneryIndexManager {
         }
 
         index.last_updated = SystemTime::now();
-        self.save_index(&index)?;
+        let index = self.update_missing_libraries(index)?;
 
         Ok(index)
     }
@@ -526,23 +582,29 @@ impl SceneryIndexManager {
         let initial_count = index.packages.len();
 
         // Get current folders (including symlinks)
-        let current_folders: std::collections::HashSet<String> = fs::read_dir(&custom_scenery_path)?
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                // Use metadata() to follow symlinks
-                e.path().metadata().map(|m| m.is_dir()).unwrap_or(false)
-            })
-            .filter_map(|e| e.file_name().to_str().map(String::from))
-            .collect();
+        let current_folders: std::collections::HashSet<String> =
+            fs::read_dir(&custom_scenery_path)?
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    // Use metadata() to follow symlinks
+                    e.path().metadata().map(|m| m.is_dir()).unwrap_or(false)
+                })
+                .filter_map(|e| e.file_name().to_str().map(String::from))
+                .collect();
 
         // Remove entries not in current folders
-        index.packages.retain(|name, _| current_folders.contains(name));
+        index
+            .packages
+            .retain(|name, _| current_folders.contains(name));
 
         let removed_count = initial_count - index.packages.len();
         if removed_count > 0 {
             index.last_updated = SystemTime::now();
             self.save_index(&index)?;
-            logger::log_info(&format!("Cleaned up {} stale index entries", removed_count), Some("scenery_index"));
+            logger::log_info(
+                &format!("Cleaned up {} stale index entries", removed_count),
+                Some("scenery_index"),
+            );
         }
 
         Ok(removed_count)
@@ -606,56 +668,14 @@ impl SceneryIndexManager {
         })
     }
 
-    /// Read enabled states from scenery_packs.ini
-    pub fn read_enabled_states_from_ini(&self) -> Result<HashMap<String, bool>> {
-        let ini_path = self.xplane_path.join("Custom Scenery").join("scenery_packs.ini");
-        let mut enabled_states = HashMap::new();
-
-        if !ini_path.exists() {
-            return Ok(enabled_states);
-        }
-
-        let file = fs::File::open(&ini_path)?;
-        let reader = BufReader::new(file);
-
-        for line in reader.lines() {
-            let line = line?;
-            let trimmed = line.trim();
-
-            // Skip empty lines and header lines
-            if trimmed.is_empty()
-                || trimmed == "I"
-                || trimmed.starts_with("1000")
-                || trimmed == "SCENERY"
-            {
-                continue;
-            }
-
-            // Parse SCENERY_PACK or SCENERY_PACK_DISABLED lines
-            let (enabled, path_part) = if trimmed.starts_with("SCENERY_PACK_DISABLED ") {
-                (false, trimmed.strip_prefix("SCENERY_PACK_DISABLED ").unwrap_or(""))
-            } else if trimmed.starts_with("SCENERY_PACK ") {
-                (true, trimmed.strip_prefix("SCENERY_PACK ").unwrap_or(""))
-            } else {
-                continue;
-            };
-
-            // Extract folder name from path
-            let path = path_part.trim().trim_end_matches('/').trim_end_matches('\\');
-            if path.contains("*GLOBAL_AIRPORTS*") {
-                continue;
-            }
-
-            if let Some(folder_name) = path.rsplit(&['/', '\\'][..]).next() {
-                enabled_states.insert(folder_name.to_string(), enabled);
-            }
-        }
-
-        Ok(enabled_states)
-    }
-
     /// Update a single entry's enabled state, sort_order, and/or category
-    pub fn update_entry(&self, folder_name: &str, enabled: Option<bool>, sort_order: Option<u32>, category: Option<SceneryCategory>) -> Result<()> {
+    pub fn update_entry(
+        &self,
+        folder_name: &str,
+        enabled: Option<bool>,
+        sort_order: Option<u32>,
+        category: Option<SceneryCategory>,
+    ) -> Result<()> {
         let mut index = self.load_index()?;
 
         if let Some(info) = index.packages.get_mut(folder_name) {
@@ -755,7 +775,11 @@ impl SceneryIndexManager {
         // Promote SAM libraries to FixedHighPriority before sorting
         let mut category_changed = false;
         for (name, info) in index.packages.iter_mut() {
-            if is_sam_folder_name(name) && info.has_library_txt && !info.has_dsf && !info.has_apt_dat {
+            if is_sam_folder_name(name)
+                && info.has_library_txt
+                && !info.has_dsf
+                && !info.has_apt_dat
+            {
                 if info.category != SceneryCategory::FixedHighPriority {
                     info.category = SceneryCategory::FixedHighPriority;
                     info.sub_priority = 0;
@@ -798,10 +822,20 @@ impl SceneryIndexManager {
             match priority_a.cmp(&priority_b) {
                 std::cmp::Ordering::Equal => {
                     if info_a.category == info_b.category
-                        && matches!(info_a.category, SceneryCategory::Overlay | SceneryCategory::Orthophotos | SceneryCategory::Mesh)
+                        && matches!(
+                            info_a.category,
+                            SceneryCategory::Overlay
+                                | SceneryCategory::Orthophotos
+                                | SceneryCategory::Mesh
+                        )
                     {
-                        match info_a.earth_nav_tile_count.cmp(&info_b.earth_nav_tile_count) {
-                            std::cmp::Ordering::Equal => name_a.to_lowercase().cmp(&name_b.to_lowercase()),
+                        match info_a
+                            .earth_nav_tile_count
+                            .cmp(&info_b.earth_nav_tile_count)
+                        {
+                            std::cmp::Ordering::Equal => {
+                                name_a.to_lowercase().cmp(&name_b.to_lowercase())
+                            }
                             other => other,
                         }
                     } else {
@@ -837,104 +871,23 @@ impl SceneryIndexManager {
 
             logger::log_info(
                 &format!("Reset sort order for {} packages", sorted_names.len()),
-                Some("scenery_index")
+                Some("scenery_index"),
             );
         } else {
             logger::log_info(
                 "Sort order is already correct, no changes needed",
-                Some("scenery_index")
+                Some("scenery_index"),
             );
         }
 
         Ok(has_changes)
     }
 
-    /// Check if the index differs from the ini file
-    /// Returns true if they are different and need to be synced
-    fn check_needs_sync(&self, index: &SceneryIndex) -> bool {
-        let ini_path = self.xplane_path.join("Custom Scenery").join("scenery_packs.ini");
-
-        if !ini_path.exists() {
-            // If ini doesn't exist but we have packages, we need to sync
-            return !index.packages.is_empty();
-        }
-
-        // Read ini file and build ordered list of (folder_name, enabled)
-        let file = match fs::File::open(&ini_path) {
-            Ok(f) => f,
-            Err(_) => return !index.packages.is_empty(),
-        };
-        let reader = BufReader::new(file);
-
-        let mut ini_entries: Vec<(String, bool)> = Vec::new();
-
-        for line in reader.lines() {
-            let line = match line {
-                Ok(l) => l,
-                Err(_) => continue,
-            };
-            let trimmed = line.trim();
-
-            // Skip empty lines and header lines
-            if trimmed.is_empty()
-                || trimmed == "I"
-                || trimmed.starts_with("1000")
-                || trimmed == "SCENERY"
-            {
-                continue;
-            }
-
-            // Parse SCENERY_PACK or SCENERY_PACK_DISABLED lines
-            let (enabled, path_part) = if trimmed.starts_with("SCENERY_PACK_DISABLED ") {
-                (false, trimmed.strip_prefix("SCENERY_PACK_DISABLED ").unwrap_or(""))
-            } else if trimmed.starts_with("SCENERY_PACK ") {
-                (true, trimmed.strip_prefix("SCENERY_PACK ").unwrap_or(""))
-            } else {
-                continue;
-            };
-
-            // Extract folder name from path
-            let path = path_part.trim().trim_end_matches('/').trim_end_matches('\\');
-            if path.contains("*GLOBAL_AIRPORTS*") {
-                continue;
-            }
-
-            if let Some(folder_name) = path.rsplit(&['/', '\\'][..]).next() {
-                ini_entries.push((folder_name.to_string(), enabled));
-            }
-        }
-
-        // Build ordered list from index sorted by sort_order
-        let mut index_entries: Vec<(String, bool)> = index
-            .packages
-            .values()
-            .map(|info| (info.folder_name.clone(), info.enabled))
-            .collect();
-        index_entries.sort_by_key(|(name, _)| {
-            index.packages.get(name).map(|i| i.sort_order).unwrap_or(u32::MAX)
-        });
-
-        // Compare lengths first
-        if ini_entries.len() != index_entries.len() {
-            return true;
-        }
-
-        // Compare each entry (order and enabled state)
-        for (ini_entry, index_entry) in ini_entries.iter().zip(index_entries.iter()) {
-            if ini_entry.0 != index_entry.0 || ini_entry.1 != index_entry.1 {
-                return true;
-            }
-        }
-
-        false
-    }
-
     /// Get scenery manager data for UI
     pub fn get_manager_data(&self) -> Result<SceneryManagerData> {
         let index = self.load_index()?;
 
-        // Check if index differs from ini
-        let needs_sync = self.check_needs_sync(&index);
+        let needs_sync = false;
 
         // Convert to manager entries and sort by sort_order
         let mut entries: Vec<SceneryManagerEntry> = index
@@ -957,7 +910,10 @@ impl SceneryIndexManager {
         // Calculate statistics
         let total_count = entries.len();
         let enabled_count = entries.iter().filter(|e| e.enabled).count();
-        let missing_deps_count = entries.iter().filter(|e| !e.missing_libraries.is_empty()).count();
+        let missing_deps_count = entries
+            .iter()
+            .filter(|e| !e.missing_libraries.is_empty())
+            .count();
 
         Ok(SceneryManagerData {
             entries,
@@ -1043,9 +999,7 @@ pub fn parse_library_exports(library_txt_path: &Path) -> HashSet<String> {
                     let virtual_path = parts[0];
                     // Extract first path component (library name)
                     // Support both forward slash and backslash
-                    let first_component = virtual_path
-                        .split(&['/', '\\'][..])
-                        .next();
+                    let first_component = virtual_path.split(&['/', '\\'][..]).next();
 
                     if let Some(component) = first_component {
                         if !component.is_empty() {
@@ -1075,8 +1029,11 @@ pub fn build_library_index_from_scenery_index(index: &SceneryIndex) -> HashMap<S
     }
 
     logger::log_info(
-        &format!("Built library index from scenery index with {} entries", library_index.len()),
-        Some("library_index")
+        &format!(
+            "Built library index from scenery index with {} entries",
+            library_index.len()
+        ),
+        Some("library_index"),
     );
 
     library_index
@@ -1111,8 +1068,11 @@ pub fn build_library_index(xplane_path: &Path) -> HashMap<String, String> {
                     let exported_names = parse_library_exports(&library_txt);
 
                     logger::log_info(
-                        &format!("Library folder '{}' exports: {:?}", folder_name, exported_names),
-                        Some("library_index")
+                        &format!(
+                            "Library folder '{}' exports: {:?}",
+                            folder_name, exported_names
+                        ),
+                        Some("library_index"),
                     );
 
                     // Map each exported library name to this folder
@@ -1126,7 +1086,7 @@ pub fn build_library_index(xplane_path: &Path) -> HashMap<String, String> {
 
     logger::log_info(
         &format!("Built library index with {} entries", library_index.len()),
-        Some("library_index")
+        Some("library_index"),
     );
 
     library_index

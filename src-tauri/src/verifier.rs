@@ -1,12 +1,12 @@
 use anyhow::Result;
+use rayon::prelude::*;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use sha2::{Sha256, Digest};
-use rayon::prelude::*;
 
 use crate::models::{FileHash, FileVerificationResult, HashAlgorithm, VerificationStats};
 
@@ -18,9 +18,7 @@ pub struct FileVerifier {
 
 impl FileVerifier {
     pub fn new() -> Self {
-        FileVerifier {
-            max_retries: 3,
-        }
+        FileVerifier { max_retries: 3 }
     }
 
     /// Verify all files in target directory against expected hashes
@@ -48,8 +46,12 @@ impl FileVerifier {
         use walkdir::WalkDir;
 
         crate::logger::log_info(
-            &format!("Verifying {} files in {:?}", expected_hashes.len(), target_dir),
-            Some("verifier")
+            &format!(
+                "Verifying {} files in {:?}",
+                expected_hashes.len(),
+                target_dir
+            ),
+            Some("verifier"),
         );
 
         // Collect all files to verify
@@ -92,20 +94,18 @@ impl FileVerifier {
             .collect();
 
         // Filter failed files
-        let failed: Vec<FileVerificationResult> = results
-            .into_iter()
-            .filter(|r| !r.success)
-            .collect();
+        let failed: Vec<FileVerificationResult> =
+            results.into_iter().filter(|r| !r.success).collect();
 
         if failed.is_empty() {
             crate::logger::log_info(
                 &format!("All {} files verified successfully", files_to_verify.len()),
-                Some("verifier")
+                Some("verifier"),
             );
         } else {
             crate::logger::log_error(
                 &format!("{} files failed verification", failed.len()),
-                Some("verifier")
+                Some("verifier"),
             );
         }
 
@@ -130,7 +130,7 @@ impl FileVerifier {
                             relative_path, expected.hash, actual_hash
                         ),
                         Some("verifier"),
-                        None
+                        None,
                     );
                 }
 
@@ -146,7 +146,7 @@ impl FileVerifier {
             Err(e) => {
                 crate::logger::log_error(
                     &format!("Failed to compute hash for {}: {}", relative_path, e),
-                    Some("verifier")
+                    Some("verifier"),
                 );
 
                 FileVerificationResult {

@@ -19,7 +19,10 @@ use std::collections::HashMap;
 
 use analyzer::Analyzer;
 use installer::Installer;
-use models::{AnalysisResult, InstallResult, InstallTask, SceneryIndexStats, SceneryManagerData, SceneryPackageInfo};
+use models::{
+    AnalysisResult, InstallResult, InstallTask, SceneryIndexStats, SceneryManagerData,
+    SceneryPackageInfo,
+};
 use scenery_index::SceneryIndexManager;
 use scenery_packs_manager::SceneryPacksManager;
 use task_control::TaskControl;
@@ -56,7 +59,10 @@ async fn analyze_addons(
     // Run the analysis in a blocking thread pool to avoid blocking the async runtime
     tokio::task::spawn_blocking(move || {
         log_debug!(&format!("Analyzing paths: {:?}", paths), "analysis");
-        log_debug!(&format!("Starting analysis with X-Plane path: {}", xplane_path), "analysis");
+        log_debug!(
+            &format!("Starting analysis with X-Plane path: {}", xplane_path),
+            "analysis"
+        );
 
         let analyzer = Analyzer::new();
         Ok(analyzer.analyze(paths, &xplane_path, passwords, verification_preferences))
@@ -79,11 +85,29 @@ async fn install_addons(
 
     // Run the installation in a blocking thread pool to avoid blocking the async runtime
     tokio::task::spawn_blocking(move || {
-        log_debug!(&format!("Installing {} tasks: {}", tasks.len(), tasks.iter().map(|t| &t.display_name).cloned().collect::<Vec<_>>().join(", ")), "installation");
+        log_debug!(
+            &format!(
+                "Installing {} tasks: {}",
+                tasks.len(),
+                tasks
+                    .iter()
+                    .map(|t| &t.display_name)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            "installation"
+        );
 
         let installer = Installer::new(app_handle_clone);
         installer
-            .install(tasks, atomic_install_enabled.unwrap_or(false), xplane_path, delete_source_after_install.unwrap_or(false), auto_sort_scenery.unwrap_or(false))
+            .install(
+                tasks,
+                atomic_install_enabled.unwrap_or(false),
+                xplane_path,
+                delete_source_after_install.unwrap_or(false),
+                auto_sort_scenery.unwrap_or(false),
+            )
             .map_err(|e| format!("Installation failed: {}", e))
     })
     .await
@@ -106,8 +130,7 @@ async fn skip_current_task(task_control: State<'_, TaskControl>) -> Result<(), S
 
 #[tauri::command]
 fn register_context_menu() -> Result<(), String> {
-    registry::register_context_menu()
-        .map_err(|e| format!("Failed to register context menu: {}", e))
+    registry::register_context_menu().map_err(|e| format!("Failed to register context menu: {}", e))
 }
 
 #[tauri::command]
@@ -129,7 +152,7 @@ fn log_from_frontend(level: String, message: String, context: Option<String>) {
         "debug" => {
             // For frontend debug logs, we don't have file/line info, so pass None
             logger::log_debug(&message, ctx, Some("frontend"))
-        },
+        }
         _ => logger::log_info(&message, ctx),
     }
 }
@@ -266,7 +289,10 @@ fn validate_xplane_path(path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-async fn check_for_updates(manual: bool, include_pre_release: bool) -> Result<updater::UpdateInfo, String> {
+async fn check_for_updates(
+    manual: bool,
+    include_pre_release: bool,
+) -> Result<updater::UpdateInfo, String> {
     let checker = updater::UpdateChecker::new();
     checker.check_for_updates(manual, include_pre_release).await
 }
@@ -312,7 +338,10 @@ async fn sort_scenery_packs(xplane_path: String) -> Result<bool, String> {
             .reset_sort_order()
             .map_err(|e| format!("Failed to reset sort order: {}", e))?;
 
-        logger::log_info("Scenery index sort order reset successfully", Some("scenery"));
+        logger::log_info(
+            "Scenery index sort order reset successfully",
+            Some("scenery"),
+        );
         Ok(has_changes)
     })
     .await
@@ -449,7 +478,11 @@ pub fn run() {
 
             if !file_args.is_empty() {
                 logger::log_info(
-                    &format!("{}: {:?}", logger::tr(logger::LogMsg::LaunchedWithArgs), file_args),
+                    &format!(
+                        "{}: {:?}",
+                        logger::tr(logger::LogMsg::LaunchedWithArgs),
+                        file_args
+                    ),
                     Some("app"),
                 );
                 // Emit event to frontend with the new file paths
@@ -514,7 +547,11 @@ pub fn run() {
             let args: Vec<String> = std::env::args().skip(1).collect();
             if !args.is_empty() {
                 logger::log_info(
-                    &format!("{}: {:?}", logger::tr(logger::LogMsg::LaunchedWithArgs), args),
+                    &format!(
+                        "{}: {:?}",
+                        logger::tr(logger::LogMsg::LaunchedWithArgs),
+                        args
+                    ),
                     Some("app"),
                 );
                 // Emit event to frontend

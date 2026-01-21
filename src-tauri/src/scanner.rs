@@ -4,7 +4,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::logger;
-use crate::models::{AddonType, DetectedItem, ExtractionChain, NavdataCycle, NavdataInfo, NestedArchiveInfo};
+use crate::models::{
+    AddonType, DetectedItem, ExtractionChain, NavdataCycle, NavdataInfo, NestedArchiveInfo,
+};
 
 /// Error indicating that password is required for an encrypted archive
 #[derive(Debug)]
@@ -165,10 +167,10 @@ impl Scanner {
     /// Fast check for archive paths (string-based, avoids Path allocation)
     #[inline]
     fn should_ignore_archive_path(path: &str) -> bool {
-        path.contains("__MACOSX") ||
-        path.contains(".DS_Store") ||
-        path.ends_with("Thumbs.db") ||
-        path.ends_with("desktop.ini")
+        path.contains("__MACOSX")
+            || path.contains(".DS_Store")
+            || path.ends_with("Thumbs.db")
+            || path.ends_with("desktop.ini")
     }
 
     /// Check if a path should be skipped based on skip_dirs
@@ -224,7 +226,8 @@ impl Scanner {
         let original_input_path = path.to_string_lossy().to_string();
         let mut ctx = ScanContext::new();
         if let Some(pwd) = password {
-            ctx.passwords.insert(path.to_string_lossy().to_string(), pwd.to_string());
+            ctx.passwords
+                .insert(path.to_string_lossy().to_string(), pwd.to_string());
         }
         let mut items = self.scan_path_with_context(path, &mut ctx)?;
 
@@ -237,7 +240,11 @@ impl Scanner {
     }
 
     /// Internal method: Scan a path with context (supports nested archives)
-    fn scan_path_with_context(&self, path: &Path, ctx: &mut ScanContext) -> Result<Vec<DetectedItem>> {
+    fn scan_path_with_context(
+        &self,
+        path: &Path,
+        ctx: &mut ScanContext,
+    ) -> Result<Vec<DetectedItem>> {
         let mut detected_items = Vec::new();
 
         if path.is_dir() {
@@ -250,14 +257,20 @@ impl Scanner {
     }
 
     /// Internal method: Scan an archive with context (routes to format-specific scanners)
-    fn scan_archive_with_context(&self, archive_path: &Path, ctx: &mut ScanContext) -> Result<Vec<DetectedItem>> {
+    fn scan_archive_with_context(
+        &self,
+        archive_path: &Path,
+        ctx: &mut ScanContext,
+    ) -> Result<Vec<DetectedItem>> {
         let extension = archive_path
             .extension()
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_lowercase();
 
-        let password = ctx.passwords.get(&archive_path.to_string_lossy().to_string())
+        let password = ctx
+            .passwords
+            .get(&archive_path.to_string_lossy().to_string())
             .cloned(); // Clone the password to avoid borrow issues
 
         match extension.as_str() {
@@ -404,8 +417,13 @@ impl Scanner {
 
     /// Scan archive without full extraction
     #[allow(dead_code)]
-    fn scan_archive(&self, archive_path: &Path, password: Option<&str>) -> Result<Vec<DetectedItem>> {
-        let extension = archive_path.extension()
+    fn scan_archive(
+        &self,
+        archive_path: &Path,
+        password: Option<&str>,
+    ) -> Result<Vec<DetectedItem>> {
+        let extension = archive_path
+            .extension()
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_lowercase();
@@ -424,7 +442,12 @@ impl Scanner {
 
     /// Scan a 7z archive with context (supports nested archives)
     /// OPTIMIZED: Single pass to collect both addon markers and nested archives
-    fn scan_7z_with_context(&self, archive_path: &Path, ctx: &mut ScanContext, password: Option<&str>) -> Result<Vec<DetectedItem>> {
+    fn scan_7z_with_context(
+        &self,
+        archive_path: &Path,
+        ctx: &mut ScanContext,
+        password: Option<&str>,
+    ) -> Result<Vec<DetectedItem>> {
         let scan_start = std::time::Instant::now();
         crate::log_debug!(
             &format!("[TIMING] 7z scan started: {}", archive_path.display()),
@@ -436,7 +459,8 @@ impl Scanner {
         let archive = sevenz_rust2::Archive::open(archive_path)
             .map_err(|e| anyhow::anyhow!("Failed to open 7z archive: {}", e))?;
         crate::log_debug!(
-            &format!("[TIMING] 7z open completed in {:.2}ms: {}",
+            &format!(
+                "[TIMING] 7z open completed in {:.2}ms: {}",
                 open_start.elapsed().as_secs_f64() * 1000.0,
                 archive_path.display()
             ),
@@ -453,15 +477,15 @@ impl Scanner {
         }
 
         // Check if archive has encrypted files by examining headers
-        let has_encrypted_headers = archive.files.iter().any(|f| f.has_stream() && !f.is_directory());
+        let has_encrypted_headers = archive
+            .files
+            .iter()
+            .any(|f| f.has_stream() && !f.is_directory());
 
         // Only do the slow encryption check if no password provided and archive might be encrypted
         if password.is_none() && has_encrypted_headers {
             let encrypt_check_start = std::time::Instant::now();
-            crate::log_debug!(
-                "[TIMING] 7z encryption check started",
-                "scanner_timing"
-            );
+            crate::log_debug!("[TIMING] 7z encryption check started", "scanner_timing");
 
             match sevenz_rust2::SevenZReader::open(archive_path, sevenz_rust2::Password::empty()) {
                 Ok(mut reader) => {
@@ -485,8 +509,11 @@ impl Scanner {
                 }
                 Err(e) => {
                     let err_str = format!("{:?}", e);
-                    if err_str.contains("password") || err_str.contains("Password")
-                        || err_str.contains("encrypted") || err_str.contains("WrongPassword") {
+                    if err_str.contains("password")
+                        || err_str.contains("Password")
+                        || err_str.contains("encrypted")
+                        || err_str.contains("WrongPassword")
+                    {
                         return Err(anyhow::anyhow!(PasswordRequiredError {
                             archive_path: archive_path.to_string_lossy().to_string(),
                         }));
@@ -495,7 +522,8 @@ impl Scanner {
             }
 
             crate::log_debug!(
-                &format!("[TIMING] 7z encryption check completed in {:.2}ms",
+                &format!(
+                    "[TIMING] 7z encryption check completed in {:.2}ms",
                     encrypt_check_start.elapsed().as_secs_f64() * 1000.0
                 ),
                 "scanner_timing"
@@ -505,7 +533,10 @@ impl Scanner {
         // SINGLE PASS: collect addon markers AND nested archives
         let enumerate_start = std::time::Instant::now();
         crate::log_debug!(
-            &format!("[TIMING] 7z enumeration started: {} files", archive.files.len()),
+            &format!(
+                "[TIMING] 7z enumeration started: {} files",
+                archive.files.len()
+            ),
             "scanner_timing"
         );
 
@@ -536,7 +567,10 @@ impl Scanner {
                         parent_name,
                         "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
                     ) {
-                        parent.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or(parent_str.to_string())
+                        parent
+                            .parent()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or(parent_str.to_string())
                     } else {
                         parent_str.to_string()
                     };
@@ -572,7 +606,8 @@ impl Scanner {
             depth_a.cmp(&depth_b)
         });
         crate::log_debug!(
-            &format!("[TIMING] 7z marker sorting completed in {:.2}ms",
+            &format!(
+                "[TIMING] 7z marker sorting completed in {:.2}ms",
                 sort_start.elapsed().as_secs_f64() * 1000.0
             ),
             "scanner_timing"
@@ -584,12 +619,17 @@ impl Scanner {
         // Process marker files
         let process_start = std::time::Instant::now();
         crate::log_debug!(
-            &format!("[TIMING] 7z marker processing started: {} markers", marker_files.len()),
+            &format!(
+                "[TIMING] 7z marker processing started: {} markers",
+                marker_files.len()
+            ),
             "scanner_timing"
         );
 
         for (file_path, marker_type) in marker_files {
-            let should_skip = skip_prefixes.iter().any(|prefix| file_path.starts_with(prefix));
+            let should_skip = skip_prefixes
+                .iter()
+                .any(|prefix| file_path.starts_with(prefix));
             if should_skip {
                 continue;
             }
@@ -606,7 +646,8 @@ impl Scanner {
                 "dsf" => self.detect_scenery_dsf(&file_path, archive_path)?,
                 "xpl" => self.detect_plugin_in_archive(&file_path, archive_path)?,
                 "navdata" => {
-                    if let Ok(content) = self.read_file_from_7z(archive_path, &file_path, password) {
+                    if let Ok(content) = self.read_file_from_7z(archive_path, &file_path, password)
+                    {
                         self.detect_navdata_in_archive(&file_path, &content, archive_path)?
                     } else {
                         None
@@ -629,7 +670,8 @@ impl Scanner {
         }
 
         crate::log_debug!(
-            &format!("[TIMING] 7z marker processing completed in {:.2}ms: {} addons detected",
+            &format!(
+                "[TIMING] 7z marker processing completed in {:.2}ms: {} addons detected",
                 process_start.elapsed().as_secs_f64() * 1000.0,
                 detected.len()
             ),
@@ -642,12 +684,13 @@ impl Scanner {
             let total_nested = nested_archives.len();
 
             // Filter out nested archives that are inside already detected addon directories
-            let filtered_nested: Vec<_> = nested_archives.into_iter()
+            let filtered_nested: Vec<_> = nested_archives
+                .into_iter()
                 .filter(|nested_path| {
                     // Check if this nested archive is inside any detected addon directory
-                    let is_inside_addon = skip_prefixes.iter().any(|prefix| {
-                        nested_path.starts_with(prefix)
-                    });
+                    let is_inside_addon = skip_prefixes
+                        .iter()
+                        .any(|prefix| nested_path.starts_with(prefix));
                     !is_inside_addon
                 })
                 .collect();
@@ -664,31 +707,32 @@ impl Scanner {
             );
 
             for nested_path in filtered_nested {
-            if Self::should_ignore_path(Path::new(&nested_path)) {
-                continue;
-            }
+                if Self::should_ignore_path(Path::new(&nested_path)) {
+                    continue;
+                }
 
-            match self.scan_nested_archive_in_7z(archive_path, &nested_path, ctx, password) {
-                Ok(nested_items) => {
-                    detected.extend(nested_items);
-                }
-                Err(e) => {
-                    if e.downcast_ref::<PasswordRequiredError>().is_some() {
-                        return Err(anyhow::anyhow!(NestedPasswordRequiredError {
-                            parent_archive: archive_path.to_string_lossy().to_string(),
-                            nested_archive: nested_path.clone(),
-                        }));
+                match self.scan_nested_archive_in_7z(archive_path, &nested_path, ctx, password) {
+                    Ok(nested_items) => {
+                        detected.extend(nested_items);
                     }
-                    crate::logger::log_info(
-                        &format!("Failed to scan nested archive {}: {}", nested_path, e),
-                        Some("scanner"),
-                    );
+                    Err(e) => {
+                        if e.downcast_ref::<PasswordRequiredError>().is_some() {
+                            return Err(anyhow::anyhow!(NestedPasswordRequiredError {
+                                parent_archive: archive_path.to_string_lossy().to_string(),
+                                nested_archive: nested_path.clone(),
+                            }));
+                        }
+                        crate::logger::log_info(
+                            &format!("Failed to scan nested archive {}: {}", nested_path, e),
+                            Some("scanner"),
+                        );
+                    }
                 }
             }
-        }
 
             crate::log_debug!(
-                &format!("[TIMING] 7z nested archive processing completed in {:.2}ms",
+                &format!(
+                    "[TIMING] 7z nested archive processing completed in {:.2}ms",
                     nested_start.elapsed().as_secs_f64() * 1000.0
                 ),
                 "scanner_timing"
@@ -696,7 +740,8 @@ impl Scanner {
         }
 
         crate::log_debug!(
-            &format!("[TIMING] 7z scan completed in {:.2}ms: {} total addons detected",
+            &format!(
+                "[TIMING] 7z scan completed in {:.2}ms: {} total addons detected",
                 scan_start.elapsed().as_secs_f64() * 1000.0,
                 detected.len()
             ),
@@ -725,21 +770,24 @@ impl Scanner {
 
         // Extract using 7z library
         if let Some(pwd) = parent_password {
-            let mut reader = sevenz_rust2::SevenZReader::open(parent_path, sevenz_rust2::Password::from(pwd))
-                .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
-            reader.for_each_entries(|entry, reader| {
-                let dest_path = temp_dir.path().join(entry.name());
-                if entry.is_directory() {
-                    std::fs::create_dir_all(&dest_path)?;
-                } else {
-                    if let Some(parent) = dest_path.parent() {
-                        std::fs::create_dir_all(parent)?;
+            let mut reader =
+                sevenz_rust2::SevenZReader::open(parent_path, sevenz_rust2::Password::from(pwd))
+                    .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
+            reader
+                .for_each_entries(|entry, reader| {
+                    let dest_path = temp_dir.path().join(entry.name());
+                    if entry.is_directory() {
+                        std::fs::create_dir_all(&dest_path)?;
+                    } else {
+                        if let Some(parent) = dest_path.parent() {
+                            std::fs::create_dir_all(parent)?;
+                        }
+                        let mut file = std::fs::File::create(&dest_path)?;
+                        std::io::copy(reader, &mut file)?;
                     }
-                    let mut file = std::fs::File::create(&dest_path)?;
-                    std::io::copy(reader, &mut file)?;
-                }
-                Ok(true)
-            }).map_err(|e| anyhow::anyhow!("Failed to extract 7z with password: {}", e))?;
+                    Ok(true)
+                })
+                .map_err(|e| anyhow::anyhow!("Failed to extract 7z with password: {}", e))?;
         } else {
             sevenz_rust2::decompress_file(parent_path, temp_dir.path())
                 .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
@@ -776,10 +824,8 @@ impl Scanner {
             .ok_or_else(|| anyhow::anyhow!("Unknown archive format: {}", nested_path))?;
 
         // Check if this nested archive has its own password
-        let nested_password = ctx.get_nested_password(
-            &parent_path.to_string_lossy().to_string(),
-            nested_path
-        );
+        let nested_password =
+            ctx.get_nested_password(&parent_path.to_string_lossy().to_string(), nested_path);
 
         // Build nested archive info with password if available
         let nested_info = NestedArchiveInfo {
@@ -852,8 +898,8 @@ impl Scanner {
         parent_path: &Path,
         ctx: &mut ScanContext,
     ) -> Result<Vec<DetectedItem>> {
-        use zip::ZipArchive;
         use std::io::{Cursor, Read};
+        use zip::ZipArchive;
 
         // Check file size before loading into memory (limit: 200MB)
         let metadata = fs::metadata(zip_path)?;
@@ -874,11 +920,21 @@ impl Scanner {
         let mut archive = ZipArchive::new(cursor)?;
 
         // Scan using in-memory method
-        self.scan_zip_in_memory(&mut archive, parent_path, ctx, zip_path.to_string_lossy().as_ref())
+        self.scan_zip_in_memory(
+            &mut archive,
+            parent_path,
+            ctx,
+            zip_path.to_string_lossy().as_ref(),
+        )
     }
 
     /// Scan a RAR archive with context (supports nested archives via temp extraction)
-    fn scan_rar_with_context(&self, archive_path: &Path, ctx: &mut ScanContext, password: Option<&str>) -> Result<Vec<DetectedItem>> {
+    fn scan_rar_with_context(
+        &self,
+        archive_path: &Path,
+        ctx: &mut ScanContext,
+        password: Option<&str>,
+    ) -> Result<Vec<DetectedItem>> {
         let scan_start = std::time::Instant::now();
         crate::log_debug!(
             &format!("[TIMING] RAR scan started: {}", archive_path.display()),
@@ -889,7 +945,8 @@ impl Scanner {
         let scan_markers_start = std::time::Instant::now();
         let mut detected = self.scan_rar(archive_path, password)?;
         crate::log_debug!(
-            &format!("[TIMING] RAR marker scan completed in {:.2}ms: {} addons detected",
+            &format!(
+                "[TIMING] RAR marker scan completed in {:.2}ms: {} addons detected",
                 scan_markers_start.elapsed().as_secs_f64() * 1000.0,
                 detected.len()
             ),
@@ -945,7 +1002,8 @@ impl Scanner {
                 let total_nested = nested_archives.len();
 
                 // Build skip prefixes from already detected addons
-                let skip_prefixes: Vec<String> = detected.iter()
+                let skip_prefixes: Vec<String> = detected
+                    .iter()
                     .filter_map(|item| {
                         item.archive_internal_root.as_ref().map(|root| {
                             if root.ends_with('/') {
@@ -958,12 +1016,13 @@ impl Scanner {
                     .collect();
 
                 // Filter out nested archives that are inside already detected addon directories
-                let filtered_nested: Vec<_> = nested_archives.into_iter()
+                let filtered_nested: Vec<_> = nested_archives
+                    .into_iter()
                     .filter(|nested_path| {
                         // Check if this nested archive is inside any detected addon directory
-                        let is_inside_addon = skip_prefixes.iter().any(|prefix| {
-                            nested_path.starts_with(prefix)
-                        });
+                        let is_inside_addon = skip_prefixes
+                            .iter()
+                            .any(|prefix| nested_path.starts_with(prefix));
                         !is_inside_addon
                     })
                     .collect();
@@ -980,36 +1039,33 @@ impl Scanner {
                 );
 
                 for nested_path in filtered_nested {
-                if Self::should_ignore_path(Path::new(&nested_path)) {
-                    continue;
-                }
+                    if Self::should_ignore_path(Path::new(&nested_path)) {
+                        continue;
+                    }
 
-                match self.scan_nested_archive_in_rar(
-                    archive_path,
-                    &nested_path,
-                    ctx,
-                    password,
-                ) {
-                    Ok(nested_items) => {
-                        detected.extend(nested_items);
-                    }
-                    Err(e) => {
-                        if let Some(_) = e.downcast_ref::<PasswordRequiredError>() {
-                            return Err(anyhow::anyhow!(NestedPasswordRequiredError {
-                                parent_archive: archive_path.to_string_lossy().to_string(),
-                                nested_archive: nested_path.clone(),
-                            }));
+                    match self.scan_nested_archive_in_rar(archive_path, &nested_path, ctx, password)
+                    {
+                        Ok(nested_items) => {
+                            detected.extend(nested_items);
                         }
-                        crate::logger::log_info(
-                            &format!("Failed to scan nested archive {}: {}", nested_path, e),
-                            Some("scanner"),
-                        );
+                        Err(e) => {
+                            if let Some(_) = e.downcast_ref::<PasswordRequiredError>() {
+                                return Err(anyhow::anyhow!(NestedPasswordRequiredError {
+                                    parent_archive: archive_path.to_string_lossy().to_string(),
+                                    nested_archive: nested_path.clone(),
+                                }));
+                            }
+                            crate::logger::log_info(
+                                &format!("Failed to scan nested archive {}: {}", nested_path, e),
+                                Some("scanner"),
+                            );
+                        }
                     }
                 }
-            }
 
                 crate::log_debug!(
-                    &format!("[TIMING] RAR nested archive processing completed in {:.2}ms",
+                    &format!(
+                        "[TIMING] RAR nested archive processing completed in {:.2}ms",
                         nested_process_start.elapsed().as_secs_f64() * 1000.0
                     ),
                     "scanner_timing"
@@ -1018,7 +1074,8 @@ impl Scanner {
         }
 
         crate::log_debug!(
-            &format!("[TIMING] RAR scan completed in {:.2}ms: {} total addons detected",
+            &format!(
+                "[TIMING] RAR scan completed in {:.2}ms: {} total addons detected",
                 scan_start.elapsed().as_secs_f64() * 1000.0,
                 detected.len()
             ),
@@ -1056,14 +1113,17 @@ impl Scanner {
             .open_for_processing()
             .map_err(|e| anyhow::anyhow!("Failed to open RAR for processing: {:?}", e))?;
 
-        while let Some(header) = archive.read_header()
+        while let Some(header) = archive
+            .read_header()
             .map_err(|e| anyhow::anyhow!("Failed to read RAR header: {:?}", e))?
         {
             archive = if header.entry().is_file() {
-                header.extract_with_base(temp_dir.path())
+                header
+                    .extract_with_base(temp_dir.path())
                     .map_err(|e| anyhow::anyhow!("Failed to extract RAR entry: {:?}", e))?
             } else {
-                header.skip()
+                header
+                    .skip()
                     .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
             };
         }
@@ -1099,10 +1159,8 @@ impl Scanner {
             .ok_or_else(|| anyhow::anyhow!("Unknown archive format: {}", nested_path))?;
 
         // Check if this nested archive has its own password
-        let nested_password = ctx.get_nested_password(
-            &parent_path.to_string_lossy().to_string(),
-            nested_path
-        );
+        let nested_password =
+            ctx.get_nested_password(&parent_path.to_string_lossy().to_string(), nested_path);
 
         // Build nested archive info with password if available
         let nested_info = NestedArchiveInfo {
@@ -1185,7 +1243,10 @@ impl Scanner {
 
         // Check if archive has encrypted files by examining headers
         // This is faster than trying to read file content
-        let has_encrypted_headers = archive.files.iter().any(|f| f.has_stream() && !f.is_directory());
+        let has_encrypted_headers = archive
+            .files
+            .iter()
+            .any(|f| f.has_stream() && !f.is_directory());
 
         // Only do the slow encryption check if no password provided and archive might be encrypted
         if password.is_none() && has_encrypted_headers {
@@ -1213,8 +1274,11 @@ impl Scanner {
                 }
                 Err(e) => {
                     let err_str = format!("{:?}", e);
-                    if err_str.contains("password") || err_str.contains("Password")
-                        || err_str.contains("encrypted") || err_str.contains("WrongPassword") {
+                    if err_str.contains("password")
+                        || err_str.contains("Password")
+                        || err_str.contains("encrypted")
+                        || err_str.contains("WrongPassword")
+                    {
                         return Err(anyhow::anyhow!(PasswordRequiredError {
                             archive_path: archive_path.to_string_lossy().to_string(),
                         }));
@@ -1248,7 +1312,10 @@ impl Scanner {
                         parent_name,
                         "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
                     ) {
-                        parent.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or(parent_str.to_string())
+                        parent
+                            .parent()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or(parent_str.to_string())
                     } else {
                         parent_str.to_string()
                     };
@@ -1279,7 +1346,9 @@ impl Scanner {
         // Process marker files
         for (file_path, marker_type) in marker_files {
             // Check if inside a skip prefix (already detected addon)
-            let should_skip = skip_prefixes.iter().any(|prefix| file_path.starts_with(prefix));
+            let should_skip = skip_prefixes
+                .iter()
+                .any(|prefix| file_path.starts_with(prefix));
             if should_skip {
                 continue;
             }
@@ -1298,7 +1367,8 @@ impl Scanner {
                 "dsf" => self.detect_scenery_dsf(&file_path, archive_path)?,
                 "xpl" => self.detect_plugin_in_archive(&file_path, archive_path)?,
                 "navdata" => {
-                    if let Ok(content) = self.read_file_from_7z(archive_path, &file_path, password) {
+                    if let Ok(content) = self.read_file_from_7z(archive_path, &file_path, password)
+                    {
                         self.detect_navdata_in_archive(&file_path, &content, archive_path)?
                     } else {
                         None
@@ -1325,7 +1395,12 @@ impl Scanner {
     }
 
     /// Read a single file content from a 7z archive
-    fn read_file_from_7z(&self, archive_path: &Path, file_path: &str, password: Option<&str>) -> Result<String> {
+    fn read_file_from_7z(
+        &self,
+        archive_path: &Path,
+        file_path: &str,
+        password: Option<&str>,
+    ) -> Result<String> {
         // Create secure temp directory using tempfile crate
         let temp_dir = tempfile::Builder::new()
             .prefix("xfi_7z_read_")
@@ -1334,21 +1409,24 @@ impl Scanner {
 
         // Extract to temp (with password if provided)
         if let Some(pwd) = password {
-            let mut reader = sevenz_rust2::SevenZReader::open(archive_path, sevenz_rust2::Password::from(pwd))
-                .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
-            reader.for_each_entries(|entry, reader| {
-                let dest_path = temp_dir.path().join(entry.name());
-                if entry.is_directory() {
-                    std::fs::create_dir_all(&dest_path)?;
-                } else {
-                    if let Some(parent) = dest_path.parent() {
-                        std::fs::create_dir_all(parent)?;
+            let mut reader =
+                sevenz_rust2::SevenZReader::open(archive_path, sevenz_rust2::Password::from(pwd))
+                    .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
+            reader
+                .for_each_entries(|entry, reader| {
+                    let dest_path = temp_dir.path().join(entry.name());
+                    if entry.is_directory() {
+                        std::fs::create_dir_all(&dest_path)?;
+                    } else {
+                        if let Some(parent) = dest_path.parent() {
+                            std::fs::create_dir_all(parent)?;
+                        }
+                        let mut file = std::fs::File::create(&dest_path)?;
+                        std::io::copy(reader, &mut file)?;
                     }
-                    let mut file = std::fs::File::create(&dest_path)?;
-                    std::io::copy(reader, &mut file)?;
-                }
-                Ok(true)
-            }).map_err(|e| anyhow::anyhow!("Failed to extract 7z with password: {}", e))?;
+                    Ok(true)
+                })
+                .map_err(|e| anyhow::anyhow!("Failed to extract 7z with password: {}", e))?;
         } else {
             sevenz_rust2::decompress_file(archive_path, temp_dir.path())
                 .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
@@ -1358,8 +1436,7 @@ impl Scanner {
         let safe_path = crate::installer::sanitize_path(Path::new(file_path))
             .ok_or_else(|| anyhow::anyhow!("Unsafe path in 7z archive: {}", file_path))?;
         let target_file = temp_dir.path().join(safe_path);
-        let content = fs::read_to_string(&target_file)
-            .context("Failed to read file from 7z")?;
+        let content = fs::read_to_string(&target_file).context("Failed to read file from 7z")?;
 
         // TempDir automatically cleans up when dropped
         Ok(content)
@@ -1380,27 +1457,29 @@ impl Scanner {
             unrar::Archive::new(archive_path)
         };
 
-        let archive = archive_builder
-            .open_for_listing()
-            .map_err(|e| {
-                let err_str = format!("{:?}", e);
-                // Check for password-related errors
-                if err_str.contains("password") || err_str.contains("Password")
-                    || err_str.contains("encrypted") || err_str.contains("ERAR_MISSING_PASSWORD") {
-                    if password.is_none() {
-                        anyhow::anyhow!(PasswordRequiredError {
-                            archive_path: archive_path.to_string_lossy().to_string(),
-                        })
-                    } else {
-                        anyhow::anyhow!("Wrong password for archive: {}", archive_path.display())
-                    }
+        let archive = archive_builder.open_for_listing().map_err(|e| {
+            let err_str = format!("{:?}", e);
+            // Check for password-related errors
+            if err_str.contains("password")
+                || err_str.contains("Password")
+                || err_str.contains("encrypted")
+                || err_str.contains("ERAR_MISSING_PASSWORD")
+            {
+                if password.is_none() {
+                    anyhow::anyhow!(PasswordRequiredError {
+                        archive_path: archive_path.to_string_lossy().to_string(),
+                    })
                 } else {
-                    anyhow::anyhow!("Failed to open RAR archive: {:?}", e)
+                    anyhow::anyhow!("Wrong password for archive: {}", archive_path.display())
                 }
-            })?;
+            } else {
+                anyhow::anyhow!("Failed to open RAR archive: {:?}", e)
+            }
+        })?;
 
         crate::log_debug!(
-            &format!("[TIMING] RAR open completed in {:.2}ms",
+            &format!(
+                "[TIMING] RAR open completed in {:.2}ms",
                 open_start.elapsed().as_secs_f64() * 1000.0
             ),
             "scanner_timing"
@@ -1417,7 +1496,8 @@ impl Scanner {
         }
 
         crate::log_debug!(
-            &format!("[TIMING] RAR enumeration completed in {:.2}ms: {} files",
+            &format!(
+                "[TIMING] RAR enumeration completed in {:.2}ms: {} files",
                 enumerate_start.elapsed().as_secs_f64() * 1000.0,
                 files.len()
             ),
@@ -1454,7 +1534,10 @@ impl Scanner {
                         parent_name,
                         "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
                     ) {
-                        parent.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or(parent_str.to_string())
+                        parent
+                            .parent()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or(parent_str.to_string())
                     } else {
                         parent_str.to_string()
                     };
@@ -1473,7 +1556,8 @@ impl Scanner {
         }
 
         crate::log_debug!(
-            &format!("[TIMING] RAR marker identification completed in {:.2}ms: {} markers",
+            &format!(
+                "[TIMING] RAR marker identification completed in {:.2}ms: {} markers",
                 marker_identify_start.elapsed().as_secs_f64() * 1000.0,
                 marker_files.len()
             ),
@@ -1488,7 +1572,8 @@ impl Scanner {
             depth_a.cmp(&depth_b)
         });
         crate::log_debug!(
-            &format!("[TIMING] RAR marker sorting completed in {:.2}ms",
+            &format!(
+                "[TIMING] RAR marker sorting completed in {:.2}ms",
                 sort_start.elapsed().as_secs_f64() * 1000.0
             ),
             "scanner_timing"
@@ -1500,13 +1585,18 @@ impl Scanner {
         // Process marker files
         let process_start = std::time::Instant::now();
         crate::log_debug!(
-            &format!("[TIMING] RAR marker processing started: {} markers", marker_files.len()),
+            &format!(
+                "[TIMING] RAR marker processing started: {} markers",
+                marker_files.len()
+            ),
             "scanner_timing"
         );
 
         for (file_path, marker_type) in marker_files {
             // Check if inside a skip prefix (already detected addon)
-            let should_skip = skip_prefixes.iter().any(|prefix| file_path.starts_with(prefix));
+            let should_skip = skip_prefixes
+                .iter()
+                .any(|prefix| file_path.starts_with(prefix));
             if should_skip {
                 continue;
             }
@@ -1525,7 +1615,8 @@ impl Scanner {
                 "dsf" => self.detect_scenery_dsf(&file_path, archive_path)?,
                 "xpl" => self.detect_plugin_in_archive(&file_path, archive_path)?,
                 "navdata" => {
-                    if let Ok(content) = self.read_file_from_rar(archive_path, &file_path, password) {
+                    if let Ok(content) = self.read_file_from_rar(archive_path, &file_path, password)
+                    {
                         self.detect_navdata_in_archive(&file_path, &content, archive_path)?
                     } else {
                         None
@@ -1549,7 +1640,8 @@ impl Scanner {
         }
 
         crate::log_debug!(
-            &format!("[TIMING] RAR marker processing completed in {:.2}ms: {} addons detected",
+            &format!(
+                "[TIMING] RAR marker processing completed in {:.2}ms: {} addons detected",
                 process_start.elapsed().as_secs_f64() * 1000.0,
                 detected.len()
             ),
@@ -1560,7 +1652,12 @@ impl Scanner {
     }
 
     /// Read a single file content from a RAR archive
-    fn read_file_from_rar(&self, archive_path: &Path, target_file: &str, password: Option<&str>) -> Result<String> {
+    fn read_file_from_rar(
+        &self,
+        archive_path: &Path,
+        target_file: &str,
+        password: Option<&str>,
+    ) -> Result<String> {
         // Create secure temp directory using tempfile crate
         let temp_dir = tempfile::Builder::new()
             .prefix("xfi_rar_read_")
@@ -1578,14 +1675,17 @@ impl Scanner {
             .open_for_processing()
             .map_err(|e| anyhow::anyhow!("Failed to open RAR for processing: {:?}", e))?;
 
-        while let Some(header) = archive.read_header()
+        while let Some(header) = archive
+            .read_header()
             .map_err(|e| anyhow::anyhow!("Failed to read RAR header: {:?}", e))?
         {
             archive = if header.entry().is_file() {
-                header.extract_with_base(temp_dir.path())
+                header
+                    .extract_with_base(temp_dir.path())
                     .map_err(|e| anyhow::anyhow!("Failed to extract RAR entry: {:?}", e))?
             } else {
-                header.skip()
+                header
+                    .skip()
                     .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
             };
         }
@@ -1594,8 +1694,7 @@ impl Scanner {
         let safe_path = crate::installer::sanitize_path(Path::new(target_file))
             .ok_or_else(|| anyhow::anyhow!("Unsafe path in RAR archive: {}", target_file))?;
         let file_path = temp_dir.path().join(safe_path);
-        let content = fs::read_to_string(&file_path)
-            .context("Failed to read file from RAR")?;
+        let content = fs::read_to_string(&file_path).context("Failed to read file from RAR")?;
 
         // TempDir automatically cleans up when dropped
         Ok(content)
@@ -1603,9 +1702,14 @@ impl Scanner {
 
     /// Scan a ZIP archive with context (supports nested archives)
     /// OPTIMIZED: Single pass to collect both addon markers and nested archives
-    fn scan_zip_with_context(&self, zip_path: &Path, ctx: &mut ScanContext, password: Option<&str>) -> Result<Vec<DetectedItem>> {
-        use zip::ZipArchive;
+    fn scan_zip_with_context(
+        &self,
+        zip_path: &Path,
+        ctx: &mut ScanContext,
+        password: Option<&str>,
+    ) -> Result<Vec<DetectedItem>> {
         use std::io::Read;
+        use zip::ZipArchive;
 
         let scan_start = std::time::Instant::now();
         crate::log_debug!(
@@ -1617,7 +1721,8 @@ impl Scanner {
         let file = fs::File::open(zip_path)?;
         let mut archive = ZipArchive::new(file)?;
         crate::log_debug!(
-            &format!("[TIMING] ZIP open completed in {:.2}ms: {}",
+            &format!(
+                "[TIMING] ZIP open completed in {:.2}ms: {}",
                 open_start.elapsed().as_secs_f64() * 1000.0,
                 zip_path.display()
             ),
@@ -1653,14 +1758,20 @@ impl Scanner {
                 Ok(f) => f,
                 Err(e) => {
                     let err_str = format!("{:?}", e);
-                    if err_str.contains("password") || err_str.contains("Password")
-                        || err_str.contains("encrypted") || err_str.contains("InvalidPassword") {
+                    if err_str.contains("password")
+                        || err_str.contains("Password")
+                        || err_str.contains("encrypted")
+                        || err_str.contains("InvalidPassword")
+                    {
                         if password_bytes.is_none() {
                             return Err(anyhow::anyhow!(PasswordRequiredError {
                                 archive_path: zip_path.to_string_lossy().to_string(),
                             }));
                         } else {
-                            return Err(anyhow::anyhow!("Wrong password for archive: {}", zip_path.display()));
+                            return Err(anyhow::anyhow!(
+                                "Wrong password for archive: {}",
+                                zip_path.display()
+                            ));
                         }
                     }
                     return Err(anyhow::anyhow!("Failed to read ZIP entry {}: {}", i, e));
@@ -1694,7 +1805,10 @@ impl Scanner {
                         parent_name,
                         "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
                     ) {
-                        parent.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or(parent_str.to_string())
+                        parent
+                            .parent()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or(parent_str.to_string())
                     } else {
                         parent_str.to_string()
                     };
@@ -1737,7 +1851,8 @@ impl Scanner {
             depth_a.cmp(&depth_b)
         });
         crate::log_debug!(
-            &format!("[TIMING] ZIP marker sorting completed in {:.2}ms",
+            &format!(
+                "[TIMING] ZIP marker sorting completed in {:.2}ms",
                 sort_start.elapsed().as_secs_f64() * 1000.0
             ),
             "scanner_timing"
@@ -1749,13 +1864,18 @@ impl Scanner {
         // Process marker files to detect addons
         let process_start = std::time::Instant::now();
         crate::log_debug!(
-            &format!("[TIMING] ZIP marker processing started: {} markers", marker_files.len()),
+            &format!(
+                "[TIMING] ZIP marker processing started: {} markers",
+                marker_files.len()
+            ),
             "scanner_timing"
         );
 
         for (i, file_path, is_encrypted, marker_type) in marker_files {
             // Check if inside a skip prefix (already detected addon)
-            let should_skip = skip_prefixes.iter().any(|prefix| file_path.starts_with(prefix));
+            let should_skip = skip_prefixes
+                .iter()
+                .any(|prefix| file_path.starts_with(prefix));
             if should_skip {
                 continue;
             }
@@ -1817,7 +1937,8 @@ impl Scanner {
         }
 
         crate::log_debug!(
-            &format!("[TIMING] ZIP marker processing completed in {:.2}ms: {} addons detected",
+            &format!(
+                "[TIMING] ZIP marker processing completed in {:.2}ms: {} addons detected",
                 process_start.elapsed().as_secs_f64() * 1000.0,
                 detected.len()
             ),
@@ -1830,12 +1951,13 @@ impl Scanner {
             let total_nested = nested_archives.len();
 
             // Filter out nested archives that are inside already detected addon directories
-            let filtered_nested: Vec<_> = nested_archives.into_iter()
+            let filtered_nested: Vec<_> = nested_archives
+                .into_iter()
                 .filter(|(_, nested_path, _)| {
                     // Check if this nested archive is inside any detected addon directory
-                    let is_inside_addon = skip_prefixes.iter().any(|prefix| {
-                        nested_path.starts_with(prefix)
-                    });
+                    let is_inside_addon = skip_prefixes
+                        .iter()
+                        .any(|prefix| nested_path.starts_with(prefix));
                     !is_inside_addon
                 })
                 .collect();
@@ -1888,7 +2010,8 @@ impl Scanner {
             }
 
             crate::log_debug!(
-                &format!("[TIMING] ZIP nested archive processing completed in {:.2}ms",
+                &format!(
+                    "[TIMING] ZIP nested archive processing completed in {:.2}ms",
                     nested_start.elapsed().as_secs_f64() * 1000.0
                 ),
                 "scanner_timing"
@@ -1896,7 +2019,8 @@ impl Scanner {
         }
 
         crate::log_debug!(
-            &format!("[TIMING] ZIP scan completed in {:.2}ms: {} total addons detected",
+            &format!(
+                "[TIMING] ZIP scan completed in {:.2}ms: {} total addons detected",
                 scan_start.elapsed().as_secs_f64() * 1000.0,
                 detected.len()
             ),
@@ -1924,7 +2048,8 @@ impl Scanner {
 
         if is_encrypted {
             if let Some(pwd) = parent_password {
-                let mut nested_file = parent_archive.by_index_decrypt(file_index, pwd)
+                let mut nested_file = parent_archive
+                    .by_index_decrypt(file_index, pwd)
                     .map_err(|e| anyhow::anyhow!("Failed to decrypt nested archive: {}", e))?;
                 nested_file.read_to_end(&mut nested_data)?;
             } else {
@@ -1942,10 +2067,8 @@ impl Scanner {
             .ok_or_else(|| anyhow::anyhow!("Unknown archive format: {}", nested_path))?;
 
         // Check if this nested archive has its own password
-        let nested_password = ctx.get_nested_password(
-            &parent_path.to_string_lossy().to_string(),
-            nested_path
-        );
+        let nested_password =
+            ctx.get_nested_password(&parent_path.to_string_lossy().to_string(), nested_path);
 
         // Build nested archive info with password if available
         let nested_info = NestedArchiveInfo {
@@ -1971,7 +2094,10 @@ impl Scanner {
         } else {
             // For 7z/RAR nested in ZIP, write to temp file and scan
             crate::logger::log_info(
-                &format!("Scanning nested {} archive from ZIP (using temp file)", nested_info.format),
+                &format!(
+                    "Scanning nested {} archive from ZIP (using temp file)",
+                    nested_info.format
+                ),
                 Some("scanner"),
             );
             self.scan_nested_non_zip_from_memory(nested_data, &nested_info.format, parent_path, ctx)
@@ -2088,7 +2214,9 @@ impl Scanner {
                 if let Ok(mut file) = archive.by_index(file_index) {
                     let mut content = String::new();
                     if file.read_to_string(&mut content).is_ok() {
-                        if let Some(item) = self.detect_navdata_in_archive(&file_path, &content, parent_path)? {
+                        if let Some(item) =
+                            self.detect_navdata_in_archive(&file_path, &content, parent_path)?
+                        {
                             detected.push(item);
                         }
                     }
@@ -2108,8 +2236,8 @@ impl Scanner {
         _parent_path: &Path,
         ctx: &mut ScanContext,
     ) -> Result<Vec<DetectedItem>> {
-        use tempfile::NamedTempFile;
         use std::io::Write;
+        use tempfile::NamedTempFile;
 
         // Create a temporary file with appropriate extension
         let extension = match format {
@@ -2122,7 +2250,8 @@ impl Scanner {
             .context("Failed to create temp file for nested archive")?;
 
         // Write archive data to temp file
-        temp_file.write_all(&archive_data)
+        temp_file
+            .write_all(&archive_data)
             .context("Failed to write nested archive to temp file")?;
         temp_file.flush()?;
 
@@ -2166,14 +2295,20 @@ impl Scanner {
                 Ok(f) => f,
                 Err(e) => {
                     let err_str = format!("{:?}", e);
-                    if err_str.contains("password") || err_str.contains("Password")
-                        || err_str.contains("encrypted") || err_str.contains("InvalidPassword") {
+                    if err_str.contains("password")
+                        || err_str.contains("Password")
+                        || err_str.contains("encrypted")
+                        || err_str.contains("InvalidPassword")
+                    {
                         if password_bytes.is_none() {
                             return Err(anyhow::anyhow!(PasswordRequiredError {
                                 archive_path: zip_path.to_string_lossy().to_string(),
                             }));
                         } else {
-                            return Err(anyhow::anyhow!("Wrong password for archive: {}", zip_path.display()));
+                            return Err(anyhow::anyhow!(
+                                "Wrong password for archive: {}",
+                                zip_path.display()
+                            ));
                         }
                     }
                     return Err(anyhow::anyhow!("Failed to read ZIP entry {}: {}", i, e));
@@ -2202,7 +2337,10 @@ impl Scanner {
                         parent_name,
                         "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
                     ) {
-                        parent.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or(parent_str.to_string())
+                        parent
+                            .parent()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or(parent_str.to_string())
                     } else {
                         parent_str.to_string()
                     };
@@ -2221,7 +2359,8 @@ impl Scanner {
         }
 
         crate::log_debug!(
-            &format!("[TIMING] ZIP enumeration completed in {:.2}ms: {} files, {} markers",
+            &format!(
+                "[TIMING] ZIP enumeration completed in {:.2}ms: {} files, {} markers",
                 enumerate_start.elapsed().as_secs_f64() * 1000.0,
                 archive.len(),
                 marker_files.len(),
@@ -2249,7 +2388,9 @@ impl Scanner {
         // Process marker files
         for (i, file_path, is_encrypted, marker_type) in marker_files {
             // Check if inside a skip prefix (already detected addon)
-            let should_skip = skip_prefixes.iter().any(|prefix| file_path.starts_with(prefix));
+            let should_skip = skip_prefixes
+                .iter()
+                .any(|prefix| file_path.starts_with(prefix));
             if should_skip {
                 continue;
             }
@@ -2321,9 +2462,9 @@ impl Scanner {
         }
 
         // Get the parent directory of the .acf file
-        let parent = file_path.parent().ok_or_else(|| {
-            anyhow::anyhow!("Failed to get parent directory")
-        })?;
+        let parent = file_path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Failed to get parent directory"))?;
 
         // If .acf is in root, use the root folder name
         // Otherwise, use the immediate parent folder
@@ -2360,7 +2501,11 @@ impl Scanner {
         }))
     }
 
-    fn detect_aircraft_in_archive(&self, file_path: &str, archive_path: &Path) -> Result<Option<DetectedItem>> {
+    fn detect_aircraft_in_archive(
+        &self,
+        file_path: &str,
+        archive_path: &Path,
+    ) -> Result<Option<DetectedItem>> {
         let path = PathBuf::from(file_path);
         let parent = path.parent();
 
@@ -2391,11 +2536,13 @@ impl Scanner {
 
                 // Get the top-level folder in the archive
                 let components: Vec<_> = p.components().collect();
-                let top_folder = components.first()
+                let top_folder = components
+                    .first()
                     .map(|c| c.as_os_str().to_string_lossy().to_string());
 
                 // Use parent folder name as display name
-                let name = p.file_name()
+                let name = p
+                    .file_name()
                     .and_then(|s| s.to_str())
                     .unwrap_or("Unknown Aircraft")
                     .to_string();
@@ -2427,7 +2574,7 @@ impl Scanner {
     // Type B: Scenery Detection
     fn check_scenery(&self, file_path: &Path, _root: &Path) -> Result<Option<DetectedItem>> {
         let file_name = file_path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        
+
         if file_name == "library.txt" {
             return self.detect_scenery_by_library(file_path);
         }
@@ -2441,9 +2588,9 @@ impl Scanner {
 
     fn detect_scenery_by_library(&self, file_path: &Path) -> Result<Option<DetectedItem>> {
         // Install the immediate folder containing library.txt
-        let parent = file_path.parent().ok_or_else(|| {
-            anyhow::anyhow!("Failed to get parent directory")
-        })?;
+        let parent = file_path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Failed to get parent directory"))?;
 
         let display_name = parent
             .file_name()
@@ -2475,7 +2622,7 @@ impl Scanner {
                 .to_string();
 
             Ok(Some(DetectedItem {
-            original_input_path: String::new(),
+                original_input_path: String::new(),
                 addon_type: AddonType::Scenery,
                 path: install_dir.to_string_lossy().to_string(),
                 display_name,
@@ -2515,7 +2662,11 @@ impl Scanner {
         None
     }
 
-    fn detect_scenery_library(&self, file_path: &str, archive_path: &Path) -> Result<Option<DetectedItem>> {
+    fn detect_scenery_library(
+        &self,
+        file_path: &str,
+        archive_path: &Path,
+    ) -> Result<Option<DetectedItem>> {
         let path = PathBuf::from(file_path);
         let parent = path.parent();
 
@@ -2534,7 +2685,8 @@ impl Scanner {
             } else {
                 // The folder containing library.txt is the library root
                 let library_root = p.to_string_lossy().to_string();
-                let name = p.file_name()
+                let name = p
+                    .file_name()
                     .and_then(|s| s.to_str())
                     .unwrap_or("Unknown Library")
                     .to_string();
@@ -2563,7 +2715,11 @@ impl Scanner {
         }))
     }
 
-    fn detect_scenery_dsf(&self, file_path: &str, archive_path: &Path) -> Result<Option<DetectedItem>> {
+    fn detect_scenery_dsf(
+        &self,
+        file_path: &str,
+        archive_path: &Path,
+    ) -> Result<Option<DetectedItem>> {
         let path = PathBuf::from(file_path);
 
         // DSF structure: {Scenery}/Earth nav data/{...}/{file}.dsf
@@ -2583,7 +2739,8 @@ impl Scanner {
                 )
             } else {
                 let root_str = root.to_string_lossy().to_string();
-                let name = root.file_name()
+                let name = root
+                    .file_name()
                     .and_then(|s| s.to_str())
                     .unwrap_or("Unknown Scenery")
                     .to_string();
@@ -2642,14 +2799,11 @@ impl Scanner {
             return Ok(None);
         }
 
-        let parent = file_path.parent().ok_or_else(|| {
-            anyhow::anyhow!("Failed to get parent directory")
-        })?;
+        let parent = file_path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Failed to get parent directory"))?;
 
-        let parent_name = parent
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
+        let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
 
         // Check if parent is a platform-specific folder
         let install_path = if matches!(
@@ -2679,7 +2833,11 @@ impl Scanner {
         }))
     }
 
-    fn detect_plugin_in_archive(&self, file_path: &str, archive_path: &Path) -> Result<Option<DetectedItem>> {
+    fn detect_plugin_in_archive(
+        &self,
+        file_path: &str,
+        archive_path: &Path,
+    ) -> Result<Option<DetectedItem>> {
         let path = PathBuf::from(file_path);
         let parent = path.parent();
 
@@ -2709,7 +2867,8 @@ impl Scanner {
                     )
                 } else {
                     let root_str = root.to_string_lossy().to_string();
-                    let name = root.file_name()
+                    let name = root
+                        .file_name()
                         .and_then(|s| s.to_str())
                         .unwrap_or("Unknown Plugin")
                         .to_string();
@@ -2739,15 +2898,14 @@ impl Scanner {
             return Ok(None);
         }
 
-        let content = fs::read_to_string(file_path)
-            .context("Failed to read cycle.json")?;
+        let content = fs::read_to_string(file_path).context("Failed to read cycle.json")?;
 
-        let cycle: NavdataCycle = serde_json::from_str(&content)
-            .context("Failed to parse cycle.json")?;
+        let cycle: NavdataCycle =
+            serde_json::from_str(&content).context("Failed to parse cycle.json")?;
 
-        let parent = file_path.parent().ok_or_else(|| {
-            anyhow::anyhow!("Failed to get parent directory")
-        })?;
+        let parent = file_path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Failed to get parent directory"))?;
 
         // Create NavdataInfo from parsed cycle
         let navdata_info = NavdataInfo {
@@ -2757,13 +2915,17 @@ impl Scanner {
         };
 
         // Determine install path based on name
-        let (install_path, display_name) = if cycle.name.contains("X-Plane") || cycle.name.contains("X-Plane 11") {
-            (parent.to_path_buf(), format!("Navdata: {}", cycle.name))
-        } else if cycle.name.contains("X-Plane GNS430") {
-            (parent.to_path_buf(), format!("Navdata GNS430: {}", cycle.name))
-        } else {
-            return Err(anyhow::anyhow!("Unknown Navdata Format: {}", cycle.name));
-        };
+        let (install_path, display_name) =
+            if cycle.name.contains("X-Plane") || cycle.name.contains("X-Plane 11") {
+                (parent.to_path_buf(), format!("Navdata: {}", cycle.name))
+            } else if cycle.name.contains("X-Plane GNS430") {
+                (
+                    parent.to_path_buf(),
+                    format!("Navdata GNS430: {}", cycle.name),
+                )
+            } else {
+                return Err(anyhow::anyhow!("Unknown Navdata Format: {}", cycle.name));
+            };
 
         Ok(Some(DetectedItem {
             original_input_path: String::new(),
@@ -2776,9 +2938,14 @@ impl Scanner {
         }))
     }
 
-    fn detect_navdata_in_archive(&self, file_path: &str, content: &str, archive_path: &Path) -> Result<Option<DetectedItem>> {
-        let cycle: NavdataCycle = serde_json::from_str(content)
-            .context("Failed to parse cycle.json")?;
+    fn detect_navdata_in_archive(
+        &self,
+        file_path: &str,
+        content: &str,
+        archive_path: &Path,
+    ) -> Result<Option<DetectedItem>> {
+        let cycle: NavdataCycle =
+            serde_json::from_str(content).context("Failed to parse cycle.json")?;
 
         let path = PathBuf::from(file_path);
         let parent = path.parent();

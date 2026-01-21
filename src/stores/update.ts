@@ -79,8 +79,16 @@ export const useUpdateStore = defineStore('update', () => {
       lastCheckTime.value = Date.now()
       localStorage.setItem('lastCheckTime', lastCheckTime.value.toString())
     } catch (error) {
+      const errorMessage =
+        typeof error === 'string' ? error : (error as Error)?.message ?? String(error)
+
+      if (errorMessage.includes('Cache not expired')) {
+        logDebug('Update check skipped (cache not expired)', 'update')
+        return
+      }
+
       // 记录错误到日志
-      logError(`Update check failed: ${error}`, 'update')
+      logError(`Update check failed: ${errorMessage}`, 'update')
 
       if (manual) {
         // 手动检查时显示错误

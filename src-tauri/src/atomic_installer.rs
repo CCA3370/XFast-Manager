@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
-use uuid::Uuid;
 use tauri::{AppHandle, Emitter};
+use uuid::Uuid;
 
 use crate::logger;
-use crate::models::{InstallTask, InstallPhase, InstallProgress};
+use crate::models::{InstallPhase, InstallProgress, InstallTask};
 
 /// Minimum required free space (1 GB) as a safety buffer
 const MIN_FREE_SPACE_BYTES: u64 = 1024 * 1024 * 1024;
@@ -54,7 +54,7 @@ impl AtomicInstaller {
 
         logger::log_info(
             &format!("Created atomic install temp directory: {:?}", temp_dir),
-            Some("atomic_installer")
+            Some("atomic_installer"),
         );
 
         Ok(Self {
@@ -102,7 +102,7 @@ impl AtomicInstaller {
     pub fn install_fresh(&mut self) -> Result<()> {
         logger::log_info(
             "Atomic install: Fresh installation (target doesn't exist)",
-            Some("atomic_installer")
+            Some("atomic_installer"),
         );
 
         // Verify temp directory has content
@@ -111,12 +111,15 @@ impl AtomicInstaller {
         }
 
         // Atomic move: temp -> target
-        self.emit_progress("Moving files to target directory...", InstallPhase::Installing);
+        self.emit_progress(
+            "Moving files to target directory...",
+            InstallPhase::Installing,
+        );
         atomic_move(&self.temp_dir, &self.target_dir)?;
 
         logger::log_info(
             &format!("Fresh installation completed: {:?}", self.target_dir),
-            Some("atomic_installer")
+            Some("atomic_installer"),
         );
 
         // Explicitly cleanup temp directory (it should be empty now, but ensure it's removed)
@@ -135,7 +138,7 @@ impl AtomicInstaller {
     pub fn install_clean(&mut self, task: &InstallTask) -> Result<()> {
         logger::log_info(
             "Atomic install: Clean installation (delete old, install new)",
-            Some("atomic_installer")
+            Some("atomic_installer"),
         );
 
         if !self.target_dir.exists() {
@@ -144,12 +147,14 @@ impl AtomicInstaller {
         }
 
         // Create unique backup directory name to avoid conflicts
-        let backup_dir = self.target_dir
+        let backup_dir = self
+            .target_dir
             .parent()
             .ok_or_else(|| anyhow::anyhow!("Target has no parent"))?
             .join(format!(
                 "{}.backup_{}",
-                self.target_dir.file_name()
+                self.target_dir
+                    .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("unknown"),
                 Uuid::new_v4()
@@ -158,30 +163,38 @@ impl AtomicInstaller {
         // Step 1: Rename target -> backup
         self.emit_progress("Backing up original directory...", InstallPhase::Installing);
         logger::log_info(
-            &format!("Backing up original directory: {:?} -> {:?}", self.target_dir, backup_dir),
-            Some("atomic_installer")
+            &format!(
+                "Backing up original directory: {:?} -> {:?}",
+                self.target_dir, backup_dir
+            ),
+            Some("atomic_installer"),
         );
 
-        fs::rename(&self.target_dir, &backup_dir)
-            .context(format!("Failed to rename target to backup: {:?}", self.target_dir))?;
+        fs::rename(&self.target_dir, &backup_dir).context(format!(
+            "Failed to rename target to backup: {:?}",
+            self.target_dir
+        ))?;
 
         self.backup_dir = Some(backup_dir.clone());
 
         // Step 2: Atomic move temp -> target
-        self.emit_progress("Moving new files to target directory...", InstallPhase::Installing);
+        self.emit_progress(
+            "Moving new files to target directory...",
+            InstallPhase::Installing,
+        );
         match atomic_move(&self.temp_dir, &self.target_dir) {
-            Ok(()) => {},
+            Ok(()) => {}
             Err(e) => {
                 // Rollback: restore backup
                 logger::log_error(
                     &format!("Atomic move failed, rolling back: {}", e),
-                    Some("atomic_installer")
+                    Some("atomic_installer"),
                 );
 
                 if let Err(rollback_err) = fs::rename(&backup_dir, &self.target_dir) {
                     logger::log_error(
                         &format!("CRITICAL: Rollback failed: {}", rollback_err),
-                        Some("atomic_installer")
+                        Some("atomic_installer"),
                     );
                 }
 
@@ -195,7 +208,7 @@ impl AtomicInstaller {
             if let Err(e) = self.restore_backup_files(task, &backup_dir) {
                 logger::log_error(
                     &format!("Failed to restore backup files: {}", e),
-                    Some("atomic_installer")
+                    Some("atomic_installer"),
                 );
                 // Don't fail the installation, just log the error
             }
@@ -205,20 +218,20 @@ impl AtomicInstaller {
         self.emit_progress("Cleaning up backup directory...", InstallPhase::Installing);
         logger::log_info(
             &format!("Removing backup directory: {:?}", backup_dir),
-            Some("atomic_installer")
+            Some("atomic_installer"),
         );
 
         if let Err(e) = fs::remove_dir_all(&backup_dir) {
             logger::log_error(
                 &format!("Failed to remove backup directory: {}", e),
-                Some("atomic_installer")
+                Some("atomic_installer"),
             );
             // Don't fail the installation if backup cleanup fails
         }
 
         logger::log_info(
             &format!("Clean installation completed: {:?}", self.target_dir),
-            Some("atomic_installer")
+            Some("atomic_installer"),
         );
 
         // Explicitly cleanup temp directory
@@ -235,7 +248,7 @@ impl AtomicInstaller {
     pub fn install_overwrite(&mut self) -> Result<()> {
         logger::log_info(
             "Atomic install: Overwrite installation (merge with existing)",
-            Some("atomic_installer")
+            Some("atomic_installer"),
         );
 
         if !self.target_dir.exists() {
@@ -244,12 +257,15 @@ impl AtomicInstaller {
         }
 
         // Recursively move files from temp to target
-        self.emit_progress("Merging files with existing installation...", InstallPhase::Installing);
+        self.emit_progress(
+            "Merging files with existing installation...",
+            InstallPhase::Installing,
+        );
         merge_directories(&self.temp_dir, &self.target_dir)?;
 
         logger::log_info(
             &format!("Overwrite installation completed: {:?}", self.target_dir),
-            Some("atomic_installer")
+            Some("atomic_installer"),
         );
 
         // Explicitly cleanup temp directory
@@ -264,7 +280,7 @@ impl AtomicInstaller {
 
         logger::log_info(
             "Restoring backup files from original installation",
-            Some("atomic_installer")
+            Some("atomic_installer"),
         );
 
         // Restore liveries
@@ -274,8 +290,11 @@ impl AtomicInstaller {
                 let liveries_target = self.target_dir.join("liveries");
 
                 logger::log_info(
-                    &format!("Restoring liveries: {:?} -> {:?}", liveries_backup, liveries_target),
-                    Some("atomic_installer")
+                    &format!(
+                        "Restoring liveries: {:?} -> {:?}",
+                        liveries_backup, liveries_target
+                    ),
+                    Some("atomic_installer"),
                 );
 
                 // Merge liveries (skip existing files to preserve new liveries)
@@ -286,8 +305,11 @@ impl AtomicInstaller {
         // Restore config files (only in root directory)
         if task.backup_config_files && !task.config_file_patterns.is_empty() {
             logger::log_info(
-                &format!("Restoring config files matching patterns: {:?}", task.config_file_patterns),
-                Some("atomic_installer")
+                &format!(
+                    "Restoring config files matching patterns: {:?}",
+                    task.config_file_patterns
+                ),
+                Some("atomic_installer"),
             );
 
             for entry in fs::read_dir(backup_dir)? {
@@ -307,7 +329,7 @@ impl AtomicInstaller {
                             let target_file = self.target_dir.join(filename);
                             logger::log_info(
                                 &format!("Restoring config file: {}", filename),
-                                Some("atomic_installer")
+                                Some("atomic_installer"),
                             );
 
                             fs::copy(&path, &target_file)
@@ -324,10 +346,7 @@ impl AtomicInstaller {
     /// Rollback installation if something goes wrong
     #[allow(dead_code)]
     pub fn rollback(&mut self) -> Result<()> {
-        logger::log_error(
-            "Rolling back atomic installation",
-            Some("atomic_installer")
-        );
+        logger::log_error("Rolling back atomic installation", Some("atomic_installer"));
 
         // If we have a backup, restore it
         if let Some(backup_dir) = &self.backup_dir {
@@ -344,7 +363,7 @@ impl AtomicInstaller {
 
                 logger::log_info(
                     "Rollback completed: Original files restored",
-                    Some("atomic_installer")
+                    Some("atomic_installer"),
                 );
             }
         }
@@ -357,20 +376,20 @@ impl AtomicInstaller {
         if self.temp_dir.exists() {
             logger::log_info(
                 &format!("Cleaning up temp directory: {:?}", self.temp_dir),
-                Some("atomic_installer")
+                Some("atomic_installer"),
             );
 
             match fs::remove_dir_all(&self.temp_dir) {
                 Ok(()) => {
                     logger::log_info(
                         "Temp directory cleaned up successfully",
-                        Some("atomic_installer")
+                        Some("atomic_installer"),
                     );
                 }
                 Err(e) => {
                     logger::log_error(
                         &format!("Failed to cleanup temp directory: {}", e),
-                        Some("atomic_installer")
+                        Some("atomic_installer"),
                     );
                 }
             }
@@ -385,12 +404,12 @@ impl Drop for AtomicInstaller {
             if let Err(e) = fs::remove_dir_all(&self.temp_dir) {
                 logger::log_error(
                     &format!("Failed to cleanup temp directory: {}", e),
-                    Some("atomic_installer")
+                    Some("atomic_installer"),
                 );
             } else {
                 logger::log_info(
                     &format!("Cleaned up temp directory: {:?}", self.temp_dir),
-                    Some("atomic_installer")
+                    Some("atomic_installer"),
                 );
             }
         }
@@ -402,7 +421,7 @@ impl Drop for AtomicInstaller {
 fn atomic_move(src: &Path, dst: &Path) -> Result<()> {
     logger::log_info(
         &format!("Atomic move: {:?} -> {:?}", src, dst),
-        Some("atomic_installer")
+        Some("atomic_installer"),
     );
 
     // Try atomic rename first (only works on same filesystem)
@@ -410,24 +429,23 @@ fn atomic_move(src: &Path, dst: &Path) -> Result<()> {
         Ok(()) => {
             logger::log_info(
                 "Atomic move completed successfully (rename)",
-                Some("atomic_installer")
+                Some("atomic_installer"),
             );
             Ok(())
         }
         Err(e) => {
             logger::log_info(
                 &format!("Rename failed ({}), falling back to copy+delete", e),
-                Some("atomic_installer")
+                Some("atomic_installer"),
             );
 
             // Fallback: copy then delete
             copy_directory_recursive(src, dst)?;
-            fs::remove_dir_all(src)
-                .context("Failed to remove source after copy")?;
+            fs::remove_dir_all(src).context("Failed to remove source after copy")?;
 
             logger::log_info(
                 "Atomic move completed (copy+delete fallback)",
-                Some("atomic_installer")
+                Some("atomic_installer"),
             );
 
             Ok(())
@@ -469,12 +487,14 @@ fn copy_directory_recursive(src: &Path, dst: &Path) -> Result<()> {
 fn copy_symlink(src: &Path, dst: &Path) -> Result<()> {
     use std::os::unix::fs::symlink;
 
-    let target = fs::read_link(src)
-        .context(format!("Failed to read symlink: {:?}", src))?;
+    let target = fs::read_link(src).context(format!("Failed to read symlink: {:?}", src))?;
 
     logger::log_info(
-        &format!("Copying symlink: {:?} -> {:?} (target: {:?})", src, dst, target),
-        Some("atomic_installer")
+        &format!(
+            "Copying symlink: {:?} -> {:?} (target: {:?})",
+            src, dst, target
+        ),
+        Some("atomic_installer"),
     );
 
     // Remove destination if it exists
@@ -482,8 +502,10 @@ fn copy_symlink(src: &Path, dst: &Path) -> Result<()> {
         let _ = fs::remove_file(dst);
     }
 
-    symlink(&target, dst)
-        .context(format!("Failed to create symlink: {:?} -> {:?}", dst, target))?;
+    symlink(&target, dst).context(format!(
+        "Failed to create symlink: {:?} -> {:?}",
+        dst, target
+    ))?;
 
     Ok(())
 }
@@ -492,14 +514,16 @@ fn copy_symlink(src: &Path, dst: &Path) -> Result<()> {
 /// Windows requires different functions for file vs directory symlinks
 #[cfg(windows)]
 fn copy_symlink(src: &Path, dst: &Path) -> Result<()> {
-    use std::os::windows::fs::{symlink_file, symlink_dir};
+    use std::os::windows::fs::{symlink_dir, symlink_file};
 
-    let target = fs::read_link(src)
-        .context(format!("Failed to read symlink: {:?}", src))?;
+    let target = fs::read_link(src).context(format!("Failed to read symlink: {:?}", src))?;
 
     logger::log_info(
-        &format!("Copying symlink: {:?} -> {:?} (target: {:?})", src, dst, target),
-        Some("atomic_installer")
+        &format!(
+            "Copying symlink: {:?} -> {:?} (target: {:?})",
+            src, dst, target
+        ),
+        Some("atomic_installer"),
     );
 
     // Remove destination if it exists
@@ -519,11 +543,15 @@ fn copy_symlink(src: &Path, dst: &Path) -> Result<()> {
     };
 
     if target_is_dir {
-        symlink_dir(&target, dst)
-            .context(format!("Failed to create directory symlink: {:?} -> {:?}", dst, target))?;
+        symlink_dir(&target, dst).context(format!(
+            "Failed to create directory symlink: {:?} -> {:?}",
+            dst, target
+        ))?;
     } else {
-        symlink_file(&target, dst)
-            .context(format!("Failed to create file symlink: {:?} -> {:?}", dst, target))?;
+        symlink_file(&target, dst).context(format!(
+            "Failed to create file symlink: {:?} -> {:?}",
+            dst, target
+        ))?;
     }
 
     Ok(())
@@ -547,7 +575,7 @@ fn merge_directories(src: &Path, dst: &Path) -> Result<()> {
             if let Err(e) = fs::remove_dir(&src_path) {
                 logger::log_error(
                     &format!("Failed to remove source directory after merge: {}", e),
-                    Some("atomic_installer")
+                    Some("atomic_installer"),
                 );
             }
         } else {
@@ -605,14 +633,14 @@ fn merge_directories_skip_existing(src: &Path, dst: &Path) -> Result<()> {
 #[cfg(target_os = "windows")]
 fn check_disk_space(path: &Path) -> Result<()> {
     use std::os::windows::ffi::OsStrExt;
-    use std::ffi::OsStr;
     use winapi::um::fileapi::GetDiskFreeSpaceExW;
 
     // Get the root path (drive letter)
     let root_path = path.ancestors().last().unwrap_or(path);
 
     // Convert to wide string for Windows API
-    let wide_path: Vec<u16> = OsStr::new(root_path.to_str().unwrap())
+    let wide_path: Vec<u16> = root_path
+        .as_os_str()
         .encode_wide()
         .chain(std::iter::once(0))
         .collect();
@@ -637,7 +665,7 @@ fn check_disk_space(path: &Path) -> Result<()> {
     let free_gb = free_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
     logger::log_info(
         &format!("Available disk space: {:.2} GB", free_gb),
-        Some("atomic_installer")
+        Some("atomic_installer"),
     );
 
     if free_bytes < MIN_FREE_SPACE_BYTES {
@@ -658,8 +686,7 @@ fn check_disk_space(path: &Path) -> Result<()> {
 
     // Convert path to C string
     let path_bytes = path.as_os_str().as_bytes();
-    let c_path = CString::new(path_bytes)
-        .context("Failed to convert path to C string")?;
+    let c_path = CString::new(path_bytes).context("Failed to convert path to C string")?;
 
     // Call statvfs
     let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
@@ -677,7 +704,7 @@ fn check_disk_space(path: &Path) -> Result<()> {
 
     logger::log_info(
         &format!("Available disk space: {:.2} GB", available_gb),
-        Some("atomic_installer")
+        Some("atomic_installer"),
     );
 
     if available_bytes < MIN_FREE_SPACE_BYTES {

@@ -24,11 +24,13 @@ pub fn register_context_menu() -> Result<()> {
     command_key.set_value("", &format!("\"{}\" \"%1\"", exe_path_str))?;
 
     // Register for directories
-    let (dir_shell_key, _) = hkcu.create_subkey(r"Software\Classes\Directory\shell\XFastInstall")?;
+    let (dir_shell_key, _) =
+        hkcu.create_subkey(r"Software\Classes\Directory\shell\XFastInstall")?;
     dir_shell_key.set_value("", &"Install to X-Plane")?;
     dir_shell_key.set_value("Icon", &exe_path_str.to_string())?;
 
-    let (dir_command_key, _) = hkcu.create_subkey(r"Software\Classes\Directory\shell\XFastInstall\command")?;
+    let (dir_command_key, _) =
+        hkcu.create_subkey(r"Software\Classes\Directory\shell\XFastInstall\command")?;
     dir_command_key.set_value("", &format!("\"{}\" \"%1\"", exe_path_str))?;
 
     Ok(())
@@ -51,7 +53,8 @@ pub fn unregister_context_menu() -> Result<()> {
 pub fn is_context_menu_registered() -> bool {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     // Check if the registry key exists
-    hkcu.open_subkey(r"Software\Classes\*\shell\XFastInstall").is_ok()
+    hkcu.open_subkey(r"Software\Classes\*\shell\XFastInstall")
+        .is_ok()
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -59,12 +62,16 @@ use anyhow::Result;
 
 #[cfg(not(target_os = "windows"))]
 pub fn register_context_menu() -> Result<()> {
-    Err(anyhow::anyhow!("Context menu registration is only supported on Windows"))
+    Err(anyhow::anyhow!(
+        "Context menu registration is only supported on Windows"
+    ))
 }
 
 #[cfg(not(target_os = "windows"))]
 pub fn unregister_context_menu() -> Result<()> {
-    Err(anyhow::anyhow!("Context menu unregistration is only supported on Windows"))
+    Err(anyhow::anyhow!(
+        "Context menu unregistration is only supported on Windows"
+    ))
 }
 
 #[cfg(not(target_os = "windows"))]

@@ -1,14 +1,16 @@
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
-use rayon::prelude::*;
 
+use crate::installer::{MAX_COMPRESSION_RATIO, MAX_EXTRACTION_SIZE};
 use crate::logger;
 use crate::logger::{tr, LogMsg};
-use crate::models::{AddonType, AnalysisResult, DetectedItem, InstallTask, NavdataCycle, NavdataInfo};
-use crate::scanner::{Scanner, PasswordRequiredError, NestedPasswordRequiredError};
-use crate::installer::{MAX_EXTRACTION_SIZE, MAX_COMPRESSION_RATIO};
+use crate::models::{
+    AddonType, AnalysisResult, DetectedItem, InstallTask, NavdataCycle, NavdataInfo,
+};
+use crate::scanner::{NestedPasswordRequiredError, PasswordRequiredError, Scanner};
 
 pub struct Analyzer {
     scanner: Scanner,
@@ -50,18 +52,17 @@ impl Analyzer {
                 // This prevents users from accidentally dragging existing addon folders
                 if path.is_dir() && path.starts_with(xplane_root) {
                     // Check if it's in one of the target directories
-                    let is_in_target_dir = [
-                        "Aircraft",
-                        "Custom Scenery",
-                        "Custom Data",
-                    ].iter().any(|target| {
-                        let target_path = xplane_root.join(target);
-                        path.starts_with(&target_path)
-                    }) || {
-                        // Special check for Resources/plugins
-                        let plugins_path = xplane_root.join("Resources").join("plugins");
-                        path.starts_with(&plugins_path)
-                    };
+                    let is_in_target_dir = ["Aircraft", "Custom Scenery", "Custom Data"]
+                        .iter()
+                        .any(|target| {
+                            let target_path = xplane_root.join(target);
+                            path.starts_with(&target_path)
+                        })
+                        || {
+                            // Special check for Resources/plugins
+                            let plugins_path = xplane_root.join("Resources").join("plugins");
+                            path.starts_with(&plugins_path)
+                        };
 
                     if is_in_target_dir {
                         let error_msg = tr(LogMsg::CannotInstallFromXPlane);
@@ -70,7 +71,11 @@ impl Analyzer {
                 }
 
                 let password = passwords_ref.and_then(|p| p.get(path_str).map(|s| s.as_str()));
-                (path_str.clone(), self.scanner.scan_path(path, password), password.map(|s| s.to_string()))
+                (
+                    path_str.clone(),
+                    self.scanner.scan_path(path, password),
+                    password.map(|s| s.to_string()),
+                )
             })
             .collect();
 
@@ -79,7 +84,7 @@ impl Analyzer {
         let mut errors = Vec::new();
         let mut password_required = Vec::new();
         let mut nested_password_required = HashMap::new(); // NEW: Track nested password requirements
-        // Track which archives have passwords for setting on tasks later
+                                                           // Track which archives have passwords for setting on tasks later
         let mut archive_passwords: HashMap<String, String> = HashMap::new();
 
         for (path_str, result, password) in results {
@@ -114,22 +119,24 @@ impl Analyzer {
                         password_required.push(pwd_err.archive_path.clone());
                     }
                     // NEW: Check if this is a nested password-required error
-                    else if let Some(nested_err) = e.downcast_ref::<NestedPasswordRequiredError>() {
+                    else if let Some(nested_err) = e.downcast_ref::<NestedPasswordRequiredError>()
+                    {
                         logger::log_info(
-                            &format!("Password required for nested archive: {} inside {}",
-                                nested_err.nested_archive, nested_err.parent_archive),
+                            &format!(
+                                "Password required for nested archive: {} inside {}",
+                                nested_err.nested_archive, nested_err.parent_archive
+                            ),
                             Some("analyzer"),
                         );
-                        let key = format!("{}/{}", nested_err.parent_archive, nested_err.nested_archive);
-                        nested_password_required.insert(key, nested_err.parent_archive.clone());
-                    }
-                    else {
-                        // Format error message for better readability
-                        let error_msg = format!("{}\n  {}\n  {}",
-                            tr(LogMsg::ScanFailed),
-                            path_str,
-                            e
+                        let key = format!(
+                            "{}/{}",
+                            nested_err.parent_archive, nested_err.nested_archive
                         );
+                        nested_password_required.insert(key, nested_err.parent_archive.clone());
+                    } else {
+                        // Format error message for better readability
+                        let error_msg =
+                            format!("{}\n  {}\n  {}", tr(LogMsg::ScanFailed), path_str, e);
                         logger::log_error(&error_msg, Some("analyzer"));
 
                         // For frontend display, use a cleaner format
@@ -155,7 +162,10 @@ impl Analyzer {
                         &format!("Ignoring addon at disk root: {}", item.path),
                         Some("analyzer"),
                     );
-                    errors.push(format!("Ignored addon at disk root: {} ({})", item.display_name, item.path));
+                    errors.push(format!(
+                        "Ignored addon at disk root: {} ({})",
+                        item.display_name, item.path
+                    ));
                 }
 
                 !is_root
@@ -165,7 +175,14 @@ impl Analyzer {
         // Convert to install tasks, passing archive passwords
         let tasks: Vec<InstallTask> = filtered
             .into_iter()
-            .map(|item| self.create_install_task(item, xplane_path, &archive_passwords, verification_preferences.as_ref()))
+            .map(|item| {
+                self.create_install_task(
+                    item,
+                    xplane_path,
+                    &archive_passwords,
+                    verification_preferences.as_ref(),
+                )
+            })
             .collect();
 
         // Deduplicate tasks by target path (e.g., multiple .acf files in same aircraft folder)
@@ -179,10 +196,23 @@ impl Analyzer {
             Some("analyzer"),
         );
 
-        crate::log_debug!(&format!("Analysis returned {} tasks, {} errors", tasks.len(), errors.len()), "analysis");
+        crate::log_debug!(
+            &format!(
+                "Analysis returned {} tasks, {} errors",
+                tasks.len(),
+                errors.len()
+            ),
+            "analysis"
+        );
         if !tasks.is_empty() {
-            let task_types: Vec<String> = tasks.iter().map(|t| format!("{:?}", t.addon_type)).collect();
-            crate::log_debug!(&format!("Task types: {}", task_types.join(", ")), "analysis");
+            let task_types: Vec<String> = tasks
+                .iter()
+                .map(|t| format!("{:?}", t.addon_type))
+                .collect();
+            crate::log_debug!(
+                &format!("Task types: {}", task_types.join(", ")),
+                "analysis"
+            );
         }
 
         AnalysisResult {
@@ -219,7 +249,10 @@ impl Analyzer {
         // Group items by addon type first
         let mut by_type: HashMap<AddonType, Vec<DetectedItem>> = HashMap::new();
         for item in items {
-            by_type.entry(item.addon_type.clone()).or_default().push(item);
+            by_type
+                .entry(item.addon_type.clone())
+                .or_default()
+                .push(item);
         }
 
         let mut result: Vec<DetectedItem> = Vec::new();
@@ -255,8 +288,12 @@ impl Analyzer {
 
         for (_path, path_items) in by_path {
             // Check if this path has both Scenery and SceneryLibrary
-            let has_scenery = path_items.iter().any(|i| i.addon_type == AddonType::Scenery);
-            let has_scenery_library = path_items.iter().any(|i| i.addon_type == AddonType::SceneryLibrary);
+            let has_scenery = path_items
+                .iter()
+                .any(|i| i.addon_type == AddonType::Scenery);
+            let has_scenery_library = path_items
+                .iter()
+                .any(|i| i.addon_type == AddonType::SceneryLibrary);
 
             if has_scenery && has_scenery_library {
                 // Keep only Scenery, filter out SceneryLibrary
@@ -521,9 +558,11 @@ impl Analyzer {
             );
         } else if !archive_passwords.is_empty() {
             logger::log_debug(
-                &format!("Password NOT found for item.path: '{}', available keys: {:?}",
+                &format!(
+                    "Password NOT found for item.path: '{}', available keys: {:?}",
                     item.path,
-                    archive_passwords.keys().collect::<Vec<_>>()),
+                    archive_passwords.keys().collect::<Vec<_>>()
+                ),
                 Some("analyzer"),
                 None,
             );
@@ -569,11 +608,11 @@ impl Analyzer {
             size_confirmed: false, // User must confirm if there's a warning
             existing_navdata_info,
             new_navdata_info: item.navdata_info,
-            backup_liveries: true, // Default to true (safe)
+            backup_liveries: true,     // Default to true (safe)
             backup_config_files: true, // Default to true (safe)
             config_file_patterns: vec!["*_prefs.txt".to_string()], // Default pattern
-            file_hashes: None, // Will be populated by hash collector
-            enable_verification, // Based on verification preferences
+            file_hashes: None,         // Will be populated by hash collector
+            enable_verification,       // Based on verification preferences
         }
     }
 
@@ -585,8 +624,11 @@ impl Analyzer {
             // Skip hash collection entirely if verification is disabled
             if !task.enable_verification {
                 logger::log_info(
-                    &format!("Hash collection skipped for task: {} (verification disabled)", task.display_name),
-                    Some("analyzer")
+                    &format!(
+                        "Hash collection skipped for task: {} (verification disabled)",
+                        task.display_name
+                    ),
+                    Some("analyzer"),
                 );
                 continue;
             }
@@ -595,21 +637,28 @@ impl Analyzer {
                 Ok(hashes) => {
                     if !hashes.is_empty() {
                         logger::log_info(
-                            &format!("Collected {} hashes for task: {}", hashes.len(), task.display_name),
-                            Some("analyzer")
+                            &format!(
+                                "Collected {} hashes for task: {}",
+                                hashes.len(),
+                                task.display_name
+                            ),
+                            Some("analyzer"),
                         );
                         task.file_hashes = Some(hashes);
                     } else {
                         logger::log_info(
-                            &format!("No hashes collected for task: {} (will compute during extraction)", task.display_name),
-                            Some("analyzer")
+                            &format!(
+                                "No hashes collected for task: {} (will compute during extraction)",
+                                task.display_name
+                            ),
+                            Some("analyzer"),
                         );
                     }
                 }
                 Err(e) => {
                     logger::log_error(
                         &format!("Failed to collect hashes for {}: {}", task.display_name, e),
-                        Some("analyzer")
+                        Some("analyzer"),
                     );
                     // Don't fail the task, just disable verification
                     task.enable_verification = false;
@@ -810,7 +859,11 @@ impl Analyzer {
     }
 
     /// Check if the archive size warrants a warning
-    fn check_size_warning(&self, archive_size: u64, estimated_uncompressed: u64) -> (Option<u64>, Option<String>) {
+    fn check_size_warning(
+        &self,
+        archive_size: u64,
+        estimated_uncompressed: u64,
+    ) -> (Option<u64>, Option<String>) {
         let mut warning = None;
 
         // Check compression ratio (potential zip bomb)
@@ -820,8 +873,7 @@ impl Analyzer {
             if ratio > MAX_COMPRESSION_RATIO {
                 warning = Some(format!(
                     "SUSPICIOUS_RATIO:{}:{}",
-                    ratio,
-                    estimated_uncompressed
+                    ratio, estimated_uncompressed
                 ));
             }
         }
@@ -829,10 +881,7 @@ impl Analyzer {
         // Check absolute size
         if estimated_uncompressed > MAX_EXTRACTION_SIZE {
             let size_gb = estimated_uncompressed as f64 / 1024.0 / 1024.0 / 1024.0;
-            warning = Some(format!(
-                "LARGE_SIZE:{:.2}",
-                size_gb
-            ));
+            warning = Some(format!("LARGE_SIZE:{:.2}", size_gb));
         }
 
         (Some(estimated_uncompressed), warning)
@@ -848,7 +897,10 @@ impl Analyzer {
         #[cfg(target_os = "windows")]
         {
             // Match patterns like "C:\", "D:\", etc.
-            if path_str.len() == 3 && path_str.chars().nth(1) == Some(':') && path_str.ends_with('\\') {
+            if path_str.len() == 3
+                && path_str.chars().nth(1) == Some(':')
+                && path_str.ends_with('\\')
+            {
                 return true;
             }
             // Also match "C:", "D:" without trailing backslash
@@ -932,7 +984,12 @@ mod tests {
         // Same type (Aircraft), nested paths - should deduplicate
         let items = vec![
             create_detected_item(AddonType::Aircraft, "/test/A330", "A330", None),
-            create_detected_item(AddonType::Aircraft, "/test/A330/variant", "A330 Variant", None),
+            create_detected_item(
+                AddonType::Aircraft,
+                "/test/A330/variant",
+                "A330 Variant",
+                None,
+            ),
         ];
 
         let result = analyzer.deduplicate(items);
@@ -965,10 +1022,30 @@ mod tests {
 
         // Archive with aircraft and independent plugin/scenery
         let items = vec![
-            create_detected_item(AddonType::Aircraft, "/test/package.zip", "A330", Some("A330".to_string())),
-            create_detected_item(AddonType::Plugin, "/test/package.zip", "FMS Plugin", Some("A330/plugins/fms".to_string())),
-            create_detected_item(AddonType::Plugin, "/test/package.zip", "Standalone Plugin", Some("plugins/standalone".to_string())),
-            create_detected_item(AddonType::Scenery, "/test/package.zip", "Airport", Some("scenery/airport".to_string())),
+            create_detected_item(
+                AddonType::Aircraft,
+                "/test/package.zip",
+                "A330",
+                Some("A330".to_string()),
+            ),
+            create_detected_item(
+                AddonType::Plugin,
+                "/test/package.zip",
+                "FMS Plugin",
+                Some("A330/plugins/fms".to_string()),
+            ),
+            create_detected_item(
+                AddonType::Plugin,
+                "/test/package.zip",
+                "Standalone Plugin",
+                Some("plugins/standalone".to_string()),
+            ),
+            create_detected_item(
+                AddonType::Scenery,
+                "/test/package.zip",
+                "Airport",
+                Some("scenery/airport".to_string()),
+            ),
         ];
 
         let result = analyzer.deduplicate(items);
@@ -982,7 +1059,8 @@ mod tests {
         assert!(types.contains(&AddonType::Scenery));
 
         // Check that standalone plugin is kept
-        let plugins: Vec<_> = result.iter()
+        let plugins: Vec<_> = result
+            .iter()
             .filter(|i| i.addon_type == AddonType::Plugin)
             .collect();
         assert_eq!(plugins.len(), 1);
@@ -995,8 +1073,18 @@ mod tests {
 
         // Same type, nested paths in archive - should deduplicate
         let items = vec![
-            create_detected_item(AddonType::Plugin, "/test/package.zip", "MainPlugin", Some("plugins".to_string())),
-            create_detected_item(AddonType::Plugin, "/test/package.zip", "SubPlugin", Some("plugins/sub".to_string())),
+            create_detected_item(
+                AddonType::Plugin,
+                "/test/package.zip",
+                "MainPlugin",
+                Some("plugins".to_string()),
+            ),
+            create_detected_item(
+                AddonType::Plugin,
+                "/test/package.zip",
+                "SubPlugin",
+                Some("plugins/sub".to_string()),
+            ),
         ];
 
         let result = analyzer.deduplicate(items);
@@ -1012,8 +1100,20 @@ mod tests {
 
         // Multiple .acf files in same aircraft folder -> same target path
         let tasks = vec![
-            create_install_task("1", AddonType::Aircraft, "/downloads/A330/A330.acf", "/X-Plane/Aircraft/A330", "A330"),
-            create_install_task("2", AddonType::Aircraft, "/downloads/A330/A330_cargo.acf", "/X-Plane/Aircraft/A330", "A330"),
+            create_install_task(
+                "1",
+                AddonType::Aircraft,
+                "/downloads/A330/A330.acf",
+                "/X-Plane/Aircraft/A330",
+                "A330",
+            ),
+            create_install_task(
+                "2",
+                AddonType::Aircraft,
+                "/downloads/A330/A330_cargo.acf",
+                "/X-Plane/Aircraft/A330",
+                "A330",
+            ),
         ];
 
         let result = analyzer.deduplicate_by_target_path(tasks);
@@ -1028,8 +1128,20 @@ mod tests {
 
         // Different target paths should be kept
         let tasks = vec![
-            create_install_task("1", AddonType::Aircraft, "/downloads/A330", "/X-Plane/Aircraft/A330", "A330"),
-            create_install_task("2", AddonType::Aircraft, "/downloads/B737", "/X-Plane/Aircraft/B737", "B737"),
+            create_install_task(
+                "1",
+                AddonType::Aircraft,
+                "/downloads/A330",
+                "/X-Plane/Aircraft/A330",
+                "A330",
+            ),
+            create_install_task(
+                "2",
+                AddonType::Aircraft,
+                "/downloads/B737",
+                "/X-Plane/Aircraft/B737",
+                "B737",
+            ),
         ];
 
         let result = analyzer.deduplicate_by_target_path(tasks);
@@ -1044,9 +1156,27 @@ mod tests {
 
         // Multiple .xpl files in same plugin folder -> same target path
         let tasks = vec![
-            create_install_task("1", AddonType::Plugin, "/downloads/MyPlugin/win.xpl", "/X-Plane/Resources/plugins/MyPlugin", "MyPlugin"),
-            create_install_task("2", AddonType::Plugin, "/downloads/MyPlugin/mac.xpl", "/X-Plane/Resources/plugins/MyPlugin", "MyPlugin"),
-            create_install_task("3", AddonType::Plugin, "/downloads/MyPlugin/lin.xpl", "/X-Plane/Resources/plugins/MyPlugin", "MyPlugin"),
+            create_install_task(
+                "1",
+                AddonType::Plugin,
+                "/downloads/MyPlugin/win.xpl",
+                "/X-Plane/Resources/plugins/MyPlugin",
+                "MyPlugin",
+            ),
+            create_install_task(
+                "2",
+                AddonType::Plugin,
+                "/downloads/MyPlugin/mac.xpl",
+                "/X-Plane/Resources/plugins/MyPlugin",
+                "MyPlugin",
+            ),
+            create_install_task(
+                "3",
+                AddonType::Plugin,
+                "/downloads/MyPlugin/lin.xpl",
+                "/X-Plane/Resources/plugins/MyPlugin",
+                "MyPlugin",
+            ),
         ];
 
         let result = analyzer.deduplicate_by_target_path(tasks);
@@ -1061,7 +1191,12 @@ mod tests {
 
         let items = vec![
             create_detected_item(AddonType::Scenery, "/test/KSEA", "KSEA", None),
-            create_detected_item(AddonType::Plugin, "/test/KSEA/plugins/lighting", "Lighting", None),
+            create_detected_item(
+                AddonType::Plugin,
+                "/test/KSEA/plugins/lighting",
+                "Lighting",
+                None,
+            ),
         ];
 
         let result = analyzer.deduplicate(items);
@@ -1076,7 +1211,12 @@ mod tests {
 
         let items = vec![
             create_detected_item(AddonType::Aircraft, "/test/A330", "A330", None),
-            create_detected_item(AddonType::Plugin, "/test/BetterPushback", "BetterPushback", None),
+            create_detected_item(
+                AddonType::Plugin,
+                "/test/BetterPushback",
+                "BetterPushback",
+                None,
+            ),
         ];
 
         let result = analyzer.deduplicate(items);
@@ -1092,7 +1232,12 @@ mod tests {
         // Same directory has both library.txt and .dsf files
         let items = vec![
             create_detected_item(AddonType::Scenery, "/test/KSEA", "KSEA Scenery", None),
-            create_detected_item(AddonType::SceneryLibrary, "/test/KSEA", "KSEA Library", None),
+            create_detected_item(
+                AddonType::SceneryLibrary,
+                "/test/KSEA",
+                "KSEA Library",
+                None,
+            ),
         ];
 
         let result = analyzer.deduplicate(items);
@@ -1110,7 +1255,12 @@ mod tests {
         // Different directories - both should be kept
         let items = vec![
             create_detected_item(AddonType::Scenery, "/test/KSEA", "KSEA Scenery", None),
-            create_detected_item(AddonType::SceneryLibrary, "/test/Library", "Custom Library", None),
+            create_detected_item(
+                AddonType::SceneryLibrary,
+                "/test/Library",
+                "Custom Library",
+                None,
+            ),
         ];
 
         let result = analyzer.deduplicate(items);
@@ -1124,11 +1274,36 @@ mod tests {
         let analyzer = Analyzer::new();
 
         let items = vec![
-            create_detected_item(AddonType::Aircraft, "/test/pack.zip", "A330", Some("aircraft/A330".to_string())),
-            create_detected_item(AddonType::Plugin, "/test/pack.zip", "Systems", Some("aircraft/A330/plugins/systems".to_string())),
-            create_detected_item(AddonType::SceneryLibrary, "/test/pack.zip", "Library", Some("library".to_string())),
-            create_detected_item(AddonType::Plugin, "/test/pack.zip", "LibPlugin", Some("library/plugins/helper".to_string())),
-            create_detected_item(AddonType::Plugin, "/test/pack.zip", "Standalone", Some("plugins/standalone".to_string())),
+            create_detected_item(
+                AddonType::Aircraft,
+                "/test/pack.zip",
+                "A330",
+                Some("aircraft/A330".to_string()),
+            ),
+            create_detected_item(
+                AddonType::Plugin,
+                "/test/pack.zip",
+                "Systems",
+                Some("aircraft/A330/plugins/systems".to_string()),
+            ),
+            create_detected_item(
+                AddonType::SceneryLibrary,
+                "/test/pack.zip",
+                "Library",
+                Some("library".to_string()),
+            ),
+            create_detected_item(
+                AddonType::Plugin,
+                "/test/pack.zip",
+                "LibPlugin",
+                Some("library/plugins/helper".to_string()),
+            ),
+            create_detected_item(
+                AddonType::Plugin,
+                "/test/pack.zip",
+                "Standalone",
+                Some("plugins/standalone".to_string()),
+            ),
         ];
 
         let result = analyzer.deduplicate(items);
@@ -1136,7 +1311,8 @@ mod tests {
         // Should have: Aircraft, SceneryLibrary, Standalone Plugin (3 items)
         assert_eq!(result.len(), 3);
 
-        let plugin_names: Vec<String> = result.iter()
+        let plugin_names: Vec<String> = result
+            .iter()
             .filter(|i| i.addon_type == AddonType::Plugin)
             .map(|i| i.display_name.clone())
             .collect();

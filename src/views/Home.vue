@@ -45,10 +45,9 @@
       <!-- Main Action Area (Flexible Height) -->
       <div class="flex-1 min-h-0 bg-white/60 dark:bg-gray-800/40 backdrop-blur-xl border-2 border-dashed border-gray-300 dark:border-gray-600/50 rounded-2xl p-6 text-center transition-all duration-500 hover:border-blue-400 dark:hover:border-blue-500/50 hover:bg-white/80 dark:hover:bg-gray-800/60 shadow-sm dark:shadow-none flex flex-col items-center justify-center relative drop-zone-card"
         :class="{
-          'drag-over ring-4 ring-4-blue-500/20 border-blue-500 scale-[1.02]': isDragging && !store.showCompletion,
+          'drag-over ring-4 ring-4-blue-500/20 border-blue-500 scale-[1.02]': isDragging,
           'animate-pulse border-blue-400': store.isAnalyzing,
-          'debug-drop': debugDropFlash,
-          'pointer-events-none': store.showCompletion
+          'debug-drop': debugDropFlash
         }"
       >
           <!-- Hover Gradient -->
@@ -354,16 +353,16 @@ watch(() => store.pendingCliArgs, async (args) => {
 // Global listeners for drag/drop visual feedback
 function onWindowDragOver(e: DragEvent) {
   e.preventDefault()
-  // Ignore drag events when installing or showing completion
-  if (store.isInstalling || store.showCompletion) {
+  // Ignore drag events when installing
+  if (store.isInstalling) {
     return
   }
   isDragging.value = true
 }
 
 function onWindowDragLeave(e: DragEvent) {
-  // Ignore drag events when installing or showing completion
-  if (store.isInstalling || store.showCompletion) {
+  // Ignore drag events when installing
+  if (store.isInstalling) {
     return
   }
   // Only set to false if leaving the window
@@ -375,8 +374,8 @@ function onWindowDragLeave(e: DragEvent) {
 function onWindowDrop(e: DragEvent) {
   console.log('Window drop event (HTML5)', e)
   e.preventDefault()
-  // Ignore drop events when installing or showing completion
-  if (store.isInstalling || store.showCompletion) {
+  // Ignore drop events when installing
+  if (store.isInstalling) {
     return
   }
   isDragging.value = false
@@ -395,9 +394,9 @@ onMounted(async () => {
     unlistenDragDrop = await webview.onDragDropEvent(async (event) => {
       console.log('Tauri drag-drop event:', event)
 
-      // Ignore all drag-drop events when installing or showing completion
-      if (store.isInstalling || store.showCompletion) {
-        console.log('Ignoring drag-drop event (installing or showing completion)')
+      // Ignore all drag-drop events when installing
+      if (store.isInstalling) {
+        console.log('Ignoring drag-drop event (installing)')
         return
       }
 
@@ -409,6 +408,11 @@ onMounted(async () => {
         isDragging.value = false
         debugDropFlash.value = true
         setTimeout(() => (debugDropFlash.value = false), 800)
+
+        // If showing completion, close it and start new analysis
+        if (store.showCompletion) {
+          store.closeCompletion()
+        }
 
         const paths = event.payload.paths
         console.log('Dropped paths from Tauri:', paths)

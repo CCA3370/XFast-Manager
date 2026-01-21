@@ -215,8 +215,8 @@ pub struct InstallResult {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum HashAlgorithm {
-    Crc32,   // For ZIP and RAR
-    Sha256,  // For 7z (computed during extraction)
+    Crc32,  // For ZIP and RAR
+    Sha256, // For 7z (computed during extraction)
 }
 
 /// File hash information
@@ -293,7 +293,7 @@ impl SceneryCategory {
             SceneryCategory::Other => 4,
             SceneryCategory::Overlay => 5,
             SceneryCategory::Orthophotos => 6, // Mesh sub-category
-            SceneryCategory::Mesh => 6,        // Same as Orthophotos, use sub-priority to distinguish
+            SceneryCategory::Mesh => 6, // Same as Orthophotos, use sub-priority to distinguish
         }
     }
 }

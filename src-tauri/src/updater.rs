@@ -105,7 +105,10 @@ impl UpdateChecker {
         include_pre_release: bool,
     ) -> Result<GitHubRelease, String> {
         crate::logger::log_debug(
-            &format!("Fetching releases (include_pre_release: {})", include_pre_release),
+            &format!(
+                "Fetching releases (include_pre_release: {})",
+                include_pre_release
+            ),
             Some("updater"),
             None,
         );
@@ -152,7 +155,11 @@ impl UpdateChecker {
                 self.repo_owner, self.repo_name
             );
 
-            crate::logger::log_debug(&format!("Fetching from: {}", latest_url), Some("updater"), None);
+            crate::logger::log_debug(
+                &format!("Fetching from: {}", latest_url),
+                Some("updater"),
+                None,
+            );
 
             let response = client.get(&latest_url).send().await;
 
@@ -195,9 +202,7 @@ impl UpdateChecker {
                         .map_err(|e| format!("Failed to parse releases: {}", e))?;
 
                     // Filter for non-prerelease versions
-                    let stable_release = releases
-                        .into_iter()
-                        .find(|r| !r.prerelease);
+                    let stable_release = releases.into_iter().find(|r| !r.prerelease);
 
                     match stable_release {
                         Some(release) => Ok(release),

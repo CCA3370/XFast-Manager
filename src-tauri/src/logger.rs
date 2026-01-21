@@ -125,7 +125,13 @@ impl LoggerInner {
         self.min_level
     }
 
-    fn write_log(&mut self, level: LogLevel, message: &str, context: Option<&str>, location: Option<&str>) {
+    fn write_log(
+        &mut self,
+        level: LogLevel,
+        message: &str,
+        context: Option<&str>,
+        location: Option<&str>,
+    ) {
         // Filter by log level
         if level < self.min_level {
             return;
@@ -136,9 +142,7 @@ impl LoggerInner {
 
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
         let level_str = level.as_str();
-        let ctx = context
-            .map(|c| format!(" [{}]", c))
-            .unwrap_or_default();
+        let ctx = context.map(|c| format!(" [{}]", c)).unwrap_or_default();
 
         // Add location info for DEBUG level
         let loc = if matches!(level, LogLevel::Debug) {
@@ -147,7 +151,10 @@ impl LoggerInner {
             String::new()
         };
 
-        let line = format!("[{}] [{}]{}{} {}\n", timestamp, level_str, ctx, loc, message);
+        let line = format!(
+            "[{}] [{}]{}{} {}\n",
+            timestamp, level_str, ctx, loc, message
+        );
 
         match OpenOptions::new()
             .create(true)

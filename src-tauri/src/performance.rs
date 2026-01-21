@@ -112,7 +112,11 @@ impl OperationTimer {
     pub fn log_elapsed(&self) {
         let elapsed = self.elapsed();
         crate::log_debug!(
-            &format!("{} completed in {:.2}ms", self.operation_name, elapsed.as_secs_f64() * 1000.0),
+            &format!(
+                "{} completed in {:.2}ms",
+                self.operation_name,
+                elapsed.as_secs_f64() * 1000.0
+            ),
             "performance"
         );
     }

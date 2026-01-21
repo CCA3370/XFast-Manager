@@ -10,7 +10,9 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::logger;
 use crate::logger::{tr, LogMsg};
-use crate::models::{AddonType, InstallPhase, InstallProgress, InstallResult, InstallTask, TaskResult};
+use crate::models::{
+    AddonType, InstallPhase, InstallProgress, InstallResult, InstallTask, TaskResult,
+};
 use crate::task_control::TaskControl;
 
 /// Maximum allowed extraction size (20 GB) - archives larger than this will show a warning
@@ -55,7 +57,7 @@ pub fn sanitize_path(path: &Path) -> Option<PathBuf> {
     for component in path.components() {
         match component {
             Component::Normal(c) => result.push(c),
-            Component::CurDir => {} // Skip "."
+            Component::CurDir => {}              // Skip "."
             Component::ParentDir => return None, // Reject ".."
             Component::Prefix(_) | Component::RootDir => return None, // Reject absolute paths
         }
@@ -97,8 +99,10 @@ fn remove_readonly_attribute(path: &Path) -> Result<()> {
     // Check if file is read-only
     if permissions.readonly() {
         permissions.set_readonly(false);
-        fs::set_permissions(path, permissions)
-            .context(format!("Failed to remove read-only attribute from: {:?}", path))?;
+        fs::set_permissions(path, permissions).context(format!(
+            "Failed to remove read-only attribute from: {:?}",
+            path
+        ))?;
     }
     Ok(())
 }
@@ -149,7 +153,10 @@ fn remove_dir_all_robust(path: &Path) -> Result<()> {
 
     // All retries failed, provide detailed error information
     let e = last_error.unwrap_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::Other, "Unknown error during directory removal")
+        std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Unknown error during directory removal",
+        )
     });
     let err_msg = format!(
         "Failed to delete directory: {:?}\nError: {}\n\
@@ -235,7 +242,7 @@ impl ProgressContext {
             Err(e) => {
                 logger::log_error(
                     &format!("Progress mutex poisoned, skipping update: {}", e),
-                    Some("installer")
+                    Some("installer"),
                 );
                 return; // Skip progress update if lock is poisoned
             }
@@ -258,9 +265,7 @@ impl ProgressContext {
                 let pct = 90.0 + (verify_progress / 100.0) * 10.0;
                 (pct, Some(verify_progress))
             }
-            InstallPhase::Finalizing => {
-                (100.0, None)
-            }
+            InstallPhase::Finalizing => (100.0, None),
             _ => {
                 // Installation phase: 0-90%
                 let install_pct = if total > 0 {
@@ -317,19 +322,38 @@ impl Installer {
     pub fn new(app_handle: AppHandle) -> Self {
         // Get TaskControl from app state
         let task_control = app_handle.state::<TaskControl>().inner().clone();
-        Installer { app_handle, task_control }
+        Installer {
+            app_handle,
+            task_control,
+        }
     }
 
     /// Install a list of tasks with progress reporting
-    pub fn install(&self, tasks: Vec<InstallTask>, atomic_install_enabled: bool, xplane_path: String, delete_source_after_install: bool, auto_sort_scenery: bool) -> Result<InstallResult> {
+    pub fn install(
+        &self,
+        tasks: Vec<InstallTask>,
+        atomic_install_enabled: bool,
+        xplane_path: String,
+        delete_source_after_install: bool,
+        auto_sort_scenery: bool,
+    ) -> Result<InstallResult> {
         let install_start = Instant::now();
         crate::log_debug!(
-            &format!("[TIMING] Installation started: {} tasks (atomic: {})", tasks.len(), atomic_install_enabled),
+            &format!(
+                "[TIMING] Installation started: {} tasks (atomic: {})",
+                tasks.len(),
+                atomic_install_enabled
+            ),
             "installer_timing"
         );
 
         logger::log_info(
-            &format!("{}: {} task(s) (atomic mode: {})", tr(LogMsg::InstallationStarted), tasks.len(), atomic_install_enabled),
+            &format!(
+                "{}: {} task(s) (atomic mode: {})",
+                tr(LogMsg::InstallationStarted),
+                tasks.len(),
+                atomic_install_enabled
+            ),
             Some("installer"),
         );
 
@@ -345,15 +369,13 @@ impl Installer {
 
         // Phase 1: Calculate total size
         let calc_start = Instant::now();
-        crate::log_debug!(
-            "[TIMING] Size calculation started",
-            "installer_timing"
-        );
+        crate::log_debug!("[TIMING] Size calculation started", "installer_timing");
         ctx.emit_progress(None, InstallPhase::Calculating);
         let total_size = self.calculate_total_size(&tasks)?;
         ctx.set_total_bytes(total_size);
         crate::log_debug!(
-            &format!("[TIMING] Size calculation completed in {:.2}ms: {} bytes ({:.2} MB)",
+            &format!(
+                "[TIMING] Size calculation completed in {:.2}ms: {} bytes ({:.2} MB)",
                 calc_start.elapsed().as_secs_f64() * 1000.0,
                 total_size,
                 total_size as f64 / (1024.0 * 1024.0)
@@ -363,10 +385,7 @@ impl Installer {
 
         // Phase 2: Install each task
         let install_phase_start = Instant::now();
-        crate::log_debug!(
-            "[TIMING] Installation phase started",
-            "installer_timing"
-        );
+        crate::log_debug!("[TIMING] Installation phase started", "installer_timing");
 
         for (index, task) in tasks.iter().enumerate() {
             // Check for cancellation before starting each task
@@ -398,27 +417,34 @@ impl Installer {
             ctx.emit_progress(None, InstallPhase::Installing);
 
             logger::log_info(
-                &format!("{}: {} -> {}", tr(LogMsg::Installing), task.display_name, task.target_path),
+                &format!(
+                    "{}: {} -> {}",
+                    tr(LogMsg::Installing),
+                    task.display_name,
+                    task.target_path
+                ),
                 Some("installer"),
             );
 
             // Track target path for potential cleanup
-            self.task_control.add_processed_path(PathBuf::from(&task.target_path));
+            self.task_control
+                .add_processed_path(PathBuf::from(&task.target_path));
 
-            match self.install_task_with_progress(task, &ctx, atomic_install_enabled, &xplane_path) {
+            match self.install_task_with_progress(task, &ctx, atomic_install_enabled, &xplane_path)
+            {
                 Ok(_) => {
                     // Check for skip request after installation but before verification
                     if self.task_control.is_skip_requested() {
                         logger::log_info(
                             &format!("Task skipped by user: {}", task.display_name),
-                            Some("installer")
+                            Some("installer"),
                         );
 
                         // Cleanup the installed files
                         if let Err(e) = self.cleanup_task(task) {
                             logger::log_error(
                                 &format!("Failed to cleanup skipped task: {}", e),
-                                Some("installer")
+                                Some("installer"),
                             );
                         }
 
@@ -437,7 +463,8 @@ impl Installer {
                     }
 
                     crate::log_debug!(
-                        &format!("[TIMING] Task {} installation completed in {:.2}ms: {}",
+                        &format!(
+                            "[TIMING] Task {} installation completed in {:.2}ms: {}",
                             index + 1,
                             task_start.elapsed().as_secs_f64() * 1000.0,
                             task.display_name
@@ -448,7 +475,11 @@ impl Installer {
                     // Verify installation by checking for typical files
                     let verify_start = Instant::now();
                     crate::log_debug!(
-                        &format!("[TIMING] Task {} verification started: {}", index + 1, task.display_name),
+                        &format!(
+                            "[TIMING] Task {} verification started: {}",
+                            index + 1,
+                            task.display_name
+                        ),
                         "installer_timing"
                     );
 
@@ -470,7 +501,8 @@ impl Installer {
                             );
 
                             crate::log_debug!(
-                                &format!("[TIMING] Task {} total time: {:.2}ms: {}",
+                                &format!(
+                                    "[TIMING] Task {} total time: {:.2}ms: {}",
                                     index + 1,
                                     task_start.elapsed().as_secs_f64() * 1000.0,
                                     task.display_name
@@ -484,7 +516,11 @@ impl Installer {
 
                             successful += 1;
                             logger::log_info(
-                                &format!("{}: {}", tr(LogMsg::InstallationCompleted), task.display_name),
+                                &format!(
+                                    "{}: {}",
+                                    tr(LogMsg::InstallationCompleted),
+                                    task.display_name
+                                ),
                                 Some("installer"),
                             );
                             task_results.push(TaskResult {
@@ -498,9 +534,14 @@ impl Installer {
                             // Delete source file after successful installation if enabled
                             if delete_source_after_install {
                                 if let Some(original_path) = &task.original_input_path {
-                                    if let Err(e) = self.delete_source_file(original_path, &task.source_path) {
+                                    if let Err(e) =
+                                        self.delete_source_file(original_path, &task.source_path)
+                                    {
                                         logger::log_error(
-                                            &format!("Failed to delete source file {}: {}", original_path, e),
+                                            &format!(
+                                                "Failed to delete source file {}: {}",
+                                                original_path, e
+                                            ),
                                             Some("installer"),
                                         );
                                     }
@@ -508,21 +549,29 @@ impl Installer {
                             }
 
                             // Auto-sort scenery if enabled and this is a scenery task
-                            if auto_sort_scenery && (task.addon_type == AddonType::Scenery || task.addon_type == AddonType::SceneryLibrary) {
+                            if auto_sort_scenery
+                                && (task.addon_type == AddonType::Scenery
+                                    || task.addon_type == AddonType::SceneryLibrary)
+                            {
                                 use crate::scenery_classifier::classify_scenery;
                                 use crate::scenery_packs_manager::SceneryPacksManager;
                                 use std::path::Path;
 
                                 // Extract folder name from target path
                                 let target_path = Path::new(&task.target_path);
-                                if let Some(folder_name) = target_path.file_name().and_then(|n| n.to_str()) {
+                                if let Some(folder_name) =
+                                    target_path.file_name().and_then(|n| n.to_str())
+                                {
                                     // Classify the newly installed scenery
                                     let xplane_path_buf = PathBuf::from(&xplane_path);
                                     match classify_scenery(target_path, &xplane_path_buf) {
                                         Ok(scenery_info) => {
                                             // Add entry to scenery_packs.ini at correct position
-                                            let manager = SceneryPacksManager::new(&xplane_path_buf);
-                                            if let Err(e) = manager.add_entry(folder_name, &scenery_info.category) {
+                                            let manager =
+                                                SceneryPacksManager::new(&xplane_path_buf);
+                                            if let Err(e) = manager
+                                                .add_entry(folder_name, &scenery_info.category)
+                                            {
                                                 logger::log_error(
                                                     &format!("Failed to add scenery to scenery_packs.ini: {}", e),
                                                     Some("installer"),
@@ -536,7 +585,10 @@ impl Installer {
                                         }
                                         Err(e) => {
                                             logger::log_error(
-                                                &format!("Failed to classify scenery {}: {}", folder_name, e),
+                                                &format!(
+                                                    "Failed to classify scenery {}: {}",
+                                                    folder_name, e
+                                                ),
                                                 Some("installer"),
                                             );
                                         }
@@ -546,7 +598,8 @@ impl Installer {
                         }
                         Err(verify_err) => {
                             crate::log_debug!(
-                                &format!("[TIMING] Task {} verification failed in {:.2}ms: {} - {}",
+                                &format!(
+                                    "[TIMING] Task {} verification failed in {:.2}ms: {} - {}",
                                     index + 1,
                                     verify_start.elapsed().as_secs_f64() * 1000.0,
                                     task.display_name,
@@ -558,7 +611,12 @@ impl Installer {
                             failed += 1;
                             let error_msg = format!("Verification failed: {}", verify_err);
                             logger::log_error(
-                                &format!("{} {}: {}", tr(LogMsg::InstallationFailed), task.display_name, error_msg),
+                                &format!(
+                                    "{} {}: {}",
+                                    tr(LogMsg::InstallationFailed),
+                                    task.display_name,
+                                    error_msg
+                                ),
                                 Some("installer"),
                             );
                             task_results.push(TaskResult {
@@ -573,7 +631,8 @@ impl Installer {
                 }
                 Err(e) => {
                     crate::log_debug!(
-                        &format!("[TIMING] Task {} installation failed in {:.2}ms: {} - {}",
+                        &format!(
+                            "[TIMING] Task {} installation failed in {:.2}ms: {} - {}",
                             index + 1,
                             task_start.elapsed().as_secs_f64() * 1000.0,
                             task.display_name,
@@ -585,7 +644,12 @@ impl Installer {
                     failed += 1;
                     let error_msg = format!("{}", e);
                     logger::log_error(
-                        &format!("{} {}: {}", tr(LogMsg::InstallationFailed), task.display_name, error_msg),
+                        &format!(
+                            "{} {}: {}",
+                            tr(LogMsg::InstallationFailed),
+                            task.display_name,
+                            error_msg
+                        ),
                         Some("installer"),
                     );
                     task_results.push(TaskResult {
@@ -615,7 +679,8 @@ impl Installer {
         ctx.emit_final(InstallPhase::Finalizing);
         logger::log_info(&tr(LogMsg::InstallationCompleted), Some("installer"));
         crate::log_debug!(
-            &format!("[TIMING] Finalization completed in {:.2}ms",
+            &format!(
+                "[TIMING] Finalization completed in {:.2}ms",
                 finalize_start.elapsed().as_secs_f64() * 1000.0
             ),
             "installer_timing"
@@ -665,14 +730,16 @@ impl Installer {
                         if task.backup_liveries {
                             let liveries_path = target.join("liveries");
                             if liveries_path.exists() && liveries_path.is_dir() {
-                                let liveries_size = self.get_directory_size(&liveries_path).unwrap_or(0);
+                                let liveries_size =
+                                    self.get_directory_size(&liveries_path).unwrap_or(0);
                                 total += liveries_size * 2; // backup + restore
                             }
                         }
 
                         // Backup and restore config files (2x: backup + restore)
                         if task.backup_config_files {
-                            let config_size = self.get_config_files_size(target, &task.config_file_patterns);
+                            let config_size =
+                                self.get_config_files_size(target, &task.config_file_patterns);
                             total += config_size * 2; // backup + restore
                         }
                     }
@@ -711,12 +778,19 @@ impl Installer {
     /// Verify that the installation was successful by checking for typical files
     /// and optionally verifying file hashes with retry logic
     /// Returns verification statistics if hash verification was performed
-    fn verify_installation(&self, task: &InstallTask, ctx: &ProgressContext) -> Result<Option<crate::models::VerificationStats>> {
+    fn verify_installation(
+        &self,
+        task: &InstallTask,
+        ctx: &ProgressContext,
+    ) -> Result<Option<crate::models::VerificationStats>> {
         let target = Path::new(&task.target_path);
 
         // Phase 1: Basic marker file verification (10% of verification progress)
         ctx.set_verification_progress(0.0);
-        ctx.emit_progress(Some("Checking marker files...".to_string()), InstallPhase::Verifying);
+        ctx.emit_progress(
+            Some("Checking marker files...".to_string()),
+            InstallPhase::Verifying,
+        );
         self.verify_marker_files(task)?;
         ctx.set_verification_progress(10.0);
         ctx.emit_progress(Some("Marker files OK".to_string()), InstallPhase::Verifying);
@@ -726,7 +800,7 @@ impl Installer {
         if !task.enable_verification {
             logger::log_info(
                 "Hash verification disabled for this task - skipping all hash operations",
-                Some("installer")
+                Some("installer"),
             );
             return Ok(None);
         }
@@ -742,7 +816,7 @@ impl Installer {
                 // 3. Empty archives
                 logger::log_info(
                     "No hashes available for verification - skipping hash verification",
-                    Some("installer")
+                    Some("installer"),
                 );
                 return Ok(None);
             }
@@ -752,12 +826,15 @@ impl Installer {
 
         logger::log_info(
             &format!("Verifying {} files with hash checking", total_expected),
-            Some("installer")
+            Some("installer"),
         );
 
         // Update progress: starting hash verification (10% -> 70%)
         ctx.set_verification_progress(15.0);
-        ctx.emit_progress(Some(format!("Verifying {} files...", total_expected)), InstallPhase::Verifying);
+        ctx.emit_progress(
+            Some(format!("Verifying {} files...", total_expected)),
+            InstallPhase::Verifying,
+        );
 
         let verifier = crate::verifier::FileVerifier::new();
 
@@ -774,10 +851,10 @@ impl Installer {
                     ctx_clone.set_verification_progress(progress);
                     ctx_clone.emit_progress(
                         Some(format!("Verified {}/{} files", verified, total)),
-                        InstallPhase::Verifying
+                        InstallPhase::Verifying,
                     );
                 }
-            }
+            },
         )?;
 
         // Update progress: initial verification done (70%)
@@ -789,18 +866,20 @@ impl Installer {
         // Phase 3: Retry failed files (up to 3 times) (70% -> 95%)
         if !failed_files.is_empty() {
             logger::log_info(
-                &format!("Retrying {} failed files (max 3 attempts)", failed_files.len()),
-                Some("installer")
+                &format!(
+                    "Retrying {} failed files (max 3 attempts)",
+                    failed_files.len()
+                ),
+                Some("installer"),
             );
 
-            ctx.emit_progress(Some(format!("Retrying {} files...", failed_files.len())), InstallPhase::Verifying);
+            ctx.emit_progress(
+                Some(format!("Retrying {} files...", failed_files.len())),
+                InstallPhase::Verifying,
+            );
 
             retried_count = failed_files.len();
-            failed_files = self.retry_failed_files(
-                task,
-                failed_files,
-                &expected_hashes,
-            )?;
+            failed_files = self.retry_failed_files(task, failed_files, &expected_hashes)?;
 
             ctx.set_verification_progress(95.0);
         } else {
@@ -827,11 +906,14 @@ impl Installer {
 
         logger::log_info(
             &format!("All {} files verified successfully", total_expected),
-            Some("installer")
+            Some("installer"),
         );
 
         ctx.set_verification_progress(100.0);
-        ctx.emit_progress(Some("Verification complete".to_string()), InstallPhase::Verifying);
+        ctx.emit_progress(
+            Some("Verification complete".to_string()),
+            InstallPhase::Verifying,
+        );
 
         // Build success statistics
         let stats = crate::models::VerificationStats {
@@ -861,7 +943,11 @@ impl Installer {
 
         // Check if target directory is empty
         let mut has_files = false;
-        for entry in WalkDir::new(target).max_depth(5).into_iter().filter_map(|e| e.ok()) {
+        for entry in WalkDir::new(target)
+            .max_depth(5)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             if entry.file_type().is_file() {
                 has_files = true;
                 break;
@@ -880,7 +966,11 @@ impl Installer {
             crate::models::AddonType::Aircraft => {
                 // Check for .acf files
                 let mut found_acf = false;
-                for entry in WalkDir::new(target).max_depth(3).into_iter().filter_map(|e| e.ok()) {
+                for entry in WalkDir::new(target)
+                    .max_depth(3)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
                     if entry.file_type().is_file() {
                         if let Some(ext) = entry.path().extension() {
                             if ext == "acf" {
@@ -909,7 +999,11 @@ impl Installer {
 
                 // Check for at least one .dsf file
                 let mut found_dsf = false;
-                for entry in WalkDir::new(&earth_nav_data).max_depth(5).into_iter().filter_map(|e| e.ok()) {
+                for entry in WalkDir::new(&earth_nav_data)
+                    .max_depth(5)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
                     if entry.file_type().is_file() {
                         if let Some(ext) = entry.path().extension() {
                             if ext == "dsf" {
@@ -939,7 +1033,11 @@ impl Installer {
             crate::models::AddonType::Plugin => {
                 // Check for .xpl files (in platform-specific folders or root)
                 let mut found_xpl = false;
-                for entry in WalkDir::new(target).max_depth(3).into_iter().filter_map(|e| e.ok()) {
+                for entry in WalkDir::new(target)
+                    .max_depth(3)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
                     if entry.file_type().is_file() {
                         if let Some(ext) = entry.path().extension() {
                             if ext == "xpl" {
@@ -991,8 +1089,13 @@ impl Installer {
             }
 
             logger::log_info(
-                &format!("Retry attempt {}/{} for {} files", retry_attempt, MAX_RETRIES, failed_files.len()),
-                Some("installer")
+                &format!(
+                    "Retry attempt {}/{} for {} files",
+                    retry_attempt,
+                    MAX_RETRIES,
+                    failed_files.len()
+                ),
+                Some("installer"),
             );
 
             // Track which files were successfully re-extracted
@@ -1003,7 +1106,7 @@ impl Installer {
                 logger::log_debug(
                     &format!("Retrying file: {}", failed.path),
                     Some("installer"),
-                    None
+                    None,
                 );
 
                 match self.re_extract_single_file(
@@ -1018,15 +1121,18 @@ impl Installer {
                         failed.retry_count = retry_attempt;
                         re_extracted_files.push(failed.path.clone());
                         logger::log_debug(
-                            &format!("Re-extracted file: {} (attempt {})", failed.path, retry_attempt),
+                            &format!(
+                                "Re-extracted file: {} (attempt {})",
+                                failed.path, retry_attempt
+                            ),
                             Some("installer"),
-                            None
+                            None,
                         );
                     }
                     Err(e) => {
                         logger::log_error(
                             &format!("Failed to re-extract {}: {}", failed.path, e),
-                            Some("installer")
+                            Some("installer"),
                         );
                         failed.error = Some(e.to_string());
                     }
@@ -1045,16 +1151,13 @@ impl Installer {
                     let file_path = target.join(&result.path);
                     let expected = expected_hashes.get(&result.path)?;
 
-                    let verification = verifier.verify_single_file(
-                        &file_path,
-                        &result.path,
-                        expected
-                    );
+                    let verification =
+                        verifier.verify_single_file(&file_path, &result.path, expected);
 
                     if verification.success {
                         logger::log_info(
                             &format!("File verified after retry: {}", result.path),
-                            Some("installer")
+                            Some("installer"),
                         );
                         None // Success, remove from failed list
                     } else {
@@ -1069,8 +1172,11 @@ impl Installer {
 
             if failed_files.is_empty() {
                 logger::log_info(
-                    &format!("All files verified successfully after {} retries", retry_attempt),
-                    Some("installer")
+                    &format!(
+                        "All files verified successfully after {} retries",
+                        retry_attempt
+                    ),
+                    Some("installer"),
                 );
                 break;
             }
@@ -1103,15 +1209,40 @@ impl Installer {
         }
 
         // For archives, extract based on format
-        let ext = source.extension()
+        let ext = source
+            .extension()
             .and_then(|s| s.to_str())
             .ok_or_else(|| anyhow::anyhow!("No file extension"))?;
 
         match ext {
-            "zip" => self.re_extract_from_zip(source, target, relative_path, internal_root, extraction_chain, password),
-            "7z" => self.re_extract_from_7z(source, target, relative_path, internal_root, extraction_chain, password),
-            "rar" => self.re_extract_from_rar(source, target, relative_path, internal_root, extraction_chain, password),
-            _ => Err(anyhow::anyhow!("Unsupported archive format for retry: {}", ext)),
+            "zip" => self.re_extract_from_zip(
+                source,
+                target,
+                relative_path,
+                internal_root,
+                extraction_chain,
+                password,
+            ),
+            "7z" => self.re_extract_from_7z(
+                source,
+                target,
+                relative_path,
+                internal_root,
+                extraction_chain,
+                password,
+            ),
+            "rar" => self.re_extract_from_rar(
+                source,
+                target,
+                relative_path,
+                internal_root,
+                extraction_chain,
+                password,
+            ),
+            _ => Err(anyhow::anyhow!(
+                "Unsupported archive format for retry: {}",
+                ext
+            )),
         }
     }
 
@@ -1131,8 +1262,8 @@ impl Installer {
         _extraction_chain: Option<&crate::models::ExtractionChain>,
         password: Option<&str>,
     ) -> Result<()> {
-        use zip::ZipArchive;
         use std::io::copy;
+        use zip::ZipArchive;
 
         let file = fs::File::open(archive_path)?;
         let mut archive = ZipArchive::new(file)?;
@@ -1161,7 +1292,8 @@ impl Installer {
             }
         }
 
-        let i = file_index.ok_or_else(|| anyhow::anyhow!("File not found in ZIP: {}", archive_path_normalized))?;
+        let i = file_index
+            .ok_or_else(|| anyhow::anyhow!("File not found in ZIP: {}", archive_path_normalized))?;
 
         // Now extract the file
         let target_path = target.join(relative_path);
@@ -1176,7 +1308,8 @@ impl Installer {
 
         if is_encrypted {
             if let Some(pwd) = password {
-                let mut decrypted = archive.by_index_decrypt(i, pwd.as_bytes())
+                let mut decrypted = archive
+                    .by_index_decrypt(i, pwd.as_bytes())
                     .map_err(|e| anyhow::anyhow!("Decryption failed: {:?}", e))?;
                 copy(&mut decrypted, &mut outfile)?;
             } else {
@@ -1204,52 +1337,99 @@ impl Installer {
     ) -> Result<()> {
         use tempfile::TempDir;
 
+        let sanitized_relative = sanitize_path(Path::new(relative_path))
+            .ok_or_else(|| anyhow::anyhow!("Unsafe path in archive: {}", relative_path))?;
+
         // 7z doesn't support single-file extraction easily
         // Extract to temp, then copy the specific file
         let temp_dir = TempDir::new()?;
+        let mut skipped_count = 0usize;
 
         // Extract entire archive to temp
         if let Some(pwd) = password {
-            let mut reader = sevenz_rust2::SevenZReader::open(archive_path, sevenz_rust2::Password::from(pwd))
-                .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
-            reader.for_each_entries(|entry, reader| {
-                let dest_path = temp_dir.path().join(entry.name());
-                if entry.is_directory() {
-                    std::fs::create_dir_all(&dest_path)?;
-                } else {
-                    if let Some(parent) = dest_path.parent() {
-                        std::fs::create_dir_all(parent)?;
+            let mut reader =
+                sevenz_rust2::SevenZReader::open(archive_path, sevenz_rust2::Password::from(pwd))
+                    .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
+            reader
+                .for_each_entries(|entry, reader| {
+                    let entry_path = match sanitize_path(Path::new(entry.name())) {
+                        Some(path) => path,
+                        None => {
+                            skipped_count += 1;
+                            logger::log_debug(
+                                &format!("Skipping 7z entry with unsafe path: {}", entry.name()),
+                                Some("installer"),
+                                None,
+                            );
+                            return Ok(true);
+                        }
+                    };
+                    let dest_path = temp_dir.path().join(&entry_path);
+                    if entry.is_directory() {
+                        std::fs::create_dir_all(&dest_path)?;
+                    } else {
+                        if let Some(parent) = dest_path.parent() {
+                            std::fs::create_dir_all(parent)?;
+                        }
+                        let mut file = std::fs::File::create(&dest_path)?;
+                        std::io::copy(reader, &mut file)?;
                     }
-                    let mut file = std::fs::File::create(&dest_path)?;
-                    std::io::copy(reader, &mut file)?;
-                }
-                Ok(true)
-            }).map_err(|e| anyhow::anyhow!("7z extraction failed: {}", e))?;
+                    Ok(true)
+                })
+                .map_err(|e| anyhow::anyhow!("7z extraction failed: {}", e))?;
         } else {
-            let mut reader = sevenz_rust2::SevenZReader::open(archive_path, sevenz_rust2::Password::empty())
-                .map_err(|e| anyhow::anyhow!("Failed to open 7z: {}", e))?;
-            reader.for_each_entries(|entry, reader| {
-                let dest_path = temp_dir.path().join(entry.name());
-                if entry.is_directory() {
-                    std::fs::create_dir_all(&dest_path)?;
-                } else {
-                    if let Some(parent) = dest_path.parent() {
-                        std::fs::create_dir_all(parent)?;
+            let mut reader =
+                sevenz_rust2::SevenZReader::open(archive_path, sevenz_rust2::Password::empty())
+                    .map_err(|e| anyhow::anyhow!("Failed to open 7z: {}", e))?;
+            reader
+                .for_each_entries(|entry, reader| {
+                    let entry_path = match sanitize_path(Path::new(entry.name())) {
+                        Some(path) => path,
+                        None => {
+                            skipped_count += 1;
+                            logger::log_debug(
+                                &format!("Skipping 7z entry with unsafe path: {}", entry.name()),
+                                Some("installer"),
+                                None,
+                            );
+                            return Ok(true);
+                        }
+                    };
+                    let dest_path = temp_dir.path().join(&entry_path);
+                    if entry.is_directory() {
+                        std::fs::create_dir_all(&dest_path)?;
+                    } else {
+                        if let Some(parent) = dest_path.parent() {
+                            std::fs::create_dir_all(parent)?;
+                        }
+                        let mut file = std::fs::File::create(&dest_path)?;
+                        std::io::copy(reader, &mut file)?;
                     }
-                    let mut file = std::fs::File::create(&dest_path)?;
-                    std::io::copy(reader, &mut file)?;
-                }
-                Ok(true)
-            }).map_err(|e| anyhow::anyhow!("7z extraction failed: {}", e))?;
+                    Ok(true)
+                })
+                .map_err(|e| anyhow::anyhow!("7z extraction failed: {}", e))?;
+        }
+
+        if skipped_count > 0 {
+            logger::log_info(
+                &format!(
+                    "Skipped {} unsafe 7z entries during re-extract",
+                    skipped_count
+                ),
+                Some("installer"),
+            );
         }
 
         // Find and copy the specific file
-        let temp_file = temp_dir.path().join(relative_path);
+        let temp_file = temp_dir.path().join(&sanitized_relative);
         if !temp_file.exists() {
-            return Err(anyhow::anyhow!("File not found after 7z extraction: {}", relative_path));
+            return Err(anyhow::anyhow!(
+                "File not found after 7z extraction: {}",
+                relative_path
+            ));
         }
 
-        let target_file = target.join(relative_path);
+        let target_file = target.join(&sanitized_relative);
         if let Some(parent) = target_file.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -1287,14 +1467,17 @@ impl Installer {
             .map_err(|e| anyhow::anyhow!("Failed to open RAR for retry: {:?}", e))?;
 
         // Extract all files to temp directory
-        while let Some(header) = arch.read_header()
+        while let Some(header) = arch
+            .read_header()
             .map_err(|e| anyhow::anyhow!("Failed to read RAR header: {:?}", e))?
         {
             arch = if header.entry().is_file() {
-                header.extract_with_base(temp_dir.path())
+                header
+                    .extract_with_base(temp_dir.path())
                     .map_err(|e| anyhow::anyhow!("Failed to extract RAR entry: {:?}", e))?
             } else {
-                header.skip()
+                header
+                    .skip()
                     .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
             };
         }
@@ -1331,22 +1514,28 @@ impl Installer {
         // Basic level: summary
         logger::log_error(
             &format!("Verification failed: {} files", failed.len()),
-            Some("installer")
+            Some("installer"),
         );
 
         // Full level: file names
-        let file_names: Vec<&str> = failed.iter()
+        let file_names: Vec<&str> = failed
+            .iter()
             .take(10) // Limit to first 10 files
             .map(|f| f.path.as_str())
             .collect();
 
         if !file_names.is_empty() {
             logger::log_info(
-                &format!("Failed files: {}{}",
+                &format!(
+                    "Failed files: {}{}",
                     file_names.join(", "),
-                    if failed.len() > 10 { format!(" (and {} more)", failed.len() - 10) } else { String::new() }
+                    if failed.len() > 10 {
+                        format!(" (and {} more)", failed.len() - 10)
+                    } else {
+                        String::new()
+                    }
                 ),
-                Some("installer")
+                Some("installer"),
             );
         }
 
@@ -1362,7 +1551,7 @@ impl Installer {
                     result.error
                 ),
                 Some("installer"),
-                None
+                None,
             );
         }
     }
@@ -1447,7 +1636,13 @@ impl Installer {
     }
 
     /// Install a single task with progress tracking
-    fn install_task_with_progress(&self, task: &InstallTask, ctx: &ProgressContext, atomic_install_enabled: bool, xplane_path: &str) -> Result<()> {
+    fn install_task_with_progress(
+        &self,
+        task: &InstallTask,
+        ctx: &ProgressContext,
+        atomic_install_enabled: bool,
+        xplane_path: &str,
+    ) -> Result<()> {
         let source = Path::new(&task.source_path);
         let target = Path::new(&task.target_path);
         let password = task.password.as_deref();
@@ -1459,7 +1654,8 @@ impl Installer {
                 .context(format!("Failed to create target directory: {:?}", parent))?;
         }
         crate::log_debug!(
-            &format!("[TIMING] Directory creation completed in {:.2}ms",
+            &format!(
+                "[TIMING] Directory creation completed in {:.2}ms",
                 mkdir_start.elapsed().as_secs_f64() * 1000.0
             ),
             "installer_timing"
@@ -1479,7 +1675,9 @@ impl Installer {
                     "[TIMING] Clean install mode for nested archive",
                     "installer_timing"
                 );
-                self.handle_clean_install_with_extraction_chain(task, source, target, chain, ctx, password)?;
+                self.handle_clean_install_with_extraction_chain(
+                    task, source, target, chain, ctx, password,
+                )?;
             } else {
                 // Direct overwrite mode for nested archives
                 crate::log_debug!(
@@ -1510,7 +1708,13 @@ impl Installer {
                     "installer_timing"
                 );
                 // Direct overwrite mode: just install/extract files directly
-                self.install_content_with_progress(source, target, task.archive_internal_root.as_deref(), ctx, password)?;
+                self.install_content_with_progress(
+                    source,
+                    target,
+                    task.archive_internal_root.as_deref(),
+                    ctx,
+                    password,
+                )?;
             }
         }
 
@@ -1546,8 +1750,6 @@ impl Installer {
         ctx: &ProgressContext,
         outermost_password: Option<&str>,
     ) -> Result<()> {
-        
-
         // For multi-layer chains (including single-layer nested archives),
         // check if we can use the memory-optimized path
         let all_zip = chain.archives.iter().all(|a| a.format == "zip");
@@ -1570,11 +1772,14 @@ impl Installer {
         ctx: &ProgressContext,
         outermost_password: Option<&str>,
     ) -> Result<()> {
-        use zip::ZipArchive;
         use std::io::{Cursor, Read};
+        use zip::ZipArchive;
 
         crate::logger::log_info(
-            &format!("Using optimized memory extraction for {} nested ZIP layers", chain.archives.len()),
+            &format!(
+                "Using optimized memory extraction for {} nested ZIP layers",
+                chain.archives.len()
+            ),
             Some("installer"),
         );
 
@@ -1615,7 +1820,8 @@ impl Installer {
                     match archive.by_index_decrypt(i, pwd) {
                         Ok(f) => f,
                         Err(e) => {
-                            decryption_error = Some(format!("Failed to decrypt {}: {}", nested_path, e));
+                            decryption_error =
+                                Some(format!("Failed to decrypt {}: {}", nested_path, e));
                             break; // Stop searching, we found the file but can't decrypt
                         }
                     }
@@ -1641,7 +1847,10 @@ impl Installer {
 
             // Update for next iteration
             current_archive_data = nested_data;
-            current_password = archive_info.password.as_ref().map(|s| s.as_bytes().to_vec());
+            current_password = archive_info
+                .password
+                .as_ref()
+                .map(|s| s.as_bytes().to_vec());
         }
 
         // Now extract the final (innermost) archive
@@ -1669,15 +1878,17 @@ impl Installer {
         _ctx: &ProgressContext,
         password: Option<&[u8]>,
     ) -> Result<()> {
-        
-
         let internal_root_normalized = internal_root.map(|s| s.replace('\\', "/"));
         let prefix = internal_root_normalized.as_deref();
 
         // Debug: Log extraction parameters
         crate::logger::log_debug(
-            &format!("extract_zip_from_archive: target={:?}, internal_root={:?}, archive_len={}",
-                target, internal_root, archive.len()),
+            &format!(
+                "extract_zip_from_archive: target={:?}, internal_root={:?}, archive_len={}",
+                target,
+                internal_root,
+                archive.len()
+            ),
             Some("installer"),
             None,
         );
@@ -1702,14 +1913,19 @@ impl Installer {
                     // Debug: Log file matching
                     let matched = file_path_str.strip_prefix(&prefix_with_slash);
                     crate::logger::log_debug(
-                        &format!("File: '{}', Prefix: '{}', Matched: {:?}",
-                            file_path_str, prefix_with_slash, matched.is_some()),
+                        &format!(
+                            "File: '{}', Prefix: '{}', Matched: {:?}",
+                            file_path_str,
+                            prefix_with_slash,
+                            matched.is_some()
+                        ),
                         Some("installer"),
                         None,
                     );
 
                     // Strip prefix and return relative path
-                    file_path_str.strip_prefix(&prefix_with_slash)
+                    file_path_str
+                        .strip_prefix(&prefix_with_slash)
                         .map(|s| s.to_string())?
                 } else {
                     file_path_str.clone()
@@ -1753,7 +1969,8 @@ impl Installer {
 
                 let mut file = if is_encrypted {
                     if let Some(pwd) = password {
-                        archive.by_index_decrypt(i, pwd)
+                        archive
+                            .by_index_decrypt(i, pwd)
                             .map_err(|e| anyhow::anyhow!("Failed to decrypt file: {}", e))?
                     } else {
                         return Err(anyhow::anyhow!("Password required for encrypted file"));
@@ -1817,8 +2034,8 @@ impl Installer {
         );
 
         // Create temp directory for intermediate extractions
-        let temp_base = TempDir::new()
-            .context("Failed to create temp directory for nested extraction")?;
+        let temp_base =
+            TempDir::new().context("Failed to create temp directory for nested extraction")?;
 
         let mut current_source = source.to_path_buf();
         let mut current_password = outermost_password;
@@ -1838,19 +2055,28 @@ impl Installer {
             };
 
             // Create target directory
-            fs::create_dir_all(&extract_target)
-                .context(format!("Failed to create extraction target: {:?}", extract_target))?;
+            fs::create_dir_all(&extract_target).context(format!(
+                "Failed to create extraction target: {:?}",
+                extract_target
+            ))?;
 
             // Extract the current archive
             crate::logger::log_info(
-                &format!("Extracting layer {} ({}): {} to {:?}", index, current_format, archive_info.internal_path, extract_target),
+                &format!(
+                    "Extracting layer {} ({}): {} to {:?}",
+                    index, current_format, archive_info.internal_path, extract_target
+                ),
                 Some("installer"),
             );
 
             self.extract_archive_with_progress(
                 &current_source,
                 &extract_target,
-                if is_last { chain.final_internal_root.as_deref() } else { None },
+                if is_last {
+                    chain.final_internal_root.as_deref()
+                } else {
+                    None
+                },
                 ctx,
                 current_password,
             )?;
@@ -1945,8 +2171,8 @@ impl Installer {
         ctx: &ProgressContext,
         password: Option<&str>,
     ) -> Result<()> {
-        use zip::ZipArchive;
         use std::io::{Cursor, Read};
+        use zip::ZipArchive;
 
         // Check file size before loading into memory (limit: 200MB)
         let metadata = fs::metadata(zip_path)?;
@@ -1971,7 +2197,9 @@ impl Installer {
 
             // Verify this is a ZIP layer
             if archive_info.format != "zip" {
-                return Err(anyhow::anyhow!("Non-ZIP layer encountered in memory optimization"));
+                return Err(anyhow::anyhow!(
+                    "Non-ZIP layer encountered in memory optimization"
+                ));
             }
 
             let cursor = Cursor::new(&current_archive_data);
@@ -2021,7 +2249,10 @@ impl Installer {
                 }
 
                 current_archive_data = nested_data;
-                current_password = archive_info.password.as_ref().map(|s| s.as_bytes().to_vec());
+                current_password = archive_info
+                    .password
+                    .as_ref()
+                    .map(|s| s.as_bytes().to_vec());
             }
         }
 
@@ -2048,8 +2279,10 @@ impl Installer {
                         &target_path,
                         &ProgressContext::new(self.app_handle.clone(), 1),
                     )?;
-                    remove_dir_all_robust(&source_path)
-                        .context(format!("Failed to remove source directory: {:?}", source_path))?;
+                    remove_dir_all_robust(&source_path).context(format!(
+                        "Failed to remove source directory: {:?}",
+                        source_path
+                    ))?;
                 }
             } else {
                 // Try to rename (move) the file
@@ -2120,15 +2353,13 @@ impl Installer {
         backup_config_files: bool,
         config_file_patterns: &[String],
     ) -> Result<()> {
-        
         use uuid::Uuid;
 
         // Step 1: Backup liveries and config files if requested
         let backup_dir = if (backup_liveries || backup_config_files) && target.exists() {
             let temp_dir = std::env::temp_dir();
             let backup_path = temp_dir.join(format!("xfastinstall_backup_{}", Uuid::new_v4()));
-            fs::create_dir_all(&backup_path)
-                .context("Failed to create backup directory")?;
+            fs::create_dir_all(&backup_path).context("Failed to create backup directory")?;
 
             // Backup liveries
             if backup_liveries {
@@ -2149,8 +2380,10 @@ impl Installer {
                             if config_file.is_file() {
                                 if let Some(file_name) = config_file.file_name() {
                                     let backup_file = backup_path.join(file_name);
-                                    fs::copy(&config_file, &backup_file)
-                                        .context(format!("Failed to backup config file: {:?}", config_file))?;
+                                    fs::copy(&config_file, &backup_file).context(format!(
+                                        "Failed to backup config file: {:?}",
+                                        config_file
+                                    ))?;
                                 }
                             }
                         }
@@ -2165,8 +2398,10 @@ impl Installer {
 
         // Step 2: Delete existing aircraft folder
         if target.exists() {
-            remove_dir_all_robust(target)
-                .context(format!("Failed to delete existing aircraft folder: {:?}", target))?;
+            remove_dir_all_robust(target).context(format!(
+                "Failed to delete existing aircraft folder: {:?}",
+                target
+            ))?;
         }
 
         // Step 3: Install new aircraft using extraction chain
@@ -2182,9 +2417,7 @@ impl Installer {
             }
 
             // Restore config files
-            for entry in fs::read_dir(&backup_path)
-                .context("Failed to read backup directory")?
-            {
+            for entry in fs::read_dir(&backup_path).context("Failed to read backup directory")? {
                 let entry = entry?;
                 let path = entry.path();
                 if path.is_file() {
@@ -2198,8 +2431,7 @@ impl Installer {
 
             // Verify restoration and cleanup backup
             if target.exists() {
-                fs::remove_dir_all(&backup_path)
-                    .context("Failed to cleanup backup directory")?;
+                fs::remove_dir_all(&backup_path).context("Failed to cleanup backup directory")?;
             }
         }
 
@@ -2233,7 +2465,13 @@ impl Installer {
             AddonType::Navdata => {
                 // For Navdata: DON'T delete Custom Data folder!
                 // Just extract and overwrite individual files (same as direct overwrite)
-                self.install_content_with_progress(source, target, task.archive_internal_root.as_deref(), ctx, password)?;
+                self.install_content_with_progress(
+                    source,
+                    target,
+                    task.archive_internal_root.as_deref(),
+                    ctx,
+                    password,
+                )?;
             }
             _ => {
                 // For other types: delete and reinstall using robust removal
@@ -2241,7 +2479,13 @@ impl Installer {
                     remove_dir_all_robust(target)
                         .context(format!("Failed to delete existing folder: {:?}", target))?;
                 }
-                self.install_content_with_progress(source, target, task.archive_internal_root.as_deref(), ctx, password)?;
+                self.install_content_with_progress(
+                    source,
+                    target,
+                    task.archive_internal_root.as_deref(),
+                    ctx,
+                    password,
+                )?;
             }
         }
         Ok(())
@@ -2260,7 +2504,13 @@ impl Installer {
         config_patterns: &[String],
     ) -> Result<()> {
         // Step 1: Create backup of important files
-        let backup = self.backup_aircraft_data(target, backup_liveries, backup_config_files, config_patterns, ctx)?;
+        let backup = self.backup_aircraft_data(
+            target,
+            backup_liveries,
+            backup_config_files,
+            config_patterns,
+            ctx,
+        )?;
 
         // Step 2: VERIFY backup is complete and valid BEFORE deleting
         if let Some(ref backup_data) = backup {
@@ -2270,31 +2520,34 @@ impl Installer {
 
         // Step 3: Delete target folder (only after backup is verified)
         if target.exists() {
-            remove_dir_all_robust(target)
-                .context(format!("Failed to delete existing aircraft folder: {:?}", target))?;
+            remove_dir_all_robust(target).context(format!(
+                "Failed to delete existing aircraft folder: {:?}",
+                target
+            ))?;
         }
 
         // Step 4: Install new content with progress
-        let install_result = self.install_content_with_progress(source, target, internal_root, ctx, password);
+        let install_result =
+            self.install_content_with_progress(source, target, internal_root, ctx, password);
 
         // Step 5: Restore backup and verify
         let restore_verified = if let Some(ref backup_data) = backup {
             match self.restore_aircraft_backup(backup_data, target, ctx) {
-                Ok(()) => {
-                    match self.verify_restore(backup_data, target) {
-                        Ok(()) => true,
-                        Err(e) => {
-                            return Err(anyhow::anyhow!(
-                                "Restore verification failed: {}. Your backup is preserved at: {:?}.",
-                                e, backup_data.temp_dir
-                            ));
-                        }
+                Ok(()) => match self.verify_restore(backup_data, target) {
+                    Ok(()) => true,
+                    Err(e) => {
+                        return Err(anyhow::anyhow!(
+                            "Restore verification failed: {}. Your backup is preserved at: {:?}.",
+                            e,
+                            backup_data.temp_dir
+                        ));
                     }
-                }
+                },
                 Err(e) => {
                     return Err(anyhow::anyhow!(
                         "Failed to restore backup: {}. Your backup is preserved at: {:?}.",
-                        e, backup_data.temp_dir
+                        e,
+                        backup_data.temp_dir
                     ));
                 }
             }
@@ -2327,10 +2580,14 @@ impl Installer {
         }
 
         // Update progress: Starting backup
-        ctx.emit_progress(Some("Backing up aircraft data...".to_string()), InstallPhase::Installing);
+        ctx.emit_progress(
+            Some("Backing up aircraft data...".to_string()),
+            InstallPhase::Installing,
+        );
 
         // Create temp directory for backup
-        let temp_dir = std::env::temp_dir().join(format!("xfastinstall_backup_{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("xfastinstall_backup_{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&temp_dir)
             .context("Failed to create backup directory - check disk space")?;
 
@@ -2346,7 +2603,10 @@ impl Installer {
         if backup_liveries {
             let liveries_src = target.join("liveries");
             if liveries_src.exists() && liveries_src.is_dir() {
-                ctx.emit_progress(Some("Backing up liveries...".to_string()), InstallPhase::Installing);
+                ctx.emit_progress(
+                    Some("Backing up liveries...".to_string()),
+                    InstallPhase::Installing,
+                );
 
                 // Record original info for verification
                 let original_info = self.get_directory_info(&liveries_src)?;
@@ -2361,7 +2621,10 @@ impl Installer {
 
         // Backup config files from root directory only if enabled
         if backup_config_files && !config_patterns.is_empty() {
-            ctx.emit_progress(Some("Backing up config files...".to_string()), InstallPhase::Installing);
+            ctx.emit_progress(
+                Some("Backing up config files...".to_string()),
+                InstallPhase::Installing,
+            );
 
             // Pre-compile patterns once for efficiency
             let compiled = CompiledPatterns::new(config_patterns);
@@ -2377,8 +2640,12 @@ impl Installer {
                             let backup_path = temp_dir.join(name);
                             fs::copy(&path, &backup_path)
                                 .context(format!("Failed to backup {}", name))?;
-                            backup.pref_files.push((name.to_string(), backup_path.clone()));
-                            backup.original_pref_sizes.push((name.to_string(), original_size));
+                            backup
+                                .pref_files
+                                .push((name.to_string(), backup_path.clone()));
+                            backup
+                                .original_pref_sizes
+                                .push((name.to_string(), original_size));
 
                             // Update progress for each config file with filename for real-time display
                             ctx.add_bytes(original_size);
@@ -2405,7 +2672,10 @@ impl Installer {
             }
         }
 
-        Ok(DirectoryInfo { file_count, total_size })
+        Ok(DirectoryInfo {
+            file_count,
+            total_size,
+        })
     }
 
     /// Verify backup is complete and valid before proceeding with deletion
@@ -2494,18 +2764,33 @@ impl Installer {
     }
 
     /// Restore aircraft backup data
-    fn restore_aircraft_backup(&self, backup: &AircraftBackup, target: &Path, ctx: &ProgressContext) -> Result<()> {
-        ctx.emit_progress(Some("Restoring backup...".to_string()), InstallPhase::Installing);
+    fn restore_aircraft_backup(
+        &self,
+        backup: &AircraftBackup,
+        target: &Path,
+        ctx: &ProgressContext,
+    ) -> Result<()> {
+        ctx.emit_progress(
+            Some("Restoring backup...".to_string()),
+            InstallPhase::Installing,
+        );
 
         // Restore liveries folder (skip existing - don't overwrite new content)
         if let Some(ref liveries_backup) = backup.liveries_path {
-            ctx.emit_progress(Some("Restoring liveries...".to_string()), InstallPhase::Installing);
+            ctx.emit_progress(
+                Some("Restoring liveries...".to_string()),
+                InstallPhase::Installing,
+            );
 
             let liveries_target = target.join("liveries");
 
             if liveries_target.exists() {
                 // Merge: copy only files that don't exist in new content
-                self.merge_directory_skip_existing_with_progress(liveries_backup, &liveries_target, ctx)?;
+                self.merge_directory_skip_existing_with_progress(
+                    liveries_backup,
+                    &liveries_target,
+                    ctx,
+                )?;
             } else {
                 // No new liveries folder, restore entire backup
                 self.copy_directory_with_progress(liveries_backup, &liveries_target, ctx)?;
@@ -2514,7 +2799,10 @@ impl Installer {
 
         // Restore *_prefs.txt files (always overwrite - restore user preferences)
         if !backup.pref_files.is_empty() {
-            ctx.emit_progress(Some("Restoring config files...".to_string()), InstallPhase::Installing);
+            ctx.emit_progress(
+                Some("Restoring config files...".to_string()),
+                InstallPhase::Installing,
+            );
 
             for (filename, backup_path) in &backup.pref_files {
                 let target_path = target.join(filename);
@@ -2532,7 +2820,12 @@ impl Installer {
     }
 
     /// Copy directory contents, skipping files that already exist in target (with progress)
-    fn merge_directory_skip_existing_with_progress(&self, source: &Path, target: &Path, ctx: &ProgressContext) -> Result<()> {
+    fn merge_directory_skip_existing_with_progress(
+        &self,
+        source: &Path,
+        target: &Path,
+        ctx: &ProgressContext,
+    ) -> Result<()> {
         if !target.exists() {
             fs::create_dir_all(target)?;
         }
@@ -2589,7 +2882,9 @@ impl Installer {
         // Create all directories first (must be sequential)
         for entry in &entries {
             if entry.file_type().is_dir() {
-                let relative = entry.path().strip_prefix(source)
+                let relative = entry
+                    .path()
+                    .strip_prefix(source)
                     .context("Failed to strip prefix")?;
                 let target_path = target.join(relative);
                 fs::create_dir_all(&target_path)?;
@@ -2599,7 +2894,8 @@ impl Installer {
         // Copy files in parallel using rayon
         use rayon::prelude::*;
 
-        entries.par_iter()
+        entries
+            .par_iter()
             .filter(|entry| entry.file_type().is_file())
             .try_for_each(|entry| -> Result<()> {
                 let source_path = entry.path();
@@ -2653,14 +2949,19 @@ impl Installer {
         );
 
         match extension {
-            "zip" => self.extract_zip_with_progress(archive, target, internal_root, ctx, password)?,
+            "zip" => {
+                self.extract_zip_with_progress(archive, target, internal_root, ctx, password)?
+            }
             "7z" => self.extract_7z_with_progress(archive, target, internal_root, ctx, password)?,
-            "rar" => self.extract_rar_with_progress(archive, target, internal_root, ctx, password)?,
+            "rar" => {
+                self.extract_rar_with_progress(archive, target, internal_root, ctx, password)?
+            }
             _ => return Err(anyhow::anyhow!("Unsupported archive format: {}", extension)),
         }
 
         crate::log_debug!(
-            &format!("[TIMING] Archive extraction completed in {:.2}ms: {} format",
+            &format!(
+                "[TIMING] Archive extraction completed in {:.2}ms: {} format",
                 extract_start.elapsed().as_secs_f64() * 1000.0,
                 extension
             ),
@@ -2681,8 +2982,8 @@ impl Installer {
         ctx: &ProgressContext,
         password: Option<&str>,
     ) -> Result<()> {
-        use zip::ZipArchive;
         use std::sync::Arc;
+        use zip::ZipArchive;
 
         // Open archive and collect file metadata
         let file = fs::File::open(archive_path)?;
@@ -2702,7 +3003,7 @@ impl Installer {
                     Err(e) => {
                         logger::log_error(
                             &format!("Failed to read ZIP entry {}: {}", i, e),
-                            Some("installer")
+                            Some("installer"),
                         );
                         skipped_count += 1;
                         return None;
@@ -2719,7 +3020,7 @@ impl Installer {
                         logger::log_debug(
                             &format!("Skipping ZIP entry {} with unsafe path: {}", i, file.name()),
                             Some("installer"),
-                            None
+                            None,
                         );
                         skipped_count += 1;
                         return None;
@@ -2758,9 +3059,12 @@ impl Installer {
                         Some(p) => p,
                         None => {
                             logger::log_debug(
-                                &format!("Skipping ZIP entry with unsafe path after sanitization: {}", stripped),
+                                &format!(
+                                    "Skipping ZIP entry with unsafe path after sanitization: {}",
+                                    stripped
+                                ),
                                 Some("installer"),
-                                None
+                                None,
                             );
                             skipped_count += 1;
                             return None;
@@ -2773,7 +3077,7 @@ impl Installer {
                             logger::log_debug(
                                 &format!("Skipping ZIP entry with unsafe path: {}", file_path_str),
                                 Some("installer"),
-                                None
+                                None,
                             );
                             skipped_count += 1;
                             return None;
@@ -2788,7 +3092,7 @@ impl Installer {
         if skipped_count > 0 {
             logger::log_info(
                 &format!("Skipped {} unsafe or invalid ZIP entries", skipped_count),
-                Some("installer")
+                Some("installer"),
             );
         }
 
@@ -2814,7 +3118,8 @@ impl Installer {
         let target = target.to_path_buf();
         let password_bytes = Arc::new(password_bytes);
 
-        entries.par_iter()
+        entries
+            .par_iter()
             .filter(|(_, _, is_dir, _, _)| !is_dir)
             .try_for_each(|(index, relative_path, _, is_encrypted, _)| -> Result<()> {
                 // Each thread opens its own ZipArchive instance
@@ -2915,61 +3220,63 @@ impl Installer {
         };
 
         // Extract directly to target with progress reporting
-        reader.for_each_entries(|entry, entry_reader| {
-            let entry_name = entry.name().replace('\\', "/");
+        reader
+            .for_each_entries(|entry, entry_reader| {
+                let entry_name = entry.name().replace('\\', "/");
 
-            // Apply internal_root filter
-            let relative_path = if let Some(ref prefix) = internal_root_normalized {
-                if entry_name.starts_with(prefix) {
-                    entry_name.strip_prefix(prefix).unwrap_or(&entry_name)
-                } else if entry_name == prefix.trim_end_matches('/') {
-                    // Skip the root directory itself
-                    return Ok(true);
+                // Apply internal_root filter
+                let relative_path = if let Some(ref prefix) = internal_root_normalized {
+                    if entry_name.starts_with(prefix) {
+                        entry_name.strip_prefix(prefix).unwrap_or(&entry_name)
+                    } else if entry_name == prefix.trim_end_matches('/') {
+                        // Skip the root directory itself
+                        return Ok(true);
+                    } else {
+                        // Skip entries outside internal_root
+                        return Ok(true);
+                    }
                 } else {
-                    // Skip entries outside internal_root
+                    &entry_name
+                };
+
+                // Skip empty paths
+                if relative_path.is_empty() {
                     return Ok(true);
                 }
-            } else {
-                &entry_name
-            };
 
-            // Skip empty paths
-            if relative_path.is_empty() {
-                return Ok(true);
-            }
+                // Sanitize path to prevent path traversal
+                let sanitized = match sanitize_path(Path::new(relative_path)) {
+                    Some(p) => p,
+                    None => return Ok(true), // Skip unsafe paths
+                };
 
-            // Sanitize path to prevent path traversal
-            let sanitized = match sanitize_path(Path::new(relative_path)) {
-                Some(p) => p,
-                None => return Ok(true), // Skip unsafe paths
-            };
+                let dest_path = target.join(&sanitized);
 
-            let dest_path = target.join(&sanitized);
+                if entry.is_directory() {
+                    std::fs::create_dir_all(&dest_path)?;
+                } else {
+                    if let Some(parent) = dest_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    let mut file = std::fs::File::create(&dest_path)?;
+                    copy_file_optimized(entry_reader, &mut file)?;
 
-            if entry.is_directory() {
-                std::fs::create_dir_all(&dest_path)?;
-            } else {
-                if let Some(parent) = dest_path.parent() {
-                    std::fs::create_dir_all(parent)?;
+                    // Remove read-only attribute
+                    let _ = remove_readonly_attribute(&dest_path);
+
+                    // Report progress
+                    let file_size = entry.size() as u64;
+                    let file_name = sanitized
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+                    ctx.add_bytes(file_size);
+                    ctx.emit_progress(Some(file_name), InstallPhase::Installing);
                 }
-                let mut file = std::fs::File::create(&dest_path)?;
-                copy_file_optimized(entry_reader, &mut file)?;
-
-                // Remove read-only attribute
-                let _ = remove_readonly_attribute(&dest_path);
-
-                // Report progress
-                let file_size = entry.size() as u64;
-                let file_name = sanitized
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown")
-                    .to_string();
-                ctx.add_bytes(file_size);
-                ctx.emit_progress(Some(file_name), InstallPhase::Installing);
-            }
-            Ok(true)
-        }).map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
+                Ok(true)
+            })
+            .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
 
         Ok(())
     }
@@ -2986,7 +3293,7 @@ impl Installer {
         password: Option<&str>,
         task: &mut InstallTask,
     ) -> Result<()> {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         #[allow(unused_imports)]
         use std::io::Read;
 
@@ -2997,13 +3304,29 @@ impl Installer {
             .context("Failed to create secure temp directory")?;
 
         let mut computed_hashes = std::collections::HashMap::new();
+        let mut skipped_count = 0usize;
+        let password = match password {
+            Some(pwd) => sevenz_rust2::Password::from(pwd),
+            None => sevenz_rust2::Password::empty(),
+        };
 
-        // Extract with password if provided (must use for_each_entries for password support)
-        if let Some(pwd) = password {
-            let mut reader = sevenz_rust2::SevenZReader::open(archive, sevenz_rust2::Password::from(pwd))
-                .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
-            reader.for_each_entries(|entry, reader| {
-                let dest_path = temp_dir.path().join(entry.name());
+        let mut reader = sevenz_rust2::SevenZReader::open(archive, password)
+            .map_err(|e| anyhow::anyhow!("Failed to open 7z: {}", e))?;
+        reader
+            .for_each_entries(|entry, reader| {
+                let entry_path = match sanitize_path(Path::new(entry.name())) {
+                    Some(path) => path,
+                    None => {
+                        skipped_count += 1;
+                        logger::log_debug(
+                            &format!("Skipping 7z entry with unsafe path: {}", entry.name()),
+                            Some("installer"),
+                            None,
+                        );
+                        return Ok(true);
+                    }
+                };
+                let dest_path = temp_dir.path().join(&entry_path);
                 if entry.is_directory() {
                     std::fs::create_dir_all(&dest_path)?;
                 } else {
@@ -3027,19 +3350,21 @@ impl Installer {
 
                     // Store hash
                     let hash = format!("{:x}", hasher.finalize());
-                    let relative_path = entry.name().replace('\\', "/");
+                    let relative_path = entry_path.to_string_lossy().replace('\\', "/");
 
                     // Apply internal_root filter
                     if let Some(root) = internal_root {
                         let root_normalized = root.replace('\\', "/");
-                        if let Some(stripped) = relative_path.strip_prefix(&format!("{}/", root_normalized)) {
+                        if let Some(stripped) =
+                            relative_path.strip_prefix(&format!("{}/", root_normalized))
+                        {
                             computed_hashes.insert(
                                 stripped.to_string(),
                                 crate::models::FileHash {
                                     path: stripped.to_string(),
                                     hash,
                                     algorithm: crate::models::HashAlgorithm::Sha256,
-                                }
+                                },
                             );
                         }
                     } else {
@@ -3049,63 +3374,32 @@ impl Installer {
                                 path: relative_path,
                                 hash,
                                 algorithm: crate::models::HashAlgorithm::Sha256,
-                            }
+                            },
                         );
                     }
                 }
                 Ok(true)
-            }).map_err(|e| anyhow::anyhow!("Failed to extract 7z with password: {}", e))?;
-        } else {
-            // Use fast batch extraction for non-password archives
-            sevenz_rust2::decompress_file(archive, temp_dir.path())
-                .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
+            })
+            .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
 
-            // Compute hashes for all extracted files
-            use walkdir::WalkDir;
-            for entry in WalkDir::new(temp_dir.path()).follow_links(false) {
-                let entry = entry?;
-                if !entry.file_type().is_file() {
-                    continue;
-                }
-
-                let file_path = entry.path();
-                let relative = file_path.strip_prefix(temp_dir.path())?;
-                let relative_str = relative.to_string_lossy().replace('\\', "/");
-
-                // Compute SHA256
-                let hash = self.compute_file_sha256(file_path)?;
-
-                // Apply internal_root filter
-                if let Some(root) = internal_root {
-                    let root_normalized = root.replace('\\', "/");
-                    if let Some(stripped) = relative_str.strip_prefix(&format!("{}/", root_normalized)) {
-                        computed_hashes.insert(
-                            stripped.to_string(),
-                            crate::models::FileHash {
-                                path: stripped.to_string(),
-                                hash,
-                                algorithm: crate::models::HashAlgorithm::Sha256,
-                            }
-                        );
-                    }
-                } else {
-                    computed_hashes.insert(
-                        relative_str.clone(),
-                        crate::models::FileHash {
-                            path: relative_str,
-                            hash,
-                            algorithm: crate::models::HashAlgorithm::Sha256,
-                        }
-                    );
-                }
-            }
+        if skipped_count > 0 {
+            logger::log_info(
+                &format!(
+                    "Skipped {} unsafe 7z entries during extraction",
+                    skipped_count
+                ),
+                Some("installer"),
+            );
         }
 
         // Store computed hashes in task
         if !computed_hashes.is_empty() {
             logger::log_info(
-                &format!("Computed {} SHA256 hashes during 7z extraction", computed_hashes.len()),
-                Some("installer")
+                &format!(
+                    "Computed {} SHA256 hashes during 7z extraction",
+                    computed_hashes.len()
+                ),
+                Some("installer"),
             );
             task.file_hashes = Some(computed_hashes);
         }
@@ -3133,7 +3427,10 @@ impl Installer {
     /// Compute SHA256 hashes for all files in installed directory
     /// Used for 7z archives where hashes aren't available from metadata
     #[allow(dead_code)]
-    fn compute_installed_file_hashes(&self, target_dir: &Path) -> Result<HashMap<String, crate::models::FileHash>> {
+    fn compute_installed_file_hashes(
+        &self,
+        target_dir: &Path,
+    ) -> Result<HashMap<String, crate::models::FileHash>> {
         use walkdir::WalkDir;
 
         let mut hashes = HashMap::new();
@@ -3158,7 +3455,7 @@ impl Installer {
                     path: relative_str,
                     hash,
                     algorithm: crate::models::HashAlgorithm::Sha256,
-                }
+                },
             );
         }
 
@@ -3167,7 +3464,7 @@ impl Installer {
 
     /// Compute SHA256 hash of a file
     fn compute_file_sha256(&self, path: &Path) -> Result<String> {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         use std::io::Read;
 
         let mut file = fs::File::open(path)?;
@@ -3212,14 +3509,17 @@ impl Installer {
             .open_for_processing()
             .map_err(|e| anyhow::anyhow!("Failed to open RAR for extraction: {:?}", e))?;
 
-        while let Some(header) = arch.read_header()
+        while let Some(header) = arch
+            .read_header()
             .map_err(|e| anyhow::anyhow!("Failed to read RAR header: {:?}", e))?
         {
             arch = if header.entry().is_file() {
-                header.extract_with_base(temp_dir.path())
+                header
+                    .extract_with_base(temp_dir.path())
                     .map_err(|e| anyhow::anyhow!("Failed to extract RAR entry: {:?}", e))?
             } else {
-                header.skip()
+                header
+                    .skip()
                     .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
             };
         }
@@ -3255,7 +3555,7 @@ impl Installer {
 
         logger::log_info(
             &format!("Cleaning up task: {}", task.display_name),
-            Some("installer")
+            Some("installer"),
         );
 
         // For Navdata, we should NOT delete the entire Custom Data folder
@@ -3263,7 +3563,7 @@ impl Installer {
         if matches!(task.addon_type, AddonType::Navdata) {
             logger::log_info(
                 "Navdata cleanup skipped - Custom Data folder preserved",
-                Some("installer")
+                Some("installer"),
             );
             return Ok(());
         }
@@ -3274,7 +3574,7 @@ impl Installer {
 
         logger::log_info(
             &format!("Cleanup completed: {}", task.display_name),
-            Some("installer")
+            Some("installer"),
         );
 
         Ok(())
@@ -3306,8 +3606,11 @@ impl Installer {
 
         // Step 1: Extract/copy to temp directory
         logger::log_info(
-            &format!("Atomic install: Extracting to temp directory: {:?}", atomic.temp_dir()),
-            Some("installer")
+            &format!(
+                "Atomic install: Extracting to temp directory: {:?}",
+                atomic.temp_dir()
+            ),
+            Some("installer"),
         );
 
         self.install_content_with_progress(
@@ -3315,7 +3618,7 @@ impl Installer {
             atomic.temp_dir(),
             task.archive_internal_root.as_deref(),
             ctx,
-            password
+            password,
         )?;
 
         // Step 2: Perform atomic installation based on scenario
@@ -3332,7 +3635,7 @@ impl Installer {
 
         logger::log_info(
             "Atomic installation completed successfully",
-            Some("installer")
+            Some("installer"),
         );
 
         Ok(())
@@ -3350,13 +3653,18 @@ impl Installer {
         // Example: drag "PLUGIN/win_x64" but addon root is "PLUGIN"
         if source_path_buf.starts_with(original_path) && source_path_buf != original_path {
             logger::log_info(
-                &format!("Skipping deletion: detected addon root ({}) is a parent of input path ({})",
-                    source_path, original_input_path),
+                &format!(
+                    "Skipping deletion: detected addon root ({}) is a parent of input path ({})",
+                    source_path, original_input_path
+                ),
                 Some("installer"),
             );
 
             // Emit a notification to the frontend
-            if let Err(e) = self.app_handle.emit("source-deletion-skipped", original_input_path) {
+            if let Err(e) = self
+                .app_handle
+                .emit("source-deletion-skipped", original_input_path)
+            {
                 logger::log_error(
                     &format!("Failed to emit source-deletion-skipped event: {}", e),
                     Some("installer"),
@@ -3372,18 +3680,23 @@ impl Installer {
                 &format!("Deleting source file: {}", original_input_path),
                 Some("installer"),
             );
-            fs::remove_file(original_path)
-                .with_context(|| format!("Failed to delete source file: {}", original_input_path))?;
+            fs::remove_file(original_path).with_context(|| {
+                format!("Failed to delete source file: {}", original_input_path)
+            })?;
         } else if original_path.is_dir() {
             logger::log_info(
                 &format!("Deleting source directory: {}", original_input_path),
                 Some("installer"),
             );
-            remove_dir_all_robust(original_path)
-                .with_context(|| format!("Failed to delete source directory: {}", original_input_path))?;
+            remove_dir_all_robust(original_path).with_context(|| {
+                format!("Failed to delete source directory: {}", original_input_path)
+            })?;
         } else {
             logger::log_error(
-                &format!("Source path does not exist or is not accessible: {}", original_input_path),
+                &format!(
+                    "Source path does not exist or is not accessible: {}",
+                    original_input_path
+                ),
                 Some("installer"),
             );
         }

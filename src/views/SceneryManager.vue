@@ -62,6 +62,15 @@ const filteredEntries = computed(() => {
   return allEntries.filter(entry => entry.missingLibraries && entry.missingLibraries.length > 0)
 })
 
+const globalIndexMap = computed(() => {
+  const map = new Map<string, number>()
+  const allEntries = categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
+  allEntries.forEach((entry, index) => {
+    map.set(entry.folderName, index)
+  })
+  return map
+})
+
 function isGroupExpanded(category: string): boolean {
   return !sceneryStore.collapsedGroups[category] || !!searchExpandedGroups.value[category]
 }
@@ -185,10 +194,7 @@ async function handleDragEnd() {
 
 // Get global index for an entry (used for move up/down button state)
 function getGlobalIndex(folderName: string): number {
-  // Flatten all groups to get the current global order
-  const allEntries = categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
-  const index = allEntries.findIndex(e => e.folderName === folderName)
-  return index
+  return globalIndexMap.value.get(folderName) ?? -1
 }
 
 // Handle cross-group drag (category change)

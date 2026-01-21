@@ -1,9 +1,9 @@
 use anyhow::Result;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use sha2::{Sha256, Digest};
 
 use crate::models::{FileHash, HashAlgorithm, InstallTask};
 
@@ -23,30 +23,28 @@ impl HashCollector {
             self.collect_directory_hashes(source)
         } else if source.is_file() {
             // Archive: extract hashes based on format
-            let ext = source.extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("");
+            let ext = source.extension().and_then(|s| s.to_str()).unwrap_or("");
 
             match ext {
                 "zip" => self.collect_zip_hashes(
                     source,
                     task.archive_internal_root.as_deref(),
                     task.extraction_chain.as_ref(),
-                    task.password.as_deref()
+                    task.password.as_deref(),
                 ),
                 "7z" => {
                     // 7z: Return empty map, compute during extraction
                     crate::logger::log_info(
                         "7z archives: hashes will be computed during extraction",
-                        Some("hash_collector")
+                        Some("hash_collector"),
                     );
                     Ok(HashMap::new())
-                },
+                }
                 "rar" => self.collect_rar_hashes(
                     source,
                     task.archive_internal_root.as_deref(),
                     task.extraction_chain.as_ref(),
-                    task.password.as_deref()
+                    task.password.as_deref(),
                 ),
                 _ => Ok(HashMap::new()),
             }
@@ -77,7 +75,10 @@ impl HashCollector {
             // For nested archives, use final_internal_root
             // Note: This only works if the nested structure is flat (no actual nesting)
             // True nested ZIPs (outer.zip containing inner.zip) are not fully supported
-            chain.final_internal_root.as_ref().map(|s| s.replace('\\', "/"))
+            chain
+                .final_internal_root
+                .as_ref()
+                .map(|s| s.replace('\\', "/"))
         } else {
             // For simple archives, use internal_root
             internal_root.map(|s| s.replace('\\', "/"))
@@ -114,13 +115,13 @@ impl HashCollector {
                     path: relative_path.to_string(),
                     hash: format!("{:08x}", crc32),
                     algorithm: HashAlgorithm::Crc32,
-                }
+                },
             );
         }
 
         crate::logger::log_info(
             &format!("Collected {} CRC32 hashes from ZIP", hashes.len()),
-            Some("hash_collector")
+            Some("hash_collector"),
         );
 
         Ok(hashes)
@@ -140,19 +141,16 @@ impl HashCollector {
         // We'll compute hashes during extraction instead
         crate::logger::log_info(
             "RAR archives: hashes will be computed during extraction (unrar limitation)",
-            Some("hash_collector")
+            Some("hash_collector"),
         );
         Ok(HashMap::new())
     }
 
     /// Collect SHA256 hashes from directory
     /// Uses parallel processing for better performance on large directories
-    fn collect_directory_hashes(
-        &self,
-        source_dir: &Path,
-    ) -> Result<HashMap<String, FileHash>> {
-        use walkdir::WalkDir;
+    fn collect_directory_hashes(&self, source_dir: &Path) -> Result<HashMap<String, FileHash>> {
         use rayon::prelude::*;
+        use walkdir::WalkDir;
 
         // Collect all file paths first
         let file_paths: Vec<(PathBuf, String)> = WalkDir::new(source_dir)
@@ -188,13 +186,13 @@ impl HashCollector {
                             path: relative_str,
                             hash,
                             algorithm: HashAlgorithm::Sha256,
-                        }
+                        },
                     );
                 }
                 Err(e) => {
                     crate::logger::log_error(
                         &format!("Failed to compute hash for {}: {}", relative_str, e),
-                        Some("hash_collector")
+                        Some("hash_collector"),
                     );
                     // Continue with other files instead of failing completely
                 }
@@ -203,7 +201,7 @@ impl HashCollector {
 
         crate::logger::log_info(
             &format!("Collected {} SHA256 hashes from directory", hashes.len()),
-            Some("hash_collector")
+            Some("hash_collector"),
         );
 
         Ok(hashes)

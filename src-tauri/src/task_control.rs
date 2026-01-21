@@ -1,6 +1,6 @@
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::path::PathBuf;
 
 /// Task control state for managing installation cancellation and skipping
 #[derive(Clone)]
