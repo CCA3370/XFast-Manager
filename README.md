@@ -1,10 +1,10 @@
 # XFast Manager
 
-**一键安装 X-Plane 插件的现代化工具 | Modern X-Plane Addon Installer**
+**一键安装 X-Plane 插件的现代化工具 | Modern X-Plane Addon Auto Manager**
 
 XFast Manager 是一款专为 X-Plane 飞行模拟器设计的智能插件安装工具，支持 Windows、macOS 和 Linux 平台。告别手动解压和复制文件的繁琐操作，只需拖放即可完成安装。
 
-XFast Manager is an intelligent addon installer designed for X-Plane flight simulator, supporting Windows, macOS, and Linux. Say goodbye to manual extraction and file copying - just drag and drop to install.
+XFast Manager is an intelligent Addon Auto Manager designed for X-Plane flight simulator, supporting Windows, macOS, and Linux. Say goodbye to manual extraction and file copying - just drag and drop to install.
 
 ---
 

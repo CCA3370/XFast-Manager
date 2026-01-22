@@ -1,7 +1,7 @@
 {
   "name": "xfast-manager",
-  "version": "0.5.0",
-  "description": "XFast Manager - X-Plane Addon Installer",
+  "version": "0.6.0",
+  "description": "XFast Manager - X-Plane Addon Auto Manager",
   "type": "module",
   "scripts": {
     "preinstall": "node scripts/install-rollup-native.js",

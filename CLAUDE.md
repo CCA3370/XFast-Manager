@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-XFast Manager is a cross-platform X-Plane addon installer built with Tauri 2, Rust, and Vue 3. It provides intelligent detection and installation of Aircraft, Scenery, Plugins, and Navdata addons through drag-and-drop or Windows context menu integration.
+XFast Manager is a cross-platform X-Plane Addon Auto Manager built with Tauri 2, Rust, and Vue 3. It provides intelligent detection and installation of Aircraft, Scenery, Plugins, and Navdata addons through drag-and-drop or Windows context menu integration.
 
 ## Prerequisites
 

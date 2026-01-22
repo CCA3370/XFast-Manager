@@ -5,12 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-01-22
+
+### Added
+
+#### First-Time User Onboarding
+- **Guided Setup Wizard** - New onboarding experience for first-time users
+  - Step-by-step configuration of X-Plane path
+  - Installation preferences setup (addon type toggles)
+  - Context menu registration option (Windows)
+  - Auto-sort scenery preference
+  - Delete source after install preference
+  - Worry-Free installation mode preference
+  - Clean, modern UI with smooth transitions
+
+#### Scenery Index Improvements
+- **Index Status Detection** - Automatically detects if scenery index needs to be created
+  - Shows prompt when index doesn't exist
+  - One-click index creation from home page
+  - Progress feedback during index building
 
 ### Changed
 
-- Upgraded sevenz-rust2 from 0.10 to 0.20 for improved 7z archive handling with safer Rust implementation
-- Upgraded unrar from 0.5 to 0.5.8 for bug fixes and improved RAR archive handling
+- **Project Rebranding** - Renamed from "XFastInstall" to "XFast Manager"
+  - Updated all references throughout the application
+  - New application identifier: com.xfastmanager.app
+  - Updated window title and descriptions
+
+- **Dependency Upgrades**
+  - Upgraded sevenz-rust2 from 0.10 to 0.20 for improved 7z archive handling with safer Rust implementation
+  - Upgraded unrar from 0.5 to 0.5.8 for bug fixes and improved RAR archive handling
+
+- **Code Quality Improvements**
+  - Refactored scenery packs manager for better maintainability
+  - Streamlined entry management and sorting mechanism
+  - Enhanced error handling in updater and task control
+  - Performance optimizations in multiple components
 
 ## [0.5.0] - 2026-01-21
 
@@ -339,7 +369,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🎉 Initial Release
 
-XFast Manager is a modern, intelligent X-Plane addon installer that makes installing aircraft, scenery, plugins, and navigation data effortless.
+XFast Manager is a modern, intelligent X-Plane Addon Auto Manager that makes installing aircraft, scenery, plugins, and navigation data effortless.
 
 ---
 
