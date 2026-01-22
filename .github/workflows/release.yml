@@ -170,7 +170,7 @@ jobs:
 
       - name: Build Tauri
         run: |
-          echo "🔨 Building XFastInstall ${{ needs.prepare-release.outputs.version }}..."
+          echo "🔨 Building XFast-Manager ${{ needs.prepare-release.outputs.version }}..."
           npm run tauri:build
 
       - name: Rename and prepare artifacts
@@ -178,21 +178,21 @@ jobs:
         run: |
           cd target/release
           $version = "${{ needs.prepare-release.outputs.version }}"
-          $exeName = "XFastInstall-$version-windows-portable.exe"
-          $zipName = "XFastInstall-$version-windows-portable.zip"
-          
+          $exeName = "XFast-Manager-$version-windows-portable.exe"
+          $zipName = "XFast-Manager-$version-windows-portable.zip"
+
           # Rename exe
-          Rename-Item -Path "xfastinstall.exe" -NewName $exeName
-          
+          Rename-Item -Path "xfastmanager.exe" -NewName $exeName
+
           # Create zip containing the exe
           Compress-Archive -Path $exeName -DestinationPath $zipName -CompressionLevel Optimal
-          
+
           # Create checksums file (for zip)
           $hash = (Get-FileHash -Path $zipName -Algorithm SHA256).Hash.ToLower()
           "$hash  $zipName" | Out-File -FilePath "checksums.txt" -Encoding utf8
-          
+
           Write-Host "✅ Artifacts prepared:"
-          Get-ChildItem -Name "XFastInstall-*.zip"
+          Get-ChildItem -Name "XFast-Manager-*.zip"
           Get-Content "checksums.txt"
 
       - name: Create Git Tag
@@ -208,12 +208,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag }}
-          name: XFastInstall ${{ needs.prepare-release.outputs.tag }}
+          name: XFast-Manager ${{ needs.prepare-release.outputs.tag }}
           body: ${{ needs.prepare-release.outputs.changelog }}
           draft: false
           prerelease: ${{ needs.prepare-release.outputs.is_prerelease == 'true' }}
           files: |
-            target/release/XFastInstall-${{ needs.prepare-release.outputs.version }}-windows-portable.zip
+            target/release/XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-portable.zip
             target/release/checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

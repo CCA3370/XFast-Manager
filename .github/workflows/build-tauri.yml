@@ -159,8 +159,8 @@ jobs:
           if [ -d "target/release/build" ]; then
             echo "✅ Build artifacts: $(ls target/release/build | wc -l) crates"
           fi
-          if [ -f "target/release/xfastinstall.exe" ]; then
-            echo "✅ Binary size: $(du -h target/release/xfastinstall.exe | cut -f1)"
+          if [ -f "target/release/xfastmanager.exe" ]; then
+            echo "✅ Binary size: $(du -h target/release/xfastmanager.exe | cut -f1)"
           fi
 
       - name: Build Tauri (Standard)
@@ -170,14 +170,14 @@ jobs:
           npm run tauri:build
 
       - name: Rename EXE
-        run: Rename-Item -Path "target/release/xfastinstall.exe" -NewName "XFastInstall.exe" -Force
+        run: Rename-Item -Path "target/release/xfastmanager.exe" -NewName "XFast-Manager.exe" -Force
 
       - name: Upload Fast Build
         if: steps.check_fast.outputs.is_fast == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: XFastInstall-windows-fast
-          path: 'target/release/XFastInstall.exe'
+          name: XFast-Manager-windows-fast
+          path: 'target/release/XFast-Manager.exe'
           if-no-files-found: error
           retention-days: 7
 
@@ -185,8 +185,8 @@ jobs:
         if: steps.check_fast.outputs.is_fast == 'false'
         uses: actions/upload-artifact@v4
         with:
-          name: XFastInstall-windows-portable
-          path: 'target/release/XFastInstall.exe'
+          name: XFast-Manager-windows-portable
+          path: 'target/release/XFast-Manager.exe'
           if-no-files-found: error
 
 

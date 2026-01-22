@@ -1,4 +1,4 @@
-# Copilot 指南（XFastInstall-Tauri）
+# Copilot 指南（XFast-Manager）
 
 ## 大图景
 - 本项目是 **Tauri 2 + Rust** 后端（`src-tauri/src/`）+ **Vue 3 + TS** 前端（`src/`，Pinia + vue-i18n + Tailwind）的跨平台 X-Plane 插件安装器。
