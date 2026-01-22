@@ -13,7 +13,6 @@ use std::path::Path;
 use std::time::SystemTime;
 use walkdir::WalkDir;
 
-const MAX_SCAN_DEPTH: usize = 15;
 const MAX_PLUGIN_SCAN_DEPTH: usize = 5;
 
 /// Check if folder contains plugins (.xpl files)
@@ -45,7 +44,7 @@ fn has_plugins(scenery_path: &Path) -> bool {
 }
 
 /// Main entry point for scenery classification
-pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<SceneryPackageInfo> {
+pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<SceneryPackageInfo> {
     let folder_name = scenery_path
         .file_name()
         .and_then(|s| s.to_str())
@@ -474,12 +473,8 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
 
         let (required_libraries, missing_libraries) = if let Some(ref header) = dsf_header_opt {
             let required = extract_required_libraries(&header.object_references);
-            let missing = check_missing_libraries_from_refs(
-                &header.object_references,
-                xplane_path,
-                scenery_path,
-            )?;
-            (required, missing)
+            // Missing libraries will be calculated later in update_missing_libraries()
+            (required, Vec::new())
         } else {
             (Vec::new(), Vec::new())
         };
@@ -528,12 +523,8 @@ pub fn classify_scenery(scenery_path: &Path, xplane_path: &Path) -> Result<Scene
         );
         let (required_libraries, missing_libraries) = if let Some(ref header) = dsf_header_opt {
             let required = extract_required_libraries(&header.object_references);
-            let missing = check_missing_libraries_from_refs(
-                &header.object_references,
-                xplane_path,
-                scenery_path,
-            )?;
-            (required, missing)
+            // Missing libraries will be calculated later in update_missing_libraries()
+            (required, Vec::new())
         } else {
             (Vec::new(), Vec::new())
         };
@@ -831,11 +822,7 @@ pub fn parse_dsf_header(dsf_path: &Path) -> Result<DsfHeader> {
             .get("sim/overlay")
             .map(|v| v == "1")
             .unwrap_or(false),
-        airport_icao: properties.get("sim/filter/aptid").cloned(),
         creation_agent: properties.get("sim/creation_agent").cloned(),
-        has_exclusions: properties.keys().any(|k| k.starts_with("sim/exclude_")),
-        requires_agpoint: properties.contains_key("sim/require_agpoint"),
-        requires_object: properties.contains_key("sim/require_object"),
         object_references,
         terrain_references,
     })
@@ -1243,83 +1230,6 @@ fn extract_library_name(obj_path: &str) -> Option<String> {
 
     // Assume it's a library reference
     Some(first_component.to_string())
-}
-
-/// Check for missing libraries from object references
-fn check_missing_libraries_from_refs(
-    object_refs: &[String],
-    xplane_path: &Path,
-    scenery_path: &Path,
-) -> Result<Vec<String>> {
-    let mut missing = Vec::new();
-
-    // Get the current scenery folder name to exclude self-references
-    let current_folder_name = scenery_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
-
-    crate::log_debug!(
-        &format!("  Checking libraries for scenery: {}", current_folder_name),
-        "scenery_classifier"
-    );
-
-    // Build library index from all library.txt files
-    let library_index = crate::scenery_index::build_library_index(xplane_path);
-
-    let required = extract_required_libraries(object_refs);
-
-    crate::log_debug!(
-        &format!("  Required libraries: {:?}", required),
-        "scenery_classifier"
-    );
-
-    for lib_name in required {
-        // Skip if this is a reference to the current scenery package itself (case-insensitive)
-        if lib_name.eq_ignore_ascii_case(current_folder_name) {
-            crate::log_debug!(
-                &format!(
-                    "  ✓ Skipping self-reference: {} (matches current folder: {})",
-                    lib_name, current_folder_name
-                ),
-                "scenery_classifier"
-            );
-            continue;
-        }
-
-        // Check if this is a subdirectory within the current scenery package
-        let subdir_path = scenery_path.join(&lib_name);
-        if subdir_path.exists() && subdir_path.is_dir() {
-            crate::log_debug!(
-                &format!(
-                    "  ✓ Skipping internal subdirectory: {} (exists in current package)",
-                    lib_name
-                ),
-                "scenery_classifier"
-            );
-            continue;
-        }
-
-        // Check if this library name is in the library index
-        if let Some(folder_name) = library_index.get(&lib_name) {
-            crate::log_debug!(
-                &format!(
-                    "  ✓ Found library '{}' in folder '{}'",
-                    lib_name, folder_name
-                ),
-                "scenery_classifier"
-            );
-        } else {
-            // Library not found in index, mark as missing
-            crate::log_debug!(
-                &format!("  ✗ Missing library: {}", lib_name),
-                "scenery_classifier"
-            );
-            missing.push(lib_name);
-        }
-    }
-
-    Ok(missing)
 }
 
 /// Get directory modification time

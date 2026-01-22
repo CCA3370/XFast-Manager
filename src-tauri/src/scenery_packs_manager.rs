@@ -79,7 +79,11 @@ impl SceneryPacksManager {
 
         let timestamp = Local::now().format("%Y%m%d_%H%M%S");
         let backup_name = format!("scenery_packs.ini.backup.{}", timestamp);
-        let backup_path = self.ini_path.parent().unwrap().join(backup_name);
+        let backup_path = self
+            .ini_path
+            .parent()
+            .ok_or_else(|| anyhow!("Invalid ini path: no parent directory"))?
+            .join(backup_name);
 
         fs::rename(&self.ini_path, &backup_path)?;
         logger::log_info(
@@ -88,24 +92,6 @@ impl SceneryPacksManager {
         );
 
         Ok(backup_path)
-    }
-
-    /// Auto-sort scenery_packs.ini
-    pub fn auto_sort(&self) -> Result<()> {
-        // Load or rebuild index
-        let index_manager = SceneryIndexManager::new(&self.xplane_path);
-        let index = index_manager.update_index()?;
-
-        if index.packages.is_empty() {
-            logger::log_info(
-                "No scenery packages in index, nothing to sort",
-                Some("scenery_packs"),
-            );
-            return Ok(());
-        }
-
-        let _ = index_manager.reset_sort_order()?;
-        self.auto_sort_from_index()
     }
 
     /// Add a new entry to scenery_packs.ini (used after installation)
@@ -120,20 +106,6 @@ impl SceneryPacksManager {
 
         let _ = index_manager.reset_sort_order()?;
         self.auto_sort_from_index()
-    }
-
-    /// Remove an entry from scenery_packs.ini
-    pub fn remove_entry(&self, folder_name: &str) -> Result<bool> {
-        let index_manager = SceneryIndexManager::new(&self.xplane_path);
-        let index = index_manager.load_index()?;
-
-        if !index.packages.contains_key(folder_name) {
-            return Ok(false);
-        }
-
-        index_manager.remove_package(folder_name)?;
-        self.auto_sort_from_index()?;
-        Ok(true)
     }
 
     /// Ensure all installed scenery is in scenery_packs.ini
@@ -159,20 +131,6 @@ impl SceneryPacksManager {
         }
 
         Ok(added_count)
-    }
-
-    /// Get entry count by category
-    pub fn get_category_counts(&self) -> Result<std::collections::HashMap<String, usize>> {
-        let index_manager = SceneryIndexManager::new(&self.xplane_path);
-        let index = index_manager.load_index()?;
-        let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-
-        for info in index.packages.values() {
-            let category = format!("{:?}", info.category);
-            *counts.entry(category).or_insert(0) += 1;
-        }
-
-        Ok(counts)
     }
 
     /// Sort scenery_packs.ini based entirely on index sort_order

@@ -38,7 +38,7 @@ impl UpdateChecker {
     pub fn new() -> Self {
         Self {
             repo_owner: "CCA3370".to_string(),
-            repo_name: "XFast-Manager-Tauri".to_string(),
+            repo_name: "XFast-Manager".to_string(),
             cache_duration: Duration::from_secs(24 * 60 * 60), // 24 hours
         }
     }
@@ -253,10 +253,10 @@ impl UpdateChecker {
             Some(last) => {
                 let now = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
-                    .unwrap()
+                    .unwrap_or_default()
                     .as_secs();
 
-                let elapsed = Duration::from_secs(now - last);
+                let elapsed = Duration::from_secs(now.saturating_sub(last));
                 elapsed >= self.cache_duration
             }
             None => true, // Never checked before
@@ -281,7 +281,7 @@ impl UpdateChecker {
     fn update_last_check_time(&self) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
 
         if let Some(app_dir) = dirs::data_local_dir() {

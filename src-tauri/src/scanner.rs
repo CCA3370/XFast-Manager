@@ -487,7 +487,7 @@ impl Scanner {
             let encrypt_check_start = std::time::Instant::now();
             crate::log_debug!("[TIMING] 7z encryption check started", "scanner_timing");
 
-            match sevenz_rust2::SevenZReader::open(archive_path, sevenz_rust2::Password::empty()) {
+            match sevenz_rust2::ArchiveReader::open(archive_path, sevenz_rust2::Password::empty()) {
                 Ok(mut reader) => {
                     let mut encryption_detected = false;
                     let _ = reader.for_each_entries(|entry, reader| {
@@ -771,7 +771,7 @@ impl Scanner {
         // Extract using 7z library
         if let Some(pwd) = parent_password {
             let mut reader =
-                sevenz_rust2::SevenZReader::open(parent_path, sevenz_rust2::Password::from(pwd))
+                sevenz_rust2::ArchiveReader::open(parent_path, sevenz_rust2::Password::from(pwd))
                     .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
             reader
                 .for_each_entries(|entry, reader| {
@@ -1251,7 +1251,7 @@ impl Scanner {
         // Only do the slow encryption check if no password provided and archive might be encrypted
         if password.is_none() && has_encrypted_headers {
             // Try a quick open test - if it fails with password error, we know it's encrypted
-            match sevenz_rust2::SevenZReader::open(archive_path, sevenz_rust2::Password::empty()) {
+            match sevenz_rust2::ArchiveReader::open(archive_path, sevenz_rust2::Password::empty()) {
                 Ok(mut reader) => {
                     // Try to read first non-directory entry
                     let mut encryption_detected = false;
@@ -1410,7 +1410,7 @@ impl Scanner {
         // Extract to temp (with password if provided)
         if let Some(pwd) = password {
             let mut reader =
-                sevenz_rust2::SevenZReader::open(archive_path, sevenz_rust2::Password::from(pwd))
+                sevenz_rust2::ArchiveReader::open(archive_path, sevenz_rust2::Password::from(pwd))
                     .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
             reader
                 .for_each_entries(|entry, reader| {

@@ -338,11 +338,7 @@ pub struct SceneryPackageInfo {
 #[derive(Debug, Clone)]
 pub struct DsfHeader {
     pub is_overlay: bool,
-    pub airport_icao: Option<String>,
     pub creation_agent: Option<String>,
-    pub has_exclusions: bool,
-    pub requires_agpoint: bool,
-    pub requires_object: bool,
     pub object_references: Vec<String>,
     pub terrain_references: Vec<String>,
 }

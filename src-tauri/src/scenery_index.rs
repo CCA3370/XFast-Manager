@@ -241,16 +241,6 @@ impl SceneryIndexManager {
         Ok(())
     }
 
-    /// Remove a package from the index
-    pub fn remove_package(&self, folder_name: &str) -> Result<()> {
-        let mut index = self.load_index()?;
-        if index.packages.remove(folder_name).is_some() {
-            index.last_updated = SystemTime::now();
-            self.save_index(&index)?;
-        }
-        Ok(())
-    }
-
     /// Rebuild entire index by scanning all scenery packages
     pub fn rebuild_index(&self) -> Result<SceneryIndex> {
         let custom_scenery_path = self.xplane_path.join("Custom Scenery");
@@ -575,41 +565,6 @@ impl SceneryIndexManager {
         Ok(index)
     }
 
-    /// Clean up stale entries (deleted packages)
-    pub fn cleanup_stale_entries(&self) -> Result<usize> {
-        let custom_scenery_path = self.xplane_path.join("Custom Scenery");
-        let mut index = self.load_index()?;
-        let initial_count = index.packages.len();
-
-        // Get current folders (including symlinks)
-        let current_folders: std::collections::HashSet<String> =
-            fs::read_dir(&custom_scenery_path)?
-                .filter_map(|e| e.ok())
-                .filter(|e| {
-                    // Use metadata() to follow symlinks
-                    e.path().metadata().map(|m| m.is_dir()).unwrap_or(false)
-                })
-                .filter_map(|e| e.file_name().to_str().map(String::from))
-                .collect();
-
-        // Remove entries not in current folders
-        index
-            .packages
-            .retain(|name, _| current_folders.contains(name));
-
-        let removed_count = initial_count - index.packages.len();
-        if removed_count > 0 {
-            index.last_updated = SystemTime::now();
-            self.save_index(&index)?;
-            logger::log_info(
-                &format!("Cleaned up {} stale index entries", removed_count),
-                Some("scenery_index"),
-            );
-        }
-
-        Ok(removed_count)
-    }
-
     /// Check if a package needs re-classification
     pub fn is_package_stale(&self, folder_name: &str, folder_path: &Path) -> Result<bool> {
         let index = self.load_index()?;
@@ -793,23 +748,6 @@ impl SceneryIndexManager {
         Ok(())
     }
 
-    /// Update sort_order for all packages based on a sorted list of folder names
-    /// This is used after auto-sort to sync the index with the new order
-    pub fn update_sort_order_from_list(&self, sorted_folder_names: &[String]) -> Result<()> {
-        let mut index = self.load_index()?;
-
-        for (new_order, folder_name) in sorted_folder_names.iter().enumerate() {
-            if let Some(info) = index.packages.get_mut(folder_name) {
-                info.sort_order = new_order as u32;
-            }
-        }
-
-        index.last_updated = SystemTime::now();
-        self.save_index(&index)?;
-
-        Ok(())
-    }
-
     /// Reset sort_order for all packages based on category priority
     /// This recalculates the sort order using the classification algorithm
     /// without writing to the ini file
@@ -820,13 +758,6 @@ impl SceneryIndexManager {
         if index.packages.is_empty() {
             return Ok(false);
         }
-
-        // Store original sort_order for comparison
-        let original_order: std::collections::HashMap<String, u32> = index
-            .packages
-            .iter()
-            .map(|(name, info)| (name.clone(), info.sort_order))
-            .collect();
 
         // Promote SAM libraries to FixedHighPriority before sorting
         let mut category_changed = false;
@@ -1089,59 +1020,6 @@ pub fn build_library_index_from_scenery_index(index: &SceneryIndex) -> HashMap<S
             "Built library index from scenery index with {} entries",
             library_index.len()
         ),
-        Some("library_index"),
-    );
-
-    library_index
-}
-
-/// Build a library name index for all scenery packages in Custom Scenery
-/// Returns a HashMap mapping library names to folder names
-pub fn build_library_index(xplane_path: &Path) -> HashMap<String, String> {
-    let mut library_index: HashMap<String, String> = HashMap::new();
-    let custom_scenery_path = xplane_path.join("Custom Scenery");
-
-    if !custom_scenery_path.exists() {
-        return library_index;
-    }
-
-    // Scan all folders in Custom Scenery
-    if let Ok(entries) = fs::read_dir(&custom_scenery_path) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-
-            // Check if it's a directory
-            if path.metadata().map(|m| m.is_dir()).unwrap_or(false) {
-                let folder_name = match path.file_name().and_then(|s| s.to_str()) {
-                    Some(name) => name.to_string(),
-                    None => continue,
-                };
-
-                // Check for library.txt
-                let library_txt = path.join("library.txt");
-                if library_txt.exists() {
-                    // Parse library.txt and get all exported library names
-                    let exported_names = parse_library_exports(&library_txt);
-
-                    logger::log_info(
-                        &format!(
-                            "Library folder '{}' exports: {:?}",
-                            folder_name, exported_names
-                        ),
-                        Some("library_index"),
-                    );
-
-                    // Map each exported library name to this folder
-                    for lib_name in exported_names {
-                        library_index.insert(lib_name, folder_name.clone());
-                    }
-                }
-            }
-        }
-    }
-
-    logger::log_info(
-        &format!("Built library index with {} entries", library_index.len()),
         Some("library_index"),
     );
 

@@ -733,4 +733,12 @@ async function finishOnboarding() {
   opacity: 0;
   transform: translateX(24px);
 }
+
+/* Prevent button text selection */
+button {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
 </style>

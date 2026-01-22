@@ -1348,7 +1348,7 @@ impl Installer {
         // Extract entire archive to temp
         if let Some(pwd) = password {
             let mut reader =
-                sevenz_rust2::SevenZReader::open(archive_path, sevenz_rust2::Password::from(pwd))
+                sevenz_rust2::ArchiveReader::open(archive_path, sevenz_rust2::Password::from(pwd))
                     .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
             reader
                 .for_each_entries(|entry, reader| {
@@ -1379,7 +1379,7 @@ impl Installer {
                 .map_err(|e| anyhow::anyhow!("7z extraction failed: {}", e))?;
         } else {
             let mut reader =
-                sevenz_rust2::SevenZReader::open(archive_path, sevenz_rust2::Password::empty())
+                sevenz_rust2::ArchiveReader::open(archive_path, sevenz_rust2::Password::empty())
                     .map_err(|e| anyhow::anyhow!("Failed to open 7z: {}", e))?;
             reader
                 .for_each_entries(|entry, reader| {
@@ -3212,10 +3212,10 @@ impl Installer {
 
         // Open archive with or without password
         let mut reader = if let Some(pwd) = password {
-            sevenz_rust2::SevenZReader::open(archive, sevenz_rust2::Password::from(pwd))
+            sevenz_rust2::ArchiveReader::open(archive, sevenz_rust2::Password::from(pwd))
                 .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?
         } else {
-            sevenz_rust2::SevenZReader::open(archive, sevenz_rust2::Password::empty())
+            sevenz_rust2::ArchiveReader::open(archive, sevenz_rust2::Password::empty())
                 .map_err(|e| anyhow::anyhow!("Failed to open 7z: {}", e))?
         };
 
@@ -3310,7 +3310,7 @@ impl Installer {
             None => sevenz_rust2::Password::empty(),
         };
 
-        let mut reader = sevenz_rust2::SevenZReader::open(archive, password)
+        let mut reader = sevenz_rust2::ArchiveReader::open(archive, password)
             .map_err(|e| anyhow::anyhow!("Failed to open 7z: {}", e))?;
         reader
             .for_each_entries(|entry, reader| {

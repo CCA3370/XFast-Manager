@@ -323,7 +323,6 @@ const MIN_PASSWORD_ATTEMPT_DELAY_MS = 1000 // 1 second between attempts
 // Tauri drag-drop event unsubscribe function
 let unlistenDragDrop: UnlistenFn | null = null
 let unlistenProgress: UnlistenFn | null = null
-let unlistenCliArgs: UnlistenFn | null = null
 let unlistenDeletionSkipped: UnlistenFn | null = null
 
 // Watch for pending CLI args changes
@@ -411,7 +410,7 @@ onMounted(async () => {
 
         // If showing completion, close it and start new analysis
         if (store.showCompletion) {
-          store.closeCompletion()
+          store.clearInstallResult()
         }
 
         const paths = event.payload.paths
@@ -435,20 +434,6 @@ onMounted(async () => {
     console.log('Progress listener registered')
   } catch (error) {
     console.error('Failed to setup progress listener:', error)
-  }
-
-  // Listen for CLI args events (when app receives new files while running)
-  try {
-    unlistenCliArgs = await listen<string[]>('cli-args', async (event) => {
-      if (event.payload && event.payload.length > 0) {
-        console.log('CLI args event in Home.vue:', event.payload)
-        // Use batch processing to handle multiple file selections
-        store.addCliArgsToBatch(event.payload)
-      }
-    })
-    console.log('CLI args listener registered in Home.vue')
-  } catch (error) {
-    console.error('Failed to setup CLI args listener:', error)
   }
 
   // Listen for source deletion skipped events
@@ -478,71 +463,10 @@ onBeforeUnmount(() => {
   if (unlistenProgress) {
     unlistenProgress()
   }
-  if (unlistenCliArgs) {
-    unlistenCliArgs()
-  }
   if (unlistenDeletionSkipped) {
     unlistenDeletionSkipped()
   }
 })
-
-// DEV: Test function to simulate installation results
-function testCompletionView(scenario: 'all-success' | 'partial-failure' | 'all-failed') {
-  const mockResult: InstallResult = {
-    totalTasks: 0,
-    successfulTasks: 0,
-    failedTasks: 0,
-    taskResults: []
-  }
-
-  if (scenario === 'all-success') {
-    mockResult.totalTasks = 5
-    mockResult.successfulTasks = 5
-    mockResult.failedTasks = 0
-    mockResult.taskResults = [
-      { taskId: '1', taskName: 'Aircraft A320', success: true },
-      { taskId: '2', taskName: 'Scenery KSFO', success: true },
-      { taskId: '3', taskName: 'Plugin AutoGate', success: true },
-      { taskId: '4', taskName: 'Livery Pack', success: true },
-      { taskId: '5', taskName: 'Navdata Cycle 2401', success: true }
-    ]
-  } else if (scenario === 'partial-failure') {
-    mockResult.totalTasks = 8
-    mockResult.successfulTasks = 5
-    mockResult.failedTasks = 3
-    mockResult.taskResults = [
-      { taskId: '1', taskName: 'Aircraft A320', success: true },
-      { taskId: '2', taskName: 'Scenery KSFO', success: true },
-      { taskId: '3', taskName: 'Plugin AutoGate', success: false, errorMessage: 'Password required for encrypted file' },
-      { taskId: '4', taskName: 'Livery Pack', success: true },
-      { taskId: '5', taskName: 'Navdata Cycle 2401', success: false, errorMessage: 'Failed to extract: compression ratio exceeded safety limit' },
-      { taskId: '6', taskName: 'Aircraft B737', success: true },
-      { taskId: '7', taskName: 'Scenery EGLL', success: false, errorMessage: 'Disk space insufficient: need 2.5GB, available 1.2GB' },
-      { taskId: '8', taskName: 'Plugin XPUIPC', success: true }
-    ]
-  } else if (scenario === 'all-failed') {
-    mockResult.totalTasks = 6
-    mockResult.successfulTasks = 0
-    mockResult.failedTasks = 6
-    mockResult.taskResults = [
-      { taskId: '1', taskName: 'Aircraft A320', success: false, errorMessage: 'Password required for encrypted file' },
-      { taskId: '2', taskName: 'Scenery KSFO', success: false, errorMessage: 'Failed to create directory: permission denied' },
-      { taskId: '3', taskName: 'Plugin AutoGate', success: false, errorMessage: 'Unsupported archive format: .rar' },
-      { taskId: '4', taskName: 'Livery Pack', success: false, errorMessage: 'Verification failed: hash mismatch detected' },
-      { taskId: '5', taskName: 'Navdata Cycle 2401', success: false, errorMessage: 'File not found: cycle.json missing in archive' },
-      { taskId: '6', taskName: 'Aircraft B737', success: false, errorMessage: 'Failed to extract: corrupt archive detected' }
-    ]
-  }
-
-  store.setInstallResult(mockResult)
-  store.isInstalling = false
-  progressStore.reset()
-}
-
-// DEV: Expose test function to window for console access
-if (import.meta.env.DEV) {
-  (window as any).testCompletion = testCompletionView
-}
 
 async function analyzeFiles(paths: string[], passwords?: Record<string, string>) {
   // Log incoming files
@@ -606,8 +530,8 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
         // Increment retry counter BEFORE checking limit to prevent race condition
         passwordRetryCount.value++
 
-        // Check if we've exceeded retry limit
-        if (passwordRetryCount.value > MAX_PASSWORD_RETRIES) {
+        // Check if we've exceeded retry limit (use >= to prevent off-by-one error)
+        if (passwordRetryCount.value >= MAX_PASSWORD_RETRIES) {
           logOperation(t('log.taskAborted'), t('log.passwordMaxRetries'))
           toast.error(t('password.maxRetries'))
           modal.showError(result.errors.join('\n'))
@@ -698,7 +622,7 @@ async function handlePasswordSubmit(passwords: Record<string, string>) {
   )
 
   showPasswordModal.value = false
-  passwordErrorMessage.value = ''  // 清除错误提示
+  passwordErrorMessage.value = ''  // Clear error message
   logOperation(t('log.passwordEntered'), t('log.fileCount', { count: Object.keys(passwords).length }))
   // Merge new passwords with previously collected ones
   const allPasswords = { ...collectedPasswords.value, ...passwords }
@@ -713,30 +637,30 @@ async function handlePasswordCancel() {
   showPasswordModal.value = false
   logOperation(t('log.taskAborted'), t('log.passwordCanceled'))
 
-  // 取消后继续分析不需要密码的文件
+  // After cancel, continue analyzing files that don't require password
   const nonPasswordPaths = pendingAnalysisPaths.value.filter(
     p => !passwordRequiredPaths.value.includes(p)
   )
 
   resetPasswordState()
 
-  // 如果有不需要密码的文件，继续分析它们
+  // If there are files that don't need password, continue analyzing them
   if (nonPasswordPaths.length > 0) {
     await analyzeFiles(nonPasswordPaths)
   }
 }
 
-// 从错误信息中提取密码错误的文件路径
+// Extract wrong password file paths from error messages
 function extractWrongPasswordPaths(errors: string[]): string[] {
   const paths: string[] = []
   for (const err of errors) {
-    // 匹配 "Wrong password for archive: {path}" 格式
+    // Match "Wrong password for archive: {path}" format
     const match = err.match(/Wrong password for archive:\s*(.+)$/i)
     if (match && match[1]) {
       paths.push(match[1].trim())
     }
   }
-  // 如果无法提取，返回当前的 passwordRequiredPaths
+  // If unable to extract, return current passwordRequiredPaths
   return paths.length > 0 ? paths : passwordRequiredPaths.value
 }
 

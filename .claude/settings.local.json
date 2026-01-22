@@ -61,7 +61,10 @@
       "Bash(Get-Process)",
       "Bash(Where-Object {$_ProcessName -like \"*xfastinstall*\" -or $_ProcessName -like \"*node*\"})",
       "Bash(Stop-Process -Force -ErrorAction SilentlyContinue)",
-      "Bash(Start-Sleep -Seconds 2)"
+      "Bash(Start-Sleep -Seconds 2)",
+      "Bash(cargo metadata:*)",
+      "Bash(cmd /c \"dir /s /b %USERPROFILE%\\\\.cargo\\\\registry\\\\src\\\\*sevenz* 2>nul\")",
+      "Bash(gh api:*)"
     ]
   }
 }
