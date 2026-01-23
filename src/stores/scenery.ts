@@ -279,6 +279,36 @@ export const useSceneryStore = defineStore('scenery', () => {
     }
   }
 
+  // Delete a scenery entry (folder)
+  async function deleteEntry(folderName: string) {
+    if (!appStore.xplanePath) {
+      error.value = 'X-Plane path not set'
+      throw new Error(error.value)
+    }
+
+    try {
+      await invoke('delete_scenery_folder', {
+        xplanePath: appStore.xplanePath,
+        folderName
+      })
+
+      // Remove from local data
+      if (data.value) {
+        data.value.entries = data.value.entries.filter(e => e.folderName !== folderName)
+        data.value.totalCount = data.value.entries.length
+        data.value.enabledCount = data.value.entries.filter(e => e.enabled).length
+        data.value.missingDepsCount = data.value.entries.filter(e => e.missingLibraries.length > 0).length
+      }
+
+      // Also remove from original entries
+      originalEntries.value = originalEntries.value.filter(e => e.folderName !== folderName)
+    } catch (e) {
+      error.value = String(e)
+      console.error('Failed to delete scenery entry:', e)
+      throw e
+    }
+  }
+
   // Clear store state
   function clear() {
     data.value = null
@@ -313,6 +343,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     reorderEntries,
     applyChanges,
     resetChanges,
+    deleteEntry,
     clear
   }
 })

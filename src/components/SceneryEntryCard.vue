@@ -4,6 +4,8 @@ import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from '@/stores/app'
 import { useToastStore } from '@/stores/toast'
+import { useModalStore } from '@/stores/modal'
+import { useSceneryStore } from '@/stores/scenery'
 import type { SceneryManagerEntry } from '@/types'
 import { SceneryCategory } from '@/types'
 
@@ -25,9 +27,13 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 const toastStore = useToastStore()
+const modalStore = useModalStore()
+const sceneryStore = useSceneryStore()
 
 const showMissingLibsModal = ref(false)
+const showDeleteConfirmModal = ref(false)
 const isSearching = ref(false)
+const isDeleting = ref(false)
 
 // Category display config
 const categoryConfig = computed(() => {
@@ -50,7 +56,7 @@ const isLast = computed(() => props.index === props.totalCount - 1)
 
 async function handleDoubleClick() {
   if (!appStore.xplanePath) {
-    toastStore.error(t('sceneryManager.noXplanePath'))
+    modalStore.showError(t('sceneryManager.noXplanePath'))
     return
   }
 
@@ -60,7 +66,7 @@ async function handleDoubleClick() {
       folderName: props.entry.folderName
     })
   } catch (error) {
-    toastStore.error(t('sceneryManager.openFolderFailed') + ': ' + String(error))
+    modalStore.showError(t('sceneryManager.openFolderFailed') + ': ' + String(error))
   }
 }
 
@@ -82,7 +88,7 @@ function handleCopyMissingLibs() {
   navigator.clipboard.writeText(libNames).then(() => {
     toastStore.success(t('sceneryManager.missingLibsCopied'))
   }).catch(() => {
-    toastStore.error(t('copy.copyFailed'))
+    modalStore.showError(t('copy.copyFailed'))
   })
 }
 
@@ -100,12 +106,27 @@ async function handleSearchMissingLibs() {
         // Add a small delay between opening tabs to avoid overwhelming the browser
         await new Promise(resolve => setTimeout(resolve, 300))
       } catch (error) {
-        toastStore.error(t('sceneryManager.openUrlFailed') + ': ' + String(error))
+        modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + String(error))
         break // Stop if there's an error
       }
     }
   } finally {
     isSearching.value = false
+  }
+}
+
+async function handleDeleteConfirm() {
+  if (isDeleting.value) return
+
+  isDeleting.value = true
+  try {
+    await sceneryStore.deleteEntry(props.entry.folderName)
+    toastStore.success(t('sceneryManager.deleteSuccess'))
+    showDeleteConfirmModal.value = false
+  } catch (error) {
+    modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + String(error))
+  } finally {
+    isDeleting.value = false
   }
 }
 </script>
@@ -191,6 +212,17 @@ async function handleSearchMissingLibs() {
         </svg>
       </button>
     </div>
+
+    <!-- Delete button -->
+    <button
+      @click.stop="showDeleteConfirmModal = true"
+      class="flex-shrink-0 p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+      :title="t('sceneryManager.delete')"
+    >
+      <svg class="w-3.5 h-3.5 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+      </svg>
+    </button>
   </div>
 
   <!-- Missing Libraries Modal -->
@@ -273,6 +305,67 @@ async function handleSearchMissingLibs() {
             class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
           >
             {{ t('common.close') }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- Delete Confirmation Modal -->
+  <Teleport to="body">
+    <div
+      v-if="showDeleteConfirmModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      @click="showDeleteConfirmModal = false"
+    >
+      <div
+        class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full mx-4"
+        style="max-width: 400px;"
+        @click.stop
+      >
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between p-5 pb-3">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+            {{ t('sceneryManager.deleteConfirmTitle') }}
+          </h3>
+          <button
+            @click="showDeleteConfirmModal = false"
+            class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Content -->
+        <div class="px-5 pb-3">
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
+            {{ t('sceneryManager.deleteConfirmMessage') }}
+          </p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 rounded px-3 py-2 break-all">
+            {{ entry.folderName }}
+          </p>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex gap-2 p-5 pt-3 border-t border-gray-200 dark:border-gray-700">
+          <button
+            @click="showDeleteConfirmModal = false"
+            class="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            @click="handleDeleteConfirm"
+            :disabled="isDeleting"
+            class="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 disabled:bg-red-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+          >
+            <svg v-if="isDeleting" class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            {{ isDeleting ? t('common.deleting') : t('common.delete') }}
           </button>
         </div>
       </div>

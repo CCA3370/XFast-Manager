@@ -11,7 +11,8 @@ const router = createRouter({
   routes: [
     { path: '/', component: Home },
     { path: '/onboarding', component: () => import('./views/Onboarding.vue') },
-    { path: '/scenery', component: () => import('./views/SceneryManager.vue') },
+    { path: '/management', component: () => import('./views/Management.vue') },
+    { path: '/scenery', redirect: '/management?tab=scenery' },
     { path: '/settings', component: () => import('./views/Settings.vue') },
   ],
 })

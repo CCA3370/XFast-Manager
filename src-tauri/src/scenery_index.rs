@@ -706,6 +706,22 @@ impl SceneryIndexManager {
         Ok(())
     }
 
+    /// Remove an entry from the index
+    pub fn remove_entry(&self, folder_name: &str) -> Result<()> {
+        let mut index = self.load_index()?;
+
+        if index.packages.remove(folder_name).is_some() {
+            index.last_updated = SystemTime::now();
+            self.save_index(&index)?;
+            logger::log_info(
+                &format!("Removed entry from scenery index: {}", folder_name),
+                Some("scenery_index"),
+            );
+        }
+
+        Ok(())
+    }
+
     /// Move an entry from one position to another, auto-adjusting other entries
     pub fn move_entry(&self, folder_name: &str, new_sort_order: u32) -> Result<()> {
         let mut index = self.load_index()?;
@@ -1024,6 +1040,12 @@ pub fn build_library_index_from_scenery_index(index: &SceneryIndex) -> HashMap<S
     );
 
     library_index
+}
+
+/// Remove a scenery entry from the index (public helper function)
+pub fn remove_scenery_entry(xplane_path: &str, folder_name: &str) -> Result<()> {
+    let manager = SceneryIndexManager::new(Path::new(xplane_path));
+    manager.remove_entry(folder_name)
 }
 
 #[cfg(test)]

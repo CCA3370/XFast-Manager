@@ -414,6 +414,53 @@ pub struct SceneryManagerData {
     pub needs_sync: bool,
 }
 
+// ========== Management Data Structures ==========
+
+/// Aircraft information for management UI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AircraftInfo {
+    pub folder_name: String,
+    pub display_name: String,
+    pub acf_file: String,
+    pub enabled: bool,
+    pub has_liveries: bool,
+    pub livery_count: usize,
+    pub version: Option<String>,
+}
+
+/// Plugin information for management UI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginInfo {
+    pub folder_name: String,
+    pub display_name: String,
+    pub xpl_files: Vec<String>,
+    pub enabled: bool,
+    pub platform: String,
+    pub version: Option<String>,
+}
+
+/// Navdata manager information for management UI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavdataManagerInfo {
+    pub folder_name: String,
+    pub provider_name: String,
+    pub cycle: Option<String>,
+    pub airac: Option<String>,
+    pub enabled: bool,
+}
+
+/// Management data for UI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagementData<T> {
+    pub entries: Vec<T>,
+    pub total_count: usize,
+    pub enabled_count: usize,
+}
+
 // SystemTime serialization helper
 mod systemtime_serde {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};

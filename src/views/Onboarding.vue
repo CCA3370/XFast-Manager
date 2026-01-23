@@ -27,7 +27,7 @@
                   </p>
                 </div>
                 <button
-                  v-if="currentStep.key !== 'installPreferences' && currentStep.key !== 'xplanePath'"
+                  v-if="currentStep.key !== 'installPreferences' && currentStep.key !== 'xplanePath' && currentStep.key !== 'aircraftBackup'"
                   @click="toggleCurrent"
                   :disabled="isSubmitting || currentStep.disabled"
                   class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
