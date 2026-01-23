@@ -175,15 +175,10 @@ export const useManagementStore = defineStore('management', () => {
           break
         }
         case 'navdata': {
-          // Navdata: folder name changes with - prefix
+          // Navdata: folder name stays the same, only enabled state changes
           const item = navdata.value.find(n => n.folderName === folderName)
           if (item) {
             item.enabled = newEnabled
-            // Update folder name (add or remove - prefix)
-            const baseName = item.folderName.startsWith('-')
-              ? item.folderName.slice(1)
-              : item.folderName
-            item.folderName = newEnabled ? baseName : `-${baseName}`
             navdataEnabledCount.value = navdata.value.filter(n => n.enabled).length
           }
           break

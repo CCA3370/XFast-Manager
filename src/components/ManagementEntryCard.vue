@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { AircraftInfo, PluginInfo, NavdataManagerInfo, ManagementItemType } from '@/types'
+import { getNavdataCycleStatus } from '@/utils/airac'
 
 type EntryType = AircraftInfo | PluginInfo | NavdataManagerInfo
 
@@ -83,6 +84,13 @@ const badgeInfo = computed(() => {
   return null
 })
 
+// Navdata cycle status
+const navdataCycleStatus = computed(() => {
+  if (!isNavdata(props.entry)) return null
+  const cycleText = props.entry.cycle || props.entry.airac
+  return getNavdataCycleStatus(cycleText)
+})
+
 // Version info (for aircraft and plugins)
 const versionInfo = computed(() => {
   if (isAircraft(props.entry) || isPlugin(props.entry)) {
@@ -110,14 +118,15 @@ function handleDeleteConfirm() {
   <div
     class="flex items-center gap-2 p-2 rounded-lg border transition-all hover:bg-gray-50 dark:hover:bg-gray-700/30"
     :class="[
-      entry.enabled
+      (isNavdata(entry) || entry.enabled)
         ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
         : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200/50 dark:border-gray-700/50 opacity-60'
     ]"
     @dblclick="handleDoubleClick"
   >
-    <!-- Enable/Disable toggle -->
+    <!-- Enable/Disable toggle (not for navdata) -->
     <button
+      v-if="!isNavdata(entry)"
       @click="emit('toggle-enabled', entry.folderName)"
       :disabled="isToggling"
       class="flex-shrink-0 w-9 h-5 rounded-full relative transition-colors disabled:opacity-70"
@@ -152,7 +161,7 @@ function handleDeleteConfirm() {
       class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700"
       :title="versionInfo"
     >
-      v{{ versionInfo }}
+      {{ versionInfo }}
     </span>
 
     <!-- Badge (liveries count / platform / cycle) -->
@@ -162,6 +171,20 @@ function handleDeleteConfirm() {
       :class="[badgeInfo.color, badgeInfo.bgColor]"
     >
       {{ badgeInfo.text }}
+    </span>
+
+    <!-- Navdata cycle status -->
+    <span
+      v-if="navdataCycleStatus === 'current'"
+      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/30"
+    >
+      {{ t('management.currentCycle') }}
+    </span>
+    <span
+      v-else-if="navdataCycleStatus === 'outdated'"
+      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-900/30"
+    >
+      {{ t('management.outdatedCycle') }}
     </span>
 
     <!-- Delete button -->

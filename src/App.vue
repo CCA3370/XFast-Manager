@@ -123,8 +123,11 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useUpdateStore } from '@/stores/update'
+import { useSceneryStore } from '@/stores/scenery'
+import { useModalStore } from '@/stores/modal'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { syncLocaleToBackend } from '@/i18n'
 import { logBasic, logDebug } from '@/services/logger'
 import ToastNotification from '@/components/ToastNotification.vue'
@@ -138,6 +141,8 @@ import type { SceneryIndexScanResult } from '@/types'
 const { t } = useI18n()
 const store = useAppStore()
 const updateStore = useUpdateStore()
+const sceneryStore = useSceneryStore()
+const modalStore = useModalStore()
 const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
@@ -253,6 +258,38 @@ onMounted(async () => {
     })
   } catch (error) {
     console.error('Failed to setup CLI args listener:', error)
+  }
+
+  // Set up window close confirmation for unsaved scenery changes
+  try {
+    const appWindow = getCurrentWindow()
+    await appWindow.onCloseRequested(async (event) => {
+      // Check if there are unsaved scenery changes
+      if (sceneryStore.hasChanges) {
+        // Prevent the window from closing
+        event.preventDefault()
+
+        // Show confirmation modal
+        modalStore.showConfirm({
+          title: t('modal.unsavedSceneryChangesTitle'),
+          message: t('modal.unsavedSceneryChangesMessage'),
+          warning: t('modal.unsavedSceneryChangesWarning'),
+          confirmText: t('modal.closeAnyway'),
+          cancelText: t('modal.goBack'),
+          type: 'warning',
+          onConfirm: async () => {
+            // User confirmed, close the window
+            await appWindow.destroy()
+          },
+          onCancel: () => {
+            // User cancelled, do nothing (window stays open)
+          }
+        })
+      }
+      // If no changes, allow the window to close normally
+    })
+  } catch (error) {
+    console.error('Failed to setup window close listener:', error)
   }
 })
 </script>

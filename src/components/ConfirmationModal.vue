@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <transition name="modal">
-      <div class="modal-overlay animate-fade-in" @click="$emit('close')">
+      <div class="modal-overlay animate-fade-in" @click.self>
         <div class="modal-content animate-scale-in" @click.stop>
           <!-- Header -->
           <div class="modal-header mb-2 flex-shrink-0">
@@ -73,7 +73,7 @@
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"></path>
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5a2 2 0 012-2h4a2 2 0 012 2v2H8V5z"></path>
                     </svg>
-                    <span class="truncate text-xs"><AnimatedText>{{ $t('modal.targetPath') }}</AnimatedText>: {{ task.targetPath }}</span>
+                    <span class="truncate text-xs"><AnimatedText>{{ $t('modal.targetPath') }}</AnimatedText>: {{ getRelativePath(task.targetPath) }}</span>
                   </div>
 
                   <!-- Conflict warning with install mode toggle switch -->
@@ -178,6 +178,19 @@
                       </div>
                     </div>
                   </div>
+
+                  <!-- Livery aircraft not found warning -->
+                  <div v-if="task.type === 'Livery' && task.liveryAircraftFound === false" class="mt-1.5 p-2 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded">
+                    <div class="flex items-start space-x-2">
+                      <svg class="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                      </svg>
+                      <div class="flex-1 min-w-0">
+                        <span class="font-medium text-xs text-amber-700 dark:text-amber-100"><AnimatedText>{{ $t('modal.liveryAircraftNotFound') }}</AnimatedText></span>
+                        <p class="text-xs text-amber-600 dark:text-amber-200/70 leading-tight"><AnimatedText>{{ $t('modal.liveryAircraftNotFoundDesc') }}</AnimatedText></p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -201,7 +214,7 @@
                 'px-3 py-1.5 rounded-lg transition-all duration-200 text-xs font-medium flex items-center space-x-1',
                 installDisabled
                   ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50 text-gray-500 dark:text-gray-400'
-                  : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 hover:scale-105 hover:shadow-lg hover:shadow-green-500/25 text-white'
+                  : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 hover:scale-105 text-white'
               ]"
             >
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -227,6 +240,20 @@ const { t } = useI18n()
 const store = useAppStore()
 
 defineEmits(['close', 'confirm'])
+
+// Get relative path from X-Plane root
+function getRelativePath(fullPath: string): string {
+  const xplanePath = store.xplanePath
+  if (!xplanePath || !fullPath.startsWith(xplanePath)) {
+    return fullPath
+  }
+  // Remove X-Plane path and leading slash/backslash
+  let relativePath = fullPath.substring(xplanePath.length)
+  if (relativePath.startsWith('/') || relativePath.startsWith('\\')) {
+    relativePath = relativePath.substring(1)
+  }
+  return relativePath
+}
 
 // Format Navdata cycle for display
 function formatNavdataCycle(info: NavdataInfo | undefined): string {
@@ -325,7 +352,9 @@ function getTypeBadgeClass(type: AddonType) {
     case AddonType.Plugin:
       return 'bg-purple-600'
     case AddonType.Navdata:
-      return 'bg-orange-600'
+      return 'bg-amber-600'
+    case AddonType.Livery:
+      return 'bg-pink-600'
     default:
       return 'bg-gray-600'
   }
@@ -579,8 +608,13 @@ function getTypeBadgeClass(type: AddonType) {
   color: white;
 }
 
-.type-badge.bg-orange-600 {
-  background: linear-gradient(135deg, rgba(249, 115, 22, 0.8), rgba(251, 146, 60, 0.8));
+.type-badge.bg-amber-600 {
+  background: linear-gradient(135deg, rgba(217, 119, 6, 0.8), rgba(245, 158, 11, 0.8));
+  color: white;
+}
+
+.type-badge.bg-pink-600 {
+  background: linear-gradient(135deg, rgba(219, 39, 119, 0.8), rgba(236, 72, 153, 0.8));
   color: white;
 }
 

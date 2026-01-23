@@ -1064,6 +1064,16 @@ impl Installer {
                     ));
                 }
             }
+            crate::models::AddonType::Livery => {
+                // For liveries, just check that the directory exists and has some content
+                // No specific marker file required
+                if !target.exists() || !target.is_dir() {
+                    return Err(anyhow::anyhow!(
+                        "Installation verification failed: Livery directory not found: {:?}",
+                        target
+                    ));
+                }
+            }
         }
 
         Ok(())

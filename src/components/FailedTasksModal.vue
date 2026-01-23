@@ -19,23 +19,23 @@
           ref="card"
           role="dialog"
           aria-modal="true"
-          class="modal-card relative bg-gradient-to-tr from-gray-800/95 to-gray-900/95 text-gray-100 rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col"
+          class="modal-card relative bg-white dark:bg-gradient-to-tr dark:from-gray-800/95 dark:to-gray-900/95 text-gray-900 dark:text-gray-100 rounded-2xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col border border-gray-200 dark:border-gray-700/50"
         >
           <!-- Header -->
-          <div class="flex-shrink-0 p-4 pb-3 border-b border-gray-700/50">
+          <div class="flex-shrink-0 p-4 pb-3 border-b border-gray-200 dark:border-gray-700/50">
             <div class="flex items-start justify-between">
               <div class="flex items-center space-x-2">
-                <div class="w-8 h-8 flex items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-red-700 shadow-lg shadow-red-500/30">
+                <div class="w-8 h-8 flex items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-red-700">
                   <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                   </svg>
                 </div>
                 <div>
                   <h3 class="text-base font-semibold leading-tight">{{ $t('completion.failedTasks') }}</h3>
-                  <p class="text-xs text-gray-400 mt-0.5">{{ failedTasks.length }} {{ $t('completion.failed') }}</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ failedTasks.length }} {{ $t('completion.failed') }}</p>
                 </div>
               </div>
-              <button @click="$emit('close')" class="text-gray-400 hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1">
+              <button @click="$emit('close')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -48,7 +48,7 @@
             <div
               v-for="task in failedTasks"
               :key="task.taskId"
-              class="bg-gray-800/50 border border-red-500/20 rounded-lg p-3 hover:border-red-500/40 transition-colors"
+              class="bg-gray-100 dark:bg-gray-800/50 border border-red-200 dark:border-red-500/20 rounded-lg p-3 hover:border-red-300 dark:hover:border-red-500/40 transition-colors"
             >
               <div class="flex items-start space-x-2">
                 <svg class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -56,12 +56,12 @@
                 </svg>
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 mb-1">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-red-500/20 text-red-300 border border-red-500/30 flex-shrink-0">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30 flex-shrink-0">
                       {{ getSimpleErrorReason(task.errorMessage) }}
                     </span>
-                    <span class="font-medium text-white text-sm truncate">{{ task.taskName }}</span>
+                    <span class="font-medium text-gray-900 dark:text-white text-sm truncate">{{ task.taskName }}</span>
                   </div>
-                  <div v-if="task.errorMessage" class="mt-2 text-xs text-gray-400 font-mono bg-gray-900/50 p-2 rounded border border-gray-700/50 break-all">
+                  <div v-if="task.errorMessage" class="mt-2 text-xs text-gray-600 dark:text-gray-400 font-mono bg-gray-200 dark:bg-gray-900/50 p-2 rounded border border-gray-300 dark:border-gray-700/50 break-all">
                     {{ task.errorMessage }}
                   </div>
                 </div>
@@ -70,10 +70,10 @@
           </div>
 
           <!-- Footer -->
-          <div class="flex-shrink-0 p-4 pt-3 border-t border-gray-700/50 flex justify-end space-x-2">
+          <div class="flex-shrink-0 p-4 pt-3 border-t border-gray-200 dark:border-gray-700/50 flex justify-end space-x-2">
             <button
               @click="copyAllErrors"
-              class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs text-gray-200 transition flex items-center space-x-1.5"
+              class="px-3 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg text-xs text-gray-700 dark:text-gray-200 transition flex items-center space-x-1.5"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></rect>

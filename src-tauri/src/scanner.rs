@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::livery_patterns;
 use crate::logger;
 use crate::models::{
     AddonType, DetectedItem, ExtractionChain, NavdataCycle, NavdataInfo, NestedArchiveInfo,
@@ -402,6 +403,13 @@ impl Scanner {
                     detected.push(item);
                     continue;
                 }
+
+                if let Some(item) = self.check_livery(file_path, dir)? {
+                    let root = PathBuf::from(&item.path);
+                    skip_dirs.insert(root);
+                    detected.push(item);
+                    continue;
+                }
             }
 
             // Add subdirectories to queue (only if not in skip_dirs)
@@ -543,6 +551,7 @@ impl Scanner {
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut marker_files: Vec<(String, &str)> = Vec::new();
         let mut nested_archives: Vec<String> = Vec::new();
+        let mut detected_livery_roots: HashSet<String> = HashSet::new();
 
         for entry in &archive.files {
             let file_path = entry.name().to_string();
@@ -555,6 +564,14 @@ impl Scanner {
             // Check for nested archives (only if we can recurse)
             if ctx.can_recurse() && !entry.is_directory() && is_archive_file(&normalized) {
                 nested_archives.push(normalized.clone());
+            }
+
+            // Check for livery patterns first (before any potential moves)
+            if let Some((_, livery_root)) = livery_patterns::check_livery_pattern(&normalized) {
+                if !detected_livery_roots.contains(&livery_root) {
+                    detected_livery_roots.insert(livery_root.clone());
+                    marker_files.push((normalized.clone(), "livery"));
+                }
             }
 
             // Identify plugin directories and marker files
@@ -653,6 +670,7 @@ impl Scanner {
                         None
                     }
                 }
+                "livery" => self.detect_livery_in_archive(&file_path, archive_path)?,
                 _ => None,
             };
 
@@ -1292,6 +1310,7 @@ impl Scanner {
         // Collect file paths and identify markers in a single pass
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut marker_files: Vec<(String, &str)> = Vec::new(); // (path, marker_type)
+        let mut detected_livery_roots: HashSet<String> = HashSet::new();
 
         for entry in &archive.files {
             let file_path = entry.name().to_string();
@@ -1300,6 +1319,14 @@ impl Scanner {
             // Skip ignored paths
             if Self::should_ignore_archive_path(&normalized) {
                 continue;
+            }
+
+            // Check for livery patterns first (before any potential moves)
+            if let Some((_, livery_root)) = livery_patterns::check_livery_pattern(&normalized) {
+                if !detected_livery_roots.contains(&livery_root) {
+                    detected_livery_roots.insert(livery_root.clone());
+                    marker_files.push((normalized.clone(), "livery"));
+                }
             }
 
             // Identify plugin directories
@@ -1374,6 +1401,7 @@ impl Scanner {
                         None
                     }
                 }
+                "livery" => self.detect_livery_in_archive(&file_path, archive_path)?,
                 _ => None,
             };
 
@@ -1517,6 +1545,7 @@ impl Scanner {
         let marker_identify_start = std::time::Instant::now();
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut marker_files: Vec<(String, &str)> = Vec::new(); // (path, marker_type)
+        let mut detected_livery_roots: HashSet<String> = HashSet::new();
 
         for file_path in &files {
             // Skip ignored paths
@@ -1552,6 +1581,14 @@ impl Scanner {
                 marker_files.push((file_path.clone(), "dsf"));
             } else if file_path.ends_with("cycle.json") {
                 marker_files.push((file_path.clone(), "navdata"));
+            }
+
+            // Check for livery patterns
+            if let Some((_, livery_root)) = livery_patterns::check_livery_pattern(file_path) {
+                if !detected_livery_roots.contains(&livery_root) {
+                    detected_livery_roots.insert(livery_root.clone());
+                    marker_files.push((file_path.clone(), "livery"));
+                }
             }
         }
 
@@ -1622,6 +1659,7 @@ impl Scanner {
                         None
                     }
                 }
+                "livery" => self.detect_livery_in_archive(&file_path, archive_path)?,
                 _ => None,
             };
 
@@ -1752,6 +1790,7 @@ impl Scanner {
         let mut marker_files: Vec<(usize, String, bool, &str)> = Vec::new(); // (index, path, encrypted, marker_type)
         let mut nested_archives: Vec<(usize, String, bool)> = Vec::new(); // (index, path, encrypted)
         let mut has_encrypted = false;
+        let mut detected_livery_roots: HashSet<String> = HashSet::new();
 
         for i in 0..archive.len() {
             let file = match archive.by_index_raw(i) {
@@ -1793,6 +1832,14 @@ impl Scanner {
             // Check if this is a nested archive (for recursive scanning)
             if !file.is_dir() && is_archive_file(&file_path) {
                 nested_archives.push((i, file_path.clone(), is_encrypted));
+            }
+
+            // Check for livery patterns first (before any potential moves)
+            if let Some((_, livery_root)) = livery_patterns::check_livery_pattern(&file_path) {
+                if !detected_livery_roots.contains(&livery_root) {
+                    detected_livery_roots.insert(livery_root.clone());
+                    marker_files.push((i, file_path.clone(), is_encrypted, "livery"));
+                }
             }
 
             // Identify plugin directories and marker files
@@ -1919,6 +1966,7 @@ impl Scanner {
                         None
                     }
                 }
+                "livery" => self.detect_livery_in_archive(&file_path, zip_path)?,
                 _ => None,
             };
 
@@ -2289,6 +2337,7 @@ impl Scanner {
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut marker_files: Vec<(usize, String, bool, &str)> = Vec::new(); // (index, path, encrypted, marker_type)
         let mut has_encrypted = false;
+        let mut detected_livery_roots: HashSet<String> = HashSet::new();
 
         for i in 0..archive.len() {
             let file = match archive.by_index_raw(i) {
@@ -2325,6 +2374,14 @@ impl Scanner {
             // Skip ignored paths
             if Self::should_ignore_archive_path(&file_path) {
                 continue;
+            }
+
+            // Check for livery patterns first (before any potential moves)
+            if let Some((_, livery_root)) = livery_patterns::check_livery_pattern(&file_path) {
+                if !detected_livery_roots.contains(&livery_root) {
+                    detected_livery_roots.insert(livery_root.clone());
+                    marker_files.push((i, file_path.clone(), is_encrypted, "livery"));
+                }
             }
 
             // Identify plugin directories and marker files
@@ -2435,6 +2492,7 @@ impl Scanner {
                         None
                     }
                 }
+                "livery" => self.detect_livery_in_archive(&file_path, zip_path)?,
                 _ => None,
             };
 
@@ -2498,6 +2556,7 @@ impl Scanner {
             archive_internal_root: None,
             extraction_chain: None,
             navdata_info: None,
+            livery_aircraft_type: None,
         }))
     }
 
@@ -2568,6 +2627,7 @@ impl Scanner {
             archive_internal_root: internal_root,
             extraction_chain: None,
             navdata_info: None,
+            livery_aircraft_type: None,
         }))
     }
 
@@ -2606,6 +2666,7 @@ impl Scanner {
             archive_internal_root: None,
             extraction_chain: None,
             navdata_info: None,
+            livery_aircraft_type: None,
         }))
     }
 
@@ -2629,6 +2690,7 @@ impl Scanner {
                 archive_internal_root: None,
                 extraction_chain: None,
                 navdata_info: None,
+                livery_aircraft_type: None,
             }))
         } else {
             Ok(None)
@@ -2712,6 +2774,7 @@ impl Scanner {
             archive_internal_root: internal_root,
             extraction_chain: None,
             navdata_info: None,
+            livery_aircraft_type: None,
         }))
     }
 
@@ -2760,6 +2823,7 @@ impl Scanner {
             archive_internal_root: internal_root,
             extraction_chain: None,
             navdata_info: None,
+            livery_aircraft_type: None,
         }))
     }
 
@@ -2830,6 +2894,7 @@ impl Scanner {
             archive_internal_root: None,
             extraction_chain: None,
             navdata_info: None,
+            livery_aircraft_type: None,
         }))
     }
 
@@ -2889,6 +2954,7 @@ impl Scanner {
             archive_internal_root: internal_root,
             extraction_chain: None,
             navdata_info: None,
+            livery_aircraft_type: None,
         }))
     }
 
@@ -2935,6 +3001,7 @@ impl Scanner {
             archive_internal_root: None,
             extraction_chain: None,
             navdata_info: Some(navdata_info),
+            livery_aircraft_type: None,
         }))
     }
 
@@ -2984,6 +3051,94 @@ impl Scanner {
             archive_internal_root: internal_root,
             extraction_chain: None,
             navdata_info: Some(navdata_info),
+            livery_aircraft_type: None,
         }))
+    }
+
+    // Type E: Livery Detection
+    fn check_livery(&self, file_path: &Path, _root: &Path) -> Result<Option<DetectedItem>> {
+        let file_path_str = file_path.to_string_lossy();
+
+        // Check if path matches any livery pattern
+        if let Some((aircraft_type_id, livery_root)) =
+            livery_patterns::check_livery_pattern(&file_path_str)
+        {
+            let livery_path = if livery_root.is_empty() {
+                file_path.to_path_buf()
+            } else {
+                PathBuf::from(&livery_root)
+            };
+
+            let display_name = livery_path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Unknown Livery")
+                .to_string();
+
+            // Get the aircraft name for display
+            let aircraft_name = livery_patterns::get_aircraft_name(aircraft_type_id)
+                .unwrap_or(aircraft_type_id);
+
+            Ok(Some(DetectedItem {
+                original_input_path: String::new(),
+                addon_type: AddonType::Livery,
+                path: livery_path.to_string_lossy().to_string(),
+                display_name: format!("{} ({})", display_name, aircraft_name),
+                archive_internal_root: None,
+                extraction_chain: None,
+                navdata_info: None,
+                livery_aircraft_type: Some(aircraft_type_id.to_string()),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn detect_livery_in_archive(
+        &self,
+        file_path: &str,
+        archive_path: &Path,
+    ) -> Result<Option<DetectedItem>> {
+        // Check if path matches any livery pattern
+        if let Some((aircraft_type_id, livery_root)) =
+            livery_patterns::check_livery_pattern(file_path)
+        {
+            let internal_root = if livery_root.is_empty() {
+                None
+            } else {
+                Some(livery_root.clone())
+            };
+
+            let display_name = if livery_root.is_empty() {
+                archive_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Unknown Livery")
+                    .to_string()
+            } else {
+                Path::new(&livery_root)
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Unknown Livery")
+                    .to_string()
+            };
+
+            // Get the aircraft name for display
+            let aircraft_name = livery_patterns::get_aircraft_name(aircraft_type_id)
+                .unwrap_or(aircraft_type_id);
+
+            Ok(Some(DetectedItem {
+                original_input_path: String::new(),
+                addon_type: AddonType::Livery,
+                path: archive_path.to_string_lossy().to_string(),
+                display_name: format!("{} ({})", display_name, aircraft_name),
+                archive_internal_root: internal_root,
+                extraction_chain: None,
+                navdata_info: None,
+                livery_aircraft_type: Some(aircraft_type_id.to_string()),
+            }))
+        } else {
+            Ok(None)
+        }
     }
 }

@@ -6,11 +6,11 @@
 //! Enable/Disable mechanism:
 //! - Aircraft: Rename .acf <-> .xfma files (not scanning subdirectories)
 //! - Plugins: Rename .xpl <-> .xfmp files (including subdirectories)
-//! - Navdata: Rename folder with - prefix (existing behavior)
 
 use crate::logger;
 use crate::models::{AircraftInfo, ManagementData, NavdataManagerInfo, PluginInfo};
 use anyhow::{anyhow, Result};
+use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;
@@ -63,109 +63,146 @@ fn scan_aircraft_recursive(
         Err(_) => return Ok(()),
     };
 
+    // Collect subdirectories first
+    let mut subdirs: Vec<(std::path::PathBuf, String)> = Vec::new();
     for entry in read_dir.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if !ft.is_dir() {
             continue;
         }
-
+        let path = entry.path();
         let folder_name = match path.file_name().and_then(|s| s.to_str()) {
             Some(name) => name.to_string(),
             None => continue,
         };
-
         // Skip hidden folders and system folders
         if folder_name.starts_with('.') || folder_name == "Laminar Research" {
             continue;
         }
+        subdirs.push((path, folder_name));
+    }
 
-        // Check if this folder contains an .acf or .xfma file
-        if let Some((acf_file, enabled)) = find_acf_or_xfma_file(&path) {
-            let display_name = folder_name.clone();
+    // Process subdirectories in parallel, each doing a single read_dir pass
+    let results: Vec<Option<AircraftInfo>> = subdirs
+        .par_iter()
+        .map(|(path, folder_name)| {
+            let info = scan_single_aircraft_folder(path, base_path, folder_name);
+            info
+        })
+        .collect();
 
-            // Check for liveries folder
-            let liveries_path = path.join("liveries");
-            let (has_liveries, livery_count) = if liveries_path.exists() && liveries_path.is_dir() {
-                let count = fs::read_dir(&liveries_path)
-                    .map(|rd| rd.filter_map(|e| e.ok()).filter(|e| e.path().is_dir()).count())
-                    .unwrap_or(0);
-                (count > 0, count)
-            } else {
-                (false, 0)
-            };
-
-            // Read version info
-            let version = read_version_info(&path);
-
-            // Get relative folder name from Aircraft folder
-            let relative_path = path
-                .strip_prefix(base_path)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .to_string();
-
-            entries.push(AircraftInfo {
-                folder_name: relative_path,
-                display_name,
-                acf_file,
-                enabled,
-                has_liveries,
-                livery_count,
-                version,
-            });
+    // Collect results and recurse for non-aircraft folders
+    let mut recurse_dirs: Vec<&std::path::PathBuf> = Vec::new();
+    for (i, result) in results.into_iter().enumerate() {
+        if let Some(info) = result {
+            entries.push(info);
         } else {
-            // Recurse into subdirectories
-            scan_aircraft_recursive(base_path, &path, depth + 1, max_depth, entries)?;
+            recurse_dirs.push(&subdirs[i].0);
         }
+    }
+
+    for dir in recurse_dirs {
+        scan_aircraft_recursive(base_path, dir, depth + 1, max_depth, entries)?;
     }
 
     Ok(())
 }
 
-/// Find .acf or .xfma file in a folder (not scanning subdirectories)
-/// Returns (file_name, is_enabled)
-fn find_acf_or_xfma_file(folder: &Path) -> Option<(String, bool)> {
+/// Scan a single aircraft folder in one directory read pass.
+/// Returns Some(AircraftInfo) if it contains .acf/.xfma files, None otherwise.
+fn scan_single_aircraft_folder(
+    folder: &Path,
+    base_path: &Path,
+    folder_name: &str,
+) -> Option<AircraftInfo> {
     let read_dir = fs::read_dir(folder).ok()?;
 
-    // First, look for .acf files (enabled)
+    let mut acf_file: Option<String> = None;
+    let mut xfma_file: Option<String> = None;
+    let mut has_liveries = false;
+    let mut livery_count = 0;
+    let mut updater_cfg_path: Option<std::path::PathBuf> = None;
+    let mut version_file_paths: Vec<std::path::PathBuf> = Vec::new();
+
     for entry in read_dir.flatten() {
-        let path = entry.path();
-        if path.is_file() {
-            if let Some(ext) = path.extension() {
-                if ext.eq_ignore_ascii_case("acf") {
-                    let file_name = path.file_name().and_then(|s| s.to_str())?.to_string();
-                    return Some((file_name, true));
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        let name = match entry.file_name().into_string() {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+        let name_lower = name.to_lowercase();
+
+        if ft.is_file() {
+            // Check for .acf / .xfma
+            if acf_file.is_none() && name_lower.ends_with(".acf") {
+                acf_file = Some(name.clone());
+            } else if xfma_file.is_none() && name_lower.ends_with(".xfma") {
+                xfma_file = Some(name.clone());
+            }
+            // Check for version sources
+            if name_lower == "skunkcrafts_updater.cfg" {
+                updater_cfg_path = Some(entry.path());
+            } else if name_lower.contains("version") {
+                version_file_paths.push(entry.path());
+            }
+        } else if ft.is_dir() {
+            if name_lower == "liveries" {
+                // Count liveries
+                if let Ok(liveries_rd) = fs::read_dir(entry.path()) {
+                    for lv_entry in liveries_rd.flatten() {
+                        if lv_entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+                            livery_count += 1;
+                        }
+                    }
                 }
+                has_liveries = livery_count > 0;
             }
         }
     }
 
-    // If no .acf found, look for .xfma files (disabled)
-    let read_dir = fs::read_dir(folder).ok()?;
-    for entry in read_dir.flatten() {
-        let path = entry.path();
-        if path.is_file() {
-            if let Some(ext) = path.extension() {
-                if ext.eq_ignore_ascii_case("xfma") {
-                    let file_name = path.file_name().and_then(|s| s.to_str())?.to_string();
-                    return Some((file_name, false));
-                }
-            }
-        }
-    }
+    // Must have .acf or .xfma to be recognized as aircraft
+    let (acf_name, enabled) = if let Some(name) = acf_file {
+        (name, true)
+    } else if let Some(name) = xfma_file {
+        (name, false)
+    } else {
+        return None;
+    };
 
-    None
+    // Read version info (priority: skunkcrafts_updater.cfg > version files)
+    let version = read_version_from_paths(updater_cfg_path.as_deref(), &version_file_paths);
+
+    let relative_path = folder
+        .strip_prefix(base_path)
+        .unwrap_or(folder)
+        .to_string_lossy()
+        .to_string();
+
+    Some(AircraftInfo {
+        folder_name: relative_path,
+        display_name: folder_name.to_string(),
+        acf_file: acf_name,
+        enabled,
+        has_liveries,
+        livery_count,
+        version,
+    })
 }
 
-/// Read version information from a folder
-/// Tries to read from:
-/// 1. skunkcrafts_updater.cfg (reads the value after "version|") - higher priority
-/// 2. version.* files (reads first line) - fallback
-fn read_version_info(folder: &Path) -> Option<String> {
+/// Read version from already-discovered paths (avoids extra directory reads)
+fn read_version_from_paths(
+    updater_cfg: Option<&Path>,
+    version_files: &[std::path::PathBuf],
+) -> Option<String> {
     // First, try skunkcrafts_updater.cfg (higher priority)
-    let updater_path = folder.join("skunkcrafts_updater.cfg");
-    if updater_path.exists() {
-        if let Ok(content) = fs::read_to_string(&updater_path) {
+    if let Some(cfg_path) = updater_cfg {
+        if let Ok(content) = fs::read_to_string(cfg_path) {
             for line in content.lines() {
                 let line = line.trim();
                 if line.to_lowercase().starts_with("version|") {
@@ -181,26 +218,82 @@ fn read_version_info(folder: &Path) -> Option<String> {
         }
     }
 
-    // Fall back to version.* files
-    if let Ok(read_dir) = fs::read_dir(folder) {
-        for entry in read_dir.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                    if name.to_lowercase().starts_with("version.") || name.to_lowercase() == "version" {
-                        if let Ok(content) = fs::read_to_string(&path) {
-                            let first_line = content.lines().next().unwrap_or("").trim();
-                            if !first_line.is_empty() {
-                                return Some(first_line.to_string());
-                            }
-                        }
+    // Fall back to version files
+    let mut version_tokens: Vec<String> = Vec::new();
+    for path in version_files {
+        if let Ok(content) = fs::read_to_string(path) {
+            for line in content.lines() {
+                let line = line.trim();
+                if !has_version_pattern(line) {
+                    continue;
+                }
+                for token in line.split_whitespace() {
+                    if has_version_pattern(token) && !version_tokens.contains(&token.to_string()) {
+                        version_tokens.push(token.to_string());
                     }
                 }
             }
         }
     }
+    if !version_tokens.is_empty() {
+        return Some(version_tokens.join("/"));
+    }
 
     None
+}
+
+/// Read version information from a folder (used by plugins where we don't have pre-collected paths)
+fn read_version_info(folder: &Path) -> Option<String> {
+    let read_dir = fs::read_dir(folder).ok()?;
+
+    let mut updater_cfg_path: Option<std::path::PathBuf> = None;
+    let mut version_file_paths: Vec<std::path::PathBuf> = Vec::new();
+
+    for entry in read_dir.flatten() {
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if !ft.is_file() {
+            continue;
+        }
+        let name = match entry.file_name().into_string() {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+        let name_lower = name.to_lowercase();
+        if name_lower == "skunkcrafts_updater.cfg" {
+            updater_cfg_path = Some(entry.path());
+        } else if name_lower.contains("version") {
+            version_file_paths.push(entry.path());
+        }
+    }
+
+    read_version_from_paths(updater_cfg_path.as_deref(), &version_file_paths)
+}
+
+/// Check if a string contains a version-like pattern (digit(s).digit(s))
+fn has_version_pattern(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+    while i < len {
+        if bytes[i].is_ascii_digit() {
+            let start = i;
+            while i < len && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            if i < len && bytes[i] == b'.' && i > start {
+                i += 1;
+                if i < len && bytes[i].is_ascii_digit() {
+                    return true;
+                }
+            }
+        } else {
+            i += 1;
+        }
+    }
+    false
 }
 
 /// Scan plugins in the X-Plane Resources/plugins folder
@@ -212,60 +305,34 @@ pub fn scan_plugins(xplane_path: &Path) -> Result<ManagementData<PluginInfo>> {
 
     logger::log_info("Scanning plugins folder...", Some("management"));
 
-    let mut entries: Vec<PluginInfo> = Vec::new();
-
+    // Collect plugin subdirectories
+    let mut subdirs: Vec<(std::path::PathBuf, String)> = Vec::new();
     let read_dir = fs::read_dir(&plugins_path)?;
     for entry in read_dir.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if !ft.is_dir() {
             continue;
         }
-
-        let folder_name = match path.file_name().and_then(|s| s.to_str()) {
-            Some(name) => name.to_string(),
-            None => continue,
+        let folder_name = match entry.file_name().into_string() {
+            Ok(n) => n,
+            Err(_) => continue,
         };
-
-        // Skip hidden folders
         if folder_name.starts_with('.') {
             continue;
         }
-
-        // Find .xpl and .xfmp files (including subdirectories)
-        let (xpl_files, xfmp_files) = find_xpl_and_xfmp_files(&path);
-
-        // Skip if no plugin files found
-        if xpl_files.is_empty() && xfmp_files.is_empty() {
-            continue;
-        }
-
-        // Enabled if there are any .xpl files
-        let enabled = !xpl_files.is_empty();
-        let display_name = folder_name.clone();
-
-        // Combine all files for display (show original names without disabled extension)
-        let all_files: Vec<String> = if enabled {
-            xpl_files.clone()
-        } else {
-            // Show .xfmp files but indicate they are disabled
-            xfmp_files.iter().map(|f| f.replace(".xfmp", ".xpl")).collect()
-        };
-
-        // Determine platform from xpl file locations
-        let platform = detect_plugin_platform(&path, &all_files);
-
-        // Read version info
-        let version = read_version_info(&path);
-
-        entries.push(PluginInfo {
-            folder_name,
-            display_name,
-            xpl_files: all_files,
-            enabled,
-            platform,
-            version,
-        });
+        subdirs.push((entry.path(), folder_name));
     }
+
+    // Process plugin folders in parallel
+    let mut entries: Vec<PluginInfo> = subdirs
+        .par_iter()
+        .filter_map(|(path, folder_name)| {
+            scan_single_plugin_folder(path, folder_name)
+        })
+        .collect();
 
     // Sort by display name
     entries.sort_by(|a, b| a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase()));
@@ -285,20 +352,55 @@ pub fn scan_plugins(xplane_path: &Path) -> Result<ManagementData<PluginInfo>> {
     })
 }
 
+/// Scan a single plugin folder
+fn scan_single_plugin_folder(path: &Path, folder_name: &str) -> Option<PluginInfo> {
+    // Find .xpl and .xfmp files (including subdirectories)
+    let (xpl_files, xfmp_files) = find_xpl_and_xfmp_files(path);
+
+    // Skip if no plugin files found
+    if xpl_files.is_empty() && xfmp_files.is_empty() {
+        return None;
+    }
+
+    // Enabled if there are any .xpl files
+    let enabled = !xpl_files.is_empty();
+
+    // Combine all files for display
+    let all_files: Vec<String> = if enabled {
+        xpl_files.clone()
+    } else {
+        xfmp_files.iter().map(|f| f.replace(".xfmp", ".xpl")).collect()
+    };
+
+    // Determine platform from xpl file locations
+    let platform = detect_plugin_platform(path, &all_files);
+
+    // Read version info
+    let version = read_version_info(path);
+
+    Some(PluginInfo {
+        folder_name: folder_name.to_string(),
+        display_name: folder_name.to_string(),
+        xpl_files: all_files,
+        enabled,
+        platform,
+        version,
+    })
+}
+
 /// Find .xpl and .xfmp files in a folder (including subdirectories)
 /// Returns (xpl_files, xfmp_files)
 fn find_xpl_and_xfmp_files(folder: &Path) -> (Vec<String>, Vec<String>) {
     let mut xpl_files = Vec::new();
     let mut xfmp_files = Vec::new();
 
-    // Use walkdir to recursively find all .xpl and .xfmp files
     for entry in WalkDir::new(folder).max_depth(3).into_iter().filter_map(|e| e.ok()) {
-        let path = entry.path();
-        if !path.is_file() {
+        if !entry.file_type().is_file() {
             continue;
         }
 
-        if let Some(ext) = path.extension() {
+        let path = entry.path();
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             let relative_path = path
                 .strip_prefix(folder)
                 .unwrap_or(path)
@@ -334,24 +436,28 @@ fn detect_plugin_platform(folder: &Path, xpl_files: &[String]) -> String {
         }
     }
 
-    // Check platform folders
-    let win_folders = ["win", "win_x64"];
-    let mac_folders = ["mac", "mac_x64"];
-    let lin_folders = ["lin", "lin_x64"];
-
-    for wf in &win_folders {
-        if folder.join(wf).exists() {
-            has_win = true;
-        }
-    }
-    for mf in &mac_folders {
-        if folder.join(mf).exists() {
-            has_mac = true;
-        }
-    }
-    for lf in &lin_folders {
-        if folder.join(lf).exists() {
-            has_lin = true;
+    // Check platform folders only if not already detected from file paths
+    if !has_win || !has_mac || !has_lin {
+        if let Ok(read_dir) = fs::read_dir(folder) {
+            for entry in read_dir.flatten() {
+                let ft = match entry.file_type() {
+                    Ok(ft) => ft,
+                    Err(_) => continue,
+                };
+                if !ft.is_dir() {
+                    continue;
+                }
+                if let Ok(name) = entry.file_name().into_string() {
+                    let lower = name.to_lowercase();
+                    if lower == "win" || lower == "win_x64" {
+                        has_win = true;
+                    } else if lower == "mac" || lower == "mac_x64" {
+                        has_mac = true;
+                    } else if lower == "lin" || lower == "lin_x64" {
+                        has_lin = true;
+                    }
+                }
+            }
         }
     }
 
@@ -380,8 +486,26 @@ pub fn scan_navdata(xplane_path: &Path) -> Result<ManagementData<NavdataManagerI
 
     let mut entries: Vec<NavdataManagerInfo> = Vec::new();
 
-    // Scan up to 10 levels deep for cycle.json files
-    scan_navdata_recursive(&custom_data_path, &custom_data_path, 0, 10, &mut entries)?;
+    // Use WalkDir to efficiently find cycle.json files
+    for entry in WalkDir::new(&custom_data_path)
+        .max_depth(10)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        if let Some(name) = entry.file_name().to_str() {
+            if name.eq_ignore_ascii_case("cycle.json") {
+                let path = entry.path();
+                if let Some(parent) = path.parent() {
+                    if let Some(info) = parse_cycle_json(path, &custom_data_path, parent) {
+                        entries.push(info);
+                    }
+                }
+            }
+        }
+    }
 
     // Sort by provider name
     entries.sort_by(|a, b| a.provider_name.to_lowercase().cmp(&b.provider_name.to_lowercase()));
@@ -399,58 +523,6 @@ pub fn scan_navdata(xplane_path: &Path) -> Result<ManagementData<NavdataManagerI
         total_count,
         enabled_count,
     })
-}
-
-fn scan_navdata_recursive(
-    base_path: &Path,
-    current_path: &Path,
-    depth: usize,
-    max_depth: usize,
-    entries: &mut Vec<NavdataManagerInfo>,
-) -> Result<()> {
-    if depth > max_depth {
-        return Ok(());
-    }
-
-    let read_dir = match fs::read_dir(current_path) {
-        Ok(rd) => rd,
-        Err(_) => return Ok(()),
-    };
-
-    for entry in read_dir.flatten() {
-        let path = entry.path();
-
-        // Check for cycle.json file
-        if path.is_file() {
-            if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                if name.eq_ignore_ascii_case("cycle.json") {
-                    if let Some(info) = parse_cycle_json(&path, base_path, current_path) {
-                        entries.push(info);
-                    }
-                }
-            }
-            continue;
-        }
-
-        if !path.is_dir() {
-            continue;
-        }
-
-        let folder_name = match path.file_name().and_then(|s| s.to_str()) {
-            Some(name) => name.to_string(),
-            None => continue,
-        };
-
-        // Skip hidden folders
-        if folder_name.starts_with('.') {
-            continue;
-        }
-
-        // Recurse into subdirectories
-        scan_navdata_recursive(base_path, &path, depth + 1, max_depth, entries)?;
-    }
-
-    Ok(())
 }
 
 fn parse_cycle_json(
@@ -476,26 +548,18 @@ fn parse_cycle_json(
         .to_string_lossy()
         .to_string();
 
-    // Check if folder is enabled (not starting with -)
-    let enabled = !parent_folder
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(|s| s.starts_with('-'))
-        .unwrap_or(false);
-
     Some(NavdataManagerInfo {
         folder_name,
         provider_name,
         cycle,
         airac,
-        enabled,
+        enabled: true, // Always enabled (toggle not supported)
     })
 }
 
 /// Toggle enabled state for a management item
 /// - Aircraft: Rename .acf <-> .xfma files (not scanning subdirectories)
 /// - Plugins: Rename .xpl <-> .xfmp files (including subdirectories)
-/// - Navdata: Rename folder with - prefix
 pub fn toggle_management_item(
     xplane_path: &Path,
     item_type: &str,
@@ -504,7 +568,6 @@ pub fn toggle_management_item(
     let base_path = match item_type {
         "aircraft" => xplane_path.join("Aircraft"),
         "plugin" => xplane_path.join("Resources").join("plugins"),
-        "navdata" => xplane_path.join("Custom Data"),
         _ => return Err(anyhow!("Unknown item type: {}", item_type)),
     };
 
@@ -516,7 +579,6 @@ pub fn toggle_management_item(
     match item_type {
         "aircraft" => toggle_aircraft_files(&current_path, folder_name),
         "plugin" => toggle_plugin_files(&current_path, folder_name),
-        "navdata" => toggle_navdata_folder(&current_path, &base_path, folder_name),
         _ => Err(anyhow!("Unknown item type: {}", item_type)),
     }
 }
@@ -634,36 +696,6 @@ fn toggle_plugin_files(folder_path: &Path, folder_name: &str) -> Result<bool> {
     } else {
         return Err(anyhow!("No .xpl or .xfmp files found in plugin folder"));
     };
-
-    Ok(new_enabled)
-}
-
-/// Toggle navdata folder: rename with - prefix (existing behavior)
-fn toggle_navdata_folder(current_path: &Path, base_path: &Path, folder_name: &str) -> Result<bool> {
-    let file_name = current_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .ok_or_else(|| anyhow!("Invalid folder name"))?;
-
-    let (new_name, new_enabled) = if file_name.starts_with('-') {
-        // Currently disabled, enable it
-        (file_name[1..].to_string(), true)
-    } else {
-        // Currently enabled, disable it
-        (format!("-{}", file_name), false)
-    };
-
-    let new_path = current_path.parent().unwrap_or(base_path).join(&new_name);
-
-    fs::rename(current_path, &new_path)?;
-
-    logger::log_info(
-        &format!(
-            "Toggled navdata '{}' -> '{}' (enabled: {})",
-            folder_name, new_name, new_enabled
-        ),
-        Some("management"),
-    );
 
     Ok(new_enabled)
 }

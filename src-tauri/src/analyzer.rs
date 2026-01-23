@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::installer::{MAX_COMPRESSION_RATIO, MAX_EXTRACTION_SIZE};
+use crate::livery_patterns;
 use crate::logger;
 use crate::logger::{tr, LogMsg};
 use crate::models::{
@@ -502,6 +503,64 @@ impl Analyzer {
         })
     }
 
+    /// Find the aircraft folder that matches the given aircraft type ID for livery installation
+    /// Returns (aircraft_folder_path, found) where found indicates if the aircraft was found
+    fn find_aircraft_for_livery(
+        &self,
+        xplane_path: &str,
+        aircraft_type_id: &str,
+    ) -> Option<PathBuf> {
+        let aircraft_dir = Path::new(xplane_path).join("Aircraft");
+        if !aircraft_dir.exists() {
+            return None;
+        }
+
+        // Recursively search for .acf files that match the aircraft type
+        for entry in walkdir::WalkDir::new(&aircraft_dir)
+            .max_depth(4) // Limit depth to avoid scanning too deep
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    if ext.eq_ignore_ascii_case("acf") {
+                        if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                            // Check if this ACF file matches our aircraft type
+                            if let Some(matched_type) =
+                                livery_patterns::check_acf_identifier(file_name)
+                            {
+                                if matched_type == aircraft_type_id {
+                                    // Found matching aircraft, return its parent directory
+                                    if let Some(parent) = path.parent() {
+                                        logger::log_info(
+                                            &format!(
+                                                "Found aircraft for livery: {} -> {}",
+                                                aircraft_type_id,
+                                                parent.display()
+                                            ),
+                                            Some("analyzer"),
+                                        );
+                                        return Some(parent.to_path_buf());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        logger::log_info(
+            &format!(
+                "Aircraft not found for livery type: {}",
+                aircraft_type_id
+            ),
+            Some("analyzer"),
+        );
+        None
+    }
+
     /// Create an install task from a detected item
     fn create_install_task(
         &self,
@@ -512,26 +571,69 @@ impl Analyzer {
     ) -> InstallTask {
         let xplane_root = Path::new(xplane_path);
 
-        let target_base = match item.addon_type {
-            AddonType::Aircraft => xplane_root.join("Aircraft"),
-            AddonType::Scenery | AddonType::SceneryLibrary => xplane_root.join("Custom Scenery"),
-            AddonType::Plugin => xplane_root.join("Resources").join("plugins"),
-            AddonType::Navdata => {
-                // Determine if it's GNS430 or main Custom Data
-                if item.display_name.contains("GNS430") {
-                    xplane_root.join("Custom Data").join("GNS430")
-                } else {
-                    xplane_root.join("Custom Data")
-                }
-            }
-        };
+        // For Livery type, we need special handling to find the target aircraft
+        let (target_path, livery_aircraft_found) = if item.addon_type == AddonType::Livery {
+            // Extract the livery name from display_name (remove the aircraft name suffix)
+            let livery_name = item
+                .display_name
+                .split(" (")
+                .next()
+                .unwrap_or(&item.display_name)
+                .to_string();
 
-        // For Navdata, install directly into target_base (don't create subfolder)
-        // For other types, create a subfolder with the display_name
-        let target_path = if item.addon_type == AddonType::Navdata {
-            target_base.clone()
+            if let Some(ref aircraft_type_id) = item.livery_aircraft_type {
+                // Try to find the target aircraft
+                if let Some(aircraft_folder) =
+                    self.find_aircraft_for_livery(xplane_path, aircraft_type_id)
+                {
+                    // Found the aircraft, install to its liveries folder
+                    let liveries_path = aircraft_folder.join("liveries").join(&livery_name);
+                    (liveries_path, true)
+                } else {
+                    // Aircraft not found, use a placeholder path
+                    let placeholder = xplane_root
+                        .join("Aircraft")
+                        .join("[Aircraft Not Found]")
+                        .join("liveries")
+                        .join(&livery_name);
+                    (placeholder, false)
+                }
+            } else {
+                // No aircraft type specified, shouldn't happen but handle gracefully
+                let placeholder = xplane_root
+                    .join("Aircraft")
+                    .join("[Unknown Aircraft]")
+                    .join("liveries")
+                    .join(&livery_name);
+                (placeholder, false)
+            }
         } else {
-            target_base.join(&item.display_name)
+            // Standard handling for non-livery types
+            let target_base = match item.addon_type {
+                AddonType::Aircraft => xplane_root.join("Aircraft"),
+                AddonType::Scenery | AddonType::SceneryLibrary => {
+                    xplane_root.join("Custom Scenery")
+                }
+                AddonType::Plugin => xplane_root.join("Resources").join("plugins"),
+                AddonType::Navdata => {
+                    // Determine if it's GNS430 or main Custom Data
+                    if item.display_name.contains("GNS430") {
+                        xplane_root.join("Custom Data").join("GNS430")
+                    } else {
+                        xplane_root.join("Custom Data")
+                    }
+                }
+                AddonType::Livery => unreachable!(), // Already handled above
+            };
+
+            // For Navdata, install directly into target_base (don't create subfolder)
+            // For other types, create a subfolder with the display_name
+            let path = if item.addon_type == AddonType::Navdata {
+                target_base
+            } else {
+                target_base.join(&item.display_name)
+            };
+            (path, true) // Non-livery types always have aircraft_found = true
         };
 
         // Check if target already exists
@@ -613,6 +715,8 @@ impl Analyzer {
             config_file_patterns: vec!["*_prefs.txt".to_string()], // Default pattern
             file_hashes: None,         // Will be populated by hash collector
             enable_verification,       // Based on verification preferences
+            livery_aircraft_type: item.livery_aircraft_type,
+            livery_aircraft_found,
         }
     }
 

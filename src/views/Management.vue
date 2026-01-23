@@ -124,9 +124,12 @@ async function loadTabData(tab: ManagementTab) {
         }
         break
       case 'scenery':
-        await sceneryStore.loadData()
-        if (sceneryStore.error) {
-          modalStore.showError(t('management.scanFailed') + ': ' + sceneryStore.error)
+        // Don't reload if there are unsaved changes - preserve local modifications
+        if (!sceneryStore.hasChanges) {
+          await sceneryStore.loadData()
+          if (sceneryStore.error) {
+            modalStore.showError(t('management.scanFailed') + ': ' + sceneryStore.error)
+          }
         }
         syncLocalEntries()
         break
@@ -683,14 +686,13 @@ const isLoading = computed(() => {
                managementStore.navdataTotalCount }}
           </span>
         </div>
-        <div class="flex items-center gap-2">
+        <div v-if="activeTab !== 'navdata'" class="flex items-center gap-2">
           <Transition name="text-fade" mode="out-in">
             <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('management.enabled') }}:</span>
           </Transition>
           <span class="font-semibold text-green-600 dark:text-green-400">
             {{ activeTab === 'aircraft' ? managementStore.aircraftEnabledCount :
-               activeTab === 'plugin' ? managementStore.pluginsEnabledCount :
-               managementStore.navdataEnabledCount }}
+               managementStore.pluginsEnabledCount }}
           </span>
         </div>
       </template>

@@ -12,6 +12,8 @@ pub enum AddonType {
     SceneryLibrary,
     Plugin,
     Navdata,
+    /// Aircraft livery (auto-detected by pattern)
+    Livery,
 }
 
 /// Represents a nested archive within another archive
@@ -106,6 +108,12 @@ pub struct InstallTask {
     /// Whether hash verification is enabled for this task
     #[serde(default = "default_true")]
     pub enable_verification: bool,
+    /// For Livery: the aircraft type this livery belongs to (e.g., "FF777")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub livery_aircraft_type: Option<String>,
+    /// For Livery: whether the target aircraft is installed
+    #[serde(default = "default_true")]
+    pub livery_aircraft_found: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -145,6 +153,8 @@ pub struct DetectedItem {
     pub extraction_chain: Option<ExtractionChain>,
     /// For Navdata: cycle info from the new navdata to be installed
     pub navdata_info: Option<NavdataInfo>,
+    /// For Livery: the aircraft type this livery belongs to (e.g., "FF777")
+    pub livery_aircraft_type: Option<String>,
 }
 
 /// Installation progress event sent to frontend

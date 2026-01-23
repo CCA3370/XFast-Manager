@@ -3,6 +3,7 @@ mod atomic_installer;
 mod cache;
 mod hash_collector;
 mod installer;
+mod livery_patterns;
 mod logger;
 mod management_index;
 mod models;

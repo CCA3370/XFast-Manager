@@ -1,5 +1,5 @@
 <template>
-  <div class="h-full flex flex-col px-8 py-5 relative overflow-x-hidden">
+  <div class="h-full flex flex-col px-8 py-5 relative overflow-x-hidden select-none">
     <div class="flex-1 flex items-center justify-center overflow-x-hidden">
       <div class="w-full max-w-2xl flex flex-col min-h-[440px]">
         <div class="text-center mb-6">
@@ -58,7 +58,7 @@
                     v-model="xplanePathInput"
                     type="text"
                     placeholder="C:\\X-Plane 12"
-                    class="flex-1 px-4 py-2.5 bg-transparent border-none text-sm text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-0"
+                    class="flex-1 px-4 py-2.5 bg-transparent border-none text-sm text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-0 select-text"
                     @blur="handlePathBlur"
                   />
                   <button
@@ -113,7 +113,7 @@
                       <input
                         v-model="configPatterns[index]"
                         type="text"
-                        class="flex-1 px-2 py-1 text-xs bg-white dark:bg-gray-800 border rounded text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                        class="flex-1 px-2 py-1 text-xs bg-white dark:bg-gray-800 border rounded text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors select-text"
                         :class="patternErrors[index] ? 'border-red-300 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'"
                         placeholder="*_prefs.txt"
                         @blur="handlePatternBlur"
@@ -306,7 +306,7 @@ const verificationPreferences = ref({ ...store.verificationPreferences, rar: fal
 const configPatterns = ref<string[]>([...store.getConfigFilePatterns()])
 const patternErrors = ref<Record<number, string>>({})
 
-const addonTypes = [AddonType.Aircraft, AddonType.Scenery, AddonType.SceneryLibrary, AddonType.Plugin, AddonType.Navdata]
+const addonTypes = [AddonType.Aircraft, AddonType.Scenery, AddonType.SceneryLibrary, AddonType.Plugin, AddonType.Navdata, AddonType.Livery]
 const verificationTypes = ['zip', '7z', 'rar', 'directory']
 
 const transitionDirection = ref<'forward' | 'backward'>('forward')
@@ -579,6 +579,7 @@ function getAddonTypeName(type: AddonType): string {
     case AddonType.SceneryLibrary: return t('settings.typeSceneryLibrary')
     case AddonType.Plugin: return t('settings.typePlugin')
     case AddonType.Navdata: return t('settings.typeNavdata')
+    case AddonType.Livery: return t('settings.typeLivery')
     default: return type
   }
 }
