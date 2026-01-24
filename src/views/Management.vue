@@ -8,10 +8,11 @@ import { useToastStore } from '@/stores/toast'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { invoke } from '@tauri-apps/api/core'
+import { logError } from '@/services/logger'
 import ManagementEntryCard from '@/components/ManagementEntryCard.vue'
 import SceneryEntryCard from '@/components/SceneryEntryCard.vue'
 import draggable from 'vuedraggable'
-import type { SceneryManagerEntry, ManagementTab, ManagementItemType } from '@/types'
+import type { SceneryManagerEntry, ManagementTab, ManagementItemType, SceneryCategory } from '@/types'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -20,9 +21,6 @@ const sceneryStore = useSceneryStore()
 const toastStore = useToastStore()
 const appStore = useAppStore()
 const modalStore = useModalStore()
-
-// Check if current language is Chinese
-const isChineseLocale = computed(() => locale.value === 'zh')
 
 // Tab state
 const activeTab = ref<ManagementTab>('aircraft')
@@ -70,12 +68,12 @@ const localGroupedEntries = ref<Record<string, SceneryManagerEntry[]>>({
   Library: [],
   Other: [],
   Overlay: [],
-  Orthophotos: [],
+  AirportMesh: [],
   Mesh: []
 })
 
 // Category order for display
-const categoryOrder = ['FixedHighPriority', 'Airport', 'DefaultAirport', 'Library', 'Other', 'Overlay', 'Orthophotos', 'Mesh']
+const categoryOrder = ['FixedHighPriority', 'Airport', 'DefaultAirport', 'Library', 'Other', 'Overlay', 'AirportMesh', 'Mesh']
 
 // Initialize tab from route query
 onMounted(async () => {
@@ -115,6 +113,21 @@ watch(activeTab, async (newTab, oldTab) => {
   }, 350) // Slightly longer than transition duration (300ms)
   
   await loadPromise
+})
+
+// Watch for scenery store data changes (e.g., after delete operation)
+// Use a computed trigger instead of deep watch for better performance
+// This triggers on: data reference change, entries count change, or needsSync change
+const sceneryDataTrigger = computed(() => ({
+  hasData: !!sceneryStore.data,
+  entriesCount: sceneryStore.entries.length,
+  needsSync: sceneryStore.data?.needsSync ?? false
+}))
+
+watch(sceneryDataTrigger, () => {
+  if (activeTab.value === 'scenery') {
+    syncLocalEntries()
+  }
 })
 
 async function loadTabData(tab: ManagementTab) {
@@ -251,7 +264,7 @@ const globalIndexMap = computed(() => {
 })
 
 function isGroupExpanded(category: string): boolean {
-  return !sceneryStore.collapsedGroups[category] || !!searchExpandedGroups.value[category]
+  return !sceneryStore.collapsedGroups[category as SceneryCategory] || !!searchExpandedGroups.value[category]
 }
 
 const matchedIndices = computed(() => {
@@ -272,7 +285,7 @@ function syncLocalEntries() {
     Library: [...(grouped.Library || [])],
     Other: [...(grouped.Other || [])],
     Overlay: [...(grouped.Overlay || [])],
-    Orthophotos: [...(grouped.Orthophotos || [])],
+    AirportMesh: [...(grouped.AirportMesh || [])],
     Mesh: [...(grouped.Mesh || [])]
   }
 }
@@ -280,12 +293,12 @@ function syncLocalEntries() {
 function toggleGroupCollapse(category: string) {
   const expanded = isGroupExpanded(category)
   if (expanded) {
-    sceneryStore.collapsedGroups[category] = true
+    sceneryStore.collapsedGroups[category as SceneryCategory] = true
     if (searchExpandedGroups.value[category]) {
       delete searchExpandedGroups.value[category]
     }
   } else {
-    sceneryStore.collapsedGroups[category] = false
+    sceneryStore.collapsedGroups[category as SceneryCategory] = false
   }
 }
 
@@ -346,21 +359,28 @@ function getGlobalIndex(folderName: string): number {
   return globalIndexMap.value.get(folderName) ?? -1
 }
 
-async function handleGroupChange(category: string, evt: any) {
+// Type for vuedraggable change event
+interface DraggableChangeEvent<T> {
+  added?: { element: T; newIndex: number }
+  removed?: { element: T; oldIndex: number }
+  moved?: { element: T; newIndex: number; oldIndex: number }
+}
+
+async function handleGroupChange(category: string, evt: DraggableChangeEvent<SceneryManagerEntry>) {
   if (evt.added) {
     const entry = evt.added.element
-    const newCategory = category as any
+    const newCategory = category as SceneryCategory
 
     try {
       await sceneryStore.updateCategory(entry.folderName, newCategory)
     } catch (e) {
-      console.error('Failed to update category:', e)
+      logError(`Failed to update category: ${e}`, 'management')
       suppressLoading.value = true
       try {
         await sceneryStore.loadData()
         syncLocalEntries()
       } catch (reloadError) {
-        console.error('Failed to reload scenery data:', reloadError)
+        logError(`Failed to reload scenery data: ${reloadError}`, 'management')
       } finally {
         suppressLoading.value = false
       }
@@ -617,10 +637,9 @@ const isLoading = computed(() => {
 
       <!-- Scenery-specific action buttons -->
       <template v-if="activeTab === 'scenery'">
-        <!-- Auto-sort button (Chinese locale only - shown directly) -->
+        <!-- Auto-sort button (shown for all locales) -->
         <Transition name="button-fade" mode="out-in">
           <button
-            v-if="isChineseLocale"
             key="auto-sort-button"
             @click="handleSortSceneryNow"
             :disabled="isSortingScenery || !appStore.xplanePath || !sceneryStore.indexExists"
@@ -636,45 +655,8 @@ const isLoading = computed(() => {
           </button>
         </Transition>
 
-        <!-- More actions dropdown (English locale only) -->
-        <Transition name="button-fade" mode="out-in">
-          <div v-if="!isChineseLocale" key="more-menu" ref="moreMenuRef" class="relative">
-            <button
-              @click.stop="showMoreMenu = !showMoreMenu"
-              class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              :title="t('sceneryManager.moreActions')"
-            >
-              <svg class="w-4 h-4 text-gray-600 dark:text-gray-400" fill="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="5" r="2" />
-                <circle cx="12" cy="12" r="2" />
-                <circle cx="12" cy="19" r="2" />
-              </svg>
-            </button>
-
-            <!-- Dropdown menu -->
-            <div
-              v-if="showMoreMenu"
-              class="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50"
-            >
-              <button
-                @click="handleSortSceneryNow"
-                :disabled="isSortingScenery || !appStore.xplanePath || !sceneryStore.indexExists"
-                class="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                <svg v-if="!isSortingScenery" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path>
-                </svg>
-                <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                </svg>
-                <span class="transition-opacity">{{ isSortingScenery ? t('settings.sorting') : t('sceneryManager.autoSort') }}</span>
-              </button>
-            </div>
-          </div>
-        </Transition>
-
         <button
-          v-if="sceneryStore.hasChanges"
+          v-if="sceneryStore.hasChanges && !sceneryStore.data?.needsSync"
           @click="handleReset"
           class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
         >
@@ -682,19 +664,44 @@ const isLoading = computed(() => {
             <span :key="locale">{{ t('sceneryManager.reset') }}</span>
           </Transition>
         </button>
-        <button
-          @click="handleApplyChanges"
-          :disabled="!sceneryStore.indexExists || !sceneryStore.hasChanges || sceneryStore.isSaving"
-          class="px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
-        >
-          <svg v-if="sceneryStore.isSaving" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <Transition name="text-fade" mode="out-in">
-            <span :key="locale">{{ t('sceneryManager.applyChanges') }}</span>
+        <!-- Apply button with tooltip popover -->
+        <div v-if="sceneryStore.hasChanges" class="relative">
+          <button
+            @click="handleApplyChanges"
+            :disabled="!sceneryStore.indexExists || sceneryStore.isSaving"
+            class="px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
+            :class="{ 'ring-2 ring-amber-400 ring-offset-1': sceneryStore.data?.needsSync }"
+          >
+            <svg v-if="sceneryStore.isSaving" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <!-- Warning icon when ini out of sync -->
+            <svg v-else-if="sceneryStore.data?.needsSync" class="h-3.5 w-3.5 text-amber-200" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+            </svg>
+            <Transition name="text-fade" mode="out-in">
+              <span :key="locale">{{ t('sceneryManager.applyChanges') }}</span>
+            </Transition>
+          </button>
+          <!-- Tooltip popover pointing to button -->
+          <Transition name="fade">
+            <div
+              v-if="sceneryStore.data?.needsSync"
+              class="absolute right-0 top-full mt-2 w-64 p-2.5 bg-amber-50 dark:bg-amber-900/90 border border-amber-300 dark:border-amber-600 rounded-lg shadow-lg z-50"
+            >
+              <!-- Arrow pointing up -->
+              <div class="absolute -top-2 right-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-amber-300 dark:border-b-amber-600"></div>
+              <div class="absolute -top-1.5 right-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-amber-50 dark:border-b-amber-900/90"></div>
+              <div class="flex items-start gap-2">
+                <svg class="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                </svg>
+                <span class="text-xs text-amber-800 dark:text-amber-200">{{ t('sceneryManager.iniOutOfSync') }}</span>
+              </div>
+            </div>
           </Transition>
-        </button>
+        </div>
       </template>
     </div>
 
@@ -925,7 +932,7 @@ const isLoading = computed(() => {
             v-for="(element, index) in filteredSceneryEntries"
             :key="element.folderName"
             :data-scenery-index="index"
-            class="relative"
+            class="relative scenery-entry-item"
             style="scroll-margin-top: 100px"
           >
             <div
@@ -1004,20 +1011,21 @@ const isLoading = computed(() => {
                     :animation="180"
                     :easing="'cubic-bezier(0.25, 0.8, 0.25, 1)'"
                     :force-fallback="true"
+                    :fallback-on-body="true"
                     :fallback-tolerance="5"
                     :direction="'vertical'"
                     ghost-class="drag-ghost"
                     drag-class="sortable-drag"
                     @start="handleDragStart"
                     @end="handleDragEnd"
-                    @change="(evt) => handleGroupChange(category, evt)"
+                    @change="(evt: DraggableChangeEvent<SceneryManagerEntry>) => handleGroupChange(category, evt)"
                     class="space-y-1.5"
                     style="overflow: visible; padding: 0 0.5rem;"
                   >
                     <template #item="{ element }">
                       <div
                         :data-scenery-index="getGlobalIndex(element.folderName)"
-                        class="relative"
+                        class="relative scenery-entry-item"
                         style="scroll-margin-top: 100px"
                       >
                         <div
@@ -1190,5 +1198,17 @@ const isLoading = computed(() => {
 
 :global(.sortable-drag) {
   opacity: 1 !important;
+}
+
+/* Performance: Use content-visibility for offscreen items in large lists */
+/* This allows the browser to skip rendering of offscreen items */
+.scenery-entry-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px; /* Approximate height of entry card */
+}
+
+/* Performance: Optimize list rendering */
+.scenery-group {
+  contain: layout style;
 }
 </style>

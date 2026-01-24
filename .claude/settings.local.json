@@ -65,7 +65,10 @@
       "Bash(cargo metadata:*)",
       "Bash(cmd /c \"dir /s /b %USERPROFILE%\\\\.cargo\\\\registry\\\\src\\\\*sevenz* 2>nul\")",
       "Bash(gh api:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(pnpm type-check:*)",
+      "Bash(powershell -Command \"cd 'E:\\\\3370\\\\Desktop\\\\XFastInstall-Tauri'; pnpm type-check\":*)",
+      "Bash(echo:*)"
     ]
   }
 }

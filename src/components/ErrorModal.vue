@@ -72,6 +72,7 @@ import { onMounted, onBeforeUnmount, ref, watch, nextTick } from 'vue'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import { useI18n } from 'vue-i18n'
+import { logError } from '@/services/logger'
 
 const modal = useModalStore()
 const okBtn = ref<HTMLElement | null>(null)
@@ -90,7 +91,7 @@ async function copyAll() {
     await navigator.clipboard.writeText(text)
     toast.success(t('copy.copied') as string)
   } catch (e) {
-    console.error('Copy failed', e)
+    logError(`Copy failed: ${e}`, 'clipboard')
     toast.error(t('copy.copyFailed') as string)
   }
 }

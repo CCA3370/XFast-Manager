@@ -178,9 +178,17 @@ impl SceneryPacksManager {
                 global_airports_inserted = true;
             }
 
+            // Use actual_path if set (for shortcuts pointing outside Custom Scenery),
+            // otherwise use the standard Custom Scenery/{folder_name}/ format
+            let path = if let Some(actual_path) = &info.actual_path {
+                actual_path.clone()
+            } else {
+                format!("Custom Scenery/{}/", info.folder_name)
+            };
+
             entries.push(SceneryPackEntry {
                 enabled: info.enabled,
-                path: format!("Custom Scenery/{}/", info.folder_name),
+                path,
                 is_global_airports: false,
             });
         }
@@ -212,6 +220,75 @@ impl SceneryPacksManager {
         // but we call it explicitly to make the intent clear
         self.auto_sort_from_index()
     }
+
+    /// Check if ini file is in sync with the index
+    /// Returns true if ini order/enabled states match index, false otherwise
+    pub fn is_synced_with_index(&self) -> Result<bool> {
+        // If ini doesn't exist, it's not synced
+        if !self.ini_path.exists() {
+            return Ok(false);
+        }
+
+        let index_manager = SceneryIndexManager::new(&self.xplane_path);
+        let index = index_manager.load_index()?;
+
+        if index.packages.is_empty() {
+            return Ok(true);
+        }
+
+        // Read current ini file
+        let content = fs::read_to_string(&self.ini_path)?;
+
+        // Parse ini entries (order matters)
+        let mut ini_entries: Vec<(String, bool)> = Vec::new(); // (folder_name, enabled)
+        for line in content.lines() {
+            let line = line.trim();
+            if line.starts_with("SCENERY_PACK_DISABLED ") {
+                let path = line.trim_start_matches("SCENERY_PACK_DISABLED ");
+                if let Some(folder) = extract_folder_name(path) {
+                    ini_entries.push((folder, false));
+                }
+            } else if line.starts_with("SCENERY_PACK ") {
+                let path = line.trim_start_matches("SCENERY_PACK ");
+                // Skip *GLOBAL_AIRPORTS*
+                if !path.contains("*GLOBAL_AIRPORTS*") {
+                    if let Some(folder) = extract_folder_name(path) {
+                        ini_entries.push((folder, true));
+                    }
+                }
+            }
+        }
+
+        // Build expected order from index
+        let mut packages: Vec<_> = index.packages.values().collect();
+        packages.sort_by_key(|p| p.sort_order);
+
+        // Compare count first
+        if ini_entries.len() != packages.len() {
+            return Ok(false);
+        }
+
+        // Compare order and enabled state
+        for (i, pkg) in packages.iter().enumerate() {
+            let (ini_folder, ini_enabled) = &ini_entries[i];
+            if ini_folder != &pkg.folder_name || *ini_enabled != pkg.enabled {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
+    }
+}
+
+/// Extract folder name from ini path
+/// e.g., "Custom Scenery/MyScenery/" -> "MyScenery"
+fn extract_folder_name(path: &str) -> Option<String> {
+    let path = path.trim().trim_end_matches('/').trim_end_matches('\\');
+    if let Some(idx) = path.rfind('/').or_else(|| path.rfind('\\')) {
+        Some(path[idx + 1..].to_string())
+    } else {
+        Some(path.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -228,11 +305,6 @@ mod tests {
         assert!(SceneryCategory::DefaultAirport.priority() < SceneryCategory::Library.priority());
         assert!(SceneryCategory::Library.priority() < SceneryCategory::Other.priority());
         assert!(SceneryCategory::Other.priority() < SceneryCategory::Overlay.priority());
-        assert!(SceneryCategory::Overlay.priority() < SceneryCategory::Orthophotos.priority());
-        // Orthophotos and Mesh share the same priority (6), use sub-priority to distinguish
-        assert_eq!(
-            SceneryCategory::Orthophotos.priority(),
-            SceneryCategory::Mesh.priority()
-        );
+        assert!(SceneryCategory::Overlay.priority() < SceneryCategory::Mesh.priority());
     }
 }

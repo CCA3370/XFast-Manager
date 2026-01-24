@@ -9,6 +9,8 @@
     "core:window:default",
     "core:window:allow-set-focus",
     "core:window:allow-set-theme",
+    "core:window:allow-destroy",
+    "core:window:allow-close",
     "core:webview:default",
     "core:event:default",
     "core:event:allow-listen",

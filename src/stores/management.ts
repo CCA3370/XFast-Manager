@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, type Ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import type {
   AircraftInfo,
@@ -11,9 +11,13 @@ import type {
 } from '@/types'
 import { useAppStore } from './app'
 import { getNavdataCycleStatus } from '@/utils/airac'
+import { logError } from '@/services/logger'
 
 // Cache duration: 1 hour in milliseconds
 const UPDATE_CACHE_DURATION = 60 * 60 * 1000
+
+// Maximum number of entries in update cache to prevent unbounded memory growth
+const MAX_UPDATE_CACHE_SIZE = 500
 
 // Cache structure for update check results
 // Only cache latestVersion, hasUpdate should be recalculated based on current local version
@@ -24,6 +28,58 @@ interface UpdateCacheEntry {
 
 // Update cache: key is updateUrl, value is cache entry
 const updateCache = new Map<string, UpdateCacheEntry>()
+
+// Evict expired entries and oldest entries if cache is too large
+// Uses batch eviction for O(1) amortized complexity
+function evictUpdateCacheIfNeeded() {
+  const now = Date.now()
+
+  // First, remove expired entries
+  for (const [key, entry] of updateCache.entries()) {
+    if (now - entry.timestamp >= UPDATE_CACHE_DURATION) {
+      updateCache.delete(key)
+    }
+  }
+
+  // If still over capacity, batch remove oldest entries (10% or at least 10)
+  if (updateCache.size >= MAX_UPDATE_CACHE_SIZE) {
+    const entriesToRemove = Math.max(Math.floor(MAX_UPDATE_CACHE_SIZE / 10), 10)
+    const targetAge = UPDATE_CACHE_DURATION / 2
+
+    // Collect keys to remove (prioritize older entries)
+    const keysToRemove: string[] = []
+    for (const [key, entry] of updateCache.entries()) {
+      if (now - entry.timestamp > targetAge || keysToRemove.length < entriesToRemove) {
+        keysToRemove.push(key)
+        if (keysToRemove.length >= entriesToRemove) break
+      }
+    }
+
+    for (const key of keysToRemove) {
+      updateCache.delete(key)
+    }
+  }
+}
+
+// Helper function to set cache entry with eviction
+function setCacheEntry(url: string, entry: UpdateCacheEntry) {
+  evictUpdateCacheIfNeeded()
+  updateCache.set(url, entry)
+}
+
+// Type for items that can have update info
+interface UpdatableItem {
+  updateUrl?: string
+  version?: string
+  latestVersion?: string
+  hasUpdate: boolean
+  folderName: string
+}
+
+// Base type for any loadable management item
+interface LoadableItem {
+  folderName: string
+}
 
 export const useManagementStore = defineStore('management', () => {
   const appStore = useAppStore()
@@ -81,6 +137,10 @@ export const useManagementStore = defineStore('management', () => {
     }).length
   })
 
+  // ========================================
+  // Generic helper functions to reduce code duplication
+  // ========================================
+
   // Helper function to check if cache is valid
   function isCacheValid(url: string): boolean {
     const cached = updateCache.get(url)
@@ -90,9 +150,7 @@ export const useManagementStore = defineStore('management', () => {
 
   // Apply cached update info to items
   // hasUpdate is recalculated based on current local version vs cached remote version
-  function applyCachedUpdates<T extends { updateUrl?: string; version?: string; latestVersion?: string; hasUpdate: boolean }>(
-    items: T[]
-  ): T[] {
+  function applyCachedUpdates<T extends UpdatableItem>(items: T[]): T[] {
     return items.map(item => {
       if (item.updateUrl && isCacheValid(item.updateUrl)) {
         const cached = updateCache.get(item.updateUrl)!
@@ -114,8 +172,18 @@ export const useManagementStore = defineStore('management', () => {
     return items.filter(item => item.updateUrl && !isCacheValid(item.updateUrl))
   }
 
-  // Load aircraft data
-  async function loadAircraft() {
+  // Generic load function for management items
+  interface LoadConfig<T> {
+    scanCommand: string
+    itemsRef: Ref<T[]>
+    totalCountRef: Ref<number>
+    enabledCountRef: Ref<number>
+    applyCache?: boolean
+    afterLoad?: () => void
+    logName: string
+  }
+
+  async function loadItems<T extends LoadableItem>(config: LoadConfig<T>) {
     if (!appStore.xplanePath) {
       error.value = 'X-Plane path not set'
       return
@@ -125,164 +193,141 @@ export const useManagementStore = defineStore('management', () => {
     error.value = null
 
     try {
-      const result = await invoke<ManagementData<AircraftInfo>>('scan_aircraft', {
+      const result = await invoke<ManagementData<T>>(config.scanCommand, {
         xplanePath: appStore.xplanePath
       })
-      
-      // Apply cached update info first
-      aircraft.value = applyCachedUpdates(result.entries)
-      aircraftTotalCount.value = result.totalCount
-      aircraftEnabledCount.value = result.enabledCount
 
-      // Then check for updates for items without valid cache
-      checkAircraftUpdates()
+      // Apply cached update info if applicable (only for UpdatableItem types)
+      if (config.applyCache) {
+        config.itemsRef.value = applyCachedUpdates(result.entries as unknown as UpdatableItem[]) as unknown as T[]
+      } else {
+        config.itemsRef.value = result.entries
+      }
+      config.totalCountRef.value = result.totalCount
+      config.enabledCountRef.value = result.enabledCount
+
+      // Run post-load callback (e.g., start update check)
+      if (config.afterLoad) {
+        config.afterLoad()
+      }
     } catch (e) {
       error.value = String(e)
-      console.error('Failed to load aircraft:', e)
+      logError(`Failed to load ${config.logName}: ${e}`, 'management')
     } finally {
       isLoading.value = false
     }
   }
 
-  // Check for aircraft updates (only items without valid cache)
-  async function checkAircraftUpdates() {
-    if (aircraft.value.length === 0) return
+  // Generic update check function
+  interface UpdateCheckConfig<T extends UpdatableItem> {
+    itemsRef: Ref<T[]>
+    checkCommand: string
+    checkParamName: string
+    logName: string
+  }
 
-    // Only check aircraft that have update URLs and no valid cache
-    const aircraftToCheck = getItemsNeedingUpdateCheck(aircraft.value)
-    if (aircraftToCheck.length === 0) return
+  async function checkItemUpdates<T extends UpdatableItem>(config: UpdateCheckConfig<T>) {
+    if (config.itemsRef.value.length === 0) return
+
+    // Only check items that have update URLs and no valid cache
+    const itemsToCheck = getItemsNeedingUpdateCheck(config.itemsRef.value)
+    if (itemsToCheck.length === 0) return
 
     isCheckingUpdates.value = true
 
     try {
       // Send only items needing check to backend
-      const updated = await invoke<AircraftInfo[]>('check_aircraft_updates', {
-        aircraft: aircraftToCheck
+      const updated = await invoke<T[]>(config.checkCommand, {
+        [config.checkParamName]: itemsToCheck
       })
-      
+
       // Update cache with results (only store latestVersion, not hasUpdate)
       for (const item of updated) {
         if (item.updateUrl) {
-          updateCache.set(item.updateUrl, {
+          setCacheEntry(item.updateUrl, {
             latestVersion: item.latestVersion ?? null,
             timestamp: Date.now()
           })
         }
       }
-      
-      // Merge updated items back into aircraft list
-      const updatedMap = new Map(updated.map(a => [a.folderName, a]))
-      aircraft.value = aircraft.value.map(a => {
-        const updatedItem = updatedMap.get(a.folderName)
+
+      // Merge updated items back into list
+      const updatedMap = new Map(updated.map(item => [item.folderName, item]))
+      config.itemsRef.value = config.itemsRef.value.map(item => {
+        const updatedItem = updatedMap.get(item.folderName)
         if (updatedItem) {
-          return { ...a, latestVersion: updatedItem.latestVersion, hasUpdate: updatedItem.hasUpdate }
+          return { ...item, latestVersion: updatedItem.latestVersion, hasUpdate: updatedItem.hasUpdate }
         }
-        return a
+        return item
       })
     } catch (e) {
-      console.error('Failed to check aircraft updates:', e)
+      logError(`Failed to check ${config.logName} updates: ${e}`, 'management')
       // Don't set error.value here as this is a background operation
     } finally {
       isCheckingUpdates.value = false
     }
+  }
+
+  // ========================================
+  // Load functions using generic helpers
+  // ========================================
+
+  // Load aircraft data
+  async function loadAircraft() {
+    await loadItems<AircraftInfo>({
+      scanCommand: 'scan_aircraft',
+      itemsRef: aircraft,
+      totalCountRef: aircraftTotalCount,
+      enabledCountRef: aircraftEnabledCount,
+      applyCache: true,
+      afterLoad: () => checkAircraftUpdates(),
+      logName: 'aircraft'
+    })
+  }
+
+  // Check for aircraft updates
+  async function checkAircraftUpdates() {
+    await checkItemUpdates<AircraftInfo>({
+      itemsRef: aircraft,
+      checkCommand: 'check_aircraft_updates',
+      checkParamName: 'aircraft',
+      logName: 'aircraft'
+    })
   }
 
   // Load plugins data
   async function loadPlugins() {
-    if (!appStore.xplanePath) {
-      error.value = 'X-Plane path not set'
-      return
-    }
-
-    isLoading.value = true
-    error.value = null
-
-    try {
-      const result = await invoke<ManagementData<PluginInfo>>('scan_plugins', {
-        xplanePath: appStore.xplanePath
-      })
-      
-      // Apply cached update info first
-      plugins.value = applyCachedUpdates(result.entries)
-      pluginsTotalCount.value = result.totalCount
-      pluginsEnabledCount.value = result.enabledCount
-
-      // Then check for updates for items without valid cache
-      checkPluginsUpdates()
-    } catch (e) {
-      error.value = String(e)
-      console.error('Failed to load plugins:', e)
-    } finally {
-      isLoading.value = false
-    }
+    await loadItems<PluginInfo>({
+      scanCommand: 'scan_plugins',
+      itemsRef: plugins,
+      totalCountRef: pluginsTotalCount,
+      enabledCountRef: pluginsEnabledCount,
+      applyCache: true,
+      afterLoad: () => checkPluginsUpdates(),
+      logName: 'plugins'
+    })
   }
 
-  // Check for plugin updates (only items without valid cache)
+  // Check for plugin updates
   async function checkPluginsUpdates() {
-    if (plugins.value.length === 0) return
-
-    // Only check plugins that have update URLs and no valid cache
-    const pluginsToCheck = getItemsNeedingUpdateCheck(plugins.value)
-    if (pluginsToCheck.length === 0) return
-
-    isCheckingUpdates.value = true
-
-    try {
-      // Send only items needing check to backend
-      const updated = await invoke<PluginInfo[]>('check_plugins_updates', {
-        plugins: pluginsToCheck
-      })
-      
-      // Update cache with results (only store latestVersion, not hasUpdate)
-      for (const item of updated) {
-        if (item.updateUrl) {
-          updateCache.set(item.updateUrl, {
-            latestVersion: item.latestVersion ?? null,
-            timestamp: Date.now()
-          })
-        }
-      }
-      
-      // Merge updated items back into plugins list
-      const updatedMap = new Map(updated.map(p => [p.folderName, p]))
-      plugins.value = plugins.value.map(p => {
-        const updatedItem = updatedMap.get(p.folderName)
-        if (updatedItem) {
-          return { ...p, latestVersion: updatedItem.latestVersion, hasUpdate: updatedItem.hasUpdate }
-        }
-        return p
-      })
-    } catch (e) {
-      console.error('Failed to check plugin updates:', e)
-      // Don't set error.value here as this is a background operation
-    } finally {
-      isCheckingUpdates.value = false
-    }
+    await checkItemUpdates<PluginInfo>({
+      itemsRef: plugins,
+      checkCommand: 'check_plugins_updates',
+      checkParamName: 'plugins',
+      logName: 'plugins'
+    })
   }
 
-  // Load navdata
+  // Load navdata (no update cache needed)
   async function loadNavdata() {
-    if (!appStore.xplanePath) {
-      error.value = 'X-Plane path not set'
-      return
-    }
-
-    isLoading.value = true
-    error.value = null
-
-    try {
-      const result = await invoke<ManagementData<NavdataManagerInfo>>('scan_navdata', {
-        xplanePath: appStore.xplanePath
-      })
-      navdata.value = result.entries
-      navdataTotalCount.value = result.totalCount
-      navdataEnabledCount.value = result.enabledCount
-    } catch (e) {
-      error.value = String(e)
-      console.error('Failed to load navdata:', e)
-    } finally {
-      isLoading.value = false
-    }
+    await loadItems<NavdataManagerInfo>({
+      scanCommand: 'scan_navdata',
+      itemsRef: navdata,
+      totalCountRef: navdataTotalCount,
+      enabledCountRef: navdataEnabledCount,
+      applyCache: false,
+      logName: 'navdata'
+    })
   }
 
   // Load data for current tab
@@ -347,7 +392,7 @@ export const useManagementStore = defineStore('management', () => {
       }
     } catch (e) {
       error.value = String(e)
-      console.error('Failed to toggle enabled:', e)
+      logError(`Failed to toggle enabled: ${e}`, 'management')
       throw e
     }
   }
@@ -386,7 +431,7 @@ export const useManagementStore = defineStore('management', () => {
       }
     } catch (e) {
       error.value = String(e)
-      console.error('Failed to delete item:', e)
+      logError(`Failed to delete item: ${e}`, 'management')
       throw e
     }
   }
@@ -406,7 +451,7 @@ export const useManagementStore = defineStore('management', () => {
       })
     } catch (e) {
       error.value = String(e)
-      console.error('Failed to open folder:', e)
+      logError(`Failed to open folder: ${e}`, 'management')
       throw e
     }
   }

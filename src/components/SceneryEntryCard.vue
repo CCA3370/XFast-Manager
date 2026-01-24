@@ -6,8 +6,9 @@ import { useAppStore } from '@/stores/app'
 import { useToastStore } from '@/stores/toast'
 import { useModalStore } from '@/stores/modal'
 import { useSceneryStore } from '@/stores/scenery'
+import ConfirmModal from '@/components/ConfirmModal.vue'
 import type { SceneryManagerEntry } from '@/types'
-import { SceneryCategory } from '@/types'
+import { SceneryCategory, parseApiError, getErrorMessage } from '@/types'
 
 const props = withDefaults(defineProps<{
   entry: SceneryManagerEntry
@@ -43,7 +44,7 @@ const categoryConfig = computed(() => {
     [SceneryCategory.DefaultAirport]: { label: t('sceneryManager.categoryDefaultAirport'), color: 'text-gray-600 dark:text-gray-400', bgColor: 'bg-gray-100 dark:bg-gray-800/50' },
     [SceneryCategory.Library]: { label: t('sceneryManager.categoryLibrary'), color: 'text-green-700 dark:text-green-300', bgColor: 'bg-green-100 dark:bg-green-900/30' },
     [SceneryCategory.Overlay]: { label: t('sceneryManager.categoryOverlay'), color: 'text-yellow-700 dark:text-yellow-300', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30' },
-    [SceneryCategory.Orthophotos]: { label: t('sceneryManager.categoryOrthophotos'), color: 'text-orange-700 dark:text-orange-300', bgColor: 'bg-orange-100 dark:bg-orange-900/30' },
+    [SceneryCategory.AirportMesh]: { label: t('sceneryManager.categoryAirportMesh'), color: 'text-cyan-700 dark:text-cyan-300', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30' },
     [SceneryCategory.Mesh]: { label: t('sceneryManager.categoryMesh'), color: 'text-red-700 dark:text-red-300', bgColor: 'bg-red-100 dark:bg-red-900/30' },
     [SceneryCategory.Other]: { label: t('sceneryManager.categoryOther'), color: 'text-gray-600 dark:text-gray-400', bgColor: 'bg-gray-100 dark:bg-gray-800/50' },
   }
@@ -124,7 +125,18 @@ async function handleDeleteConfirm() {
     toastStore.success(t('sceneryManager.deleteSuccess'))
     showDeleteConfirmModal.value = false
   } catch (error) {
-    modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + String(error))
+    // Check for structured error with specific handling
+    const apiError = parseApiError(error)
+    if (apiError) {
+      // Use localized error messages based on error code
+      const errorKey = `errors.${apiError.code}`
+      const localizedMessage = t(errorKey) !== errorKey
+        ? t(errorKey)
+        : apiError.message
+      modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + localizedMessage)
+    } else {
+      modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + getErrorMessage(error))
+    }
   } finally {
     isDeleting.value = false
   }
@@ -312,63 +324,15 @@ async function handleDeleteConfirm() {
   </Teleport>
 
   <!-- Delete Confirmation Modal -->
-  <Teleport to="body">
-    <div
-      v-if="showDeleteConfirmModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      @click="showDeleteConfirmModal = false"
-    >
-      <div
-        class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full mx-4"
-        style="max-width: 400px;"
-        @click.stop
-      >
-        <!-- Modal Header -->
-        <div class="flex items-center justify-between p-5 pb-3">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-            {{ t('sceneryManager.deleteConfirmTitle') }}
-          </h3>
-          <button
-            @click="showDeleteConfirmModal = false"
-            class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <!-- Content -->
-        <div class="px-5 pb-3">
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
-            {{ t('sceneryManager.deleteConfirmMessage') }}
-          </p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 rounded px-3 py-2 break-all">
-            {{ entry.folderName }}
-          </p>
-        </div>
-
-        <!-- Action Buttons -->
-        <div class="flex gap-2 p-5 pt-3 border-t border-gray-200 dark:border-gray-700">
-          <button
-            @click="showDeleteConfirmModal = false"
-            class="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
-          >
-            {{ t('common.cancel') }}
-          </button>
-          <button
-            @click="handleDeleteConfirm"
-            :disabled="isDeleting"
-            class="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 disabled:bg-red-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-          >
-            <svg v-if="isDeleting" class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            {{ isDeleting ? t('common.deleting') : t('common.delete') }}
-          </button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
+  <ConfirmModal
+    v-model:show="showDeleteConfirmModal"
+    :title="t('sceneryManager.deleteConfirmTitle')"
+    :message="t('sceneryManager.deleteConfirmMessage')"
+    :item-name="entry.folderName"
+    :confirm-text="t('common.delete')"
+    :loading-text="t('common.deleting')"
+    :is-loading="isDeleting"
+    variant="danger"
+    @confirm="handleDeleteConfirm"
+  />
 </template>

@@ -15,12 +15,6 @@
                 <div class="flex-1">
                   <h3 class="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                     <span>{{ $t(currentStep.titleKey) }}</span>
-                    <span
-                      v-if="currentStep.key === 'autoSortScenery'"
-                      class="px-2 py-0.5 text-[10px] font-medium bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 rounded-full border border-amber-300 dark:border-amber-500/30"
-                    >
-                      {{ $t('settings.experimental') }}
-                    </span>
                   </h3>
                   <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     {{ $t(currentStep.descKey) }}
@@ -302,12 +296,12 @@ const pathError = ref<string | null>(null)
 const xplanePathValid = ref(!!store.xplanePath)
 const installPreferences = ref({ ...store.installPreferences })
 const verificationEnabled = ref(Object.values(store.verificationPreferences).some(Boolean))
-const verificationPreferences = ref({ ...store.verificationPreferences, rar: false })
+const verificationPreferences = ref<Record<string, boolean>>({ ...store.verificationPreferences, rar: false })
 const configPatterns = ref<string[]>([...store.getConfigFilePatterns()])
 const patternErrors = ref<Record<number, string>>({})
 
 const addonTypes = [AddonType.Aircraft, AddonType.Scenery, AddonType.SceneryLibrary, AddonType.Plugin, AddonType.Navdata, AddonType.Livery]
-const verificationTypes = ['zip', '7z', 'rar', 'directory']
+const verificationTypes = ['zip', '7z', 'rar', 'directory'] as const
 
 const transitionDirection = ref<'forward' | 'backward'>('forward')
 const transitionName = computed(() => (transitionDirection.value === 'forward' ? 'onboarding-slide-left' : 'onboarding-slide-right'))

@@ -320,22 +320,45 @@ const MAX_PASSWORD_RETRIES = 3
 const passwordAttemptTimestamps = ref<number[]>([])
 const MIN_PASSWORD_ATTEMPT_DELAY_MS = 1000 // 1 second between attempts
 
+// Mutex flag for analyzeFiles to prevent concurrent calls (TOCTOU protection)
+let isAnalyzeInProgress = false
+
+// Timer tracking for cleanup on unmount to prevent memory leaks
+const activeTimeoutIds = ref<ReturnType<typeof setTimeout>[]>([])
+
 // Tauri drag-drop event unsubscribe function
 let unlistenDragDrop: UnlistenFn | null = null
 let unlistenProgress: UnlistenFn | null = null
 let unlistenDeletionSkipped: UnlistenFn | null = null
 
+// Helper to create tracked timeouts that will be cleaned up on unmount
+function setTrackedTimeout(callback: () => void, delay: number): ReturnType<typeof setTimeout> {
+  const id = setTimeout(() => {
+    callback()
+    // Remove the timeout ID from the tracking array after it fires
+    const index = activeTimeoutIds.value.indexOf(id)
+    if (index > -1) {
+      activeTimeoutIds.value.splice(index, 1)
+    }
+  }, delay)
+  activeTimeoutIds.value.push(id)
+  return id
+}
+
 // Watch for pending CLI args changes
 watch(() => store.pendingCliArgs, async (args) => {
   if (args && args.length > 0) {
-    // If currently analyzing or installing, re-queue args to batch for later processing
-    // This ensures multiple rapid CLI inputs are merged and processed together
-    if (store.isAnalyzing || store.isInstalling) {
+    // Use local mutex flag for TOCTOU-safe concurrency control
+    // This prevents race conditions when multiple watch events fire quickly
+    if (isAnalyzeInProgress || store.isAnalyzing || store.isInstalling) {
       logDebug('Analysis in progress, re-queueing args for later', 'app')
       store.addCliArgsToBatch(args)
       store.clearPendingCliArgs()
       return
     }
+
+    // Set mutex immediately before any async operation
+    isAnalyzeInProgress = true
 
     logDebug(`Processing pending CLI args from watcher: ${args.join(', ')}`, 'app')
     const argsCopy = [...args]
@@ -345,6 +368,9 @@ watch(() => store.pendingCliArgs, async (args) => {
     } catch (error) {
       logError(`Failed to process CLI args: ${error}`, 'app')
       modal.showError(String(error))
+    } finally {
+      // Always release mutex
+      isAnalyzeInProgress = false
     }
   }
 })
@@ -371,7 +397,7 @@ function onWindowDragLeave(e: DragEvent) {
 }
 
 function onWindowDrop(e: DragEvent) {
-  console.log('Window drop event (HTML5)', e)
+  logDebug('Window drop event (HTML5)', 'drag-drop')
   e.preventDefault()
   // Ignore drop events when installing
   if (store.isInstalling) {
@@ -379,7 +405,7 @@ function onWindowDrop(e: DragEvent) {
   }
   isDragging.value = false
   debugDropFlash.value = true
-  setTimeout(() => (debugDropFlash.value = false), 800)
+  setTrackedTimeout(() => (debugDropFlash.value = false), 800)
 }
 
 onMounted(async () => {
@@ -391,11 +417,11 @@ onMounted(async () => {
   try {
     const webview = getCurrentWebviewWindow()
     unlistenDragDrop = await webview.onDragDropEvent(async (event) => {
-      console.log('Tauri drag-drop event:', event)
+      logDebug(`Tauri drag-drop event: ${event.payload.type}`, 'drag-drop')
 
       // Ignore all drag-drop events when installing
       if (store.isInstalling) {
-        console.log('Ignoring drag-drop event (installing)')
+        logDebug('Ignoring drag-drop event (installing)', 'drag-drop')
         return
       }
 
@@ -406,7 +432,7 @@ onMounted(async () => {
       } else if (event.payload.type === 'drop') {
         isDragging.value = false
         debugDropFlash.value = true
-        setTimeout(() => (debugDropFlash.value = false), 800)
+        setTrackedTimeout(() => (debugDropFlash.value = false), 800)
 
         // If showing completion, close it and start new analysis
         if (store.showCompletion) {
@@ -414,16 +440,16 @@ onMounted(async () => {
         }
 
         const paths = event.payload.paths
-        console.log('Dropped paths from Tauri:', paths)
+        logDebug(`Dropped paths from Tauri: ${paths.join(', ')}`, 'drag-drop')
 
         if (paths && paths.length > 0) {
           await analyzeFiles(paths)
         }
       }
     })
-    console.log('Tauri drag-drop listener registered')
+    logDebug('Tauri drag-drop listener registered', 'drag-drop')
   } catch (error) {
-    console.error('Failed to setup Tauri drag-drop listener:', error)
+    logError(`Failed to setup Tauri drag-drop listener: ${error}`, 'drag-drop')
   }
 
   // Listen for installation progress events
@@ -431,9 +457,9 @@ onMounted(async () => {
     unlistenProgress = await listen<InstallProgress>('install-progress', (event) => {
       progressStore.update(event.payload)
     })
-    console.log('Progress listener registered')
+    logDebug('Progress listener registered', 'install')
   } catch (error) {
-    console.error('Failed to setup progress listener:', error)
+    logError(`Failed to setup progress listener: ${error}`, 'install')
   }
 
   // Listen for source deletion skipped events
@@ -442,9 +468,9 @@ onMounted(async () => {
       const path = event.payload
       toast.info(t('home.sourceDeletionSkipped', { path }))
     })
-    console.log('Source deletion skipped listener registered')
+    logDebug('Source deletion skipped listener registered', 'install')
   } catch (error) {
-    console.error('Failed to setup source deletion skipped listener:', error)
+    logError(`Failed to setup source deletion skipped listener: ${error}`, 'install')
   }
 
   // Note: Pending CLI args are now handled by the watcher above
@@ -455,6 +481,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('dragover', onWindowDragOver)
   window.removeEventListener('dragleave', onWindowDragLeave)
   window.removeEventListener('drop', onWindowDrop)
+
+  // Cleanup all tracked timeouts to prevent memory leaks
+  activeTimeoutIds.value.forEach(id => clearTimeout(id))
+  activeTimeoutIds.value = []
 
   // Cleanup Tauri listeners
   if (unlistenDragDrop) {
@@ -479,7 +509,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
   }
 
   if (!store.xplanePath) {
-    console.log('No X-Plane path set')
+    logDebug('No X-Plane path set', 'analysis')
     // Log the abort reason - toast.warning will also log via the store
     logOperation(t('log.taskAborted'), t('log.xplanePathNotSet'))
     toast.warning(t('home.pathNotSet'))
@@ -490,7 +520,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
   logDebug(`Starting analysis with X-Plane path: ${store.xplanePath}`, 'analysis')
 
   try {
-    console.log('Paths to analyze:', paths)
+    logDebug(`Paths to analyze: ${paths.join(', ')}`, 'analysis')
 
     const result = await invoke<AnalysisResult>('analyze_addons', {
       paths,
@@ -499,8 +529,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
       verificationPreferences: store.verificationPreferences
     })
 
-    console.log('Analysis result:', result)
-    logDebug(`Analysis returned ${result.tasks.length} tasks, ${result.errors.length} errors`, 'analysis')
+    logDebug(`Analysis result: ${result.tasks.length} tasks, ${result.errors.length} errors`, 'analysis')
 
     // Check if any archives require passwords
     if (result.passwordRequired && result.passwordRequired.length > 0) {
@@ -587,8 +616,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
       toast.warning(t('home.noValidAddons'))
     }
   } catch (error) {
-    console.error('Analysis failed:', error)
-    // Non-blocking log call
+    // Non-blocking log call (also prints to console.error internally)
     logError(`${t('log.analysisFailed')}: ${error}`, 'analysis')
     modal.showError(t('home.failedToAnalyze') + ': ' + String(error))
   } finally {
@@ -732,14 +760,13 @@ async function handleInstall() {
 
     // Keep isInstalling true for a brief moment to show the animation
     // Then set it to false after animation starts
-    setTimeout(() => {
+    setTrackedTimeout(() => {
       store.isInstalling = false
       progressStore.reset()
     }, 100)
 
   } catch (error) {
-    console.error('Installation failed:', error)
-    // Non-blocking log call
+    // Non-blocking log call (also prints to console.error internally)
     logError(`${t('log.installationFailed')}: ${error}`, 'installation')
     modal.showError(t('home.installationFailed') + ': ' + String(error))
     store.isInstalling = false
@@ -763,7 +790,7 @@ async function handleSkipTask() {
       await invoke('skip_current_task')
       toast.info(t('taskControl.taskSkipped'))
     } catch (error) {
-      console.error('Failed to skip task:', error)
+      logError(`Failed to skip task: ${error}`, 'installation')
       toast.error(String(error))
     }
   }
@@ -785,7 +812,7 @@ async function handleCancelInstallation() {
       await invoke('cancel_installation')
       toast.info(t('taskControl.tasksCancelled'))
     } catch (error) {
-      console.error('Failed to cancel installation:', error)
+      logError(`Failed to cancel installation: ${error}`, 'installation')
       toast.error(String(error))
     }
   }

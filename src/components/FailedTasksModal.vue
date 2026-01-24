@@ -100,6 +100,7 @@ import { ref, watch, nextTick } from 'vue'
 import type { TaskResult } from '@/types'
 import { useI18n } from 'vue-i18n'
 import { useToastStore } from '@/stores/toast'
+import { logError } from '@/services/logger'
 
 const { t } = useI18n()
 const toast = useToastStore()
@@ -214,7 +215,7 @@ async function copyAllErrors() {
     await navigator.clipboard.writeText(errorText)
     toast.success(t('copy.copied') as string)
   } catch (e) {
-    console.error('Copy failed', e)
+    logError(`Copy failed: ${e}`, 'clipboard')
     toast.error(t('copy.copyFailed') as string)
   }
 }

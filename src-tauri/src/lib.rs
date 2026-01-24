@@ -1,6 +1,7 @@
 mod analyzer;
 mod atomic_installer;
 mod cache;
+mod error;
 mod hash_collector;
 mod installer;
 mod livery_patterns;
@@ -31,6 +32,37 @@ use scenery_packs_manager::SceneryPacksManager;
 use task_control::TaskControl;
 
 use tauri::{Emitter, Manager, State};
+
+/// Cross-platform helper to open a path in the system file explorer
+fn open_in_explorer<P: AsRef<std::path::Path>>(path: P) -> Result<(), String> {
+    let path = path.as_ref();
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(path)
+            .spawn()
+            .map_err(|e| format!("Failed to open folder: {}", e))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| format!("Failed to open folder: {}", e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| format!("Failed to open folder: {}", e))?;
+    }
+
+    Ok(())
+}
 
 #[tauri::command]
 fn get_cli_args() -> Vec<String> {
@@ -177,91 +209,96 @@ fn get_all_logs() -> String {
 
 #[tauri::command]
 fn open_log_folder() -> Result<(), String> {
-    let folder = logger::get_log_folder();
-
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("explorer")
-            .arg(folder)
-            .spawn()
-            .map_err(|e| format!("Failed to open folder: {}", e))?;
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(folder)
-            .spawn()
-            .map_err(|e| format!("Failed to open folder: {}", e))?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(folder)
-            .spawn()
-            .map_err(|e| format!("Failed to open folder: {}", e))?;
-    }
-
-    Ok(())
+    open_in_explorer(logger::get_log_folder())
 }
 
 #[tauri::command]
-fn open_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), String> {
+fn open_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), error::ApiError> {
+    // Security: Validate folder_name doesn't contain path traversal sequences
+    if folder_name.contains("..") || folder_name.contains('/') || folder_name.contains('\\') {
+        return Err(error::ApiError::security_violation(
+            "Invalid folder name: path traversal not allowed",
+        ));
+    }
+
     let scenery_path = std::path::PathBuf::from(&xplane_path)
         .join("Custom Scenery")
         .join(&folder_name);
 
     if !scenery_path.exists() {
-        return Err(format!("Scenery folder not found: {}", folder_name));
+        return Err(error::ApiError::not_found(format!(
+            "Scenery folder not found: {}",
+            folder_name
+        )));
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("explorer")
-            .arg(scenery_path)
-            .spawn()
-            .map_err(|e| format!("Failed to open folder: {}", e))?;
+    // Security: Use canonicalize for strict path validation to prevent path traversal attacks
+    let canonical_path = scenery_path
+        .canonicalize()
+        .map_err(|e| error::ApiError::validation(format!("Invalid path: {}", e)))?;
+    let canonical_base = std::path::PathBuf::from(&xplane_path)
+        .join("Custom Scenery")
+        .canonicalize()
+        .map_err(|e| error::ApiError::validation(format!("Invalid base path: {}", e)))?;
+
+    if !canonical_path.starts_with(&canonical_base) {
+        return Err(error::ApiError::security_violation(
+            "Path traversal attempt detected",
+        ));
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(scenery_path)
-            .spawn()
-            .map_err(|e| format!("Failed to open folder: {}", e))?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(scenery_path)
-            .spawn()
-            .map_err(|e| format!("Failed to open folder: {}", e))?;
-    }
-
-    Ok(())
+    open_in_explorer(&canonical_path).map_err(|e| error::ApiError::internal(e))
 }
 
 #[tauri::command]
-async fn delete_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), String> {
+async fn delete_scenery_folder(
+    xplane_path: String,
+    folder_name: String,
+) -> Result<(), error::ApiError> {
+    // Security: Validate folder_name doesn't contain path traversal sequences
+    if folder_name.contains("..") || folder_name.contains('/') || folder_name.contains('\\') {
+        return Err(error::ApiError::security_violation(
+            "Invalid folder name: path traversal not allowed",
+        ));
+    }
+
     let scenery_path = std::path::PathBuf::from(&xplane_path)
         .join("Custom Scenery")
         .join(&folder_name);
 
     if !scenery_path.exists() {
-        return Err(format!("Scenery folder not found: {}", folder_name));
+        return Err(error::ApiError::not_found(format!(
+            "Scenery folder not found: {}",
+            folder_name
+        )));
     }
 
-    // Ensure the path is within Custom Scenery directory for safety
-    let custom_scenery_path = std::path::PathBuf::from(&xplane_path).join("Custom Scenery");
-    if !scenery_path.starts_with(&custom_scenery_path) {
-        return Err("Invalid scenery path".to_string());
+    // Security: Use canonicalize for strict path validation to prevent path traversal attacks
+    let canonical_path = scenery_path
+        .canonicalize()
+        .map_err(|e| error::ApiError::validation(format!("Invalid path: {}", e)))?;
+    let canonical_base = std::path::PathBuf::from(&xplane_path)
+        .join("Custom Scenery")
+        .canonicalize()
+        .map_err(|e| error::ApiError::validation(format!("Invalid base path: {}", e)))?;
+
+    if !canonical_path.starts_with(&canonical_base) {
+        return Err(error::ApiError::security_violation(
+            "Path traversal attempt detected",
+        ));
     }
 
-    // Delete the folder
-    std::fs::remove_dir_all(&scenery_path)
-        .map_err(|e| format!("Failed to delete scenery folder: {}", e))?;
+    // Delete the folder using the canonical path for safety
+    std::fs::remove_dir_all(&canonical_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::PermissionDenied {
+            error::ApiError::permission_denied(format!(
+                "Permission denied when deleting: {}",
+                folder_name
+            ))
+        } else {
+            error::ApiError::internal(format!("Failed to delete scenery folder: {}", e))
+        }
+    })?;
 
     // Remove from scenery index if it exists
     if let Err(e) = scenery_index::remove_scenery_entry(&xplane_path, &folder_name) {
@@ -347,22 +384,25 @@ fn get_last_check_time() -> Option<i64> {
 async fn get_scenery_classification(
     xplane_path: String,
     folder_name: String,
-) -> Result<SceneryPackageInfo, String> {
+) -> Result<SceneryPackageInfo, error::ApiError> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
         let scenery_path = xplane_path.join("Custom Scenery").join(&folder_name);
 
         if !scenery_path.exists() {
-            return Err(format!("Scenery folder not found: {}", folder_name));
+            return Err(error::ApiError::not_found(format!(
+                "Scenery folder not found: {}",
+                folder_name
+            )));
         }
 
         let index_manager = SceneryIndexManager::new(xplane_path);
         index_manager
             .get_or_classify(&scenery_path)
-            .map_err(|e| format!("Classification failed: {}", e))
+            .map_err(|e| error::ApiError::internal(format!("Classification failed: {}", e)))
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| error::ApiError::internal(format!("Task join error: {}", e)))?
 }
 
 #[tauri::command]
@@ -516,14 +556,24 @@ async fn move_scenery_entry(
 }
 
 #[tauri::command]
-async fn apply_scenery_changes(xplane_path: String) -> Result<(), String> {
+async fn apply_scenery_changes(
+    xplane_path: String,
+    entries: Vec<models::SceneryEntryUpdate>,
+) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
-        let manager = SceneryPacksManager::new(xplane_path);
+        let index_manager = SceneryIndexManager::new(xplane_path);
 
-        logger::log_info("Applying scenery changes to ini", Some("scenery"));
+        logger::log_info("Applying scenery changes to index and ini", Some("scenery"));
 
-        manager
+        // Update index with all entry changes
+        index_manager
+            .batch_update_entries(&entries)
+            .map_err(|e| format!("Failed to update index: {}", e))?;
+
+        // Apply to ini file
+        let packs_manager = SceneryPacksManager::new(xplane_path);
+        packs_manager
             .apply_from_index()
             .map_err(|e| format!("Failed to apply scenery changes: {}", e))?;
 

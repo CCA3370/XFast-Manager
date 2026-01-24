@@ -7,11 +7,14 @@ export const useThemeStore = defineStore('theme', () => {
   const isDark = ref(localStorage.getItem('theme') === 'dark' ||
     (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches))
 
-  let syncRetryCount = 0
   const MAX_SYNC_RETRIES = 3
   const THEME_TRANSITION_DURATION_MS = 500
   let themeTransitionTimer: number | undefined
   let windowThemeTimer: number | undefined
+
+  // Track listeners for cleanup (fixes memory leak)
+  let visibilityHandler: (() => void) | null = null
+  let syncIntervalId: number | null = null
 
   function toggleTheme() {
     isDark.value = !isDark.value
@@ -21,7 +24,6 @@ export const useThemeStore = defineStore('theme', () => {
     try {
       const appWindow = getCurrentWindow()
       await appWindow.setTheme(isDark.value ? 'dark' : 'light')
-      syncRetryCount = 0 // Reset on success
     } catch (e) {
       // Retry on failure (up to MAX_SYNC_RETRIES times)
       if (retryCount < MAX_SYNC_RETRIES) {
@@ -187,21 +189,45 @@ export const useThemeStore = defineStore('theme', () => {
 
   // Re-sync when window becomes visible (handles edge cases)
   if (typeof document !== 'undefined') {
-    document.addEventListener('visibilitychange', () => {
+    // Store reference to handler for cleanup
+    visibilityHandler = () => {
       if (!document.hidden) {
         syncWindowTheme()
       }
-    })
+    }
+    document.addEventListener('visibilitychange', visibilityHandler)
 
     // Periodic sync every 5 seconds to ensure titlebar stays in sync
-    setInterval(() => {
+    // Store reference for cleanup
+    syncIntervalId = window.setInterval(() => {
       syncWindowTheme()
     }, 5000)
+  }
+
+  // Cleanup function to prevent memory leaks
+  function cleanup() {
+    if (visibilityHandler) {
+      document.removeEventListener('visibilitychange', visibilityHandler)
+      visibilityHandler = null
+    }
+    if (syncIntervalId !== null) {
+      clearInterval(syncIntervalId)
+      syncIntervalId = null
+    }
+    if (themeTransitionTimer !== undefined) {
+      window.clearTimeout(themeTransitionTimer)
+      themeTransitionTimer = undefined
+    }
+    if (windowThemeTimer !== undefined) {
+      window.clearTimeout(windowThemeTimer)
+      windowThemeTimer = undefined
+    }
   }
 
   return {
     isDark,
     toggleTheme,
-    forceSync
+    forceSync,
+    cleanup
   }
 })

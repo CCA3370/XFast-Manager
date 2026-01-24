@@ -129,7 +129,7 @@ import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { syncLocaleToBackend } from '@/i18n'
-import { logBasic, logDebug } from '@/services/logger'
+import { logBasic, logDebug, logError } from '@/services/logger'
 import ToastNotification from '@/components/ToastNotification.vue'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 import ThemeSwitcher from '@/components/ThemeSwitcher.vue'
@@ -181,7 +181,7 @@ async function runSceneryIndexStartupScan() {
       store.showSceneryManagerHint('sceneryManager.hintFromScan')
     }
   } catch (error) {
-    console.error('Failed to quick scan scenery index:', error)
+    logError(`Failed to quick scan scenery index: ${error}`, 'app')
   }
 }
 
@@ -207,7 +207,7 @@ onMounted(async () => {
       logDebug(`Context menu registered: ${store.isContextMenuRegistered}`, 'app')
     }
   } catch (error) {
-    console.error('Failed to detect platform:', error)
+    logError(`Failed to detect platform: ${error}`, 'app')
   }
 
   runSceneryIndexStartupScan()
@@ -265,9 +265,8 @@ onMounted(async () => {
   // Removed invoke('get_cli_args') to avoid duplicate calls and improve startup speed
   try {
     await listen<string[]>('cli-args', async (event) => {
-      console.log('CLI args event received:', event.payload)
+      logDebug(`CLI args event received: ${event.payload.join(', ')}`, 'app')
       logBasic(t('log.launchedWithArgs'), 'app')
-      logDebug(`CLI args: ${event.payload.join(', ')}`, 'app')
       if (event.payload && event.payload.length > 0) {
         // Use batch processing to handle multiple file selections
         // (Windows launches separate instances for each file)
@@ -276,7 +275,7 @@ onMounted(async () => {
       }
     })
   } catch (error) {
-    console.error('Failed to setup CLI args listener:', error)
+    logError(`Failed to setup CLI args listener: ${error}`, 'app')
   }
 
   // Set up window close confirmation for unsaved scenery changes
@@ -308,7 +307,7 @@ onMounted(async () => {
       // If no changes, allow the window to close normally
     })
   } catch (error) {
-    console.error('Failed to setup window close listener:', error)
+    logError(`Failed to setup window close listener: ${error}`, 'app')
   }
 })
 </script>

@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { AircraftInfo, PluginInfo, NavdataManagerInfo, ManagementItemType } from '@/types'
 import { getNavdataCycleStatus } from '@/utils/airac'
+import ConfirmModal from '@/components/ConfirmModal.vue'
 
 type EntryType = AircraftInfo | PluginInfo | NavdataManagerInfo
 
@@ -47,7 +48,8 @@ const displayName = computed(() => {
   } else if (isNavdata(props.entry)) {
     return props.entry.providerName
   }
-  return props.entry.folderName
+  // This case should never be reached, but satisfies TypeScript
+  return (props.entry as { folderName: string }).folderName
 })
 
 // Badge info
@@ -221,63 +223,15 @@ function handleDeleteConfirm() {
   </div>
 
   <!-- Delete Confirmation Modal -->
-  <Teleport to="body">
-    <div
-      v-if="showDeleteConfirmModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      @click="showDeleteConfirmModal = false"
-    >
-      <div
-        class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full mx-4"
-        style="max-width: 400px;"
-        @click.stop
-      >
-        <!-- Modal Header -->
-        <div class="flex items-center justify-between p-5 pb-3">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-            {{ t('management.deleteConfirmTitle') }}
-          </h3>
-          <button
-            @click="showDeleteConfirmModal = false"
-            class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <!-- Content -->
-        <div class="px-5 pb-3">
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
-            {{ t('management.deleteConfirmMessage') }}
-          </p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 rounded px-3 py-2 break-all">
-            {{ entry.folderName }}
-          </p>
-        </div>
-
-        <!-- Action Buttons -->
-        <div class="flex gap-2 p-5 pt-3 border-t border-gray-200 dark:border-gray-700">
-          <button
-            @click="showDeleteConfirmModal = false"
-            class="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
-          >
-            {{ t('common.cancel') }}
-          </button>
-          <button
-            @click="handleDeleteConfirm"
-            :disabled="isDeleting"
-            class="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 disabled:bg-red-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-          >
-            <svg v-if="isDeleting" class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            {{ isDeleting ? t('common.deleting') : t('common.delete') }}
-          </button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
+  <ConfirmModal
+    v-model:show="showDeleteConfirmModal"
+    :title="t('management.deleteConfirmTitle')"
+    :message="t('management.deleteConfirmMessage')"
+    :item-name="entry.folderName"
+    :confirm-text="t('common.delete')"
+    :loading-text="t('common.deleting')"
+    :is-loading="isDeleting"
+    variant="danger"
+    @confirm="handleDeleteConfirm"
+  />
 </template>

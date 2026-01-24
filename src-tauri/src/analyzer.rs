@@ -1045,6 +1045,7 @@ mod tests {
             archive_internal_root,
             extraction_chain: None,
             navdata_info: None,
+            livery_aircraft_type: None,
         }
     }
 
@@ -1078,6 +1079,8 @@ mod tests {
             extraction_chain: None,
             file_hashes: None,
             enable_verification: true,
+            livery_aircraft_type: None,
+            livery_aircraft_found: false,
         }
     }
 
