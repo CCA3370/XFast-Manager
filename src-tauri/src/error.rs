@@ -211,17 +211,17 @@ impl From<anyhow::Error> for ApiError {
 }
 
 /// Result type alias for API operations
-pub type ApiResult<T> = Result<T, ApiError>;
+pub type ApiResult<T> = std::result::Result<T, ApiError>;
 
 /// Extension trait to convert ApiResult<T> to Result<T, String> for Tauri commands
 /// This maintains backward compatibility while we migrate to ApiError
 pub trait ToTauriError<T> {
     /// Convert to Tauri-compatible Result with string error
-    fn to_tauri_error(self) -> Result<T, String>;
+    fn to_tauri_error(self) -> std::result::Result<T, String>;
 }
 
 impl<T> ToTauriError<T> for ApiResult<T> {
-    fn to_tauri_error(self) -> Result<T, String> {
+    fn to_tauri_error(self) -> std::result::Result<T, String> {
         self.map_err(|e| e.to_string())
     }
 }

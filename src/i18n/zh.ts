@@ -418,5 +418,21 @@ export default {
     openFolderFailed: '打开文件夹失败',
     scanFailed: '扫描失败',
     noItems: '未找到任何项目'
+  },
+  errors: {
+    validation_failed: '输入数据无效',
+    permission_denied: '权限被拒绝',
+    not_found: '资源未找到',
+    conflict_exists: '资源已存在',
+    corrupted_data: '数据已损坏',
+    network_error: '网络错误',
+    archive_error: '压缩包处理错误',
+    password_required: '需要密码',
+    incorrect_password: '密码错误',
+    cancelled: '操作已取消',
+    insufficient_space: '磁盘空间不足',
+    security_violation: '检测到安全违规',
+    timeout: '操作超时',
+    internal: '内部错误'
   }
 }

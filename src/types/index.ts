@@ -1,3 +1,79 @@
+// ========== API Error Types ==========
+
+/** Structured error codes matching backend ApiErrorCode */
+export type ApiErrorCode =
+  | 'validation_failed'
+  | 'permission_denied'
+  | 'not_found'
+  | 'conflict_exists'
+  | 'corrupted_data'
+  | 'network_error'
+  | 'archive_error'
+  | 'password_required'
+  | 'incorrect_password'
+  | 'cancelled'
+  | 'insufficient_space'
+  | 'security_violation'
+  | 'timeout'
+  | 'internal'
+
+/** Structured API error from backend */
+export interface ApiError {
+  code: ApiErrorCode
+  message: string
+  details?: string
+}
+
+/**
+ * Parse a Tauri invoke error to check if it's a structured ApiError
+ * @param error The error from invoke (typically a string)
+ * @returns Parsed ApiError if structured, or null if it's a plain string error
+ */
+export function parseApiError(error: unknown): ApiError | null {
+  if (typeof error !== 'string') {
+    return null
+  }
+
+  // Try to parse as JSON (structured error)
+  try {
+    const parsed = JSON.parse(error)
+    if (parsed && typeof parsed === 'object' && 'code' in parsed && 'message' in parsed) {
+      return parsed as ApiError
+    }
+  } catch {
+    // Not JSON, it's a plain string error
+  }
+
+  return null
+}
+
+/**
+ * Check if an error has a specific error code
+ */
+export function isApiErrorCode(error: unknown, code: ApiErrorCode): boolean {
+  const apiError = parseApiError(error)
+  return apiError?.code === code
+}
+
+/**
+ * Get the error message from either an ApiError or plain string
+ */
+export function getErrorMessage(error: unknown): string {
+  const apiError = parseApiError(error)
+  if (apiError) {
+    return apiError.message
+  }
+  if (typeof error === 'string') {
+    return error
+  }
+  if (error instanceof Error) {
+    return error.message
+  }
+  return String(error)
+}
+
+// ========== Addon Types ==========
+
 export enum AddonType {
   Aircraft = 'Aircraft',
   /** Scenery with Earth nav data (.dsf files) */

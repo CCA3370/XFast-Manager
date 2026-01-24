@@ -388,12 +388,22 @@ impl SceneryIndexManager {
                                 | SceneryCategory::Mesh
                         )
                     {
-                        match a.earth_nav_tile_count.cmp(&b.earth_nav_tile_count) {
-                            std::cmp::Ordering::Equal => a
-                                .folder_name
+                        // For Mesh category with sub_priority > 0 (XPME), sort only by folder name
+                        // XPME mesh should be at the bottom of Mesh category, sorted alphabetically
+                        if a.category == SceneryCategory::Mesh && a.sub_priority > 0 {
+                            // XPME mesh: sort only by folder name (alphabetically)
+                            a.folder_name
                                 .to_lowercase()
-                                .cmp(&b.folder_name.to_lowercase()),
-                            other => other,
+                                .cmp(&b.folder_name.to_lowercase())
+                        } else {
+                            // Non-XPME: sort by tile count first, then folder name
+                            match a.earth_nav_tile_count.cmp(&b.earth_nav_tile_count) {
+                                std::cmp::Ordering::Equal => a
+                                    .folder_name
+                                    .to_lowercase()
+                                    .cmp(&b.folder_name.to_lowercase()),
+                                other => other,
+                            }
                         }
                     } else {
                         a.folder_name
@@ -485,6 +495,114 @@ impl SceneryIndexManager {
         );
 
         Ok(index)
+    }
+
+    /// Recalculate sort_order for all packages using the same sorting logic as rebuild_index
+    /// This ensures incremental updates produce consistent ordering with full rebuilds
+    fn recalculate_sort_order(&self, index: &mut SceneryIndex) {
+        if index.packages.is_empty() {
+            return;
+        }
+
+        // Promote SAM libraries to FixedHighPriority before sorting
+        for (name, info) in index.packages.iter_mut() {
+            if is_sam_folder_name(name)
+                && info.has_library_txt
+                && !info.has_dsf
+                && !info.has_apt_dat
+            {
+                if info.category != SceneryCategory::FixedHighPriority {
+                    info.category = SceneryCategory::FixedHighPriority;
+                    info.sub_priority = 0;
+                }
+            }
+        }
+
+        // Separate FixedHighPriority packages (preserve their relative order)
+        let mut fixed_packages: Vec<(&String, &SceneryPackageInfo)> = index
+            .packages
+            .iter()
+            .filter(|(_, info)| info.category == SceneryCategory::FixedHighPriority)
+            .collect();
+
+        fixed_packages.sort_by(|(name_a, info_a), (name_b, info_b)| {
+            let sam_a = is_sam_folder_name(name_a);
+            let sam_b = is_sam_folder_name(name_b);
+            match sam_b.cmp(&sam_a) {
+                std::cmp::Ordering::Equal => {}
+                other => return other,
+            }
+            match info_a.sort_order.cmp(&info_b.sort_order) {
+                std::cmp::Ordering::Equal => name_a.to_lowercase().cmp(&name_b.to_lowercase()),
+                other => other,
+            }
+        });
+
+        // Sort other packages using the same logic as rebuild_index
+        let mut other_packages: Vec<(&String, &SceneryPackageInfo)> = index
+            .packages
+            .iter()
+            .filter(|(_, info)| info.category != SceneryCategory::FixedHighPriority)
+            .collect();
+
+        other_packages.sort_by(|(name_a, info_a), (name_b, info_b)| {
+            let priority_a = (info_a.category.priority(), info_a.sub_priority);
+            let priority_b = (info_b.category.priority(), info_b.sub_priority);
+
+            match priority_a.cmp(&priority_b) {
+                std::cmp::Ordering::Equal => {
+                    if info_a.category == info_b.category
+                        && matches!(
+                            info_a.category,
+                            SceneryCategory::Overlay
+                                | SceneryCategory::AirportMesh
+                                | SceneryCategory::Mesh
+                        )
+                    {
+                        // For Mesh category with sub_priority > 0 (XPME), sort only by folder name
+                        // XPME mesh should be at the bottom of Mesh category, sorted alphabetically
+                        if info_a.category == SceneryCategory::Mesh && info_a.sub_priority > 0 {
+                            name_a.to_lowercase().cmp(&name_b.to_lowercase())
+                        } else {
+                            // Non-XPME: sort by tile count first, then folder name
+                            match info_a
+                                .earth_nav_tile_count
+                                .cmp(&info_b.earth_nav_tile_count)
+                            {
+                                std::cmp::Ordering::Equal => {
+                                    name_a.to_lowercase().cmp(&name_b.to_lowercase())
+                                }
+                                other => other,
+                            }
+                        }
+                    } else {
+                        name_a.to_lowercase().cmp(&name_b.to_lowercase())
+                    }
+                }
+                other => other,
+            }
+        });
+
+        // Collect sorted names and update sort_order
+        let sorted_names: Vec<String> = fixed_packages
+            .iter()
+            .map(|(name, _)| (*name).clone())
+            .chain(other_packages.iter().map(|(name, _)| (*name).clone()))
+            .collect();
+
+        for (new_order, folder_name) in sorted_names.iter().enumerate() {
+            if let Some(info) = index.packages.get_mut(folder_name) {
+                info.sort_order = new_order as u32;
+            }
+        }
+
+        logger::log_info(
+            &format!(
+                "Recalculated sort order for {} packages",
+                sorted_names.len()
+            ),
+            Some("scenery_index"),
+        );
     }
 
     /// Update index incrementally - only re-classify modified packages
@@ -604,6 +722,10 @@ impl SceneryIndexManager {
                 }
                 index.packages.insert(info.folder_name.clone(), info);
             }
+
+            // After adding new packages, recalculate sort_order using the same logic as rebuild_index
+            // This ensures incremental updates produce the same ordering as full rebuilds
+            self.recalculate_sort_order(&mut index);
         }
 
         // Also update actual_path for existing entries that are shortcuts
@@ -919,14 +1041,22 @@ impl SceneryIndexManager {
                                 | SceneryCategory::Mesh
                         )
                     {
-                        match info_a
-                            .earth_nav_tile_count
-                            .cmp(&info_b.earth_nav_tile_count)
-                        {
-                            std::cmp::Ordering::Equal => {
-                                name_a.to_lowercase().cmp(&name_b.to_lowercase())
+                        // For Mesh category with sub_priority > 0 (XPME), sort only by folder name
+                        // XPME mesh should be at the bottom of Mesh category, sorted alphabetically
+                        if info_a.category == SceneryCategory::Mesh && info_a.sub_priority > 0 {
+                            // XPME mesh: sort only by folder name (alphabetically)
+                            name_a.to_lowercase().cmp(&name_b.to_lowercase())
+                        } else {
+                            // Non-XPME: sort by tile count first, then folder name
+                            match info_a
+                                .earth_nav_tile_count
+                                .cmp(&info_b.earth_nav_tile_count)
+                            {
+                                std::cmp::Ordering::Equal => {
+                                    name_a.to_lowercase().cmp(&name_b.to_lowercase())
+                                }
+                                other => other,
                             }
-                            other => other,
                         }
                     } else {
                         // If priorities are equal, sort by folder name (case-insensitive)

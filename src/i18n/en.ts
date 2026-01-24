@@ -405,5 +405,21 @@ export default {
     openFolderFailed: 'Failed to open folder',
     scanFailed: 'Failed to scan',
     noItems: 'No items found'
+  },
+  errors: {
+    validation_failed: 'Invalid input data',
+    permission_denied: 'Permission denied',
+    not_found: 'Resource not found',
+    conflict_exists: 'Resource already exists',
+    corrupted_data: 'Data is corrupted',
+    network_error: 'Network error',
+    archive_error: 'Archive processing error',
+    password_required: 'Password required',
+    incorrect_password: 'Incorrect password',
+    cancelled: 'Operation cancelled',
+    insufficient_space: 'Insufficient disk space',
+    security_violation: 'Security violation detected',
+    timeout: 'Operation timed out',
+    internal: 'Internal error'
   }
 }

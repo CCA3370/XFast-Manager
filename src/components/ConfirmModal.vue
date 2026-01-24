@@ -6,7 +6,7 @@
       @leave="onLeave"
       :css="false"
     >
-      <div v-if="modal.confirmModal.visible && modal.confirmModal.options" class="fixed inset-0 z-[1100] flex items-center justify-center">
+      <div v-if="isVisible" class="fixed inset-0 z-[1100] flex items-center justify-center">
         <!-- Backdrop -->
         <div
           ref="backdrop"
@@ -27,11 +27,11 @@
               <div
                 class="w-11 h-11 flex items-center justify-center rounded-full"
                 :class="{
-                  'bg-gradient-to-br from-amber-500 to-yellow-600': modal.confirmModal.options.type === 'warning',
-                  'bg-gradient-to-br from-red-500 to-red-700': modal.confirmModal.options.type === 'danger'
+                  'bg-gradient-to-br from-amber-500 to-yellow-600': currentType === 'warning',
+                  'bg-gradient-to-br from-red-500 to-red-700': currentType === 'danger'
                 }"
               >
-                <svg v-if="modal.confirmModal.options.type === 'warning'" class="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <svg v-if="currentType === 'warning'" class="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
                 </svg>
                 <svg v-else class="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -41,7 +41,7 @@
                 </svg>
               </div>
               <div>
-                <h3 class="text-lg font-semibold leading-tight">{{ modal.confirmModal.options.title }}</h3>
+                <h3 class="text-lg font-semibold leading-tight">{{ currentTitle }}</h3>
               </div>
             </div>
             <button @click="handleCancel" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1">
@@ -53,12 +53,17 @@
 
           <div class="mt-4 space-y-3">
             <p class="text-sm text-gray-700 dark:text-gray-100 leading-relaxed">
-              {{ modal.confirmModal.options.message }}
+              {{ currentMessage }}
             </p>
 
-            <div v-if="modal.confirmModal.options.warning" class="p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg">
+            <!-- Item name highlight -->
+            <div v-if="currentItemName" class="p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
+              <p class="text-sm font-mono text-gray-900 dark:text-gray-100 break-all">{{ currentItemName }}</p>
+            </div>
+
+            <div v-if="currentWarning" class="p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg">
               <p class="text-sm text-amber-700 dark:text-amber-200 leading-relaxed">
-                {{ modal.confirmModal.options.warning }}
+                {{ currentWarning }}
               </p>
             </div>
           </div>
@@ -67,19 +72,25 @@
             <button
               ref="cancelBtn"
               @click="handleCancel"
-              class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg text-gray-700 dark:text-white font-medium transition"
+              :disabled="isLoading"
+              class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg text-gray-700 dark:text-white font-medium transition disabled:opacity-50"
             >
-              {{ modal.confirmModal.options.cancelText }}
+              {{ currentCancelText }}
             </button>
             <button
               @click="handleConfirm"
-              class="px-4 py-2 rounded-lg text-white font-medium transition"
+              :disabled="isLoading"
+              class="px-4 py-2 rounded-lg text-white font-medium transition disabled:opacity-50 flex items-center gap-2"
               :class="{
-                'bg-amber-500 hover:bg-amber-600': modal.confirmModal.options.type === 'warning',
-                'bg-red-600 hover:bg-red-700': modal.confirmModal.options.type === 'danger'
+                'bg-amber-500 hover:bg-amber-600': currentType === 'warning',
+                'bg-red-600 hover:bg-red-700': currentType === 'danger'
               }"
             >
-              {{ modal.confirmModal.options.confirmText }}
+              <svg v-if="isLoading" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              {{ isLoading ? currentLoadingText : currentConfirmText }}
             </button>
           </div>
         </div>
@@ -89,21 +100,109 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, watch, nextTick } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch, nextTick } from 'vue'
 import { useModalStore } from '@/stores/modal'
+import { useI18n } from 'vue-i18n'
 import gsap from 'gsap'
+
+const { t } = useI18n()
+
+// Props for local mode (when used as a reusable component)
+const props = withDefaults(defineProps<{
+  show?: boolean
+  title?: string
+  message?: string
+  itemName?: string
+  warning?: string
+  confirmText?: string
+  cancelText?: string
+  loadingText?: string
+  isLoading?: boolean
+  variant?: 'warning' | 'danger'
+}>(), {
+  show: false,
+  isLoading: false,
+  variant: 'danger'
+})
+
+const emit = defineEmits<{
+  (e: 'update:show', value: boolean): void
+  (e: 'confirm'): void
+  (e: 'cancel'): void
+}>()
 
 const modal = useModalStore()
 const cancelBtn = ref<HTMLElement | null>(null)
 const backdrop = ref<HTMLElement | null>(null)
 const card = ref<HTMLElement | null>(null)
 
+// Determine if using local mode (props) or global mode (modalStore)
+const isLocalMode = computed(() => props.show !== undefined && props.show !== false || props.title !== undefined)
+
+// Computed visibility
+const isVisible = computed(() => {
+  if (isLocalMode.value) {
+    return props.show
+  }
+  return modal.confirmModal.visible && modal.confirmModal.options !== null
+})
+
+// Computed values that work in both modes
+const currentTitle = computed(() => {
+  if (isLocalMode.value) return props.title || ''
+  return modal.confirmModal.options?.title || ''
+})
+
+const currentMessage = computed(() => {
+  if (isLocalMode.value) return props.message || ''
+  return modal.confirmModal.options?.message || ''
+})
+
+const currentItemName = computed(() => {
+  if (isLocalMode.value) return props.itemName
+  return undefined
+})
+
+const currentWarning = computed(() => {
+  if (isLocalMode.value) return props.warning
+  return modal.confirmModal.options?.warning
+})
+
+const currentType = computed(() => {
+  if (isLocalMode.value) return props.variant
+  return modal.confirmModal.options?.type || 'danger'
+})
+
+const currentConfirmText = computed(() => {
+  if (isLocalMode.value) return props.confirmText || t('common.confirm')
+  return modal.confirmModal.options?.confirmText || t('common.confirm')
+})
+
+const currentCancelText = computed(() => {
+  if (isLocalMode.value) return props.cancelText || t('common.cancel')
+  return modal.confirmModal.options?.cancelText || t('common.cancel')
+})
+
+const currentLoadingText = computed(() => {
+  if (isLocalMode.value) return props.loadingText || t('common.loading')
+  return t('common.loading')
+})
+
 function handleConfirm() {
-  modal.confirmAction()
+  if (isLocalMode.value) {
+    emit('confirm')
+  } else {
+    modal.confirmAction()
+  }
 }
 
 function handleCancel() {
-  modal.cancelAction()
+  if (isLocalMode.value) {
+    emit('update:show', false)
+    emit('cancel')
+  } else {
+    modal.cancelAction()
+  }
 }
 
 // GSAP animations
@@ -170,7 +269,7 @@ function onLeave(el: Element, done: () => void) {
 }
 
 // Focus management
-watch(() => modal.confirmModal.visible, async (visible) => {
+watch(isVisible, async (visible) => {
   if (visible) {
     await nextTick()
     cancelBtn.value?.focus()
@@ -179,7 +278,7 @@ watch(() => modal.confirmModal.visible, async (visible) => {
 
 // Keyboard shortcuts
 function handleKeydown(e: KeyboardEvent) {
-  if (!modal.confirmModal.visible) return
+  if (!isVisible.value) return
 
   if (e.key === 'Escape') {
     e.preventDefault()

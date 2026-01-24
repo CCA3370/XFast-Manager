@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import type { SceneryIndexStatus, SceneryManagerData, SceneryManagerEntry, SceneryCategory } from '@/types'
+import { parseApiError, getErrorMessage } from '@/types'
 import { useAppStore } from './app'
 import { logError } from '@/services/logger'
 
@@ -285,9 +286,19 @@ export const useSceneryStore = defineStore('scenery', () => {
       // Also remove from original entries
       originalEntries.value = originalEntries.value.filter(e => e.folderName !== folderName)
     } catch (e) {
-      error.value = String(e)
-      logError(`Failed to delete scenery entry: ${e}`, 'scenery')
-      throw e
+      // Parse structured error if available
+      const apiError = parseApiError(e)
+      if (apiError) {
+        error.value = apiError.message
+        logError(`Failed to delete scenery entry [${apiError.code}]: ${apiError.message}`, 'scenery')
+
+        // Rethrow with structured error info for UI handling
+        throw { ...apiError, isApiError: true }
+      } else {
+        error.value = getErrorMessage(e)
+        logError(`Failed to delete scenery entry: ${error.value}`, 'scenery')
+        throw e
+      }
     }
   }
 

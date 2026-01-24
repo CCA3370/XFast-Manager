@@ -1268,8 +1268,9 @@ fn calculate_sub_priority(category: &SceneryCategory, folder_name: &str) -> u8 {
 
     match category {
         SceneryCategory::Mesh => {
-            // XPME mesh should be last (priority 2)
-            if folder_name_lower.contains("xpme") {
+            // XPME mesh (starts with "xpme") should be at the bottom of Mesh category
+            // They will be sorted alphabetically among themselves
+            if folder_name_lower.starts_with("xpme") {
                 2
             } else {
                 0

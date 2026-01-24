@@ -8,7 +8,7 @@ import { useModalStore } from '@/stores/modal'
 import { useSceneryStore } from '@/stores/scenery'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import type { SceneryManagerEntry } from '@/types'
-import { SceneryCategory } from '@/types'
+import { SceneryCategory, parseApiError, getErrorMessage } from '@/types'
 
 const props = withDefaults(defineProps<{
   entry: SceneryManagerEntry
@@ -125,7 +125,18 @@ async function handleDeleteConfirm() {
     toastStore.success(t('sceneryManager.deleteSuccess'))
     showDeleteConfirmModal.value = false
   } catch (error) {
-    modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + String(error))
+    // Check for structured error with specific handling
+    const apiError = parseApiError(error)
+    if (apiError) {
+      // Use localized error messages based on error code
+      const errorKey = `errors.${apiError.code}`
+      const localizedMessage = t(errorKey) !== errorKey
+        ? t(errorKey)
+        : apiError.message
+      modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + localizedMessage)
+    } else {
+      modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + getErrorMessage(error))
+    }
   } finally {
     isDeleting.value = false
   }

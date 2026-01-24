@@ -1011,6 +1011,7 @@ const isLoading = computed(() => {
                     :animation="180"
                     :easing="'cubic-bezier(0.25, 0.8, 0.25, 1)'"
                     :force-fallback="true"
+                    :fallback-on-body="true"
                     :fallback-tolerance="5"
                     :direction="'vertical'"
                     ghost-class="drag-ghost"
