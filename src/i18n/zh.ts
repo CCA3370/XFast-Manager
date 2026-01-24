@@ -167,7 +167,10 @@ export default {
     rebuildIndexTooltip: '重建地景索引（重新扫描所有地景包）',
     indexRebuilt: '地景索引重建完成',
     indexRebuildFailed: '地景索引重建失败',
-    experimental: '实验性'
+    experimental: '实验性',
+    // 关于页面
+    development: '开发',
+    testing: '测试'
   },
   modal: {
     confirmInstallation: '确认安装',
@@ -343,7 +346,8 @@ export default {
     missingDeps: '缺少依赖',
     unsavedChanges: '未保存的更改',
     unsavedChangesWarning: '您有未保存的更改，确定要关闭吗？',
-    applyChanges: '应用更改',
+    applyChanges: '应用',
+    iniOutOfSync: 'ini文件与当前列表不一致，点击应用以同步',
     changesApplied: '更改已成功应用',
     applyFailed: '应用更改失败',
     noScenery: '未找到地景包',
@@ -376,7 +380,7 @@ export default {
     categoryDefaultAirport: '默认机场',
     categoryLibrary: '库',
     categoryOverlay: '叠加层',
-    categoryOrthophotos: '正射影像',
+    categoryAirportMesh: '机场网格',
     categoryMesh: '网格',
     categoryOther: '其他',
     autoSort: '自动排序',

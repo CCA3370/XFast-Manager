@@ -24,8 +24,9 @@ export const useAppStore = defineStore('app', () => {
   const pendingCliArgs = ref<string[] | null>(null)
 
   // Batch processing for CLI args (to handle multiple file selections)
-  const cliArgsBatch = ref<string[]>([])
-  let cliArgsBatchTimer: ReturnType<typeof setTimeout> | null = null
+  // Using a Set for deduplication and atomic batch collection
+  const cliArgsBatch = ref<Set<string>>(new Set())
+  const cliArgsBatchTimerId = ref<ReturnType<typeof setTimeout> | null>(null)
 
   // Installation result state
   const installResult = ref<InstallResult | null>(null)
@@ -374,24 +375,34 @@ export const useAppStore = defineStore('app', () => {
   }
 
   // Add CLI args to batch (for handling multiple file selections)
+  // Thread-safe: Uses Set for deduplication and reactive timer for proper cleanup
   function addCliArgsToBatch(args: string[]) {
-    // Add new args to batch
-    cliArgsBatch.value.push(...args)
+    // Add new args to batch using Set for automatic deduplication
+    args.forEach(arg => cliArgsBatch.value.add(arg))
 
-    // Clear existing timer
-    if (cliArgsBatchTimer) {
-      clearTimeout(cliArgsBatchTimer)
+    // Clear existing timer if any
+    if (cliArgsBatchTimerId.value !== null) {
+      clearTimeout(cliArgsBatchTimerId.value)
+      cliArgsBatchTimerId.value = null
     }
 
+    // Capture current batch reference for closure safety
+    const currentBatch = cliArgsBatch.value
+
     // Set new timer to process batch after delay
-    cliArgsBatchTimer = setTimeout(() => {
-      if (cliArgsBatch.value.length > 0) {
-        // Remove duplicates
-        const uniqueArgs = Array.from(new Set(cliArgsBatch.value)) as string[]
-        setPendingCliArgs(uniqueArgs)
-        cliArgsBatch.value = []
+    cliArgsBatchTimerId.value = setTimeout(() => {
+      // Verify this timer hasn't been superseded
+      if (cliArgsBatchTimerId.value === null) {
+        return
       }
-      cliArgsBatchTimer = null
+
+      if (currentBatch.size > 0) {
+        // Convert Set to array
+        const uniqueArgs = Array.from(currentBatch)
+        setPendingCliArgs(uniqueArgs)
+        currentBatch.clear()
+      }
+      cliArgsBatchTimerId.value = null
     }, CLI_ARGS_BATCH_DELAY_MS)
   }
 
@@ -399,11 +410,11 @@ export const useAppStore = defineStore('app', () => {
   function clearPendingCliArgs() {
     pendingCliArgs.value = null
     // Also clear any pending batch timer
-    if (cliArgsBatchTimer) {
-      clearTimeout(cliArgsBatchTimer)
-      cliArgsBatchTimer = null
+    if (cliArgsBatchTimerId.value !== null) {
+      clearTimeout(cliArgsBatchTimerId.value)
+      cliArgsBatchTimerId.value = null
     }
-    cliArgsBatch.value = []
+    cliArgsBatch.value.clear()
   }
 
   // Set installation result

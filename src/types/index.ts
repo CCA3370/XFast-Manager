@@ -132,7 +132,7 @@ export enum SceneryCategory {
   DefaultAirport = 'DefaultAirport',
   Library = 'Library',
   Overlay = 'Overlay',
-  Orthophotos = 'Orthophotos',
+  AirportMesh = 'AirportMesh',
   Mesh = 'Mesh',
   Other = 'Other',
 }

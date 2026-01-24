@@ -452,24 +452,8 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
             "scenery_classifier"
         );
 
-        // Check if it's Ortho4XP (special case of Mesh - Orthophotos)
-        let category = if let Some(ref header) = dsf_header_opt {
-            if let Some(ref agent) = header.creation_agent {
-                if agent.to_lowercase().contains("ortho4xp") {
-                    crate::log_debug!(
-                        &format!("    → Orthophotos (Ortho4XP)"),
-                        "scenery_classifier"
-                    );
-                    SceneryCategory::Orthophotos
-                } else {
-                    SceneryCategory::Mesh
-                }
-            } else {
-                SceneryCategory::Mesh
-            }
-        } else {
-            SceneryCategory::Mesh
-        };
+        // All mesh/orthophoto scenery is now classified as Mesh
+        let category = SceneryCategory::Mesh;
 
         let (required_libraries, missing_libraries) = if let Some(ref header) = dsf_header_opt {
             let required = extract_required_libraries(&header.object_references);
@@ -492,7 +476,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
         if !exported_library_names.is_empty() {
             crate::log_debug!(
                 &format!(
-                    "  Mesh/Orthophotos also exports libraries: {:?}",
+                    "  Mesh also exports libraries: {:?}",
                     exported_library_names
                 ),
                 "scenery_classifier"
@@ -1273,6 +1257,7 @@ fn build_package_info(
         exported_library_names,
         enabled: true, // Default to enabled
         sort_order: 0, // Will be assigned during index rebuild
+        actual_path: None, // Will be set by index manager for shortcut entries
     })
 }
 
@@ -1282,20 +1267,12 @@ fn calculate_sub_priority(category: &SceneryCategory, folder_name: &str) -> u8 {
     let folder_name_lower = folder_name.to_lowercase();
 
     match category {
-        SceneryCategory::Orthophotos => {
-            // XPME orthophotos should be last (priority 2)
-            if folder_name_lower.contains("xpme") {
-                2
-            } else {
-                0
-            }
-        }
         SceneryCategory::Mesh => {
             // XPME mesh should be last (priority 2)
             if folder_name_lower.contains("xpme") {
                 2
             } else {
-                1
+                0
             }
         }
         _ => 0, // Default sub-priority for all other categories

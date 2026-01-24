@@ -1,6 +1,7 @@
 mod analyzer;
 mod atomic_installer;
 mod cache;
+mod error;
 mod hash_collector;
 mod installer;
 mod livery_patterns;
@@ -208,6 +209,11 @@ fn open_log_folder() -> Result<(), String> {
 
 #[tauri::command]
 fn open_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), String> {
+    // Security: Validate folder_name doesn't contain path traversal sequences
+    if folder_name.contains("..") || folder_name.contains('/') || folder_name.contains('\\') {
+        return Err("Invalid folder name: path traversal not allowed".to_string());
+    }
+
     let scenery_path = std::path::PathBuf::from(&xplane_path)
         .join("Custom Scenery")
         .join(&folder_name);
@@ -216,10 +222,23 @@ fn open_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), S
         return Err(format!("Scenery folder not found: {}", folder_name));
     }
 
+    // Security: Use canonicalize for strict path validation to prevent path traversal attacks
+    let canonical_path = scenery_path
+        .canonicalize()
+        .map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical_base = std::path::PathBuf::from(&xplane_path)
+        .join("Custom Scenery")
+        .canonicalize()
+        .map_err(|e| format!("Invalid base path: {}", e))?;
+
+    if !canonical_path.starts_with(&canonical_base) {
+        return Err("Path traversal attempt detected".to_string());
+    }
+
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("explorer")
-            .arg(scenery_path)
+            .arg(&canonical_path)
             .spawn()
             .map_err(|e| format!("Failed to open folder: {}", e))?;
     }
@@ -227,7 +246,7 @@ fn open_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), S
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
-            .arg(scenery_path)
+            .arg(&canonical_path)
             .spawn()
             .map_err(|e| format!("Failed to open folder: {}", e))?;
     }
@@ -235,7 +254,7 @@ fn open_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), S
     #[cfg(target_os = "linux")]
     {
         std::process::Command::new("xdg-open")
-            .arg(scenery_path)
+            .arg(&canonical_path)
             .spawn()
             .map_err(|e| format!("Failed to open folder: {}", e))?;
     }
@@ -245,6 +264,11 @@ fn open_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), S
 
 #[tauri::command]
 async fn delete_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), String> {
+    // Security: Validate folder_name doesn't contain path traversal sequences
+    if folder_name.contains("..") || folder_name.contains('/') || folder_name.contains('\\') {
+        return Err("Invalid folder name: path traversal not allowed".to_string());
+    }
+
     let scenery_path = std::path::PathBuf::from(&xplane_path)
         .join("Custom Scenery")
         .join(&folder_name);
@@ -253,14 +277,21 @@ async fn delete_scenery_folder(xplane_path: String, folder_name: String) -> Resu
         return Err(format!("Scenery folder not found: {}", folder_name));
     }
 
-    // Ensure the path is within Custom Scenery directory for safety
-    let custom_scenery_path = std::path::PathBuf::from(&xplane_path).join("Custom Scenery");
-    if !scenery_path.starts_with(&custom_scenery_path) {
-        return Err("Invalid scenery path".to_string());
+    // Security: Use canonicalize for strict path validation to prevent path traversal attacks
+    let canonical_path = scenery_path
+        .canonicalize()
+        .map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical_base = std::path::PathBuf::from(&xplane_path)
+        .join("Custom Scenery")
+        .canonicalize()
+        .map_err(|e| format!("Invalid base path: {}", e))?;
+
+    if !canonical_path.starts_with(&canonical_base) {
+        return Err("Path traversal attempt detected".to_string());
     }
 
-    // Delete the folder
-    std::fs::remove_dir_all(&scenery_path)
+    // Delete the folder using the canonical path for safety
+    std::fs::remove_dir_all(&canonical_path)
         .map_err(|e| format!("Failed to delete scenery folder: {}", e))?;
 
     // Remove from scenery index if it exists
@@ -516,14 +547,24 @@ async fn move_scenery_entry(
 }
 
 #[tauri::command]
-async fn apply_scenery_changes(xplane_path: String) -> Result<(), String> {
+async fn apply_scenery_changes(
+    xplane_path: String,
+    entries: Vec<models::SceneryEntryUpdate>,
+) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
-        let manager = SceneryPacksManager::new(xplane_path);
+        let index_manager = SceneryIndexManager::new(xplane_path);
 
-        logger::log_info("Applying scenery changes to ini", Some("scenery"));
+        logger::log_info("Applying scenery changes to index and ini", Some("scenery"));
 
-        manager
+        // Update index with all entry changes
+        index_manager
+            .batch_update_entries(&entries)
+            .map_err(|e| format!("Failed to update index: {}", e))?;
+
+        // Apply to ini file
+        let packs_manager = SceneryPacksManager::new(xplane_path);
+        packs_manager
             .apply_from_index()
             .map_err(|e| format!("Failed to apply scenery changes: {}", e))?;
 

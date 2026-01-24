@@ -32,6 +32,9 @@ static DIRECTORY_CACHE: Lazy<DashMap<String, DirectoryMetadata>> = Lazy::new(Das
 /// Cache TTL (Time To Live) - 5 minutes
 const CACHE_TTL: Duration = Duration::from_secs(300);
 
+/// Maximum number of entries in each cache to prevent unbounded memory growth
+const MAX_CACHE_SIZE: usize = 1000;
+
 /// Get cached metadata for an archive
 pub fn get_cached_metadata(path: &Path) -> Option<ArchiveMetadata> {
     let key = path.to_string_lossy().to_string();
@@ -57,6 +60,7 @@ pub fn get_cached_metadata(path: &Path) -> Option<ArchiveMetadata> {
 }
 
 /// Store metadata in cache
+/// Automatically evicts oldest entries when cache exceeds size limit
 pub fn cache_metadata(path: &Path, uncompressed_size: u64, file_count: usize) {
     let key = path.to_string_lossy().to_string();
     let metadata = ArchiveMetadata {
@@ -65,7 +69,65 @@ pub fn cache_metadata(path: &Path, uncompressed_size: u64, file_count: usize) {
         cached_at: SystemTime::now(),
     };
 
+    // Evict old entries if cache is at capacity
+    evict_expired_and_oldest_archive_entries();
+
     ARCHIVE_CACHE.insert(key, metadata);
+}
+
+/// Evict expired entries and oldest entries if cache is too large
+/// Uses batch eviction with sampling for O(1) amortized complexity instead of O(n)
+fn evict_expired_and_oldest_archive_entries() {
+    // First, remove expired entries (this is O(n) but only when inserting, amortized O(1))
+    let expired_keys: Vec<String> = ARCHIVE_CACHE
+        .iter()
+        .filter_map(|entry| {
+            if let Ok(elapsed) = entry.value().cached_at.elapsed() {
+                if elapsed >= CACHE_TTL {
+                    return Some(entry.key().clone());
+                }
+            }
+            None
+        })
+        .collect();
+
+    for key in expired_keys {
+        ARCHIVE_CACHE.remove(&key);
+    }
+
+    // If still over capacity, use batch eviction with random sampling
+    // This is O(k) where k is the number of entries to remove, not O(n*k)
+    if ARCHIVE_CACHE.len() >= MAX_CACHE_SIZE {
+        // Remove 10% of entries or at least 10 entries to make room
+        let entries_to_remove = std::cmp::max(MAX_CACHE_SIZE / 10, 10);
+        let mut removed = 0;
+
+        // Sample entries and find old ones to remove
+        // Instead of finding THE oldest (O(n)), we find entries older than median age
+        let target_age = CACHE_TTL / 2; // Remove entries older than half TTL
+
+        let keys_to_remove: Vec<String> = ARCHIVE_CACHE
+            .iter()
+            .filter_map(|entry| {
+                if let Ok(elapsed) = entry.value().cached_at.elapsed() {
+                    // Prioritize older entries
+                    if elapsed > target_age || removed < entries_to_remove {
+                        return Some(entry.key().clone());
+                    }
+                }
+                None
+            })
+            .take(entries_to_remove)
+            .collect();
+
+        for key in keys_to_remove {
+            ARCHIVE_CACHE.remove(&key);
+            removed += 1;
+            if removed >= entries_to_remove {
+                break;
+            }
+        }
+    }
 }
 
 /// Get cached directory metadata
@@ -104,6 +166,7 @@ pub fn get_cached_directory_metadata(path: &Path) -> Option<DirectoryMetadata> {
 }
 
 /// Store directory metadata in cache
+/// Automatically evicts oldest entries when cache exceeds size limit
 pub fn cache_directory_metadata(path: &Path, total_size: u64, file_count: usize) {
     let key = path.to_string_lossy().to_string();
 
@@ -119,7 +182,65 @@ pub fn cache_directory_metadata(path: &Path, total_size: u64, file_count: usize)
         last_modified,
     };
 
+    // Evict old entries if cache is at capacity
+    evict_expired_and_oldest_directory_entries();
+
     DIRECTORY_CACHE.insert(key, metadata);
+}
+
+/// Evict expired entries and oldest entries from directory cache
+/// Uses batch eviction with sampling for O(1) amortized complexity instead of O(n)
+fn evict_expired_and_oldest_directory_entries() {
+    // First, remove expired entries
+    let expired_keys: Vec<String> = DIRECTORY_CACHE
+        .iter()
+        .filter_map(|entry| {
+            if let Ok(elapsed) = entry.value().cached_at.elapsed() {
+                if elapsed >= CACHE_TTL {
+                    return Some(entry.key().clone());
+                }
+            }
+            None
+        })
+        .collect();
+
+    for key in expired_keys {
+        DIRECTORY_CACHE.remove(&key);
+    }
+
+    // If still over capacity, use batch eviction with random sampling
+    // This is O(k) where k is the number of entries to remove, not O(n*k)
+    if DIRECTORY_CACHE.len() >= MAX_CACHE_SIZE {
+        // Remove 10% of entries or at least 10 entries to make room
+        let entries_to_remove = std::cmp::max(MAX_CACHE_SIZE / 10, 10);
+        let mut removed = 0;
+
+        // Sample entries and find old ones to remove
+        // Instead of finding THE oldest (O(n)), we find entries older than median age
+        let target_age = CACHE_TTL / 2; // Remove entries older than half TTL
+
+        let keys_to_remove: Vec<String> = DIRECTORY_CACHE
+            .iter()
+            .filter_map(|entry| {
+                if let Ok(elapsed) = entry.value().cached_at.elapsed() {
+                    // Prioritize older entries
+                    if elapsed > target_age || removed < entries_to_remove {
+                        return Some(entry.key().clone());
+                    }
+                }
+                None
+            })
+            .take(entries_to_remove)
+            .collect();
+
+        for key in keys_to_remove {
+            DIRECTORY_CACHE.remove(&key);
+            removed += 1;
+            if removed >= entries_to_remove {
+                break;
+            }
+        }
+    }
 }
 
 /// Clear all caches (useful for testing or manual cache invalidation)

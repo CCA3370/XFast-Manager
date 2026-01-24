@@ -78,8 +78,8 @@ fn scan_aircraft_recursive(
             Some(name) => name.to_string(),
             None => continue,
         };
-        // Skip hidden folders and system folders
-        if folder_name.starts_with('.') || folder_name == "Laminar Research" {
+        // Skip hidden folders
+        if folder_name.starts_with('.') {
             continue;
         }
         subdirs.push((path, folder_name));

@@ -154,7 +154,10 @@ export default {
     rebuildIndexTooltip: 'Rebuild scenery index (re-scan all scenery packages)',
     indexRebuilt: 'Scenery index rebuilt successfully',
     indexRebuildFailed: 'Failed to rebuild scenery index',
-    experimental: 'Experimental'
+    experimental: 'Experimental',
+    // About section
+    development: 'Development',
+    testing: 'Testing'
   },
   modal: {
     confirmInstallation: 'Confirm Installation',
@@ -330,7 +333,8 @@ export default {
     missingDeps: 'Missing Dependencies',
     unsavedChanges: 'Unsaved changes',
     unsavedChangesWarning: 'You have unsaved changes. Are you sure you want to close?',
-    applyChanges: 'Apply Changes',
+    applyChanges: 'Apply',
+    iniOutOfSync: 'ini file differs from current list, click Apply to sync',
     changesApplied: 'Changes applied successfully',
     applyFailed: 'Failed to apply changes',
     noScenery: 'No scenery packages found',
@@ -363,7 +367,7 @@ export default {
     categoryDefaultAirport: 'Default Airport',
     categoryLibrary: 'Library',
     categoryOverlay: 'Overlay',
-    categoryOrthophotos: 'Orthophotos',
+    categoryAirportMesh: 'Airport Mesh',
     categoryMesh: 'Mesh',
     categoryOther: 'Other',
     autoSort: 'Auto Sort',

@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
@@ -9,6 +10,9 @@ use crate::models::{InstallPhase, InstallProgress, InstallTask};
 
 /// Minimum required free space (1 GB) as a safety buffer
 const MIN_FREE_SPACE_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Maximum symlink resolution depth to prevent infinite loops
+const MAX_SYMLINK_DEPTH: usize = 40;
 
 /// Atomic installer for safer installation operations
 pub struct AtomicInstaller {
@@ -68,9 +72,11 @@ impl AtomicInstaller {
     }
 
     /// Emit progress event to frontend
+    /// Note: We use percentage=90.0 for atomic operations since extraction (0-90%) is already done
+    /// This prevents the progress bar from resetting to 0% during atomic move/backup/restore phases
     fn emit_progress(&self, message: &str, phase: InstallPhase) {
         let progress = InstallProgress {
-            percentage: 0.0,
+            percentage: 90.0, // Atomic operations happen after extraction (which uses 0-90%)
             total_bytes: 0,
             processed_bytes: 0,
             current_task_index: self.current_task,
@@ -141,11 +147,6 @@ impl AtomicInstaller {
             Some("atomic_installer"),
         );
 
-        if !self.target_dir.exists() {
-            // Target doesn't exist, treat as fresh install
-            return self.install_fresh();
-        }
-
         // Create unique backup directory name to avoid conflicts
         let backup_dir = self
             .target_dir
@@ -160,7 +161,9 @@ impl AtomicInstaller {
                 Uuid::new_v4()
             ));
 
-        // Step 1: Rename target -> backup
+        // Step 1: Attempt to rename target -> backup
+        // Use atomic operation with TOCTOU protection - handle race condition
+        // where target might be deleted between check and rename
         self.emit_progress("Backing up original directory...", InstallPhase::Installing);
         logger::log_info(
             &format!(
@@ -170,12 +173,27 @@ impl AtomicInstaller {
             Some("atomic_installer"),
         );
 
-        fs::rename(&self.target_dir, &backup_dir).context(format!(
-            "Failed to rename target to backup: {:?}",
-            self.target_dir
-        ))?;
-
-        self.backup_dir = Some(backup_dir.clone());
+        match fs::rename(&self.target_dir, &backup_dir) {
+            Ok(()) => {
+                // Successfully backed up
+                self.backup_dir = Some(backup_dir.clone());
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // Target doesn't exist (race condition: deleted between check and rename)
+                // Treat as fresh install
+                logger::log_info(
+                    "Target no longer exists, treating as fresh install",
+                    Some("atomic_installer"),
+                );
+                return self.install_fresh();
+            }
+            Err(e) => {
+                return Err(e).context(format!(
+                    "Failed to rename target to backup: {:?}",
+                    self.target_dir
+                ));
+            }
+        }
 
         // Step 2: Atomic move temp -> target
         self.emit_progress(
@@ -251,17 +269,28 @@ impl AtomicInstaller {
             Some("atomic_installer"),
         );
 
-        if !self.target_dir.exists() {
-            // Target doesn't exist, treat as fresh install
-            return self.install_fresh();
-        }
-
-        // Recursively move files from temp to target
+        // TOCTOU-safe: Try merge directly, handle non-existent target in merge_directories
+        // This avoids race condition between exists() check and actual operation
         self.emit_progress(
             "Merging files with existing installation...",
             InstallPhase::Installing,
         );
-        merge_directories(&self.temp_dir, &self.target_dir)?;
+
+        match merge_directories(&self.temp_dir, &self.target_dir) {
+            Ok(()) => {}
+            Err(e) => {
+                // Check if error is because target doesn't exist
+                if !self.target_dir.exists() {
+                    // Target was deleted (or never existed), treat as fresh install
+                    logger::log_info(
+                        "Target doesn't exist during merge, treating as fresh install",
+                        Some("atomic_installer"),
+                    );
+                    return self.install_fresh();
+                }
+                return Err(e);
+            }
+        }
 
         logger::log_info(
             &format!("Overwrite installation completed: {:?}", self.target_dir),
@@ -418,6 +447,8 @@ impl Drop for AtomicInstaller {
 
 /// Atomic move operation (rename on same filesystem)
 /// Falls back to copy+delete if rename fails (different filesystems)
+/// Note: If copy succeeds but delete fails, logs a warning but still returns Ok
+/// to prevent orphan files from blocking installation
 fn atomic_move(src: &Path, dst: &Path) -> Result<()> {
     logger::log_info(
         &format!("Atomic move: {:?} -> {:?}", src, dst),
@@ -441,12 +472,29 @@ fn atomic_move(src: &Path, dst: &Path) -> Result<()> {
 
             // Fallback: copy then delete
             copy_directory_recursive(src, dst)?;
-            fs::remove_dir_all(src).context("Failed to remove source after copy")?;
 
-            logger::log_info(
-                "Atomic move completed (copy+delete fallback)",
-                Some("atomic_installer"),
-            );
+            // Attempt to remove source, but don't fail if it doesn't work
+            // (prevents orphan source files from blocking installation)
+            match fs::remove_dir_all(src) {
+                Ok(()) => {
+                    logger::log_info(
+                        "Atomic move completed (copy+delete fallback)",
+                        Some("atomic_installer"),
+                    );
+                }
+                Err(delete_err) => {
+                    // Log warning but don't fail - the copy succeeded
+                    // User may need to manually clean up the source
+                    logger::log_error(
+                        &format!(
+                            "Warning: Failed to remove source after copy: {}. \
+                             Manual cleanup of {:?} may be required.",
+                            delete_err, src
+                        ),
+                        Some("atomic_installer"),
+                    );
+                }
+            }
 
             Ok(())
         }
@@ -455,7 +503,44 @@ fn atomic_move(src: &Path, dst: &Path) -> Result<()> {
 
 /// Recursively copy a directory
 /// Handles regular files, directories, and symbolic links
+/// Validates symlink targets to prevent path traversal attacks
 fn copy_directory_recursive(src: &Path, dst: &Path) -> Result<()> {
+    let visited = HashSet::new();
+    copy_directory_recursive_internal(src, dst, src, 0, &visited)
+}
+
+/// Internal recursive copy with base directory tracking for symlink validation
+/// Includes depth tracking and cycle detection for symlink safety
+fn copy_directory_recursive_internal(
+    src: &Path,
+    dst: &Path,
+    base_dir: &Path,
+    depth: usize,
+    visited: &HashSet<PathBuf>,
+) -> Result<()> {
+    // Security: Prevent infinite recursion from symlink cycles
+    if depth > MAX_SYMLINK_DEPTH {
+        return Err(anyhow::anyhow!(
+            "Maximum directory depth ({}) exceeded, possible symlink loop at: {:?}",
+            MAX_SYMLINK_DEPTH,
+            src
+        ));
+    }
+
+    // Security: Detect symlink cycles by tracking canonical paths
+    let canonical_src = src.canonicalize().unwrap_or_else(|_| src.to_path_buf());
+    if visited.contains(&canonical_src) {
+        logger::log_error(
+            &format!("Symlink cycle detected, skipping: {:?}", src),
+            Some("atomic_installer"),
+        );
+        return Ok(()); // Skip this directory to prevent infinite loop
+    }
+
+    // Add current path to visited set for children
+    let mut new_visited = visited.clone();
+    new_visited.insert(canonical_src);
+
     fs::create_dir_all(dst)?;
 
     for entry in fs::read_dir(src)? {
@@ -467,11 +552,11 @@ fn copy_directory_recursive(src: &Path, dst: &Path) -> Result<()> {
         let metadata = fs::symlink_metadata(&src_path)?;
 
         if metadata.file_type().is_symlink() {
-            // Handle symbolic link
-            copy_symlink(&src_path, &dst_path)?;
+            // Handle symbolic link with path validation
+            copy_symlink(&src_path, &dst_path, base_dir, depth)?;
         } else if metadata.is_dir() {
-            // Handle directory
-            copy_directory_recursive(&src_path, &dst_path)?;
+            // Handle directory with incremented depth
+            copy_directory_recursive_internal(&src_path, &dst_path, base_dir, depth + 1, &new_visited)?;
         } else {
             // Handle regular file
             fs::copy(&src_path, &dst_path)?;
@@ -483,11 +568,57 @@ fn copy_directory_recursive(src: &Path, dst: &Path) -> Result<()> {
 
 /// Copy a symbolic link from src to dst
 /// Preserves the symlink target (doesn't follow the link)
+/// Validates that the symlink target is within the base directory (security check)
+/// Includes depth tracking to prevent infinite symlink loops
 #[cfg(unix)]
-fn copy_symlink(src: &Path, dst: &Path) -> Result<()> {
+fn copy_symlink(src: &Path, dst: &Path, base_dir: &Path, depth: usize) -> Result<()> {
     use std::os::unix::fs::symlink;
 
+    // Security: Check depth limit for symlink resolution
+    if depth > MAX_SYMLINK_DEPTH {
+        return Err(anyhow::anyhow!(
+            "Maximum symlink depth ({}) exceeded at: {:?}",
+            MAX_SYMLINK_DEPTH,
+            src
+        ));
+    }
+
     let target = fs::read_link(src).context(format!("Failed to read symlink: {:?}", src))?;
+
+    // Security check: validate symlink target doesn't escape base directory
+    let resolved = if target.is_relative() {
+        src.parent().unwrap_or(src).join(&target)
+    } else {
+        target.clone()
+    };
+
+    // Attempt to canonicalize - if it fails (target doesn't exist), check path components
+    let is_safe = if let Ok(canonical) = resolved.canonicalize() {
+        // Canonicalized path should be within base_dir
+        if let Ok(canonical_base) = base_dir.canonicalize() {
+            canonical.starts_with(&canonical_base)
+        } else {
+            // If base_dir can't be canonicalized, be conservative
+            false
+        }
+    } else {
+        // Target doesn't exist - check for path traversal patterns
+        !target.components().any(|c| matches!(c, std::path::Component::ParentDir))
+    };
+
+    if !is_safe {
+        logger::log_error(
+            &format!(
+                "Symlink security check failed: {:?} -> {:?} (base: {:?})",
+                src, target, base_dir
+            ),
+            Some("atomic_installer"),
+        );
+        return Err(anyhow::anyhow!(
+            "Symlink target outside installation directory: {:?}",
+            target
+        ));
+    }
 
     logger::log_info(
         &format!(
@@ -512,11 +643,57 @@ fn copy_symlink(src: &Path, dst: &Path) -> Result<()> {
 
 /// Copy a symbolic link from src to dst (Windows version)
 /// Windows requires different functions for file vs directory symlinks
+/// Validates that the symlink target is within the base directory (security check)
+/// Includes depth tracking to prevent infinite symlink loops
 #[cfg(windows)]
-fn copy_symlink(src: &Path, dst: &Path) -> Result<()> {
+fn copy_symlink(src: &Path, dst: &Path, base_dir: &Path, depth: usize) -> Result<()> {
     use std::os::windows::fs::{symlink_dir, symlink_file};
 
+    // Security: Check depth limit for symlink resolution
+    if depth > MAX_SYMLINK_DEPTH {
+        return Err(anyhow::anyhow!(
+            "Maximum symlink depth ({}) exceeded at: {:?}",
+            MAX_SYMLINK_DEPTH,
+            src
+        ));
+    }
+
     let target = fs::read_link(src).context(format!("Failed to read symlink: {:?}", src))?;
+
+    // Security check: validate symlink target doesn't escape base directory
+    let resolved = if target.is_relative() {
+        src.parent().unwrap_or(src).join(&target)
+    } else {
+        target.clone()
+    };
+
+    // Attempt to canonicalize - if it fails (target doesn't exist), check path components
+    let is_safe = if let Ok(canonical) = resolved.canonicalize() {
+        // Canonicalized path should be within base_dir
+        if let Ok(canonical_base) = base_dir.canonicalize() {
+            canonical.starts_with(&canonical_base)
+        } else {
+            // If base_dir can't be canonicalized, be conservative
+            false
+        }
+    } else {
+        // Target doesn't exist - check for path traversal patterns
+        !target.components().any(|c| matches!(c, std::path::Component::ParentDir))
+    };
+
+    if !is_safe {
+        logger::log_error(
+            &format!(
+                "Symlink security check failed: {:?} -> {:?} (base: {:?})",
+                src, target, base_dir
+            ),
+            Some("atomic_installer"),
+        );
+        return Err(anyhow::anyhow!(
+            "Symlink target outside installation directory: {:?}",
+            target
+        ));
+    }
 
     logger::log_info(
         &format!(
@@ -558,10 +735,10 @@ fn copy_symlink(src: &Path, dst: &Path) -> Result<()> {
 }
 
 /// Merge directories: move all files from src to dst, overwriting existing files
+/// TOCTOU-safe: Uses atomic operations and handles race conditions gracefully
 fn merge_directories(src: &Path, dst: &Path) -> Result<()> {
-    if !dst.exists() {
-        fs::create_dir_all(dst)?;
-    }
+    // Create destination if it doesn't exist (atomic - no TOCTOU issue)
+    fs::create_dir_all(dst)?;
 
     for entry in fs::read_dir(src)? {
         let entry = entry?;
@@ -579,17 +756,23 @@ fn merge_directories(src: &Path, dst: &Path) -> Result<()> {
                 );
             }
         } else {
-            // Atomic move individual file (overwrite if exists)
-            if dst_path.exists() {
-                fs::remove_file(&dst_path)?;
-            }
+            // TOCTOU-safe: Try remove then rename, handle errors gracefully
+            // Instead of checking exists() first, just try to remove and ignore NotFound
+            let _ = fs::remove_file(&dst_path); // Ignore error if file doesn't exist
 
             match fs::rename(&src_path, &dst_path) {
                 Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    // Source was deleted (race condition), skip this file
+                    logger::log_info(
+                        &format!("Source file no longer exists, skipping: {:?}", src_path),
+                        Some("atomic_installer"),
+                    );
+                }
                 Err(_) => {
-                    // Fallback to copy
+                    // Fallback to copy (cross-device or other error)
                     fs::copy(&src_path, &dst_path)?;
-                    fs::remove_file(&src_path)?;
+                    let _ = fs::remove_file(&src_path); // Best effort cleanup
                 }
             }
         }

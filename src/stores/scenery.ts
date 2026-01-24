@@ -48,7 +48,7 @@ export const useSceneryStore = defineStore('scenery', () => {
       Library: [],
       Other: [],
       Overlay: [],
-      Orthophotos: [],
+      AirportMesh: [],
       Mesh: []
     }
 
@@ -60,6 +60,7 @@ export const useSceneryStore = defineStore('scenery', () => {
   })
 
   // Check if there are unsaved changes (either local changes or index differs from ini)
+  // Optimized with Map for O(1) lookups instead of O(n) .find() in loop
   const hasChanges = computed(() => {
     // If index differs from ini, we have changes to apply
     if (data.value?.needsSync) return true
@@ -69,9 +70,13 @@ export const useSceneryStore = defineStore('scenery', () => {
     const current = entries.value
     if (current.length !== originalEntries.value.length) return true
 
-    for (let i = 0; i < current.length; i++) {
-      const curr = current[i]
-      const orig = originalEntries.value.find(e => e.folderName === curr.folderName)
+    // Build a Map from original entries for O(1) lookup
+    const originalMap = new Map(
+      originalEntries.value.map(e => [e.folderName, e])
+    )
+
+    for (const curr of current) {
+      const orig = originalMap.get(curr.folderName)
       if (!orig) return true
       if (curr.enabled !== orig.enabled || curr.sortOrder !== orig.sortOrder) {
         return true
@@ -125,35 +130,18 @@ export const useSceneryStore = defineStore('scenery', () => {
     }
   }
 
-  // Toggle enabled state for an entry
-  async function toggleEnabled(folderName: string) {
+  // Toggle enabled state for an entry (local only, no backend write)
+  function toggleEnabled(folderName: string) {
     if (!data.value) return
 
     const entry = data.value.entries.find(e => e.folderName === folderName)
     if (!entry) return
 
-    try {
-      // Update locally first for immediate UI feedback
-      entry.enabled = !entry.enabled
+    // Update locally only - will be persisted when user clicks Apply
+    entry.enabled = !entry.enabled
 
-      // Update enabled count
-      data.value.enabledCount = data.value.entries.filter(e => e.enabled).length
-
-      // Update in backend
-      await invoke('update_scenery_entry', {
-        xplanePath: appStore.xplanePath,
-        folderName,
-        enabled: entry.enabled,
-        sortOrder: null,
-        category: null
-      })
-    } catch (e) {
-      // Revert on error
-      entry.enabled = !entry.enabled
-      data.value.enabledCount = data.value.entries.filter(e => e.enabled).length
-      error.value = String(e)
-      console.error('Failed to toggle enabled:', e)
-    }
+    // Update enabled count
+    data.value.enabledCount = data.value.entries.filter(e => e.enabled).length
   }
 
   // Update category for an entry
@@ -214,33 +202,12 @@ export const useSceneryStore = defineStore('scenery', () => {
     applyLocalOrder(newOrder)
   }
 
-  async function persistPendingSortOrder() {
-    if (!data.value || !appStore.xplanePath) return
-
-    // Ensure sortOrder fields are aligned with current order
-    data.value.entries = data.value.entries
-      .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map((entry, index) => ({
-        ...entry,
-        sortOrder: index
-      }))
-
-    for (const entry of data.value.entries) {
-      const original = originalEntries.value.find(e => e.folderName === entry.folderName)
-      if (!original || original.sortOrder !== entry.sortOrder) {
-        await invoke('update_scenery_entry', {
-          xplanePath: appStore.xplanePath,
-          folderName: entry.folderName,
-          enabled: null,
-          sortOrder: entry.sortOrder
-        })
-      }
-    }
-  }
-
   // Apply changes to scenery_packs.ini
   async function applyChanges() {
-    if (!appStore.xplanePath) {
+    // Prevent concurrent calls (race condition protection)
+    if (isSaving.value) return
+
+    if (!appStore.xplanePath || !data.value) {
       error.value = 'X-Plane path not set'
       return
     }
@@ -249,19 +216,33 @@ export const useSceneryStore = defineStore('scenery', () => {
     error.value = null
 
     try {
-      // Persist any staged sort order changes before applying
-      await persistPendingSortOrder()
+      // Ensure sortOrder fields are aligned with current order
+      const normalizedEntries = data.value.entries
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((entry, index) => ({
+          ...entry,
+          sortOrder: index
+        }))
+
+      // Update local data with normalized sortOrder
+      data.value.entries = normalizedEntries
+
+      // Send only necessary fields to backend for batch update
+      const updates = normalizedEntries.map(entry => ({
+        folderName: entry.folderName,
+        enabled: entry.enabled,
+        sortOrder: entry.sortOrder
+      }))
 
       await invoke('apply_scenery_changes', {
-        xplanePath: appStore.xplanePath
+        xplanePath: appStore.xplanePath,
+        entries: updates
       })
 
       // Update original state after successful save
-      if (data.value) {
-        originalEntries.value = JSON.parse(JSON.stringify(data.value.entries))
-        // Mark as synced since we just wrote to ini
-        data.value.needsSync = false
-      }
+      originalEntries.value = JSON.parse(JSON.stringify(normalizedEntries))
+      // Mark as synced since we just wrote to ini
+      data.value.needsSync = false
     } catch (e) {
       error.value = String(e)
       console.error('Failed to apply changes:', e)

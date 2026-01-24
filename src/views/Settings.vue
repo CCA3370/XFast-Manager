@@ -1,7 +1,7 @@
 <template>
   <div class="settings-view h-full flex flex-col p-5 overflow-hidden">
     <!-- Scrollable Content Area -->
-    <div class="flex-1 overflow-y-auto space-y-4 pr-1">
+    <div class="flex-1 overflow-y-auto space-y-4 pr-1 pb-4">
       
       <!-- 1. X-Plane Path (Compact) -->
       <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
@@ -752,9 +752,9 @@
       </section>
 
       <!-- 5. Scenery Auto-Sorting -->
-      <section class="scenery-auto-sort-section bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border-2 border-dashed border-amber-400 dark:border-amber-500/60 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300" style="box-shadow: inset 0 0 25px rgba(251, 191, 36, 0.08), 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);">
+      <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
         <div
-          class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl scenery-auto-sort-marker"
+          class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
           @click="sceneryAutoSortExpanded = !sceneryAutoSortExpanded"
         >
           <div class="flex items-center space-x-3 flex-1">
@@ -766,9 +766,6 @@
             <div class="flex-1">
               <h3 class="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                 <AnimatedText>{{ $t('settings.sceneryAutoSort') }}</AnimatedText>
-                <span class="px-2 py-0.5 text-[10px] font-medium bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 rounded-full border border-amber-300 dark:border-amber-500/30">
-                  {{ $t('settings.experimental') }}
-                </span>
               </h3>
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 <AnimatedText>{{ $t('settings.sceneryAutoSortDesc') }}</AnimatedText>
@@ -961,17 +958,78 @@
 
       <!-- 6. About -->
       <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
-        <div class="p-4 flex items-center space-x-4">
-          <div class="w-12 h-12 rounded-xl shadow-lg transform rotate-3 flex-shrink-0 overflow-hidden">
-            <img src="/icon.png" alt="XFast Manager" class="w-full h-full object-cover" />
+        <div
+          class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors"
+          :class="aboutExpanded ? 'rounded-t-xl' : 'rounded-xl'"
+          @click="aboutExpanded = !aboutExpanded"
+        >
+          <div class="flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl shadow-lg transform rotate-3 flex-shrink-0 overflow-hidden">
+              <img src="/icon.png" alt="XFast Manager" class="w-full h-full object-cover" />
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-gray-900 dark:text-white">XFast Manager</h3>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                v{{ appVersion }} • © 2026 3370Tech
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 class="text-base font-bold text-gray-900 dark:text-white">XFast Manager</h3>
-            <p class="text-xs text-gray-500 dark:text-gray-400">
-              v{{ appVersion }} • © 2026
-            </p>
-          </div>
+          <svg
+            class="w-5 h-5 text-gray-400 transition-transform duration-200"
+            :class="{ 'rotate-180': aboutExpanded }"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+          </svg>
         </div>
+
+        <!-- Contributors section -->
+        <transition name="collapse">
+          <div v-if="aboutExpanded" class="px-4 pb-4 border-t border-gray-100 dark:border-gray-700/50">
+            <div class="pt-4 space-y-3">
+              <!-- Development -->
+              <div>
+                <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                  {{ $t('settings.development') }}
+                </h4>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    @click="openDeveloperProfile"
+                    class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-500/30 transition-colors cursor-pointer"
+                  >
+                    <svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                    CCA3370
+                  </button>
+                </div>
+              </div>
+
+              <!-- Testing -->
+              <div>
+                <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                  {{ $t('settings.testing') }}
+                </h4>
+                <div class="flex flex-wrap gap-2">
+                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400">
+                    <svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                    </svg>
+                    SINO1660
+                  </span>
+                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400">
+                    <svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                    </svg>
+                    enenY
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </transition>
       </section>
     </div>
   </div>
@@ -1004,7 +1062,23 @@ const saveStatus = ref<'saving' | 'saved' | null>(null)
 const pathError = ref<string | null>(null)
 const appVersion = ref('0.1.1')
 const updateCheckExpanded = ref(false)
-let saveTimeout: ReturnType<typeof setTimeout> | null = null
+
+// Timer tracking for cleanup on unmount to prevent memory leaks
+const activeTimeoutIds: ReturnType<typeof setTimeout>[] = []
+
+// Helper to create tracked timeouts that will be cleaned up on unmount
+function setTrackedTimeout(callback: () => void, delay: number): ReturnType<typeof setTimeout> {
+  const id = setTimeout(() => {
+    callback()
+    // Remove the timeout ID from the tracking array after it fires
+    const index = activeTimeoutIds.indexOf(id)
+    if (index > -1) {
+      activeTimeoutIds.splice(index, 1)
+    }
+  }, delay)
+  activeTimeoutIds.push(id)
+  return id
+}
 
 // Logs state
 const recentLogs = ref<string[]>([])
@@ -1023,6 +1097,7 @@ const deleteSourceExpanded = ref(false) // Default collapsed
 const windowsIntegrationExpanded = ref(false) // Default collapsed
 const patternSaveStatus = ref<'saving' | 'saved' | null>(null)
 const sceneryAutoSortExpanded = ref(false) // Default collapsed
+const aboutExpanded = ref(false) // Default collapsed
 const isRebuildingIndex = ref(false)
 const indexExists = computed(() => sceneryStore.indexExists)
 
@@ -1039,7 +1114,7 @@ watch(() => store.xplanePath, () => {
 // Scroll log container to bottom
 function scrollLogsToBottom() {
   // Use setTimeout to ensure DOM is fully rendered and transition is complete
-  setTimeout(() => {
+  setTrackedTimeout(() => {
     if (logContainer.value) {
       logContainer.value.scrollTop = logContainer.value.scrollHeight
     }
@@ -1119,10 +1194,9 @@ onMounted(async () => {
 
 // Cleanup timers on component unmount to prevent memory leaks
 onBeforeUnmount(() => {
-  if (saveTimeout) {
-    clearTimeout(saveTimeout)
-    saveTimeout = null
-  }
+  // Clear all tracked timeouts
+  activeTimeoutIds.forEach(id => clearTimeout(id))
+  activeTimeoutIds.length = 0
 })
 
 // Handle X-Plane path input blur - validate and save
@@ -1159,7 +1233,7 @@ async function handlePathBlur() {
     // Save the path
     store.setXplanePath(newValue)
     saveStatus.value = 'saved'
-    setTimeout(() => {
+    setTrackedTimeout(() => {
       saveStatus.value = null
     }, 2000)
   }
@@ -1195,7 +1269,7 @@ function handlePatternBlur() {
     patternSaveStatus.value = 'saved'
 
     // Hide saved status after 2 seconds
-    setTimeout(() => {
+    setTrackedTimeout(() => {
       patternSaveStatus.value = null
     }, 2000)
   }
@@ -1259,7 +1333,7 @@ function removePattern(index: number) {
   store.setConfigFilePatterns(validPatterns)
   patternSaveStatus.value = 'saved'
 
-  setTimeout(() => {
+  setTrackedTimeout(() => {
     patternSaveStatus.value = null
   }, 2000)
 }
@@ -1299,10 +1373,9 @@ async function selectFolder() {
 
       // Path is valid, save it
       xplanePathInput.value = selectedPath
-      if (saveTimeout) clearTimeout(saveTimeout)
       store.setXplanePath(selectedPath)
       saveStatus.value = 'saved'
-      setTimeout(() => { saveStatus.value = null }, 2000)
+      setTrackedTimeout(() => { saveStatus.value = null }, 2000)
     }
   } catch (error) {
     console.error('Failed to open folder dialog:', error)
@@ -1420,6 +1493,15 @@ async function handleRebuildIndex() {
   }
 }
 
+// About section functions
+async function openDeveloperProfile() {
+  try {
+    await invoke('open_url', { url: 'https://forums.x-plane.org/profile/1288218-3370/' })
+  } catch (error) {
+    console.error('Failed to open URL:', error)
+  }
+}
+
 function formatLastCheckTime(timestamp: number): string {
   const now = Date.now()
   const diff = now - timestamp
@@ -1440,11 +1522,6 @@ function formatLastCheckTime(timestamp: number): string {
 </script>
 
 <style scoped>
-/* Scenery Auto-Sort experimental glow */
-:deep(.dark) .scenery-auto-sort-section {
-  box-shadow: inset 0 0 25px rgba(245, 158, 11, 0.12), 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1) !important;
-}
-
 /* Collapse transition */
 .collapse-enter-active,
 .collapse-leave-active {

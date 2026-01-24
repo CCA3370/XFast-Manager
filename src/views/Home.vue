@@ -320,22 +320,45 @@ const MAX_PASSWORD_RETRIES = 3
 const passwordAttemptTimestamps = ref<number[]>([])
 const MIN_PASSWORD_ATTEMPT_DELAY_MS = 1000 // 1 second between attempts
 
+// Mutex flag for analyzeFiles to prevent concurrent calls (TOCTOU protection)
+let isAnalyzeInProgress = false
+
+// Timer tracking for cleanup on unmount to prevent memory leaks
+const activeTimeoutIds = ref<ReturnType<typeof setTimeout>[]>([])
+
 // Tauri drag-drop event unsubscribe function
 let unlistenDragDrop: UnlistenFn | null = null
 let unlistenProgress: UnlistenFn | null = null
 let unlistenDeletionSkipped: UnlistenFn | null = null
 
+// Helper to create tracked timeouts that will be cleaned up on unmount
+function setTrackedTimeout(callback: () => void, delay: number): ReturnType<typeof setTimeout> {
+  const id = setTimeout(() => {
+    callback()
+    // Remove the timeout ID from the tracking array after it fires
+    const index = activeTimeoutIds.value.indexOf(id)
+    if (index > -1) {
+      activeTimeoutIds.value.splice(index, 1)
+    }
+  }, delay)
+  activeTimeoutIds.value.push(id)
+  return id
+}
+
 // Watch for pending CLI args changes
 watch(() => store.pendingCliArgs, async (args) => {
   if (args && args.length > 0) {
-    // If currently analyzing or installing, re-queue args to batch for later processing
-    // This ensures multiple rapid CLI inputs are merged and processed together
-    if (store.isAnalyzing || store.isInstalling) {
+    // Use local mutex flag for TOCTOU-safe concurrency control
+    // This prevents race conditions when multiple watch events fire quickly
+    if (isAnalyzeInProgress || store.isAnalyzing || store.isInstalling) {
       logDebug('Analysis in progress, re-queueing args for later', 'app')
       store.addCliArgsToBatch(args)
       store.clearPendingCliArgs()
       return
     }
+
+    // Set mutex immediately before any async operation
+    isAnalyzeInProgress = true
 
     logDebug(`Processing pending CLI args from watcher: ${args.join(', ')}`, 'app')
     const argsCopy = [...args]
@@ -345,6 +368,9 @@ watch(() => store.pendingCliArgs, async (args) => {
     } catch (error) {
       logError(`Failed to process CLI args: ${error}`, 'app')
       modal.showError(String(error))
+    } finally {
+      // Always release mutex
+      isAnalyzeInProgress = false
     }
   }
 })
@@ -379,7 +405,7 @@ function onWindowDrop(e: DragEvent) {
   }
   isDragging.value = false
   debugDropFlash.value = true
-  setTimeout(() => (debugDropFlash.value = false), 800)
+  setTrackedTimeout(() => (debugDropFlash.value = false), 800)
 }
 
 onMounted(async () => {
@@ -406,7 +432,7 @@ onMounted(async () => {
       } else if (event.payload.type === 'drop') {
         isDragging.value = false
         debugDropFlash.value = true
-        setTimeout(() => (debugDropFlash.value = false), 800)
+        setTrackedTimeout(() => (debugDropFlash.value = false), 800)
 
         // If showing completion, close it and start new analysis
         if (store.showCompletion) {
@@ -455,6 +481,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('dragover', onWindowDragOver)
   window.removeEventListener('dragleave', onWindowDragLeave)
   window.removeEventListener('drop', onWindowDrop)
+
+  // Cleanup all tracked timeouts to prevent memory leaks
+  activeTimeoutIds.value.forEach(id => clearTimeout(id))
+  activeTimeoutIds.value = []
 
   // Cleanup Tauri listeners
   if (unlistenDragDrop) {
@@ -732,7 +762,7 @@ async function handleInstall() {
 
     // Keep isInstalling true for a brief moment to show the animation
     // Then set it to false after animation starts
-    setTimeout(() => {
+    setTrackedTimeout(() => {
       store.isInstalling = false
       progressStore.reset()
     }, 100)

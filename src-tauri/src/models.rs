@@ -284,9 +284,9 @@ pub enum SceneryCategory {
     Library,
     /// Overlay scenery (modifies default terrain/objects)
     Overlay,
-    /// Orthophoto scenery
-    Orthophotos,
-    /// Mesh scenery (terrain replacement)
+    /// Airport-associated mesh scenery (small mesh that matches airport coordinates)
+    AirportMesh,
+    /// Mesh scenery (terrain replacement, including orthophotos)
     Mesh,
     /// Other/unknown scenery
     Other,
@@ -302,8 +302,8 @@ impl SceneryCategory {
             SceneryCategory::Library => 3,
             SceneryCategory::Other => 4,
             SceneryCategory::Overlay => 5,
-            SceneryCategory::Orthophotos => 6, // Mesh sub-category
-            SceneryCategory::Mesh => 6, // Same as Orthophotos, use sub-priority to distinguish
+            SceneryCategory::AirportMesh => 6, // Between Overlay and regular Mesh
+            SceneryCategory::Mesh => 7,
         }
     }
 }
@@ -342,6 +342,10 @@ pub struct SceneryPackageInfo {
     /// Sort order in scenery_packs.ini (lower = higher priority)
     #[serde(default)]
     pub sort_order: u32,
+    /// Actual path for shortcuts/symlinks - if set, this path should be written to scenery_packs.ini
+    /// instead of "Custom Scenery/{folder_name}/". Contains the resolved target path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual_path: Option<String>,
 }
 
 /// DSF file header information
@@ -410,6 +414,15 @@ pub struct SceneryManagerEntry {
     pub sort_order: u32,
     pub missing_libraries: Vec<String>,
     pub required_libraries: Vec<String>,
+}
+
+/// Simplified entry for batch updates (only fields that can be changed)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneryEntryUpdate {
+    pub folder_name: String,
+    pub enabled: bool,
+    pub sort_order: u32,
 }
 
 /// Data for scenery manager UI
