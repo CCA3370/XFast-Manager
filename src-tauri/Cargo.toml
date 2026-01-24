@@ -1,6 +1,6 @@
 [package]
 name = "xfastmanager"
-version = "0.7.0"
+version = "0.7.5"
 description = "X-Plane Addon Auto Manager"
 authors = ["3370Tech"]
 edition = "2021"

@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.5] - 2026-01-25
+
+### Changed
+
+#### Error Messages
+- **Clearer Error Prompts** - Error messages are now more specific and easier to understand
+  - Different error types display appropriate messages (permission denied, file not found, password error, etc.)
+  - Full support for Chinese and English
+
+#### Confirmation Dialog
+- **Item Name Display** - Confirmation dialogs now clearly show the name of the item being operated on
+- **Loading State** - Shows loading indicator during operations
+
+#### Settings & Onboarding
+- **Cleaner Interface** - Removed experimental labels, improved layout and visual organization
+- **Smoother Setup Flow** - More intuitive first-time user experience
+
+#### Scenery Manager
+- **Category Rename** - "Orthophotos" category renamed to "Airport Mesh" for better accuracy
+- **INI Sync Status** - Shows notification when scenery_packs.ini differs from the current list
+
 ## [0.7.0] - 2026-01-24
 
 ### Added
