@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-01-24
+
+### Added
+
+#### Unified Management Page
+- **Integrated Management Interface** - New unified page for managing aircraft, plugins, navdata, and scenery
+  - Tab-based navigation with sliding indicator animation
+  - Page transitions adapt to navigation direction
+  - Shared search functionality across all tabs
+
+#### Aircraft Management
+- **Aircraft Overview** - View and manage all installed aircraft
+  - Display aircraft name, version, and livery count
+  - Enable/disable aircraft
+  - Delete aircraft with confirmation dialog
+  - Open aircraft folder in file explorer
+  - Search and filter aircraft list
+
+#### Plugin Management
+- **Plugin Overview** - View and manage all installed plugins
+  - Display plugin name, version, and platform compatibility (Win/Mac/Lin/Multi)
+  - Enable/disable plugins
+  - Delete plugins with confirmation dialog
+  - Open plugin folder in file explorer
+  - Search and filter plugin list
+
+#### Navdata Management
+- **Navdata Overview** - View installed navigation data providers
+  - Display provider name and AIRAC cycle information
+  - Cycle status indicators: current (green), outdated (red), unknown (gray)
+  - Smart AIRAC cycle detection
+  - Filter to show only outdated navdata
+  - Delete navdata with confirmation dialog
+  - Open navdata folder in file explorer
+
+#### Update Checking
+- **Automatic Update Detection** - Check for aircraft and plugin updates
+  - Detect versions and update URLs from skunkcrafts_updater.cfg
+  - Parallel update checking for all supported addons
+  - Visual update indicators on addon cards (current → latest version)
+  - Update count badges in management tabs
+  - 1-hour cache to avoid redundant checks
+  - System proxy support
+
+#### Livery Detection
+- **Smart Livery Recognition** - Improved livery folder detection
+  - Accurate livery count display for each aircraft
+
+### Changed
+
+- **Page Transitions** - Animation direction adapts to navigation direction
+- **Tab Switching** - Smooth tab transition animations without loading state blocking
+- **Scenery Manager** - Integrated into unified management page as "Scenery" tab (requires auto-sort enabled)
+
 ## [0.6.0] - 2026-01-22
 
 ### Added

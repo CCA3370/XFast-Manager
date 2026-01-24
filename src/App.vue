@@ -28,27 +28,27 @@
             ></div>
             <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
               </svg>
               <AnimatedText>{{ $t('common.home') }}</AnimatedText>
             </span>
           </router-link>
 
-          <div v-if="store.autoSortScenery" class="relative flex items-center">
+          <div class="relative flex items-center">
             <router-link
-              to="/scenery"
+              to="/management"
               class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
-              :class="$route.path === '/scenery' ? 'text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
+              :class="$route.path === '/management' ? 'text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
             >
               <div
                 class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
-                :class="$route.path === '/scenery' ? 'scale-x-100 opacity-100' : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'"
+                :class="$route.path === '/management' ? 'scale-x-100 opacity-100' : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'"
               ></div>
               <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
                 </svg>
-                <AnimatedText>{{ $t('sceneryManager.navTitle') }}</AnimatedText>
+                <AnimatedText>{{ $t('management.navTitle') }}</AnimatedText>
               </span>
             </router-link>
             <div
@@ -103,7 +103,7 @@
     <main :class="['main-content', 'pt-12', 'flex-1', 'min-h-0', 'overflow-hidden', { 'hide-scrollbar': $route.path === '/' }]">
       <div class="h-full overflow-y-auto">
         <router-view v-slot="{ Component }">
-          <transition name="page" mode="out-in">
+          <transition :name="transitionName" mode="out-in">
             <component :is="Component" />
           </transition>
         </router-view>
@@ -118,13 +118,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { onMounted, computed, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useUpdateStore } from '@/stores/update'
+import { useSceneryStore } from '@/stores/scenery'
+import { useModalStore } from '@/stores/modal'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { syncLocaleToBackend } from '@/i18n'
 import { logBasic, logDebug } from '@/services/logger'
 import ToastNotification from '@/components/ToastNotification.vue'
@@ -138,9 +141,30 @@ import type { SceneryIndexScanResult } from '@/types'
 const { t } = useI18n()
 const store = useAppStore()
 const updateStore = useUpdateStore()
+const sceneryStore = useSceneryStore()
+const modalStore = useModalStore()
 const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
+
+// Route order for determining transition direction
+const routeOrder: Record<string, number> = {
+  '/': 0,
+  '/management': 1,
+  '/settings': 2,
+  '/onboarding': -1
+}
+
+// Track transition direction based on route navigation
+const transitionName = ref('page-right')
+
+// Watch route changes to determine transition direction
+watch(() => route.path, (newPath, oldPath) => {
+  const newOrder = routeOrder[newPath] ?? 0
+  const oldOrder = routeOrder[oldPath] ?? 0
+  // Going to higher index (right in nav) = slide left, going to lower index = slide right
+  transitionName.value = newOrder > oldOrder ? 'page-left' : 'page-right'
+})
 
 async function runSceneryIndexStartupScan() {
   if (!store.xplanePath) return
@@ -254,6 +278,38 @@ onMounted(async () => {
   } catch (error) {
     console.error('Failed to setup CLI args listener:', error)
   }
+
+  // Set up window close confirmation for unsaved scenery changes
+  try {
+    const appWindow = getCurrentWindow()
+    await appWindow.onCloseRequested(async (event) => {
+      // Check if there are unsaved scenery changes
+      if (sceneryStore.hasChanges) {
+        // Prevent the window from closing
+        event.preventDefault()
+
+        // Show confirmation modal
+        modalStore.showConfirm({
+          title: t('modal.unsavedSceneryChangesTitle'),
+          message: t('modal.unsavedSceneryChangesMessage'),
+          warning: t('modal.unsavedSceneryChangesWarning'),
+          confirmText: t('modal.closeAnyway'),
+          cancelText: t('modal.goBack'),
+          type: 'warning',
+          onConfirm: async () => {
+            // User confirmed, close the window
+            await appWindow.destroy()
+          },
+          onCancel: () => {
+            // User cancelled, do nothing (window stays open)
+          }
+        })
+      }
+      // If no changes, allow the window to close normally
+    })
+  } catch (error) {
+    console.error('Failed to setup window close listener:', error)
+  }
 })
 </script>
 
@@ -314,20 +370,34 @@ onMounted(async () => {
   display: none;
 }
 
-/* Page transitions */
-.page-enter-active,
-.page-leave-active {
+/* Page transitions - left direction (going to higher index route) */
+.page-left-enter-active,
+.page-left-leave-active,
+.page-right-enter-active,
+.page-right-leave-active {
   transition: all 0.2s ease;
 }
 
-.page-enter-from {
+/* Going left (e.g., Home -> Management -> Settings) */
+.page-left-enter-from {
   opacity: 0;
   transform: translateX(15px);
 }
 
-.page-leave-to {
+.page-left-leave-to {
   opacity: 0;
   transform: translateX(-15px);
+}
+
+/* Going right (e.g., Settings -> Management -> Home) */
+.page-right-enter-from {
+  opacity: 0;
+  transform: translateX(-15px);
+}
+
+.page-right-leave-to {
+  opacity: 0;
+  transform: translateX(15px);
 }
 
 /* Navigation animations */

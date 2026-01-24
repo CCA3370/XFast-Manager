@@ -1064,6 +1064,16 @@ impl Installer {
                     ));
                 }
             }
+            crate::models::AddonType::Livery => {
+                // For liveries, just check that the directory exists and has some content
+                // No specific marker file required
+                if !target.exists() || !target.is_dir() {
+                    return Err(anyhow::anyhow!(
+                        "Installation verification failed: Livery directory not found: {:?}",
+                        target
+                    ));
+                }
+            }
         }
 
         Ok(())
@@ -1752,9 +1762,15 @@ impl Installer {
     ) -> Result<()> {
         // For multi-layer chains (including single-layer nested archives),
         // check if we can use the memory-optimized path
-        let all_zip = chain.archives.iter().all(|a| a.format == "zip");
+        // IMPORTANT: Must also check that the outermost archive (source) is a ZIP file
+        let source_is_zip = source
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.eq_ignore_ascii_case("zip"))
+            .unwrap_or(false);
+        let all_nested_zip = chain.archives.iter().all(|a| a.format == "zip");
 
-        if all_zip {
+        if source_is_zip && all_nested_zip {
             // Optimized path: Extract nested ZIPs directly from memory
             self.install_nested_zip_from_memory(source, target, chain, ctx, outermost_password)
         } else {

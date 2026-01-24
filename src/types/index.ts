@@ -6,6 +6,8 @@ export enum AddonType {
   SceneryLibrary = 'SceneryLibrary',
   Plugin = 'Plugin',
   Navdata = 'Navdata',
+  /** Aircraft livery (auto-detected by pattern) */
+  Livery = 'Livery',
 }
 
 /** Represents a nested archive within another archive */
@@ -63,6 +65,10 @@ export interface InstallTask {
   backupConfigFiles?: boolean;
   /** Glob patterns for config files to backup (Aircraft only) */
   configFilePatterns?: string[];
+  /** For Livery: the aircraft type this livery belongs to (e.g., "FF777") */
+  liveryAircraftType?: string;
+  /** For Livery: whether the target aircraft is installed */
+  liveryAircraftFound?: boolean;
 }
 
 export interface AnalysisResult {
@@ -184,3 +190,48 @@ export interface SceneryManagerData {
   missingDepsCount: number;
   needsSync: boolean;
 }
+
+// ========== Management Types ==========
+
+export interface AircraftInfo {
+  folderName: string;
+  displayName: string;
+  acfFile: string;
+  enabled: boolean;
+  hasLiveries: boolean;
+  liveryCount: number;
+  version?: string;
+  updateUrl?: string;
+  latestVersion?: string;
+  hasUpdate: boolean;
+}
+
+export interface PluginInfo {
+  folderName: string;
+  displayName: string;
+  xplFiles: string[];
+  enabled: boolean;
+  platform: string;
+  version?: string;
+  updateUrl?: string;
+  latestVersion?: string;
+  hasUpdate: boolean;
+}
+
+export interface NavdataManagerInfo {
+  folderName: string;
+  providerName: string;
+  cycle?: string;
+  airac?: string;
+  enabled: boolean;
+}
+
+export interface ManagementData<T> {
+  entries: T[];
+  totalCount: number;
+  enabledCount: number;
+}
+
+export type ManagementTab = 'aircraft' | 'plugin' | 'navdata' | 'scenery';
+
+export type ManagementItemType = 'aircraft' | 'plugin' | 'navdata';

@@ -1,6 +1,6 @@
 {
   "productName": "XFast Manager",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "identifier": "com.xfastmanager.tool",
   "build": {
     "beforeDevCommand": "npm run dev",

@@ -19,16 +19,16 @@
           ref="card"
           role="dialog"
           aria-modal="true"
-          class="modal-card relative bg-gradient-to-tr from-gray-800/95 to-gray-900/95 text-gray-100 rounded-2xl shadow-2xl max-w-md w-full p-6 mx-4"
+          class="modal-card relative bg-white dark:bg-gradient-to-tr dark:from-gray-800/95 dark:to-gray-900/95 text-gray-900 dark:text-gray-100 rounded-2xl max-w-md w-full p-6 mx-4 border border-gray-200 dark:border-gray-700/50"
         >
           <div class="flex items-start justify-between">
             <div class="flex items-center space-x-3">
               <!-- Icon based on type -->
               <div
-                class="w-11 h-11 flex items-center justify-center rounded-full shadow-lg"
+                class="w-11 h-11 flex items-center justify-center rounded-full"
                 :class="{
-                  'bg-gradient-to-br from-yellow-500 to-orange-600 shadow-yellow-500/30': modal.confirmModal.options.type === 'warning',
-                  'bg-gradient-to-br from-red-500 to-red-700 shadow-red-500/30': modal.confirmModal.options.type === 'danger'
+                  'bg-gradient-to-br from-amber-500 to-yellow-600': modal.confirmModal.options.type === 'warning',
+                  'bg-gradient-to-br from-red-500 to-red-700': modal.confirmModal.options.type === 'danger'
                 }"
               >
                 <svg v-if="modal.confirmModal.options.type === 'warning'" class="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -44,7 +44,7 @@
                 <h3 class="text-lg font-semibold leading-tight">{{ modal.confirmModal.options.title }}</h3>
               </div>
             </div>
-            <button @click="handleCancel" class="text-gray-400 hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1">
+            <button @click="handleCancel" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -52,12 +52,12 @@
           </div>
 
           <div class="mt-4 space-y-3">
-            <p class="text-sm text-gray-100 leading-relaxed">
+            <p class="text-sm text-gray-700 dark:text-gray-100 leading-relaxed">
               {{ modal.confirmModal.options.message }}
             </p>
 
-            <div v-if="modal.confirmModal.options.warning" class="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-              <p class="text-sm text-yellow-200 leading-relaxed">
+            <div v-if="modal.confirmModal.options.warning" class="p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg">
+              <p class="text-sm text-amber-700 dark:text-amber-200 leading-relaxed">
                 {{ modal.confirmModal.options.warning }}
               </p>
             </div>
@@ -67,7 +67,7 @@
             <button
               ref="cancelBtn"
               @click="handleCancel"
-              class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white font-medium transition"
+              class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg text-gray-700 dark:text-white font-medium transition"
             >
               {{ modal.confirmModal.options.cancelText }}
             </button>
@@ -75,7 +75,7 @@
               @click="handleConfirm"
               class="px-4 py-2 rounded-lg text-white font-medium transition"
               :class="{
-                'bg-yellow-600 hover:bg-yellow-700': modal.confirmModal.options.type === 'warning',
+                'bg-amber-500 hover:bg-amber-600': modal.confirmModal.options.type === 'warning',
                 'bg-red-600 hover:bg-red-700': modal.confirmModal.options.type === 'danger'
               }"
             >

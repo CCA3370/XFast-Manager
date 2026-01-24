@@ -39,6 +39,7 @@ export const useAppStore = defineStore('app', () => {
     [AddonType.SceneryLibrary]: true,
     [AddonType.Plugin]: true,
     [AddonType.Navdata]: true,
+    [AddonType.Livery]: true,
   })
 
   // Verification preferences by source type (default: all enabled except RAR)
@@ -256,8 +257,14 @@ export const useAppStore = defineStore('app', () => {
     taskEnabledState.value = {}
     backupSettings.value = {}
     // Enable all tasks by default and initialize backup settings for Aircraft
+    // Disable livery tasks where target aircraft is not found
     tasks.forEach(task => {
-      taskEnabledState.value[task.id] = true
+      // Disable livery tasks if target aircraft is not found
+      if (task.type === AddonType.Livery && task.liveryAircraftFound === false) {
+        taskEnabledState.value[task.id] = false
+      } else {
+        taskEnabledState.value[task.id] = true
+      }
       if (task.type === AddonType.Aircraft) {
         backupSettings.value[task.id] = { liveries: true, configFiles: true }
       }

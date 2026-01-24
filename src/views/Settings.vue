@@ -1026,7 +1026,7 @@ const sceneryAutoSortExpanded = ref(false) // Default collapsed
 const isRebuildingIndex = ref(false)
 const indexExists = computed(() => sceneryStore.indexExists)
 
-const addonTypes = [AddonType.Aircraft, AddonType.Scenery, AddonType.SceneryLibrary, AddonType.Plugin, AddonType.Navdata]
+const addonTypes = [AddonType.Aircraft, AddonType.Scenery, AddonType.SceneryLibrary, AddonType.Plugin, AddonType.Navdata, AddonType.Livery]
 
 onMounted(() => {
   sceneryStore.loadIndexStatus()
@@ -1080,6 +1080,7 @@ function getTypeName(type: AddonType): string {
     case AddonType.SceneryLibrary: return t('settings.typeSceneryLibrary')
     case AddonType.Plugin: return t('settings.typePlugin')
     case AddonType.Navdata: return t('settings.typeNavdata')
+    case AddonType.Livery: return t('settings.typeLivery')
     default: return type
   }
 }

@@ -64,7 +64,8 @@
       "Bash(Start-Sleep -Seconds 2)",
       "Bash(cargo metadata:*)",
       "Bash(cmd /c \"dir /s /b %USERPROFILE%\\\\.cargo\\\\registry\\\\src\\\\*sevenz* 2>nul\")",
-      "Bash(gh api:*)"
+      "Bash(gh api:*)",
+      "Bash(cd:*)"
     ]
   }
 }

@@ -3,7 +3,9 @@ mod atomic_installer;
 mod cache;
 mod hash_collector;
 mod installer;
+mod livery_patterns;
 mod logger;
+mod management_index;
 mod models;
 mod performance;
 mod registry;
@@ -20,7 +22,8 @@ use std::collections::HashMap;
 use analyzer::Analyzer;
 use installer::Installer;
 use models::{
-    AnalysisResult, InstallResult, InstallTask, SceneryIndexScanResult, SceneryIndexStats,
+    AircraftInfo, AnalysisResult, InstallResult, InstallTask, ManagementData,
+    NavdataManagerInfo, PluginInfo, SceneryIndexScanResult, SceneryIndexStats,
     SceneryIndexStatus, SceneryManagerData, SceneryPackageInfo,
 };
 use scenery_index::SceneryIndexManager;
@@ -236,6 +239,42 @@ fn open_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), S
             .spawn()
             .map_err(|e| format!("Failed to open folder: {}", e))?;
     }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), String> {
+    let scenery_path = std::path::PathBuf::from(&xplane_path)
+        .join("Custom Scenery")
+        .join(&folder_name);
+
+    if !scenery_path.exists() {
+        return Err(format!("Scenery folder not found: {}", folder_name));
+    }
+
+    // Ensure the path is within Custom Scenery directory for safety
+    let custom_scenery_path = std::path::PathBuf::from(&xplane_path).join("Custom Scenery");
+    if !scenery_path.starts_with(&custom_scenery_path) {
+        return Err("Invalid scenery path".to_string());
+    }
+
+    // Delete the folder
+    std::fs::remove_dir_all(&scenery_path)
+        .map_err(|e| format!("Failed to delete scenery folder: {}", e))?;
+
+    // Remove from scenery index if it exists
+    if let Err(e) = scenery_index::remove_scenery_entry(&xplane_path, &folder_name) {
+        logger::log_error(
+            &format!("Failed to remove scenery from index: {}", e),
+            Some("scenery"),
+        );
+    }
+
+    logger::log_info(
+        &format!("Deleted scenery folder: {}", folder_name),
+        Some("scenery"),
+    );
 
     Ok(())
 }
@@ -495,6 +534,102 @@ async fn apply_scenery_changes(xplane_path: String) -> Result<(), String> {
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+// ========== Management Commands ==========
+
+#[tauri::command]
+async fn scan_aircraft(xplane_path: String) -> Result<ManagementData<AircraftInfo>, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::scan_aircraft(xplane_path)
+            .map_err(|e| format!("Failed to scan aircraft: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn check_aircraft_updates(
+    mut aircraft: Vec<AircraftInfo>,
+) -> Result<Vec<AircraftInfo>, String> {
+    management_index::check_aircraft_updates(&mut aircraft).await;
+    Ok(aircraft)
+}
+
+#[tauri::command]
+async fn check_plugins_updates(
+    mut plugins: Vec<PluginInfo>,
+) -> Result<Vec<PluginInfo>, String> {
+    management_index::check_plugins_updates(&mut plugins).await;
+    Ok(plugins)
+}
+
+#[tauri::command]
+async fn scan_plugins(xplane_path: String) -> Result<ManagementData<PluginInfo>, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::scan_plugins(xplane_path)
+            .map_err(|e| format!("Failed to scan plugins: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn scan_navdata(xplane_path: String) -> Result<ManagementData<NavdataManagerInfo>, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::scan_navdata(xplane_path)
+            .map_err(|e| format!("Failed to scan navdata: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn toggle_management_item(
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::toggle_management_item(xplane_path, &item_type, &folder_name)
+            .map_err(|e| format!("Failed to toggle item: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn delete_management_item(
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::delete_management_item(xplane_path, &item_type, &folder_name)
+            .map_err(|e| format!("Failed to delete item: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn open_management_folder(
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::open_management_folder(xplane_path, &item_type, &folder_name)
+            .map_err(|e| format!("Failed to open folder: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -546,6 +681,7 @@ pub fn run() {
             get_all_logs,
             open_log_folder,
             open_scenery_folder,
+            delete_scenery_folder,
             set_log_locale,
             set_log_level,
             check_path_exists,
@@ -564,7 +700,16 @@ pub fn run() {
             get_scenery_manager_data,
             update_scenery_entry,
             move_scenery_entry,
-            apply_scenery_changes
+            apply_scenery_changes,
+            // Management commands
+            scan_aircraft,
+            check_aircraft_updates,
+            scan_plugins,
+            check_plugins_updates,
+            scan_navdata,
+            toggle_management_item,
+            delete_management_item,
+            open_management_folder
         ])
         .setup(|app| {
             // Initialize TaskControl state
