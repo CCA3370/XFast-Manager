@@ -103,7 +103,7 @@
     <main :class="['main-content', 'pt-12', 'flex-1', 'min-h-0', 'overflow-hidden', { 'hide-scrollbar': $route.path === '/' }]">
       <div class="h-full overflow-y-auto">
         <router-view v-slot="{ Component }">
-          <transition name="page" mode="out-in">
+          <transition :name="transitionName" mode="out-in">
             <component :is="Component" />
           </transition>
         </router-view>
@@ -118,7 +118,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { onMounted, computed, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -146,6 +146,25 @@ const modalStore = useModalStore()
 const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
+
+// Route order for determining transition direction
+const routeOrder: Record<string, number> = {
+  '/': 0,
+  '/management': 1,
+  '/settings': 2,
+  '/onboarding': -1
+}
+
+// Track transition direction based on route navigation
+const transitionName = ref('page-right')
+
+// Watch route changes to determine transition direction
+watch(() => route.path, (newPath, oldPath) => {
+  const newOrder = routeOrder[newPath] ?? 0
+  const oldOrder = routeOrder[oldPath] ?? 0
+  // Going to higher index (right in nav) = slide left, going to lower index = slide right
+  transitionName.value = newOrder > oldOrder ? 'page-left' : 'page-right'
+})
 
 async function runSceneryIndexStartupScan() {
   if (!store.xplanePath) return
@@ -351,20 +370,34 @@ onMounted(async () => {
   display: none;
 }
 
-/* Page transitions */
-.page-enter-active,
-.page-leave-active {
+/* Page transitions - left direction (going to higher index route) */
+.page-left-enter-active,
+.page-left-leave-active,
+.page-right-enter-active,
+.page-right-leave-active {
   transition: all 0.2s ease;
 }
 
-.page-enter-from {
+/* Going left (e.g., Home -> Management -> Settings) */
+.page-left-enter-from {
   opacity: 0;
   transform: translateX(15px);
 }
 
-.page-leave-to {
+.page-left-leave-to {
   opacity: 0;
   transform: translateX(-15px);
+}
+
+/* Going right (e.g., Settings -> Management -> Home) */
+.page-right-enter-from {
+  opacity: 0;
+  transform: translateX(-15px);
+}
+
+.page-right-leave-to {
+  opacity: 0;
+  transform: translateX(15px);
 }
 
 /* Navigation animations */

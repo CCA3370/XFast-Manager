@@ -548,6 +548,22 @@ async fn scan_aircraft(xplane_path: String) -> Result<ManagementData<AircraftInf
 }
 
 #[tauri::command]
+async fn check_aircraft_updates(
+    mut aircraft: Vec<AircraftInfo>,
+) -> Result<Vec<AircraftInfo>, String> {
+    management_index::check_aircraft_updates(&mut aircraft).await;
+    Ok(aircraft)
+}
+
+#[tauri::command]
+async fn check_plugins_updates(
+    mut plugins: Vec<PluginInfo>,
+) -> Result<Vec<PluginInfo>, String> {
+    management_index::check_plugins_updates(&mut plugins).await;
+    Ok(plugins)
+}
+
+#[tauri::command]
 async fn scan_plugins(xplane_path: String) -> Result<ManagementData<PluginInfo>, String> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
@@ -687,7 +703,9 @@ pub fn run() {
             apply_scenery_changes,
             // Management commands
             scan_aircraft,
+            check_aircraft_updates,
             scan_plugins,
+            check_plugins_updates,
             scan_navdata,
             toggle_management_item,
             delete_management_item,

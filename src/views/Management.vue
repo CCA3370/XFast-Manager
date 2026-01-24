@@ -36,6 +36,11 @@ const availableTabs = computed(() => {
   return tabs
 })
 
+// Active tab index for indicator position
+const activeTabIndex = computed(() => {
+  return availableTabs.value.indexOf(activeTab.value)
+})
+
 // Transition direction for tab switching
 const tabTransitionName = ref('tab-slide-left')
 
@@ -96,8 +101,20 @@ watch(activeTab, async (newTab, oldTab) => {
   const newIndex = availableTabs.value.indexOf(newTab)
   tabTransitionName.value = newIndex > oldIndex ? 'tab-slide-left' : 'tab-slide-right'
 
+  // Suppress loading during transition to prevent animation blocking
+  suppressLoading.value = true
+
   searchQuery.value = ''
-  await loadTabData(newTab)
+  
+  // Start loading data (non-blocking)
+  const loadPromise = loadTabData(newTab)
+  
+  // Wait for transition animation to complete before showing loading state
+  setTimeout(() => {
+    suppressLoading.value = false
+  }, 350) // Slightly longer than transition duration (300ms)
+  
+  await loadPromise
 })
 
 async function loadTabData(tab: ManagementTab) {
@@ -507,10 +524,11 @@ function clearSearch() {
   searchExpandedGroups.value = {}
 }
 
-// Current loading state
+// Current loading state (suppressed during tab transitions)
 const isLoading = computed(() => {
+  if (suppressLoading.value) return false
   if (activeTab.value === 'scenery') {
-    return sceneryStore.isLoading && !suppressLoading.value
+    return sceneryStore.isLoading
   }
   return managementStore.isLoading
 })
@@ -519,14 +537,22 @@ const isLoading = computed(() => {
 <template>
   <div class="management-view h-full flex flex-col p-4 overflow-hidden">
     <!-- Tab Bar -->
-    <div class="mb-3 flex-shrink-0 flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg">
+    <div class="mb-3 flex-shrink-0 relative flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg">
+      <!-- Sliding indicator background -->
+      <div
+        class="tab-indicator absolute top-1 bottom-1 rounded-md bg-white dark:bg-gray-700 shadow-sm transition-all duration-300 ease-out"
+        :style="{
+          width: `calc((100% - 0.5rem - ${(availableTabs.length - 1) * 0.25}rem) / ${availableTabs.length})`,
+          left: `calc(0.25rem + ${activeTabIndex} * (100% - 0.5rem) / ${availableTabs.length})`
+        }"
+      />
       <button
         v-for="tab in availableTabs"
         :key="tab"
         @click="activeTab = tab"
-        class="flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition-all"
+        class="relative z-10 flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors duration-200"
         :class="activeTab === tab
-          ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+          ? 'text-blue-600 dark:text-blue-400'
           : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'"
       >
         <Transition name="text-fade" mode="out-in">
@@ -693,6 +719,41 @@ const isLoading = computed(() => {
           <span class="font-semibold text-green-600 dark:text-green-400">
             {{ activeTab === 'aircraft' ? managementStore.aircraftEnabledCount :
                managementStore.pluginsEnabledCount }}
+          </span>
+        </div>
+        <!-- Update available count for aircraft -->
+        <div v-if="activeTab === 'aircraft' && managementStore.aircraftUpdateCount > 0" class="flex items-center gap-2">
+          <Transition name="text-fade" mode="out-in">
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('management.hasUpdate') }}:</span>
+          </Transition>
+          <span class="font-semibold text-emerald-600 dark:text-emerald-400">
+            {{ managementStore.aircraftUpdateCount }}
+          </span>
+        </div>
+        <!-- Update available count for plugins -->
+        <div v-if="activeTab === 'plugin' && managementStore.pluginsUpdateCount > 0" class="flex items-center gap-2">
+          <Transition name="text-fade" mode="out-in">
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('management.hasUpdate') }}:</span>
+          </Transition>
+          <span class="font-semibold text-emerald-600 dark:text-emerald-400">
+            {{ managementStore.pluginsUpdateCount }}
+          </span>
+        </div>
+        <!-- Checking updates indicator -->
+        <div v-if="(activeTab === 'aircraft' || activeTab === 'plugin') && managementStore.isCheckingUpdates" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+          <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span class="text-xs">{{ t('management.checkingUpdates') }}</span>
+        </div>
+        <!-- Outdated count for navdata -->
+        <div v-if="activeTab === 'navdata' && managementStore.navdataOutdatedCount > 0" class="flex items-center gap-2">
+          <Transition name="text-fade" mode="out-in">
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('management.outdated') }}:</span>
+          </Transition>
+          <span class="font-semibold text-red-600 dark:text-red-400">
+            {{ managementStore.navdataOutdatedCount }}
           </span>
         </div>
       </template>
@@ -1060,31 +1121,37 @@ const isLoading = computed(() => {
 }
 
 /* Tab slide transitions */
+/* Tab slide animations */
 .tab-slide-left-enter-active,
 .tab-slide-left-leave-active,
 .tab-slide-right-enter-active,
 .tab-slide-right-leave-active {
-  transition: all 0.25s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .tab-slide-left-enter-from {
   opacity: 0;
-  transform: translateX(20px);
+  transform: translateX(30px);
 }
 
 .tab-slide-left-leave-to {
   opacity: 0;
-  transform: translateX(-20px);
+  transform: translateX(-30px);
 }
 
 .tab-slide-right-enter-from {
   opacity: 0;
-  transform: translateX(-20px);
+  transform: translateX(-30px);
 }
 
 .tab-slide-right-leave-to {
   opacity: 0;
-  transform: translateX(20px);
+  transform: translateX(30px);
+}
+
+/* Tab indicator animation enhancement */
+.tab-indicator {
+  will-change: transform, width, left;
 }
 
 :global(.hidden-ghost) {

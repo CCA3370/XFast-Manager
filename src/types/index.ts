@@ -201,6 +201,9 @@ export interface AircraftInfo {
   hasLiveries: boolean;
   liveryCount: number;
   version?: string;
+  updateUrl?: string;
+  latestVersion?: string;
+  hasUpdate: boolean;
 }
 
 export interface PluginInfo {
@@ -210,6 +213,9 @@ export interface PluginInfo {
   enabled: boolean;
   platform: string;
   version?: string;
+  updateUrl?: string;
+  latestVersion?: string;
+  hasUpdate: boolean;
 }
 
 export interface NavdataManagerInfo {

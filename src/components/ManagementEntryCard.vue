@@ -99,6 +99,21 @@ const versionInfo = computed(() => {
   return null
 })
 
+// Update available (for aircraft and plugins)
+const updateAvailable = computed(() => {
+  if (isAircraft(props.entry) || isPlugin(props.entry)) {
+    return props.entry.hasUpdate
+  }
+  return false
+})
+
+const latestVersion = computed(() => {
+  if (isAircraft(props.entry) || isPlugin(props.entry)) {
+    return props.entry.latestVersion || null
+  }
+  return null
+})
+
 function handleDoubleClick() {
   emit('open-folder', props.entry.folderName)
 }
@@ -158,10 +173,16 @@ function handleDeleteConfirm() {
     <!-- Version info (if available) -->
     <span
       v-if="versionInfo"
-      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700"
-      :title="versionInfo"
+      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium"
+      :class="updateAvailable
+        ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30'
+        : 'text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700'"
+      :title="updateAvailable ? `${versionInfo} → ${latestVersion}` : versionInfo"
     >
       {{ versionInfo }}
+      <template v-if="updateAvailable">
+        → {{ latestVersion }}
+      </template>
     </span>
 
     <!-- Badge (liveries count / platform / cycle) -->

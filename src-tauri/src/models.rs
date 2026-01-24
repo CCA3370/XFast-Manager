@@ -437,6 +437,12 @@ pub struct AircraftInfo {
     pub has_liveries: bool,
     pub livery_count: usize,
     pub version: Option<String>,
+    /// URL for checking updates (from skunkcrafts_updater.cfg module| field)
+    pub update_url: Option<String>,
+    /// Latest version from remote server (populated by check_aircraft_updates)
+    pub latest_version: Option<String>,
+    /// Whether an update is available
+    pub has_update: bool,
 }
 
 /// Plugin information for management UI
@@ -449,6 +455,12 @@ pub struct PluginInfo {
     pub enabled: bool,
     pub platform: String,
     pub version: Option<String>,
+    /// URL for checking updates (from skunkcrafts_updater.cfg module| field)
+    pub update_url: Option<String>,
+    /// Latest version from remote server (populated by check_plugins_updates)
+    pub latest_version: Option<String>,
+    /// Whether an update is available
+    pub has_update: bool,
 }
 
 /// Navdata manager information for management UI

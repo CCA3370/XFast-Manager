@@ -148,7 +148,10 @@ fn scan_single_aircraft_folder(
             // Check for version sources
             if name_lower == "skunkcrafts_updater.cfg" {
                 updater_cfg_path = Some(entry.path());
-            } else if name_lower.contains("version") {
+            } else if name_lower.contains("version")
+                || name_lower == "767.ini"
+                || name_lower == "757.ini"
+            {
                 version_file_paths.push(entry.path());
             }
         } else if ft.is_dir() {
@@ -176,7 +179,8 @@ fn scan_single_aircraft_folder(
     };
 
     // Read version info (priority: skunkcrafts_updater.cfg > version files)
-    let version = read_version_from_paths(updater_cfg_path.as_deref(), &version_file_paths);
+    let (version, update_url) =
+        read_version_from_paths(updater_cfg_path.as_deref(), &version_file_paths);
 
     let relative_path = folder
         .strip_prefix(base_path)
@@ -192,38 +196,71 @@ fn scan_single_aircraft_folder(
         has_liveries,
         livery_count,
         version,
+        update_url,
+        latest_version: None, // Will be populated by check_aircraft_updates
+        has_update: false,    // Will be set by check_aircraft_updates
     })
 }
 
 /// Read version from already-discovered paths (avoids extra directory reads)
+/// Returns (version, update_url) tuple
 fn read_version_from_paths(
     updater_cfg: Option<&Path>,
     version_files: &[std::path::PathBuf],
-) -> Option<String> {
+) -> (Option<String>, Option<String>) {
+    let mut update_url: Option<String> = None;
+
     // First, try skunkcrafts_updater.cfg (higher priority)
     if let Some(cfg_path) = updater_cfg {
         if let Ok(content) = fs::read_to_string(cfg_path) {
+            let mut cfg_version: Option<String> = None;
+
             for line in content.lines() {
                 let line = line.trim();
-                if line.to_lowercase().starts_with("version|") {
+                let line_lower = line.to_lowercase();
+
+                if line_lower.starts_with("version|") {
                     let parts: Vec<&str> = line.splitn(2, '|').collect();
                     if parts.len() == 2 {
                         let version = parts[1].trim();
                         if !version.is_empty() {
-                            return Some(version.to_string());
+                            cfg_version = Some(version.to_string());
+                        }
+                    }
+                } else if line_lower.starts_with("module|") {
+                    let parts: Vec<&str> = line.splitn(2, '|').collect();
+                    if parts.len() == 2 {
+                        let url = parts[1].trim();
+                        if !url.is_empty() {
+                            update_url = Some(url.to_string());
                         }
                     }
                 }
+            }
+
+            if cfg_version.is_some() {
+                return (cfg_version, update_url);
             }
         }
     }
 
     // Fall back to version files
     let mut version_tokens: Vec<String> = Vec::new();
+    let mut first_line_fallback: Option<String> = None;
+
     for path in version_files {
         if let Ok(content) = fs::read_to_string(path) {
             for line in content.lines() {
                 let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+
+                // Record first non-empty line as fallback
+                if first_line_fallback.is_none() {
+                    first_line_fallback = Some(line.to_string());
+                }
+
                 if !has_version_pattern(line) {
                     continue;
                 }
@@ -236,15 +273,28 @@ fn read_version_from_paths(
         }
     }
     if !version_tokens.is_empty() {
-        return Some(version_tokens.join("/"));
+        return (Some(version_tokens.join("/")), update_url);
     }
 
-    None
+    // Fallback: try to parse pure digit string (e.g., "020310" -> "2.3.10")
+    if let Some(ref first_line) = first_line_fallback {
+        if let Some(parsed) = try_parse_digit_version(first_line) {
+            return (Some(parsed), update_url);
+        }
+        // Last resort: return the first line as-is
+        return (first_line_fallback, update_url);
+    }
+
+    (None, update_url)
 }
 
 /// Read version information from a folder (used by plugins where we don't have pre-collected paths)
-fn read_version_info(folder: &Path) -> Option<String> {
-    let read_dir = fs::read_dir(folder).ok()?;
+/// Returns (version, update_url) tuple
+fn read_version_info_with_url(folder: &Path) -> (Option<String>, Option<String>) {
+    let read_dir = match fs::read_dir(folder) {
+        Ok(rd) => rd,
+        Err(_) => return (None, None),
+    };
 
     let mut updater_cfg_path: Option<std::path::PathBuf> = None;
     let mut version_file_paths: Vec<std::path::PathBuf> = Vec::new();
@@ -264,7 +314,10 @@ fn read_version_info(folder: &Path) -> Option<String> {
         let name_lower = name.to_lowercase();
         if name_lower == "skunkcrafts_updater.cfg" {
             updater_cfg_path = Some(entry.path());
-        } else if name_lower.contains("version") {
+        } else if name_lower.contains("version")
+            || name_lower == "767.ini"
+            || name_lower == "757.ini"
+        {
             version_file_paths.push(entry.path());
         }
     }
@@ -294,6 +347,36 @@ fn has_version_pattern(s: &str) -> bool {
         }
     }
     false
+}
+
+/// Try to parse a pure digit string as a version by splitting every 2 characters
+/// and removing leading zeros from each part.
+/// Example: "020310" -> "2.3.10"
+fn try_parse_digit_version(s: &str) -> Option<String> {
+    let digits: String = s.chars().filter(|c| c.is_ascii_digit()).collect();
+
+    // Must have at least 4 digits to split into meaningful parts
+    if digits.len() < 4 {
+        return None;
+    }
+
+    // Split every 2 characters
+    let parts: Vec<String> = digits
+        .as_bytes()
+        .chunks(2)
+        .map(|chunk| {
+            let s = std::str::from_utf8(chunk).unwrap_or("0");
+            // Parse to remove leading zeros, then convert back to string
+            s.parse::<u32>().unwrap_or(0).to_string()
+        })
+        .collect();
+
+    // Must have at least 2 parts
+    if parts.len() < 2 {
+        return None;
+    }
+
+    Some(parts.join("."))
 }
 
 /// Scan plugins in the X-Plane Resources/plugins folder
@@ -375,8 +458,8 @@ fn scan_single_plugin_folder(path: &Path, folder_name: &str) -> Option<PluginInf
     // Determine platform from xpl file locations
     let platform = detect_plugin_platform(path, &all_files);
 
-    // Read version info
-    let version = read_version_info(path);
+    // Read version info with update URL
+    let (version, update_url) = read_version_info_with_url(path);
 
     Some(PluginInfo {
         folder_name: folder_name.to_string(),
@@ -385,6 +468,9 @@ fn scan_single_plugin_folder(path: &Path, folder_name: &str) -> Option<PluginInf
         enabled,
         platform,
         version,
+        update_url,
+        latest_version: None, // Will be populated by check_plugins_updates
+        has_update: false,    // Will be set by check_plugins_updates
     })
 }
 
@@ -769,4 +855,112 @@ pub fn open_management_folder(
     }
 
     Ok(())
+}
+
+/// Check for aircraft updates by fetching remote skunkcrafts_updater.cfg files
+/// This function modifies the aircraft list in place, setting latest_version and has_update
+pub async fn check_aircraft_updates(aircraft: &mut [AircraftInfo]) {
+    use futures::future::join_all;
+
+    // Collect aircraft with update URLs
+    let update_tasks: Vec<_> = aircraft
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, a)| a.update_url.as_ref().map(|url| (idx, url.clone())))
+        .collect();
+
+    if update_tasks.is_empty() {
+        return;
+    }
+
+    // Fetch all remote configs in parallel
+    let fetch_futures: Vec<_> = update_tasks
+        .iter()
+        .map(|(_, url)| fetch_remote_version(url.clone()))
+        .collect();
+
+    let results = join_all(fetch_futures).await;
+
+    // Update aircraft with results
+    for ((idx, _), result) in update_tasks.into_iter().zip(results) {
+        if let Some(remote_version) = result {
+            let local_version = aircraft[idx].version.as_deref().unwrap_or("");
+            aircraft[idx].latest_version = Some(remote_version.clone());
+            aircraft[idx].has_update = remote_version != local_version;
+        }
+    }
+}
+
+/// Check for plugin updates by fetching remote skunkcrafts_updater.cfg files
+/// This function modifies the plugins list in place, setting latest_version and has_update
+pub async fn check_plugins_updates(plugins: &mut [PluginInfo]) {
+    use futures::future::join_all;
+
+    // Collect plugins with update URLs
+    let update_tasks: Vec<_> = plugins
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, p)| p.update_url.as_ref().map(|url| (idx, url.clone())))
+        .collect();
+
+    if update_tasks.is_empty() {
+        return;
+    }
+
+    // Fetch all remote configs in parallel
+    let fetch_futures: Vec<_> = update_tasks
+        .iter()
+        .map(|(_, url)| fetch_remote_version(url.clone()))
+        .collect();
+
+    let results = join_all(fetch_futures).await;
+
+    // Update plugins with results
+    for ((idx, _), result) in update_tasks.into_iter().zip(results) {
+        if let Some(remote_version) = result {
+            let local_version = plugins[idx].version.as_deref().unwrap_or("");
+            plugins[idx].latest_version = Some(remote_version.clone());
+            plugins[idx].has_update = remote_version != local_version;
+        }
+    }
+}
+
+/// Fetch remote version from skunkcrafts_updater.cfg
+async fn fetch_remote_version(base_url: String) -> Option<String> {
+    let url = format!("{}/skunkcrafts_updater.cfg", base_url.trim_end_matches('/'));
+
+    // Build client with system proxy support (reads from Windows system settings)
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .ok()?;
+
+    let response = client.get(&url).send().await.ok()?;
+
+    if !response.status().is_success() {
+        logger::log_debug(
+            &format!("Failed to fetch remote config: {} - {}", url, response.status()),
+            Some("management"),
+            None,
+        );
+        return None;
+    }
+
+    let content = response.text().await.ok()?;
+
+    // Parse version from config
+    for line in content.lines() {
+        let line = line.trim();
+        if line.to_lowercase().starts_with("version|") {
+            let parts: Vec<&str> = line.splitn(2, '|').collect();
+            if parts.len() == 2 {
+                let version = parts[1].trim();
+                if !version.is_empty() {
+                    return Some(version.to_string());
+                }
+            }
+        }
+    }
+
+    None
 }
