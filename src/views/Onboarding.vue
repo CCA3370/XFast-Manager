@@ -285,12 +285,12 @@ const toast = useToastStore()
 
 const isSubmitting = ref(false)
 
-const windowsIntegrationEnabled = ref(store.isContextMenuRegistered)
-const atomicInstallEnabled = ref(store.atomicInstallEnabled)
+const windowsIntegrationEnabled = ref(store.isContextMenuRegistered || true)
+const atomicInstallEnabled = ref(store.atomicInstallEnabled || true)
 const deleteSourceEnabled = ref(store.deleteSourceAfterInstall)
 const autoUpdateEnabled = ref(updateStore.autoCheckEnabled)
 const includePreReleaseEnabled = ref(updateStore.includePreRelease)
-const autoSortSceneryEnabled = ref(store.autoSortScenery)
+const autoSortSceneryEnabled = ref(store.autoSortScenery || true)
 const xplanePathInput = ref(store.xplanePath)
 const pathError = ref<string | null>(null)
 const xplanePathValid = ref(!!store.xplanePath)
@@ -409,21 +409,6 @@ const steps = computed(() => {
   })
 
   items.push({
-    key: 'autoUpdateCheck',
-    titleKey: 'update.autoUpdateCheck',
-    descKey: 'update.autoUpdateCheckDesc',
-    benefits: [
-      'update.autoUpdateCheckBenefit1',
-      'update.autoUpdateCheckBenefit2',
-      'update.autoUpdateCheckBenefit3'
-    ],
-    onClass: 'bg-green-500',
-    disabled: false,
-    isEnabled: () => autoUpdateEnabled.value,
-    toggle: () => { autoUpdateEnabled.value = !autoUpdateEnabled.value }
-  })
-
-  items.push({
     key: 'autoSortScenery',
     titleKey: 'settings.sceneryAutoSort',
     descKey: 'settings.sceneryAutoSortDesc',
@@ -436,6 +421,21 @@ const steps = computed(() => {
     disabled: false,
     isEnabled: () => autoSortSceneryEnabled.value,
     toggle: () => { autoSortSceneryEnabled.value = !autoSortSceneryEnabled.value }
+  })
+
+  items.push({
+    key: 'autoUpdateCheck',
+    titleKey: 'update.autoUpdateCheck',
+    descKey: 'update.autoUpdateCheckDesc',
+    benefits: [
+      'update.autoUpdateCheckBenefit1',
+      'update.autoUpdateCheckBenefit2',
+      'update.autoUpdateCheckBenefit3'
+    ],
+    onClass: 'bg-green-500',
+    disabled: false,
+    isEnabled: () => autoUpdateEnabled.value,
+    toggle: () => { autoUpdateEnabled.value = !autoUpdateEnabled.value }
   })
 
   return items
