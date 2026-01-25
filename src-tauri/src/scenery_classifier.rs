@@ -747,35 +747,38 @@ fn is_dsf_compressed(dsf_path: &Path) -> Result<bool> {
 fn decompress_dsf(dsf_path: &Path) -> Result<Vec<u8>> {
     use sevenz_rust2::decompress_file;
 
-    // Create a temporary buffer to hold decompressed data
-    let mut decompressed = Vec::new();
-
     // Use sevenz_rust2 to decompress
     let temp_dir = tempfile::tempdir()?;
     decompress_file(dsf_path, temp_dir.path())?;
 
-    // Find the decompressed DSF file
-    for entry in std::fs::read_dir(temp_dir.path())? {
-        let entry = entry?;
-        if entry.path().extension().map_or(false, |e| e == "dsf") || entry.file_type()?.is_file() {
-            decompressed = std::fs::read(entry.path())?;
-            break;
-        }
-    }
-
-    if decompressed.is_empty() {
-        // If no DSF found in temp dir, the 7z might contain raw data
-        // Try reading the first file
-        for entry in std::fs::read_dir(temp_dir.path())? {
-            let entry = entry?;
-            if entry.file_type()?.is_file() {
-                decompressed = std::fs::read(entry.path())?;
-                break;
+    // Use WalkDir to recursively search for the DSF file
+    // Max depth 3 handles cases where 7z extracts to nested directories
+    for entry in WalkDir::new(temp_dir.path())
+        .max_depth(3)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if entry.file_type().is_file() {
+            // Prefer files with .dsf extension
+            if entry.path().extension().map_or(false, |e| e.eq_ignore_ascii_case("dsf")) {
+                return std::fs::read(entry.path()).map_err(|e| anyhow!("{}", e));
             }
         }
     }
 
-    Ok(decompressed)
+    // If no .dsf file found, try reading the first file encountered
+    // (the 7z might contain raw data without extension)
+    for entry in WalkDir::new(temp_dir.path())
+        .max_depth(3)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if entry.file_type().is_file() {
+            return std::fs::read(entry.path()).map_err(|e| anyhow!("{}", e));
+        }
+    }
+
+    Err(anyhow!("No file found in decompressed 7z archive"))
 }
 
 /// Parse DSF file header

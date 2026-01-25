@@ -14,6 +14,19 @@ use std::path::{Path, PathBuf};
 
 const INI_HEADER: &str = "I\n1000 Version\nSCENERY\n\n";
 
+/// Normalize a scenery path for scenery_packs.ini
+/// Converts backslashes to forward slashes and ensures trailing slash
+fn normalize_scenery_path(path: &str) -> String {
+    // Convert all backslashes to forward slashes (X-Plane uses forward slashes)
+    let normalized = path.replace('\\', "/");
+    // Ensure trailing slash
+    if normalized.ends_with('/') {
+        normalized
+    } else {
+        format!("{}/", normalized)
+    }
+}
+
 /// Manager for scenery_packs.ini operations
 pub struct SceneryPacksManager {
     xplane_path: PathBuf,
@@ -52,14 +65,12 @@ impl SceneryPacksManager {
                 "SCENERY_PACK_DISABLED"
             };
 
-            // Ensure path ends with / (except for *GLOBAL_AIRPORTS*)
+            // Normalize path: convert backslashes to forward slashes and ensure trailing slash
+            // *GLOBAL_AIRPORTS* is special and should not be modified
             let path = if entry.is_global_airports {
-                // *GLOBAL_AIRPORTS* should not have trailing slash
-                entry.path.clone()
-            } else if entry.path.ends_with('/') || entry.path.ends_with('\\') {
                 entry.path.clone()
             } else {
-                format!("{}/", entry.path)
+                normalize_scenery_path(&entry.path)
             };
 
             writeln!(file, "{} {}", prefix, path)?;
@@ -222,7 +233,8 @@ impl SceneryPacksManager {
     }
 
     /// Check if ini file is in sync with the index
-    /// Returns true if ini order/enabled states match index, false otherwise
+    /// Returns true if ini order/enabled states match index for entries that exist in the index
+    /// Note: Extra entries in the ini (manually added) are ignored
     pub fn is_synced_with_index(&self) -> Result<bool> {
         // If ini doesn't exist, it's not synced
         if !self.ini_path.exists() {
@@ -263,14 +275,21 @@ impl SceneryPacksManager {
         let mut packages: Vec<_> = index.packages.values().collect();
         packages.sort_by_key(|p| p.sort_order);
 
-        // Compare count first
-        if ini_entries.len() != packages.len() {
+        // Filter ini entries to only include entries that exist in the index
+        // This allows manually added entries in the ini to be ignored
+        let ini_entries_filtered: Vec<_> = ini_entries
+            .iter()
+            .filter(|(folder, _)| index.packages.contains_key(folder))
+            .collect();
+
+        // Compare count of index entries
+        if ini_entries_filtered.len() != packages.len() {
             return Ok(false);
         }
 
-        // Compare order and enabled state
+        // Compare order and enabled state for entries that exist in the index
         for (i, pkg) in packages.iter().enumerate() {
-            let (ini_folder, ini_enabled) = &ini_entries[i];
+            let (ini_folder, ini_enabled) = ini_entries_filtered[i];
             if ini_folder != &pkg.folder_name || *ini_enabled != pkg.enabled {
                 return Ok(false);
             }

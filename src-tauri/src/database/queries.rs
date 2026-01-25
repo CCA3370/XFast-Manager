@@ -1,6 +1,7 @@
 //! Database query operations for scenery packages
 
 use crate::error::{ApiError, ApiErrorCode};
+use crate::logger;
 use crate::models::{SceneryCategory, SceneryIndex, SceneryPackageInfo};
 use rusqlite::{params, Connection, Transaction};
 use std::collections::HashMap;
@@ -14,8 +15,14 @@ fn systemtime_to_unix(time: &SystemTime) -> i64 {
 }
 
 /// Convert Unix timestamp to SystemTime
+/// Handles negative timestamps by falling back to UNIX_EPOCH
 fn unix_to_systemtime(timestamp: i64) -> SystemTime {
-    UNIX_EPOCH + Duration::from_secs(timestamp as u64)
+    if timestamp >= 0 {
+        UNIX_EPOCH + Duration::from_secs(timestamp as u64)
+    } else {
+        // Negative timestamps are invalid - fall back to UNIX_EPOCH
+        UNIX_EPOCH
+    }
 }
 
 /// Convert SceneryCategory to database string
@@ -795,6 +802,7 @@ impl SceneryQueries {
 
     /// Batch update entries (enabled and sort_order only)
     /// Uses prepared statements for optimal performance with large batches
+    /// Logs warnings for entries that don't exist in the database
     pub fn batch_update_entries(
         conn: &mut Connection,
         entries: &[crate::models::SceneryEntryUpdate],
@@ -805,6 +813,9 @@ impl SceneryQueries {
                 format!("Failed to start transaction: {}", e),
             )
         })?;
+
+        // Track entries that were not found for logging
+        let mut not_found: Vec<String> = Vec::new();
 
         // Prepare statement once for all updates (performance optimization)
         {
@@ -818,14 +829,31 @@ impl SceneryQueries {
             })?;
 
             for entry in entries {
-                stmt.execute(params![entry.enabled, entry.sort_order, &entry.folder_name])
+                let rows_affected = stmt.execute(params![entry.enabled, entry.sort_order, &entry.folder_name])
                     .map_err(|e| {
                         ApiError::new(
                             ApiErrorCode::DatabaseError,
                             format!("Failed to update entry: {}", e),
                         )
                     })?;
+
+                // Check if the entry existed
+                if rows_affected == 0 {
+                    not_found.push(entry.folder_name.clone());
+                }
             }
+        }
+
+        // Log warnings for entries that were not found
+        if !not_found.is_empty() {
+            logger::log_info(
+                &format!(
+                    "batch_update_entries: {} entries not found in database: {:?}",
+                    not_found.len(),
+                    not_found.iter().take(5).collect::<Vec<_>>()
+                ),
+                Some("database"),
+            );
         }
 
         // Update last_updated metadata

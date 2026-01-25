@@ -96,11 +96,14 @@ export const useSceneryStore = defineStore('scenery', () => {
       return
     }
 
-    await loadIndexStatus()
+    // Set isLoading before any async operations
     isLoading.value = true
     error.value = null
 
     try {
+      // Load index status first
+      await loadIndexStatus()
+
       const result = await invoke<SceneryManagerData>('get_scenery_manager_data', {
         xplanePath: appStore.xplanePath
       })
@@ -278,13 +281,29 @@ export const useSceneryStore = defineStore('scenery', () => {
       // Remove from local data
       if (data.value) {
         data.value.entries = data.value.entries.filter(e => e.folderName !== folderName)
+
+        // Recalculate sortOrder to eliminate gaps
+        // Sort by current sortOrder first, then reassign consecutive values
+        data.value.entries = data.value.entries
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((entry, index) => ({
+            ...entry,
+            sortOrder: index
+          }))
+
         data.value.totalCount = data.value.entries.length
         data.value.enabledCount = data.value.entries.filter(e => e.enabled).length
         data.value.missingDepsCount = data.value.entries.filter(e => e.missingLibraries.length > 0).length
       }
 
-      // Also remove from original entries
-      originalEntries.value = originalEntries.value.filter(e => e.folderName !== folderName)
+      // Also remove from original entries and recalculate their sortOrder
+      originalEntries.value = originalEntries.value
+        .filter(e => e.folderName !== folderName)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((entry, index) => ({
+          ...entry,
+          sortOrder: index
+        }))
     } catch (e) {
       // Parse structured error if available
       const apiError = parseApiError(e)
