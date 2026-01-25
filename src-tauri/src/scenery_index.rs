@@ -17,9 +17,13 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-/// Resolve Windows shortcut (.lnk) to actual path using Windows COM API
+// ============================================================================
+// Windows Shortcut Resolution (COM API)
+// ============================================================================
+
 #[cfg(windows)]
-fn resolve_shortcut(lnk_path: &Path) -> Option<PathBuf> {
+mod shortcut_resolver {
+    use super::*;
     use std::os::windows::ffi::OsStrExt;
     use std::ptr;
     use winapi::shared::guiddef::GUID;
@@ -39,116 +43,185 @@ fn resolve_shortcut(lnk_path: &Path) -> Option<PathBuf> {
         Data4: [0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
     };
 
-    unsafe {
-        // Initialize COM - try both threading models
-        let hr = CoInitializeEx(ptr::null_mut(), COINIT_APARTMENTTHREADED);
-        let need_uninit = if hr == S_OK || hr == S_FALSE {
-            true
-        } else if hr == RPC_E_CHANGED_MODE {
-            // COM already initialized with different threading model, try to continue anyway
-            logger::log_info(
-                &format!("  COM already initialized with different threading model"),
-                Some("scenery_index"),
-            );
-            false
-        } else {
-            logger::log_info(
-                &format!("  Failed to initialize COM, HRESULT: 0x{:08X}", hr),
-                Some("scenery_index"),
-            );
-            return None;
-        };
+    /// RAII wrapper for COM initialization
+    struct ComGuard {
+        should_uninit: bool,
+    }
 
-        let mut result = None;
+    impl ComGuard {
+        /// Initialize COM with apartment threading model
+        fn new() -> Option<Self> {
+            unsafe {
+                let hr = CoInitializeEx(ptr::null_mut(), COINIT_APARTMENTTHREADED);
+                if hr == S_OK || hr == S_FALSE {
+                    Some(Self { should_uninit: true })
+                } else if hr == RPC_E_CHANGED_MODE {
+                    logger::log_info(
+                        "  COM already initialized with different threading model",
+                        Some("scenery_index"),
+                    );
+                    Some(Self { should_uninit: false })
+                } else {
+                    logger::log_info(
+                        &format!("  Failed to initialize COM, HRESULT: 0x{:08X}", hr),
+                        Some("scenery_index"),
+                    );
+                    None
+                }
+            }
+        }
+    }
 
-        // Create IShellLink instance
-        let mut shell_link: *mut IShellLinkW = ptr::null_mut();
-        let hr = CoCreateInstance(
-            &CLSID_SHELL_LINK,
-            ptr::null_mut(),
-            1, // CLSCTX_INPROC_SERVER
-            &IShellLinkW::uuidof(),
-            &mut shell_link as *mut *mut _ as *mut *mut _,
-        );
+    impl Drop for ComGuard {
+        fn drop(&mut self) {
+            if self.should_uninit {
+                unsafe { CoUninitialize() };
+            }
+        }
+    }
 
-        if hr == S_OK && !shell_link.is_null() {
-            // Query IPersistFile interface
-            let mut persist_file: *mut IPersistFile = ptr::null_mut();
-            let hr = (*shell_link).QueryInterface(
-                &IPersistFile::uuidof(),
-                &mut persist_file as *mut *mut _ as *mut *mut _,
-            );
+    /// RAII wrapper for IShellLinkW COM interface
+    struct ShellLinkGuard {
+        ptr: *mut IShellLinkW,
+    }
 
-            if hr == S_OK && !persist_file.is_null() {
-                // Convert path to wide string
-                let wide_path: Vec<u16> = lnk_path
+    impl ShellLinkGuard {
+        fn new() -> Option<Self> {
+            unsafe {
+                let mut shell_link: *mut IShellLinkW = ptr::null_mut();
+                let hr = CoCreateInstance(
+                    &CLSID_SHELL_LINK,
+                    ptr::null_mut(),
+                    1, // CLSCTX_INPROC_SERVER
+                    &IShellLinkW::uuidof(),
+                    &mut shell_link as *mut *mut _ as *mut *mut _,
+                );
+                if hr == S_OK && !shell_link.is_null() {
+                    Some(Self { ptr: shell_link })
+                } else {
+                    logger::log_info(
+                        &format!("  Failed to create IShellLink, HRESULT: 0x{:08X}", hr),
+                        Some("scenery_index"),
+                    );
+                    None
+                }
+            }
+        }
+
+        fn as_ptr(&self) -> *mut IShellLinkW {
+            self.ptr
+        }
+    }
+
+    impl Drop for ShellLinkGuard {
+        fn drop(&mut self) {
+            if !self.ptr.is_null() {
+                unsafe { (*self.ptr).Release() };
+            }
+        }
+    }
+
+    /// RAII wrapper for IPersistFile COM interface
+    struct PersistFileGuard {
+        ptr: *mut IPersistFile,
+    }
+
+    impl PersistFileGuard {
+        fn from_shell_link(shell_link: &ShellLinkGuard) -> Option<Self> {
+            unsafe {
+                let mut persist_file: *mut IPersistFile = ptr::null_mut();
+                let hr = (*shell_link.as_ptr()).QueryInterface(
+                    &IPersistFile::uuidof(),
+                    &mut persist_file as *mut *mut _ as *mut *mut _,
+                );
+                if hr == S_OK && !persist_file.is_null() {
+                    Some(Self { ptr: persist_file })
+                } else {
+                    logger::log_info(
+                        &format!("  Failed to query IPersistFile, HRESULT: 0x{:08X}", hr),
+                        Some("scenery_index"),
+                    );
+                    None
+                }
+            }
+        }
+
+        fn load(&self, path: &Path) -> bool {
+            unsafe {
+                let wide_path: Vec<u16> = path
                     .as_os_str()
                     .encode_wide()
                     .chain(std::iter::once(0))
                     .collect();
-
-                // Load the shortcut file
-                let hr = (*persist_file).Load(wide_path.as_ptr(), 0);
-
-                if hr == S_OK {
-                    // Get the target path
-                    let mut target_path = vec![0u16; MAX_PATH];
-                    let hr = (*shell_link).GetPath(
-                        target_path.as_mut_ptr(),
-                        MAX_PATH as i32,
-                        ptr::null_mut(),
-                        0,
-                    );
-
-                    if hr == S_OK {
-                        // Find the null terminator
-                        let len = target_path.iter().position(|&c| c == 0).unwrap_or(MAX_PATH);
-                        let target_str = String::from_utf16_lossy(&target_path[..len]);
-
-                        logger::log_info(
-                            &format!("  Shortcut target (COM API): {:?}", target_str),
-                            Some("scenery_index"),
-                        );
-
-                        let path = PathBuf::from(target_str);
-                        if path.exists() && path.is_dir() {
-                            result = Some(path);
-                        }
-                    } else {
-                        logger::log_info(
-                            &format!("  GetPath failed with HRESULT: 0x{:08X}", hr),
-                            Some("scenery_index"),
-                        );
-                    }
-                } else {
+                let hr = (*self.ptr).Load(wide_path.as_ptr(), 0);
+                if hr != S_OK {
                     logger::log_info(
                         &format!("  Failed to load shortcut file, HRESULT: 0x{:08X}", hr),
                         Some("scenery_index"),
                     );
                 }
+                hr == S_OK
+            }
+        }
+    }
 
-                (*persist_file).Release();
+    impl Drop for PersistFileGuard {
+        fn drop(&mut self) {
+            if !self.ptr.is_null() {
+                unsafe { (*self.ptr).Release() };
+            }
+        }
+    }
+
+    /// Get the target path from a loaded shell link
+    fn get_shell_link_target(shell_link: &ShellLinkGuard) -> Option<PathBuf> {
+        unsafe {
+            let mut target_path = vec![0u16; MAX_PATH];
+            let hr = (*shell_link.as_ptr()).GetPath(
+                target_path.as_mut_ptr(),
+                MAX_PATH as i32,
+                ptr::null_mut(),
+                0,
+            );
+            if hr == S_OK {
+                let len = target_path.iter().position(|&c| c == 0).unwrap_or(MAX_PATH);
+                let target_str = String::from_utf16_lossy(&target_path[..len]);
+                logger::log_info(
+                    &format!("  Shortcut target (COM API): {:?}", target_str),
+                    Some("scenery_index"),
+                );
+                let path = PathBuf::from(target_str);
+                if path.exists() && path.is_dir() {
+                    return Some(path);
+                }
             } else {
                 logger::log_info(
-                    &format!("  Failed to query IPersistFile, HRESULT: 0x{:08X}", hr),
+                    &format!("  GetPath failed with HRESULT: 0x{:08X}", hr),
                     Some("scenery_index"),
                 );
             }
-
-            (*shell_link).Release();
-        } else {
-            logger::log_info(
-                &format!("  Failed to create IShellLink, HRESULT: 0x{:08X}", hr),
-                Some("scenery_index"),
-            );
+            None
         }
-
-        if need_uninit {
-            CoUninitialize();
-        }
-
-        result
     }
+
+    /// Resolve a Windows shortcut (.lnk) to its target path
+    pub fn resolve(lnk_path: &Path) -> Option<PathBuf> {
+        let _com = ComGuard::new()?;
+        let shell_link = ShellLinkGuard::new()?;
+        let persist_file = PersistFileGuard::from_shell_link(&shell_link)?;
+
+        if !persist_file.load(lnk_path) {
+            return None;
+        }
+
+        get_shell_link_target(&shell_link)
+    }
+}
+
+/// Resolve Windows shortcut (.lnk) to actual path using Windows COM API
+#[cfg(windows)]
+fn resolve_shortcut(lnk_path: &Path) -> Option<PathBuf> {
+    shortcut_resolver::resolve(lnk_path)
 }
 
 #[cfg(not(windows))]

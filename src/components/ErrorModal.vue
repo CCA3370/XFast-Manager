@@ -68,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, watch, nextTick } from 'vue'
+import { onBeforeUnmount, ref, watch, nextTick } from 'vue'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import { useI18n } from 'vue-i18n'
@@ -80,6 +80,11 @@ const backdrop = ref<HTMLElement | null>(null)
 const card = ref<HTMLElement | null>(null)
 const toast = useToastStore()
 const { t } = useI18n()
+
+// Animation timing constants
+const CARD_SHOW_DELAY_MS = 50 // Delay before showing card after backdrop
+const ENTER_ANIMATION_DURATION_MS = 450 // Total enter animation time
+const LEAVE_ANIMATION_DURATION_MS = 350 // Total leave animation time
 
 function close() {
   modal.closeError()
@@ -132,10 +137,10 @@ function onEnter(el: Element, done: () => void) {
     setTimeout(() => {
       cardEl.style.opacity = '1'
       cardEl.style.transform = 'scale(1) translateY(0)'
-    }, 50) // 50ms delay for card
+    }, CARD_SHOW_DELAY_MS)
   })
 
-  setTimeout(done, 450) // Total animation time
+  setTimeout(done, ENTER_ANIMATION_DURATION_MS)
 }
 
 function onLeave(el: Element, done: () => void) {
@@ -170,7 +175,7 @@ function onLeave(el: Element, done: () => void) {
   fallbackTimeout = setTimeout(() => {
     cardEl.removeEventListener('transitionend', handleTransitionEnd)
     done()
-  }, 350)
+  }, LEAVE_ANIMATION_DURATION_MS)
 
   // Use double requestAnimationFrame to ensure transition is applied
   requestAnimationFrame(() => {
@@ -184,13 +189,19 @@ function onLeave(el: Element, done: () => void) {
 }
 
 function onKey(e: KeyboardEvent) {
-  if (!modal.errorModal.visible) return
   if (e.key === 'Escape') close()
 }
 
-onMounted(() => {
-  window.addEventListener('keydown', onKey)
-})
+// Dynamically manage keydown listener based on visibility
+// This prevents memory leaks when multiple modal instances exist
+watch(() => modal.errorModal.visible, (visible) => {
+  if (visible) {
+    window.addEventListener('keydown', onKey)
+  } else {
+    window.removeEventListener('keydown', onKey)
+  }
+}, { immediate: true })
+
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
 })

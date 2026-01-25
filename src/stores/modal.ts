@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { logger } from '@/services/logger'
 
-interface ConfirmOptions {
+/** Options for showing a confirmation modal */
+export interface ConfirmOptions {
   title: string
   message: string
   warning?: string
@@ -13,12 +14,22 @@ interface ConfirmOptions {
   onCancel: () => void
 }
 
+/** State for the error modal */
+export interface ErrorModalState {
+  visible: boolean
+  title: string
+  message: string
+}
+
+/** State for the confirm modal */
+export interface ConfirmModalState {
+  visible: boolean
+  options: ConfirmOptions | null
+}
+
 export const useModalStore = defineStore('modal', () => {
-  const errorModal = ref({ visible: false, title: '', message: '' })
-  const confirmModal = ref<{
-    visible: boolean
-    options: ConfirmOptions | null
-  }>({ visible: false, options: null })
+  const errorModal = ref<ErrorModalState>({ visible: false, title: '', message: '' })
+  const confirmModal = ref<ConfirmModalState>({ visible: false, options: null })
 
   function showError(message: string, title = '') {
     // Deduplicate error messages by splitting on newlines and removing duplicates

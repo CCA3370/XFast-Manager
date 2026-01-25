@@ -36,6 +36,9 @@ const showDeleteConfirmModal = ref(false)
 const isSearching = ref(false)
 const isDeleting = ref(false)
 
+// Delay between opening multiple browser tabs to avoid overwhelming the browser
+const TAB_OPEN_DELAY_MS = 300
+
 // Category display config
 const categoryConfig = computed(() => {
   const configs: Record<SceneryCategory, { label: string; color: string; bgColor: string }> = {
@@ -67,7 +70,7 @@ async function handleDoubleClick() {
       folderName: props.entry.folderName
     })
   } catch (error) {
-    modalStore.showError(t('sceneryManager.openFolderFailed') + ': ' + String(error))
+    modalStore.showError(t('sceneryManager.openFolderFailed') + ': ' + getErrorMessage(error))
   }
 }
 
@@ -105,9 +108,9 @@ async function handleSearchMissingLibs() {
       try {
         await invoke('open_url', { url: bingUrl })
         // Add a small delay between opening tabs to avoid overwhelming the browser
-        await new Promise(resolve => setTimeout(resolve, 300))
+        await new Promise(resolve => setTimeout(resolve, TAB_OPEN_DELAY_MS))
       } catch (error) {
-        modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + String(error))
+        modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + getErrorMessage(error))
         break // Stop if there's an error
       }
     }

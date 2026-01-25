@@ -1042,11 +1042,12 @@ import { useModalStore } from '@/stores/modal'
 import { useAppStore } from '@/stores/app'
 import { useSceneryStore } from '@/stores/scenery'
 import { useUpdateStore } from '@/stores/update'
+import { validateGlobPattern } from '@/utils/validation'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import AnimatedText from '@/components/AnimatedText.vue'
-import { AddonType } from '@/types'
+import { AddonType, getErrorMessage } from '@/types'
 import { logger, logError, logDebug } from '@/services/logger'
 
 const { t } = useI18n()
@@ -1064,19 +1065,22 @@ const appVersion = ref('0.1.1')
 const updateCheckExpanded = ref(false)
 
 // Timer tracking for cleanup on unmount to prevent memory leaks
-const activeTimeoutIds: ReturnType<typeof setTimeout>[] = []
+// Using Set for O(1) add/delete operations instead of array
+const activeTimeoutIds = new Set<ReturnType<typeof setTimeout>>()
+
+// Debounce timer for path validation
+let pathValidationDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const PATH_VALIDATION_DEBOUNCE_MS = 300
+const SAVE_STATUS_DISPLAY_DURATION_MS = 2000 // Duration to show "Saved" status
 
 // Helper to create tracked timeouts that will be cleaned up on unmount
 function setTrackedTimeout(callback: () => void, delay: number): ReturnType<typeof setTimeout> {
   const id = setTimeout(() => {
     callback()
-    // Remove the timeout ID from the tracking array after it fires
-    const index = activeTimeoutIds.indexOf(id)
-    if (index > -1) {
-      activeTimeoutIds.splice(index, 1)
-    }
+    // Remove the timeout ID from the tracking set after it fires
+    activeTimeoutIds.delete(id)
   }, delay)
-  activeTimeoutIds.push(id)
+  activeTimeoutIds.add(id)
   return id
 }
 
@@ -1196,11 +1200,30 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   // Clear all tracked timeouts
   activeTimeoutIds.forEach(id => clearTimeout(id))
-  activeTimeoutIds.length = 0
+  activeTimeoutIds.clear()
+  // Clear path validation debounce timer
+  if (pathValidationDebounceTimer) {
+    clearTimeout(pathValidationDebounceTimer)
+    pathValidationDebounceTimer = null
+  }
 })
 
-// Handle X-Plane path input blur - validate and save
-async function handlePathBlur() {
+// Handle X-Plane path input blur - validate and save with debounce
+function handlePathBlur() {
+  // Clear existing debounce timer
+  if (pathValidationDebounceTimer) {
+    clearTimeout(pathValidationDebounceTimer)
+  }
+
+  // Debounce to prevent excessive API calls on rapid blur events
+  pathValidationDebounceTimer = setTimeout(async () => {
+    pathValidationDebounceTimer = null
+    await validateAndSavePath()
+  }, PATH_VALIDATION_DEBOUNCE_MS)
+}
+
+// Internal function to validate and save path
+async function validateAndSavePath() {
   const newValue = xplanePathInput.value
 
   // Clear previous error
@@ -1235,7 +1258,7 @@ async function handlePathBlur() {
     saveStatus.value = 'saved'
     setTrackedTimeout(() => {
       saveStatus.value = null
-    }, 2000)
+    }, SAVE_STATUS_DISPLAY_DURATION_MS)
   }
 }
 
@@ -1249,10 +1272,10 @@ function handlePatternBlur() {
     const trimmed = pattern.trim()
     if (trimmed === '') return
 
-    // Validate glob pattern
-    const error = validateGlobPattern(trimmed)
-    if (error) {
-      errors[index] = error
+    // Validate glob pattern - returns error key or null
+    const errorKey = validateGlobPattern(trimmed)
+    if (errorKey) {
+      errors[index] = t(errorKey)
     } else {
       validPatterns.push(trimmed)
     }
@@ -1271,46 +1294,8 @@ function handlePatternBlur() {
     // Hide saved status after 2 seconds
     setTrackedTimeout(() => {
       patternSaveStatus.value = null
-    }, 2000)
+    }, SAVE_STATUS_DISPLAY_DURATION_MS)
   }
-}
-
-// Validate a glob pattern and return error message if invalid
-function validateGlobPattern(pattern: string): string | null {
-  // Check for empty pattern
-  if (!pattern || pattern.trim() === '') {
-    return null // Empty is OK, will be filtered
-  }
-
-  // Check for unbalanced brackets
-  let bracketDepth = 0
-  let braceDepth = 0
-
-  for (let i = 0; i < pattern.length; i++) {
-    const char = pattern[i]
-    const prevChar = i > 0 ? pattern[i - 1] : ''
-
-    // Skip escaped characters
-    if (prevChar === '\\') continue
-
-    if (char === '[') bracketDepth++
-    if (char === ']') bracketDepth--
-    if (char === '{') braceDepth++
-    if (char === '}') braceDepth--
-
-    // Check for negative depth (closing before opening)
-    if (bracketDepth < 0) return t('settings.patternUnbalancedBracket')
-    if (braceDepth < 0) return t('settings.patternUnbalancedBrace')
-  }
-
-  // Check final balance
-  if (bracketDepth !== 0) return t('settings.patternUnbalancedBracket')
-  if (braceDepth !== 0) return t('settings.patternUnbalancedBrace')
-
-  // Check for invalid characters in pattern
-  if (pattern.includes('//')) return t('settings.patternInvalidSlash')
-
-  return null
 }
 
 // Add a new pattern
@@ -1335,7 +1320,7 @@ function removePattern(index: number) {
 
   setTrackedTimeout(() => {
     patternSaveStatus.value = null
-  }, 2000)
+  }, SAVE_STATUS_DISPLAY_DURATION_MS)
 }
 
 async function selectFolder() {
@@ -1346,8 +1331,9 @@ async function selectFolder() {
       title: t('settings.selectXplaneFolder')
     })
 
-    if (selected) {
-      const selectedPath = selected as string
+    // Type guard: with multiple: false, selected is string | null (not array)
+    if (selected && typeof selected === 'string') {
+      const selectedPath = selected
 
       // Validate path before saving
       pathError.value = null
@@ -1375,11 +1361,11 @@ async function selectFolder() {
       xplanePathInput.value = selectedPath
       store.setXplanePath(selectedPath)
       saveStatus.value = 'saved'
-      setTrackedTimeout(() => { saveStatus.value = null }, 2000)
+      setTrackedTimeout(() => { saveStatus.value = null }, SAVE_STATUS_DISPLAY_DURATION_MS)
     }
   } catch (error) {
     logError(`Failed to open folder dialog: ${error}`, 'settings')
-    modal.showError(t('common.error') + ': ' + String(error))
+    modal.showError(t('common.error') + ': ' + getErrorMessage(error))
   }
 }
 
@@ -1395,7 +1381,7 @@ async function toggleContextMenu() {
         store.isContextMenuRegistered = true
       } catch (error) {
         // If already registered, just update the state
-        const errorMsg = String(error).toLowerCase()
+        const errorMsg = getErrorMessage(error).toLowerCase()
         if (errorMsg.includes('already') || errorMsg.includes('exist')) {
           logDebug('Context menu already registered, updating state', 'settings')
           store.isContextMenuRegistered = true
@@ -1412,7 +1398,7 @@ async function toggleContextMenu() {
         store.isContextMenuRegistered = false
       } catch (error) {
         // If already unregistered, just update the state
-        const errorMsg = String(error).toLowerCase()
+        const errorMsg = getErrorMessage(error).toLowerCase()
         if (errorMsg.includes('not found') || errorMsg.includes('not exist') || errorMsg.includes('not registered')) {
           logDebug('Context menu already unregistered, updating state', 'settings')
           store.isContextMenuRegistered = false
@@ -1423,7 +1409,7 @@ async function toggleContextMenu() {
       }
     }
   } catch (error) {
-    modal.showError(t('common.error') + ': ' + String(error))
+    modal.showError(t('common.error') + ': ' + getErrorMessage(error))
   } finally {
     isProcessing.value = false
   }
@@ -1447,7 +1433,7 @@ async function handleOpenLogFolder() {
   try {
     await logger.openLogFolder()
   } catch (error) {
-    modal.showError(t('common.error') + ': ' + String(error))
+    modal.showError(t('common.error') + ': ' + getErrorMessage(error))
   }
 }
 
@@ -1456,7 +1442,7 @@ async function handleCopyLogs() {
   if (success) {
     toast.success(t('settings.logsCopied'))
   } else {
-    toast.error(t('common.error'))
+    modal.showError(t('common.error'))
   }
 }
 
@@ -1487,7 +1473,7 @@ async function handleRebuildIndex() {
     await sceneryStore.loadIndexStatus()
   } catch (error) {
     logError(`Failed to rebuild scenery index: ${error}`, 'settings')
-    modal.showError(t('settings.indexRebuildFailed') + ': ' + String(error))
+    modal.showError(t('settings.indexRebuildFailed') + ': ' + getErrorMessage(error))
   } finally {
     isRebuildingIndex.value = false
   }

@@ -225,3 +225,208 @@ impl FileVerifier {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_verifier_creation() {
+        let verifier = FileVerifier::new();
+        assert_eq!(verifier.max_retries, 3);
+    }
+
+    #[test]
+    fn test_build_stats_all_passed() {
+        let verifier = FileVerifier::new();
+        let failed: Vec<FileVerificationResult> = vec![];
+
+        let stats = verifier.build_stats(100, &failed, 0);
+
+        assert_eq!(stats.total_files, 100);
+        assert_eq!(stats.verified_files, 100);
+        assert_eq!(stats.failed_files, 0);
+        assert_eq!(stats.retried_files, 0);
+        assert_eq!(stats.skipped_files, 0);
+    }
+
+    #[test]
+    fn test_build_stats_some_failed() {
+        let verifier = FileVerifier::new();
+        let failed = vec![
+            FileVerificationResult {
+                path: "file1.txt".to_string(),
+                expected_hash: "abc".to_string(),
+                actual_hash: Some("def".to_string()),
+                success: false,
+                retry_count: 1,
+                error: None,
+            },
+            FileVerificationResult {
+                path: "file2.txt".to_string(),
+                expected_hash: "123".to_string(),
+                actual_hash: None,
+                success: false,
+                retry_count: 2,
+                error: Some("File not found".to_string()),
+            },
+        ];
+
+        let stats = verifier.build_stats(10, &failed, 3);
+
+        assert_eq!(stats.total_files, 10);
+        assert_eq!(stats.verified_files, 8);
+        assert_eq!(stats.failed_files, 2);
+        assert_eq!(stats.retried_files, 3);
+    }
+
+    #[test]
+    fn test_compute_crc32() {
+        let verifier = FileVerifier::new();
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+
+        // Create test file with known content
+        let mut file = fs::File::create(&file_path).unwrap();
+        file.write_all(b"Hello, World!").unwrap();
+        file.flush().unwrap();
+        drop(file);
+
+        let hash = verifier.compute_crc32(&file_path).unwrap();
+
+        // CRC32 of "Hello, World!" is known
+        assert_eq!(hash.len(), 8); // CRC32 as hex is 8 chars
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_compute_sha256() {
+        let verifier = FileVerifier::new();
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+
+        // Create test file with known content
+        let mut file = fs::File::create(&file_path).unwrap();
+        file.write_all(b"Hello, World!").unwrap();
+        file.flush().unwrap();
+        drop(file);
+
+        let hash = verifier.compute_sha256(&file_path).unwrap();
+
+        // SHA256 hash is 64 hex characters
+        assert_eq!(hash.len(), 64);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+        // Known SHA256 of "Hello, World!"
+        assert_eq!(
+            hash,
+            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+        );
+    }
+
+    #[test]
+    fn test_verify_single_file_success() {
+        let verifier = FileVerifier::new();
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+
+        // Create test file
+        let mut file = fs::File::create(&file_path).unwrap();
+        file.write_all(b"Hello, World!").unwrap();
+        file.flush().unwrap();
+        drop(file);
+
+        // Create expected hash (SHA256 of "Hello, World!")
+        let expected = FileHash {
+            path: "test.txt".to_string(),
+            hash: "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f".to_string(),
+            algorithm: HashAlgorithm::Sha256,
+        };
+
+        let result = verifier.verify_single_file(&file_path, "test.txt", &expected);
+
+        assert!(result.success);
+        assert!(result.actual_hash.is_some());
+        assert_eq!(result.actual_hash.unwrap(), expected.hash);
+        assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn test_verify_single_file_mismatch() {
+        let verifier = FileVerifier::new();
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+
+        // Create test file
+        let mut file = fs::File::create(&file_path).unwrap();
+        file.write_all(b"Hello, World!").unwrap();
+        file.flush().unwrap();
+        drop(file);
+
+        // Create expected hash with wrong value
+        let expected = FileHash {
+            path: "test.txt".to_string(),
+            hash: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            algorithm: HashAlgorithm::Sha256,
+        };
+
+        let result = verifier.verify_single_file(&file_path, "test.txt", &expected);
+
+        assert!(!result.success);
+        assert!(result.actual_hash.is_some());
+        assert_ne!(result.actual_hash.unwrap(), expected.hash);
+        assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn test_verify_single_file_not_found() {
+        let verifier = FileVerifier::new();
+        let non_existent = PathBuf::from("/non/existent/file.txt");
+
+        let expected = FileHash {
+            path: "file.txt".to_string(),
+            hash: "abc123".to_string(),
+            algorithm: HashAlgorithm::Sha256,
+        };
+
+        let result = verifier.verify_single_file(&non_existent, "file.txt", &expected);
+
+        assert!(!result.success);
+        assert!(result.actual_hash.is_none());
+        assert!(result.error.is_some());
+    }
+
+    #[test]
+    fn test_crc32_empty_file() {
+        let verifier = FileVerifier::new();
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("empty.txt");
+
+        // Create empty file
+        fs::File::create(&file_path).unwrap();
+
+        let hash = verifier.compute_crc32(&file_path).unwrap();
+
+        // CRC32 of empty file is 00000000
+        assert_eq!(hash, "00000000");
+    }
+
+    #[test]
+    fn test_sha256_empty_file() {
+        let verifier = FileVerifier::new();
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("empty.txt");
+
+        // Create empty file
+        fs::File::create(&file_path).unwrap();
+
+        let hash = verifier.compute_sha256(&file_path).unwrap();
+
+        // SHA256 of empty string is known
+        assert_eq!(
+            hash,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+}

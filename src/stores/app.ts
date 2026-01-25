@@ -4,6 +4,21 @@ import { AddonType, type InstallTask, type InstallResult } from '@/types'
 
 export type LogLevel = 'basic' | 'full' | 'debug'
 
+/** Per-task state for installation management */
+export interface TaskState {
+  /** Whether the task is enabled for installation */
+  enabled: boolean
+  /** Whether to overwrite existing files on conflict */
+  overwrite: boolean
+  /** Whether large size warning has been confirmed */
+  sizeConfirmed: boolean
+  /** Backup settings for aircraft tasks */
+  backup: {
+    liveries: boolean
+    configFiles: boolean
+  }
+}
+
 /** Delay to batch multiple CLI file selections (500ms) */
 const CLI_ARGS_BATCH_DELAY_MS = 500
 
@@ -12,6 +27,9 @@ export const useAppStore = defineStore('app', () => {
   const currentTasks = ref<InstallTask[]>([])
   const isAnalyzing = ref(false)
   const isInstalling = ref(false)
+
+  // Mutex flag for analyzeFiles to prevent concurrent calls (TOCTOU protection)
+  const isAnalyzeInProgress = ref(false)
 
   // Platform detection (initialized at app startup)
   const isWindows = ref(false)
@@ -62,17 +80,26 @@ export const useAppStore = defineStore('app', () => {
   const sceneryManagerHintVisible = ref(false)
   const sceneryManagerHintMessageKey = ref<string | null>(null)
 
-  // Overwrite settings per task (taskId -> shouldOverwrite)
-  const overwriteSettings = ref<Record<string, boolean>>({})
+  // Unified per-task state management (taskId -> TaskState)
+  const taskStates = ref<Record<string, TaskState>>({})
 
-  // Size confirmation per task (taskId -> confirmed)
-  const sizeConfirmations = ref<Record<string, boolean>>({})
+  /** Get default task state */
+  function getDefaultTaskState(enabled = true): TaskState {
+    return {
+      enabled,
+      overwrite: false,
+      sizeConfirmed: false,
+      backup: { liveries: true, configFiles: true }
+    }
+  }
 
-  // Task enabled state per task (taskId -> enabled), default all enabled
-  const taskEnabledState = ref<Record<string, boolean>>({})
-
-  // Backup settings per task (taskId -> { liveries: boolean, configFiles: boolean })
-  const backupSettings = ref<Record<string, { liveries: boolean, configFiles: boolean }>>({})
+  /** Get or create task state with defaults */
+  function getTaskState(taskId: string): TaskState {
+    if (!taskStates.value[taskId]) {
+      taskStates.value[taskId] = getDefaultTaskState()
+    }
+    return taskStates.value[taskId]
+  }
 
   // Config file patterns for backup (stored in localStorage)
   const configFilePatterns = ref<string[]>(['*_prefs.txt'])
@@ -91,7 +118,7 @@ export const useAppStore = defineStore('app', () => {
   const allSizeWarningsConfirmed = computed(() => {
     const tasksWithWarnings = currentTasks.value.filter(task => task.sizeWarning)
     if (tasksWithWarnings.length === 0) return true
-    return tasksWithWarnings.every(task => sizeConfirmations.value[task.id] === true)
+    return tasksWithWarnings.every(task => getTaskState(task.id).sizeConfirmed)
   })
 
   // Get count of enabled tasks
@@ -252,110 +279,101 @@ export const useAppStore = defineStore('app', () => {
 
   function setCurrentTasks(tasks: InstallTask[]) {
     currentTasks.value = tasks
-    // Reset overwrite settings, size confirmations, backup settings, and enable all tasks by default
-    overwriteSettings.value = {}
-    sizeConfirmations.value = {}
-    taskEnabledState.value = {}
-    backupSettings.value = {}
-    // Enable all tasks by default and initialize backup settings for Aircraft
+    // Reset all task states
+    taskStates.value = {}
+    // Initialize task states for each task
     // Disable livery tasks where target aircraft is not found
     tasks.forEach(task => {
-      // Disable livery tasks if target aircraft is not found
-      if (task.type === AddonType.Livery && task.liveryAircraftFound === false) {
-        taskEnabledState.value[task.id] = false
-      } else {
-        taskEnabledState.value[task.id] = true
-      }
-      if (task.type === AddonType.Aircraft) {
-        backupSettings.value[task.id] = { liveries: true, configFiles: true }
-      }
+      const enabled = !(task.type === AddonType.Livery && task.liveryAircraftFound === false)
+      taskStates.value[task.id] = getDefaultTaskState(enabled)
     })
   }
 
   function clearTasks() {
     currentTasks.value = []
-    overwriteSettings.value = {}
-    sizeConfirmations.value = {}
-    taskEnabledState.value = {}
-    backupSettings.value = {}
+    taskStates.value = {}
   }
 
   // Set overwrite for a specific task
   function setTaskOverwrite(taskId: string, shouldOverwrite: boolean) {
-    overwriteSettings.value[taskId] = shouldOverwrite
+    getTaskState(taskId).overwrite = shouldOverwrite
   }
 
   // Set overwrite for all conflicting tasks
   function setGlobalOverwrite(shouldOverwrite: boolean) {
     for (const task of currentTasks.value) {
       if (task.conflictExists) {
-        overwriteSettings.value[task.id] = shouldOverwrite
+        getTaskState(task.id).overwrite = shouldOverwrite
       }
     }
   }
 
   // Get overwrite setting for a task
   function getTaskOverwrite(taskId: string): boolean {
-    return overwriteSettings.value[taskId] ?? false
+    return getTaskState(taskId).overwrite
   }
 
   // Prepare tasks with overwrite, size confirmation, and backup settings for installation
   function getTasksWithOverwrite(): InstallTask[] {
-    return currentTasks.value.map(task => ({
-      ...task,
-      shouldOverwrite: overwriteSettings.value[task.id] ?? false,
-      sizeConfirmed: sizeConfirmations.value[task.id] ?? false,
-      backupLiveries: backupSettings.value[task.id]?.liveries ?? true,
-      // Only enable config file backup if patterns are configured
-      backupConfigFiles: (configFilePatterns.value.length > 0) && (backupSettings.value[task.id]?.configFiles ?? true),
-      configFilePatterns: configFilePatterns.value,
-    }))
+    return currentTasks.value.map(task => {
+      const state = getTaskState(task.id)
+      return {
+        ...task,
+        shouldOverwrite: state.overwrite,
+        sizeConfirmed: state.sizeConfirmed,
+        backupLiveries: state.backup.liveries,
+        // Only enable config file backup if patterns are configured
+        backupConfigFiles: (configFilePatterns.value.length > 0) && state.backup.configFiles,
+        configFilePatterns: configFilePatterns.value,
+      }
+    })
   }
 
   // Set size confirmation for a specific task
   function setTaskSizeConfirmed(taskId: string, confirmed: boolean) {
-    sizeConfirmations.value[taskId] = confirmed
+    getTaskState(taskId).sizeConfirmed = confirmed
   }
 
   // Get size confirmation for a task
   function getTaskSizeConfirmed(taskId: string): boolean {
-    return sizeConfirmations.value[taskId] ?? false
+    return getTaskState(taskId).sizeConfirmed
   }
 
   // Confirm all size warnings at once
   function confirmAllSizeWarnings(confirmed: boolean) {
     for (const task of currentTasks.value) {
       if (task.sizeWarning) {
-        sizeConfirmations.value[task.id] = confirmed
+        getTaskState(task.id).sizeConfirmed = confirmed
       }
     }
   }
 
   // Set task enabled state
   function setTaskEnabled(taskId: string, enabled: boolean) {
-    taskEnabledState.value[taskId] = enabled
+    getTaskState(taskId).enabled = enabled
   }
 
   // Get task enabled state (default true)
   function getTaskEnabled(taskId: string): boolean {
-    return taskEnabledState.value[taskId] ?? true
+    return getTaskState(taskId).enabled
   }
 
   // Toggle all tasks enabled/disabled
   function setAllTasksEnabled(enabled: boolean) {
     for (const task of currentTasks.value) {
-      taskEnabledState.value[task.id] = enabled
+      getTaskState(task.id).enabled = enabled
     }
   }
 
   // Set backup settings for a specific task
   function setTaskBackupSettings(taskId: string, liveries: boolean, configFiles: boolean) {
-    backupSettings.value[taskId] = { liveries, configFiles }
+    const state = getTaskState(taskId)
+    state.backup = { liveries, configFiles }
   }
 
   // Get backup settings for a task (default both true)
   function getTaskBackupSettings(taskId: string): { liveries: boolean, configFiles: boolean } {
-    return backupSettings.value[taskId] ?? { liveries: true, configFiles: true }
+    return getTaskState(taskId).backup
   }
 
   // Set config file patterns
@@ -441,6 +459,7 @@ export const useAppStore = defineStore('app', () => {
     currentTasks,
     isAnalyzing,
     isInstalling,
+    isAnalyzeInProgress,
     isWindows,
     isContextMenuRegistered,
     installPreferences,
@@ -451,9 +470,8 @@ export const useAppStore = defineStore('app', () => {
     sceneryManagerHintVisible,
     sceneryManagerHintMessageKey,
     logLevel,
-    overwriteSettings,
-    sizeConfirmations,
-    taskEnabledState,
+    taskStates,
+    getTaskState,
     hasConflicts,
     hasSizeWarnings,
     allSizeWarningsConfirmed,

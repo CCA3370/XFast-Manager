@@ -519,3 +519,241 @@ mod systemtime_serde {
         Ok(UNIX_EPOCH + std::time::Duration::from_secs(secs))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_addon_type_serialization() {
+        let aircraft = AddonType::Aircraft;
+        let json = serde_json::to_string(&aircraft).unwrap();
+        assert_eq!(json, r#""Aircraft""#);
+
+        let scenery = AddonType::Scenery;
+        let json = serde_json::to_string(&scenery).unwrap();
+        assert_eq!(json, r#""Scenery""#);
+
+        let livery = AddonType::Livery;
+        let json = serde_json::to_string(&livery).unwrap();
+        assert_eq!(json, r#""Livery""#);
+    }
+
+    #[test]
+    fn test_addon_type_deserialization() {
+        let aircraft: AddonType = serde_json::from_str(r#""Aircraft""#).unwrap();
+        assert_eq!(aircraft, AddonType::Aircraft);
+
+        let scenery_lib: AddonType = serde_json::from_str(r#""SceneryLibrary""#).unwrap();
+        assert_eq!(scenery_lib, AddonType::SceneryLibrary);
+    }
+
+    #[test]
+    fn test_scenery_category_priority_ordering() {
+        // FixedHighPriority should have lowest number (highest priority)
+        assert!(SceneryCategory::FixedHighPriority.priority() < SceneryCategory::Airport.priority());
+        assert!(SceneryCategory::Airport.priority() < SceneryCategory::DefaultAirport.priority());
+        assert!(SceneryCategory::DefaultAirport.priority() < SceneryCategory::Library.priority());
+        assert!(SceneryCategory::Library.priority() < SceneryCategory::Other.priority());
+        assert!(SceneryCategory::Other.priority() < SceneryCategory::Overlay.priority());
+        assert!(SceneryCategory::Overlay.priority() < SceneryCategory::AirportMesh.priority());
+        assert!(SceneryCategory::AirportMesh.priority() < SceneryCategory::Mesh.priority());
+    }
+
+    #[test]
+    fn test_scenery_category_serialization() {
+        let airport = SceneryCategory::Airport;
+        let json = serde_json::to_string(&airport).unwrap();
+        assert_eq!(json, r#""Airport""#);
+
+        let mesh = SceneryCategory::Mesh;
+        let json = serde_json::to_string(&mesh).unwrap();
+        assert_eq!(json, r#""Mesh""#);
+    }
+
+    #[test]
+    fn test_hash_algorithm_serialization() {
+        let crc32 = HashAlgorithm::Crc32;
+        let json = serde_json::to_string(&crc32).unwrap();
+        assert_eq!(json, r#""crc32""#);
+
+        let sha256 = HashAlgorithm::Sha256;
+        let json = serde_json::to_string(&sha256).unwrap();
+        assert_eq!(json, r#""sha256""#);
+    }
+
+    #[test]
+    fn test_hash_algorithm_equality() {
+        assert_eq!(HashAlgorithm::Crc32, HashAlgorithm::Crc32);
+        assert_eq!(HashAlgorithm::Sha256, HashAlgorithm::Sha256);
+        assert_ne!(HashAlgorithm::Crc32, HashAlgorithm::Sha256);
+    }
+
+    #[test]
+    fn test_install_phase_serialization() {
+        let phase = InstallPhase::Installing;
+        let json = serde_json::to_string(&phase).unwrap();
+        assert_eq!(json, r#""installing""#);
+
+        let verifying = InstallPhase::Verifying;
+        let json = serde_json::to_string(&verifying).unwrap();
+        assert_eq!(json, r#""verifying""#);
+    }
+
+    #[test]
+    fn test_install_result_counters() {
+        let result = InstallResult {
+            total_tasks: 5,
+            successful_tasks: 3,
+            failed_tasks: 2,
+            task_results: vec![],
+        };
+
+        assert_eq!(result.total_tasks, result.successful_tasks + result.failed_tasks);
+    }
+
+    #[test]
+    fn test_task_result_success() {
+        let success_result = TaskResult {
+            task_id: "task-1".to_string(),
+            task_name: "Test Aircraft".to_string(),
+            success: true,
+            error_message: None,
+            verification_stats: None,
+        };
+        assert!(success_result.success);
+        assert!(success_result.error_message.is_none());
+    }
+
+    #[test]
+    fn test_task_result_failure() {
+        let fail_result = TaskResult {
+            task_id: "task-2".to_string(),
+            task_name: "Test Scenery".to_string(),
+            success: false,
+            error_message: Some("Permission denied".to_string()),
+            verification_stats: None,
+        };
+        assert!(!fail_result.success);
+        assert!(fail_result.error_message.is_some());
+    }
+
+    #[test]
+    fn test_verification_stats() {
+        let stats = VerificationStats {
+            total_files: 100,
+            verified_files: 95,
+            failed_files: 3,
+            retried_files: 5,
+            skipped_files: 2,
+        };
+
+        // Verified + Failed + Skipped should account for total
+        assert_eq!(
+            stats.verified_files + stats.failed_files + stats.skipped_files,
+            stats.total_files
+        );
+    }
+
+    #[test]
+    fn test_file_hash_structure() {
+        let hash = FileHash {
+            path: "aircraft/A330/A330.acf".to_string(),
+            hash: "abc123def456".to_string(),
+            algorithm: HashAlgorithm::Crc32,
+        };
+
+        let json = serde_json::to_string(&hash).unwrap();
+        assert!(json.contains("A330.acf"));
+        assert!(json.contains("abc123def456"));
+        assert!(json.contains("crc32"));
+    }
+
+    #[test]
+    fn test_analysis_result_defaults() {
+        let json = r#"{"tasks":[],"errors":[]}"#;
+        let result: AnalysisResult = serde_json::from_str(json).unwrap();
+
+        assert!(result.tasks.is_empty());
+        assert!(result.errors.is_empty());
+        assert!(result.password_required.is_empty()); // Default
+        assert!(result.nested_password_required.is_empty()); // Default
+    }
+
+    #[test]
+    fn test_navdata_info() {
+        let navdata = NavdataInfo {
+            name: "Navigraph".to_string(),
+            cycle: Some("2401".to_string()),
+            airac: Some("2401".to_string()),
+        };
+
+        let json = serde_json::to_string(&navdata).unwrap();
+        assert!(json.contains("Navigraph"));
+        assert!(json.contains("2401"));
+    }
+
+    #[test]
+    fn test_default_true_helper() {
+        assert!(default_true());
+    }
+
+    #[test]
+    fn test_scenery_manager_entry_serialization() {
+        let entry = SceneryManagerEntry {
+            folder_name: "MyAirport".to_string(),
+            category: SceneryCategory::Airport,
+            sub_priority: 0,
+            enabled: true,
+            sort_order: 10,
+            missing_libraries: vec![],
+            required_libraries: vec!["opensceneryx".to_string()],
+        };
+
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(json.contains("MyAirport"));
+        assert!(json.contains("Airport"));
+        assert!(json.contains("opensceneryx"));
+    }
+
+    #[test]
+    fn test_management_data_structure() {
+        let data = ManagementData {
+            entries: vec![
+                AircraftInfo {
+                    folder_name: "A320".to_string(),
+                    display_name: "Airbus A320".to_string(),
+                    acf_file: "A320.acf".to_string(),
+                    enabled: true,
+                    has_liveries: true,
+                    livery_count: 5,
+                    version: Some("1.0".to_string()),
+                    update_url: None,
+                    latest_version: None,
+                    has_update: false,
+                },
+            ],
+            total_count: 1,
+            enabled_count: 1,
+        };
+
+        assert_eq!(data.entries.len(), data.total_count);
+        assert!(data.enabled_count <= data.total_count);
+    }
+
+    #[test]
+    fn test_scenery_entry_update() {
+        let update = SceneryEntryUpdate {
+            folder_name: "test_scenery".to_string(),
+            enabled: false,
+            sort_order: 42,
+        };
+
+        let json = serde_json::to_string(&update).unwrap();
+        let parsed: SceneryEntryUpdate = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.folder_name, "test_scenery");
+        assert!(!parsed.enabled);
+        assert_eq!(parsed.sort_order, 42);
+    }
+}

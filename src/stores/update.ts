@@ -3,12 +3,15 @@ import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import type { UpdateInfo } from '@/types'
 import { useToastStore } from './toast'
+import { useModalStore } from './modal'
 import { useI18n } from 'vue-i18n'
 import { logError, logDebug, logBasic } from '@/services/logger'
+import { invokeVoidCommand, CommandError } from '@/services/api'
 
 export const useUpdateStore = defineStore('update', () => {
   const { t } = useI18n()
   const toast = useToastStore()
+  const modal = useModalStore()
 
   const updateInfo = ref<UpdateInfo | null>(null)
   const showUpdateBanner = ref(false)
@@ -92,7 +95,7 @@ export const useUpdateStore = defineStore('update', () => {
 
       if (manual) {
         // 手动检查时显示错误
-        toast.error(t('update.checkFailed'))
+        modal.showError(t('update.checkFailed'))
       }
       // 自动检查时静默失败（已记录到日志）
     } finally {
@@ -115,11 +118,12 @@ export const useUpdateStore = defineStore('update', () => {
     logBasic('User clicked download button, opening forum URL', 'update')
 
     try {
-      await invoke('open_url', { url: forumUrl })
+      await invokeVoidCommand('open_url', { url: forumUrl })
       logDebug(`Successfully opened URL: ${forumUrl}`, 'update')
     } catch (error) {
-      logError(`Failed to open download URL: ${error}`, 'update')
-      toast.error(t('common.error'))
+      const message = error instanceof CommandError ? error.message : String(error)
+      logError(`Failed to open download URL: ${message}`, 'update')
+      modal.showError(t('common.error'))
     }
   }
 

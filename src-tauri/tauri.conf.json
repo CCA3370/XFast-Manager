@@ -19,11 +19,11 @@
         "resizable": true,
         "fullscreen": false,
         "dragDropEnabled": true,
-        "devtools": true
+        "devtools": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: https://asset.localhost; connect-src 'self' https://api.github.com"
     },
     "withGlobalTauri": false
   },

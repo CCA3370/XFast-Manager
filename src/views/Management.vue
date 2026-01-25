@@ -248,16 +248,20 @@ const groupCounts = computed(() => {
   return counts
 })
 
-const filteredSceneryEntries = computed(() => {
-  const allEntries = categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
-  if (!showOnlyMissingLibs.value) return allEntries
-  return allEntries.filter(entry => entry.missingLibraries && entry.missingLibraries.length > 0)
+// Base computed for all entries flattened - used by multiple computeds below
+const allSceneryEntries = computed(() => {
+  return categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
 })
 
+const filteredSceneryEntries = computed(() => {
+  if (!showOnlyMissingLibs.value) return allSceneryEntries.value
+  return allSceneryEntries.value.filter(entry => entry.missingLibraries && entry.missingLibraries.length > 0)
+})
+
+// Cached map for O(1) lookup of entry index by folderName
 const globalIndexMap = computed(() => {
   const map = new Map<string, number>()
-  const allEntries = categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
-  allEntries.forEach((entry, index) => {
+  allSceneryEntries.value.forEach((entry, index) => {
     map.set(entry.folderName, index)
   })
   return map
@@ -637,8 +641,8 @@ const isLoading = computed(() => {
 
       <!-- Scenery-specific action buttons -->
       <template v-if="activeTab === 'scenery'">
-        <!-- Auto-sort button (shown for all locales) -->
-        <Transition name="button-fade" mode="out-in">
+        <!-- Auto-sort button (shown for all locales, only when index exists) -->
+        <Transition v-if="sceneryStore.indexExists" name="button-fade" mode="out-in">
           <button
             key="auto-sort-button"
             @click="handleSortSceneryNow"
@@ -656,7 +660,7 @@ const isLoading = computed(() => {
         </Transition>
 
         <button
-          v-if="sceneryStore.hasChanges && !sceneryStore.data?.needsSync"
+          v-if="sceneryStore.hasChanges && !sceneryStore.data?.needsSync && sceneryStore.indexExists"
           @click="handleReset"
           class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
         >
@@ -664,8 +668,8 @@ const isLoading = computed(() => {
             <span :key="locale">{{ t('sceneryManager.reset') }}</span>
           </Transition>
         </button>
-        <!-- Apply button with tooltip popover -->
-        <div v-if="sceneryStore.hasChanges" class="relative">
+        <!-- Apply button with tooltip popover (only when index exists) -->
+        <div v-if="sceneryStore.hasChanges && sceneryStore.indexExists" class="relative">
           <button
             @click="handleApplyChanges"
             :disabled="!sceneryStore.indexExists || sceneryStore.isSaving"

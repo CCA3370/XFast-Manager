@@ -86,3 +86,136 @@ impl Default for TaskControl {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_task_control_initial_state() {
+        let control = TaskControl::new();
+        assert!(!control.is_cancelled());
+        assert!(!control.is_skip_requested());
+        assert!(control.get_processed_paths().is_empty());
+    }
+
+    #[test]
+    fn test_task_control_default() {
+        let control = TaskControl::default();
+        assert!(!control.is_cancelled());
+        assert!(!control.is_skip_requested());
+    }
+
+    #[test]
+    fn test_cancel_all_request() {
+        let control = TaskControl::new();
+        assert!(!control.is_cancelled());
+
+        control.request_cancel_all();
+        assert!(control.is_cancelled());
+
+        // Cancel flag persists until reset
+        assert!(control.is_cancelled());
+    }
+
+    #[test]
+    fn test_skip_current_request() {
+        let control = TaskControl::new();
+        assert!(!control.is_skip_requested());
+
+        control.request_skip_current();
+        assert!(control.is_skip_requested());
+    }
+
+    #[test]
+    fn test_reset_skip() {
+        let control = TaskControl::new();
+        control.request_skip_current();
+        assert!(control.is_skip_requested());
+
+        control.reset_skip();
+        assert!(!control.is_skip_requested());
+    }
+
+    #[test]
+    fn test_reset_all() {
+        let control = TaskControl::new();
+
+        // Set various states
+        control.request_cancel_all();
+        control.request_skip_current();
+        control.add_processed_path(PathBuf::from("/test/path"));
+
+        // Verify states are set
+        assert!(control.is_cancelled());
+        assert!(control.is_skip_requested());
+        assert!(!control.get_processed_paths().is_empty());
+
+        // Reset all
+        control.reset();
+
+        // Verify all states are cleared
+        assert!(!control.is_cancelled());
+        assert!(!control.is_skip_requested());
+        assert!(control.get_processed_paths().is_empty());
+    }
+
+    #[test]
+    fn test_processed_paths() {
+        let control = TaskControl::new();
+
+        control.add_processed_path(PathBuf::from("/path/1"));
+        control.add_processed_path(PathBuf::from("/path/2"));
+        control.add_processed_path(PathBuf::from("/path/3"));
+
+        let paths = control.get_processed_paths();
+        assert_eq!(paths.len(), 3);
+        assert!(paths.contains(&PathBuf::from("/path/1")));
+        assert!(paths.contains(&PathBuf::from("/path/2")));
+        assert!(paths.contains(&PathBuf::from("/path/3")));
+    }
+
+    #[test]
+    fn test_clear_processed_paths() {
+        let control = TaskControl::new();
+
+        control.add_processed_path(PathBuf::from("/path/1"));
+        assert!(!control.get_processed_paths().is_empty());
+
+        control.clear_processed_paths();
+        assert!(control.get_processed_paths().is_empty());
+    }
+
+    #[test]
+    fn test_task_control_clone() {
+        let control1 = TaskControl::new();
+        control1.request_cancel_all();
+
+        // Clone shares the same atomic state
+        let control2 = control1.clone();
+        assert!(control2.is_cancelled());
+
+        // Changes in clone affect original (shared Arc)
+        control2.reset();
+        assert!(!control1.is_cancelled());
+    }
+
+    #[test]
+    fn test_cancel_and_skip_independent() {
+        let control = TaskControl::new();
+
+        // Cancel and skip are independent flags
+        control.request_cancel_all();
+        assert!(control.is_cancelled());
+        assert!(!control.is_skip_requested());
+
+        control.request_skip_current();
+        assert!(control.is_cancelled());
+        assert!(control.is_skip_requested());
+
+        // Reset skip doesn't affect cancel
+        control.reset_skip();
+        assert!(control.is_cancelled());
+        assert!(!control.is_skip_requested());
+    }
+}

@@ -274,7 +274,8 @@ import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import { AddonType } from '@/types'
+import { AddonType, getErrorMessage } from '@/types'
+import { validateGlobPattern } from '@/utils/validation'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -285,12 +286,13 @@ const toast = useToastStore()
 
 const isSubmitting = ref(false)
 
-const windowsIntegrationEnabled = ref(store.isContextMenuRegistered || true)
-const atomicInstallEnabled = ref(store.atomicInstallEnabled || true)
+// Explicit boolean type to prevent TypeScript from inferring literal types
+const windowsIntegrationEnabled = ref<boolean>(store.isContextMenuRegistered ?? true)
+const atomicInstallEnabled = ref<boolean>(store.atomicInstallEnabled ?? true)
 const deleteSourceEnabled = ref(store.deleteSourceAfterInstall)
 const autoUpdateEnabled = ref(updateStore.autoCheckEnabled)
 const includePreReleaseEnabled = ref(updateStore.includePreRelease)
-const autoSortSceneryEnabled = ref(store.autoSortScenery || true)
+const autoSortSceneryEnabled = ref<boolean>(store.autoSortScenery ?? true)
 const xplanePathInput = ref(store.xplanePath)
 const pathError = ref<string | null>(null)
 const xplanePathValid = ref(!!store.xplanePath)
@@ -306,18 +308,21 @@ const verificationTypes = ['zip', '7z', 'rar', 'directory'] as const
 const transitionDirection = ref<'forward' | 'backward'>('forward')
 const transitionName = computed(() => (transitionDirection.value === 'forward' ? 'onboarding-slide-left' : 'onboarding-slide-right'))
 
+// Step item interface for type safety
+interface OnboardingStepItem {
+  key: string
+  titleKey: string
+  descKey: string
+  benefits?: string[]
+  noteKey?: string
+  onClass: string
+  disabled: boolean
+  isEnabled: () => boolean
+  toggle: () => void
+}
+
 const steps = computed(() => {
-  const items: Array<{
-    key: string
-    titleKey: string
-    descKey: string
-    benefits?: string[]
-    noteKey?: string
-    onClass: string
-    disabled: boolean
-    isEnabled: () => boolean
-    toggle: () => void
-  }> = []
+  const items: OnboardingStepItem[] = []
   items.push({
     key: 'xplanePath',
     titleKey: 'settings.xplanePath',
@@ -442,7 +447,7 @@ const steps = computed(() => {
 })
 
 const currentIndex = ref(0)
-const currentStep = computed(() => {
+const currentStep = computed((): OnboardingStepItem & { enabled: boolean } => {
   const step = steps.value[currentIndex.value]
   return {
     ...step,
@@ -457,37 +462,6 @@ function toggleCurrent() {
   currentStep.value.toggle()
 }
 
-function validateGlobPattern(pattern: string): string | null {
-  if (!pattern || pattern.trim() === '') {
-    return null
-  }
-
-  let bracketDepth = 0
-  let braceDepth = 0
-
-  for (let i = 0; i < pattern.length; i++) {
-    const char = pattern[i]
-    const prevChar = i > 0 ? pattern[i - 1] : ''
-
-    if (prevChar === '\\') continue
-
-    if (char === '[') bracketDepth++
-    if (char === ']') bracketDepth--
-    if (char === '{') braceDepth++
-    if (char === '}') braceDepth--
-
-    if (bracketDepth < 0) return t('settings.patternUnbalancedBracket')
-    if (braceDepth < 0) return t('settings.patternUnbalancedBrace')
-  }
-
-  if (bracketDepth !== 0) return t('settings.patternUnbalancedBracket')
-  if (braceDepth !== 0) return t('settings.patternUnbalancedBrace')
-
-  if (pattern.includes('//')) return t('settings.patternInvalidSlash')
-
-  return null
-}
-
 function handlePatternBlur() {
   const errors: Record<number, string> = {}
   const validPatterns: string[] = []
@@ -496,9 +470,10 @@ function handlePatternBlur() {
     const trimmed = pattern.trim()
     if (trimmed === '') return
 
-    const error = validateGlobPattern(trimmed)
-    if (error) {
-      errors[index] = error
+    // Validate glob pattern - returns error key or null
+    const errorKey = validateGlobPattern(trimmed)
+    if (errorKey) {
+      errors[index] = t(errorKey)
     } else {
       validPatterns.push(trimmed)
     }
@@ -556,13 +531,13 @@ async function selectFolder() {
       title: t('settings.selectXplaneFolder')
     })
 
-    if (selected) {
-      const selectedPath = selected as string
-      xplanePathInput.value = selectedPath
-      await validateXplanePath(selectedPath)
+    // Type guard: with multiple: false, selected is string | null (not array)
+    if (selected && typeof selected === 'string') {
+      xplanePathInput.value = selected
+      await validateXplanePath(selected)
     }
   } catch (error) {
-    modal.showError(t('common.error') + ': ' + String(error))
+    modal.showError(t('common.error') + ': ' + getErrorMessage(error))
   }
 }
 
@@ -645,7 +620,7 @@ async function applyWindowsIntegration(enabled: boolean) {
       toast.success(t('settings.contextMenuUnregistered'))
     }
   } catch (error) {
-    const errorMsg = String(error).toLowerCase()
+    const errorMsg = getErrorMessage(error).toLowerCase()
     if (enabled && (errorMsg.includes('already') || errorMsg.includes('exist'))) {
       store.isContextMenuRegistered = true
       toast.info(t('settings.contextMenuRegistered'))
@@ -691,7 +666,7 @@ async function finishOnboarding() {
     localStorage.setItem('onboardingCompleted', 'true')
     await router.replace('/')
   } catch (error) {
-    modal.showError(t('common.error') + ': ' + String(error))
+    modal.showError(t('common.error') + ': ' + getErrorMessage(error))
   } finally {
     isSubmitting.value = false
   }

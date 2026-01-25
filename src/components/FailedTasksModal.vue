@@ -118,6 +118,11 @@ const backdrop = ref<HTMLElement | null>(null)
 const card = ref<HTMLElement | null>(null)
 const closeBtn = ref<HTMLElement | null>(null)
 
+// Animation timing constants
+const CARD_SHOW_DELAY_MS = 50 // Delay before showing card after backdrop
+const ENTER_ANIMATION_DURATION_MS = 450 // Total enter animation time
+const LEAVE_ANIMATION_DURATION_MS = 350 // Total leave animation time
+
 // Error categorization function (expanded version)
 function getSimpleErrorReason(errorMessage?: string): string {
   if (!errorMessage) return t('completion.unknownError')
@@ -249,10 +254,10 @@ function onEnter(el: Element, done: () => void) {
     setTimeout(() => {
       cardEl.style.opacity = '1'
       cardEl.style.transform = 'scale(1) translateY(0)'
-    }, 50)
+    }, CARD_SHOW_DELAY_MS)
   })
 
-  setTimeout(done, 450)
+  setTimeout(done, ENTER_ANIMATION_DURATION_MS)
 }
 
 function onLeave(el: Element, done: () => void) {
@@ -284,7 +289,7 @@ function onLeave(el: Element, done: () => void) {
   fallbackTimeout = setTimeout(() => {
     cardEl.removeEventListener('transitionend', handleTransitionEnd)
     done()
-  }, 350)
+  }, LEAVE_ANIMATION_DURATION_MS)
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {

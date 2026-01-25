@@ -64,6 +64,10 @@ fn open_in_explorer<P: AsRef<std::path::Path>>(path: P) -> Result<(), String> {
     Ok(())
 }
 
+// ============================================================================
+// System & Utility Commands
+// ============================================================================
+
 #[tauri::command]
 fn get_cli_args() -> Vec<String> {
     std::env::args().skip(1).collect()
@@ -83,6 +87,10 @@ fn get_app_version() -> String {
 async fn open_url(url: String) -> Result<(), String> {
     opener::open(&url).map_err(|e| format!("Failed to open URL: {}", e))
 }
+
+// ============================================================================
+// Installation Commands
+// ============================================================================
 
 #[tauri::command]
 async fn analyze_addons(
@@ -149,6 +157,10 @@ async fn install_addons(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+// ============================================================================
+// Task Control Commands
+// ============================================================================
+
 #[tauri::command]
 async fn cancel_installation(task_control: State<'_, TaskControl>) -> Result<(), String> {
     task_control.request_cancel_all();
@@ -162,6 +174,10 @@ async fn skip_current_task(task_control: State<'_, TaskControl>) -> Result<(), S
     logger::log_info("Current task skip requested", Some("task_control"));
     Ok(())
 }
+
+// ============================================================================
+// Windows Registry Commands (Context Menu)
+// ============================================================================
 
 #[tauri::command]
 fn register_context_menu() -> Result<(), String> {
@@ -178,6 +194,10 @@ fn unregister_context_menu() -> Result<(), String> {
 fn is_context_menu_registered() -> bool {
     registry::is_context_menu_registered()
 }
+
+// ============================================================================
+// Logging Commands
+// ============================================================================
 
 #[tauri::command]
 fn log_from_frontend(level: String, message: String, context: Option<String>) {
@@ -211,6 +231,8 @@ fn get_all_logs() -> String {
 fn open_log_folder() -> Result<(), String> {
     open_in_explorer(logger::get_log_folder())
 }
+
+// ========== Scenery Folder Commands ==========
 
 #[tauri::command]
 fn open_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), error::ApiError> {
@@ -332,6 +354,8 @@ fn set_log_level(level: String) {
     logger::set_log_level(log_level);
 }
 
+// ========== Path Validation Commands ==========
+
 #[tauri::command]
 fn check_path_exists(path: String) -> bool {
     std::path::Path::new(&path).exists()
@@ -363,6 +387,8 @@ fn validate_xplane_path(path: String) -> Result<bool, String> {
     let exe_path = path_obj.join(exe_name);
     Ok(exe_path.exists())
 }
+
+// ========== Update Commands ==========
 
 #[tauri::command]
 async fn check_for_updates(

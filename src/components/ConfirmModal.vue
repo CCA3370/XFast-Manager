@@ -100,7 +100,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref, watch, nextTick } from 'vue'
+import { computed, onBeforeUnmount, ref, watch, nextTick } from 'vue'
 import { useModalStore } from '@/stores/modal'
 import { useI18n } from 'vue-i18n'
 import gsap from 'gsap'
@@ -278,8 +278,6 @@ watch(isVisible, async (visible) => {
 
 // Keyboard shortcuts
 function handleKeydown(e: KeyboardEvent) {
-  if (!isVisible.value) return
-
   if (e.key === 'Escape') {
     e.preventDefault()
     handleCancel()
@@ -289,9 +287,15 @@ function handleKeydown(e: KeyboardEvent) {
   }
 }
 
-onMounted(() => {
-  document.addEventListener('keydown', handleKeydown)
-})
+// Dynamically manage keydown listener based on visibility
+// This prevents memory leaks when multiple modal instances exist
+watch(isVisible, (visible) => {
+  if (visible) {
+    document.addEventListener('keydown', handleKeydown)
+  } else {
+    document.removeEventListener('keydown', handleKeydown)
+  }
+}, { immediate: true })
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleKeydown)

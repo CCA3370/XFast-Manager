@@ -103,114 +103,19 @@
 
         <!-- Progress Overlays -->
         <transition name="fade" mode="out-in">
-          <div v-if="store.isAnalyzing" key="analyzing" class="absolute inset-0 z-20 bg-white/90 dark:bg-gray-900/80 backdrop-blur-md rounded-2xl flex items-center justify-center p-6 transition-colors duration-300">
-            <div class="w-full max-w-md space-y-4 text-center">
-              <!-- Analyzing State -->
-              <div class="space-y-4">
-                <div class="relative w-20 h-20 mx-auto">
-                  <div class="absolute inset-0 border-4 border-blue-200 dark:border-blue-500/30 rounded-full"></div>
-                  <div class="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
-                  <div class="absolute inset-0 flex items-center justify-center">
-                    <svg class="w-8 h-8 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                    </svg>
-                  </div>
-                </div>
-                <div>
-                  <h3 class="text-2xl font-bold text-gray-900 dark:text-white"><AnimatedText>{{ $t('home.analyzing') }}</AnimatedText></h3>
-                  <p class="text-gray-500 dark:text-gray-400 mt-2"><AnimatedText>{{ $t('home.pleaseWait') }}</AnimatedText></p>
-                </div>
-              </div>
-            </div>
-          </div>
+          <AnalyzingOverlay v-if="store.isAnalyzing" key="analyzing" />
 
-          <div v-else-if="store.isInstalling" key="installing" class="absolute inset-0 z-20 bg-white/90 dark:bg-gray-900/80 backdrop-blur-md rounded-2xl flex items-center justify-center p-6 transition-colors duration-300">
-            <div class="w-full max-w-md space-y-4 text-center">
-              <!-- Installing State with Progress -->
-              <div class="space-y-3">
-                <!-- Circular Progress -->
-                <div class="relative w-20 h-20 mx-auto">
-                  <svg class="w-full h-full -rotate-90" viewBox="0 0 80 80">
-                    <!-- SVG filter for glow effect -->
-                    <defs>
-                      <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-                        <feGaussianBlur stdDeviation="2" result="blur"/>
-                        <feMerge>
-                          <feMergeNode in="blur"/>
-                          <feMergeNode in="SourceGraphic"/>
-                        </feMerge>
-                      </filter>
-                    </defs>
-                    <circle cx="40" cy="40" r="36" stroke-width="5" fill="none"
-                      class="text-emerald-500/20 dark:text-emerald-500/30" stroke="currentColor"/>
-                    <circle cx="40" cy="40" r="36" stroke-width="5" fill="none"
-                      class="text-emerald-500 dark:text-emerald-400 progress-circle" stroke="currentColor"
-                      :stroke-dasharray="226"
-                      :stroke-dashoffset="226 - 226 * (parseFloat(progressStore.formatted.percentage) / 100)"
-                      stroke-linecap="round"
-                      filter="url(#glow)"/>
-                  </svg>
-                  <span class="absolute inset-0 flex items-center justify-center text-lg font-bold text-emerald-600 dark:text-emerald-400 progress-text">
-                    {{ progressStore.formatted.percentage }}%
-                  </span>
-                </div>
-
-                <!-- Task Info -->
-                <div class="text-center">
-                  <h3 class="text-xl font-bold text-gray-900 dark:text-white"><AnimatedText>{{ $t('home.installing') }}</AnimatedText></h3>
-                  <p class="text-sm text-gray-600 dark:text-gray-300 mt-1 transition-opacity duration-150">{{ progressStore.formatted.taskName }}</p>
-                </div>
-
-                <!-- Linear Progress Bar -->
-                <div class="w-full max-w-xs mx-auto">
-                  <div class="relative h-1.5 my-2">
-                    <!-- Background track -->
-                    <div class="absolute inset-0 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
-                    <!-- Glow effect layer (behind the bar) -->
-                    <div class="absolute inset-y-0 left-0 rounded-full progress-bar-glow"
-                      :style="{ width: progressStore.formatted.percentage + '%' }"/>
-                    <!-- Progress fill -->
-                    <div class="absolute inset-y-0 left-0 bg-emerald-500 dark:bg-emerald-400 rounded-full progress-bar"
-                      :style="{ width: progressStore.formatted.percentage + '%' }"/>
-                  </div>
-                  <div class="flex justify-between text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    <span class="progress-text">{{ progressStore.formatted.processedMB }} MB</span>
-                    <span class="progress-text">{{ progressStore.formatted.totalMB }} MB</span>
-                  </div>
-                </div>
-
-                <!-- Task Progress -->
-                <p class="text-xs text-center text-gray-500 dark:text-gray-400 progress-text">
-                  {{ $t('home.taskProgress', { current: progressStore.formatted.taskProgress }) }}
-                </p>
-
-                <!-- Task Control Buttons -->
-                <div class="flex justify-center gap-3 mt-4">
-                  <!-- Skip Button -->
-                  <button
-                    @click="handleSkipTask"
-                    class="px-4 py-2 bg-yellow-500/10 hover:bg-yellow-500/20 dark:bg-yellow-500/20 dark:hover:bg-yellow-500/30 text-yellow-700 dark:text-yellow-400 text-sm font-medium rounded-lg transition-all duration-200 border border-yellow-500/30 hover:border-yellow-500/50 flex items-center gap-2 shadow-sm hover:shadow-md"
-                  >
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path>
-                    </svg>
-                    <AnimatedText>{{ $t('taskControl.skipTask') }}</AnimatedText>
-                  </button>
-
-                  <!-- Cancel Button -->
-                  <button
-                    @click="handleCancelInstallation"
-                    class="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 dark:bg-red-500/20 dark:hover:bg-red-500/30 text-red-700 dark:text-red-400 text-sm font-medium rounded-lg transition-all duration-200 border border-red-500/30 hover:border-red-500/50 flex items-center gap-2 shadow-sm hover:shadow-md"
-                  >
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                    </svg>
-                    <AnimatedText>{{ $t('taskControl.cancelAll') }}</AnimatedText>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <InstallProgressOverlay
+            v-else-if="store.isInstalling"
+            key="installing"
+            :percentage="progressStore.formatted.percentage"
+            :task-name="progressStore.formatted.taskName"
+            :processed-m-b="progressStore.formatted.processedMB"
+            :total-m-b="progressStore.formatted.totalMB"
+            :task-progress="progressStore.formatted.taskProgress"
+            @skip="handleSkipTask"
+            @cancel="handleCancelInstallation"
+          />
         </transition>
 
         <!-- Completion View (shows behind animation) -->
@@ -293,7 +198,10 @@ import PasswordModal from '@/components/PasswordModal.vue'
 import AnimatedText from '@/components/AnimatedText.vue'
 import CompletionView from '@/components/CompletionView.vue'
 import UpdateBanner from '@/components/UpdateBanner.vue'
+import InstallProgressOverlay from '@/components/InstallProgressOverlay.vue'
+import AnalyzingOverlay from '@/components/AnalyzingOverlay.vue'
 import type { AnalysisResult, InstallProgress, InstallResult } from '@/types'
+import { getErrorMessage } from '@/types'
 import { logOperation, logError, logDebug, logBasic } from '@/services/logger'
 
 const { t } = useI18n()
@@ -319,12 +227,13 @@ const MAX_PASSWORD_RETRIES = 3
 // Password rate limiting
 const passwordAttemptTimestamps = ref<number[]>([])
 const MIN_PASSWORD_ATTEMPT_DELAY_MS = 1000 // 1 second between attempts
-
-// Mutex flag for analyzeFiles to prevent concurrent calls (TOCTOU protection)
-let isAnalyzeInProgress = false
+const PASSWORD_RATE_LIMIT_WINDOW_MS = 10000 // 10 second window for rate limiting
+const DEBUG_DROP_FLASH_DURATION_MS = 800 // Duration for debug drop flash visual feedback
+const COMPLETION_ANIMATION_DELAY_MS = 100 // Brief delay before hiding progress to allow animation to start
 
 // Timer tracking for cleanup on unmount to prevent memory leaks
-const activeTimeoutIds = ref<ReturnType<typeof setTimeout>[]>([])
+// Using Set for O(1) add/delete operations instead of array
+const activeTimeoutIds = new Set<ReturnType<typeof setTimeout>>()
 
 // Tauri drag-drop event unsubscribe function
 let unlistenDragDrop: UnlistenFn | null = null
@@ -335,22 +244,19 @@ let unlistenDeletionSkipped: UnlistenFn | null = null
 function setTrackedTimeout(callback: () => void, delay: number): ReturnType<typeof setTimeout> {
   const id = setTimeout(() => {
     callback()
-    // Remove the timeout ID from the tracking array after it fires
-    const index = activeTimeoutIds.value.indexOf(id)
-    if (index > -1) {
-      activeTimeoutIds.value.splice(index, 1)
-    }
+    // Remove the timeout ID from the tracking set after it fires
+    activeTimeoutIds.delete(id)
   }, delay)
-  activeTimeoutIds.value.push(id)
+  activeTimeoutIds.add(id)
   return id
 }
 
 // Watch for pending CLI args changes
 watch(() => store.pendingCliArgs, async (args) => {
   if (args && args.length > 0) {
-    // Use local mutex flag for TOCTOU-safe concurrency control
+    // Use store mutex flag for TOCTOU-safe concurrency control
     // This prevents race conditions when multiple watch events fire quickly
-    if (isAnalyzeInProgress || store.isAnalyzing || store.isInstalling) {
+    if (store.isAnalyzeInProgress || store.isAnalyzing || store.isInstalling) {
       logDebug('Analysis in progress, re-queueing args for later', 'app')
       store.addCliArgsToBatch(args)
       store.clearPendingCliArgs()
@@ -358,7 +264,7 @@ watch(() => store.pendingCliArgs, async (args) => {
     }
 
     // Set mutex immediately before any async operation
-    isAnalyzeInProgress = true
+    store.isAnalyzeInProgress = true
 
     logDebug(`Processing pending CLI args from watcher: ${args.join(', ')}`, 'app')
     const argsCopy = [...args]
@@ -367,10 +273,10 @@ watch(() => store.pendingCliArgs, async (args) => {
       await analyzeFiles(argsCopy)
     } catch (error) {
       logError(`Failed to process CLI args: ${error}`, 'app')
-      modal.showError(String(error))
+      modal.showError(getErrorMessage(error))
     } finally {
       // Always release mutex
-      isAnalyzeInProgress = false
+      store.isAnalyzeInProgress = false
     }
   }
 })
@@ -405,7 +311,7 @@ function onWindowDrop(e: DragEvent) {
   }
   isDragging.value = false
   debugDropFlash.value = true
-  setTrackedTimeout(() => (debugDropFlash.value = false), 800)
+  setTrackedTimeout(() => (debugDropFlash.value = false), DEBUG_DROP_FLASH_DURATION_MS)
 }
 
 onMounted(async () => {
@@ -432,7 +338,7 @@ onMounted(async () => {
       } else if (event.payload.type === 'drop') {
         isDragging.value = false
         debugDropFlash.value = true
-        setTrackedTimeout(() => (debugDropFlash.value = false), 800)
+        setTrackedTimeout(() => (debugDropFlash.value = false), DEBUG_DROP_FLASH_DURATION_MS)
 
         // If showing completion, close it and start new analysis
         if (store.showCompletion) {
@@ -443,7 +349,12 @@ onMounted(async () => {
         logDebug(`Dropped paths from Tauri: ${paths.join(', ')}`, 'drag-drop')
 
         if (paths && paths.length > 0) {
-          await analyzeFiles(paths)
+          try {
+            await analyzeFiles(paths)
+          } catch (error) {
+            logError(`Failed to analyze dropped files: ${error}`, 'drag-drop')
+            modal.showError(getErrorMessage(error))
+          }
         }
       }
     })
@@ -483,8 +394,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('drop', onWindowDrop)
 
   // Cleanup all tracked timeouts to prevent memory leaks
-  activeTimeoutIds.value.forEach(id => clearTimeout(id))
-  activeTimeoutIds.value = []
+  activeTimeoutIds.forEach(id => clearTimeout(id))
+  activeTimeoutIds.clear()
 
   // Cleanup Tauri listeners
   if (unlistenDragDrop) {
@@ -562,8 +473,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
         // Check if we've exceeded retry limit (use >= to prevent off-by-one error)
         if (passwordRetryCount.value >= MAX_PASSWORD_RETRIES) {
           logOperation(t('log.taskAborted'), t('log.passwordMaxRetries'))
-          toast.error(t('password.maxRetries'))
-          modal.showError(result.errors.join('\n'))
+          modal.showError(t('password.maxRetries') + '\n\n' + result.errors.join('\n'))
           resetPasswordState()
           store.isAnalyzing = false
           return
@@ -618,7 +528,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
   } catch (error) {
     // Non-blocking log call (also prints to console.error internally)
     logError(`${t('log.analysisFailed')}: ${error}`, 'analysis')
-    modal.showError(t('home.failedToAnalyze') + ': ' + String(error))
+    modal.showError(t('home.failedToAnalyze') + ': ' + getErrorMessage(error))
   } finally {
     store.isAnalyzing = false
   }
@@ -629,7 +539,7 @@ async function handlePasswordSubmit(passwords: Record<string, string>) {
   // Rate limiting: check if attempts are too frequent
   const now = Date.now()
   const recentAttempts = passwordAttemptTimestamps.value.filter(
-    t => now - t < 10000 // Last 10 seconds
+    t => now - t < PASSWORD_RATE_LIMIT_WINDOW_MS // Within rate limit window
   )
 
   if (recentAttempts.length > 0) {
@@ -646,7 +556,7 @@ async function handlePasswordSubmit(passwords: Record<string, string>) {
   passwordAttemptTimestamps.value.push(now)
   // Keep only recent attempts (last 10 seconds)
   passwordAttemptTimestamps.value = passwordAttemptTimestamps.value.filter(
-    t => now - t < 10000
+    t => now - t < PASSWORD_RATE_LIMIT_WINDOW_MS
   )
 
   showPasswordModal.value = false
@@ -763,12 +673,12 @@ async function handleInstall() {
     setTrackedTimeout(() => {
       store.isInstalling = false
       progressStore.reset()
-    }, 100)
+    }, COMPLETION_ANIMATION_DELAY_MS)
 
   } catch (error) {
     // Non-blocking log call (also prints to console.error internally)
     logError(`${t('log.installationFailed')}: ${error}`, 'installation')
-    modal.showError(t('home.installationFailed') + ': ' + String(error))
+    modal.showError(t('home.installationFailed') + ': ' + getErrorMessage(error))
     store.isInstalling = false
     progressStore.reset()
   }
@@ -791,7 +701,7 @@ async function handleSkipTask() {
       toast.info(t('taskControl.taskSkipped'))
     } catch (error) {
       logError(`Failed to skip task: ${error}`, 'installation')
-      toast.error(String(error))
+      modal.showError(getErrorMessage(error))
     }
   }
 }
@@ -813,7 +723,7 @@ async function handleCancelInstallation() {
       toast.info(t('taskControl.tasksCancelled'))
     } catch (error) {
       logError(`Failed to cancel installation: ${error}`, 'installation')
-      toast.error(String(error))
+      modal.showError(getErrorMessage(error))
     }
   }
 }
