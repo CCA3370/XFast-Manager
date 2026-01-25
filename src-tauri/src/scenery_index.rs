@@ -319,6 +319,14 @@ impl SceneryIndexManager {
         Ok(())
     }
 
+    /// Check if the scenery index has been created (has any packages)
+    /// Returns true if there are packages in the index, false otherwise
+    pub fn has_index(&self) -> Result<bool> {
+        self.ensure_initialized()?;
+        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
+        SceneryQueries::has_packages(&conn).map_err(|e| anyhow!("{}", e))
+    }
+
     /// Load index from database or create new empty index
     pub fn load_index(&self) -> Result<SceneryIndex> {
         self.ensure_initialized()?;

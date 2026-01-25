@@ -108,6 +108,20 @@ impl SceneryPacksManager {
     /// Add a new entry to scenery_packs.ini (used after installation)
     pub fn add_entry(&self, folder_name: &str, category: &SceneryCategory) -> Result<()> {
         let index_manager = SceneryIndexManager::new(&self.xplane_path);
+
+        // If index hasn't been created yet, don't add to index or sort
+        // User hasn't built the index, so we shouldn't automatically manage scenery order
+        if !index_manager.has_index()? {
+            logger::log_info(
+                &format!(
+                    "Skipping scenery indexing for '{}': index not yet created",
+                    folder_name
+                ),
+                Some("scenery_packs"),
+            );
+            return Ok(());
+        }
+
         let folder_path = self.xplane_path.join("Custom Scenery").join(folder_name);
 
         let info = index_manager.get_or_classify(&folder_path)?;
@@ -120,6 +134,7 @@ impl SceneryPacksManager {
     }
 
     /// Ensure all installed scenery is in scenery_packs.ini
+    /// Only performs incremental indexing if the index has been created
     pub fn sync_with_folder(&self) -> Result<usize> {
         let custom_scenery_path = self.xplane_path.join("Custom Scenery");
         if !custom_scenery_path.exists() {
@@ -127,6 +142,17 @@ impl SceneryPacksManager {
         }
 
         let index_manager = SceneryIndexManager::new(&self.xplane_path);
+
+        // If index hasn't been created yet, don't perform incremental indexing
+        // User hasn't built the index, so we shouldn't automatically update it
+        if !index_manager.has_index()? {
+            logger::log_info(
+                "Skipping sync_with_folder: index not yet created",
+                Some("scenery_packs"),
+            );
+            return Ok(0);
+        }
+
         let before_index = index_manager.load_index()?;
         let before_keys: std::collections::HashSet<String> =
             before_index.packages.keys().cloned().collect();
