@@ -33,6 +33,10 @@ pub enum ApiErrorCode {
     SecurityViolation,
     /// Operation timeout
     Timeout,
+    /// Database error (SQLite operations)
+    DatabaseError,
+    /// Migration failed (schema upgrade failed)
+    MigrationFailed,
     /// Internal error (unexpected condition)
     Internal,
 }
@@ -53,6 +57,8 @@ impl fmt::Display for ApiErrorCode {
             ApiErrorCode::InsufficientSpace => write!(f, "insufficient_space"),
             ApiErrorCode::SecurityViolation => write!(f, "security_violation"),
             ApiErrorCode::Timeout => write!(f, "timeout"),
+            ApiErrorCode::DatabaseError => write!(f, "database_error"),
+            ApiErrorCode::MigrationFailed => write!(f, "migration_failed"),
             ApiErrorCode::Internal => write!(f, "internal"),
         }
     }
@@ -152,6 +158,16 @@ impl ApiError {
     pub fn cancelled(message: impl Into<String>) -> Self {
         Self::new(ApiErrorCode::Cancelled, message)
     }
+
+    /// Create a database error
+    pub fn database(message: impl Into<String>) -> Self {
+        Self::new(ApiErrorCode::DatabaseError, message)
+    }
+
+    /// Create a migration failed error
+    pub fn migration_failed(message: impl Into<String>) -> Self {
+        Self::new(ApiErrorCode::MigrationFailed, message)
+    }
 }
 
 impl fmt::Display for ApiError {
@@ -207,6 +223,13 @@ impl From<anyhow::Error> for ApiError {
         }
 
         ApiError::internal(message)
+    }
+}
+
+/// Convert from rusqlite::Error to ApiError
+impl From<rusqlite::Error> for ApiError {
+    fn from(err: rusqlite::Error) -> Self {
+        ApiError::new(ApiErrorCode::DatabaseError, err.to_string())
     }
 }
 

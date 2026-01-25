@@ -1,8 +1,9 @@
 //! Scenery index management module
 //!
-//! This module manages a persistent JSON index of scenery classifications
+//! This module manages a persistent SQLite database of scenery classifications
 //! with cache invalidation based on directory modification times.
 
+use crate::database::{apply_migrations, get_database_path, open_connection, SceneryQueries, CURRENT_SCHEMA_VERSION};
 use crate::logger;
 use crate::models::{
     SceneryCategory, SceneryIndex, SceneryIndexScanResult, SceneryIndexStats, SceneryIndexStatus,
@@ -15,6 +16,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::SystemTime;
 
 // ============================================================================
@@ -229,8 +231,6 @@ fn resolve_shortcut(_lnk_path: &Path) -> Option<PathBuf> {
     None
 }
 
-const INDEX_VERSION: u32 = 1;
-
 fn is_sam_folder_name(folder_name: &str) -> bool {
     let folder_lower = folder_name.to_lowercase();
 
@@ -253,65 +253,57 @@ fn is_sam_folder_name(folder_name: &str) -> bool {
 /// Manager for scenery index operations
 pub struct SceneryIndexManager {
     xplane_path: PathBuf,
-    index_path: PathBuf,
+    /// Lazy-initialized database connection
+    db_initialized: Mutex<bool>,
 }
 
 impl SceneryIndexManager {
     /// Create a new index manager
     pub fn new(xplane_path: &Path) -> Self {
-        let index_path = get_index_file_path();
         Self {
             xplane_path: xplane_path.to_path_buf(),
-            index_path,
+            db_initialized: Mutex::new(false),
         }
     }
 
-    /// Load index from disk or create new empty index
+    /// Ensure database is initialized (creates schema if needed)
+    fn ensure_initialized(&self) -> Result<()> {
+        let mut initialized = self.db_initialized.lock().unwrap();
+        if !*initialized {
+            let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
+            apply_migrations(&conn).map_err(|e| anyhow!("{}", e))?;
+            *initialized = true;
+        }
+        Ok(())
+    }
+
+    /// Load index from database or create new empty index
     pub fn load_index(&self) -> Result<SceneryIndex> {
-        if self.index_path.exists() {
-            let content = fs::read_to_string(&self.index_path)?;
-            let index: SceneryIndex = serde_json::from_str(&content)?;
+        self.ensure_initialized()?;
+        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
 
-            // Check version compatibility
-            if index.version != INDEX_VERSION {
-                logger::log_info(
-                    "Index version mismatch, rebuilding index",
-                    Some("scenery_index"),
-                );
-                return Ok(self.create_empty_index());
-            }
+        // Check if database has any packages
+        let has_packages = SceneryQueries::has_packages(&conn).map_err(|e| anyhow!("{}", e))?;
 
-            Ok(index)
+        if has_packages {
+            SceneryQueries::load_all(&conn).map_err(|e| anyhow!("{}", e))
         } else {
             Ok(self.create_empty_index())
         }
     }
 
-    /// Save index to disk
+    /// Save index to database
     pub fn save_index(&self, index: &SceneryIndex) -> Result<()> {
-        // Ensure parent directory exists
-        if let Some(parent) = self.index_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        // Write to temp file first, then rename for atomic write
-        let temp_path = self.index_path.with_extension("tmp");
-        let content = serde_json::to_string_pretty(index)?;
-        fs::write(&temp_path, &content)?;
-        fs::rename(&temp_path, &self.index_path)?;
-
-        Ok(())
+        self.ensure_initialized()?;
+        let mut conn = open_connection().map_err(|e| anyhow!("{}", e))?;
+        SceneryQueries::save_all(&mut conn, index).map_err(|e| anyhow!("{}", e))
     }
 
     /// Update or add a single package in the index
     pub fn update_package(&self, package_info: SceneryPackageInfo) -> Result<()> {
-        let mut index = self.load_index()?;
-        index
-            .packages
-            .insert(package_info.folder_name.clone(), package_info);
-        index.last_updated = SystemTime::now();
-        self.save_index(&index)?;
-        Ok(())
+        self.ensure_initialized()?;
+        let mut conn = open_connection().map_err(|e| anyhow!("{}", e))?;
+        SceneryQueries::update_package(&mut conn, &package_info).map_err(|e| anyhow!("{}", e))
     }
 
     /// Rebuild entire index by scanning all scenery packages
@@ -504,7 +496,7 @@ impl SceneryIndexManager {
             .collect();
 
         let index = SceneryIndex {
-            version: INDEX_VERSION,
+            version: CURRENT_SCHEMA_VERSION as u32,
             packages,
             last_updated: SystemTime::now(),
         };
@@ -859,12 +851,10 @@ impl SceneryIndexManager {
     }
 
     pub fn index_status(&self) -> Result<SceneryIndexStatus> {
-        let index_exists = self.index_path.exists();
-        let total_packages = if index_exists {
-            self.load_index()?.packages.len()
-        } else {
-            0
-        };
+        self.ensure_initialized()?;
+        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
+        let total_packages = SceneryQueries::get_package_count(&conn).map_err(|e| anyhow!("{}", e))?;
+        let index_exists = total_packages > 0;
 
         Ok(SceneryIndexStatus {
             index_exists,
@@ -873,7 +863,11 @@ impl SceneryIndexManager {
     }
 
     pub fn quick_scan_and_update(&self) -> Result<SceneryIndexScanResult> {
-        if !self.index_path.exists() {
+        self.ensure_initialized()?;
+        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
+        let has_packages = SceneryQueries::has_packages(&conn).map_err(|e| anyhow!("{}", e))?;
+
+        if !has_packages {
             return Ok(SceneryIndexScanResult {
                 index_exists: false,
                 added: 0,
@@ -933,30 +927,18 @@ impl SceneryIndexManager {
 
     /// Batch update multiple entries' enabled state and sort_order from UI
     pub fn batch_update_entries(&self, entries: &[crate::models::SceneryEntryUpdate]) -> Result<()> {
-        let mut index = self.load_index()?;
-        let mut changed = false;
-
-        for entry in entries {
-            if let Some(info) = index.packages.get_mut(&entry.folder_name) {
-                if info.enabled != entry.enabled {
-                    info.enabled = entry.enabled;
-                    changed = true;
-                }
-                if info.sort_order != entry.sort_order {
-                    info.sort_order = entry.sort_order;
-                    changed = true;
-                }
-            }
+        if entries.is_empty() {
+            return Ok(());
         }
 
-        if changed {
-            index.last_updated = SystemTime::now();
-            self.save_index(&index)?;
-            logger::log_info(
-                &format!("Batch updated {} entries in scenery index", entries.len()),
-                Some("scenery_index"),
-            );
-        }
+        self.ensure_initialized()?;
+        let mut conn = open_connection().map_err(|e| anyhow!("{}", e))?;
+        SceneryQueries::batch_update_entries(&mut conn, entries).map_err(|e| anyhow!("{}", e))?;
+
+        logger::log_info(
+            &format!("Batch updated {} entries in scenery index", entries.len()),
+            Some("scenery_index"),
+        );
 
         Ok(())
     }
@@ -969,32 +951,21 @@ impl SceneryIndexManager {
         sort_order: Option<u32>,
         category: Option<SceneryCategory>,
     ) -> Result<()> {
-        let mut index = self.load_index()?;
-
-        if let Some(info) = index.packages.get_mut(folder_name) {
-            if let Some(e) = enabled {
-                info.enabled = e;
-            }
-            if let Some(s) = sort_order {
-                info.sort_order = s;
-            }
-            if let Some(c) = category {
-                info.category = c;
-            }
-            index.last_updated = SystemTime::now();
-            self.save_index(&index)?;
-        }
-
+        self.ensure_initialized()?;
+        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
+        SceneryQueries::update_entry(&conn, folder_name, enabled, sort_order, category.as_ref())
+            .map_err(|e| anyhow!("{}", e))?;
         Ok(())
     }
 
     /// Remove an entry from the index
     pub fn remove_entry(&self, folder_name: &str) -> Result<()> {
-        let mut index = self.load_index()?;
+        self.ensure_initialized()?;
+        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
+        let deleted = SceneryQueries::delete_package(&conn, folder_name)
+            .map_err(|e| anyhow!("{}", e))?;
 
-        if index.packages.remove(folder_name).is_some() {
-            index.last_updated = SystemTime::now();
-            self.save_index(&index)?;
+        if deleted {
             logger::log_info(
                 &format!("Removed entry from scenery index: {}", folder_name),
                 Some("scenery_index"),
@@ -1386,47 +1357,11 @@ impl SceneryIndexManager {
     /// Create an empty index
     fn create_empty_index(&self) -> SceneryIndex {
         SceneryIndex {
-            version: INDEX_VERSION,
+            version: CURRENT_SCHEMA_VERSION as u32,
             packages: HashMap::new(),
             last_updated: SystemTime::now(),
         }
     }
-}
-
-/// Get the path to the scenery index file
-fn get_index_file_path() -> PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-            return PathBuf::from(local_app_data)
-                .join("XFast Manager")
-                .join("scenery_index.json");
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        if let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home)
-                .join("Library")
-                .join("Application Support")
-                .join("XFast Manager")
-                .join("scenery_index.json");
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        if let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home)
-                .join(".config")
-                .join("xfastmanager")
-                .join("scenery_index.json");
-        }
-    }
-
-    // Fallback to current directory
-    PathBuf::from("scenery_index.json")
 }
 
 /// Parse library.txt file and extract all exported library names
@@ -1718,9 +1653,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_index_file_path() {
-        let path = get_index_file_path();
-        assert!(path.to_string_lossy().contains("scenery_index.json"));
+    fn test_database_path() {
+        let path = get_database_path();
+        assert!(path.to_string_lossy().contains("scenery.db"));
     }
 
     #[test]
@@ -1729,7 +1664,7 @@ mod tests {
         let manager = SceneryIndexManager::new(temp_dir.path());
         let index = manager.create_empty_index();
 
-        assert_eq!(index.version, INDEX_VERSION);
+        assert_eq!(index.version, CURRENT_SCHEMA_VERSION as u32);
         assert!(index.packages.is_empty());
     }
 

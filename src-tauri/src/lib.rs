@@ -1,6 +1,7 @@
 mod analyzer;
 mod atomic_installer;
 mod cache;
+mod database;
 mod error;
 mod hash_collector;
 mod installer;

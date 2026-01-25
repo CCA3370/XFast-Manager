@@ -36,6 +36,7 @@ semver = "1.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls-vendored"] }
 futures = "0.3"
 opener = "0.8"
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
