@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.7] - 2026-01-25
+
+### Fixed
+
+#### Scenery Manager
+- **Shortcut Conflict Fix** - Multiple shortcuts pointing to folders with the same name now work correctly
+  - Previously, only one shortcut would be recognized when multiple shortcuts pointed to different folders with identical names
+  - Now each shortcut is treated as a separate entry using its own name
+- **Path Compatibility** - Windows shortcut target paths are now handled correctly in scenery_packs.ini
+  - Backslashes are automatically converted to forward slashes as required by X-Plane
+
+### Changed
+
+#### Scenery Installation
+- **Respect Index State** - Installing scenery via the software now respects whether the scenery index has been created
+  - If you haven't built the scenery index yet, newly installed scenery will not be automatically added to the index or sorted
+  - This gives you full control over when to start using the scenery manager feature
+  - Once you build the index, future scenery installations will be automatically managed
+
 ## [0.7.6] - 2026-01-25
 
 ### Changed

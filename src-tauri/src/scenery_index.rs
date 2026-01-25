@@ -250,6 +250,48 @@ fn is_sam_folder_name(folder_name: &str) -> bool {
     has_sam_word || has_sam_suffix
 }
 
+/// Common sorting comparison for non-FixedHighPriority scenery packages
+/// This ensures consistent ordering between rebuild_index, recalculate_sort_order, and reset_sort_order
+fn compare_packages_for_sorting(
+    name_a: &str,
+    info_a: &SceneryPackageInfo,
+    name_b: &str,
+    info_b: &SceneryPackageInfo,
+) -> std::cmp::Ordering {
+    let priority_a = (info_a.category.priority(), info_a.sub_priority);
+    let priority_b = (info_b.category.priority(), info_b.sub_priority);
+
+    match priority_a.cmp(&priority_b) {
+        std::cmp::Ordering::Equal => {
+            if info_a.category == info_b.category
+                && matches!(
+                    info_a.category,
+                    SceneryCategory::Overlay
+                        | SceneryCategory::AirportMesh
+                        | SceneryCategory::Mesh
+                )
+            {
+                // For Mesh category with sub_priority > 0 (XPME), sort only by folder name
+                // XPME mesh should be at the bottom of Mesh category, sorted alphabetically
+                if info_a.category == SceneryCategory::Mesh && info_a.sub_priority > 0 {
+                    name_a.to_lowercase().cmp(&name_b.to_lowercase())
+                } else {
+                    // Non-XPME: sort by tile count first, then folder name
+                    match info_a.earth_nav_tile_count.cmp(&info_b.earth_nav_tile_count) {
+                        std::cmp::Ordering::Equal => {
+                            name_a.to_lowercase().cmp(&name_b.to_lowercase())
+                        }
+                        other => other,
+                    }
+                }
+            } else {
+                name_a.to_lowercase().cmp(&name_b.to_lowercase())
+            }
+        }
+        other => other,
+    }
+}
+
 /// Manager for scenery index operations
 pub struct SceneryIndexManager {
     xplane_path: PathBuf,
@@ -275,6 +317,14 @@ impl SceneryIndexManager {
             *initialized = true;
         }
         Ok(())
+    }
+
+    /// Check if the scenery index has been created (has any packages)
+    /// Returns true if there are packages in the index, false otherwise
+    pub fn has_index(&self) -> Result<bool> {
+        self.ensure_initialized()?;
+        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
+        SceneryQueries::has_packages(&conn).map_err(|e| anyhow!("{}", e))
     }
 
     /// Load index from database or create new empty index
@@ -324,8 +374,9 @@ impl SceneryIndexManager {
             .collect();
 
         // Collect all scenery folders (including symlinks and .lnk shortcuts)
-        // Also track which entries come from shortcuts and their resolved target paths
-        let mut shortcut_actual_paths: HashMap<String, String> = HashMap::new();
+        // Track shortcuts by their target path to correctly map shortcut names
+        // Key: canonical target path, Value: (shortcut_name without .lnk, normalized_target_path for ini)
+        let mut shortcut_target_map: HashMap<PathBuf, (String, String)> = HashMap::new();
 
         let scenery_folders: Vec<PathBuf> = fs::read_dir(&custom_scenery_path)?
             .filter_map(|e| e.ok())
@@ -337,29 +388,30 @@ impl SceneryIndexManager {
                     .extension()
                     .map_or(false, |ext| ext.eq_ignore_ascii_case("lnk"))
                 {
+                    // Use shortcut file name (without .lnk extension) as the entry name
+                    // This prevents conflicts when multiple shortcuts point to folders with the same name
                     let shortcut_name = path
-                        .file_name()
-                        .map(|name| name.to_string_lossy().to_string())
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.to_string())
                         .unwrap_or_else(|| "<unknown>".to_string());
                     logger::log_info(
-                        &format!("Attempting to resolve shortcut: {:?}", shortcut_name),
+                        &format!("Attempting to resolve shortcut: {}.lnk", shortcut_name),
                         Some("scenery_index"),
                     );
 
                     // Try to resolve the shortcut
                     if let Some(target) = resolve_shortcut(&path) {
                         logger::log_info(
-                            &format!("✓ Resolved shortcut {:?} -> {:?}", shortcut_name, target),
+                            &format!("✓ Resolved shortcut {}.lnk -> {:?}", shortcut_name, target),
                             Some("scenery_index"),
                         );
 
-                        // Track the target path for this shortcut entry
-                        // The folder_name will be derived from target.file_name()
-                        if let Some(folder_name) = target.file_name().and_then(|s| s.to_str()) {
-                            // Store the absolute target path for writing to scenery_packs.ini
-                            let target_path_str = target.to_string_lossy().to_string();
-                            shortcut_actual_paths.insert(folder_name.to_string(), target_path_str);
-                        }
+                        // Store the mapping from target path to shortcut info
+                        let target_path_str = target.to_string_lossy().to_string();
+                        // Convert backslashes to forward slashes for scenery_packs.ini compatibility
+                        let normalized_path_str = target_path_str.replace('\\', "/");
+                        shortcut_target_map.insert(target.clone(), (shortcut_name, normalized_path_str));
 
                         return Some(target);
                     } else {
@@ -389,13 +441,14 @@ impl SceneryIndexManager {
         );
 
         // Classify all packages
+        // Track which path each package came from to correctly handle shortcuts
         // Use sequential processing in debug log mode for ordered logs, parallel otherwise
-        let mut packages_vec: Vec<SceneryPackageInfo> = if logger::is_debug_enabled() {
+        let packages_with_paths: Vec<(PathBuf, SceneryPackageInfo)> = if logger::is_debug_enabled() {
             // Sequential processing for ordered debug logs
             scenery_folders
                 .iter()
                 .filter_map(|folder| match classify_scenery(folder, &self.xplane_path) {
-                    Ok(info) => Some(info),
+                    Ok(info) => Some((folder.clone(), info)),
                     Err(e) => {
                         logger::log_info(
                             &format!("Failed to classify {:?}: {}", folder, e),
@@ -410,7 +463,7 @@ impl SceneryIndexManager {
             scenery_folders
                 .par_iter()
                 .filter_map(|folder| match classify_scenery(folder, &self.xplane_path) {
-                    Ok(info) => Some(info),
+                    Ok(info) => Some((folder.clone(), info)),
                     Err(e) => {
                         logger::log_info(
                             &format!("Failed to classify {:?}: {}", folder, e),
@@ -422,62 +475,31 @@ impl SceneryIndexManager {
                 .collect()
         };
 
-        // Post-process: Set actual_path for shortcut entries
-        for info in &mut packages_vec {
-            if let Some(actual_path) = shortcut_actual_paths.get(&info.folder_name) {
-                info.actual_path = Some(actual_path.clone());
+        // Post-process: Set folder_name and actual_path for shortcut entries
+        // For shortcuts, use the shortcut name (not target folder name) to avoid conflicts
+        let mut packages_vec: Vec<SceneryPackageInfo> = Vec::with_capacity(packages_with_paths.len());
+        for (path, mut info) in packages_with_paths {
+            if let Some((shortcut_name, actual_path)) = shortcut_target_map.get(&path) {
+                // This entry came from a shortcut - use shortcut name and set actual_path
                 logger::log_info(
                     &format!(
-                        "Set actual_path for shortcut entry '{}': {}",
-                        info.folder_name, actual_path
+                        "Shortcut entry: {} (target folder: {}) -> actual_path: {}",
+                        shortcut_name, info.folder_name, actual_path
                     ),
                     Some("scenery_index"),
                 );
+                info.folder_name = shortcut_name.clone();
+                info.actual_path = Some(actual_path.clone());
             }
+            packages_vec.push(info);
         }
 
         // Post-process: Detect airport-associated mesh packages
         self.detect_airport_mesh_packages(&mut packages_vec);
 
-        // Sort packages by category priority, sub-priority, then tile count for select categories, then folder name
+        // Sort packages using the common sorting function
         packages_vec.sort_by(|a, b| {
-            let priority_a = (a.category.priority(), a.sub_priority);
-            let priority_b = (b.category.priority(), b.sub_priority);
-            match priority_a.cmp(&priority_b) {
-                std::cmp::Ordering::Equal => {
-                    if a.category == b.category
-                        && matches!(
-                            a.category,
-                            SceneryCategory::Overlay
-                                | SceneryCategory::AirportMesh
-                                | SceneryCategory::Mesh
-                        )
-                    {
-                        // For Mesh category with sub_priority > 0 (XPME), sort only by folder name
-                        // XPME mesh should be at the bottom of Mesh category, sorted alphabetically
-                        if a.category == SceneryCategory::Mesh && a.sub_priority > 0 {
-                            // XPME mesh: sort only by folder name (alphabetically)
-                            a.folder_name
-                                .to_lowercase()
-                                .cmp(&b.folder_name.to_lowercase())
-                        } else {
-                            // Non-XPME: sort by tile count first, then folder name
-                            match a.earth_nav_tile_count.cmp(&b.earth_nav_tile_count) {
-                                std::cmp::Ordering::Equal => a
-                                    .folder_name
-                                    .to_lowercase()
-                                    .cmp(&b.folder_name.to_lowercase()),
-                                other => other,
-                            }
-                        }
-                    } else {
-                        a.folder_name
-                            .to_lowercase()
-                            .cmp(&b.folder_name.to_lowercase())
-                    }
-                }
-                other => other,
-            }
+            compare_packages_for_sorting(&a.folder_name, a, &b.folder_name, b)
         });
 
         // Assign sort_order and apply enabled states from index
@@ -603,7 +625,7 @@ impl SceneryIndexManager {
             }
         });
 
-        // Sort other packages using the same logic as rebuild_index
+        // Sort other packages using the common sorting function
         let mut other_packages: Vec<(&String, &SceneryPackageInfo)> = index
             .packages
             .iter()
@@ -611,41 +633,7 @@ impl SceneryIndexManager {
             .collect();
 
         other_packages.sort_by(|(name_a, info_a), (name_b, info_b)| {
-            let priority_a = (info_a.category.priority(), info_a.sub_priority);
-            let priority_b = (info_b.category.priority(), info_b.sub_priority);
-
-            match priority_a.cmp(&priority_b) {
-                std::cmp::Ordering::Equal => {
-                    if info_a.category == info_b.category
-                        && matches!(
-                            info_a.category,
-                            SceneryCategory::Overlay
-                                | SceneryCategory::AirportMesh
-                                | SceneryCategory::Mesh
-                        )
-                    {
-                        // For Mesh category with sub_priority > 0 (XPME), sort only by folder name
-                        // XPME mesh should be at the bottom of Mesh category, sorted alphabetically
-                        if info_a.category == SceneryCategory::Mesh && info_a.sub_priority > 0 {
-                            name_a.to_lowercase().cmp(&name_b.to_lowercase())
-                        } else {
-                            // Non-XPME: sort by tile count first, then folder name
-                            match info_a
-                                .earth_nav_tile_count
-                                .cmp(&info_b.earth_nav_tile_count)
-                            {
-                                std::cmp::Ordering::Equal => {
-                                    name_a.to_lowercase().cmp(&name_b.to_lowercase())
-                                }
-                                other => other,
-                            }
-                        }
-                    } else {
-                        name_a.to_lowercase().cmp(&name_b.to_lowercase())
-                    }
-                }
-                other => other,
-            }
+            compare_packages_for_sorting(name_a, info_a, name_b, info_b)
         });
 
         // Collect sorted names and update sort_order
@@ -679,10 +667,13 @@ impl SceneryIndexManager {
 
         let mut index = self.load_index()?;
 
-        // Track which folders came from shortcuts and their resolved target paths
-        let mut shortcut_actual_paths: HashMap<String, String> = HashMap::new();
+        // Track shortcuts by their target path
+        // Key: target path, Value: (shortcut_name without .lnk, normalized_target_path for ini)
+        let mut shortcut_target_map: HashMap<PathBuf, (String, String)> = HashMap::new();
 
         // Get current scenery folders (including symlinks and .lnk shortcuts)
+        // Key: entry name (shortcut name for shortcuts, folder name for directories)
+        // Value: actual path to scan
         let current_folders: HashMap<String, PathBuf> = fs::read_dir(&custom_scenery_path)?
             .filter_map(|e| e.ok())
             .filter_map(|e| {
@@ -695,13 +686,19 @@ impl SceneryIndexManager {
                 {
                     // Try to resolve the shortcut
                     if let Some(target) = resolve_shortcut(&path) {
-                        // Use the target folder name (not the .lnk filename)
-                        if let Some(name) = target.file_name().and_then(|s| s.to_str()) {
-                            // Track the resolved target path for writing to scenery_packs.ini
-                            let target_path_str = target.to_string_lossy().to_string();
-                            shortcut_actual_paths.insert(name.to_string(), target_path_str);
-                            return Some((name.to_string(), target));
-                        }
+                        // Use shortcut file name (without .lnk) as the entry name
+                        // This prevents conflicts when multiple shortcuts point to folders with the same name
+                        let shortcut_name = path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "<unknown>".to_string());
+                        // Track the resolved target path for writing to scenery_packs.ini
+                        let target_path_str = target.to_string_lossy().to_string();
+                        // Convert backslashes to forward slashes for scenery_packs.ini compatibility
+                        let normalized_path_str = target_path_str.replace('\\', "/");
+                        shortcut_target_map.insert(target.clone(), (shortcut_name.clone(), normalized_path_str));
+                        return Some((shortcut_name, target));
                     }
                     return None;
                 }
@@ -765,24 +762,35 @@ impl SceneryIndexManager {
             );
 
             // Classify updated packages
+            // Track which path each package came from to correctly handle shortcuts
             // Use sequential processing in debug log mode for ordered logs, parallel otherwise
-            let updated_packages: Vec<SceneryPackageInfo> = if logger::is_debug_enabled() {
+            let packages_with_paths: Vec<(PathBuf, SceneryPackageInfo)> = if logger::is_debug_enabled() {
                 // Sequential processing for ordered debug logs
                 packages_to_update
                     .iter()
-                    .filter_map(|folder| classify_scenery(folder, &self.xplane_path).ok())
+                    .filter_map(|folder| {
+                        classify_scenery(folder, &self.xplane_path)
+                            .ok()
+                            .map(|info| (folder.clone(), info))
+                    })
                     .collect()
             } else {
                 // Parallel processing for better performance when not in debug mode
                 packages_to_update
                     .par_iter()
-                    .filter_map(|folder| classify_scenery(folder, &self.xplane_path).ok())
+                    .filter_map(|folder| {
+                        classify_scenery(folder, &self.xplane_path)
+                            .ok()
+                            .map(|info| (folder.clone(), info))
+                    })
                     .collect()
             };
 
-            for mut info in updated_packages {
-                // Set actual_path for shortcut entries
-                if let Some(actual_path) = shortcut_actual_paths.get(&info.folder_name) {
+            for (path, mut info) in packages_with_paths {
+                // Check if this entry came from a shortcut
+                if let Some((shortcut_name, actual_path)) = shortcut_target_map.get(&path) {
+                    // Use shortcut name and set actual_path
+                    info.folder_name = shortcut_name.clone();
                     info.actual_path = Some(actual_path.clone());
                 }
                 index.packages.insert(info.folder_name.clone(), info);
@@ -796,9 +804,13 @@ impl SceneryIndexManager {
         // Also update actual_path for existing entries that are shortcuts
         // (in case they weren't updated but the shortcut info needs to be preserved)
         for (folder_name, info) in index.packages.iter_mut() {
-            if let Some(actual_path) = shortcut_actual_paths.get(folder_name) {
-                if info.actual_path.is_none() || info.actual_path.as_ref() != Some(actual_path) {
-                    info.actual_path = Some(actual_path.clone());
+            // Look up by folder_name in shortcut_target_map values (shortcut names)
+            for (_, (shortcut_name, actual_path)) in shortcut_target_map.iter() {
+                if folder_name == shortcut_name {
+                    if info.actual_path.is_none() || info.actual_path.as_ref() != Some(actual_path) {
+                        info.actual_path = Some(actual_path.clone());
+                    }
+                    break;
                 }
             }
         }
@@ -985,6 +997,10 @@ impl SceneryIndexManager {
             None => return Err(anyhow!("Package not found: {}", folder_name)),
         };
 
+        // Validate and clamp new_sort_order to valid range [0, packages.len() - 1]
+        let max_valid_order = index.packages.len().saturating_sub(1) as u32;
+        let new_sort_order = new_sort_order.min(max_valid_order);
+
         if current_sort_order == new_sort_order {
             return Ok(()); // No change needed
         }
@@ -1072,43 +1088,7 @@ impl SceneryIndexManager {
             .collect();
 
         other_packages.sort_by(|(name_a, info_a), (name_b, info_b)| {
-            let priority_a = (info_a.category.priority(), info_a.sub_priority);
-            let priority_b = (info_b.category.priority(), info_b.sub_priority);
-
-            match priority_a.cmp(&priority_b) {
-                std::cmp::Ordering::Equal => {
-                    if info_a.category == info_b.category
-                        && matches!(
-                            info_a.category,
-                            SceneryCategory::Overlay
-                                | SceneryCategory::AirportMesh
-                                | SceneryCategory::Mesh
-                        )
-                    {
-                        // For Mesh category with sub_priority > 0 (XPME), sort only by folder name
-                        // XPME mesh should be at the bottom of Mesh category, sorted alphabetically
-                        if info_a.category == SceneryCategory::Mesh && info_a.sub_priority > 0 {
-                            // XPME mesh: sort only by folder name (alphabetically)
-                            name_a.to_lowercase().cmp(&name_b.to_lowercase())
-                        } else {
-                            // Non-XPME: sort by tile count first, then folder name
-                            match info_a
-                                .earth_nav_tile_count
-                                .cmp(&info_b.earth_nav_tile_count)
-                            {
-                                std::cmp::Ordering::Equal => {
-                                    name_a.to_lowercase().cmp(&name_b.to_lowercase())
-                                }
-                                other => other,
-                            }
-                        }
-                    } else {
-                        // If priorities are equal, sort by folder name (case-insensitive)
-                        name_a.to_lowercase().cmp(&name_b.to_lowercase())
-                    }
-                }
-                other => other,
-            }
+            compare_packages_for_sorting(name_a, info_a, name_b, info_b)
         });
 
         // Update sort_order based on sorted position and check for changes
