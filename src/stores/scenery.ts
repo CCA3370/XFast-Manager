@@ -67,6 +67,11 @@ export const useSceneryStore = defineStore('scenery', () => {
     // If index differs from ini, we have changes to apply
     if (data.value?.needsSync) return true
 
+    return hasLocalChanges.value
+  })
+
+  // Check if user has made local modifications (separate from needsSync)
+  const hasLocalChanges = computed(() => {
     if (!data.value || originalEntries.value.length === 0) return false
 
     const current = entries.value
@@ -344,6 +349,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     enabledCount,
     missingDepsCount,
     hasChanges,
+    hasLocalChanges,
     indexExists,
 
     // Actions

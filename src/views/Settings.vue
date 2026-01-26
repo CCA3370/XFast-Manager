@@ -344,6 +344,112 @@
         <!-- Placeholder for non-Windows (to maintain grid layout) -->
         <div v-if="!store.isWindows"></div>
 
+        <!-- Scenery Auto-Sorting -->
+        <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2">
+          <div
+            class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
+            @click="sceneryAutoSortExpanded = !sceneryAutoSortExpanded"
+          >
+            <div class="flex items-center space-x-3 flex-1">
+              <div class="w-8 h-8 bg-cyan-100 dark:bg-cyan-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-cyan-600 dark:text-cyan-400">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path>
+                </svg>
+              </div>
+              <div class="flex-1">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <AnimatedText>{{ $t('settings.sceneryAutoSort') }}</AnimatedText>
+                </h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  <AnimatedText>{{ $t('settings.sceneryAutoSortDesc') }}</AnimatedText>
+                </p>
+              </div>
+            </div>
+
+            <!-- Toggle Switch -->
+            <div class="flex items-center space-x-3">
+              <button
+                @click.stop="handleToggleAutoSortScenery"
+                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                :class="store.autoSortScenery ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-600'"
+              >
+                <span
+                  class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                  :class="store.autoSortScenery ? 'translate-x-4.5' : 'translate-x-0.5'"
+                ></span>
+              </button>
+
+              <!-- Expand/Collapse indicator -->
+              <svg
+                class="w-5 h-5 text-gray-400 transition-transform duration-200"
+                :class="{ 'rotate-180': sceneryAutoSortExpanded }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Expanded content -->
+          <transition name="expand">
+            <div v-if="sceneryAutoSortExpanded" class="px-4 pb-4 space-y-3">
+              <!-- Explanation -->
+              <div class="bg-cyan-50/50 dark:bg-cyan-500/5 border border-cyan-200 dark:border-cyan-500/20 rounded-lg p-3 space-y-2">
+                <h4 class="text-xs font-semibold text-cyan-900 dark:text-cyan-300">
+                  <AnimatedText>{{ $t('settings.sceneryAutoSortExplain') }}</AnimatedText>
+                </h4>
+                <ul class="text-xs text-cyan-800 dark:text-cyan-200 space-y-1.5">
+                  <li class="flex items-start space-x-2">
+                    <svg class="w-4 h-4 text-cyan-500 dark:text-cyan-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                    <span><AnimatedText>{{ $t('settings.sceneryAutoSortBenefit1') }}</AnimatedText></span>
+                  </li>
+                  <li class="flex items-start space-x-2">
+                    <svg class="w-4 h-4 text-cyan-500 dark:text-cyan-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                    <span><AnimatedText>{{ $t('settings.sceneryAutoSortBenefit2') }}</AnimatedText></span>
+                  </li>
+                  <li class="flex items-start space-x-2">
+                    <svg class="w-4 h-4 text-cyan-500 dark:text-cyan-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                    <span><AnimatedText>{{ $t('settings.sceneryAutoSortBenefit3') }}</AnimatedText></span>
+                  </li>
+                </ul>
+              </div>
+
+              <!-- Rebuild Index Button -->
+              <button
+                @click="handleRebuildIndex"
+                :disabled="isRebuildingIndex || !store.xplanePath"
+                class="w-full px-4 py-2 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+                :title="indexExists ? $t('settings.rebuildIndexTooltip') : $t('settings.createIndexTooltip')"
+              >
+                <svg v-if="!isRebuildingIndex" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                <span>
+                  <AnimatedText>
+                    {{ isRebuildingIndex ? $t('settings.rebuilding') : (indexExists ? $t('settings.rebuildIndex') : $t('settings.createIndex')) }}
+                  </AnimatedText>
+                </span>
+              </button>
+
+              <!-- Note about X-Plane path -->
+              <p v-if="!store.xplanePath" class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20">
+                <AnimatedText>{{ $t('settings.sceneryAutoSortNeedPath') }}</AnimatedText>
+              </p>
+            </div>
+          </transition>
+        </section>
+
         <!-- Installation Preferences (Right Column or Full Width on non-Windows) -->
         <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300" :class="{ 'md:col-span-2': !store.isWindows }">
           <div
@@ -751,113 +857,7 @@
         </transition>
       </section>
 
-      <!-- 5. Scenery Auto-Sorting -->
-      <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
-        <div
-          class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
-          @click="sceneryAutoSortExpanded = !sceneryAutoSortExpanded"
-        >
-          <div class="flex items-center space-x-3 flex-1">
-            <div class="w-8 h-8 bg-cyan-100 dark:bg-cyan-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-cyan-600 dark:text-cyan-400">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path>
-              </svg>
-            </div>
-            <div class="flex-1">
-              <h3 class="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                <AnimatedText>{{ $t('settings.sceneryAutoSort') }}</AnimatedText>
-              </h3>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
-                <AnimatedText>{{ $t('settings.sceneryAutoSortDesc') }}</AnimatedText>
-              </p>
-            </div>
-          </div>
-
-          <!-- Toggle Switch -->
-          <div class="flex items-center space-x-3">
-            <button
-              @click.stop="handleToggleAutoSortScenery"
-              class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-              :class="store.autoSortScenery ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-600'"
-            >
-              <span
-                class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                :class="store.autoSortScenery ? 'translate-x-4.5' : 'translate-x-0.5'"
-              ></span>
-            </button>
-
-            <!-- Expand/Collapse indicator -->
-            <svg
-              class="w-5 h-5 text-gray-400 transition-transform duration-200"
-              :class="{ 'rotate-180': sceneryAutoSortExpanded }"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-            </svg>
-          </div>
-        </div>
-
-        <!-- Expanded content -->
-        <transition name="expand">
-          <div v-if="sceneryAutoSortExpanded" class="px-4 pb-4 space-y-3">
-            <!-- Explanation -->
-            <div class="bg-cyan-50/50 dark:bg-cyan-500/5 border border-cyan-200 dark:border-cyan-500/20 rounded-lg p-3 space-y-2">
-              <h4 class="text-xs font-semibold text-cyan-900 dark:text-cyan-300">
-                <AnimatedText>{{ $t('settings.sceneryAutoSortExplain') }}</AnimatedText>
-              </h4>
-              <ul class="text-xs text-cyan-800 dark:text-cyan-200 space-y-1.5">
-                <li class="flex items-start space-x-2">
-                  <svg class="w-4 h-4 text-cyan-500 dark:text-cyan-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                  </svg>
-                  <span><AnimatedText>{{ $t('settings.sceneryAutoSortBenefit1') }}</AnimatedText></span>
-                </li>
-                <li class="flex items-start space-x-2">
-                  <svg class="w-4 h-4 text-cyan-500 dark:text-cyan-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                  </svg>
-                  <span><AnimatedText>{{ $t('settings.sceneryAutoSortBenefit2') }}</AnimatedText></span>
-                </li>
-                <li class="flex items-start space-x-2">
-                  <svg class="w-4 h-4 text-cyan-500 dark:text-cyan-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                  </svg>
-                  <span><AnimatedText>{{ $t('settings.sceneryAutoSortBenefit3') }}</AnimatedText></span>
-                </li>
-              </ul>
-            </div>
-
-            <!-- Rebuild Index Button -->
-            <button
-              @click="handleRebuildIndex"
-              :disabled="isRebuildingIndex || !store.xplanePath"
-              class="w-full px-4 py-2 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
-              :title="indexExists ? $t('settings.rebuildIndexTooltip') : $t('settings.createIndexTooltip')"
-            >
-              <svg v-if="!isRebuildingIndex" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-              </svg>
-              <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-              </svg>
-              <span>
-                <AnimatedText>
-                  {{ isRebuildingIndex ? $t('settings.rebuilding') : (indexExists ? $t('settings.rebuildIndex') : $t('settings.createIndex')) }}
-                </AnimatedText>
-              </span>
-            </button>
-
-            <!-- Note about X-Plane path -->
-            <p v-if="!store.xplanePath" class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20">
-              <AnimatedText>{{ $t('settings.sceneryAutoSortNeedPath') }}</AnimatedText>
-            </p>
-          </div>
-        </transition>
-      </section>
-
-      <!-- 6. Logs Section (Collapsible) -->
+      <!-- 5. Logs Section (Collapsible) -->
       <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
         <!-- Header (clickable to expand/collapse) -->
         <div

@@ -404,6 +404,7 @@ export default {
     hasUpdate: '有更新',
     allUpToDate: '所有支持 SkunkcraftsUpdater 的内容已是最新',
     checkingUpdates: '检查更新中...',
+    checkUpdates: '检查更新',
     outdated: '已过期',
     liveries: '涂装',
     platform: '平台',

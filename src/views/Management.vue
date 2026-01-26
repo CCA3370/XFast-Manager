@@ -248,6 +248,17 @@ async function handleOpenFolder(itemType: ManagementItemType, folderName: string
   }
 }
 
+// Handle manual check updates for aircraft/plugin tabs
+async function handleCheckUpdates() {
+  if (managementStore.isCheckingUpdates) return
+
+  if (activeTab.value === 'aircraft') {
+    await managementStore.checkAircraftUpdates(true)
+  } else if (activeTab.value === 'plugin') {
+    await managementStore.checkPluginsUpdates(true)
+  }
+}
+
 // ========== Scenery-specific functions (migrated from SceneryManager.vue) ==========
 
 const groupCounts = computed(() => {
@@ -428,6 +439,8 @@ function handleReset() {
     onConfirm: () => {
       sceneryStore.resetChanges()
       syncLocalEntries()
+      // Restore sync warning if data still needs sync
+      syncWarningDismissed.value = false
     },
     onCancel: () => {}
   })
@@ -655,6 +668,24 @@ const isLoading = computed(() => {
         </button>
       </div>
 
+      <!-- Check updates button for aircraft/plugin tabs -->
+      <button
+        v-if="activeTab === 'aircraft' || activeTab === 'plugin'"
+        @click="handleCheckUpdates"
+        :disabled="managementStore.isCheckingUpdates"
+        class="px-3 py-1.5 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
+      >
+        <svg v-if="!managementStore.isCheckingUpdates" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+        </svg>
+        <svg v-else class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+        </svg>
+        <Transition name="text-fade" mode="out-in">
+          <span :key="locale">{{ t('management.checkUpdates') }}</span>
+        </Transition>
+      </button>
+
       <!-- Scenery-specific action buttons -->
       <template v-if="activeTab === 'scenery'">
         <!-- Auto-sort button (shown for all locales, only when index exists) -->
@@ -676,7 +707,7 @@ const isLoading = computed(() => {
         </Transition>
 
         <button
-          v-if="sceneryStore.hasChanges && !sceneryStore.data?.needsSync && sceneryStore.indexExists"
+          v-if="sceneryStore.hasLocalChanges && sceneryStore.indexExists"
           @click="handleReset"
           class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
         >

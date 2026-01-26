@@ -85,6 +85,8 @@ interface LoadableItem {
 
 export const useManagementStore = defineStore('management', () => {
   const appStore = useAppStore()
+  const toast = useToastStore()
+  const { t } = useI18n()
 
   // State
   const aircraft = ref<AircraftInfo[]>([])
@@ -307,9 +309,16 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   // Check for aircraft updates
-  async function checkAircraftUpdates() {
-    const { t } = useI18n()
-    const toast = useToastStore()
+  async function checkAircraftUpdates(forceRefresh: boolean = false) {
+    // Clear cache for items if force refresh is requested
+    if (forceRefresh) {
+      for (const item of aircraft.value) {
+        if (item.updateUrl) {
+          updateCache.delete(item.updateUrl)
+        }
+      }
+    }
+
     const result = await checkItemUpdates<AircraftInfo>({
       itemsRef: aircraft,
       checkCommand: 'check_aircraft_updates',
@@ -336,9 +345,16 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   // Check for plugin updates
-  async function checkPluginsUpdates() {
-    const { t } = useI18n()
-    const toast = useToastStore()
+  async function checkPluginsUpdates(forceRefresh: boolean = false) {
+    // Clear cache for items if force refresh is requested
+    if (forceRefresh) {
+      for (const item of plugins.value) {
+        if (item.updateUrl) {
+          updateCache.delete(item.updateUrl)
+        }
+      }
+    }
+
     const result = await checkItemUpdates<PluginInfo>({
       itemsRef: plugins,
       checkCommand: 'check_plugins_updates',
