@@ -59,6 +59,7 @@ const showOnlyMissingLibs = ref(false)
 const showMoreMenu = ref(false)
 const suppressLoading = ref(false)
 const moreMenuRef = ref<HTMLElement | null>(null)
+const syncWarningDismissed = ref(false)
 
 // Local copy of grouped entries for drag-and-drop
 const localGroupedEntries = ref<Record<string, SceneryManagerEntry[]>>({
@@ -156,6 +157,7 @@ async function loadTabData(tab: ManagementTab) {
       case 'scenery':
         // Don't reload if there are unsaved changes - preserve local modifications
         if (!sceneryStore.hasChanges) {
+          syncWarningDismissed.value = false
           await sceneryStore.loadData()
           if (sceneryStore.error) {
             modalStore.showError(t('management.scanFailed') + ': ' + sceneryStore.error)
@@ -196,6 +198,16 @@ const filteredNavdata = computed(() => {
     n.folderName.toLowerCase().includes(query)
   )
 })
+
+// Computed property to determine if sync warning should be shown
+const showSyncWarning = computed(() => {
+  return sceneryStore.data?.needsSync && !syncWarningDismissed.value
+})
+
+// Dismiss the sync warning
+function dismissSyncWarning() {
+  syncWarningDismissed.value = true
+}
 
 // Handle toggle for non-scenery items
 async function handleToggleEnabled(itemType: ManagementItemType, folderName: string) {
@@ -315,6 +327,7 @@ function handleDragStart() {
 }
 
 async function handleSceneryToggleEnabled(folderName: string) {
+  syncWarningDismissed.value = true
   await sceneryStore.toggleEnabled(folderName)
   syncLocalEntries()
 }
@@ -324,6 +337,7 @@ async function handleMoveUp(folderName: string) {
   const index = entries.findIndex(e => e.folderName === folderName)
 
   if (index > 0) {
+    syncWarningDismissed.value = true
     const currentEntry = entries[index]
     const targetEntry = entries[index - 1]
 
@@ -340,6 +354,7 @@ async function handleMoveDown(folderName: string) {
   const entries = sceneryStore.sortedEntries
   const index = entries.findIndex(e => e.folderName === folderName)
   if (index < entries.length - 1) {
+    syncWarningDismissed.value = true
     const currentEntry = entries[index]
     const targetEntry = entries[index + 1]
 
@@ -354,6 +369,7 @@ async function handleMoveDown(folderName: string) {
 
 async function handleDragEnd() {
   drag.value = false
+  syncWarningDismissed.value = true
   const allEntries = categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
   await sceneryStore.reorderEntries(allEntries)
   syncLocalEntries()
@@ -674,14 +690,14 @@ const isLoading = computed(() => {
             @click="handleApplyChanges"
             :disabled="!sceneryStore.indexExists || sceneryStore.isSaving"
             class="px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
-            :class="{ 'ring-2 ring-amber-400 ring-offset-1': sceneryStore.data?.needsSync }"
+            :class="{ 'ring-2 ring-amber-400 ring-offset-1': showSyncWarning }"
           >
             <svg v-if="sceneryStore.isSaving" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             <!-- Warning icon when ini out of sync -->
-            <svg v-else-if="sceneryStore.data?.needsSync" class="h-3.5 w-3.5 text-amber-200" fill="currentColor" viewBox="0 0 20 20">
+            <svg v-else-if="showSyncWarning" class="h-3.5 w-3.5 text-amber-200" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
             </svg>
             <Transition name="text-fade" mode="out-in">
@@ -691,7 +707,7 @@ const isLoading = computed(() => {
           <!-- Tooltip popover pointing to button -->
           <Transition name="fade">
             <div
-              v-if="sceneryStore.data?.needsSync"
+              v-if="showSyncWarning"
               class="absolute right-0 top-full mt-2 w-64 p-2.5 bg-amber-50 dark:bg-amber-900/90 border border-amber-300 dark:border-amber-600 rounded-lg shadow-lg z-50"
             >
               <!-- Arrow pointing up -->
@@ -701,7 +717,17 @@ const isLoading = computed(() => {
                 <svg class="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                   <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
                 </svg>
-                <span class="text-xs text-amber-800 dark:text-amber-200">{{ t('sceneryManager.iniOutOfSync') }}</span>
+                <span class="text-xs text-amber-800 dark:text-amber-200 flex-1">{{ t('sceneryManager.iniOutOfSync') }}</span>
+                <!-- Close button -->
+                <button
+                  @click.stop="dismissSyncWarning"
+                  class="p-0.5 rounded hover:bg-amber-200 dark:hover:bg-amber-800 transition-colors flex-shrink-0"
+                  :title="t('common.close')"
+                >
+                  <svg class="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
             </div>
           </Transition>

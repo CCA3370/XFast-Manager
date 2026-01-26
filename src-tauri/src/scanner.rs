@@ -2980,18 +2980,13 @@ impl Scanner {
             airac: cycle.airac.clone(),
         };
 
-        // Determine install path based on name
-        let (install_path, display_name) =
-            if cycle.name.contains("X-Plane") || cycle.name.contains("X-Plane 11") {
-                (parent.to_path_buf(), format!("Navdata: {}", cycle.name))
-            } else if cycle.name.contains("X-Plane GNS430") {
-                (
-                    parent.to_path_buf(),
-                    format!("Navdata GNS430: {}", cycle.name),
-                )
-            } else {
-                return Err(anyhow::anyhow!("Unknown Navdata Format: {}", cycle.name));
-            };
+        // Validate navdata format
+        if !cycle.name.contains("X-Plane") && !cycle.name.contains("X-Plane 11") && !cycle.name.contains("X-Plane GNS430") {
+            return Err(anyhow::anyhow!("Unknown Navdata Format: {}", cycle.name));
+        }
+
+        let install_path = parent.to_path_buf();
+        let display_name = cycle.name.clone();
 
         Ok(Some(DetectedItem {
             original_input_path: String::new(),
@@ -3024,13 +3019,12 @@ impl Scanner {
             airac: cycle.airac.clone(),
         };
 
-        let display_name = if cycle.name.contains("X-Plane") || cycle.name.contains("X-Plane 11") {
-            format!("Navdata: {}", cycle.name)
-        } else if cycle.name.contains("X-Plane GNS430") {
-            format!("Navdata GNS430: {}", cycle.name)
-        } else {
+        // Validate navdata format
+        if !cycle.name.contains("X-Plane") && !cycle.name.contains("X-Plane 11") && !cycle.name.contains("X-Plane GNS430") {
             return Err(anyhow::anyhow!("Unknown Navdata Format: {}", cycle.name));
-        };
+        }
+
+        let display_name = cycle.name.clone();
 
         // Get the navdata folder root inside the archive
         let internal_root = if let Some(p) = parent {

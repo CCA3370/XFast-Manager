@@ -403,6 +403,7 @@ export default {
     total: '总数',
     enabled: '已启用',
     hasUpdate: '有更新',
+    allUpToDate: '所有支持 SkunkcraftsUpdater 的内容已是最新',
     checkingUpdates: '检查更新中...',
     outdated: '已过期',
     liveries: '涂装',

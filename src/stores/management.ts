@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, type Ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { useI18n } from 'vue-i18n'
 import type {
   AircraftInfo,
   PluginInfo,
@@ -10,6 +11,7 @@ import type {
   ManagementItemType
 } from '@/types'
 import { useAppStore } from './app'
+import { useToastStore } from './toast'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import { logError } from '@/services/logger'
 
@@ -219,6 +221,9 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   // Generic update check function
+  // Returns: { checked: boolean, updateCount: number }
+  // - checked: true if actual update check was performed (not just cache hit)
+  // - updateCount: number of items with available updates
   interface UpdateCheckConfig<T extends UpdatableItem> {
     itemsRef: Ref<T[]>
     checkCommand: string
@@ -226,12 +231,23 @@ export const useManagementStore = defineStore('management', () => {
     logName: string
   }
 
-  async function checkItemUpdates<T extends UpdatableItem>(config: UpdateCheckConfig<T>) {
-    if (config.itemsRef.value.length === 0) return
+  interface UpdateCheckResult {
+    checked: boolean
+    updateCount: number
+  }
+
+  async function checkItemUpdates<T extends UpdatableItem>(config: UpdateCheckConfig<T>): Promise<UpdateCheckResult> {
+    if (config.itemsRef.value.length === 0) {
+      return { checked: false, updateCount: 0 }
+    }
 
     // Only check items that have update URLs and no valid cache
     const itemsToCheck = getItemsNeedingUpdateCheck(config.itemsRef.value)
-    if (itemsToCheck.length === 0) return
+    if (itemsToCheck.length === 0) {
+      // All items have valid cache, count current updates
+      const updateCount = config.itemsRef.value.filter(item => item.hasUpdate).length
+      return { checked: false, updateCount }
+    }
 
     isCheckingUpdates.value = true
 
@@ -260,9 +276,14 @@ export const useManagementStore = defineStore('management', () => {
         }
         return item
       })
+
+      // Count items with updates after merge
+      const updateCount = config.itemsRef.value.filter(item => item.hasUpdate).length
+      return { checked: true, updateCount }
     } catch (e) {
       logError(`Failed to check ${config.logName} updates: ${e}`, 'management')
       // Don't set error.value here as this is a background operation
+      return { checked: false, updateCount: 0 }
     } finally {
       isCheckingUpdates.value = false
     }
@@ -287,12 +308,18 @@ export const useManagementStore = defineStore('management', () => {
 
   // Check for aircraft updates
   async function checkAircraftUpdates() {
-    await checkItemUpdates<AircraftInfo>({
+    const { t } = useI18n()
+    const toast = useToastStore()
+    const result = await checkItemUpdates<AircraftInfo>({
       itemsRef: aircraft,
       checkCommand: 'check_aircraft_updates',
       checkParamName: 'aircraft',
       logName: 'aircraft'
     })
+    // Show toast when check was actually performed and no updates found
+    if (result.checked && result.updateCount === 0) {
+      toast.info(t('management.allUpToDate'))
+    }
   }
 
   // Load plugins data
@@ -310,12 +337,18 @@ export const useManagementStore = defineStore('management', () => {
 
   // Check for plugin updates
   async function checkPluginsUpdates() {
-    await checkItemUpdates<PluginInfo>({
+    const { t } = useI18n()
+    const toast = useToastStore()
+    const result = await checkItemUpdates<PluginInfo>({
       itemsRef: plugins,
       checkCommand: 'check_plugins_updates',
       checkParamName: 'plugins',
       logName: 'plugins'
     })
+    // Show toast when check was actually performed and no updates found
+    if (result.checked && result.updateCount === 0) {
+      toast.info(t('management.allUpToDate'))
+    }
   }
 
   // Load navdata (no update cache needed)

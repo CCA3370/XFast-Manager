@@ -390,6 +390,7 @@ export default {
     total: 'Total',
     enabled: 'Enabled',
     hasUpdate: 'Updates',
+    allUpToDate: 'All addons with SkunkcraftsUpdater support are up to date',
     checkingUpdates: 'Checking updates...',
     outdated: 'Outdated',
     liveries: 'liveries',
