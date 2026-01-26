@@ -60,7 +60,7 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
     },
     LiveryPattern {
         aircraft_type_id: "TOLISS_A319",
-        aircraft_name: "Toliss A319",
+        aircraft_name: "ToLiss A319",
         detection_rules: &[
             DetectionRule {
                 pattern_type: "file",
@@ -87,7 +87,7 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
     },
     LiveryPattern {
         aircraft_type_id: "TOLISS_A320",
-        aircraft_name: "Toliss A320",
+        aircraft_name: "ToLiss A320",
         detection_rules: &[
             DetectionRule {
                 pattern_type: "file",
@@ -114,7 +114,7 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
     },
     LiveryPattern {
         aircraft_type_id: "TOLISS_A321",
-        aircraft_name: "Toliss A321",
+        aircraft_name: "ToLiss A321",
         detection_rules: &[
             DetectionRule {
                 pattern_type: "file",
@@ -141,7 +141,7 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
     },
     LiveryPattern {
         aircraft_type_id: "TOLISS_A339",
-        aircraft_name: "Toliss A339",
+        aircraft_name: "ToLiss A339",
         detection_rules: &[
             DetectionRule {
                 pattern_type: "file",
