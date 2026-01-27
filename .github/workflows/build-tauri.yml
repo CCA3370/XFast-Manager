@@ -1,4 +1,4 @@
-name: Build Tauri (Windows Portable)
+name: Build Tauri (All Platforms)
 
 on:
   push:
@@ -10,9 +10,26 @@ env:
   CARGO_NET_RETRY: 3
 
 jobs:
-  build-windows-portable:
-    name: Windows (Portable EXE)
-    runs-on: windows-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            args: ''
+            suffix: linux-x64
+            artifact_name: XFast-Manager-linux-x64
+          - platform: macos-latest
+            args: '--target universal-apple-darwin'
+            suffix: macos-universal
+            artifact_name: XFast-Manager-macos-universal
+          - platform: windows-latest
+            args: ''
+            suffix: windows-x64
+            artifact_name: XFast-Manager-windows-portable
+
+    name: Build (${{ matrix.suffix }})
+    runs-on: ${{ matrix.platform }}
 
     steps:
       - name: Checkout
@@ -30,6 +47,18 @@ jobs:
             echo "📦 Standard build mode (optimized for size)"
           fi
 
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Add macOS targets
+        if: matrix.platform == 'macos-latest'
+        run: |
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -46,16 +75,11 @@ jobs:
         if: steps.check_fast.outputs.is_fast == 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          # Use a stable prefix key for fast builds
           prefix-key: "v2-rust-fast"
-          # Include build settings in cache key to avoid conflicts
           key: "fast-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}"
-          # Always save cache, even on failure
           cache-on-failure: true
           save-if: true
-          # Cache all target directories
           cache-all-crates: true
-          # Cache directories
           cache-directories: |
             ~/.cargo/bin/
             ~/.cargo/registry/index/
@@ -82,111 +106,69 @@ jobs:
         if: steps.check_fast.outputs.is_fast == 'true'
         shell: bash
         run: |
-          # Enable incremental compilation for faster rebuilds
           echo "CARGO_INCREMENTAL=1" >> $GITHUB_ENV
-          # Use maximum codegen units for maximum parallelism
           echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256" >> $GITHUB_ENV
-          # Disable LTO completely for fastest linking
           echo "CARGO_PROFILE_RELEASE_LTO=off" >> $GITHUB_ENV
-          # Use minimal optimization for fastest compilation
           echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=1" >> $GITHUB_ENV
-          # Keep debug info minimal
           echo "CARGO_PROFILE_RELEASE_DEBUG=0" >> $GITHUB_ENV
-          # Still strip symbols to reduce size
           echo "CARGO_PROFILE_RELEASE_STRIP=symbols" >> $GITHUB_ENV
-          # Keep panic=abort
           echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
-          # Additional speed optimizations (removed -C prefer-dynamic as it conflicts with panic=abort)
           echo "RUSTFLAGS=-C embed-bitcode=no" >> $GITHUB_ENV
-          # Use faster linker if available
           echo "CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=unpacked" >> $GITHUB_ENV
           echo "BUILD_MODE=fast" >> $GITHUB_ENV
-          echo "✅ Fast build environment configured (MAXIMUM SPEED)"
-          echo "📊 Incremental: ON, Codegen: 256, LTO: OFF, Opt: 1"
-
-      - name: Check cache status (Fast mode)
-        if: steps.check_fast.outputs.is_fast == 'true'
-        shell: bash
-        run: |
-          echo "🔍 Checking cache status..."
-          if [ -d "target/release/incremental" ]; then
-            echo "✅ Incremental cache found!"
-            ls -lh target/release/incremental/ | head -10
-          else
-            echo "⚠️ No incremental cache found (first build)"
-          fi
-          if [ -d "target/release/build" ]; then
-            echo "✅ Build cache found!"
-            echo "📦 Cached crates: $(ls target/release/build | wc -l)"
-          else
-            echo "⚠️ No build cache found"
-          fi
+          echo "✅ Fast build environment configured"
 
       - name: Set standard build environment
         if: steps.check_fast.outputs.is_fast == 'false'
         shell: bash
         run: |
-          # Disable incremental for smaller artifacts and reproducibility
           echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
-          # Single codegen unit for maximum optimization
           echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1" >> $GITHUB_ENV
-          # Fat LTO for maximum runtime performance
           echo "CARGO_PROFILE_RELEASE_LTO=fat" >> $GITHUB_ENV
-          # Maximum optimization for best runtime performance
           echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=3" >> $GITHUB_ENV
-          # Strip symbols
           echo "CARGO_PROFILE_RELEASE_STRIP=symbols" >> $GITHUB_ENV
-          # Panic abort for smaller binary
           echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
-          # Additional optimizations for maximum performance
-          echo "RUSTFLAGS=-C target-cpu=x86-64-v2" >> $GITHUB_ENV
           echo "BUILD_MODE=standard" >> $GITHUB_ENV
 
-      - name: Build Tauri (Fast)
-        if: steps.check_fast.outputs.is_fast == 'true'
-        run: |
-          echo "🚀 Building in FAST mode (incremental + thin LTO + parallel codegen)..."
-          npm run tauri:build
-
-      - name: Show build statistics (Fast mode)
-        if: steps.check_fast.outputs.is_fast == 'true'
+      - name: Build Tauri
         shell: bash
         run: |
-          echo "📊 Build completed! Statistics:"
-          if [ -d "target/release/incremental" ]; then
-            echo "✅ Incremental cache size: $(du -sh target/release/incremental | cut -f1)"
-          fi
-          if [ -d "target/release/build" ]; then
-            echo "✅ Build artifacts: $(ls target/release/build | wc -l) crates"
-          fi
-          if [ -f "target/release/xfastmanager.exe" ]; then
-            echo "✅ Binary size: $(du -h target/release/xfastmanager.exe | cut -f1)"
+          echo "🔨 Building for ${{ matrix.suffix }}..."
+          if [ -n "${{ matrix.args }}" ]; then
+            npm run tauri:build -- ${{ matrix.args }}
+          else
+            npm run tauri:build
           fi
 
-      - name: Build Tauri (Standard)
-        if: steps.check_fast.outputs.is_fast == 'false'
+      - name: Prepare Windows artifact
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
         run: |
-          echo "📦 Building in STANDARD mode (fat LTO + single codegen unit)..."
-          npm run tauri:build
+          Rename-Item -Path "target/release/xfastmanager.exe" -NewName "XFast-Manager.exe" -Force
 
-      - name: Rename EXE
-        run: Rename-Item -Path "target/release/xfastmanager.exe" -NewName "XFast-Manager.exe" -Force
-
-      - name: Upload Fast Build
-        if: steps.check_fast.outputs.is_fast == 'true'
+      - name: Upload Windows artifact
+        if: matrix.platform == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: XFast-Manager-windows-fast
+          name: ${{ matrix.artifact_name }}
           path: 'target/release/XFast-Manager.exe'
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload Standard Build
-        if: steps.check_fast.outputs.is_fast == 'false'
+      - name: Upload macOS artifact
+        if: matrix.platform == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: XFast-Manager-windows-portable
-          path: 'target/release/XFast-Manager.exe'
+          name: ${{ matrix.artifact_name }}
+          path: 'target/universal-apple-darwin/release/bundle/dmg/*.dmg'
           if-no-files-found: error
+          retention-days: 7
 
-
+      - name: Upload Linux artifact
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: 'target/release/bundle/appimage/*.AppImage'
+          if-no-files-found: error
+          retention-days: 7

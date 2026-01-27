@@ -202,6 +202,9 @@ struct ProgressContext {
     task_sizes: Arc<Vec<u64>>,
     /// Cumulative bytes at the start of each task
     task_cumulative: Arc<Vec<u64>>,
+    /// Maximum percentage reached, stored as percentage * 100 for atomic ops
+    /// Used to ensure progress never goes backward during task transitions
+    max_percentage: Arc<AtomicU64>,
 }
 
 impl ProgressContext {
@@ -217,6 +220,7 @@ impl ProgressContext {
             verification_progress: Arc::new(AtomicU64::new(0)),
             task_sizes: Arc::new(Vec::new()),
             task_cumulative: Arc::new(Vec::new()),
+            max_percentage: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -279,7 +283,7 @@ impl ProgressContext {
         // Calculate percentage based on phase
         // Each task gets a proportional share of 0-100% based on its size
         // Within each task: 90% for installation, 10% for verification
-        let (percentage, verification_progress) = match phase {
+        let (raw_percentage, verification_progress) = match phase {
             InstallPhase::Finalizing => (100.0, None),
             InstallPhase::Verifying => {
                 let verify_progress = self.get_verification_progress();
@@ -325,6 +329,14 @@ impl ProgressContext {
                 (base_pct + install_pct, None)
             }
         };
+
+        // Ensure progress never goes backward by tracking max percentage
+        // This prevents jumps when transitioning between tasks
+        let stored_max = self.max_percentage.load(Ordering::SeqCst) as f64 / 100.0;
+        let percentage = raw_percentage.max(stored_max);
+        // Update max_percentage if current is higher
+        let new_max = (percentage * 100.0) as u64;
+        self.max_percentage.fetch_max(new_max, Ordering::SeqCst);
 
         let progress = InstallProgress {
             percentage,

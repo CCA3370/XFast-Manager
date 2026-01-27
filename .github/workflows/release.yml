@@ -22,7 +22,7 @@ jobs:
       tag: ${{ steps.get-version.outputs.tag }}
       changelog: ${{ steps.extract-changelog.outputs.changelog }}
       is_prerelease: ${{ steps.check-prerelease.outputs.is_prerelease }}
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -78,15 +78,14 @@ jobs:
         id: extract-changelog
         run: |
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          
+
           # Extract the changelog section for this version
-          # Use index() for literal string matching (not regex) to avoid escaping issues
           CHANGELOG=$(awk -v ver="## [$VERSION]" '
             index($0, ver) == 1 { found=1; print; next }
             found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' | head -c 65000)
-          
+
           if [ -z "$CHANGELOG" ] || [ "$(echo "$CHANGELOG" | tr -d '[:space:]')" = "" ]; then
             echo "⚠️  No changelog found for version $VERSION"
             echo "Please add a changelog entry for version $VERSION in CHANGELOG.md"
@@ -100,7 +99,7 @@ jobs:
           else
             echo "✅ Extracted changelog for version $VERSION"
           fi
-          
+
           # Write to file to avoid issues with multiline in GitHub Actions
           echo "$CHANGELOG" > /tmp/changelog.txt
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
@@ -120,19 +119,50 @@ jobs:
             echo "✅ Committed and pushed version sync"
           fi
 
-  build-and-release:
-    name: Build and Release
+  build:
+    name: Build (${{ matrix.suffix }})
     needs: prepare-release
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            args: ''
+            suffix: linux-x64
+            artifact_glob: 'target/release/bundle/appimage/*.AppImage'
+            artifact_suffix: linux-x64.AppImage
+          - platform: macos-latest
+            args: '--target universal-apple-darwin'
+            suffix: macos-universal
+            artifact_glob: 'target/universal-apple-darwin/release/bundle/dmg/*.dmg'
+            artifact_suffix: macos-universal.dmg
+          - platform: windows-latest
+            args: ''
+            suffix: windows-x64
+            artifact_glob: 'target/release/xfastmanager.exe'
+            artifact_suffix: windows-portable.exe
+
+    runs-on: ${{ matrix.platform }}
     permissions:
       contents: write
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: main  # Ensure we get the latest commit with version sync
+          ref: main
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Add macOS targets
+        if: matrix.platform == 'macos-latest'
+        run: |
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -156,44 +186,112 @@ jobs:
       - name: Set production build environment
         shell: bash
         run: |
-          # Production build settings for maximum optimization
           echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_LTO=fat" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=3" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_STRIP=symbols" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
-          echo "RUSTFLAGS=-C target-cpu=x86-64-v2" >> $GITHUB_ENV
           echo "BUILD_MODE=production" >> $GITHUB_ENV
           echo "✅ Production build environment configured"
-          echo "📊 Settings: LTO=fat, Opt=3, Codegen=1"
 
       - name: Build Tauri
+        shell: bash
         run: |
-          echo "🔨 Building XFast-Manager ${{ needs.prepare-release.outputs.version }}..."
-          npm run tauri:build
+          echo "🔨 Building XFast-Manager ${{ needs.prepare-release.outputs.version }} for ${{ matrix.suffix }}..."
+          if [ -n "${{ matrix.args }}" ]; then
+            npm run tauri:build -- ${{ matrix.args }}
+          else
+            npm run tauri:build
+          fi
 
-      - name: Rename and prepare artifacts
+      - name: Prepare Windows artifact
+        if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          cd target/release
           $version = "${{ needs.prepare-release.outputs.version }}"
-          $exeName = "XFast-Manager-$version-windows-portable.exe"
-          $zipName = "XFast-Manager-$version-windows-portable.zip"
+          $newName = "XFast-Manager-$version-windows-portable.exe"
+          Rename-Item -Path "target/release/xfastmanager.exe" -NewName $newName -Force
+          echo "artifact_path=target/release/$newName" >> $env:GITHUB_OUTPUT
 
-          # Rename exe
-          Rename-Item -Path "xfastmanager.exe" -NewName $exeName
+      - name: Prepare macOS artifact
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        run: |
+          version="${{ needs.prepare-release.outputs.version }}"
+          dmg_file=$(ls target/universal-apple-darwin/release/bundle/dmg/*.dmg)
+          new_name="XFast-Manager-${version}-macos-universal.dmg"
+          mv "$dmg_file" "target/universal-apple-darwin/release/bundle/dmg/$new_name"
 
-          # Create zip containing the exe
-          Compress-Archive -Path $exeName -DestinationPath $zipName -CompressionLevel Optimal
+      - name: Prepare Linux artifact
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          version="${{ needs.prepare-release.outputs.version }}"
+          appimage_file=$(ls target/release/bundle/appimage/*.AppImage)
+          new_name="XFast-Manager-${version}-linux-x64.AppImage"
+          mv "$appimage_file" "target/release/bundle/appimage/$new_name"
 
-          # Create checksums file (for zip)
-          $hash = (Get-FileHash -Path $zipName -Algorithm SHA256).Hash.ToLower()
-          "$hash  $zipName" | Out-File -FilePath "checksums.txt" -Encoding utf8
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.suffix }}
+          path: |
+            target/release/XFast-Manager-*-windows-portable.exe
+            target/universal-apple-darwin/release/bundle/dmg/XFast-Manager-*-macos-universal.dmg
+            target/release/bundle/appimage/XFast-Manager-*-linux-x64.AppImage
+          if-no-files-found: ignore
+          retention-days: 1
 
-          Write-Host "✅ Artifacts prepared:"
-          Get-ChildItem -Name "XFast-Manager-*.zip"
-          Get-Content "checksums.txt"
+  release:
+    name: Create Release
+    needs: [prepare-release, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: release-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: |
+          echo "📦 Downloaded artifacts:"
+          find artifacts -type f -name "XFast-Manager-*" | head -20
+
+      - name: Prepare release files
+        shell: bash
+        run: |
+          mkdir -p release-files
+          version="${{ needs.prepare-release.outputs.version }}"
+
+          # Find and copy all artifacts to release-files
+          find artifacts -type f -name "XFast-Manager-*" -exec cp {} release-files/ \;
+
+          # Create zip for Windows exe
+          cd release-files
+          if [ -f "XFast-Manager-${version}-windows-portable.exe" ]; then
+            zip "XFast-Manager-${version}-windows-portable.zip" "XFast-Manager-${version}-windows-portable.exe"
+          fi
+
+          # Generate checksums
+          sha256sum XFast-Manager-* > checksums.txt
+
+          echo "✅ Release files prepared:"
+          ls -la
+          echo ""
+          echo "📋 Checksums:"
+          cat checksums.txt
 
       - name: Create Git Tag
         shell: bash
@@ -213,8 +311,10 @@ jobs:
           draft: false
           prerelease: ${{ needs.prepare-release.outputs.is_prerelease == 'true' }}
           files: |
-            target/release/XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-portable.zip
-            target/release/checksums.txt
+            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-portable.zip
+            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-macos-universal.dmg
+            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.AppImage
+            release-files/checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -229,4 +329,10 @@ jobs:
           else
             echo "✅ Type: Stable release"
           fi
+          echo ""
+          echo "📦 Artifacts included:"
+          echo "  - Windows: XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-portable.zip"
+          echo "  - macOS:   XFast-Manager-${{ needs.prepare-release.outputs.version }}-macos-universal.dmg"
+          echo "  - Linux:   XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.AppImage"
+          echo ""
           echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ needs.prepare-release.outputs.tag }}"
