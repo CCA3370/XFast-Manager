@@ -3,7 +3,7 @@
 //! This module manages a persistent SQLite database of scenery classifications
 //! with cache invalidation based on directory modification times.
 
-use crate::database::{apply_migrations, get_database_path, open_connection, SceneryQueries, CURRENT_SCHEMA_VERSION};
+use crate::database::{apply_migrations, open_connection, SceneryQueries, CURRENT_SCHEMA_VERSION};
 use crate::logger;
 use crate::models::{
     SceneryCategory, SceneryIndex, SceneryIndexScanResult, SceneryIndexStats, SceneryIndexStatus,
@@ -1631,12 +1631,6 @@ fn extract_scenery_prefix(folder_name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_database_path() {
-        let path = get_database_path();
-        assert!(path.to_string_lossy().contains("scenery.db"));
-    }
 
     #[test]
     fn test_empty_index_creation() {

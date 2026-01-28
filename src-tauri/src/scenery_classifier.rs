@@ -1286,8 +1286,7 @@ fn calculate_sub_priority(category: &SceneryCategory, folder_name: &str) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-
+    
     #[test]
     fn test_sam_library_detection() {
         // SAM libraries should be classified as FixedHighPriority

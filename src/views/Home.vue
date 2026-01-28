@@ -106,66 +106,21 @@
           <AnalyzingOverlay v-if="store.isAnalyzing" key="analyzing" />
 
           <InstallProgressOverlay
-            v-else-if="store.isInstalling"
+            v-else-if="store.isInstalling || store.showCompletion"
             key="installing"
             :percentage="progressStore.formatted.percentage"
             :task-name="progressStore.formatted.taskName"
             :processed-m-b="progressStore.formatted.processedMB"
             :total-m-b="progressStore.formatted.totalMB"
             :task-progress="progressStore.formatted.taskProgress"
+            :tasks="store.installingTasks"
+            :current-task-index="progressStore.progress?.currentTaskIndex ?? 0"
+            :is-complete="store.showCompletion"
+            :install-result="store.installResult"
             @skip="handleSkipTask"
             @cancel="handleCancelInstallation"
+            @confirm="handleCompletionConfirm"
           />
-        </transition>
-
-        <!-- Completion View (shows behind animation) -->
-        <transition name="fade-in-slow" mode="out-in">
-          <div v-if="store.showCompletion" class="absolute inset-0 z-20 bg-white dark:bg-gray-900 rounded-2xl flex items-center justify-center p-6 transition-colors duration-300 pointer-events-auto">
-            <div class="w-full max-w-md">
-              <CompletionView
-                :result="store.installResult!"
-                @confirm="handleCompletionConfirm"
-              />
-            </div>
-          </div>
-        </transition>
-
-        <!-- Completion Animation Overlay (on top of completion view) -->
-        <transition name="fade">
-          <div v-if="store.showCompletionAnimation" class="absolute inset-0 z-30 flex items-start justify-center pointer-events-none"
-               :class="store.installResult && store.installResult.failedTasks === 0 ? 'pt-[80px]' : 'pt-[40px]'">
-            <div class="w-full max-w-md">
-                <!-- Success Icon with Animation -->
-                <div v-if="store.installResult && store.installResult.failedTasks === 0" class="relative w-20 h-20 mx-auto">
-                  <!-- Animated checkmark circle -->
-                  <div class="absolute inset-0 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full animate-scale-in flex items-center justify-center shadow-2xl">
-                    <svg class="w-10 h-10 text-white animate-check-draw" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path class="check-path" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                  </div>
-                  <!-- Ripple effect -->
-                  <div class="absolute inset-0 bg-green-500 rounded-full animate-ripple opacity-0"></div>
-                </div>
-                <!-- Partial Success Icon -->
-                <div v-else-if="store.installResult && store.installResult.successfulTasks > 0" class="relative w-20 h-20 mx-auto">
-                  <div class="absolute inset-0 bg-gradient-to-r from-yellow-500 to-orange-600 rounded-full animate-scale-in flex items-center justify-center shadow-2xl">
-                    <svg class="w-10 h-10 text-white animate-check-draw" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
-                    </svg>
-                  </div>
-                  <div class="absolute inset-0 bg-yellow-500 rounded-full animate-ripple opacity-0"></div>
-                </div>
-                <!-- Failure Icon -->
-                <div v-else class="relative w-20 h-20 mx-auto">
-                  <div class="absolute inset-0 bg-gradient-to-r from-red-500 to-red-600 rounded-full animate-scale-in flex items-center justify-center shadow-2xl">
-                    <svg class="w-10 h-10 text-white animate-check-draw" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                    </svg>
-                  </div>
-                  <div class="absolute inset-0 bg-red-500 rounded-full animate-ripple opacity-0"></div>
-                </div>
-            </div>
-          </div>
         </transition>
       </div>
 
@@ -196,7 +151,6 @@ import type { UnlistenFn } from '@tauri-apps/api/event'
 import ConfirmationModal from '@/components/ConfirmationModal.vue'
 import PasswordModal from '@/components/PasswordModal.vue'
 import AnimatedText from '@/components/AnimatedText.vue'
-import CompletionView from '@/components/CompletionView.vue'
 import UpdateBanner from '@/components/UpdateBanner.vue'
 import InstallProgressOverlay from '@/components/InstallProgressOverlay.vue'
 import AnalyzingOverlay from '@/components/AnalyzingOverlay.vue'
@@ -463,12 +417,16 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
       logDebug(`Errors during analysis: ${result.errors.join('; ')}`, 'analysis')
       // Check if errors indicate wrong password
       const passwordErrors = result.errors.filter(err =>
-        err.includes('Wrong password') || err.includes('password') || err.includes('Password')
+        err.includes('Wrong password') || err.toLowerCase().includes('wrong password')
       )
 
-      if (passwordErrors.length > 0 && passwords) {
+      logDebug(`Password errors found: ${passwordErrors.length}, passwords param: ${passwords ? 'provided' : 'null'}`, 'analysis')
+
+      if (passwordErrors.length > 0 && passwords && Object.keys(passwords).length > 0) {
         // Increment retry counter BEFORE checking limit to prevent race condition
         passwordRetryCount.value++
+
+        logDebug(`Password retry count: ${passwordRetryCount.value}/${MAX_PASSWORD_RETRIES}`, 'analysis')
 
         // Check if we've exceeded retry limit (use >= to prevent off-by-one error)
         if (passwordRetryCount.value >= MAX_PASSWORD_RETRIES) {
@@ -479,13 +437,14 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
           return
         }
 
-        // 从错误信息中提取密码错误的文件路径
+        // Extract wrong password file paths from error messages
         const wrongPasswordPaths = extractWrongPasswordPaths(passwordErrors)
+        logDebug(`Wrong password paths extracted: ${wrongPasswordPaths.join(', ')}`, 'analysis')
         if (wrongPasswordPaths.length > 0) {
           passwordRequiredPaths.value = wrongPasswordPaths
         }
 
-        // 设置错误提示并重新显示密码模态框
+        // Set error message and re-show password modal
         passwordErrorMessage.value = t('password.wrongPassword')
         showPasswordModal.value = true
         store.isAnalyzing = false
@@ -508,8 +467,19 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
       }
 
       if (allowedTasks.length > 0) {
-        store.setCurrentTasks(allowedTasks)
-        showConfirmation.value = true
+        if (showConfirmation.value) {
+          // Confirmation modal already open - append new tasks
+          const addedCount = store.appendTasks(allowedTasks)
+          if (addedCount > 0) {
+            toast.success(t('home.tasksAppended', { count: addedCount }))
+          } else {
+            toast.info(t('home.duplicateTasksIgnored'))
+          }
+        } else {
+          // Fresh analysis - replace task list
+          store.setCurrentTasks(allowedTasks)
+          showConfirmation.value = true
+        }
         // Reset password state on successful analysis
         resetPasswordState()
         // Non-blocking log call
@@ -621,6 +591,9 @@ async function handleInstall() {
     toast.warning(t('home.noTasksEnabled'))
     return
   }
+
+  // Store the tasks being installed for the progress overlay
+  store.setInstallingTasks(enabledTasks)
 
   store.isInstalling = true
   // Non-blocking log call
@@ -887,120 +860,5 @@ function handleCompletionConfirm() {
 
 .progress-circle {
   animation: progress-pulse 2s ease-in-out infinite;
-}
-
-/* Completion Animation Styles */
-@keyframes scale-in {
-  0% {
-    opacity: 0;
-    transform: scale(0);
-  }
-  50% {
-    transform: scale(1.1);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes scale-in-shrink {
-  0% {
-    opacity: 0;
-    transform: scale(0);
-  }
-  30% {
-    transform: scale(1.1);
-  }
-  60% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(0.67);
-  }
-}
-
-@keyframes ripple {
-  0% {
-    transform: scale(1);
-    opacity: 0.5;
-  }
-  100% {
-    transform: scale(1.5);
-    opacity: 0;
-  }
-}
-
-@keyframes check-draw {
-  0% {
-    stroke-dashoffset: 100;
-  }
-  100% {
-    stroke-dashoffset: 0;
-  }
-}
-
-@keyframes icon-shrink {
-  0% {
-    transform: scale(1);
-  }
-  60% {
-    transform: scale(1);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.animate-scale-in {
-  animation: scale-in 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-}
-
-.animate-scale-in-shrink {
-  animation: scale-in-shrink 1.8s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
-}
-
-.animate-check-draw .check-path {
-  stroke-dasharray: 100;
-  stroke-dashoffset: 100;
-  animation: check-draw 0.6s ease-in-out 0.3s forwards;
-}
-
-.animate-icon-shrink {
-  animation: icon-shrink 1.8s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
-}
-
-.animate-ripple {
-  animation: ripple 0.8s ease-out 0.2s;
-}
-
-/* Fade out transition for completion animation overlay */
-.fade-out-enter-active,
-.fade-out-leave-active {
-  transition: opacity 0.2s ease-out;
-}
-
-.fade-out-enter-from {
-  opacity: 0;
-}
-
-.fade-out-leave-to {
-  opacity: 0;
-}
-
-/* Slow fade-in transition for completion view */
-.fade-in-slow-enter-active {
-  transition: opacity 0.8s ease-out;
-}
-
-.fade-in-slow-leave-active {
-  transition: opacity 0.5s ease-out;
-}
-
-.fade-in-slow-enter-from,
-.fade-in-slow-leave-to {
-  opacity: 0;
 }
 </style>

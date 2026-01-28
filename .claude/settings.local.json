@@ -68,7 +68,9 @@
       "Bash(cd:*)",
       "Bash(pnpm type-check:*)",
       "Bash(powershell -Command \"cd 'E:\\\\3370\\\\Desktop\\\\XFastInstall-Tauri'; pnpm type-check\":*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "WebFetch(domain:lucide.dev)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

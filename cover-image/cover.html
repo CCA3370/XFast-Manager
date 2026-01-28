@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XFast Manager Promo Card</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* 全局重置与字体 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* 核心卡片容器：600x600 */
+        .promo-card {
+            width: 600px;
+            height: 600px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .promo-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        /* 顶部标题区 */
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .main-title {
+            font-size: 48px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(2px 2px 3px rgba(0,0,0,0.1));
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        .sub-title {
+            font-size: 20px;
+            color: #475569;
+            font-weight: 600;
+        }
+
+        /* 中间核心流程区 */
+        .flow-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 40px;
+        }
+
+        /* 通用盒子样式 */
+        .box {
+            border-radius: 16px;
+            padding: 20px;
+            width: 180px;
+            height: 220px;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+
+        /* 左侧源文件盒子 (蓝色系) */
+        .box.source {
+            border: 2px solid #60a5fa;
+            box-shadow: 0 0 30px rgba(96, 165, 250, 0.6),
+                        0 0 60px rgba(96, 165, 250, 0.4),
+                        0 8px 20px rgba(0, 0, 0, 0.1),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        }
+        
+        .box-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .source .box-title { color: #2563eb; }
+
+        .file-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            flex: 1;
+        }
+
+        .file-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #64748b;
+        }
+
+        .file-item i {
+            font-size: 24px;
+            margin-bottom: 5px;
+            color: #94a3b8;
+        }
+        
+        .file-item span { font-size: 12px; font-weight: 600; }
+
+        /* 中间箭头 */
+        .arrow-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 0 10px;
+        }
+
+        .arrow-shape {
+            width: 100%;
+            height: 80px;
+            background: linear-gradient(90deg, #ffd700 0%, #ffed4e 50%, #ff6b9d 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            /* 使用 clip-path 制作箭头形状 */
+            clip-path: polygon(0% 30%, 80% 30%, 80% 0%, 100% 50%, 80% 100%, 80% 70%, 0% 70%);
+            box-shadow: 0 8px 25px rgba(255, 107, 157, 0.4), inset 0 1px 0 rgba(255,255,255,0.5);
+            border-radius: 4px;
+        }
+
+        .arrow-text {
+            color: #ffffff;
+            font-weight: 800;
+            font-size: 16px;
+            margin-right: 20px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            letter-spacing: 0.5px;
+        }
+
+        /* 右侧目标盒子 (绿色系) */
+        .box.target {
+            border: 2px solid #4ade80;
+            box-shadow: 0 0 30px rgba(74, 222, 128, 0.6),
+                        0 0 60px rgba(74, 222, 128, 0.4),
+                        0 8px 20px rgba(0, 0, 0, 0.1),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        }
+
+        .target .box-title { color: #16a34a; }
+
+        .check-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            flex: 1;
+            padding-left: 10px;
+        }
+
+        .check-list li {
+            font-size: 14px;
+            color: #166534;
+            display: flex;
+            align-items: center;
+        }
+
+        .check-list li i {
+            margin-right: 8px;
+            color: #22c55e;
+            font-weight: bold;
+        }
+
+        /* 底部功能区 */
+        .features-row {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            margin-bottom: 30px;
+            padding: 0 10px;
+        }
+
+        .feature-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            width: 30%;
+        }
+
+        .feature-icon-box {
+            font-size: 28px;
+            margin-bottom: 8px;
+            /* 渐变图标色 */
+            background: -webkit-linear-gradient(#3b82f6, #2563eb);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .feature-text {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1e293b;
+            line-height: 1.2;
+        }
+
+        /* 底部页脚 */
+        .footer {
+            margin-top: auto;
+            color: #94a3b8;
+            font-size: 14px;
+            font-weight: 500;
+            border-top: 1px solid #f1f5f9;
+            width: 80%;
+            text-align: center;
+            padding-top: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="promo-card">
+        <header class="header">
+            <h1 class="main-title">XFast Manager</h1>
+            <h2 class="sub-title">X-Plane Addon Auto Manager</h2>
+        </header>
+
+        <div class="flow-section">
+            <div class="box source">
+                <div class="box-title">Addon Files</div>
+                <div class="file-grid">
+                    <div class="file-item">
+                        <i class="fa-solid fa-file-zipper"></i>
+                        <span>.zip</span>
+                    </div>
+                    <div class="file-item">
+                        <i class="fa-solid fa-file-zipper"></i>
+                        <span>.7z</span>
+                    </div>
+                    <div class="file-item">
+                        <i class="fa-regular fa-file-lines"></i>
+                        <span>.rar</span>
+                    </div>
+                    <div class="file-item">
+                        <i class="fa-solid fa-folder-open"></i>
+                        <span>folder</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="arrow-container">
+                <div class="arrow-shape">
+                    <span class="arrow-text">Drag & Drop</span>
+                </div>
+            </div>
+
+            <div class="box target">
+                <div class="box-title">X-Plane</div>
+                <ul class="check-list">
+                    <li><i class="fa-solid fa-check"></i> Aircraft</li>
+                    <li><i class="fa-solid fa-check"></i> Livery</li>
+                    <li><i class="fa-solid fa-check"></i> Scenery</li>
+                    <li><i class="fa-solid fa-check"></i> Plugins</li>
+                    <li><i class="fa-solid fa-check"></i> Navdata</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="features-row">
+            <div class="feature-item">
+                <div class="feature-icon-box">
+                    <i class="fa-solid fa-layer-group"></i>
+                </div>
+                <div class="feature-text">Scenery<br>Auto-Sorting</div>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon-box">
+                    <i class="fa-solid fa-rotate"></i>
+                </div>
+                <div class="feature-text">Update<br>Checker</div>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon-box">
+                    <i class="fa-solid fa-box-open"></i>
+                </div>
+                <div class="feature-text">Addon<br>Management</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Windows · macOS · Linux
+        </div>
+    </div>
+
+</body>
+</html>

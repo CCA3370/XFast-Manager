@@ -51,6 +51,9 @@ export const useAppStore = defineStore('app', () => {
   const showCompletion = ref(false)
   const showCompletionAnimation = ref(false)
 
+  // Tasks currently being installed (persists across view switches)
+  const installingTasks = ref<InstallTask[]>([])
+
   // Default: all enabled
   const installPreferences = ref<Record<AddonType, boolean>>({
     [AddonType.Aircraft]: true,
@@ -289,6 +292,26 @@ export const useAppStore = defineStore('app', () => {
     })
   }
 
+  /** Append new tasks to current list (for adding files while confirmation modal is open) */
+  function appendTasks(newTasks: InstallTask[]): number {
+    // Deduplicate by sourcePath to avoid adding the same file twice
+    const existingPaths = new Set(currentTasks.value.map(t => t.sourcePath))
+    const uniqueNewTasks = newTasks.filter(t => !existingPaths.has(t.sourcePath))
+
+    if (uniqueNewTasks.length === 0) return 0
+
+    // Append to existing task list
+    currentTasks.value = [...currentTasks.value, ...uniqueNewTasks]
+
+    // Initialize state only for new tasks (preserve existing task settings)
+    uniqueNewTasks.forEach(task => {
+      const enabled = !(task.type === AddonType.Livery && task.liveryAircraftFound === false)
+      taskStates.value[task.id] = getDefaultTaskState(enabled)
+    })
+
+    return uniqueNewTasks.length
+  }
+
   function clearTasks() {
     currentTasks.value = []
     taskStates.value = {}
@@ -447,11 +470,17 @@ export const useAppStore = defineStore('app', () => {
     // Animation stays visible (doesn't hide) - it becomes the completion icon
   }
 
+  // Set installing tasks (called when installation starts)
+  function setInstallingTasks(tasks: InstallTask[]) {
+    installingTasks.value = tasks
+  }
+
   // Clear installation result
   function clearInstallResult() {
     installResult.value = null
     showCompletion.value = false
     showCompletionAnimation.value = false
+    installingTasks.value = []
   }
 
   return {
@@ -480,6 +509,7 @@ export const useAppStore = defineStore('app', () => {
     installResult,
     showCompletion,
     showCompletionAnimation,
+    installingTasks,
     setXplanePath,
     loadXplanePath,
     togglePreference,
@@ -491,6 +521,7 @@ export const useAppStore = defineStore('app', () => {
     dismissSceneryManagerHint,
     setLogLevel,
     setCurrentTasks,
+    appendTasks,
     clearTasks,
     setTaskOverwrite,
     setGlobalOverwrite,
@@ -510,6 +541,7 @@ export const useAppStore = defineStore('app', () => {
     addCliArgsToBatch,
     clearPendingCliArgs,
     setInstallResult,
+    setInstallingTasks,
     clearInstallResult,
   }
 })

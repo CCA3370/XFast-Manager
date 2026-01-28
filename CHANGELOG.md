@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-01-28
+
+### Added
+
+#### Installation Progress
+- **Adaptive Task List Size** - Installation progress view now adjusts task item sizes based on the number of tasks
+  - Fewer tasks (1-3): Larger, more prominent display
+  - Medium count (4-6): Standard size
+  - Many tasks (7+): Compact view to fit more items
+- **Professional Icons** - Replaced emoji icons with professional SVG icons for each addon type
+  - Aircraft: Plane icon
+  - Scenery: Globe icon
+  - Scenery Library: Layers icon
+  - Plugin: Lightning bolt icon
+  - Navdata: Map icon
+  - Livery: Palette icon
+
+#### Management View
+- **Update & Outdated Filters** - New filter buttons to quickly find addons with available updates or outdated navdata
+
+#### Livery Detection
+- **Enhanced Livery Recognition** - Improved detection of livery names from folder structures
+  - Better parsing of livery folder naming conventions
+  - More accurate livery count display
+
+### Changed
+
+#### Installation Progress
+- **Smoother Progress Animation** - Progress bar now animates more smoothly without regression
+- **View Persistence** - Installation progress and completion view now persists correctly when switching between pages
+
+#### User Interface
+- **New Application Icon** - Updated app icon with modern design
+- **Error Messages** - More specific and localized error messages for various failure scenarios
+
+#### Update Notification
+- **New Download Link** - Update notification now links to the official download page
+
+### Fixed
+
+- **Progress Bar Regression** - Fixed issue where progress percentage could temporarily decrease during task transitions
+- **Password Modal** - Improved password input interface with better visual feedback
+
 ## [0.7.7] - 2026-01-25
 
 ### Fixed

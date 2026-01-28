@@ -111,9 +111,7 @@ export const useUpdateStore = defineStore('update', () => {
   }
 
   async function openReleaseUrl() {
-    // TODO: 替换为实际的论坛下载链接
-    // 当前为占位符，等待正式发布后更新
-    const forumUrl = 'https://example.com/xfast-manager-download' // 待替换为实际论坛链接
+    const forumUrl = 'https://update.3370tech.cn/CCA3370/XFast-Manager'
 
     logBasic('User clicked download button, opening forum URL', 'update')
 

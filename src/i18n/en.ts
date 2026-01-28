@@ -46,7 +46,23 @@ export default {
     cannotInstallFromXPlaneDesc: 'Please drag files or archives from outside X-Plane folder. Cannot drag existing folders from within X-Plane.',
     ignoredTasks: '{count} add-ons ignored due to settings',
     allIgnored: 'All detected add-ons were ignored due to settings',
-    taskProgress: 'Task {current}'
+    taskProgress: 'Task {current}',
+    noTasksEnabled: 'No tasks are enabled for installation',
+    tasksAppended: '{count} new task(s) added',
+    duplicateTasksIgnored: 'File(s) already in list, skipped',
+    completed: 'completed',
+    installed: 'Installed',
+    failed: 'Failed',
+    installingNow: 'Installing...',
+    waiting: 'Waiting'
+  },
+  addonType: {
+    Aircraft: 'Aircraft',
+    Scenery: 'Scenery',
+    SceneryLibrary: 'Scenery Library',
+    Plugin: 'Plugin',
+    Navdata: 'Navdata',
+    Livery: 'Livery'
   },
   settings: {
     title: 'Settings',
@@ -187,7 +203,6 @@ export default {
     unknown: 'Unknown',
     noConfigPatternsHint: 'Please configure backup rules in Settings',
     liveryAircraftNotFound: 'Target aircraft not found',
-    liveryAircraftNotFoundDesc: 'Please install the corresponding aircraft first before installing this livery',
     // Close confirmation
     unsavedSceneryChangesTitle: 'Unsaved Scenery Changes',
     unsavedSceneryChangesMessage: 'You have unsaved scenery sorting changes. Are you sure you want to close?',
@@ -390,7 +405,12 @@ export default {
     total: 'Total',
     enabled: 'Enabled',
     hasUpdate: 'Updates',
+    filterUpdatesOnly: 'Updates Only',
+    filterOutdatedOnly: 'Outdated Only',
+    showAll: 'Show All',
+    allUpToDate: 'All addons with SkunkcraftsUpdater support are up to date',
     checkingUpdates: 'Checking updates...',
+    checkUpdates: 'Check Updates',
     outdated: 'Outdated',
     liveries: 'liveries',
     platform: 'Platform',

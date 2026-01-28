@@ -185,6 +185,13 @@ const showUnifiedPassword = ref(false)
 const passwords = ref<string[]>(props.archivePaths.map(() => ''))
 const showPasswords = ref<boolean[]>(props.archivePaths.map(() => false))
 
+// Watch for archivePaths changes (e.g., when wrong password is entered and modal is shown again)
+watch(() => props.archivePaths, (newPaths) => {
+  passwords.value = newPaths.map(() => '')
+  showPasswords.value = newPaths.map(() => false)
+  unifiedPassword.value = ''
+}, { deep: true })
+
 // Check if all passwords are filled
 const hasAllPasswords = computed(() => {
   if (useUnifiedPassword.value) {

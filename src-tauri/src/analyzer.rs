@@ -574,12 +574,14 @@ impl Analyzer {
         // For Livery type, we need special handling to find the target aircraft
         let (target_path, livery_aircraft_found) = if item.addon_type == AddonType::Livery {
             // Extract the livery name from display_name (remove the aircraft name suffix)
-            let livery_name = item
-                .display_name
-                .split(" (")
-                .next()
-                .unwrap_or(&item.display_name)
-                .to_string();
+            // The display_name format is: "{livery_name} ({aircraft_name})"
+            // We need to find the LAST " (" to handle livery names that contain parentheses
+            // e.g., "Qantas (XLR - PW - VH-OGA) 8K (ToLiss A321)" -> "Qantas (XLR - PW - VH-OGA) 8K"
+            let livery_name = if let Some(last_paren_pos) = item.display_name.rfind(" (") {
+                item.display_name[..last_paren_pos].to_string()
+            } else {
+                item.display_name.clone()
+            };
 
             if let Some(ref aircraft_type_id) = item.livery_aircraft_type {
                 // Try to find the target aircraft

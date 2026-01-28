@@ -9,6 +9,7 @@ import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
+import { getNavdataCycleStatus } from '@/utils/airac'
 import ManagementEntryCard from '@/components/ManagementEntryCard.vue'
 import SceneryEntryCard from '@/components/SceneryEntryCard.vue'
 import draggable from 'vuedraggable'
@@ -56,9 +57,12 @@ const highlightedIndex = ref(-1)
 const currentMatchIndex = ref(0)
 const searchExpandedGroups = ref<Record<string, boolean>>({})
 const showOnlyMissingLibs = ref(false)
+const showOnlyUpdates = ref(false)
+const showOnlyOutdated = ref(false)
 const showMoreMenu = ref(false)
 const suppressLoading = ref(false)
 const moreMenuRef = ref<HTMLElement | null>(null)
+const syncWarningDismissed = ref(false)
 
 // Local copy of grouped entries for drag-and-drop
 const localGroupedEntries = ref<Record<string, SceneryManagerEntry[]>>({
@@ -103,15 +107,18 @@ watch(activeTab, async (newTab, oldTab) => {
   suppressLoading.value = true
 
   searchQuery.value = ''
-  
+  // Reset filter states when switching tabs
+  showOnlyUpdates.value = false
+  showOnlyOutdated.value = false
+
   // Start loading data (non-blocking)
   const loadPromise = loadTabData(newTab)
-  
+
   // Wait for transition animation to complete before showing loading state
   setTimeout(() => {
     suppressLoading.value = false
   }, 350) // Slightly longer than transition duration (300ms)
-  
+
   await loadPromise
 })
 
@@ -127,6 +134,27 @@ const sceneryDataTrigger = computed(() => ({
 watch(sceneryDataTrigger, () => {
   if (activeTab.value === 'scenery') {
     syncLocalEntries()
+  }
+})
+
+// Auto-reset filter when no missing dependencies remain
+watch(() => sceneryStore.missingDepsCount, (newCount) => {
+  if (newCount === 0 && showOnlyMissingLibs.value) {
+    showOnlyMissingLibs.value = false
+  }
+})
+
+// Auto-reset filter when no updates available
+watch(() => managementStore.aircraftUpdateCount + managementStore.pluginsUpdateCount, (newCount) => {
+  if (newCount === 0 && showOnlyUpdates.value) {
+    showOnlyUpdates.value = false
+  }
+})
+
+// Auto-reset filter when no outdated navdata
+watch(() => managementStore.navdataOutdatedCount, (newCount) => {
+  if (newCount === 0 && showOnlyOutdated.value) {
+    showOnlyOutdated.value = false
   }
 })
 
@@ -154,8 +182,10 @@ async function loadTabData(tab: ManagementTab) {
         }
         break
       case 'scenery':
-        // Don't reload if there are unsaved changes - preserve local modifications
-        if (!sceneryStore.hasChanges) {
+        // Don't reload if user has made local modifications - preserve their work
+        // Use hasLocalChanges (not hasChanges) to allow reload even when needsSync is true
+        if (!sceneryStore.hasLocalChanges) {
+          syncWarningDismissed.value = false
           await sceneryStore.loadData()
           if (sceneryStore.error) {
             modalStore.showError(t('management.scanFailed') + ': ' + sceneryStore.error)
@@ -171,31 +201,56 @@ async function loadTabData(tab: ManagementTab) {
 
 // Filtered entries for non-scenery tabs
 const filteredAircraft = computed(() => {
-  if (!searchQuery.value.trim()) return managementStore.sortedAircraft
+  let items = managementStore.sortedAircraft
+  if (showOnlyUpdates.value) {
+    items = items.filter(a => a.hasUpdate)
+  }
+  if (!searchQuery.value.trim()) return items
   const query = searchQuery.value.toLowerCase()
-  return managementStore.sortedAircraft.filter(a =>
+  return items.filter(a =>
     a.displayName.toLowerCase().includes(query) ||
     a.folderName.toLowerCase().includes(query)
   )
 })
 
 const filteredPlugins = computed(() => {
-  if (!searchQuery.value.trim()) return managementStore.sortedPlugins
+  let items = managementStore.sortedPlugins
+  if (showOnlyUpdates.value) {
+    items = items.filter(p => p.hasUpdate)
+  }
+  if (!searchQuery.value.trim()) return items
   const query = searchQuery.value.toLowerCase()
-  return managementStore.sortedPlugins.filter(p =>
+  return items.filter(p =>
     p.displayName.toLowerCase().includes(query) ||
     p.folderName.toLowerCase().includes(query)
   )
 })
 
 const filteredNavdata = computed(() => {
-  if (!searchQuery.value.trim()) return managementStore.sortedNavdata
+  let items = managementStore.sortedNavdata
+  if (showOnlyOutdated.value) {
+    items = items.filter(n => {
+      const cycleText = n.cycle || n.airac
+      return getNavdataCycleStatus(cycleText) === 'outdated'
+    })
+  }
+  if (!searchQuery.value.trim()) return items
   const query = searchQuery.value.toLowerCase()
-  return managementStore.sortedNavdata.filter(n =>
+  return items.filter(n =>
     n.providerName.toLowerCase().includes(query) ||
     n.folderName.toLowerCase().includes(query)
   )
 })
+
+// Computed property to determine if sync warning should be shown
+const showSyncWarning = computed(() => {
+  return sceneryStore.data?.needsSync && !syncWarningDismissed.value
+})
+
+// Dismiss the sync warning
+function dismissSyncWarning() {
+  syncWarningDismissed.value = true
+}
 
 // Handle toggle for non-scenery items
 async function handleToggleEnabled(itemType: ManagementItemType, folderName: string) {
@@ -233,6 +288,17 @@ async function handleOpenFolder(itemType: ManagementItemType, folderName: string
     await managementStore.openFolder(itemType, folderName)
   } catch (e) {
     modalStore.showError(t('management.openFolderFailed') + ': ' + String(e))
+  }
+}
+
+// Handle manual check updates for aircraft/plugin tabs
+async function handleCheckUpdates() {
+  if (managementStore.isCheckingUpdates) return
+
+  if (activeTab.value === 'aircraft') {
+    await managementStore.checkAircraftUpdates(true)
+  } else if (activeTab.value === 'plugin') {
+    await managementStore.checkPluginsUpdates(true)
   }
 }
 
@@ -315,6 +381,7 @@ function handleDragStart() {
 }
 
 async function handleSceneryToggleEnabled(folderName: string) {
+  syncWarningDismissed.value = true
   await sceneryStore.toggleEnabled(folderName)
   syncLocalEntries()
 }
@@ -324,6 +391,7 @@ async function handleMoveUp(folderName: string) {
   const index = entries.findIndex(e => e.folderName === folderName)
 
   if (index > 0) {
+    syncWarningDismissed.value = true
     const currentEntry = entries[index]
     const targetEntry = entries[index - 1]
 
@@ -340,6 +408,7 @@ async function handleMoveDown(folderName: string) {
   const entries = sceneryStore.sortedEntries
   const index = entries.findIndex(e => e.folderName === folderName)
   if (index < entries.length - 1) {
+    syncWarningDismissed.value = true
     const currentEntry = entries[index]
     const targetEntry = entries[index + 1]
 
@@ -354,6 +423,7 @@ async function handleMoveDown(folderName: string) {
 
 async function handleDragEnd() {
   drag.value = false
+  syncWarningDismissed.value = true
   const allEntries = categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
   await sceneryStore.reorderEntries(allEntries)
   syncLocalEntries()
@@ -412,6 +482,8 @@ function handleReset() {
     onConfirm: () => {
       sceneryStore.resetChanges()
       syncLocalEntries()
+      // Restore sync warning if data still needs sync
+      syncWarningDismissed.value = false
     },
     onCancel: () => {}
   })
@@ -639,6 +711,24 @@ const isLoading = computed(() => {
         </button>
       </div>
 
+      <!-- Check updates button for aircraft/plugin tabs -->
+      <button
+        v-if="activeTab === 'aircraft' || activeTab === 'plugin'"
+        @click="handleCheckUpdates"
+        :disabled="managementStore.isCheckingUpdates"
+        class="px-3 py-1.5 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
+      >
+        <svg v-if="!managementStore.isCheckingUpdates" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+        </svg>
+        <svg v-else class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+        </svg>
+        <Transition name="text-fade" mode="out-in">
+          <span :key="locale">{{ t('management.checkUpdates') }}</span>
+        </Transition>
+      </button>
+
       <!-- Scenery-specific action buttons -->
       <template v-if="activeTab === 'scenery'">
         <!-- Auto-sort button (shown for all locales, only when index exists) -->
@@ -660,7 +750,7 @@ const isLoading = computed(() => {
         </Transition>
 
         <button
-          v-if="sceneryStore.hasChanges && !sceneryStore.data?.needsSync && sceneryStore.indexExists"
+          v-if="sceneryStore.hasLocalChanges && sceneryStore.indexExists"
           @click="handleReset"
           class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
         >
@@ -674,14 +764,14 @@ const isLoading = computed(() => {
             @click="handleApplyChanges"
             :disabled="!sceneryStore.indexExists || sceneryStore.isSaving"
             class="px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
-            :class="{ 'ring-2 ring-amber-400 ring-offset-1': sceneryStore.data?.needsSync }"
+            :class="{ 'ring-2 ring-amber-400 ring-offset-1': showSyncWarning }"
           >
             <svg v-if="sceneryStore.isSaving" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             <!-- Warning icon when ini out of sync -->
-            <svg v-else-if="sceneryStore.data?.needsSync" class="h-3.5 w-3.5 text-amber-200" fill="currentColor" viewBox="0 0 20 20">
+            <svg v-else-if="showSyncWarning" class="h-3.5 w-3.5 text-amber-200" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
             </svg>
             <Transition name="text-fade" mode="out-in">
@@ -691,7 +781,7 @@ const isLoading = computed(() => {
           <!-- Tooltip popover pointing to button -->
           <Transition name="fade">
             <div
-              v-if="sceneryStore.data?.needsSync"
+              v-if="showSyncWarning"
               class="absolute right-0 top-full mt-2 w-64 p-2.5 bg-amber-50 dark:bg-amber-900/90 border border-amber-300 dark:border-amber-600 rounded-lg shadow-lg z-50"
             >
               <!-- Arrow pointing up -->
@@ -701,7 +791,17 @@ const isLoading = computed(() => {
                 <svg class="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                   <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
                 </svg>
-                <span class="text-xs text-amber-800 dark:text-amber-200">{{ t('sceneryManager.iniOutOfSync') }}</span>
+                <span class="text-xs text-amber-800 dark:text-amber-200 flex-1">{{ t('sceneryManager.iniOutOfSync') }}</span>
+                <!-- Close button -->
+                <button
+                  @click.stop="dismissSyncWarning"
+                  class="p-0.5 rounded hover:bg-amber-200 dark:hover:bg-amber-800 transition-colors flex-shrink-0"
+                  :title="t('common.close')"
+                >
+                  <svg class="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
             </div>
           </Transition>
@@ -740,6 +840,18 @@ const isLoading = computed(() => {
           <span class="font-semibold text-emerald-600 dark:text-emerald-400">
             {{ managementStore.aircraftUpdateCount }}
           </span>
+          <button
+            @click="showOnlyUpdates = !showOnlyUpdates"
+            class="ml-1 px-2 py-0.5 rounded text-xs transition-colors"
+            :class="showOnlyUpdates
+              ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+              : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50'"
+            :title="t('management.filterUpdatesOnly')"
+          >
+            <Transition name="text-fade" mode="out-in">
+              <span :key="locale">{{ showOnlyUpdates ? t('management.showAll') : t('management.filterUpdatesOnly') }}</span>
+            </Transition>
+          </button>
         </div>
         <!-- Update available count for plugins -->
         <div v-if="activeTab === 'plugin' && managementStore.pluginsUpdateCount > 0" class="flex items-center gap-2">
@@ -749,6 +861,18 @@ const isLoading = computed(() => {
           <span class="font-semibold text-emerald-600 dark:text-emerald-400">
             {{ managementStore.pluginsUpdateCount }}
           </span>
+          <button
+            @click="showOnlyUpdates = !showOnlyUpdates"
+            class="ml-1 px-2 py-0.5 rounded text-xs transition-colors"
+            :class="showOnlyUpdates
+              ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+              : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50'"
+            :title="t('management.filterUpdatesOnly')"
+          >
+            <Transition name="text-fade" mode="out-in">
+              <span :key="locale">{{ showOnlyUpdates ? t('management.showAll') : t('management.filterUpdatesOnly') }}</span>
+            </Transition>
+          </button>
         </div>
         <!-- Checking updates indicator -->
         <div v-if="(activeTab === 'aircraft' || activeTab === 'plugin') && managementStore.isCheckingUpdates" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
@@ -766,6 +890,18 @@ const isLoading = computed(() => {
           <span class="font-semibold text-red-600 dark:text-red-400">
             {{ managementStore.navdataOutdatedCount }}
           </span>
+          <button
+            @click="showOnlyOutdated = !showOnlyOutdated"
+            class="ml-1 px-2 py-0.5 rounded text-xs transition-colors"
+            :class="showOnlyOutdated
+              ? 'bg-red-500 text-white hover:bg-red-600'
+              : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50'"
+            :title="t('management.filterOutdatedOnly')"
+          >
+            <Transition name="text-fade" mode="out-in">
+              <span :key="locale">{{ showOnlyOutdated ? t('management.showAll') : t('management.filterOutdatedOnly') }}</span>
+            </Transition>
+          </button>
         </div>
       </template>
 

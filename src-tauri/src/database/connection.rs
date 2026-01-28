@@ -1,13 +1,8 @@
 //! Database connection management with WAL mode configuration
 
-use crate::error::{ApiError, ApiErrorCode};
-use once_cell::sync::OnceCell;
+use crate::error::ApiError;
 use rusqlite::Connection;
 use std::path::PathBuf;
-use std::sync::Mutex;
-
-/// Global connection pool (singleton pattern for connection reuse)
-static DB_CONNECTION: OnceCell<Mutex<Option<Connection>>> = OnceCell::new();
 
 /// Wrapper around rusqlite Connection with RAII cleanup
 pub struct DatabaseConnection {
@@ -18,16 +13,6 @@ impl DatabaseConnection {
     /// Create a new database connection wrapper
     pub fn new(conn: Connection) -> Self {
         Self { conn }
-    }
-
-    /// Get a reference to the underlying connection
-    pub fn conn(&self) -> &Connection {
-        &self.conn
-    }
-
-    /// Get a mutable reference to the underlying connection
-    pub fn conn_mut(&mut self) -> &mut Connection {
-        &mut self.conn
     }
 
     /// Consume the wrapper and return the underlying connection
@@ -108,12 +93,7 @@ fn configure_pragmas(conn: &Connection) -> Result<(), ApiError> {
         PRAGMA mmap_size=268435456;
         ",
     )
-    .map_err(|e| {
-        ApiError::new(
-            ApiErrorCode::DatabaseError,
-            format!("Failed to configure database: {}", e),
-        )
-    })?;
+    .map_err(|e| ApiError::database(format!("Failed to configure database: {}", e)))?;
     Ok(())
 }
 
@@ -131,21 +111,13 @@ pub fn open_connection() -> Result<DatabaseConnection, ApiError> {
 
     // Ensure parent directory exists
     if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            ApiError::new(
-                ApiErrorCode::DatabaseError,
-                format!("Failed to create database directory: {}", e),
-            )
-        })?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| ApiError::database(format!("Failed to create database directory: {}", e)))?;
     }
 
     // Open the database connection
-    let conn = Connection::open(&db_path).map_err(|e| {
-        ApiError::new(
-            ApiErrorCode::DatabaseError,
-            format!("Failed to open database: {}", e),
-        )
-    })?;
+    let conn = Connection::open(&db_path)
+        .map_err(|e| ApiError::database(format!("Failed to open database: {}", e)))?;
 
     // Configure pragmas for optimal performance
     configure_pragmas(&conn)?;
@@ -153,73 +125,18 @@ pub fn open_connection() -> Result<DatabaseConnection, ApiError> {
     Ok(DatabaseConnection::new(conn))
 }
 
-/// Get or create a pooled connection (for high-frequency operations)
-/// This reuses a single connection to avoid connection overhead
-pub fn get_pooled_connection() -> Result<DatabaseConnection, ApiError> {
-    let db_path = get_database_path();
-
-    // Ensure parent directory exists
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            ApiError::new(
-                ApiErrorCode::DatabaseError,
-                format!("Failed to create database directory: {}", e),
-            )
-        })?;
-    }
-
-    // Initialize the global connection if needed
-    let mutex = DB_CONNECTION.get_or_init(|| Mutex::new(None));
-    let mut guard = mutex.lock().unwrap();
-
-    // Take the existing connection or create a new one
-    let conn = match guard.take() {
-        Some(conn) => conn,
-        None => {
-            let conn = Connection::open(&db_path).map_err(|e| {
-                ApiError::new(
-                    ApiErrorCode::DatabaseError,
-                    format!("Failed to open database: {}", e),
-                )
-            })?;
-            configure_pragmas(&conn)?;
-            conn
-        }
-    };
-
-    Ok(DatabaseConnection::new(conn))
-}
-
-/// Return a connection to the pool for reuse
-pub fn return_to_pool(conn: DatabaseConnection) {
-    if let Some(mutex) = DB_CONNECTION.get() {
-        if let Ok(mut guard) = mutex.lock() {
-            *guard = Some(conn.conn);
-        }
-    }
-}
-
 /// Open an in-memory database for testing
 #[cfg(test)]
 pub fn open_memory_connection() -> Result<DatabaseConnection, ApiError> {
-    let conn = Connection::open_in_memory().map_err(|e| {
-        ApiError::new(
-            ApiErrorCode::DatabaseError,
-            format!("Failed to open in-memory database: {}", e),
-        )
-    })?;
+    let conn = Connection::open_in_memory()
+        .map_err(|e| ApiError::database(format!("Failed to open in-memory database: {}", e)))?;
 
     conn.execute_batch(
         "
         PRAGMA foreign_keys=ON;
         ",
     )
-    .map_err(|e| {
-        ApiError::new(
-            ApiErrorCode::DatabaseError,
-            format!("Failed to configure database: {}", e),
-        )
-    })?;
+    .map_err(|e| ApiError::database(format!("Failed to configure database: {}", e)))?;
 
     Ok(DatabaseConnection::new(conn))
 }

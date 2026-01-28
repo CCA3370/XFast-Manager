@@ -46,7 +46,23 @@ export default {
     cannotInstallFromXPlaneDesc: '请拖入 X-Plane 目录外的文件或压缩包。不能直接拖入 X-Plane 内已存在的文件夹。',
     ignoredTasks: '根据设置忽略了 {count} 个插件',
     allIgnored: '根据设置，所有检测到的插件均被忽略',
-    taskProgress: '任务 {current}'
+    taskProgress: '任务 {current}',
+    noTasksEnabled: '没有启用任何安装任务',
+    tasksAppended: '已添加 {count} 个新任务',
+    duplicateTasksIgnored: '文件已在列表中，跳过添加',
+    completed: '已完成',
+    installed: '已安装',
+    failed: '失败',
+    installingNow: '安装中...',
+    waiting: '等待中'
+  },
+  addonType: {
+    Aircraft: '机模',
+    Scenery: '地景',
+    SceneryLibrary: '地景库',
+    Plugin: '插件',
+    Navdata: '导航数据',
+    Livery: '涂装'
   },
   settings: {
     title: '设置',
@@ -200,7 +216,6 @@ export default {
     unknown: '未知',
     noConfigPatternsHint: '需要在设置中配置备份规则',
     liveryAircraftNotFound: '未找到目标机模',
-    liveryAircraftNotFoundDesc: '需要先安装对应的机模才能安装此涂装',
     // Close confirmation
     unsavedSceneryChangesTitle: '地景排序未保存',
     unsavedSceneryChangesMessage: '您有未保存的地景排序更改，确定要关闭吗？',
@@ -403,7 +418,12 @@ export default {
     total: '总数',
     enabled: '已启用',
     hasUpdate: '有更新',
+    filterUpdatesOnly: '仅显示有更新',
+    filterOutdatedOnly: '仅显示过期',
+    showAll: '显示全部',
+    allUpToDate: '所有支持 SkunkcraftsUpdater 的内容已是最新',
     checkingUpdates: '检查更新中...',
+    checkUpdates: '检查更新',
     outdated: '已过期',
     liveries: '涂装',
     platform: '平台',

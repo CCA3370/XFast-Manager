@@ -21,6 +21,7 @@ mod verifier;
 
 use std::collections::HashMap;
 
+use crate::error::ToTauriError;
 use analyzer::Analyzer;
 use installer::Installer;
 use models::{
@@ -236,7 +237,7 @@ fn open_log_folder() -> Result<(), String> {
 // ========== Scenery Folder Commands ==========
 
 #[tauri::command]
-fn open_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), error::ApiError> {
+fn open_scenery_folder(xplane_path: String, folder_name: String) -> error::ApiResult<()> {
     // Security: Validate folder_name doesn't contain path traversal sequences
     if folder_name.contains("..") || folder_name.contains('/') || folder_name.contains('\\') {
         return Err(error::ApiError::security_violation(
@@ -249,10 +250,11 @@ fn open_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), e
         .join(&folder_name);
 
     if !scenery_path.exists() {
-        return Err(error::ApiError::not_found(format!(
-            "Scenery folder not found: {}",
-            folder_name
-        )));
+        return Err(error::ApiError::with_details(
+            error::ApiErrorCode::NotFound,
+            "Scenery folder not found",
+            &folder_name,
+        ));
     }
 
     // Security: Use canonicalize for strict path validation to prevent path traversal attacks
@@ -277,7 +279,7 @@ fn open_scenery_folder(xplane_path: String, folder_name: String) -> Result<(), e
 async fn delete_scenery_folder(
     xplane_path: String,
     folder_name: String,
-) -> Result<(), error::ApiError> {
+) -> error::ApiResult<()> {
     // Security: Validate folder_name doesn't contain path traversal sequences
     if folder_name.contains("..") || folder_name.contains('/') || folder_name.contains('\\') {
         return Err(error::ApiError::security_violation(
@@ -290,10 +292,11 @@ async fn delete_scenery_folder(
         .join(&folder_name);
 
     if !scenery_path.exists() {
-        return Err(error::ApiError::not_found(format!(
-            "Scenery folder not found: {}",
-            folder_name
-        )));
+        return Err(error::ApiError::with_details(
+            error::ApiErrorCode::NotFound,
+            "Scenery folder not found",
+            &folder_name,
+        ));
     }
 
     // Security: Use canonicalize for strict path validation to prevent path traversal attacks
@@ -411,7 +414,7 @@ fn get_last_check_time() -> Option<i64> {
 async fn get_scenery_classification(
     xplane_path: String,
     folder_name: String,
-) -> Result<SceneryPackageInfo, error::ApiError> {
+) -> error::ApiResult<SceneryPackageInfo> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
         let scenery_path = xplane_path.join("Custom Scenery").join(&folder_name);
@@ -671,10 +674,11 @@ async fn toggle_management_item(
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
         management_index::toggle_management_item(xplane_path, &item_type, &folder_name)
-            .map_err(|e| format!("Failed to toggle item: {}", e))
+            .map_err(|e| error::ApiError::from(e))
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
+    .to_tauri_error()
 }
 
 #[tauri::command]
@@ -686,10 +690,11 @@ async fn delete_management_item(
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
         management_index::delete_management_item(xplane_path, &item_type, &folder_name)
-            .map_err(|e| format!("Failed to delete item: {}", e))
+            .map_err(|e| error::ApiError::from(e))
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
+    .to_tauri_error()
 }
 
 #[tauri::command]
@@ -701,10 +706,11 @@ async fn open_management_folder(
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
         management_index::open_management_folder(xplane_path, &item_type, &folder_name)
-            .map_err(|e| format!("Failed to open folder: {}", e))
+            .map_err(|e| error::ApiError::from(e))
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
+    .to_tauri_error()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

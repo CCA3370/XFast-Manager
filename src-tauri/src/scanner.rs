@@ -1266,23 +1266,43 @@ impl Scanner {
             .iter()
             .any(|f| f.has_stream() && !f.is_directory());
 
-        // Only do the slow encryption check if no password provided and archive might be encrypted
-        if password.is_none() && has_encrypted_headers {
+        // Check encryption and password validity
+        if has_encrypted_headers {
+            // Determine which password to use for testing
+            let test_password = match password {
+                Some(pwd) => sevenz_rust2::Password::from(pwd),
+                None => sevenz_rust2::Password::empty(),
+            };
+
             // Try a quick open test - if it fails with password error, we know it's encrypted
-            match sevenz_rust2::ArchiveReader::open(archive_path, sevenz_rust2::Password::empty()) {
+            match sevenz_rust2::ArchiveReader::open(archive_path, test_password) {
                 Ok(mut reader) => {
-                    // Try to read first non-directory entry
+                    // Try to read first non-directory entry to verify password
                     let mut encryption_detected = false;
+                    let mut wrong_password = false;
                     let _ = reader.for_each_entries(|entry, reader| {
                         if !entry.is_directory() {
                             let mut buf = [0u8; 1];
                             if std::io::Read::read(reader, &mut buf).is_err() {
-                                encryption_detected = true;
+                                if password.is_some() {
+                                    // Password provided but still can't read - wrong password
+                                    wrong_password = true;
+                                } else {
+                                    // No password provided - encryption detected
+                                    encryption_detected = true;
+                                }
                             }
                             return Ok(false); // Stop after first file
                         }
                         Ok(true)
                     });
+
+                    if wrong_password {
+                        return Err(anyhow::anyhow!(
+                            "Wrong password for archive: {}",
+                            archive_path.display()
+                        ));
+                    }
 
                     if encryption_detected {
                         return Err(anyhow::anyhow!(PasswordRequiredError {
@@ -1297,6 +1317,13 @@ impl Scanner {
                         || err_str.contains("encrypted")
                         || err_str.contains("WrongPassword")
                     {
+                        if password.is_some() {
+                            // Password provided but still failed - wrong password
+                            return Err(anyhow::anyhow!(
+                                "Wrong password for archive: {}",
+                                archive_path.display()
+                            ));
+                        }
                         return Err(anyhow::anyhow!(PasswordRequiredError {
                             archive_path: archive_path.to_string_lossy().to_string(),
                         }));
@@ -1890,6 +1917,48 @@ impl Scanner {
             }));
         }
 
+        // If password was provided and archive has encrypted files, verify password by trying to read first encrypted file
+        if has_encrypted && password_bytes.is_some() {
+            let pwd = password_bytes.unwrap();
+            // Find first encrypted file index
+            let mut encrypted_index: Option<usize> = None;
+            for i in 0..archive.len() {
+                if let Ok(file) = archive.by_index_raw(i) {
+                    if file.encrypted() && !file.is_dir() {
+                        encrypted_index = Some(i);
+                        break;
+                    }
+                }
+            }
+            // Try to decrypt the first encrypted file
+            if let Some(idx) = encrypted_index {
+                use std::io::Read;
+                match archive.by_index_decrypt(idx, pwd) {
+                    Ok(mut f) => {
+                        let mut buf = [0u8; 1];
+                        if f.read(&mut buf).is_err() {
+                            return Err(anyhow::anyhow!(
+                                "Wrong password for archive: {}",
+                                zip_path.display()
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        let err_str = format!("{:?}", e);
+                        if err_str.contains("password")
+                            || err_str.contains("Password")
+                            || err_str.contains("InvalidPassword")
+                        {
+                            return Err(anyhow::anyhow!(
+                                "Wrong password for archive: {}",
+                                zip_path.display()
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
         // Sort marker files by depth (process shallower paths first)
         let sort_start = std::time::Instant::now();
         marker_files.sort_by(|a, b| {
@@ -2430,6 +2499,48 @@ impl Scanner {
             return Err(anyhow::anyhow!(PasswordRequiredError {
                 archive_path: zip_path.to_string_lossy().to_string(),
             }));
+        }
+
+        // If password was provided and archive has encrypted files, verify password by trying to read first encrypted file
+        if has_encrypted && password_bytes.is_some() {
+            let pwd = password_bytes.unwrap();
+            // Find first encrypted file index
+            let mut encrypted_index: Option<usize> = None;
+            for i in 0..archive.len() {
+                if let Ok(file) = archive.by_index_raw(i) {
+                    if file.encrypted() && !file.is_dir() {
+                        encrypted_index = Some(i);
+                        break;
+                    }
+                }
+            }
+            // Try to decrypt the first encrypted file
+            if let Some(idx) = encrypted_index {
+                use std::io::Read;
+                match archive.by_index_decrypt(idx, pwd) {
+                    Ok(mut f) => {
+                        let mut buf = [0u8; 1];
+                        if f.read(&mut buf).is_err() {
+                            return Err(anyhow::anyhow!(
+                                "Wrong password for archive: {}",
+                                zip_path.display()
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        let err_str = format!("{:?}", e);
+                        if err_str.contains("password")
+                            || err_str.contains("Password")
+                            || err_str.contains("InvalidPassword")
+                        {
+                            return Err(anyhow::anyhow!(
+                                "Wrong password for archive: {}",
+                                zip_path.display()
+                            ));
+                        }
+                    }
+                }
+            }
         }
 
         // Sort marker files by depth (process shallower paths first)
@@ -2980,18 +3091,13 @@ impl Scanner {
             airac: cycle.airac.clone(),
         };
 
-        // Determine install path based on name
-        let (install_path, display_name) =
-            if cycle.name.contains("X-Plane") || cycle.name.contains("X-Plane 11") {
-                (parent.to_path_buf(), format!("Navdata: {}", cycle.name))
-            } else if cycle.name.contains("X-Plane GNS430") {
-                (
-                    parent.to_path_buf(),
-                    format!("Navdata GNS430: {}", cycle.name),
-                )
-            } else {
-                return Err(anyhow::anyhow!("Unknown Navdata Format: {}", cycle.name));
-            };
+        // Validate navdata format
+        if !cycle.name.contains("X-Plane") && !cycle.name.contains("X-Plane 11") && !cycle.name.contains("X-Plane GNS430") {
+            return Err(anyhow::anyhow!("Unknown Navdata Format: {}", cycle.name));
+        }
+
+        let install_path = parent.to_path_buf();
+        let display_name = cycle.name.clone();
 
         Ok(Some(DetectedItem {
             original_input_path: String::new(),
@@ -3024,13 +3130,12 @@ impl Scanner {
             airac: cycle.airac.clone(),
         };
 
-        let display_name = if cycle.name.contains("X-Plane") || cycle.name.contains("X-Plane 11") {
-            format!("Navdata: {}", cycle.name)
-        } else if cycle.name.contains("X-Plane GNS430") {
-            format!("Navdata GNS430: {}", cycle.name)
-        } else {
+        // Validate navdata format
+        if !cycle.name.contains("X-Plane") && !cycle.name.contains("X-Plane 11") && !cycle.name.contains("X-Plane GNS430") {
             return Err(anyhow::anyhow!("Unknown Navdata Format: {}", cycle.name));
-        };
+        }
+
+        let display_name = cycle.name.clone();
 
         // Get the navdata folder root inside the archive
         let internal_root = if let Some(p) = parent {

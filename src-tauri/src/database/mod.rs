@@ -9,7 +9,7 @@ mod migrations;
 mod queries;
 mod schema;
 
-pub use connection::{get_database_path, open_connection, DatabaseConnection};
+pub use connection::{open_connection};
 pub use migrations::apply_migrations;
 pub use queries::SceneryQueries;
 pub use schema::CURRENT_SCHEMA_VERSION;

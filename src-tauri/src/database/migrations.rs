@@ -1,7 +1,7 @@
 //! Database schema migrations
 
 use super::schema::{CREATE_SCHEMA, CURRENT_SCHEMA_VERSION, GET_SCHEMA_VERSION, INSERT_SCHEMA_VERSION};
-use crate::error::{ApiError, ApiErrorCode};
+use crate::error::ApiError;
 use crate::logger;
 use rusqlite::Connection;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -15,12 +15,7 @@ fn get_current_version(conn: &Connection) -> Result<Option<i32>, ApiError> {
             [],
             |row| row.get(0),
         )
-        .map_err(|e| {
-            ApiError::new(
-                ApiErrorCode::DatabaseError,
-                format!("Failed to check schema_version table: {}", e),
-            )
-        })?;
+        .map_err(|e| ApiError::database(format!("Failed to check schema_version table: {}", e)))?;
 
     if !table_exists {
         return Ok(None);
@@ -28,12 +23,7 @@ fn get_current_version(conn: &Connection) -> Result<Option<i32>, ApiError> {
 
     let version: Option<i32> = conn
         .query_row(GET_SCHEMA_VERSION, [], |row| row.get(0))
-        .map_err(|e| {
-            ApiError::new(
-                ApiErrorCode::DatabaseError,
-                format!("Failed to get schema version: {}", e),
-            )
-        })?;
+        .map_err(|e| ApiError::database(format!("Failed to get schema version: {}", e)))?;
 
     Ok(version)
 }
@@ -65,13 +55,10 @@ pub fn apply_migrations(conn: &Connection) -> Result<(), ApiError> {
         }
         Some(version) => {
             // Database is newer than current code - this shouldn't happen
-            return Err(ApiError::new(
-                ApiErrorCode::MigrationFailed,
-                format!(
-                    "Database schema version {} is newer than supported version {}",
-                    version, CURRENT_SCHEMA_VERSION
-                ),
-            ));
+            return Err(ApiError::migration_failed(format!(
+                "Database schema version {} is newer than supported version {}",
+                version, CURRENT_SCHEMA_VERSION
+            )));
         }
     }
 
@@ -80,12 +67,8 @@ pub fn apply_migrations(conn: &Connection) -> Result<(), ApiError> {
 
 /// Create the initial database schema
 fn create_initial_schema(conn: &Connection) -> Result<(), ApiError> {
-    conn.execute_batch(CREATE_SCHEMA).map_err(|e| {
-        ApiError::new(
-            ApiErrorCode::MigrationFailed,
-            format!("Failed to create database schema: {}", e),
-        )
-    })?;
+    conn.execute_batch(CREATE_SCHEMA)
+        .map_err(|e| ApiError::migration_failed(format!("Failed to create database schema: {}", e)))?;
 
     // Record the schema version
     let now = SystemTime::now()
@@ -97,12 +80,7 @@ fn create_initial_schema(conn: &Connection) -> Result<(), ApiError> {
         INSERT_SCHEMA_VERSION,
         rusqlite::params![CURRENT_SCHEMA_VERSION, now, "Initial schema"],
     )
-    .map_err(|e| {
-        ApiError::new(
-            ApiErrorCode::MigrationFailed,
-            format!("Failed to record schema version: {}", e),
-        )
-    })?;
+    .map_err(|e| ApiError::migration_failed(format!("Failed to record schema version: {}", e)))?;
 
     logger::log_info(
         &format!("Database schema created at version {}", CURRENT_SCHEMA_VERSION),
@@ -132,10 +110,7 @@ fn apply_version_migrations(conn: &Connection, from_version: i32) -> Result<(), 
         rusqlite::params![CURRENT_SCHEMA_VERSION, now, "Migration completed"],
     )
     .map_err(|e| {
-        ApiError::new(
-            ApiErrorCode::MigrationFailed,
-            format!("Failed to record schema version after migration: {}", e),
-        )
+        ApiError::migration_failed(format!("Failed to record schema version after migration: {}", e))
     })?;
 
     logger::log_info(

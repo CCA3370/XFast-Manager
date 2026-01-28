@@ -46,14 +46,21 @@
             <div
               v-for="task in store.currentTasks"
               :key="task.id"
-              class="task-item bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-white/10 rounded-lg p-2 mb-1.5 hover:border-blue-400 dark:hover:border-blue-400/30 transition-colors duration-200 cursor-pointer"
-              :class="{ 'opacity-50': !store.getTaskEnabled(task.id) }"
-              @click="toggleTaskEnabled(task.id)"
+              class="task-item bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-white/10 rounded-lg p-2 mb-1.5 hover:border-blue-400 dark:hover:border-blue-400/30 transition-colors duration-200"
+              :class="{
+                'opacity-50': !store.getTaskEnabled(task.id),
+                'cursor-pointer': !isLiveryWithoutAircraft(task),
+                'cursor-not-allowed': isLiveryWithoutAircraft(task)
+              }"
+              @click="!isLiveryWithoutAircraft(task) && toggleTaskEnabled(task.id)"
             >
               <div class="flex items-start gap-2">
                 <!-- Checkbox with better styling -->
                 <div class="flex-shrink-0 pt-0.5">
-                  <div class="custom-checkbox" :class="{ 'checked': store.getTaskEnabled(task.id) }">
+                  <div class="custom-checkbox" :class="{
+                    'checked': store.getTaskEnabled(task.id),
+                    'disabled': isLiveryWithoutAircraft(task)
+                  }">
                     <svg v-if="store.getTaskEnabled(task.id)" class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
                     </svg>
@@ -68,7 +75,7 @@
                     </span>
                     <span class="font-medium text-gray-900 dark:text-white text-xs truncate">{{ task.displayName }}</span>
                   </div>
-                  <div class="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400">
+                  <div v-if="!isLiveryWithoutAircraft(task)" class="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400">
                     <svg class="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"></path>
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5a2 2 0 012-2h4a2 2 0 012 2v2H8V5z"></path>
@@ -180,16 +187,11 @@
                   </div>
 
                   <!-- Livery aircraft not found warning -->
-                  <div v-if="task.type === 'Livery' && task.liveryAircraftFound === false" class="mt-1.5 p-2 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded">
-                    <div class="flex items-start space-x-2">
-                      <svg class="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
-                      </svg>
-                      <div class="flex-1 min-w-0">
-                        <span class="font-medium text-xs text-amber-700 dark:text-amber-100"><AnimatedText>{{ $t('modal.liveryAircraftNotFound') }}</AnimatedText></span>
-                        <p class="text-xs text-amber-600 dark:text-amber-200/70 leading-tight"><AnimatedText>{{ $t('modal.liveryAircraftNotFoundDesc') }}</AnimatedText></p>
-                      </div>
-                    </div>
+                  <div v-if="task.type === 'Livery' && task.liveryAircraftFound === false" class="mt-1.5 flex items-center space-x-1.5 text-xs text-red-600 dark:text-red-400">
+                    <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path>
+                    </svg>
+                    <span class="font-medium"><AnimatedText>{{ $t('modal.liveryAircraftNotFound') }}</AnimatedText></span>
                   </div>
                 </div>
               </div>
@@ -316,6 +318,11 @@ function toggleTaskSizeConfirm(taskId: string) {
 function toggleTaskEnabled(taskId: string) {
   const currentValue = store.getTaskEnabled(taskId)
   store.setTaskEnabled(taskId, !currentValue)
+}
+
+// Check if task is a livery without installed aircraft
+function isLiveryWithoutAircraft(task: any): boolean {
+  return task.type === 'Livery' && task.liveryAircraftFound === false
 }
 
 // Get backup liveries setting for a task
@@ -502,6 +509,17 @@ function getTypeBadgeClass(type: AddonType) {
 .dark .custom-checkbox.checked {
   background: #3b82f6;
   border-color: #3b82f6;
+}
+
+.custom-checkbox.disabled {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+  cursor: not-allowed;
+}
+
+.dark .custom-checkbox.disabled {
+  background: #374151;
+  border-color: #4b5563;
 }
 
 /* Install mode toggle switch */

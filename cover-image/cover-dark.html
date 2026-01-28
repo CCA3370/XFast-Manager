@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XFast Manager Cover - Dark</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .cover {
+      width: 600px;
+      height: 600px;
+      background: #000;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .cover::before {
+      content: '';
+      position: absolute;
+      top: -30%;
+      right: -30%;
+      width: 80%;
+      height: 80%;
+      background: radial-gradient(ellipse, rgba(59, 130, 246, 0.2) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .cover::after {
+      content: '';
+      position: absolute;
+      bottom: -20%;
+      left: -20%;
+      width: 60%;
+      height: 60%;
+      background: radial-gradient(ellipse, rgba(16, 185, 129, 0.15) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .content {
+      position: relative;
+      z-index: 1;
+      padding: 40px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 8px;
+    }
+
+    .logo {
+      width: 44px;
+      height: 44px;
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      border-radius: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+    }
+
+    .logo svg {
+      width: 26px;
+      height: 26px;
+      color: white;
+    }
+
+    .brand-text {
+      font-size: 26px;
+      font-weight: 900;
+      color: white;
+      letter-spacing: -0.03em;
+    }
+
+    .tagline {
+      color: #64748b;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 28px;
+    }
+
+    /* Headline */
+    .headline {
+      margin-bottom: 32px;
+    }
+
+    .headline h1 {
+      font-size: 52px;
+      font-weight: 800;
+      color: white;
+      line-height: 1.0;
+      letter-spacing: -0.04em;
+      margin-bottom: 12px;
+    }
+
+    .headline h1 span {
+      background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .headline p {
+      color: #94a3b8;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    /* Features */
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: auto;
+    }
+
+    .feature-tag {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 8px 14px;
+      border-radius: 100px;
+      color: #e2e8f0;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .feature-tag svg {
+      width: 14px;
+      height: 14px;
+      color: #10b981;
+    }
+
+    /* Footer */
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 24px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .platforms {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .platform {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .platform svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .free-badge {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 6px 14px;
+      border-radius: 100px;
+      letter-spacing: 0.05em;
+    }
+
+    /* Floating UI preview */
+    .ui-preview {
+      position: absolute;
+      right: 30px;
+      bottom: 100px;
+      width: 200px;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+      transform: rotate(3deg);
+      z-index: 2;
+    }
+
+    .ui-header {
+      background: rgba(30, 41, 59, 0.8);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    .ui-dots {
+      display: flex;
+      gap: 4px;
+    }
+
+    .ui-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .ui-dot.red { background: #ef4444; }
+    .ui-dot.yellow { background: #f59e0b; }
+    .ui-dot.green { background: #10b981; }
+
+    .ui-content {
+      padding: 14px;
+    }
+
+    .ui-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      background: rgba(30, 41, 59, 0.5);
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
+    .ui-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .ui-item-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      color: white;
+    }
+
+    .ui-item-icon.aircraft { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+    .ui-item-icon.scenery { background: linear-gradient(135deg, #10b981, #059669); }
+
+    .ui-item-text {
+      flex: 1;
+    }
+
+    .ui-item-name {
+      color: #e2e8f0;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .ui-item-status {
+      color: #64748b;
+      font-size: 8px;
+    }
+
+    .ui-item-check {
+      width: 16px;
+      height: 16px;
+      background: #10b981;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ui-item-check svg {
+      width: 10px;
+      height: 10px;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="cover">
+    <div class="content">
+      <!-- Header -->
+      <div class="header">
+        <div class="logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <span class="brand-text">XFast Manager</span>
+      </div>
+      <p class="tagline">X-Plane Addon Auto Manager</p>
+
+      <!-- Headline -->
+      <div class="headline">
+        <h1>Drag. Drop.<br/><span>Done.</span></h1>
+        <p>Install any addon in seconds.<br/>Auto detection, smart sorting, zero hassle.</p>
+      </div>
+
+      <!-- Features -->
+      <div class="features">
+        <div class="feature-tag">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Scenery Auto-Sort
+        </div>
+        <div class="feature-tag">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Update Checker
+        </div>
+        <div class="feature-tag">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          ZIP / 7Z / RAR
+        </div>
+        <div class="feature-tag">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Worry-Free Mode
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <div class="platforms">
+          <div class="platform">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/>
+            </svg>
+            Win
+          </div>
+          <div class="platform">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+            </svg>
+            Mac
+          </div>
+          <div class="platform">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12.503 0c-.155 0-.315.008-.48.021-4.226.333-3.105 4.807-3.17 6.298-.076 1.092-.3 1.953-1.05 3.02-.885 1.051-2.127 2.75-2.716 4.521-.278.835-.417 1.7-.419 2.565-.002.872.135 1.738.399 2.563.661 2.055 1.977 3.638 3.797 4.408.896.38 1.897.604 2.987.604 1.095 0 2.185-.193 3.164-.603 1.967-.821 3.315-2.404 3.863-4.409.272-.989.311-2.026.193-3.055-.197-1.714-1.106-3.49-2.328-4.828-.507-.556-1.054-1.135-1.256-1.885-.246-.912-.064-2.193.255-3.255.334-1.108.633-2.255.349-3.377-.33-1.302-1.326-2.283-2.588-2.588-.355-.086-.725-.136-1.105-.136l.105.136z"/>
+            </svg>
+            Linux
+          </div>
+        </div>
+        <div class="free-badge">FREE</div>
+      </div>
+    </div>
+
+    <!-- Floating UI preview -->
+    <div class="ui-preview">
+      <div class="ui-header">
+        <div class="ui-dots">
+          <div class="ui-dot red"></div>
+          <div class="ui-dot yellow"></div>
+          <div class="ui-dot green"></div>
+        </div>
+      </div>
+      <div class="ui-content">
+        <div class="ui-item">
+          <div class="ui-item-icon aircraft">✈</div>
+          <div class="ui-item-text">
+            <div class="ui-item-name">Zibo B737</div>
+            <div class="ui-item-status">Installed</div>
+          </div>
+          <div class="ui-item-check">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+              <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+        <div class="ui-item">
+          <div class="ui-item-icon scenery">🌍</div>
+          <div class="ui-item-text">
+            <div class="ui-item-name">LFPG Paris</div>
+            <div class="ui-item-status">Sorted</div>
+          </div>
+          <div class="ui-item-check">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+              <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
