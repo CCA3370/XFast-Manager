@@ -1,4 +1,19 @@
-import { createApp } from 'vue'
+// Bootstrap logger must be imported FIRST - before any other imports
+// This sets up global error handlers immediately
+import {
+  bootstrapInfo,
+  bootstrapError,
+  bootstrapDebug,
+  formatError,
+  markTauriReady,
+  setupGlobalErrorHandlers
+} from './services/bootstrap-logger'
+
+// Setup global error handlers as early as possible
+setupGlobalErrorHandlers()
+bootstrapInfo('Application starting...', 'init')
+
+import { createApp, type App as VueApp } from 'vue'
 import { createPinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
@@ -6,6 +21,116 @@ import Home from './views/Home.vue'
 import { i18n } from './i18n'
 import './style.css'
 import { initStorage, getItem, STORAGE_KEYS } from './services/storage'
+
+// ============================================================================
+// Loading Screen Error Display
+// ============================================================================
+
+/**
+ * Update loading screen to show error state
+ */
+function showLoadingError(message: string, details?: string): void {
+  const loadingScreen = document.getElementById('loading-screen')
+  if (!loadingScreen) return
+
+  // Update loading text to show error
+  const loadingText = loadingScreen.querySelector('.loading-text')
+  if (loadingText) {
+    loadingText.textContent = 'Initialization Failed'
+    loadingText.classList.add('error-text')
+  }
+
+  // Stop the spinner animation
+  const loader = loadingScreen.querySelector('.loader')
+  if (loader) {
+    loader.classList.add('error-state')
+  }
+
+  // Add error details container if not exists
+  let errorContainer = loadingScreen.querySelector('.error-container') as HTMLElement
+  if (!errorContainer) {
+    errorContainer = document.createElement('div')
+    errorContainer.className = 'error-container'
+    loadingScreen.appendChild(errorContainer)
+  }
+
+  // Show error message
+  errorContainer.innerHTML = `
+    <div class="error-message">${escapeHtml(message)}</div>
+    ${details ? `<div class="error-details">${escapeHtml(details)}</div>` : ''}
+    <div class="error-hint">Check the log file for more details</div>
+    <button class="retry-button" onclick="location.reload()">Retry</button>
+  `
+
+  // Add error styles if not already added
+  if (!document.getElementById('error-styles')) {
+    const style = document.createElement('style')
+    style.id = 'error-styles'
+    style.textContent = `
+      .error-text { color: #ff6b6b !important; }
+      .loader.error-state {
+        animation: none !important;
+        border-color: #ff6b6b !important;
+        border-top-color: #ff6b6b !important;
+      }
+      .error-container {
+        margin-top: 30px;
+        text-align: center;
+        max-width: 500px;
+        padding: 0 20px;
+      }
+      .error-message {
+        color: #fff;
+        font-size: 14px;
+        margin-bottom: 10px;
+        word-break: break-word;
+      }
+      .error-details {
+        color: rgba(255,255,255,0.7);
+        font-size: 12px;
+        font-family: monospace;
+        background: rgba(0,0,0,0.2);
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+        max-height: 150px;
+        overflow-y: auto;
+        text-align: left;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .error-hint {
+        color: rgba(255,255,255,0.6);
+        font-size: 12px;
+        margin-bottom: 20px;
+      }
+      .retry-button {
+        background: rgba(255,255,255,0.2);
+        border: 1px solid rgba(255,255,255,0.3);
+        color: #fff;
+        padding: 10px 30px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.2s;
+      }
+      .retry-button:hover {
+        background: rgba(255,255,255,0.3);
+      }
+    `
+    document.head.appendChild(style)
+  }
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
+}
+
+// ============================================================================
+// Router Setup
+// ============================================================================
 
 const router = createRouter({
   history: createWebHistory(),
@@ -18,62 +143,199 @@ const router = createRouter({
   ],
 })
 
-// Initialize storage and setup navigation guard
-async function initApp() {
-  // Initialize Tauri Store first
-  await initStorage()
+// ============================================================================
+// Store Initialization with Timeout
+// ============================================================================
 
-  // Setup navigation guard with async storage check
-  router.beforeEach(async (to, _from, next) => {
-    const completed = await getItem<string>(STORAGE_KEYS.ONBOARDING_COMPLETED)
-    if (completed !== 'true' && to.path !== '/onboarding') {
-      next('/onboarding')
-      return
-    }
-    next()
-  })
-
-  const pinia = createPinia()
-  const app = createApp(App)
-
-  app.use(pinia)
-  app.use(router)
-  app.use(i18n)
-
-  // Initialize stores that need async loading
-  const { useAppStore } = await import('./stores/app')
-  const { useThemeStore } = await import('./stores/theme')
-  const { useLockStore } = await import('./stores/lock')
-  const { useUpdateStore } = await import('./stores/update')
-  const { useSceneryStore } = await import('./stores/scenery')
-
-  const appStore = useAppStore()
-  const themeStore = useThemeStore()
-  const lockStore = useLockStore()
-  const updateStore = useUpdateStore()
-  const sceneryStore = useSceneryStore()
-
-  // Initialize all stores in parallel
-  await Promise.all([
-    appStore.initStore(),
-    themeStore.initStore(),
-    lockStore.initStore(),
-    updateStore.initStore(),
-    sceneryStore.initStore(),
-  ])
-
-  app.mount('#app')
-
-  // Hide loading screen after Vue app is mounted
-  setTimeout(() => {
-    const loadingScreen = document.getElementById('loading-screen')
-    if (loadingScreen) {
-      loadingScreen.classList.add('fade-out')
-      setTimeout(() => {
-        loadingScreen.remove()
-      }, 300)
-    }
-  }, 100)
+interface StoreInitResult {
+  name: string
+  success: boolean
+  error?: string
+  duration: number
 }
 
-initApp()
+/**
+ * Initialize a store with timeout protection
+ */
+async function initStoreWithTimeout(
+  name: string,
+  initFn: () => Promise<void>,
+  timeoutMs = 10000
+): Promise<StoreInitResult> {
+  const startTime = Date.now()
+
+  try {
+    await Promise.race([
+      initFn(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Store initialization timed out after ${timeoutMs}ms`)), timeoutMs)
+      )
+    ])
+
+    const duration = Date.now() - startTime
+    bootstrapDebug(`Store ${name} initialized in ${duration}ms`, 'store-init')
+    return { name, success: true, duration }
+  } catch (error) {
+    const duration = Date.now() - startTime
+    const errorMsg = formatError(error)
+    bootstrapError(`Store ${name} failed to initialize: ${errorMsg}`, 'store-init')
+    return { name, success: false, error: errorMsg, duration }
+  }
+}
+
+// ============================================================================
+// Main Initialization
+// ============================================================================
+
+async function initApp(): Promise<void> {
+  const initStartTime = Date.now()
+  let app: VueApp | null = null
+
+  try {
+    // Step 1: Initialize Tauri Store
+    bootstrapInfo('Initializing storage...', 'init')
+    try {
+      await initStorage()
+      markTauriReady()
+      bootstrapInfo('Storage initialized successfully', 'init')
+    } catch (error) {
+      const errorMsg = formatError(error)
+      bootstrapError(`Storage initialization failed: ${errorMsg}`, 'init')
+      showLoadingError('Failed to initialize storage', errorMsg)
+      return
+    }
+
+    // Step 2: Setup navigation guard
+    bootstrapDebug('Setting up navigation guard...', 'init')
+    router.beforeEach(async (to, _from, next) => {
+      try {
+        const completed = await getItem<string>(STORAGE_KEYS.ONBOARDING_COMPLETED)
+        if (completed !== 'true' && to.path !== '/onboarding') {
+          next('/onboarding')
+          return
+        }
+        next()
+      } catch (error) {
+        bootstrapError(`Navigation guard error: ${formatError(error)}`, 'router')
+        next() // Continue anyway to avoid blocking
+      }
+    })
+
+    // Step 3: Create Vue app and Pinia
+    bootstrapInfo('Creating Vue application...', 'init')
+    const pinia = createPinia()
+    app = createApp(App)
+
+    // Setup Vue error handler
+    app.config.errorHandler = (err, instance, info) => {
+      const errorMsg = formatError(err)
+      bootstrapError(`Vue error [${info}]: ${errorMsg}`, 'vue-error')
+      console.error('Vue error:', err, '\nComponent:', instance, '\nInfo:', info)
+    }
+
+    app.config.warnHandler = (msg, instance, trace) => {
+      bootstrapDebug(`Vue warning: ${msg}`, 'vue-warn')
+      console.warn('Vue warning:', msg, '\nTrace:', trace)
+    }
+
+    app.use(pinia)
+    app.use(router)
+    app.use(i18n)
+    bootstrapDebug('Vue plugins installed', 'init')
+
+    // Step 4: Import stores
+    bootstrapInfo('Loading stores...', 'init')
+    const [
+      { useAppStore },
+      { useThemeStore },
+      { useLockStore },
+      { useUpdateStore },
+      { useSceneryStore }
+    ] = await Promise.all([
+      import('./stores/app'),
+      import('./stores/theme'),
+      import('./stores/lock'),
+      import('./stores/update'),
+      import('./stores/scenery')
+    ])
+    bootstrapDebug('Store modules loaded', 'init')
+
+    const appStore = useAppStore()
+    const themeStore = useThemeStore()
+    const lockStore = useLockStore()
+    const updateStore = useUpdateStore()
+    const sceneryStore = useSceneryStore()
+
+    // Step 5: Initialize all stores with timeout protection
+    bootstrapInfo('Initializing stores...', 'init')
+    const storeResults = await Promise.all([
+      initStoreWithTimeout('appStore', () => appStore.initStore()),
+      initStoreWithTimeout('themeStore', () => themeStore.initStore()),
+      initStoreWithTimeout('lockStore', () => lockStore.initStore()),
+      initStoreWithTimeout('updateStore', () => updateStore.initStore()),
+      initStoreWithTimeout('sceneryStore', () => sceneryStore.initStore()),
+    ])
+
+    // Check for store initialization failures
+    const failedStores = storeResults.filter(r => !r.success)
+    if (failedStores.length > 0) {
+      const failedNames = failedStores.map(r => r.name).join(', ')
+      const errorDetails = failedStores.map(r => `${r.name}: ${r.error}`).join('\n')
+      bootstrapError(`Some stores failed to initialize: ${failedNames}`, 'init')
+
+      // Show error but continue - app might still work partially
+      showLoadingError(
+        `Failed to initialize: ${failedNames}`,
+        errorDetails
+      )
+      // Don't return - try to mount the app anyway
+    }
+
+    // Log store initialization summary
+    const totalStoreTime = storeResults.reduce((sum, r) => sum + r.duration, 0)
+    bootstrapInfo(`All stores processed in ${totalStoreTime}ms`, 'init')
+
+    // Step 6: Mount the app
+    bootstrapInfo('Mounting Vue application...', 'init')
+    app.mount('#app')
+
+    // Step 7: Hide loading screen
+    const totalInitTime = Date.now() - initStartTime
+    bootstrapInfo(`Application initialized successfully in ${totalInitTime}ms`, 'init')
+
+    setTimeout(() => {
+      const loadingScreen = document.getElementById('loading-screen')
+      if (loadingScreen) {
+        // Only hide if no error is shown
+        if (!loadingScreen.querySelector('.error-container')) {
+          loadingScreen.classList.add('fade-out')
+          setTimeout(() => {
+            loadingScreen.remove()
+          }, 300)
+        }
+      }
+    }, 100)
+
+  } catch (error) {
+    const errorMsg = formatError(error)
+    bootstrapError(`Critical initialization error: ${errorMsg}`, 'init')
+    showLoadingError('Application failed to start', errorMsg)
+
+    // Try to mount a minimal error state if app was created
+    if (app) {
+      try {
+        app.mount('#app')
+      } catch {
+        // Ignore mount errors at this point
+      }
+    }
+  }
+}
+
+// Start the application
+bootstrapDebug('Calling initApp()', 'init')
+initApp().catch((error) => {
+  const errorMsg = formatError(error)
+  bootstrapError(`Unhandled error in initApp: ${errorMsg}`, 'init')
+  showLoadingError('Unexpected error during startup', errorMsg)
+})
