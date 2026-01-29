@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-01-29
+
+### Added
+
+#### Lock System Integration
+- **Config File Synchronization** - Lock state now syncs with `skunkcrafts_updater.cfg` files for aircraft and plugins
+  - When scanning, items with `disabled|true` in their config file are automatically locked
+  - When toggling lock state, the `disabled|` field is updated in the config file (if it exists)
+  - Provides seamless integration with external updater tools
+
+### Changed
+
+#### Data Storage
+- **Tauri Store Migration** - All persistent data now uses Tauri's secure store plugin instead of localStorage
+  - More reliable data persistence across app updates
+  - Better cross-platform compatibility
+  - Improved data security
+
 ## [0.8.0] - 2026-01-28
 
 ### Added
