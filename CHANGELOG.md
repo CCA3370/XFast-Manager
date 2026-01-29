@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-01-29
+
+### Fixed
+
+- **Aircraft with Embedded Plugins** - Plugins inside aircraft packages are no longer incorrectly detected as standalone plugins
+  - When an aircraft contains internal plugins (e.g., for custom systems), they are now correctly identified as part of the aircraft
+  - Only truly standalone plugins in the plugins folder will be detected
+
+### Changed
+
+- **Data Storage Location** - App data now stored in `%LOCALAPPDATA%` instead of `%APPDATA%` on Windows
+  - Logs, database, and cache files are now stored locally rather than in roaming profiles
+  - Provides faster access and avoids sync issues on domain-joined machines
+
+## [0.8.2] - 2026-01-29
+
+### Fixed
+
+- **Aircraft with Embedded Plugins** - Plugins inside aircraft packages are no longer incorrectly detected as standalone plugins
+  - When an aircraft contains internal plugins (e.g., for custom systems), they are now correctly identified as part of the aircraft
+  - Only truly standalone plugins in the plugins folder will be detected
+
+### Changed
+
+- **Data Storage Location** - App data now stored in `%LOCALAPPDATA%` instead of `%APPDATA%` on Windows
+  - Logs, database, and cache files are now stored locally rather than in roaming profiles
+  - Provides faster access and avoids sync issues on domain-joined machines
+
 ## [0.8.1] - 2026-01-29
 
 ### Added
