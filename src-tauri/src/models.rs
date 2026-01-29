@@ -751,6 +751,7 @@ mod tests {
                     update_url: None,
                     latest_version: None,
                     has_update: false,
+                    cfg_disabled: None,
                 },
             ],
             total_count: 1,

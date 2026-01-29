@@ -16,6 +16,7 @@
     "core:event:allow-listen",
     "core:event:allow-emit",
     "dialog:allow-open",
-    "dialog:default"
+    "dialog:default",
+    "store:default"
   ]
 }
