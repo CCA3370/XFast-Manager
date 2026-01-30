@@ -11,14 +11,15 @@ const APP_IDENTIFIER: &str = "com.xfastmanager.tool";
 /// Get the app data directory for persistent storage
 ///
 /// Returns platform-specific paths:
-/// - Windows: %APPDATA%\com.xfastmanager.tool
+/// - Windows: %LOCALAPPDATA%\com.xfastmanager.tool
 /// - macOS: ~/Library/Application Support/com.xfastmanager.tool
 /// - Linux: ~/.config/com.xfastmanager.tool
 pub fn get_app_data_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
-        if let Some(app_data) = std::env::var_os("APPDATA") {
-            return PathBuf::from(app_data).join(APP_IDENTIFIER);
+        // Use LOCALAPPDATA (Local) instead of APPDATA (Roaming)
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            return PathBuf::from(local_app_data).join(APP_IDENTIFIER);
         }
     }
 

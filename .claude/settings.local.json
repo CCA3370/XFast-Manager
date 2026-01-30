@@ -73,7 +73,11 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(pnpm add:*)",
       "Bash(npx tsc:*)",
-      "Bash(npm ls:*)"
+      "Bash(npm ls:*)",
+      "Bash(git --no-pager diff main..dev --stat)",
+      "Bash(git --no-pager log main..dev --oneline)",
+      "Bash(powershell -Command:*)",
+      "Bash(Select-String -Pattern '\\\\.xpl')"
     ]
   }
 }

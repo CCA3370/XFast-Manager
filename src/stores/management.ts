@@ -87,6 +87,7 @@ interface LoadableItem {
 export const useManagementStore = defineStore('management', () => {
   const appStore = useAppStore()
   const toast = useToastStore()
+  const lockStore = useLockStore()
   const { t } = useI18n()
 
   // State
@@ -145,6 +146,20 @@ export const useManagementStore = defineStore('management', () => {
   // ========================================
   // Generic helper functions to reduce code duplication
   // ========================================
+
+  // Sync cfg disabled state to lock store
+  // Items that are disabled in cfg file should be marked as locked
+  function syncCfgDisabledToLockStore(
+    type: 'aircraft' | 'plugin',
+    items: Array<{ folderName: string; enabled: boolean }>
+  ) {
+    for (const item of items) {
+      // If item is disabled in cfg, mark it as locked
+      if (!item.enabled) {
+        lockStore.setLocked(type, item.folderName, true)
+      }
+    }
+  }
 
   // Helper function to check if cache is valid
   function isCacheValid(url: string): boolean {
@@ -325,11 +340,26 @@ export const useManagementStore = defineStore('management', () => {
 
   // Check for aircraft updates
   async function checkAircraftUpdates(forceRefresh: boolean = false) {
-    // Clear cache for items if force refresh is requested
+    // If force refresh, rescan to get latest cfg state first
     if (forceRefresh) {
+      // Clear update cache
       for (const item of aircraft.value) {
         if (item.updateUrl) {
           updateCache.delete(item.updateUrl)
+        }
+      }
+      // Rescan to get latest cfg state (without triggering another update check)
+      if (appStore.xplanePath) {
+        try {
+          const result = await invoke<ManagementData<AircraftInfo>>('scan_aircraft', {
+            xplanePath: appStore.xplanePath
+          })
+          aircraft.value = applyCachedUpdates(result.entries)
+          aircraftTotalCount.value = result.totalCount
+          aircraftEnabledCount.value = result.enabledCount
+          syncCfgDisabledToLockStore('aircraft', aircraft.value)
+        } catch (e) {
+          logError(`Failed to rescan aircraft: ${e}`, 'management')
         }
       }
     }
@@ -365,11 +395,26 @@ export const useManagementStore = defineStore('management', () => {
 
   // Check for plugin updates
   async function checkPluginsUpdates(forceRefresh: boolean = false) {
-    // Clear cache for items if force refresh is requested
+    // If force refresh, rescan to get latest cfg state first
     if (forceRefresh) {
+      // Clear update cache
       for (const item of plugins.value) {
         if (item.updateUrl) {
           updateCache.delete(item.updateUrl)
+        }
+      }
+      // Rescan to get latest cfg state (without triggering another update check)
+      if (appStore.xplanePath) {
+        try {
+          const result = await invoke<ManagementData<PluginInfo>>('scan_plugins', {
+            xplanePath: appStore.xplanePath
+          })
+          plugins.value = applyCachedUpdates(result.entries)
+          pluginsTotalCount.value = result.totalCount
+          pluginsEnabledCount.value = result.enabledCount
+          syncCfgDisabledToLockStore('plugin', plugins.value)
+        } catch (e) {
+          logError(`Failed to rescan plugins: ${e}`, 'management')
         }
       }
     }

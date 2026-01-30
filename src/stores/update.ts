@@ -4,13 +4,14 @@ import { invoke } from '@tauri-apps/api/core'
 import type { UpdateInfo } from '@/types'
 import { useToastStore } from './toast'
 import { useModalStore } from './modal'
-import { useI18n } from 'vue-i18n'
+import { i18n } from '@/i18n'
 import { logError, logDebug, logBasic } from '@/services/logger'
 import { invokeVoidCommand, CommandError } from '@/services/api'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
 
+const t = i18n.global.t
+
 export const useUpdateStore = defineStore('update', () => {
-  const { t } = useI18n()
   const toast = useToastStore()
   const modal = useModalStore()
 

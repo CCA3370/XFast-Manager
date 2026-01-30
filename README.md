@@ -249,7 +249,7 @@ Stores:
 
 **Development** - [CCA3370](https://forums.x-plane.org/profile/1288218-3370/)
 
-**Testing** - SINO1660, enenY, 🍊, Tong Wu
+**Testing** - SINO1660, enenY, 🍊, Tong Wu, HTony03
 
 ---
 

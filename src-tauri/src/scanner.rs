@@ -222,6 +222,53 @@ impl Scanner {
         false
     }
 
+    /// Check if a file path is inside any aircraft directory (for filesystem paths)
+    /// Used to skip .xpl files that are embedded inside aircraft packages
+    #[inline]
+    fn is_path_inside_aircraft_dirs(file_path: &Path, aircraft_dirs: &HashSet<PathBuf>) -> bool {
+        for ancestor in file_path.ancestors().skip(1) {
+            if aircraft_dirs.contains(ancestor) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Check if a string path is inside any aircraft directory (for archive paths)
+    /// Used to skip .xpl files that are embedded inside aircraft packages
+    #[inline]
+    fn is_archive_path_inside_aircraft_dirs(
+        file_path: &str,
+        aircraft_dirs: &HashSet<String>,
+    ) -> bool {
+        for aircraft_dir in aircraft_dirs {
+            let prefix = if aircraft_dir.ends_with('/') {
+                aircraft_dir.clone()
+            } else {
+                format!("{}/", aircraft_dir)
+            };
+            if file_path.starts_with(&prefix) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Get marker type priority (lower number = higher priority)
+    /// Aircraft (.acf) has highest priority to ensure plugins inside aircraft are skipped
+    #[inline]
+    fn marker_type_priority(marker_type: &str) -> u8 {
+        match marker_type {
+            "acf" => 0,      // Aircraft - highest priority
+            "library" => 1,  // Scenery library
+            "dsf" => 2,      // Scenery DSF
+            "navdata" => 3,  // Navigation data
+            "xpl" => 4,      // Plugin
+            "livery" => 5,   // Livery
+            _ => 6,
+        }
+    }
+
     /// Scan a path (file or directory) and detect all addon types
     pub fn scan_path(&self, path: &Path, password: Option<&str>) -> Result<Vec<DetectedItem>> {
         let original_input_path = path.to_string_lossy().to_string();
@@ -289,6 +336,7 @@ impl Scanner {
 
         let mut detected = Vec::new();
         let mut plugin_dirs: HashSet<PathBuf> = HashSet::new();
+        let mut aircraft_dirs: HashSet<PathBuf> = HashSet::new();
         let mut skip_dirs: HashSet<PathBuf> = HashSet::new();
 
         // Queue for breadth-first traversal: (directory_path, current_depth)
@@ -337,9 +385,11 @@ impl Scanner {
                 }
             }
 
-            // First pass on files: identify plugin directories
+            // First pass on files: identify plugin directories and aircraft directories
             for file_path in &files {
-                if file_path.extension().and_then(|s| s.to_str()) == Some("xpl") {
+                let file_ext = file_path.extension().and_then(|s| s.to_str());
+
+                if file_ext == Some("xpl") {
                     if let Some(parent) = file_path.parent() {
                         let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
 
@@ -355,6 +405,11 @@ impl Scanner {
 
                         plugin_dirs.insert(plugin_root);
                     }
+                } else if file_ext == Some("acf") {
+                    // Track aircraft directories to skip embedded plugins
+                    if let Some(parent) = file_path.parent() {
+                        aircraft_dirs.insert(parent.to_path_buf());
+                    }
                 }
             }
 
@@ -362,6 +417,8 @@ impl Scanner {
             for file_path in &files {
                 // Check if inside a detected plugin directory
                 let is_inside_plugin = Self::is_path_inside_plugin_dirs(file_path, &plugin_dirs);
+                // Check if inside a detected aircraft directory
+                let is_inside_aircraft = Self::is_path_inside_aircraft_dirs(file_path, &aircraft_dirs);
 
                 // Check if inside a skip directory
                 if Self::should_skip_path(file_path, &skip_dirs) {
@@ -372,6 +429,11 @@ impl Scanner {
 
                 // Skip .acf/.dsf files inside plugin directories
                 if (file_ext == Some("acf") || file_ext == Some("dsf")) && is_inside_plugin {
+                    continue;
+                }
+
+                // Skip .xpl files inside aircraft directories (embedded plugins)
+                if file_ext == Some("xpl") && is_inside_aircraft {
                     continue;
                 }
 
@@ -549,6 +611,7 @@ impl Scanner {
         );
 
         let mut plugin_dirs: HashSet<String> = HashSet::new();
+        let mut aircraft_dirs: HashSet<String> = HashSet::new();
         let mut marker_files: Vec<(String, &str)> = Vec::new();
         let mut nested_archives: Vec<String> = Vec::new();
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
@@ -574,7 +637,7 @@ impl Scanner {
                 }
             }
 
-            // Identify plugin directories and marker files
+            // Identify plugin directories, aircraft directories, and marker files
             if normalized.ends_with(".xpl") {
                 if let Some(parent) = Path::new(&normalized).parent() {
                     let parent_str = parent.to_string_lossy();
@@ -595,6 +658,13 @@ impl Scanner {
                 }
                 marker_files.push((normalized, "xpl"));
             } else if normalized.ends_with(".acf") {
+                // Track aircraft directories to skip embedded plugins
+                if let Some(parent) = Path::new(&normalized).parent() {
+                    let parent_str = parent.to_string_lossy().to_string();
+                    if !parent_str.is_empty() {
+                        aircraft_dirs.insert(parent_str);
+                    }
+                }
                 marker_files.push((normalized, "acf"));
             } else if normalized.ends_with("library.txt") {
                 marker_files.push((normalized, "library"));
@@ -615,12 +685,18 @@ impl Scanner {
             "scanner_timing"
         );
 
-        // Sort marker files by depth
+        // Sort marker files by depth, then by type priority (aircraft first)
         let sort_start = std::time::Instant::now();
         marker_files.sort_by(|a, b| {
             let depth_a = a.0.matches('/').count();
             let depth_b = b.0.matches('/').count();
-            depth_a.cmp(&depth_b)
+            match depth_a.cmp(&depth_b) {
+                std::cmp::Ordering::Equal => {
+                    // Same depth: sort by marker type priority (aircraft first)
+                    Self::marker_type_priority(a.1).cmp(&Self::marker_type_priority(b.1))
+                }
+                other => other,
+            }
         });
         crate::log_debug!(
             &format!(
@@ -651,8 +727,16 @@ impl Scanner {
                 continue;
             }
 
+            // Skip .acf/.dsf inside plugin directories
             if marker_type == "acf" || marker_type == "dsf" {
                 if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
+                    continue;
+                }
+            }
+
+            // Skip .xpl inside aircraft directories (embedded plugins)
+            if marker_type == "xpl" {
+                if Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs) {
                     continue;
                 }
             }
@@ -682,6 +766,10 @@ impl Scanner {
                         format!("{}/", internal_root)
                     };
                     skip_prefixes.push(prefix);
+                } else if item.addon_type == AddonType::Aircraft {
+                    // Aircraft at archive root: skip all other markers in this archive
+                    // by adding an empty prefix that matches everything
+                    skip_prefixes.push(String::new());
                 }
                 detected.push(item);
             }
@@ -1336,6 +1424,7 @@ impl Scanner {
 
         // Collect file paths and identify markers in a single pass
         let mut plugin_dirs: HashSet<String> = HashSet::new();
+        let mut aircraft_dirs: HashSet<String> = HashSet::new();
         let mut marker_files: Vec<(String, &str)> = Vec::new(); // (path, marker_type)
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
 
@@ -1356,7 +1445,7 @@ impl Scanner {
                 }
             }
 
-            // Identify plugin directories
+            // Identify plugin directories, aircraft directories, and marker files
             if normalized.ends_with(".xpl") {
                 if let Some(parent) = Path::new(&normalized).parent() {
                     let parent_str = parent.to_string_lossy();
@@ -1377,6 +1466,13 @@ impl Scanner {
                 }
                 marker_files.push((normalized, "xpl"));
             } else if normalized.ends_with(".acf") {
+                // Track aircraft directories to skip embedded plugins
+                if let Some(parent) = Path::new(&normalized).parent() {
+                    let parent_str = parent.to_string_lossy().to_string();
+                    if !parent_str.is_empty() {
+                        aircraft_dirs.insert(parent_str);
+                    }
+                }
                 marker_files.push((normalized, "acf"));
             } else if normalized.ends_with("library.txt") {
                 marker_files.push((normalized, "library"));
@@ -1387,11 +1483,17 @@ impl Scanner {
             }
         }
 
-        // Sort marker files by depth (process shallower paths first)
+        // Sort marker files by depth, then by type priority (aircraft first)
         marker_files.sort_by(|a, b| {
             let depth_a = a.0.matches('/').count();
             let depth_b = b.0.matches('/').count();
-            depth_a.cmp(&depth_b)
+            match depth_a.cmp(&depth_b) {
+                std::cmp::Ordering::Equal => {
+                    // Same depth: sort by marker type priority (aircraft first)
+                    Self::marker_type_priority(a.1).cmp(&Self::marker_type_priority(b.1))
+                }
+                other => other,
+            }
         });
 
         // Track detected addon roots to skip
@@ -1410,6 +1512,13 @@ impl Scanner {
             // Check if .acf/.dsf is inside a plugin directory
             if marker_type == "acf" || marker_type == "dsf" {
                 if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
+                    continue;
+                }
+            }
+
+            // Skip .xpl inside aircraft directories (embedded plugins)
+            if marker_type == "xpl" {
+                if Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs) {
                     continue;
                 }
             }
@@ -1441,6 +1550,9 @@ impl Scanner {
                         format!("{}/", internal_root)
                     };
                     skip_prefixes.push(prefix);
+                } else if item.addon_type == AddonType::Aircraft {
+                    // Aircraft at archive root: skip all other markers in this archive
+                    skip_prefixes.push(String::new());
                 }
                 detected.push(item);
             }
@@ -1568,9 +1680,10 @@ impl Scanner {
             return Ok(Vec::new());
         }
 
-        // Single pass: identify plugin directories and marker files
+        // Single pass: identify plugin directories, aircraft directories, and marker files
         let marker_identify_start = std::time::Instant::now();
         let mut plugin_dirs: HashSet<String> = HashSet::new();
+        let mut aircraft_dirs: HashSet<String> = HashSet::new();
         let mut marker_files: Vec<(String, &str)> = Vec::new(); // (path, marker_type)
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
 
@@ -1580,7 +1693,7 @@ impl Scanner {
                 continue;
             }
 
-            // Identify plugin directories and marker files
+            // Identify plugin directories, aircraft directories, and marker files
             if file_path.ends_with(".xpl") {
                 if let Some(parent) = Path::new(file_path).parent() {
                     let parent_str = parent.to_string_lossy();
@@ -1601,6 +1714,13 @@ impl Scanner {
                 }
                 marker_files.push((file_path.clone(), "xpl"));
             } else if file_path.ends_with(".acf") {
+                // Track aircraft directories to skip embedded plugins
+                if let Some(parent) = Path::new(file_path).parent() {
+                    let parent_str = parent.to_string_lossy().to_string();
+                    if !parent_str.is_empty() {
+                        aircraft_dirs.insert(parent_str);
+                    }
+                }
                 marker_files.push((file_path.clone(), "acf"));
             } else if file_path.ends_with("library.txt") {
                 marker_files.push((file_path.clone(), "library"));
@@ -1628,12 +1748,18 @@ impl Scanner {
             "scanner_timing"
         );
 
-        // Sort marker files by depth (process shallower paths first)
+        // Sort marker files by depth, then by type priority (aircraft first)
         let sort_start = std::time::Instant::now();
         marker_files.sort_by(|a, b| {
             let depth_a = a.0.matches('/').count();
             let depth_b = b.0.matches('/').count();
-            depth_a.cmp(&depth_b)
+            match depth_a.cmp(&depth_b) {
+                std::cmp::Ordering::Equal => {
+                    // Same depth: sort by marker type priority (aircraft first)
+                    Self::marker_type_priority(a.1).cmp(&Self::marker_type_priority(b.1))
+                }
+                other => other,
+            }
         });
         crate::log_debug!(
             &format!(
@@ -1672,6 +1798,13 @@ impl Scanner {
                 }
             }
 
+            // Skip .xpl inside aircraft directories (embedded plugins)
+            if marker_type == "xpl" {
+                if Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs) {
+                    continue;
+                }
+            }
+
             // Detect addon based on marker type
             let item = match marker_type {
                 "acf" => self.detect_aircraft_in_archive(&file_path, archive_path)?,
@@ -1699,6 +1832,9 @@ impl Scanner {
                         format!("{}/", internal_root)
                     };
                     skip_prefixes.push(prefix);
+                } else if item.addon_type == AddonType::Aircraft {
+                    // Aircraft at archive root: skip all other markers in this archive
+                    skip_prefixes.push(String::new());
                 }
                 detected.push(item);
             }
@@ -1814,6 +1950,7 @@ impl Scanner {
         );
 
         let mut plugin_dirs: HashSet<String> = HashSet::new();
+        let mut aircraft_dirs: HashSet<String> = HashSet::new();
         let mut marker_files: Vec<(usize, String, bool, &str)> = Vec::new(); // (index, path, encrypted, marker_type)
         let mut nested_archives: Vec<(usize, String, bool)> = Vec::new(); // (index, path, encrypted)
         let mut has_encrypted = false;
@@ -1869,7 +2006,7 @@ impl Scanner {
                 }
             }
 
-            // Identify plugin directories and marker files
+            // Identify plugin directories, aircraft directories, and marker files
             if file_path.ends_with(".xpl") {
                 if let Some(parent) = Path::new(&file_path).parent() {
                     let parent_str = parent.to_string_lossy();
@@ -1890,6 +2027,13 @@ impl Scanner {
                 }
                 marker_files.push((i, file_path, is_encrypted, "xpl"));
             } else if file_path.ends_with(".acf") {
+                // Track aircraft directories to skip embedded plugins
+                if let Some(parent) = Path::new(&file_path).parent() {
+                    let parent_str = parent.to_string_lossy().to_string();
+                    if !parent_str.is_empty() {
+                        aircraft_dirs.insert(parent_str);
+                    }
+                }
                 marker_files.push((i, file_path, is_encrypted, "acf"));
             } else if file_path.ends_with("library.txt") {
                 marker_files.push((i, file_path, is_encrypted, "library"));
@@ -1959,12 +2103,18 @@ impl Scanner {
             }
         }
 
-        // Sort marker files by depth (process shallower paths first)
+        // Sort marker files by depth, then by type priority (aircraft first)
         let sort_start = std::time::Instant::now();
         marker_files.sort_by(|a, b| {
             let depth_a = a.1.matches('/').count();
             let depth_b = b.1.matches('/').count();
-            depth_a.cmp(&depth_b)
+            match depth_a.cmp(&depth_b) {
+                std::cmp::Ordering::Equal => {
+                    // Same depth: sort by marker type priority (aircraft first)
+                    Self::marker_type_priority(a.3).cmp(&Self::marker_type_priority(b.3))
+                }
+                other => other,
+            }
         });
         crate::log_debug!(
             &format!(
@@ -1999,6 +2149,13 @@ impl Scanner {
             // Check if .acf/.dsf is inside a plugin directory
             if marker_type == "acf" || marker_type == "dsf" {
                 if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
+                    continue;
+                }
+            }
+
+            // Skip .xpl inside aircraft directories (embedded plugins)
+            if marker_type == "xpl" {
+                if Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs) {
                     continue;
                 }
             }
@@ -2048,6 +2205,9 @@ impl Scanner {
                         format!("{}/", internal_root)
                     };
                     skip_prefixes.push(prefix);
+                } else if item.addon_type == AddonType::Aircraft {
+                    // Aircraft at archive root: skip all other markers in this archive
+                    skip_prefixes.push(String::new());
                 }
                 detected.push(item);
             }
@@ -2257,6 +2417,7 @@ impl Scanner {
     }
 
     /// Scan a ZIP archive that's already in memory
+    /// Refactored to use marker file approach with aircraft directory tracking
     fn scan_zip_in_memory(
         &self,
         archive: &mut zip::ZipArchive<std::io::Cursor<Vec<u8>>>,
@@ -2264,80 +2425,147 @@ impl Scanner {
         _ctx: &mut ScanContext,
         _nested_path: &str,
     ) -> Result<Vec<DetectedItem>> {
-        let mut detected = Vec::new();
+        use std::io::Read;
 
-        // Collect all file paths
-        let mut files_info = Vec::new();
+        // First pass: collect all file paths and identify directories/markers
+        let mut plugin_dirs: HashSet<String> = HashSet::new();
+        let mut aircraft_dirs: HashSet<String> = HashSet::new();
+        let mut marker_files: Vec<(usize, String, &str)> = Vec::new(); // (index, path, marker_type)
+        let mut detected_livery_roots: HashSet<String> = HashSet::new();
+
         for i in 0..archive.len() {
             // Use by_index_raw to avoid triggering decryption errors when reading metadata
             let file = archive.by_index_raw(i)?;
-            files_info.push((i, file.name().to_string()));
-        }
+            let file_path = file.name().replace('\\', "/");
 
-        // Identify plugin directories first
-        let mut plugin_dirs: HashSet<PathBuf> = HashSet::new();
-        for (_, file_path) in &files_info {
+            // Skip ignored paths
+            if Self::should_ignore_archive_path(&file_path) {
+                continue;
+            }
+
+            // Check for livery patterns
+            if let Some((_, livery_root)) = livery_patterns::check_livery_pattern(&file_path) {
+                if !detected_livery_roots.contains(&livery_root) {
+                    detected_livery_roots.insert(livery_root.clone());
+                    marker_files.push((i, file_path.clone(), "livery"));
+                }
+            }
+
+            // Identify plugin directories, aircraft directories, and marker files
             if file_path.ends_with(".xpl") {
-                let path = PathBuf::from(file_path);
-                if let Some(parent) = path.parent() {
+                if let Some(parent) = Path::new(&file_path).parent() {
+                    let parent_str = parent.to_string_lossy();
                     let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
+
                     let plugin_root = if matches!(
                         parent_name,
                         "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
                     ) {
-                        parent.parent().unwrap_or(parent).to_path_buf()
+                        parent
+                            .parent()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or(parent_str.to_string())
                     } else {
-                        parent.to_path_buf()
+                        parent_str.to_string()
                     };
                     plugin_dirs.insert(plugin_root);
                 }
+                marker_files.push((i, file_path, "xpl"));
+            } else if file_path.ends_with(".acf") {
+                // Track aircraft directories to skip embedded plugins
+                if let Some(parent) = Path::new(&file_path).parent() {
+                    let parent_str = parent.to_string_lossy().to_string();
+                    if !parent_str.is_empty() {
+                        aircraft_dirs.insert(parent_str);
+                    }
+                }
+                marker_files.push((i, file_path, "acf"));
+            } else if file_path.ends_with("library.txt") {
+                marker_files.push((i, file_path, "library"));
+            } else if file_path.ends_with(".dsf") {
+                marker_files.push((i, file_path, "dsf"));
+            } else if file_path.ends_with("cycle.json") {
+                marker_files.push((i, file_path, "navdata"));
             }
         }
 
-        // Process files
-        for (file_index, file_path) in files_info {
-            let path = Path::new(&file_path);
-            if Self::should_ignore_path(path) {
+        // Sort marker files by depth, then by type priority (aircraft first)
+        marker_files.sort_by(|a, b| {
+            let depth_a = a.1.matches('/').count();
+            let depth_b = b.1.matches('/').count();
+            match depth_a.cmp(&depth_b) {
+                std::cmp::Ordering::Equal => {
+                    // Same depth: sort by marker type priority (aircraft first)
+                    Self::marker_type_priority(a.2).cmp(&Self::marker_type_priority(b.2))
+                }
+                other => other,
+            }
+        });
+
+        let mut detected = Vec::new();
+        let mut skip_prefixes: Vec<String> = Vec::new();
+
+        // Process marker files
+        for (file_index, file_path, marker_type) in marker_files {
+            // Check if inside a skip prefix (already detected addon)
+            let should_skip = skip_prefixes
+                .iter()
+                .any(|prefix| file_path.starts_with(prefix));
+            if should_skip {
                 continue;
             }
 
-            let is_inside_plugin = Self::is_path_inside_plugin_dirs(&path, &plugin_dirs);
-
-            if (file_path.ends_with(".acf") || file_path.ends_with(".dsf")) && is_inside_plugin {
-                continue;
+            // Check if .acf/.dsf is inside a plugin directory
+            if marker_type == "acf" || marker_type == "dsf" {
+                if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
+                    continue;
+                }
             }
 
-            // Detect addon types
-            if file_path.ends_with(".acf") {
-                if let Some(item) = self.detect_aircraft_in_archive(&file_path, parent_path)? {
-                    detected.push(item);
+            // Skip .xpl inside aircraft directories (embedded plugins)
+            if marker_type == "xpl" {
+                if Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs) {
+                    continue;
                 }
-            } else if file_path.ends_with("library.txt") {
-                if let Some(item) = self.detect_scenery_library(&file_path, parent_path)? {
-                    detected.push(item);
-                }
-            } else if file_path.ends_with(".dsf") {
-                if let Some(item) = self.detect_scenery_dsf(&file_path, parent_path)? {
-                    detected.push(item);
-                }
-            } else if file_path.ends_with(".xpl") {
-                if let Some(item) = self.detect_plugin_in_archive(&file_path, parent_path)? {
-                    detected.push(item);
-                }
-            } else if file_path.ends_with("cycle.json") {
-                // Read cycle.json from nested archive
-                use std::io::Read;
+            }
 
-                if let Ok(mut file) = archive.by_index(file_index) {
-                    let mut content = String::new();
-                    if file.read_to_string(&mut content).is_ok() {
-                        if let Some(item) =
+            // Detect addon based on marker type
+            let item = match marker_type {
+                "acf" => self.detect_aircraft_in_archive(&file_path, parent_path)?,
+                "library" => self.detect_scenery_library(&file_path, parent_path)?,
+                "dsf" => self.detect_scenery_dsf(&file_path, parent_path)?,
+                "xpl" => self.detect_plugin_in_archive(&file_path, parent_path)?,
+                "navdata" => {
+                    // Read cycle.json from nested archive
+                    if let Ok(mut file) = archive.by_index(file_index) {
+                        let mut content = String::new();
+                        if file.read_to_string(&mut content).is_ok() {
                             self.detect_navdata_in_archive(&file_path, &content, parent_path)?
-                        {
-                            detected.push(item);
+                        } else {
+                            None
                         }
+                    } else {
+                        None
                     }
                 }
+                "livery" => self.detect_livery_in_archive(&file_path, parent_path)?,
+                _ => None,
+            };
+
+            if let Some(item) = item {
+                // Add to skip prefixes
+                if let Some(ref internal_root) = item.archive_internal_root {
+                    let prefix = if internal_root.ends_with('/') {
+                        internal_root.clone()
+                    } else {
+                        format!("{}/", internal_root)
+                    };
+                    skip_prefixes.push(prefix);
+                } else if item.addon_type == AddonType::Aircraft {
+                    // Aircraft at archive root: skip all other markers in this archive
+                    skip_prefixes.push(String::new());
+                }
+                detected.push(item);
             }
         }
 
@@ -2404,6 +2632,7 @@ impl Scanner {
         // Single pass: collect file info, check encryption, and identify markers
         let enumerate_start = std::time::Instant::now();
         let mut plugin_dirs: HashSet<String> = HashSet::new();
+        let mut aircraft_dirs: HashSet<String> = HashSet::new();
         let mut marker_files: Vec<(usize, String, bool, &str)> = Vec::new(); // (index, path, encrypted, marker_type)
         let mut has_encrypted = false;
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
@@ -2453,7 +2682,7 @@ impl Scanner {
                 }
             }
 
-            // Identify plugin directories and marker files
+            // Identify plugin directories, aircraft directories, and marker files
             if file_path.ends_with(".xpl") {
                 if let Some(parent) = Path::new(&file_path).parent() {
                     let parent_str = parent.to_string_lossy();
@@ -2474,6 +2703,13 @@ impl Scanner {
                 }
                 marker_files.push((i, file_path, is_encrypted, "xpl"));
             } else if file_path.ends_with(".acf") {
+                // Track aircraft directories to skip embedded plugins
+                if let Some(parent) = Path::new(&file_path).parent() {
+                    let parent_str = parent.to_string_lossy().to_string();
+                    if !parent_str.is_empty() {
+                        aircraft_dirs.insert(parent_str);
+                    }
+                }
                 marker_files.push((i, file_path, is_encrypted, "acf"));
             } else if file_path.ends_with("library.txt") {
                 marker_files.push((i, file_path, is_encrypted, "library"));
@@ -2543,11 +2779,17 @@ impl Scanner {
             }
         }
 
-        // Sort marker files by depth (process shallower paths first)
+        // Sort marker files by depth, then by type priority (aircraft first)
         marker_files.sort_by(|a, b| {
             let depth_a = a.1.matches('/').count();
             let depth_b = b.1.matches('/').count();
-            depth_a.cmp(&depth_b)
+            match depth_a.cmp(&depth_b) {
+                std::cmp::Ordering::Equal => {
+                    // Same depth: sort by marker type priority (aircraft first)
+                    Self::marker_type_priority(a.3).cmp(&Self::marker_type_priority(b.3))
+                }
+                other => other,
+            }
         });
 
         let mut detected = Vec::new();
@@ -2566,6 +2808,13 @@ impl Scanner {
             // Check if .acf/.dsf is inside a plugin directory
             if marker_type == "acf" || marker_type == "dsf" {
                 if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
+                    continue;
+                }
+            }
+
+            // Skip .xpl inside aircraft directories (embedded plugins)
+            if marker_type == "xpl" {
+                if Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs) {
                     continue;
                 }
             }
@@ -2616,6 +2865,9 @@ impl Scanner {
                         format!("{}/", internal_root)
                     };
                     skip_prefixes.push(prefix);
+                } else if item.addon_type == AddonType::Aircraft {
+                    // Aircraft at archive root: skip all other markers in this archive
+                    skip_prefixes.push(String::new());
                 }
                 detected.push(item);
             }
