@@ -54,13 +54,51 @@ function showLoadingError(message: string, details?: string): void {
     loadingScreen.appendChild(errorContainer)
   }
 
+  // Build error text for copying
+  const errorText = details ? `${message}\n\n${details}` : message
+
   // Show error message
   errorContainer.innerHTML = `
     <div class="error-message">${escapeHtml(message)}</div>
     ${details ? `<div class="error-details">${escapeHtml(details)}</div>` : ''}
     <div class="error-hint">Check the log file for more details</div>
-    <button class="retry-button" onclick="location.reload()">Retry</button>
+    <div class="error-buttons">
+      <button class="copy-button" id="copy-error-btn">Copy Error</button>
+      <button class="retry-button" onclick="location.reload()">Retry</button>
+    </div>
   `
+
+  // Setup copy button handler
+  const copyBtn = document.getElementById('copy-error-btn')
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(errorText)
+        copyBtn.textContent = 'Copied!'
+        copyBtn.classList.add('copied')
+        setTimeout(() => {
+          copyBtn.textContent = 'Copy Error'
+          copyBtn.classList.remove('copied')
+        }, 2000)
+      } catch {
+        // Fallback for older browsers
+        const textarea = document.createElement('textarea')
+        textarea.value = errorText
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textarea)
+        copyBtn.textContent = 'Copied!'
+        copyBtn.classList.add('copied')
+        setTimeout(() => {
+          copyBtn.textContent = 'Copy Error'
+          copyBtn.classList.remove('copied')
+        }, 2000)
+      }
+    })
+  }
 
   // Add error styles if not already added
   if (!document.getElementById('error-styles')) {
@@ -104,7 +142,12 @@ function showLoadingError(message: string, details?: string): void {
         font-size: 12px;
         margin-bottom: 20px;
       }
-      .retry-button {
+      .error-buttons {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+      }
+      .copy-button, .retry-button {
         background: rgba(255,255,255,0.2);
         border: 1px solid rgba(255,255,255,0.3);
         color: #fff;
@@ -112,10 +155,14 @@ function showLoadingError(message: string, details?: string): void {
         border-radius: 6px;
         cursor: pointer;
         font-size: 14px;
-        transition: background 0.2s;
+        transition: background 0.2s, border-color 0.2s;
       }
-      .retry-button:hover {
+      .copy-button:hover, .retry-button:hover {
         background: rgba(255,255,255,0.3);
+      }
+      .copy-button.copied {
+        background: rgba(76, 175, 80, 0.3);
+        border-color: rgba(76, 175, 80, 0.5);
       }
     `
     document.head.appendChild(style)
