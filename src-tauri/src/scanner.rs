@@ -766,6 +766,10 @@ impl Scanner {
                         format!("{}/", internal_root)
                     };
                     skip_prefixes.push(prefix);
+                } else if item.addon_type == AddonType::Aircraft {
+                    // Aircraft at archive root: skip all other markers in this archive
+                    // by adding an empty prefix that matches everything
+                    skip_prefixes.push(String::new());
                 }
                 detected.push(item);
             }
@@ -1546,6 +1550,9 @@ impl Scanner {
                         format!("{}/", internal_root)
                     };
                     skip_prefixes.push(prefix);
+                } else if item.addon_type == AddonType::Aircraft {
+                    // Aircraft at archive root: skip all other markers in this archive
+                    skip_prefixes.push(String::new());
                 }
                 detected.push(item);
             }
@@ -1825,6 +1832,9 @@ impl Scanner {
                         format!("{}/", internal_root)
                     };
                     skip_prefixes.push(prefix);
+                } else if item.addon_type == AddonType::Aircraft {
+                    // Aircraft at archive root: skip all other markers in this archive
+                    skip_prefixes.push(String::new());
                 }
                 detected.push(item);
             }
@@ -2195,6 +2205,9 @@ impl Scanner {
                         format!("{}/", internal_root)
                     };
                     skip_prefixes.push(prefix);
+                } else if item.addon_type == AddonType::Aircraft {
+                    // Aircraft at archive root: skip all other markers in this archive
+                    skip_prefixes.push(String::new());
                 }
                 detected.push(item);
             }
@@ -2548,6 +2561,9 @@ impl Scanner {
                         format!("{}/", internal_root)
                     };
                     skip_prefixes.push(prefix);
+                } else if item.addon_type == AddonType::Aircraft {
+                    // Aircraft at archive root: skip all other markers in this archive
+                    skip_prefixes.push(String::new());
                 }
                 detected.push(item);
             }
@@ -2849,6 +2865,9 @@ impl Scanner {
                         format!("{}/", internal_root)
                     };
                     skip_prefixes.push(prefix);
+                } else if item.addon_type == AddonType::Aircraft {
+                    // Aircraft at archive root: skip all other markers in this archive
+                    skip_prefixes.push(String::new());
                 }
                 detected.push(item);
             }

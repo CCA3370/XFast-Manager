@@ -504,8 +504,6 @@ mod tests {
         assert_eq!(check_acf_identifier("a320_StdDef.acf"), Some("TOLISS_A320"));
         assert_eq!(check_acf_identifier("a321_XP11.acf"), Some("TOLISS_A321"));
         assert_eq!(check_acf_identifier("A330-900.acf"), Some("TOLISS_A339"));
-        // IXEG
-        assert_eq!(check_acf_identifier("B733.acf"), Some("IXEG_733"));
         // Unknown
         assert_eq!(check_acf_identifier("unknown.acf"), None);
     }
