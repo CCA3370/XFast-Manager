@@ -115,13 +115,23 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
     if !has_library_txt && !has_earth_nav_data && !has_plugin_files {
         crate::log_debug!(
             &format!(
-                "  ❌ Not a valid scenery: missing 'Earth nav data', 'library.txt', and plugins"
+                "  ⚠ Classified as Unrecognized: missing 'Earth nav data', 'library.txt', and plugins"
             ),
             "scenery_classifier"
         );
-        return Err(anyhow!(
-            "Not a valid scenery package: missing 'Earth nav data', 'library.txt', and plugins"
-        ));
+        return Ok(build_package_info(
+            folder_name,
+            SceneryCategory::Unrecognized,
+            scenery_path,
+            false,
+            false,
+            false,
+            0,
+            0,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        )?);
     }
 
     // If only has plugins (no scenery features), classify as Other

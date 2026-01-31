@@ -388,6 +388,7 @@ export default {
     categoryAirportMesh: 'Airport Mesh',
     categoryMesh: 'Mesh',
     categoryOther: 'Other',
+    categoryUnrecognized: 'Unrecognized',
     autoSort: 'Auto Sort',
     autoSortConfirm: 'Auto sort will overwrite all manual sorting. Are you sure you want to continue?',
     autoSortDone: 'Sort order reset. Click "Apply Changes" to save.',

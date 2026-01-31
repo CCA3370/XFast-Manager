@@ -52,6 +52,7 @@ const categoryConfig = computed(() => {
     [SceneryCategory.AirportMesh]: { label: t('sceneryManager.categoryAirportMesh'), color: 'text-cyan-700 dark:text-cyan-300', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30' },
     [SceneryCategory.Mesh]: { label: t('sceneryManager.categoryMesh'), color: 'text-red-700 dark:text-red-300', bgColor: 'bg-red-100 dark:bg-red-900/30' },
     [SceneryCategory.Other]: { label: t('sceneryManager.categoryOther'), color: 'text-gray-600 dark:text-gray-400', bgColor: 'bg-gray-100 dark:bg-gray-800/50' },
+    [SceneryCategory.Unrecognized]: { label: t('sceneryManager.categoryUnrecognized'), color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/40' },
   }
   return configs[props.entry.category] || configs[SceneryCategory.Other]
 })
@@ -159,9 +160,13 @@ async function handleDeleteConfirm() {
   <div
     class="flex items-center gap-2 p-2 rounded-lg border transition-all hover:bg-gray-50 dark:hover:bg-gray-700/30"
     :class="[
-      entry.enabled
-        ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
-        : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200/50 dark:border-gray-700/50 opacity-60',
+      entry.category === 'Unrecognized'
+        ? (entry.enabled
+          ? 'bg-red-50/50 dark:bg-red-900/10 border-red-300 dark:border-red-700'
+          : 'bg-red-50/30 dark:bg-red-900/5 border-red-200/50 dark:border-red-700/50 opacity-60')
+        : (entry.enabled
+          ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+          : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200/50 dark:border-gray-700/50 opacity-60'),
       hasMissingDeps ? 'cursor-pointer' : ''
     ]"
     @click="handleClick"

@@ -306,6 +306,8 @@ pub enum SceneryCategory {
     Mesh,
     /// Other/unknown scenery
     Other,
+    /// Unrecognized package (no Earth nav data, library.txt, or plugins)
+    Unrecognized,
 }
 
 impl SceneryCategory {
@@ -320,6 +322,7 @@ impl SceneryCategory {
             SceneryCategory::Overlay => 5,
             SceneryCategory::AirportMesh => 6, // Between Overlay and regular Mesh
             SceneryCategory::Mesh => 7,
+            SceneryCategory::Unrecognized => 8, // Lowest priority, always at bottom
         }
     }
 }
@@ -578,6 +581,7 @@ mod tests {
         assert!(SceneryCategory::Other.priority() < SceneryCategory::Overlay.priority());
         assert!(SceneryCategory::Overlay.priority() < SceneryCategory::AirportMesh.priority());
         assert!(SceneryCategory::AirportMesh.priority() < SceneryCategory::Mesh.priority());
+        assert!(SceneryCategory::Mesh.priority() < SceneryCategory::Unrecognized.priority());
     }
 
     #[test]

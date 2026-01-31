@@ -401,6 +401,7 @@ export default {
     categoryAirportMesh: '机场网格',
     categoryMesh: '网格',
     categoryOther: '其他',
+    categoryUnrecognized: '未识别',
     autoSort: '自动排序',
     autoSortConfirm: '自动排序将覆盖所有手动排序的内容，确定要继续吗？',
     autoSortDone: '已重置排序，点击"应用更改"写入文件',

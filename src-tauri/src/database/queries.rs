@@ -36,6 +36,7 @@ fn category_to_string(category: &SceneryCategory) -> &'static str {
         SceneryCategory::AirportMesh => "AirportMesh",
         SceneryCategory::Mesh => "Mesh",
         SceneryCategory::Other => "Other",
+        SceneryCategory::Unrecognized => "Unrecognized",
     }
 }
 
@@ -49,6 +50,7 @@ fn string_to_category(s: &str) -> SceneryCategory {
         "Overlay" => SceneryCategory::Overlay,
         "AirportMesh" => SceneryCategory::AirportMesh,
         "Mesh" => SceneryCategory::Mesh,
+        "Unrecognized" => SceneryCategory::Unrecognized,
         _ => SceneryCategory::Other,
     }
 }

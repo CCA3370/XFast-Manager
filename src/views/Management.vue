@@ -73,11 +73,12 @@ const localGroupedEntries = ref<Record<string, SceneryManagerEntry[]>>({
   Other: [],
   Overlay: [],
   AirportMesh: [],
-  Mesh: []
+  Mesh: [],
+  Unrecognized: []
 })
 
 // Category order for display
-const categoryOrder = ['FixedHighPriority', 'Airport', 'DefaultAirport', 'Library', 'Other', 'Overlay', 'AirportMesh', 'Mesh']
+const categoryOrder = ['FixedHighPriority', 'Airport', 'DefaultAirport', 'Library', 'Other', 'Overlay', 'AirportMesh', 'Mesh', 'Unrecognized']
 
 // Initialize tab from route query
 onMounted(async () => {
@@ -356,7 +357,8 @@ function syncLocalEntries() {
     Other: [...(grouped.Other || [])],
     Overlay: [...(grouped.Overlay || [])],
     AirportMesh: [...(grouped.AirportMesh || [])],
-    Mesh: [...(grouped.Mesh || [])]
+    Mesh: [...(grouped.Mesh || [])],
+    Unrecognized: [...(grouped.Unrecognized || [])]
   }
 }
 
@@ -1144,10 +1146,12 @@ const isLoading = computed(() => {
                 <div v-if="isGroupExpanded(category)" style="overflow: visible;">
                   <draggable
                     v-model="localGroupedEntries[category]"
-                    :group="{ name: 'scenery', pull: true, put: true }"
+                    :group="category === 'Unrecognized'
+                      ? { name: 'unrecognized', pull: false, put: false }
+                      : { name: 'scenery', pull: true, put: true }"
                     item-key="folderName"
                     handle=".drag-handle"
-                    :disabled="!sceneryStore.indexExists"
+                    :disabled="!sceneryStore.indexExists || category === 'Unrecognized'"
                     :animation="180"
                     :easing="'cubic-bezier(0.25, 0.8, 0.25, 1)'"
                     :force-fallback="true"
@@ -1181,7 +1185,7 @@ const isLoading = computed(() => {
                             :entry="element"
                             :index="getGlobalIndex(element.folderName)"
                             :total-count="sceneryStore.totalCount"
-                            :disable-reorder="!sceneryStore.indexExists"
+                            :disable-reorder="!sceneryStore.indexExists || category === 'Unrecognized'"
                             @toggle-enabled="handleSceneryToggleEnabled"
                             @move-up="handleMoveUp"
                             @move-down="handleMoveDown"

@@ -58,7 +58,8 @@ export const useSceneryStore = defineStore('scenery', () => {
       Other: [],
       Overlay: [],
       AirportMesh: [],
-      Mesh: []
+      Mesh: [],
+      Unrecognized: []
     }
 
     for (const entry of sortedEntries.value) {

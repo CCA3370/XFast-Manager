@@ -202,6 +202,11 @@ impl SceneryPacksManager {
         let mut global_airports_inserted = false;
 
         for info in packages {
+            // Skip Unrecognized packages - they should not be written to scenery_packs.ini
+            if info.category == SceneryCategory::Unrecognized {
+                continue;
+            }
+
             // Insert *GLOBAL_AIRPORTS* before the first DefaultAirport entry
             // (DefaultAirport has priority 2)
             if !global_airports_inserted
@@ -350,6 +355,8 @@ mod tests {
         assert!(SceneryCategory::DefaultAirport.priority() < SceneryCategory::Library.priority());
         assert!(SceneryCategory::Library.priority() < SceneryCategory::Other.priority());
         assert!(SceneryCategory::Other.priority() < SceneryCategory::Overlay.priority());
-        assert!(SceneryCategory::Overlay.priority() < SceneryCategory::Mesh.priority());
+        assert!(SceneryCategory::Overlay.priority() < SceneryCategory::AirportMesh.priority());
+        assert!(SceneryCategory::AirportMesh.priority() < SceneryCategory::Mesh.priority());
+        assert!(SceneryCategory::Mesh.priority() < SceneryCategory::Unrecognized.priority());
     }
 }

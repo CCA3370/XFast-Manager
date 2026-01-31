@@ -219,6 +219,7 @@ export enum SceneryCategory {
   AirportMesh = 'AirportMesh',
   Mesh = 'Mesh',
   Other = 'Other',
+  Unrecognized = 'Unrecognized',
 }
 
 export interface SceneryPackageInfo {
