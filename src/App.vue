@@ -261,8 +261,7 @@ onMounted(async () => {
     })
   }
 
-  // Listen for cli-args events from Rust (emitted during setup)
-  // Removed invoke('get_cli_args') to avoid duplicate calls and improve startup speed
+  // Listen for cli-args events from Rust (emitted by single-instance plugin for subsequent launches)
   try {
     await listen<string[]>('cli-args', async (event) => {
       logDebug(`CLI args event received: ${event.payload.join(', ')}`, 'app')
@@ -276,6 +275,20 @@ onMounted(async () => {
     })
   } catch (error) {
     logError(`Failed to setup CLI args listener: ${error}`, 'app')
+  }
+
+  // On first launch, the cli-args event from setup() fires before this listener is ready,
+  // so we also poll for CLI args to handle the cold-start case
+  try {
+    const args = await invoke<string[]>('get_cli_args')
+    if (args && args.length > 0) {
+      logDebug(`CLI args from first launch: ${args.join(', ')}`, 'app')
+      logBasic(t('log.launchedWithArgs'), 'app')
+      store.addCliArgsToBatch(args)
+      await router.push('/')
+    }
+  } catch (error) {
+    logError(`Failed to get CLI args on startup: ${error}`, 'app')
   }
 
   // Set up window close confirmation for unsaved scenery changes

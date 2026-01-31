@@ -35,7 +35,7 @@
           <div
             class="h-full rounded-full transition-all duration-150 ease-out"
             :class="getProgressBarClass()"
-            :style="{ width: displayPercentage + '%' }"
+            :style="progressBarStyle"
           ></div>
         </div>
         <!-- Animated switch between percentage and completion count -->
@@ -404,6 +404,20 @@ const displayPercentage = computed(() => {
   return props.percentage
 })
 
+// Computed: progress bar style with full-width gradient effect
+// The gradient should span the entire progress bar, so as progress increases,
+// the head moves through the color gradient (blue -> green)
+const progressBarStyle = computed(() => {
+  const percent = parseFloat(displayPercentage.value) || 0.1
+  // Scale background size so the gradient spans the full container width
+  // When progress is 50%, background-size should be 200% to make gradient appear full width
+  const bgSize = Math.min(10000, 100 / percent * 100)
+  return {
+    width: displayPercentage.value + '%',
+    backgroundSize: bgSize + '% 100%'
+  }
+})
+
 // Computed: completion status
 const completionStatus = computed<'success' | 'partial' | 'failed'>(() => {
   if (!props.installResult) return 'success'
@@ -611,8 +625,10 @@ function getTaskTypeLabel(type: AddonType): string {
 
 <style scoped>
 /* Progress bar gradient - blue to green like the cover image */
+/* The gradient spans the full bar width; background-size is controlled via inline style */
 .progress-bar-gradient {
   background: linear-gradient(90deg, #3b82f6 0%, #10b981 100%);
+  background-position: left;
 }
 
 .progress-bar-glow {
