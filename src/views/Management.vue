@@ -1069,7 +1069,7 @@ const isLoading = computed(() => {
         </div>
 
         <!-- Filtered view (no drag-and-drop) -->
-        <div v-else-if="showOnlyMissingLibs" class="space-y-1.5 px-1">
+        <div v-else-if="showOnlyMissingLibs" class="space-y-1.5 px-1 pb-2">
           <div
             v-for="(element, index) in filteredSceneryEntries"
             :key="element.folderName"
@@ -1105,7 +1105,7 @@ const isLoading = computed(() => {
         </div>
 
         <!-- Normal view with drag-and-drop groups -->
-        <div v-else class="space-y-3" style="overflow: visible;">
+        <div v-else class="space-y-3 pb-2" style="overflow: visible;">
           <template
             v-for="category in categoryOrder"
             :key="category"
