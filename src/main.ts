@@ -21,6 +21,11 @@ import Home from './views/Home.vue'
 import { i18n } from './i18n'
 import './style.css'
 import { initStorage, getItem, STORAGE_KEYS } from './services/storage'
+import { useAppStore } from './stores/app'
+import { useThemeStore } from './stores/theme'
+import { useLockStore } from './stores/lock'
+import { useUpdateStore } from './stores/update'
+import { useSceneryStore } from './stores/scenery'
 
 // ============================================================================
 // Loading Screen Error Display
@@ -290,23 +295,8 @@ async function initApp(): Promise<void> {
     app.use(i18n)
     bootstrapDebug('Vue plugins installed', 'init')
 
-    // Step 4: Import stores
+    // Step 4: Initialize stores
     bootstrapInfo('Loading stores...', 'init')
-    const [
-      { useAppStore },
-      { useThemeStore },
-      { useLockStore },
-      { useUpdateStore },
-      { useSceneryStore }
-    ] = await Promise.all([
-      import('./stores/app'),
-      import('./stores/theme'),
-      import('./stores/lock'),
-      import('./stores/update'),
-      import('./stores/scenery')
-    ])
-    bootstrapDebug('Store modules loaded', 'init')
-
     const appStore = useAppStore()
     const themeStore = useThemeStore()
     const lockStore = useLockStore()

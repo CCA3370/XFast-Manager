@@ -18,6 +18,7 @@ export interface TaskState {
   backup: {
     liveries: boolean
     configFiles: boolean
+    navdata: boolean
   }
 }
 
@@ -97,7 +98,7 @@ export const useAppStore = defineStore('app', () => {
       enabled,
       overwrite: false,
       sizeConfirmed: false,
-      backup: { liveries: true, configFiles: true }
+      backup: { liveries: true, configFiles: true, navdata: true }
     }
   }
 
@@ -313,6 +314,7 @@ export const useAppStore = defineStore('app', () => {
         // Only enable config file backup if patterns are configured
         backupConfigFiles: (configFilePatterns.value.length > 0) && state.backup.configFiles,
         configFilePatterns: configFilePatterns.value,
+        backupNavdata: state.backup.navdata,
       }
     })
   }
@@ -356,12 +358,22 @@ export const useAppStore = defineStore('app', () => {
   // Set backup settings for a specific task
   function setTaskBackupSettings(taskId: string, liveries: boolean, configFiles: boolean) {
     const state = getTaskState(taskId)
-    state.backup = { liveries, configFiles }
+    state.backup = { ...state.backup, liveries, configFiles }
   }
 
   // Get backup settings for a task (default both true)
   function getTaskBackupSettings(taskId: string): { liveries: boolean, configFiles: boolean } {
     return getTaskState(taskId).backup
+  }
+
+  // Set navdata backup setting for a specific task
+  function setBackupNavdata(taskId: string, value: boolean) {
+    getTaskState(taskId).backup.navdata = value
+  }
+
+  // Get navdata backup setting for a task (default true)
+  function getBackupNavdata(taskId: string): boolean {
+    return getTaskState(taskId).backup.navdata
   }
 
   // Set config file patterns
@@ -502,6 +514,8 @@ export const useAppStore = defineStore('app', () => {
     setAllTasksEnabled,
     setTaskBackupSettings,
     getTaskBackupSettings,
+    setBackupNavdata,
+    getBackupNavdata,
     setConfigFilePatterns,
     getConfigFilePatterns,
     setPendingCliArgs,

@@ -52,7 +52,7 @@
           </div>
 
           <div class="mt-4 space-y-3">
-            <p class="text-sm text-gray-700 dark:text-gray-100 leading-relaxed">
+            <p class="text-sm text-gray-700 dark:text-gray-100 leading-relaxed whitespace-pre-line">
               {{ currentMessage }}
             </p>
 

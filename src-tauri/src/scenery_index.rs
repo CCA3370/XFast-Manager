@@ -357,21 +357,23 @@ impl SceneryIndexManager {
     }
 
     /// Rebuild entire index by scanning all scenery packages
+    /// This completely clears the existing index and rebuilds from scratch
     pub fn rebuild_index(&self) -> Result<SceneryIndex> {
         let custom_scenery_path = self.xplane_path.join("Custom Scenery");
         if !custom_scenery_path.exists() {
             return Err(anyhow!("Custom Scenery folder not found"));
         }
 
-        // Preserve enabled states from existing index before rebuilding
-        let existing_index = self
-            .load_index()
-            .unwrap_or_else(|_| self.create_empty_index());
-        let enabled_states: HashMap<String, bool> = existing_index
-            .packages
-            .iter()
-            .map(|(name, info)| (name.clone(), info.enabled))
-            .collect();
+        // Clear all existing index data for a fresh rebuild
+        self.ensure_initialized()?;
+        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
+        SceneryQueries::clear_all(&conn).map_err(|e| anyhow!("{}", e))?;
+        drop(conn);
+
+        logger::log_info(
+            "Cleared existing index, starting fresh rebuild",
+            Some("scenery_index"),
+        );
 
         // Collect all scenery folders (including symlinks and .lnk shortcuts)
         // Track shortcuts by their target path to correctly map shortcut names
@@ -502,17 +504,15 @@ impl SceneryIndexManager {
             compare_packages_for_sorting(&a.folder_name, a, &b.folder_name, b)
         });
 
-        // Assign sort_order and apply enabled states from index
+        // Assign sort_order and set default enabled state
+        // Fresh rebuild: Unrecognized packages default to disabled, others default to enabled
         let packages: HashMap<String, SceneryPackageInfo> = packages_vec
             .into_iter()
             .enumerate()
             .map(|(index, mut info)| {
                 info.sort_order = index as u32;
-                // Apply enabled state from ini (default to true for new packages)
-                info.enabled = enabled_states
-                    .get(&info.folder_name)
-                    .copied()
-                    .unwrap_or(true);
+                // Unrecognized packages default to disabled, others default to enabled
+                info.enabled = info.category != SceneryCategory::Unrecognized;
                 (info.folder_name.clone(), info)
             })
             .collect();
@@ -795,6 +795,15 @@ impl SceneryIndexManager {
                 }
                 index.packages.insert(info.folder_name.clone(), info);
             }
+
+            // Before recalculate_sort_order, detect airport mesh packages (same as rebuild_index)
+            let mut packages_vec: Vec<SceneryPackageInfo> =
+                index.packages.drain().map(|(_, v)| v).collect();
+            self.detect_airport_mesh_packages(&mut packages_vec);
+            index.packages = packages_vec
+                .into_iter()
+                .map(|info| (info.folder_name.clone(), info))
+                .collect();
 
             // After adding new packages, recalculate sort_order using the same logic as rebuild_index
             // This ensures incremental updates produce the same ordering as full rebuilds

@@ -136,7 +136,6 @@ import ThemeSwitcher from '@/components/ThemeSwitcher.vue'
 import AnimatedText from '@/components/AnimatedText.vue'
 import ErrorModal from '@/components/ErrorModal.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
-import type { SceneryIndexScanResult } from '@/types'
 
 const { t } = useI18n()
 const store = useAppStore()
@@ -166,25 +165,6 @@ watch(() => route.path, (newPath, oldPath) => {
   transitionName.value = newOrder > oldOrder ? 'page-left' : 'page-right'
 })
 
-async function runSceneryIndexStartupScan() {
-  if (!store.xplanePath) return
-
-  try {
-    const result = await invoke<SceneryIndexScanResult>('quick_scan_scenery_index', {
-      xplanePath: store.xplanePath
-    })
-
-    if (!result.indexExists) return
-
-    const hasChanges = result.added + result.removed + result.updated > 0
-    if (hasChanges && store.autoSortScenery) {
-      store.showSceneryManagerHint('sceneryManager.hintFromScan')
-    }
-  } catch (error) {
-    logError(`Failed to quick scan scenery index: ${error}`, 'app')
-  }
-}
-
 onMounted(async () => {
   // Log app startup (basic level - always logged)
   logBasic(t('log.appStarted'), 'app')
@@ -209,8 +189,6 @@ onMounted(async () => {
   } catch (error) {
     logError(`Failed to detect platform: ${error}`, 'app')
   }
-
-  runSceneryIndexStartupScan()
 
   // Non-blocking sync locale to backend (moved from i18n module top-level)
   syncLocaleToBackend()

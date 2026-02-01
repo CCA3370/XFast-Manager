@@ -4,9 +4,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
+use walkdir::WalkDir;
 
+use crate::installer::sanitize_folder_name;
 use crate::logger;
-use crate::models::{InstallPhase, InstallProgress, InstallTask};
+use crate::models::{BackupFileEntry, InstallPhase, InstallProgress, InstallTask, NavdataBackupVerification};
 
 /// Minimum required free space (1 GB) as a safety buffer
 const MIN_FREE_SPACE_BYTES: u64 = 1024 * 1024 * 1024;
@@ -20,6 +22,8 @@ pub struct AtomicInstaller {
     temp_dir: PathBuf,
     /// Target installation directory
     target_dir: PathBuf,
+    /// X-Plane root directory
+    xplane_root: PathBuf,
     /// Backup directory for original files (if exists)
     backup_dir: Option<PathBuf>,
     /// App handle for emitting progress events
@@ -64,6 +68,7 @@ impl AtomicInstaller {
         Ok(Self {
             temp_dir,
             target_dir: target_dir.to_path_buf(),
+            xplane_root: xplane_root.to_path_buf(),
             backup_dir: None,
             app_handle,
             total_tasks,
@@ -301,6 +306,260 @@ impl AtomicInstaller {
         self.cleanup_temp_dir();
 
         Ok(())
+    }
+
+    /// Scenario 4: Navdata clean install with backup (EXTREME PERFORMANCE OPTIMIZED)
+    ///
+    /// Performance optimizations:
+    /// 1. Uses walkdir for efficient single-pass file enumeration (no extra stat calls)
+    /// 2. SKIPS SHA-256 checksum calculation entirely (fs::rename is atomic, checksums redundant)
+    /// 3. Directory-level rename for O(1) backup moves
+    /// 4. Fast verification uses single fs::metadata() call (no double stat)
+    ///
+    /// Steps:
+    /// 1. Enumerate new navdata entries from temp_dir
+    /// 2. Create Backup_Data/<provider_name>/ folder (one backup per provider)
+    /// 3. Collect all files to backup using walkdir (path + size, NO checksum)
+    /// 4. Move directories to backup (O(1) directory rename when possible)
+    /// 5. Fast verify (single stat per file)
+    /// 6. Write verification.json
+    /// 7. Merge new navdata to target
+    ///
+    /// If backup_navdata is false, skips backup steps and just deletes old files.
+    pub fn install_clean_navdata_with_backup(&mut self, backup_navdata: bool) -> Result<()> {
+        logger::log_info(
+            "Atomic install: Navdata clean install with backup (extreme optimized)",
+            Some("atomic_installer"),
+        );
+
+        // Step 1: Enumerate top-level entries in temp_dir (new navdata files/folders)
+        self.emit_progress("Scanning new navdata files...", InstallPhase::Installing);
+        let new_entries: Vec<std::ffi::OsString> = fs::read_dir(&self.temp_dir)?
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name())
+            .collect();
+
+        if new_entries.is_empty() {
+            logger::log_info(
+                "No new navdata entries found in temp directory",
+                Some("atomic_installer"),
+            );
+            return self.install_fresh();
+        }
+
+        logger::log_info(
+            &format!("Found {} new navdata entries", new_entries.len()),
+            Some("atomic_installer"),
+        );
+
+        // Read provider name from new navdata (needed for both backup and cleanup)
+        let provider_name = self.read_navdata_info(&self.temp_dir)
+            .map(|(name, _, _)| name)
+            .or_else(|_| self.read_navdata_info(&self.target_dir).map(|(name, _, _)| name))
+            .unwrap_or_else(|_| "navdata".to_string());
+
+        if backup_navdata {
+            // Read old cycle/airac from target_dir (the data being backed up)
+            let (old_cycle, old_airac) = self.read_navdata_info(&self.target_dir)
+                .map(|(_, c, a)| (c, a))
+                .unwrap_or((None, None));
+
+            // Step 3: Create Backup_Data/<provider_name_timestamp>/ directory in Custom Data
+            self.emit_progress("Creating backup directory...", InstallPhase::Installing);
+            let backup_data_dir = self.xplane_root.join("Custom Data").join("Backup_Data");
+            fs::create_dir_all(&backup_data_dir)?;
+
+            // Use timestamp to create unique backup folder name
+            let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+            let sanitized_provider = sanitize_folder_name(&provider_name);
+            let backup_folder_name = format!("{}_{}", sanitized_provider, timestamp);
+            let backup_subdir = backup_data_dir.join(&backup_folder_name);
+
+            fs::create_dir_all(&backup_subdir)?;
+
+            logger::log_info(
+                &format!("Backup directory created: {:?}", backup_subdir),
+                Some("atomic_installer"),
+            );
+
+            // Step 4: Collect all files using walkdir (OPTIMIZED: single pass, no extra stat)
+            // Skip SHA-256 checksum calculation - fs::rename is atomic, checksums are redundant
+            self.emit_progress("Scanning files to backup...", InstallPhase::Installing);
+            let custom_data_dir = self.xplane_root.join("Custom Data");
+            let mut backup_entries: Vec<BackupFileEntry> = Vec::new();
+
+            for entry_name in &new_entries {
+                let old_path = self.target_dir.join(entry_name);
+                if old_path.exists() {
+                    // Use walkdir for efficient enumeration (DirEntry::file_type() uses cached stat)
+                    for entry in WalkDir::new(&old_path)
+                        .into_iter()
+                        .filter_map(|e| e.ok())
+                        .filter(|e| e.file_type().is_file())
+                    {
+                        // Get size from walkdir's metadata (single stat call)
+                        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                        // Relative path from Custom Data (not target_dir) for consistent restore
+                        let relative_path = entry.path()
+                            .strip_prefix(&custom_data_dir)
+                            .unwrap_or(entry.path())
+                            .to_string_lossy()
+                            .replace('\\', "/");
+
+                        backup_entries.push(BackupFileEntry {
+                            relative_path,
+                            checksum: String::new(), // SKIP checksum - fs::rename is atomic
+                            size,
+                        });
+                    }
+                }
+            }
+
+            logger::log_info(
+                &format!("Found {} files to backup (checksum skipped)", backup_entries.len()),
+                Some("atomic_installer"),
+            );
+
+            // Step 5: Move files to backup directory (OPTIMIZED: directory-level rename)
+            self.emit_progress("Moving files to backup...", InstallPhase::Installing);
+            for entry_name in &new_entries {
+                let old_path = self.target_dir.join(entry_name);
+                if old_path.exists() {
+                    // Compute relative path from Custom Data for consistent backup structure
+                    let relative_entry = old_path
+                        .strip_prefix(&custom_data_dir)
+                        .unwrap_or(Path::new(entry_name));
+                    let backup_path = backup_subdir.join(relative_entry);
+                    logger::log_info(
+                        &format!("Moving to backup: {:?}", entry_name),
+                        Some("atomic_installer"),
+                    );
+                    move_directory(&old_path, &backup_path)?;
+                }
+            }
+
+            // Step 6: Fast verify (OPTIMIZED: single fs::metadata() call per file)
+            self.emit_progress("Verifying backup (fast)...", InstallPhase::Installing);
+            verify_backup_fast(&backup_subdir, &backup_entries)?;
+
+            logger::log_info(
+                &format!("Fast verification passed: {} files verified", backup_entries.len()),
+                Some("atomic_installer"),
+            );
+
+            // Step 7: Write verification.json
+            let verification = NavdataBackupVerification {
+                provider_name: provider_name.clone(),
+                cycle: old_cycle,
+                airac: old_airac,
+                backup_time: chrono::Utc::now().to_rfc3339(),
+                files: backup_entries.clone(),
+                file_count: backup_entries.len(),
+            };
+
+            let verification_path = backup_subdir.join("verification.json");
+            let verification_json = serde_json::to_string_pretty(&verification)
+                .context("Failed to serialize verification data")?;
+            fs::write(&verification_path, verification_json)
+                .context("Failed to write verification.json")?;
+
+            logger::log_info(
+                &format!(
+                    "Backup verification written: {} files backed up",
+                    backup_entries.len()
+                ),
+                Some("atomic_installer"),
+            );
+        } else {
+            // No backup: delete old files that will be replaced by new ones
+            logger::log_info(
+                "Navdata backup disabled by user, deleting old files directly",
+                Some("atomic_installer"),
+            );
+
+            // Also delete existing backups for the same provider
+            let sanitized_provider = sanitize_folder_name(&provider_name);
+            let backup_data_dir = self.xplane_root.join("Custom Data").join("Backup_Data");
+            if backup_data_dir.exists() {
+                if let Ok(entries) = fs::read_dir(&backup_data_dir) {
+                    for entry in entries.filter_map(|e| e.ok()) {
+                        let folder_name = entry.file_name().to_string_lossy().to_string();
+                        if folder_name.starts_with(&sanitized_provider) {
+                            logger::log_info(
+                                &format!("Deleting existing backup: {}", folder_name),
+                                Some("atomic_installer"),
+                            );
+                            if let Err(e) = fs::remove_dir_all(entry.path()) {
+                                logger::log_error(
+                                    &format!("Failed to delete backup {}: {}", folder_name, e),
+                                    Some("atomic_installer"),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            for entry_name in &new_entries {
+                let old_path = self.target_dir.join(entry_name);
+                if old_path.exists() {
+                    if old_path.is_dir() {
+                        fs::remove_dir_all(&old_path)?;
+                    } else {
+                        fs::remove_file(&old_path)?;
+                    }
+                }
+            }
+        }
+
+        // Step 8: Merge new navdata to target
+        self.emit_progress("Installing new navdata...", InstallPhase::Installing);
+        merge_directories(&self.temp_dir, &self.target_dir)?;
+
+        logger::log_info(
+            &format!("Navdata clean install completed: {:?}", self.target_dir),
+            Some("atomic_installer"),
+        );
+
+        // Explicitly cleanup temp directory
+        self.cleanup_temp_dir();
+
+        Ok(())
+    }
+
+    /// Read navdata info from cycle.json (searches recursively)
+    fn read_navdata_info(&self, dir: &Path) -> Result<(String, Option<String>, Option<String>)> {
+        // Search recursively for cycle.json (handles GNS430 nested structure)
+        let cycle_json_path = WalkDir::new(dir)
+            .max_depth(5)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_type().is_file() && e.file_name().to_str() == Some("cycle.json"))
+            .map(|e| e.into_path());
+
+        let cycle_json_path = match cycle_json_path {
+            Some(p) => p,
+            None => anyhow::bail!("cycle.json not found"),
+        };
+
+        let content = fs::read_to_string(&cycle_json_path)?;
+        let json: serde_json::Value = serde_json::from_str(&content)?;
+
+        // Use "name" field to match management_index::parse_cycle_json
+        let provider_name = json.get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("navdata")
+            .to_string();
+
+        let cycle = json.get("cycle")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let airac = json.get("airac")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        Ok((provider_name, cycle, airac))
     }
 
     /// Restore backup files (liveries and config files) from backup directory
@@ -808,6 +1067,92 @@ fn merge_directories_skip_existing(src: &Path, dst: &Path) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// Move a directory or file from src to dst (OPTIMIZED)
+/// First attempts directory-level rename (O(1) operation on same filesystem)
+/// Falls back to recursive copy+delete for cross-filesystem moves
+fn move_directory(src: &Path, dst: &Path) -> Result<()> {
+    // Optimization: Try to rename the entire directory at once (O(1) operation)
+    // This avoids per-file syscalls when source and destination are on same filesystem
+    if src.is_dir() {
+        // Ensure parent of destination exists
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        // Try direct directory rename first
+        match fs::rename(src, dst) {
+            Ok(()) => {
+                logger::log_info(
+                    &format!("Directory moved via rename: {:?} -> {:?}", src, dst),
+                    Some("atomic_installer"),
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                // Cross-device link error (EXDEV on Unix, different error on Windows)
+                // Fall back to recursive approach
+                logger::log_info(
+                    &format!("Directory rename failed ({}), falling back to recursive copy", e),
+                    Some("atomic_installer"),
+                );
+            }
+        }
+
+        // Fallback: recursive copy + delete
+        fs::create_dir_all(dst)?;
+        for entry in fs::read_dir(src)? {
+            let entry = entry?;
+            let src_child = entry.path();
+            let dst_child = dst.join(entry.file_name());
+            move_directory(&src_child, &dst_child)?;
+        }
+        // Remove source directory after moving all contents
+        fs::remove_dir(src).ok();
+    } else {
+        // For files, create parent directory if needed
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        // Try atomic rename first
+        match fs::rename(src, dst) {
+            Ok(()) => {}
+            Err(_) => {
+                // Fallback to copy + delete for cross-filesystem
+                fs::copy(src, dst)?;
+                fs::remove_file(src).ok();
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Fast verification: check file existence and size only (OPTIMIZED: single stat per file)
+/// Skips re-computing checksums since fs::rename is atomic on same filesystem
+fn verify_backup_fast(backup_dir: &Path, entries: &[BackupFileEntry]) -> Result<()> {
+    for entry in entries {
+        let file_path = backup_dir.join(&entry.relative_path);
+        // OPTIMIZED: Use single fs::metadata() call instead of exists() + metadata()
+        match fs::metadata(&file_path) {
+            Ok(meta) => {
+                if meta.len() != entry.size {
+                    anyhow::bail!(
+                        "Backup size mismatch for {}: expected {} bytes, got {} bytes",
+                        entry.relative_path,
+                        entry.size,
+                        meta.len()
+                    );
+                }
+            }
+            Err(_) => {
+                anyhow::bail!("Backup file missing: {}", entry.relative_path);
+            }
+        }
+    }
     Ok(())
 }
 

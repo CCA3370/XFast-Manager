@@ -483,6 +483,25 @@ impl Analyzer {
         }
     }
 
+    /// Find cycle.json within a directory (searches up to 3 levels deep)
+    fn find_cycle_json(dir: &Path) -> Option<PathBuf> {
+        if !dir.exists() {
+            return None;
+        }
+        for entry in walkdir::WalkDir::new(dir)
+            .max_depth(3)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if entry.file_type().is_file()
+                && entry.file_name().to_str() == Some("cycle.json")
+            {
+                return Some(entry.path().to_path_buf());
+            }
+        }
+        None
+    }
+
     /// Read existing navdata cycle info from Custom Data/cycle.json
     /// Returns None if file doesn't exist or can't be read (graceful degradation)
     fn read_existing_navdata_cycle(&self, target_path: &Path) -> Option<NavdataInfo> {
@@ -618,7 +637,8 @@ impl Analyzer {
                 }
                 AddonType::Plugin => xplane_root.join("Resources").join("plugins"),
                 AddonType::Navdata => {
-                    // Determine if it's GNS430 or main Custom Data
+                    // For GNS430: target is Custom Data/GNS430
+                    // For regular navdata: target is Custom Data
                     if item.display_name.contains("GNS430") {
                         xplane_root.join("Custom Data").join("GNS430")
                     } else {
@@ -641,9 +661,17 @@ impl Analyzer {
         // Check if target already exists
         // For Navdata, check if cycle.json exists and read existing cycle info
         let (conflict_exists, existing_navdata_info) = if item.addon_type == AddonType::Navdata {
-            let cycle_path = target_path.join("cycle.json");
-            if cycle_path.exists() {
-                (true, self.read_existing_navdata_cycle(&target_path))
+            // For GNS430: search recursively (due to grandparent extraction)
+            // For regular navdata: check directly
+            let cycle_path = if item.display_name.contains("GNS430") {
+                Self::find_cycle_json(&target_path)
+            } else {
+                let p = target_path.join("cycle.json");
+                if p.exists() { Some(p) } else { None }
+            };
+            if let Some(ref cp) = cycle_path {
+                let navdata_dir = cp.parent().unwrap_or(&target_path);
+                (true, self.read_existing_navdata_cycle(navdata_dir))
             } else {
                 (false, None)
             }
@@ -727,6 +755,7 @@ impl Analyzer {
             backup_liveries: true,     // Default to true (safe)
             backup_config_files: true, // Default to true (safe)
             config_file_patterns: vec!["*_prefs.txt".to_string()], // Default pattern
+            backup_navdata: true,      // Default to true (safe)
             file_hashes: None,         // Will be populated by hash collector
             enable_verification,       // Based on verification preferences
             livery_aircraft_type: item.livery_aircraft_type,

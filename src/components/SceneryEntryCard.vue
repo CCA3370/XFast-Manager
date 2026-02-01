@@ -16,8 +16,10 @@ const props = withDefaults(defineProps<{
   index: number
   totalCount: number
   disableReorder?: boolean
+  disableMoveDown?: boolean
 }>(), {
-  disableReorder: false
+  disableReorder: false,
+  disableMoveDown: false
 })
 
 const emit = defineEmits<{
@@ -163,7 +165,7 @@ async function handleDeleteConfirm() {
       entry.category === 'Unrecognized'
         ? (entry.enabled
           ? 'bg-red-50/50 dark:bg-red-900/10 border-red-300 dark:border-red-700'
-          : 'bg-red-50/30 dark:bg-red-900/5 border-red-200/50 dark:border-red-700/50 opacity-60')
+          : 'bg-red-50/30 dark:bg-red-900/5 border-red-300 dark:border-red-700')
         : (entry.enabled
           ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
           : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200/50 dark:border-gray-700/50 opacity-60'),
@@ -232,7 +234,7 @@ async function handleDeleteConfirm() {
       </button>
       <button
         @click="emit('move-down', entry.folderName)"
-        :disabled="isLast"
+        :disabled="isLast || props.disableMoveDown"
         class="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         :title="t('sceneryManager.moveDown')"
       >

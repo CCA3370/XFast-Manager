@@ -206,6 +206,7 @@ export default {
     backupOptions: '备份选项',
     backupLiveries: '备份涂装',
     backupConfigFiles: '备份配置文件',
+    backupNavdata: '备份现有数据',
     sizeWarningTitle: '安全警告',
     sizeWarningDesc: '部分压缩包存在异常的大小特征，请在安装前仔细确认。',
     suspiciousRatio: '可疑的压缩比 ({ratio}:1)，预估解压大小: {size} GB。这可能是压缩炸弹。',
@@ -409,7 +410,8 @@ export default {
     autoSortFailed: '自动排序失败',
     moreActions: '更多操作',
     hintFromScan: '检测到地景变化，请从这里进入地景管理器进行排序',
-    hintFromSettings: '已启用地景排序，请从这里进入地景管理器进行排序'
+    hintFromSettings: '已启用地景排序，请从这里进入地景管理器进行排序',
+    updatingIndex: '正在更新索引...'
   },
   management: {
     navTitle: '管理',
@@ -443,7 +445,13 @@ export default {
     scanFailed: '扫描失败',
     noItems: '未找到任何项目',
     lock: '锁定',
-    unlock: '解锁'
+    unlock: '解锁',
+    restoreBackup: '恢复备份',
+    restoreBackupConfirm: '确定恢复此导航数据备份？',
+    restoreBackupSuccess: '导航数据备份恢复成功',
+    restoringBackup: '正在恢复备份...',
+    backupVersion: '备份版本',
+    backupTime: '备份时间'
   },
   errors: {
     validation_failed: '输入数据无效',

@@ -88,13 +88,14 @@ impl SceneryPacksManager {
             return Err(anyhow!("scenery_packs.ini does not exist"));
         }
 
-        let timestamp = Local::now().format("%Y%m%d_%H%M%S");
-        let backup_name = format!("scenery_packs.ini.backup.{}", timestamp);
-        let backup_path = self
+        let parent_dir = self
             .ini_path
             .parent()
-            .ok_or_else(|| anyhow!("Invalid ini path: no parent directory"))?
-            .join(backup_name);
+            .ok_or_else(|| anyhow!("Invalid ini path: no parent directory"))?;
+
+        let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+        let backup_name = format!("scenery_packs.ini.backup.{}", timestamp);
+        let backup_path = parent_dir.join(&backup_name);
 
         fs::rename(&self.ini_path, &backup_path)?;
         logger::log_info(
@@ -102,7 +103,51 @@ impl SceneryPacksManager {
             Some("scenery_packs"),
         );
 
+        // Clean up old backups, keeping only the 3 most recent
+        self.cleanup_old_backups(parent_dir, 3);
+
         Ok(backup_path)
+    }
+
+    /// Remove old backup files, keeping only the specified number of most recent backups
+    fn cleanup_old_backups(&self, dir: &std::path::Path, keep_count: usize) {
+        let mut backups: Vec<_> = match fs::read_dir(dir) {
+            Ok(entries) => entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.file_name()
+                        .to_string_lossy()
+                        .starts_with("scenery_packs.ini.backup.")
+                })
+                .collect(),
+            Err(_) => return,
+        };
+
+        if backups.len() <= keep_count {
+            return;
+        }
+
+        // Sort by modification time (newest first)
+        backups.sort_by(|a, b| {
+            let time_a = a.metadata().and_then(|m| m.modified()).ok();
+            let time_b = b.metadata().and_then(|m| m.modified()).ok();
+            time_b.cmp(&time_a)
+        });
+
+        // Remove old backups (skip the first `keep_count`)
+        for backup in backups.into_iter().skip(keep_count) {
+            if let Err(e) = fs::remove_file(backup.path()) {
+                logger::log_info(
+                    &format!("Failed to remove old backup {:?}: {}", backup.path(), e),
+                    Some("scenery_packs"),
+                );
+            } else {
+                logger::log_info(
+                    &format!("Removed old backup: {:?}", backup.path()),
+                    Some("scenery_packs"),
+                );
+            }
+        }
     }
 
     /// Add a new entry to scenery_packs.ini (used after installation)
@@ -202,8 +247,9 @@ impl SceneryPacksManager {
         let mut global_airports_inserted = false;
 
         for info in packages {
-            // Skip Unrecognized packages - they should not be written to scenery_packs.ini
-            if info.category == SceneryCategory::Unrecognized {
+            // Skip disabled Unrecognized packages - they should not be written to scenery_packs.ini
+            // Enabled Unrecognized packages WILL be written to ini
+            if info.category == SceneryCategory::Unrecognized && !info.enabled {
                 continue;
             }
 
@@ -303,7 +349,12 @@ impl SceneryPacksManager {
         }
 
         // Build expected order from index
-        let mut packages: Vec<_> = index.packages.values().collect();
+        // Exclude disabled Unrecognized packages (they are not written to ini)
+        let mut packages: Vec<_> = index
+            .packages
+            .values()
+            .filter(|p| !(p.category == SceneryCategory::Unrecognized && !p.enabled))
+            .collect();
         packages.sort_by_key(|p| p.sort_order);
 
         // Filter ini entries to only include entries that exist in the index

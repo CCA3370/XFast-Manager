@@ -6,6 +6,7 @@ import type {
   AircraftInfo,
   PluginInfo,
   NavdataManagerInfo,
+  NavdataBackupInfo,
   ManagementData,
   ManagementTab,
   ManagementItemType
@@ -94,9 +95,11 @@ export const useManagementStore = defineStore('management', () => {
   const aircraft = ref<AircraftInfo[]>([])
   const plugins = ref<PluginInfo[]>([])
   const navdata = ref<NavdataManagerInfo[]>([])
+  const navdataBackups = ref<NavdataBackupInfo[]>([])
   const activeTab = ref<ManagementTab>('aircraft')
   const isLoading = ref(false)
   const isCheckingUpdates = ref(false)
+  const isRestoringBackup = ref(false)
   const error = ref<string | null>(null)
 
   // Counts
@@ -442,6 +445,45 @@ export const useManagementStore = defineStore('management', () => {
       applyCache: false,
       logName: 'navdata'
     })
+    // Also load backups when loading navdata
+    await loadNavdataBackups()
+  }
+
+  // Load navdata backups
+  async function loadNavdataBackups() {
+    if (!appStore.xplanePath) return
+
+    try {
+      navdataBackups.value = await invoke<NavdataBackupInfo[]>('scan_navdata_backups', {
+        xplanePath: appStore.xplanePath
+      })
+    } catch (e) {
+      logError(`Failed to load navdata backups: ${e}`, 'management')
+    }
+  }
+
+  // Restore navdata backup
+  async function restoreNavdataBackup(backupFolderName: string) {
+    if (!appStore.xplanePath) {
+      error.value = 'X-Plane path not set'
+      throw new Error(error.value)
+    }
+
+    isRestoringBackup.value = true
+    try {
+      await invoke('restore_navdata_backup', {
+        xplanePath: appStore.xplanePath,
+        backupFolderName
+      })
+      toast.info(t('management.restoreBackupSuccess'))
+      await loadNavdata()
+    } catch (e) {
+      error.value = String(e)
+      logError(`Failed to restore navdata backup: ${e}`, 'management')
+      throw e
+    } finally {
+      isRestoringBackup.value = false
+    }
   }
 
   // Load data for current tab
@@ -580,6 +622,7 @@ export const useManagementStore = defineStore('management', () => {
     aircraft.value = []
     plugins.value = []
     navdata.value = []
+    navdataBackups.value = []
     error.value = null
   }
 
@@ -588,9 +631,11 @@ export const useManagementStore = defineStore('management', () => {
     aircraft,
     plugins,
     navdata,
+    navdataBackups,
     activeTab,
     isLoading,
     isCheckingUpdates,
+    isRestoringBackup,
     error,
 
     // Counts
@@ -615,6 +660,8 @@ export const useManagementStore = defineStore('management', () => {
     loadPlugins,
     checkPluginsUpdates,
     loadNavdata,
+    loadNavdataBackups,
+    restoreNavdataBackup,
     loadCurrentTabData,
     toggleEnabled,
     deleteItem,

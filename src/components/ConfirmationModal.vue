@@ -69,11 +69,11 @@
 
                 <!-- Task Content -->
                 <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-1.5 mb-0.5">
-                    <span class="type-badge" :class="getTypeBadgeClass(task.type)">
+                  <div class="flex items-center gap-1.5 mb-0.5 min-w-0">
+                    <span class="type-badge flex-shrink-0" :class="getTypeBadgeClass(task.type)">
                       {{ task.type }}
                     </span>
-                    <span class="font-medium text-gray-900 dark:text-white text-xs truncate">{{ task.displayName }}</span>
+                    <span class="font-medium text-gray-900 dark:text-white text-xs truncate min-w-0">{{ task.displayName }}</span>
                   </div>
                   <div v-if="!isTaskDisabled(task)" class="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400">
                     <svg class="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,6 +98,15 @@
                           {{ task.existingVersionInfo?.version || '?' }}
                           <span class="text-gray-400 dark:text-gray-500 mx-0.5">→</span>
                           {{ task.newVersionInfo?.version || '?' }}
+                        </span>
+                      </template>
+                      <!-- Inline cycle comparison for Navdata -->
+                      <template v-if="task.type === 'Navdata' && task.existingNavdataInfo">
+                        <span class="text-gray-400 dark:text-gray-500">·</span>
+                        <span class="text-blue-600 dark:text-blue-400">
+                          {{ formatNavdataCycle(task.existingNavdataInfo) }}
+                          <span class="text-gray-400 dark:text-gray-500 mx-0.5">→</span>
+                          {{ formatNavdataCycle(task.newNavdataInfo) }}
                         </span>
                       </template>
                     </div>
@@ -155,23 +164,28 @@
                           </span>
                         </label>
                       </div>
-                    </div>
-                  </div>
 
-                  <!-- Navdata cycle comparison (only for non-locked conflicts) -->
-                  <div v-if="task.type === 'Navdata' && task.conflictExists && !isLockedConflict(task) && task.existingNavdataInfo"
-                       class="mt-1.5 p-2 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded">
-                    <div class="flex items-center space-x-2 text-xs">
-                      <svg class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                      </svg>
-                      <span class="text-blue-700 dark:text-blue-200">
-                        <AnimatedText>{{ $t('modal.existingCycle') }}</AnimatedText>:
-                        <span class="font-medium">{{ formatNavdataCycle(task.existingNavdataInfo) }}</span>
-                        <span class="mx-1.5">→</span>
-                        <AnimatedText>{{ $t('modal.newCycle') }}</AnimatedText>:
-                        <span class="font-medium">{{ formatNavdataCycle(task.newNavdataInfo) }}</span>
-                      </span>
+                      <!-- Backup option inline for Navdata clean install -->
+                      <div v-if="task.type === 'Navdata' && !store.getTaskOverwrite(task.id)"
+                           class="flex items-center gap-2 ml-2 pl-2 border-l border-emerald-300 dark:border-emerald-500/30">
+                        <label class="backup-checkbox-label" :class="{ 'disabled': !store.getTaskEnabled(task.id) }">
+                          <input
+                            type="checkbox"
+                            :checked="store.getBackupNavdata(task.id)"
+                            :disabled="!store.getTaskEnabled(task.id)"
+                            @change="store.setBackupNavdata(task.id, !store.getBackupNavdata(task.id))"
+                            class="backup-checkbox-input"
+                          >
+                          <span class="backup-checkbox-custom">
+                            <svg class="backup-checkbox-icon" viewBox="0 0 12 12" fill="none">
+                              <path d="M2 6L5 9L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                          </span>
+                          <span class="backup-checkbox-text">
+                            <AnimatedText>{{ $t('modal.backupNavdata') }}</AnimatedText>
+                          </span>
+                        </label>
+                      </div>
                     </div>
                   </div>
 
@@ -277,14 +291,20 @@ function getRelativePath(fullPath: string): string {
   return relativePath
 }
 
+// Truncate long text with ellipsis
+function truncateText(text: string, maxLength: number = 30): string {
+  if (text.length <= maxLength) return text
+  return text.substring(0, maxLength) + '...'
+}
+
 // Format Navdata cycle for display
 function formatNavdataCycle(info: NavdataInfo | undefined): string {
   if (!info) return t('modal.unknown')
 
-  // Prefer airac, fallback to cycle, fallback to name
+  // Prefer airac, fallback to cycle, fallback to name (truncated)
   if (info.airac) return `AIRAC ${info.airac}`
   if (info.cycle) return `Cycle ${info.cycle}`
-  return info.name
+  return truncateText(info.name)
 }
 
 // Parse size warning message to get human-readable text

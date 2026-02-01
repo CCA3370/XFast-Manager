@@ -602,12 +602,9 @@ async function handleInstall() {
   logDebug(`Installing ${enabledTasks.length} tasks: ${enabledTasks.map(t => t.displayName).join(', ')}`, 'installation')
 
   try {
-    // Prepare enabled tasks with overwrite settings
-    const tasksWithOverwrite = enabledTasks.map(task => ({
-      ...task,
-      shouldOverwrite: store.getTaskOverwrite(task.id) ?? false,
-      sizeConfirmed: store.getTaskSizeConfirmed(task.id) ?? false,
-    }))
+    // Prepare enabled tasks with overwrite and backup settings
+    const allTasksWithSettings = store.getTasksWithOverwrite()
+    const tasksWithOverwrite = allTasksWithSettings.filter(task => store.getTaskEnabled(task.id))
 
     const overwriteCount = tasksWithOverwrite.filter(t => t.shouldOverwrite).length
     if (overwriteCount > 0) {

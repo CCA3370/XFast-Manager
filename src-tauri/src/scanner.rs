@@ -3405,11 +3405,19 @@ impl Scanner {
         }
 
         let display_name = cycle.name.clone();
+        let is_gns430 = cycle.name.contains("GNS430");
 
         // Get the navdata folder root inside the archive
+        // For GNS430: use grandparent (parent's parent) to preserve the folder structure
+        // For regular navdata: use parent (direct parent of cycle.json)
         let internal_root = if let Some(p) = parent {
             if p.as_os_str().is_empty() {
                 None
+            } else if is_gns430 {
+                // GNS430: use grandparent directory
+                p.parent()
+                    .filter(|gp| !gp.as_os_str().is_empty())
+                    .map(|gp| gp.to_string_lossy().to_string())
             } else {
                 Some(p.to_string_lossy().to_string())
             }

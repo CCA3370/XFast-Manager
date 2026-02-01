@@ -193,6 +193,7 @@ export default {
     backupOptions: 'Backup Options',
     backupLiveries: 'Backup liveries',
     backupConfigFiles: 'Backup configuration files',
+    backupNavdata: 'Backup existing data',
     sizeWarningTitle: 'Security Warning',
     sizeWarningDesc: 'Some archives have unusual size characteristics. Please review and confirm before installing.',
     suspiciousRatio: 'Suspicious compression ratio ({ratio}:1). Estimated size: {size} GB. This may be a zip bomb.',
@@ -396,7 +397,8 @@ export default {
     autoSortFailed: 'Auto sort failed',
     moreActions: 'More Actions',
     hintFromScan: 'Scenery changes detected. Open the Scenery Manager here to sort.',
-    hintFromSettings: 'Scenery sorting is enabled. Open the Scenery Manager here.'
+    hintFromSettings: 'Scenery sorting is enabled. Open the Scenery Manager here.',
+    updatingIndex: 'Updating index...'
   },
   management: {
     navTitle: 'Manage',
@@ -430,7 +432,13 @@ export default {
     scanFailed: 'Failed to scan',
     noItems: 'No items found',
     lock: 'Lock',
-    unlock: 'Unlock'
+    unlock: 'Unlock',
+    restoreBackup: 'Restore Backup',
+    restoreBackupConfirm: 'Restore this navdata backup?',
+    restoreBackupSuccess: 'Navdata backup restored successfully',
+    restoringBackup: 'Restoring backup...',
+    backupVersion: 'Backup Version',
+    backupTime: 'Backup Time'
   },
   errors: {
     validation_failed: 'Invalid input data',

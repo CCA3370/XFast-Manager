@@ -740,6 +740,22 @@ impl SceneryQueries {
             .map_err(|e| ApiError::database(format!("Failed to check packages: {}", e)))?;
         Ok(exists)
     }
+
+    /// Clear all scenery data from the database
+    /// Used before rebuilding index to ensure a completely fresh start
+    pub fn clear_all(conn: &Connection) -> Result<(), ApiError> {
+        conn.execute_batch(
+            "DELETE FROM required_libraries;
+             DELETE FROM missing_libraries;
+             DELETE FROM exported_libraries;
+             DELETE FROM scenery_packages;
+             DELETE FROM index_metadata;",
+        )
+        .map_err(|e| ApiError::database(format!("Failed to clear all data: {}", e)))?;
+
+        logger::log_info("Cleared all scenery index data", Some("database"));
+        Ok(())
+    }
 }
 
 #[cfg(test)]
