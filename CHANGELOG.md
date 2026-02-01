@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Data Storage Location** - All app data (logs, database, cache) now stored alongside Tauri store
+  - Linux: `~/.local/share/com.xfastmanager.tool/` (or `$XDG_DATA_HOME`)
 - **Progress Bar Gradient Effect** - Installation progress bar now displays a smooth gradient animation
   - Gradient moves through blue to green as progress increases
   - More visually appealing and intuitive progress indication
@@ -30,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Linux Rendering Freeze** - Fixed app freezing on startup with certain GPU configurations
+  - Automatically disables DMA-BUF renderer on Linux to prevent WebKitGTK rendering hangs
 - **Long Text Truncation** - Fixed display issues with long addon names in confirmation modal
   - Names are now properly truncated with ellipsis
   - Prevents layout breaking with very long navdata provider names
