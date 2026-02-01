@@ -13,7 +13,7 @@ import { getNavdataCycleStatus } from '@/utils/airac'
 import ManagementEntryCard from '@/components/ManagementEntryCard.vue'
 import SceneryEntryCard from '@/components/SceneryEntryCard.vue'
 import draggable from 'vuedraggable'
-import type { SceneryManagerEntry, ManagementTab, ManagementItemType, SceneryCategory } from '@/types'
+import type { SceneryManagerEntry, ManagementTab, ManagementItemType, SceneryCategory, SceneryIndexScanResult, NavdataBackupInfo } from '@/types'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -64,6 +64,9 @@ const suppressLoading = ref(false)
 const moreMenuRef = ref<HTMLElement | null>(null)
 const syncWarningDismissed = ref(false)
 
+// Index update state
+const isUpdatingIndex = ref(false)
+
 // Local copy of grouped entries for drag-and-drop
 const localGroupedEntries = ref<Record<string, SceneryManagerEntry[]>>({
   FixedHighPriority: [],
@@ -73,11 +76,12 @@ const localGroupedEntries = ref<Record<string, SceneryManagerEntry[]>>({
   Other: [],
   Overlay: [],
   AirportMesh: [],
-  Mesh: []
+  Mesh: [],
+  Unrecognized: []
 })
 
 // Category order for display
-const categoryOrder = ['FixedHighPriority', 'Airport', 'DefaultAirport', 'Library', 'Other', 'Overlay', 'AirportMesh', 'Mesh']
+const categoryOrder = ['FixedHighPriority', 'Airport', 'DefaultAirport', 'Library', 'Other', 'Overlay', 'AirportMesh', 'Mesh', 'Unrecognized']
 
 // Initialize tab from route query
 onMounted(async () => {
@@ -192,10 +196,37 @@ async function loadTabData(tab: ManagementTab) {
           }
         }
         syncLocalEntries()
+        // Start async index scan (non-blocking)
+        runSceneryIndexScan()
         break
     }
   } catch (e) {
     modalStore.showError(t('management.scanFailed') + ': ' + String(e))
+  }
+}
+
+// Run scenery index scan asynchronously without blocking UI
+async function runSceneryIndexScan() {
+  if (!appStore.xplanePath || isUpdatingIndex.value) return
+
+  isUpdatingIndex.value = true
+  try {
+    const result = await invoke<SceneryIndexScanResult>('quick_scan_scenery_index', {
+      xplanePath: appStore.xplanePath
+    })
+
+    if (!result.indexExists) return
+
+    const hasChanges = result.added + result.removed + result.updated > 0
+    if (hasChanges && !sceneryStore.hasLocalChanges) {
+      // Reload scenery data to reflect changes
+      await sceneryStore.loadData()
+      syncLocalEntries()
+    }
+  } catch (error) {
+    logError(`Failed to quick scan scenery index: ${error}`, 'management')
+  } finally {
+    isUpdatingIndex.value = false
   }
 }
 
@@ -302,6 +333,39 @@ async function handleCheckUpdates() {
   }
 }
 
+// Find backup for a navdata entry by matching provider name
+function getNavdataBackup(providerName: string): NavdataBackupInfo | null {
+  return managementStore.navdataBackups.find(
+    b => b.verification.providerName === providerName
+  ) || null
+}
+
+// Handle restore navdata backup
+function handleRestoreBackup(backupInfo: NavdataBackupInfo) {
+  const cycle = backupInfo.verification.cycle || backupInfo.verification.airac || ''
+  const backupTime = new Date(backupInfo.verification.backupTime).toLocaleString()
+  // Truncate long provider names
+  const providerName = backupInfo.verification.providerName.length > 30
+    ? backupInfo.verification.providerName.substring(0, 30) + '...'
+    : backupInfo.verification.providerName
+
+  modalStore.showConfirm({
+    title: t('management.restoreBackup'),
+    message: `${t('management.restoreBackupConfirm')}\n\n${t('management.backupVersion')}: ${providerName} ${cycle}\n${t('management.backupTime')}: ${backupTime}`,
+    confirmText: t('management.restoreBackup'),
+    cancelText: t('common.cancel'),
+    type: 'warning',
+    onConfirm: async () => {
+      try {
+        await managementStore.restoreNavdataBackup(backupInfo.folderName)
+      } catch (e) {
+        modalStore.showError(String(e))
+      }
+    },
+    onCancel: () => {}
+  })
+}
+
 // ========== Scenery-specific functions (migrated from SceneryManager.vue) ==========
 
 const groupCounts = computed(() => {
@@ -317,6 +381,20 @@ const groupCounts = computed(() => {
 // Base computed for all entries flattened - used by multiple computeds below
 const allSceneryEntries = computed(() => {
   return categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
+})
+
+// The last entry before Unrecognized category should have move-down disabled
+const lastEntryBeforeUnrecognized = computed(() => {
+  const unrecognizedEntries = localGroupedEntries.value['Unrecognized'] || []
+  if (unrecognizedEntries.length === 0) return ''
+  // Find the last non-Unrecognized category that has entries
+  for (let i = categoryOrder.length - 1; i >= 0; i--) {
+    const cat = categoryOrder[i]
+    if (cat === 'Unrecognized') continue
+    const entries = localGroupedEntries.value[cat] || []
+    if (entries.length > 0) return entries[entries.length - 1].folderName
+  }
+  return ''
 })
 
 const filteredSceneryEntries = computed(() => {
@@ -356,7 +434,8 @@ function syncLocalEntries() {
     Other: [...(grouped.Other || [])],
     Overlay: [...(grouped.Overlay || [])],
     AirportMesh: [...(grouped.AirportMesh || [])],
-    Mesh: [...(grouped.Mesh || [])]
+    Mesh: [...(grouped.Mesh || [])],
+    Unrecognized: [...(grouped.Unrecognized || [])]
   }
 }
 
@@ -391,10 +470,13 @@ async function handleMoveUp(folderName: string) {
   const index = entries.findIndex(e => e.folderName === folderName)
 
   if (index > 0) {
-    syncWarningDismissed.value = true
     const currentEntry = entries[index]
     const targetEntry = entries[index - 1]
 
+    // Prevent moving into or out of Unrecognized
+    if (currentEntry.category === 'Unrecognized' || targetEntry.category === 'Unrecognized') return
+
+    syncWarningDismissed.value = true
     if (currentEntry.category !== targetEntry.category) {
       await sceneryStore.updateCategory(folderName, targetEntry.category)
     } else {
@@ -408,10 +490,13 @@ async function handleMoveDown(folderName: string) {
   const entries = sceneryStore.sortedEntries
   const index = entries.findIndex(e => e.folderName === folderName)
   if (index < entries.length - 1) {
-    syncWarningDismissed.value = true
     const currentEntry = entries[index]
     const targetEntry = entries[index + 1]
 
+    // Prevent moving into or out of Unrecognized
+    if (currentEntry.category === 'Unrecognized' || targetEntry.category === 'Unrecognized') return
+
+    syncWarningDismissed.value = true
     if (currentEntry.category !== targetEntry.category) {
       await sceneryStore.updateCategory(folderName, targetEntry.category)
     } else {
@@ -903,6 +988,14 @@ const isLoading = computed(() => {
             </Transition>
           </button>
         </div>
+        <!-- Restoring backup indicator -->
+        <div v-if="activeTab === 'navdata' && managementStore.isRestoringBackup" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+          <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span class="text-xs">{{ t('management.restoringBackup') }}</span>
+        </div>
       </template>
 
       <!-- Scenery stats -->
@@ -936,6 +1029,14 @@ const isLoading = computed(() => {
               <span :key="locale">{{ showOnlyMissingLibs ? t('sceneryManager.showAll') : t('sceneryManager.filterOnly') }}</span>
             </Transition>
           </button>
+        </div>
+        <!-- Updating index indicator -->
+        <div v-if="isUpdatingIndex" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+          <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span class="text-xs">{{ t('sceneryManager.updatingIndex') }}</span>
         </div>
         <div v-if="sceneryStore.hasChanges" class="ml-auto flex items-center gap-2 text-blue-600 dark:text-blue-400">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1026,9 +1127,11 @@ const isLoading = computed(() => {
                 :entry="item"
                 item-type="navdata"
                 :is-toggling="togglingItems.has(`navdata:${item.folderName}`)"
+                :backup-info="getNavdataBackup(item.providerName)"
                 @toggle-enabled="(fn) => handleToggleEnabled('navdata', fn)"
                 @delete="(fn) => handleDelete('navdata', fn)"
                 @open-folder="(fn) => handleOpenFolder('navdata', fn)"
+                @restore-backup="handleRestoreBackup"
               />
             </div>
           </template>
@@ -1067,7 +1170,7 @@ const isLoading = computed(() => {
         </div>
 
         <!-- Filtered view (no drag-and-drop) -->
-        <div v-else-if="showOnlyMissingLibs" class="space-y-1.5 px-1">
+        <div v-else-if="showOnlyMissingLibs" class="space-y-1.5 px-1 pb-2">
           <div
             v-for="(element, index) in filteredSceneryEntries"
             :key="element.folderName"
@@ -1077,7 +1180,7 @@ const isLoading = computed(() => {
           >
             <div
               v-if="highlightedIndex === index"
-              class="absolute inset-0 ring-4 ring-blue-500 rounded-lg pointer-events-none"
+              class="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none z-10"
             ></div>
             <div
               :class="{
@@ -1103,7 +1206,7 @@ const isLoading = computed(() => {
         </div>
 
         <!-- Normal view with drag-and-drop groups -->
-        <div v-else class="space-y-3" style="overflow: visible;">
+        <div v-else class="space-y-3 pb-2" style="overflow: visible;">
           <template
             v-for="category in categoryOrder"
             :key="category"
@@ -1144,10 +1247,12 @@ const isLoading = computed(() => {
                 <div v-if="isGroupExpanded(category)" style="overflow: visible;">
                   <draggable
                     v-model="localGroupedEntries[category]"
-                    :group="{ name: 'scenery', pull: true, put: true }"
+                    :group="category === 'Unrecognized'
+                      ? { name: 'unrecognized', pull: false, put: false }
+                      : { name: 'scenery', pull: true, put: true }"
                     item-key="folderName"
                     handle=".drag-handle"
-                    :disabled="!sceneryStore.indexExists"
+                    :disabled="!sceneryStore.indexExists || category === 'Unrecognized'"
                     :animation="180"
                     :easing="'cubic-bezier(0.25, 0.8, 0.25, 1)'"
                     :force-fallback="true"
@@ -1170,7 +1275,7 @@ const isLoading = computed(() => {
                       >
                         <div
                           v-if="highlightedIndex === getGlobalIndex(element.folderName)"
-                          class="absolute inset-0 ring-4 ring-blue-500 rounded-lg pointer-events-none"
+                          class="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none z-10"
                         ></div>
                         <div
                           :class="{
@@ -1181,7 +1286,8 @@ const isLoading = computed(() => {
                             :entry="element"
                             :index="getGlobalIndex(element.folderName)"
                             :total-count="sceneryStore.totalCount"
-                            :disable-reorder="!sceneryStore.indexExists"
+                            :disable-reorder="!sceneryStore.indexExists || category === 'Unrecognized'"
+                            :disable-move-down="element.folderName === lastEntryBeforeUnrecognized"
                             @toggle-enabled="handleSceneryToggleEnabled"
                             @move-up="handleMoveUp"
                             @move-down="handleMoveDown"

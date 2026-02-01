@@ -27,7 +27,7 @@ use analyzer::Analyzer;
 use installer::Installer;
 use models::{
     AircraftInfo, AnalysisResult, InstallResult, InstallTask, ManagementData,
-    NavdataManagerInfo, PluginInfo, SceneryIndexScanResult, SceneryIndexStats,
+    NavdataBackupInfo, NavdataManagerInfo, PluginInfo, SceneryIndexScanResult, SceneryIndexStats,
     SceneryIndexStatus, SceneryManagerData, SceneryPackageInfo,
 };
 use scenery_index::SceneryIndexManager;
@@ -667,6 +667,31 @@ async fn scan_navdata(xplane_path: String) -> Result<ManagementData<NavdataManag
 }
 
 #[tauri::command]
+async fn scan_navdata_backups(xplane_path: String) -> Result<Vec<NavdataBackupInfo>, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::scan_navdata_backups(xplane_path)
+            .map_err(|e| format!("Failed to scan navdata backups: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn restore_navdata_backup(
+    xplane_path: String,
+    backup_folder_name: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::restore_navdata_backup(xplane_path, &backup_folder_name)
+            .map_err(|e| format!("Failed to restore navdata backup: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
 async fn toggle_management_item(
     xplane_path: String,
     item_type: String,
@@ -809,6 +834,8 @@ pub fn run() {
             scan_plugins,
             check_plugins_updates,
             scan_navdata,
+            scan_navdata_backups,
+            restore_navdata_backup,
             toggle_management_item,
             delete_management_item,
             open_management_folder,

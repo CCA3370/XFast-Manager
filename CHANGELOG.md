@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.3] - 2026-02-01
+
+### Added
+
+- **Navdata Backup Toggle** - Users can now choose whether to backup existing navdata during clean install
+  - When unchecked, existing backups for the same provider will also be deleted
+  - Provides more control over disk space usage
+- **Navdata Backup Restore** - New restore button for navdata entries in Management view
+  - One-click restoration of previously backed up navdata
+  - Shows backup cycle/AIRAC info and backup time
+- **Unrecognized Scenery Category** - New category for scenery packages that cannot be automatically classified
+  - Packages without Earth nav data, library.txt, or plugins are now shown in this category
+  - Placed at the bottom of the scenery list with lowest priority
+
+### Changed
+
+- **Progress Bar Gradient Effect** - Installation progress bar now displays a smooth gradient animation
+  - Gradient moves through blue to green as progress increases
+  - More visually appealing and intuitive progress indication
+- **Scenery Index Auto-Refresh** - Background scan now automatically detects scenery changes
+  - Scenery list refreshes automatically when changes are detected
+  - No manual refresh needed after external modifications
+
+### Fixed
+
+- **Long Text Truncation** - Fixed display issues with long addon names in confirmation modal
+  - Names are now properly truncated with ellipsis
+  - Prevents layout breaking with very long navdata provider names
+
 ## [0.8.2] - 2026-01-29
 
 ### Fixed

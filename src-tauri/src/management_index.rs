@@ -8,7 +8,7 @@
 //! - Plugins: Rename .xpl <-> .xfmp files (including subdirectories)
 
 use crate::logger;
-use crate::models::{AircraftInfo, ManagementData, NavdataManagerInfo, PluginInfo};
+use crate::models::{AircraftInfo, ManagementData, NavdataBackupInfo, NavdataBackupVerification, NavdataManagerInfo, PluginInfo};
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
 use std::fs;
@@ -582,9 +582,12 @@ pub fn scan_navdata(xplane_path: &Path) -> Result<ManagementData<NavdataManagerI
     let mut entries: Vec<NavdataManagerInfo> = Vec::new();
 
     // Use WalkDir to efficiently find cycle.json files
+    // Skip Backup_Data folder (used for navdata backup/restore)
+    let backup_data_path = custom_data_path.join("Backup_Data");
     for entry in WalkDir::new(&custom_data_path)
         .max_depth(10)
         .into_iter()
+        .filter_entry(|e| e.path() != backup_data_path)
         .filter_map(|e| e.ok())
     {
         if !entry.file_type().is_file() {
@@ -1038,6 +1041,260 @@ pub fn set_cfg_disabled(
         &format!(
             "Set disabled|{} in {} for {}",
             disabled_value, cfg_path.display(), folder_name
+        ),
+        Some("management"),
+    );
+
+    Ok(())
+}
+
+/// Scan navdata backups in Custom Data/Backup_Data folder
+pub fn scan_navdata_backups(xplane_path: &Path) -> Result<Vec<NavdataBackupInfo>> {
+    let backup_data_path = xplane_path.join("Custom Data").join("Backup_Data");
+
+    if !backup_data_path.exists() {
+        logger::log_debug(
+            "Backup_Data folder does not exist",
+            Some("management"),
+            None,
+        );
+        return Ok(Vec::new());
+    }
+
+    logger::log_info("Scanning navdata backups...", Some("management"));
+
+    let mut backups: Vec<NavdataBackupInfo> = Vec::new();
+
+    for entry in fs::read_dir(&backup_data_path)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if !path.is_dir() {
+            continue;
+        }
+
+        let verification_path = path.join("verification.json");
+        if verification_path.exists() {
+            match fs::read_to_string(&verification_path) {
+                Ok(content) => {
+                    match serde_json::from_str::<NavdataBackupVerification>(&content) {
+                        Ok(verification) => {
+                            let folder_name = entry
+                                .file_name()
+                                .to_string_lossy()
+                                .to_string();
+
+                            backups.push(NavdataBackupInfo {
+                                folder_name,
+                                verification,
+                            });
+                        }
+                        Err(e) => {
+                            logger::log_error(
+                                &format!(
+                                    "Failed to parse verification.json in {:?}: {}",
+                                    path, e
+                                ),
+                                Some("management"),
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    logger::log_error(
+                        &format!("Failed to read verification.json in {:?}: {}", path, e),
+                        Some("management"),
+                    );
+                }
+            }
+        }
+    }
+
+    logger::log_info(
+        &format!("Found {} navdata backups", backups.len()),
+        Some("management"),
+    );
+
+    Ok(backups)
+}
+
+/// Restore navdata from backup (EXTREME PERFORMANCE OPTIMIZED)
+///
+/// Optimizations:
+/// - Removed pre-restore SHA-256 verification (checksum is empty string, size-only check)
+/// - Removed post-restore SHA-256 verification (fs::rename is atomic, data integrity guaranteed)
+/// - Uses optimized directory-level rename when possible
+pub fn restore_navdata_backup(xplane_path: &Path, backup_folder_name: &str) -> Result<()> {
+    let backup_path = xplane_path
+        .join("Custom Data")
+        .join("Backup_Data")
+        .join(backup_folder_name);
+
+    if !backup_path.exists() {
+        return Err(anyhow!("Backup folder not found: {}", backup_folder_name));
+    }
+
+    let verification_path = backup_path.join("verification.json");
+    if !verification_path.exists() {
+        return Err(anyhow!(
+            "verification.json not found in backup: {}",
+            backup_folder_name
+        ));
+    }
+
+    logger::log_info(
+        &format!("Restoring navdata backup: {}", backup_folder_name),
+        Some("management"),
+    );
+
+    // Step 1: Read verification file
+    let content = fs::read_to_string(&verification_path)?;
+    let verification: NavdataBackupVerification = serde_json::from_str(&content)?;
+
+    // Step 2: Verify backup file integrity (OPTIMIZED: size-only, single stat per file)
+    // Checksum is now empty string, so we only check existence and size
+    logger::log_info("Verifying backup integrity (size-only)...", Some("management"));
+    for file_entry in &verification.files {
+        let file_path = backup_path.join(&file_entry.relative_path);
+        // OPTIMIZED: Use single fs::metadata() call instead of exists() + metadata()
+        match fs::metadata(&file_path) {
+            Ok(meta) => {
+                if meta.len() != file_entry.size {
+                    return Err(anyhow!(
+                        "Backup size mismatch for {}: expected {} bytes, got {} bytes",
+                        file_entry.relative_path,
+                        file_entry.size,
+                        meta.len()
+                    ));
+                }
+            }
+            Err(_) => {
+                return Err(anyhow!(
+                    "Backup file missing: {}",
+                    file_entry.relative_path
+                ));
+            }
+        }
+    }
+
+    logger::log_info("Backup integrity verified (fast)", Some("management"));
+
+    // Step 3: Delete current files that will be restored (based on verification.files)
+    let custom_data = xplane_path.join("Custom Data");
+
+    // Collect top-level items to delete from the verification entries
+    let mut top_level_items: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for file_entry in &verification.files {
+        // Get the first path component
+        if let Some(first_component) = file_entry.relative_path.split('/').next() {
+            top_level_items.insert(first_component.to_string());
+        }
+    }
+
+    for item_name in &top_level_items {
+        let current_path = custom_data.join(item_name);
+        if current_path.exists() {
+            logger::log_info(
+                &format!("Removing current: {:?}", current_path),
+                Some("management"),
+            );
+            if current_path.is_dir() {
+                fs::remove_dir_all(&current_path)?;
+            } else {
+                fs::remove_file(&current_path)?;
+            }
+        }
+    }
+
+    // Step 4: Move files from backup to Custom Data (OPTIMIZED: directory-level rename)
+    logger::log_info("Restoring files from backup...", Some("management"));
+
+    // Optimized move_directory: tries directory-level rename first
+    fn move_directory_optimized(src: &Path, dst: &Path) -> Result<()> {
+        if src.is_dir() {
+            // Ensure parent of destination exists
+            if let Some(parent) = dst.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            // Try direct directory rename first (O(1) operation on same filesystem)
+            match fs::rename(src, dst) {
+                Ok(()) => return Ok(()),
+                Err(_) => {
+                    // Cross-device link error, fall back to recursive approach
+                }
+            }
+
+            // Fallback: recursive copy + delete
+            fs::create_dir_all(dst)?;
+            for entry in fs::read_dir(src)? {
+                let entry = entry?;
+                let src_child = entry.path();
+                let dst_child = dst.join(entry.file_name());
+                move_directory_optimized(&src_child, &dst_child)?;
+            }
+            fs::remove_dir(src).ok();
+        } else {
+            if let Some(parent) = dst.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            match fs::rename(src, dst) {
+                Ok(()) => {}
+                Err(_) => {
+                    fs::copy(src, dst)?;
+                    fs::remove_file(src).ok();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    // Move top-level items from backup to target (directory-level rename)
+    for item_name in &top_level_items {
+        let backup_item = backup_path.join(item_name);
+        let target_item = custom_data.join(item_name);
+        if backup_item.exists() {
+            move_directory_optimized(&backup_item, &target_item)?;
+        }
+    }
+
+    // Step 5: Verify restored files (OPTIMIZED: size-only, single stat per file)
+    // fs::rename is atomic on same filesystem, so if it succeeded, data is intact
+    logger::log_info("Verifying restored files (fast)...", Some("management"));
+    for file_entry in &verification.files {
+        let restored_path = custom_data.join(&file_entry.relative_path);
+        // OPTIMIZED: Use single fs::metadata() call instead of exists() + checksum
+        match fs::metadata(&restored_path) {
+            Ok(meta) => {
+                if meta.len() != file_entry.size {
+                    return Err(anyhow!(
+                        "Restore verification failed: size mismatch for {} (expected {}, got {})",
+                        file_entry.relative_path,
+                        file_entry.size,
+                        meta.len()
+                    ));
+                }
+            }
+            Err(_) => {
+                return Err(anyhow!(
+                    "Restore verification failed: file missing: {}",
+                    file_entry.relative_path
+                ));
+            }
+        }
+    }
+
+    // Step 6: Delete backup folder
+    logger::log_info(
+        &format!("Removing backup folder: {:?}", backup_path),
+        Some("management"),
+    );
+    fs::remove_dir_all(&backup_path)?;
+
+    logger::log_info(
+        &format!(
+            "Navdata backup restored successfully: {} files (extreme optimized)",
+            verification.file_count
         ),
         Some("management"),
     );

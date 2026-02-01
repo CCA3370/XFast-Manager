@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { AircraftInfo, PluginInfo, NavdataManagerInfo, ManagementItemType } from '@/types'
+import type { AircraftInfo, PluginInfo, NavdataManagerInfo, NavdataBackupInfo, ManagementItemType } from '@/types'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import { useLockStore } from '@/stores/lock'
@@ -12,14 +12,17 @@ const props = withDefaults(defineProps<{
   entry: EntryType
   itemType: ManagementItemType
   isToggling?: boolean
+  backupInfo?: NavdataBackupInfo | null
 }>(), {
-  isToggling: false
+  isToggling: false,
+  backupInfo: null
 })
 
 const emit = defineEmits<{
   (e: 'toggle-enabled', folderName: string): void
   (e: 'delete', folderName: string): void
   (e: 'open-folder', folderName: string): void
+  (e: 'restore-backup', backupInfo: NavdataBackupInfo): void
 }>()
 
 const { t } = useI18n()
@@ -218,6 +221,16 @@ function handleDeleteConfirm() {
     >
       {{ t('management.outdatedCycle') }}
     </span>
+
+    <!-- Restore backup button (navdata only, when backup exists) -->
+    <button
+      v-if="isNavdata(entry) && backupInfo"
+      @click.stop="emit('restore-backup', backupInfo)"
+      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30 hover:bg-amber-200 dark:hover:bg-amber-800/40 transition-colors"
+      :title="`${t('management.restoreBackup')}: ${backupInfo.verification.cycle || backupInfo.verification.airac || ''}`"
+    >
+      {{ t('management.restoreBackup') }}
+    </button>
 
     <!-- Lock button -->
     <button

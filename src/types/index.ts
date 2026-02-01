@@ -149,6 +149,8 @@ export interface InstallTask {
   backupConfigFiles?: boolean;
   /** Glob patterns for config files to backup (Aircraft only) */
   configFilePatterns?: string[];
+  /** Whether to backup navdata during clean install (Navdata only) */
+  backupNavdata?: boolean;
   /** For Livery: the aircraft type this livery belongs to (e.g., "FF777") */
   liveryAircraftType?: string;
   /** For Livery: whether the target aircraft is installed */
@@ -219,6 +221,7 @@ export enum SceneryCategory {
   AirportMesh = 'AirportMesh',
   Mesh = 'Mesh',
   Other = 'Other',
+  Unrecognized = 'Unrecognized',
 }
 
 export interface SceneryPackageInfo {
@@ -310,6 +313,26 @@ export interface NavdataManagerInfo {
   cycle?: string;
   airac?: string;
   enabled: boolean;
+}
+
+export interface BackupFileEntry {
+  relativePath: string;
+  checksum: string;
+  size: number;
+}
+
+export interface NavdataBackupVerification {
+  providerName: string;
+  cycle?: string;
+  airac?: string;
+  backupTime: string;
+  files: BackupFileEntry[];
+  fileCount: number;
+}
+
+export interface NavdataBackupInfo {
+  folderName: string;
+  verification: NavdataBackupVerification;
 }
 
 export interface ManagementData<T> {

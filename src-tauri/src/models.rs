@@ -60,6 +60,48 @@ pub struct VersionInfo {
     pub version: Option<String>,
 }
 
+/// Navdata backup file entry with checksum
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupFileEntry {
+    /// Relative path from backup root
+    pub relative_path: String,
+    /// SHA-256 checksum
+    pub checksum: String,
+    /// File size in bytes
+    pub size: u64,
+}
+
+/// Navdata backup verification record
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavdataBackupVerification {
+    /// Provider name from cycle.json
+    pub provider_name: String,
+    /// Cycle info (e.g., "2601")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cycle: Option<String>,
+    /// AIRAC info
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub airac: Option<String>,
+    /// Backup timestamp (RFC3339 format)
+    pub backup_time: String,
+    /// List of backed up files with checksums
+    pub files: Vec<BackupFileEntry>,
+    /// Total file count
+    pub file_count: usize,
+}
+
+/// Navdata backup info for frontend display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavdataBackupInfo {
+    /// Folder name of the backup
+    pub folder_name: String,
+    /// Verification data
+    pub verification: NavdataBackupVerification,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallTask {
@@ -115,6 +157,9 @@ pub struct InstallTask {
     pub backup_config_files: bool,
     /// Glob patterns for config files to backup (Aircraft only)
     pub config_file_patterns: Vec<String>,
+    /// Whether to backup navdata during clean install (Navdata only)
+    #[serde(default = "default_true")]
+    pub backup_navdata: bool,
     /// File hashes collected during scanning (for verification)
     /// Key: relative path within addon, Value: FileHash
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -306,6 +351,8 @@ pub enum SceneryCategory {
     Mesh,
     /// Other/unknown scenery
     Other,
+    /// Unrecognized package (no Earth nav data, library.txt, or plugins)
+    Unrecognized,
 }
 
 impl SceneryCategory {
@@ -320,6 +367,7 @@ impl SceneryCategory {
             SceneryCategory::Overlay => 5,
             SceneryCategory::AirportMesh => 6, // Between Overlay and regular Mesh
             SceneryCategory::Mesh => 7,
+            SceneryCategory::Unrecognized => 8, // Lowest priority, always at bottom
         }
     }
 }
@@ -578,6 +626,7 @@ mod tests {
         assert!(SceneryCategory::Other.priority() < SceneryCategory::Overlay.priority());
         assert!(SceneryCategory::Overlay.priority() < SceneryCategory::AirportMesh.priority());
         assert!(SceneryCategory::AirportMesh.priority() < SceneryCategory::Mesh.priority());
+        assert!(SceneryCategory::Mesh.priority() < SceneryCategory::Unrecognized.priority());
     }
 
     #[test]
