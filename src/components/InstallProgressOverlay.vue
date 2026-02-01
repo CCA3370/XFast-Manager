@@ -58,7 +58,7 @@
         v-for="(task, index) in tasks"
         :key="task.id"
         class="task-item rounded-lg transition-all duration-300"
-        :class="[sizeConfig.padding, getTaskItemClass(index), { 'cursor-pointer hover:scale-[1.01]': isTaskClickable(index) }]"
+        :class="[sizeConfig.padding, getTaskItemClass(index), { 'cursor-pointer': isTaskClickable(index) }]"
         @click="handleTaskClick(index)"
       >
         <div class="flex items-center gap-2.5">
