@@ -269,7 +269,6 @@ export interface SceneryManagerEntry {
   missingLibraries: string[];
   requiredLibraries: string[];
   continent?: string;
-  country?: string;
   primaryLatitude?: number;
   primaryLongitude?: number;
 }

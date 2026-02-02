@@ -400,7 +400,12 @@ export default {
     hintFromSettings: 'Scenery sorting is enabled. Open the Scenery Manager here.',
     updatingIndex: 'Updating index...',
     allContinents: 'All Continents',
-    allCountries: 'All Countries'
+    databaseVersionError: 'Database version is incompatible',
+    databaseVersionErrorDesc: 'The scenery database was created by a newer version of the application. Click the button below to reset and rebuild the index.',
+    resetDatabase: 'Reset Database',
+    resetDatabaseConfirm: 'This will delete the existing database and require rebuilding the index. Continue?',
+    resetDatabaseSuccess: 'Database reset successfully. Please rebuild the index.',
+    resetDatabaseFailed: 'Failed to reset database'
   },
   geo: {
     continents: {

@@ -1328,21 +1328,16 @@ fn build_package_info(
     let coordinates = collect_dsf_coordinates(scenery_path);
 
     // Calculate primary coordinate and lookup geographic region
-    // If coordinates span multiple countries, only record continent (not country)
     // Continent is determined by the most frequent one among all coordinates
-    let (primary_latitude, primary_longitude, continent, country) = if !coordinates.is_empty() {
+    let (primary_latitude, primary_longitude, continent) = if !coordinates.is_empty() {
         let (center_lat, center_lon) = geo_regions::calculate_center(&coordinates);
 
-        // Count countries and continents for all coordinates
-        let mut countries: HashSet<&'static str> = HashSet::new();
+        // Count continents for all coordinates
         let mut continent_counts: HashMap<&'static str, usize> = HashMap::new();
 
         for (lat, lon) in &coordinates {
-            let (country_opt, cont) = geo_regions::lookup_region(*lat, *lon);
+            let cont = geo_regions::lookup_region(*lat, *lon);
             *continent_counts.entry(cont).or_insert(0) += 1;
-            if let Some(country) = country_opt {
-                countries.insert(country);
-            }
         }
 
         // Find the most frequent continent
@@ -1352,22 +1347,13 @@ fn build_package_info(
             .map(|(cont, _)| cont)
             .unwrap_or("Unknown");
 
-        // Only record country if all coordinates are in the same country
-        let final_country = if countries.len() == 1 {
-            countries.into_iter().next().map(|s| s.to_string())
-        } else {
-            // Multiple countries or no country found - only record continent
-            None
-        };
-
         (
             Some(center_lat),
             Some(center_lon),
             Some(most_frequent_continent.to_string()),
-            final_country,
         )
     } else {
-        (None, None, None, None)
+        (None, None, None)
     };
 
     Ok(SceneryPackageInfo {
@@ -1393,7 +1379,6 @@ fn build_package_info(
         primary_latitude,
         primary_longitude,
         continent,
-        country,
     })
 }
 

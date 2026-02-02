@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS scenery_packages (
     sort_order INTEGER NOT NULL DEFAULT 0,
     actual_path TEXT,
     continent TEXT,
-    country TEXT,
     primary_latitude INTEGER,
     primary_longitude INTEGER
 );
@@ -85,7 +84,6 @@ CREATE INDEX IF NOT EXISTS idx_packages_sort_order ON scenery_packages(sort_orde
 CREATE INDEX IF NOT EXISTS idx_packages_category_order ON scenery_packages(category, sort_order);
 CREATE INDEX IF NOT EXISTS idx_packages_enabled ON scenery_packages(enabled);
 CREATE INDEX IF NOT EXISTS idx_packages_continent ON scenery_packages(continent);
-CREATE INDEX IF NOT EXISTS idx_packages_country ON scenery_packages(country);
 CREATE INDEX IF NOT EXISTS idx_required_libraries_name ON required_libraries(library_name);
 CREATE INDEX IF NOT EXISTS idx_exported_libraries_name ON exported_libraries(library_name);
 CREATE INDEX IF NOT EXISTS idx_coordinates_package ON scenery_coordinates(package_id);

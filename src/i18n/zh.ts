@@ -413,7 +413,12 @@ export default {
     hintFromSettings: '已启用地景排序，请从这里进入地景管理器进行排序',
     updatingIndex: '正在更新索引...',
     allContinents: '所有大洲',
-    allCountries: '所有国家'
+    databaseVersionError: '数据库版本不兼容',
+    databaseVersionErrorDesc: '地景数据库由较新版本的应用程序创建。点击下方按钮重置并重建索引。',
+    resetDatabase: '重置数据库',
+    resetDatabaseConfirm: '此操作将删除现有数据库并需要重建索引。是否继续？',
+    resetDatabaseSuccess: '数据库重置成功，请重建索引。',
+    resetDatabaseFailed: '重置数据库失败'
   },
   geo: {
     continents: {

@@ -69,7 +69,7 @@ impl SceneryQueries {
                 "SELECT id, folder_name, category, sub_priority, last_modified, indexed_at,
                         has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
                         texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
-                        continent, country, primary_latitude, primary_longitude
+                        continent, primary_latitude, primary_longitude
                  FROM scenery_packages",
             )
             .map_err(|e| ApiError::database(format!("Failed to prepare query: {}", e)))?;
@@ -94,9 +94,8 @@ impl SceneryQueries {
                     row.get::<_, u32>(14)?,    // sort_order
                     row.get::<_, Option<String>>(15)?, // actual_path
                     row.get::<_, Option<String>>(16)?, // continent
-                    row.get::<_, Option<String>>(17)?, // country
-                    row.get::<_, Option<i32>>(18)?,    // primary_latitude
-                    row.get::<_, Option<i32>>(19)?,    // primary_longitude
+                    row.get::<_, Option<i32>>(17)?,    // primary_latitude
+                    row.get::<_, Option<i32>>(18)?,    // primary_longitude
                 ))
             })
             .map_err(|e| ApiError::database(format!("Failed to query packages: {}", e)))?;
@@ -126,7 +125,6 @@ impl SceneryQueries {
                 sort_order,
                 actual_path,
                 continent,
-                country,
                 primary_latitude,
                 primary_longitude,
             ) = row;
@@ -154,7 +152,6 @@ impl SceneryQueries {
                 primary_latitude,
                 primary_longitude,
                 continent,
-                country,
             };
 
             package_data.push((id, info));
@@ -318,8 +315,8 @@ impl SceneryQueries {
                 folder_name, category, sub_priority, last_modified, indexed_at,
                 has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
                 texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
-                continent, country, primary_latitude, primary_longitude
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)"
+                continent, primary_latitude, primary_longitude
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)"
         ).map_err(|e| ApiError::database(format!("Failed to prepare package statement: {}", e)))?;
 
         let mut req_lib_stmt = tx.prepare_cached(
@@ -357,7 +354,6 @@ impl SceneryQueries {
                 info.sort_order,
                 &info.actual_path,
                 &info.continent,
-                &info.country,
                 info.primary_latitude,
                 info.primary_longitude,
             ]).map_err(|e| ApiError::database(format!("Failed to insert package: {}", e)))?;
@@ -415,8 +411,8 @@ impl SceneryQueries {
                 folder_name, category, sub_priority, last_modified, indexed_at,
                 has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
                 texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
-                continent, country, primary_latitude, primary_longitude
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+                continent, primary_latitude, primary_longitude
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             params![
                 info.folder_name,
                 category_to_string(&info.category),
@@ -434,7 +430,6 @@ impl SceneryQueries {
                 info.sort_order,
                 &info.actual_path,
                 &info.continent,
-                &info.country,
                 info.primary_latitude,
                 info.primary_longitude,
             ],
@@ -518,7 +513,7 @@ impl SceneryQueries {
                     has_apt_dat = ?6, has_dsf = ?7, has_library_txt = ?8, has_textures = ?9,
                     has_objects = ?10, texture_count = ?11, earth_nav_tile_count = ?12,
                     enabled = ?13, sort_order = ?14, actual_path = ?15,
-                    continent = ?16, country = ?17, primary_latitude = ?18, primary_longitude = ?19
+                    continent = ?16, primary_latitude = ?17, primary_longitude = ?18
                  WHERE id = ?1",
                 params![
                     id,
@@ -537,7 +532,6 @@ impl SceneryQueries {
                     info.sort_order,
                     &info.actual_path,
                     &info.continent,
-                    &info.country,
                     info.primary_latitude,
                     info.primary_longitude,
                 ],
@@ -644,12 +638,12 @@ impl SceneryQueries {
         conn: &Connection,
         folder_name: &str,
     ) -> Result<Option<SceneryPackageInfo>, ApiError> {
-        let row: Option<(i64, String, String, u8, i64, i64, bool, bool, bool, bool, bool, usize, u32, bool, u32, Option<String>, Option<String>, Option<String>, Option<i32>, Option<i32>)> = conn
+        let row: Option<(i64, String, String, u8, i64, i64, bool, bool, bool, bool, bool, usize, u32, bool, u32, Option<String>, Option<String>, Option<i32>, Option<i32>)> = conn
             .query_row(
                 "SELECT id, folder_name, category, sub_priority, last_modified, indexed_at,
                         has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
                         texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
-                        continent, country, primary_latitude, primary_longitude
+                        continent, primary_latitude, primary_longitude
                  FROM scenery_packages WHERE folder_name = ?1",
                 params![folder_name],
                 |row| {
@@ -673,7 +667,6 @@ impl SceneryQueries {
                         row.get(16)?,
                         row.get(17)?,
                         row.get(18)?,
-                        row.get(19)?,
                     ))
                 },
             )
@@ -698,7 +691,6 @@ impl SceneryQueries {
                 sort_order,
                 actual_path,
                 continent,
-                country,
                 primary_latitude,
                 primary_longitude,
             )) => {
@@ -725,7 +717,6 @@ impl SceneryQueries {
                     primary_latitude,
                     primary_longitude,
                     continent,
-                    country,
                 };
 
                 // Load libraries
@@ -944,7 +935,6 @@ mod tests {
             primary_latitude: Some(39),
             primary_longitude: Some(116),
             continent: Some("Asia".to_string()),
-            country: Some("China".to_string()),
         };
 
         SceneryQueries::update_package(&mut conn, &info).unwrap();
@@ -986,7 +976,6 @@ mod tests {
             primary_latitude: None,
             primary_longitude: None,
             continent: None,
-            country: None,
         };
 
         SceneryQueries::update_package(&mut conn, &info).unwrap();
@@ -1027,7 +1016,6 @@ mod tests {
                 primary_latitude: None,
                 primary_longitude: None,
                 continent: None,
-                country: None,
             };
             SceneryQueries::update_package(&mut conn, &info).unwrap();
         }

@@ -184,16 +184,30 @@ function escapeHtml(text: string): string {
 // Router Setup
 // ============================================================================
 
+// Preload functions for lazy-loaded views
+const preloadManagement = () => import('./views/Management.vue')
+const preloadSettings = () => import('./views/Settings.vue')
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', component: Home },
     { path: '/onboarding', component: () => import('./views/Onboarding.vue') },
-    { path: '/management', component: () => import('./views/Management.vue') },
+    { path: '/management', component: preloadManagement },
     { path: '/scenery', redirect: '/management?tab=scenery' },
-    { path: '/settings', component: () => import('./views/Settings.vue') },
+    { path: '/settings', component: preloadSettings },
   ],
 })
+
+// Preload views after initial render for faster navigation
+function preloadViews() {
+  // Use requestIdleCallback if available, otherwise setTimeout
+  const schedulePreload = window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 100))
+  schedulePreload(() => {
+    preloadManagement()
+    preloadSettings()
+  })
+}
 
 // ============================================================================
 // Store Initialization with Timeout
@@ -336,7 +350,10 @@ async function initApp(): Promise<void> {
     bootstrapInfo('Mounting Vue application...', 'init')
     app.mount('#app')
 
-    // Step 7: Hide loading screen
+    // Step 7: Preload views for faster navigation
+    preloadViews()
+
+    // Step 8: Hide loading screen
     const totalInitTime = Date.now() - initStartTime
     bootstrapInfo(`Application initialized successfully in ${totalInitTime}ms`, 'init')
 

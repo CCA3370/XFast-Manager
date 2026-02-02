@@ -422,9 +422,6 @@ pub struct SceneryPackageInfo {
     /// Continent name (e.g., "Asia", "Europe", "North America")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub continent: Option<String>,
-    /// Country name (e.g., "China", "United States", "Germany")
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub country: Option<String>,
 }
 
 /// DSF file header information
@@ -496,9 +493,6 @@ pub struct SceneryManagerEntry {
     /// Continent name (e.g., "Asia", "Europe", "North America")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub continent: Option<String>,
-    /// Country name (e.g., "China", "United States", "Germany")
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub country: Option<String>,
     /// Primary latitude (geographic center)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primary_latitude: Option<i32>,
@@ -805,7 +799,6 @@ mod tests {
             missing_libraries: vec![],
             required_libraries: vec!["opensceneryx".to_string()],
             continent: Some("Asia".to_string()),
-            country: Some("China".to_string()),
             primary_latitude: Some(39),
             primary_longitude: Some(116),
         };

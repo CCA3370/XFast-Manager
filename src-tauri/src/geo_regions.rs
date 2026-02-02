@@ -298,33 +298,32 @@ static CONTINENT_REGIONS: &[GeoRegion] = &[
     GeoRegion::new("Antarctica", "Antarctica", -90, -60, -180, 180),
 ];
 
-/// Look up the country and continent for a given coordinate
-/// Returns (country_name, continent_name)
-/// If no country matches, returns (None, continent_name)
-pub fn lookup_region(lat: i32, lon: i32) -> (Option<&'static str>, &'static str) {
-    // First try to find a matching country
+/// Look up the continent for a given coordinate
+/// Returns the continent name
+pub fn lookup_region(lat: i32, lon: i32) -> &'static str {
+    // First try to find a matching country to get its continent
     for region in GEO_REGIONS {
         if region.contains(lat, lon) {
-            return (Some(region.name), region.continent);
+            return region.continent;
         }
     }
 
     // No country found, try to determine continent
     for region in CONTINENT_REGIONS {
         if region.contains(lat, lon) {
-            return (None, region.continent);
+            return region.continent;
         }
     }
 
     // Default to unknown
-    (None, "Unknown")
+    "Unknown"
 }
 
-/// Look up region for multiple coordinates and return the most common result
+/// Look up region for multiple coordinates and return the most common continent
 /// This is useful for scenery packages that span multiple tiles
-pub fn lookup_region_for_coordinates(coords: &[(i32, i32)]) -> (Option<&'static str>, &'static str) {
+pub fn lookup_region_for_coordinates(coords: &[(i32, i32)]) -> &'static str {
     if coords.is_empty() {
-        return (None, "Unknown");
+        return "Unknown";
     }
 
     if coords.len() == 1 {
@@ -355,45 +354,40 @@ mod tests {
 
     #[test]
     fn test_singapore() {
-        let (country, continent) = lookup_region(1, 103);
-        assert_eq!(country, Some("Singapore"));
+        let continent = lookup_region(1, 103);
         assert_eq!(continent, "Asia");
     }
 
     #[test]
     fn test_china() {
-        let (country, continent) = lookup_region(39, 116);
-        assert_eq!(country, Some("China"));
+        let continent = lookup_region(39, 116);
         assert_eq!(continent, "Asia");
     }
 
     #[test]
     fn test_usa() {
-        let (country, continent) = lookup_region(40, -74);
-        assert_eq!(country, Some("United States"));
+        let continent = lookup_region(40, -74);
         assert_eq!(continent, "North America");
     }
 
     #[test]
     fn test_uk() {
-        let (country, continent) = lookup_region(51, 0);
-        assert_eq!(country, Some("United Kingdom"));
+        let continent = lookup_region(51, 0);
         assert_eq!(continent, "Europe");
     }
 
     #[test]
     fn test_australia() {
-        let (country, continent) = lookup_region(-33, 151);
-        assert_eq!(country, Some("Australia"));
+        let continent = lookup_region(-33, 151);
         assert_eq!(continent, "Oceania");
     }
 
     #[test]
     fn test_ocean_fallback() {
         // Middle of Pacific Ocean
-        let (country, continent) = lookup_region(0, -150);
-        assert!(country.is_none());
+        let continent = lookup_region(0, -150);
         // Should fall back to a continent or Unknown
+        assert!(!continent.is_empty());
     }
 
     #[test]
@@ -406,15 +400,14 @@ mod tests {
 
     #[test]
     fn test_small_country_priority() {
-        // Singapore should be matched before China
-        let (country, _) = lookup_region(1, 103);
-        assert_eq!(country, Some("Singapore"));
+        // Singapore should be matched and return Asia
+        let continent = lookup_region(1, 103);
+        assert_eq!(continent, "Asia");
     }
 
     #[test]
     fn test_hong_kong() {
-        let (country, continent) = lookup_region(22, 114);
-        assert_eq!(country, Some("Hong Kong"));
+        let continent = lookup_region(22, 114);
         assert_eq!(continent, "Asia");
     }
 }
