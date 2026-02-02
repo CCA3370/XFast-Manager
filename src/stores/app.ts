@@ -86,6 +86,9 @@ export const useAppStore = defineStore('app', () => {
   const sceneryManagerHintVisible = ref(false)
   const sceneryManagerHintMessageKey = ref<string | null>(null)
 
+  // X-Plane launch arguments (default: empty)
+  const xplaneLaunchArgs = ref('')
+
   // Confirmation modal state (for exit confirmation)
   const isConfirmationOpen = ref(false)
 
@@ -188,6 +191,12 @@ export const useAppStore = defineStore('app', () => {
       autoSortScenery.value = savedAutoSortScenery
     }
 
+    // Load X-Plane launch arguments
+    const savedLaunchArgs = await getItem<string>(STORAGE_KEYS.XPLANE_LAUNCH_ARGS)
+    if (typeof savedLaunchArgs === 'string') {
+      xplaneLaunchArgs.value = savedLaunchArgs
+    }
+
     isInitialized.value = true
   }
 
@@ -226,6 +235,11 @@ export const useAppStore = defineStore('app', () => {
   async function toggleAutoSortScenery() {
     autoSortScenery.value = !autoSortScenery.value
     await setItem(STORAGE_KEYS.AUTO_SORT_SCENERY, autoSortScenery.value)
+  }
+
+  async function setXplaneLaunchArgs(args: string) {
+    xplaneLaunchArgs.value = args
+    await setItem(STORAGE_KEYS.XPLANE_LAUNCH_ARGS, args)
   }
 
   function showSceneryManagerHint(messageKey: string) {
@@ -480,6 +494,7 @@ export const useAppStore = defineStore('app', () => {
     atomicInstallEnabled,
     deleteSourceAfterInstall,
     autoSortScenery,
+    xplaneLaunchArgs,
     sceneryManagerHintVisible,
     sceneryManagerHintMessageKey,
     isConfirmationOpen,
@@ -504,6 +519,7 @@ export const useAppStore = defineStore('app', () => {
     toggleAtomicInstall,
     toggleDeleteSourceAfterInstall,
     toggleAutoSortScenery,
+    setXplaneLaunchArgs,
     showSceneryManagerHint,
     dismissSceneryManagerHint,
     setConfirmationOpen,

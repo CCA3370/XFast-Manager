@@ -288,12 +288,13 @@ const toast = useToastStore()
 const isSubmitting = ref(false)
 
 // Explicit boolean type to prevent TypeScript from inferring literal types
+// For onboarding (first-time use), default these features to enabled
 const windowsIntegrationEnabled = ref<boolean>(store.isContextMenuRegistered ?? true)
-const atomicInstallEnabled = ref<boolean>(store.atomicInstallEnabled ?? true)
+const atomicInstallEnabled = ref<boolean>(true)
 const deleteSourceEnabled = ref(store.deleteSourceAfterInstall)
 const autoUpdateEnabled = ref(updateStore.autoCheckEnabled)
 const includePreReleaseEnabled = ref(updateStore.includePreRelease)
-const autoSortSceneryEnabled = ref<boolean>(store.autoSortScenery ?? true)
+const autoSortSceneryEnabled = ref<boolean>(true)
 const xplanePathInput = ref(store.xplanePath)
 const pathError = ref<string | null>(null)
 const xplanePathValid = ref(!!store.xplanePath)

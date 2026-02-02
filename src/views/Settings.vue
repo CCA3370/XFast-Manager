@@ -69,6 +69,26 @@
               </button>
             </div>
           </div>
+
+          <!-- Launch Arguments -->
+          <div class="space-y-1.5">
+            <label class="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+              </svg>
+              <AnimatedText>{{ $t('settings.xplaneLaunchArgs') }}</AnimatedText>
+            </label>
+            <input
+              v-model="launchArgsInput"
+              type="text"
+              :placeholder="$t('settings.xplaneLaunchArgsPlaceholder')"
+              class="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700/50 rounded-lg text-sm text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-500 transition-colors duration-200"
+              @blur="handleLaunchArgsBlur"
+            />
+            <p class="text-[11px] text-gray-400 dark:text-gray-500">
+              <AnimatedText>{{ $t('settings.xplaneLaunchArgsDesc') }}</AnimatedText>
+            </p>
+          </div>
         </div>
       </section>
 
@@ -1077,6 +1097,7 @@ const modal = useModalStore()
 const updateStore = useUpdateStore()
 
 const xplanePathInput = ref('')
+const launchArgsInput = ref('')
 const isProcessing = ref(false)
 const saveStatus = ref<'saving' | 'saved' | null>(null)
 const pathError = ref<string | null>(null)
@@ -1185,6 +1206,7 @@ function getTypeName(type: AddonType): string {
 
 onMounted(async () => {
   xplanePathInput.value = store.xplanePath
+  launchArgsInput.value = store.xplaneLaunchArgs
 
   try {
     // Get app version
@@ -1239,6 +1261,14 @@ function handlePathBlur() {
     pathValidationDebounceTimer = null
     await validateAndSavePath()
   }, PATH_VALIDATION_DEBOUNCE_MS)
+}
+
+// Handle launch args input blur - save to store
+function handleLaunchArgsBlur() {
+  const newValue = launchArgsInput.value.trim()
+  if (newValue !== store.xplaneLaunchArgs) {
+    store.setXplaneLaunchArgs(newValue)
+  }
 }
 
 // Internal function to validate and save path
