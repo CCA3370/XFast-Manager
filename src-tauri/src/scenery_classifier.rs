@@ -1324,14 +1324,11 @@ fn build_package_info(
     // Calculate sub-priority based on category and folder name
     let sub_priority = calculate_sub_priority(&category, &folder_name);
 
-    // Collect DSF coordinates
+    // Collect DSF coordinates temporarily for continent calculation
     let coordinates = collect_dsf_coordinates(scenery_path);
 
-    // Calculate primary coordinate and lookup geographic region
-    // Continent is determined by the most frequent one among all coordinates
-    let (primary_latitude, primary_longitude, continent) = if !coordinates.is_empty() {
-        let (center_lat, center_lon) = geo_regions::calculate_center(&coordinates);
-
+    // Calculate continent from coordinates (coordinates are not stored)
+    let continent = if !coordinates.is_empty() {
         // Count continents for all coordinates
         let mut continent_counts: HashMap<&'static str, usize> = HashMap::new();
 
@@ -1341,19 +1338,12 @@ fn build_package_info(
         }
 
         // Find the most frequent continent
-        let most_frequent_continent = continent_counts
+        continent_counts
             .into_iter()
             .max_by_key(|(_, count)| *count)
-            .map(|(cont, _)| cont)
-            .unwrap_or("Unknown");
-
-        (
-            Some(center_lat),
-            Some(center_lon),
-            Some(most_frequent_continent.to_string()),
-        )
+            .map(|(cont, _)| cont.to_string())
     } else {
-        (None, None, None)
+        None
     };
 
     Ok(SceneryPackageInfo {
@@ -1375,9 +1365,6 @@ fn build_package_info(
         enabled: true, // Default to enabled
         sort_order: 0, // Will be assigned during index rebuild
         actual_path: None, // Will be set by index manager for shortcut entries
-        coordinates,
-        primary_latitude,
-        primary_longitude,
         continent,
     })
 }

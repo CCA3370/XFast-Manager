@@ -54,7 +54,13 @@ export default {
     installed: '已安装',
     failed: '失败',
     installingNow: '安装中...',
-    waiting: '等待中'
+    waiting: '等待中',
+    launchXPlane: '启动 X-Plane',
+    launchConfirmTitle: '地景更改待应用',
+    launchConfirmMessage: '您有未应用的地景排序更改。请选择操作：',
+    applyAndLaunch: '应用并启动',
+    launchDirectly: '直接启动',
+    launchFailed: '启动 X-Plane 失败'
   },
   addonType: {
     Aircraft: '机模',
@@ -70,6 +76,9 @@ export default {
     configureApp: '配置应用程序首选项',
     xplanePath: 'X-Plane 安装路径',
     xplanePathDesc: '设置X-Plane的根目录路径',
+    xplaneLaunchArgs: 'X-Plane 启动参数',
+    xplaneLaunchArgsDesc: '启动 X-Plane 时传递的自定义命令行参数',
+    xplaneLaunchArgsPlaceholder: '例如 --weather_seed=1 --fps_test=60',
     installPreferences: '安装偏好',
     installPreferencesDesc: '选择自动安装的插件类型',
     toggleAll: '全部启用/禁用',
@@ -226,6 +235,13 @@ export default {
     unsavedSceneryChangesWarning: '未保存的更改将会丢失',
     closeAnyway: '仍然关闭',
     goBack: '返回',
+    // Installation in progress
+    installInProgressTitle: '正在安装',
+    installInProgressMessage: '当前有安装任务正在进行中，确定要关闭吗？',
+    installInProgressWarning: '现在关闭可能会导致安装文件损坏',
+    // Pending installation confirmation
+    confirmationOpenTitle: '待确认安装',
+    confirmationOpenMessage: '您有待确认的安装任务尚未执行，确定要关闭吗？',
   },
   password: {
     title: '需要密码',

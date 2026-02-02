@@ -96,6 +96,9 @@ fn apply_version_migrations(conn: &Connection, from_version: i32) -> Result<(), 
     if from_version < 2 {
         migrate_v1_to_v2(conn)?;
     }
+    if from_version < 3 {
+        migrate_v2_to_v3(conn)?;
+    }
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -184,6 +187,35 @@ fn migrate_v1_to_v2(conn: &Connection) -> Result<(), ApiError> {
     .map_err(|e| ApiError::migration_failed(format!("Failed to create coordinates index: {}", e)))?;
 
     logger::log_info("Database migration v1 to v2 completed", Some("database"));
+
+    Ok(())
+}
+
+/// Migrate from schema version 2 to version 3
+/// Removes coordinates storage (scenery_coordinates table, primary_latitude, primary_longitude columns)
+/// Coordinates are now only used temporarily during scan to calculate continent
+fn migrate_v2_to_v3(conn: &Connection) -> Result<(), ApiError> {
+    logger::log_info("Migrating database from v2 to v3 (removing coordinates storage)", Some("database"));
+
+    // Drop the scenery_coordinates table if it exists
+    conn.execute("DROP TABLE IF EXISTS scenery_coordinates", [])
+        .map_err(|e| ApiError::migration_failed(format!("Failed to drop scenery_coordinates table: {}", e)))?;
+
+    // Drop the coordinates index if it exists
+    conn.execute("DROP INDEX IF EXISTS idx_coordinates_package", [])
+        .map_err(|e| ApiError::migration_failed(format!("Failed to drop coordinates index: {}", e)))?;
+
+    // Note: SQLite doesn't support DROP COLUMN directly in older versions.
+    // The primary_latitude and primary_longitude columns will remain in the table
+    // but will no longer be used. This is acceptable as:
+    // 1. They don't take up significant space (NULL values)
+    // 2. The code no longer reads or writes to them
+    // 3. A full table rebuild would be expensive and risky
+    //
+    // If a clean slate is needed, users can rebuild the index which will
+    // create a fresh database with the new schema.
+
+    logger::log_info("Database migration v2 to v3 completed", Some("database"));
 
     Ok(())
 }

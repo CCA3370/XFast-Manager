@@ -276,17 +276,40 @@ onMounted(async () => {
     logError(`Failed to get CLI args on startup: ${error}`, 'app')
   }
 
-  // Set up window close confirmation for unsaved scenery changes
+  // Set up window close confirmation for active operations
   try {
     logDebug('Setting up window close handler...', 'app')
     const appWindow = getCurrentWindow()
     await appWindow.onCloseRequested(async (event) => {
-      // Check if there are unsaved scenery changes
-      if (sceneryStore.hasChanges) {
-        // Prevent the window from closing
+      // Check conditions in priority order
+      if (store.isInstalling) {
+        // Installation in progress - highest priority warning
         event.preventDefault()
-
-        // Show confirmation modal
+        modalStore.showConfirm({
+          title: t('modal.installInProgressTitle'),
+          message: t('modal.installInProgressMessage'),
+          warning: t('modal.installInProgressWarning'),
+          confirmText: t('modal.closeAnyway'),
+          cancelText: t('modal.goBack'),
+          type: 'danger',
+          onConfirm: async () => await appWindow.destroy(),
+          onCancel: () => {}
+        })
+      } else if (store.isConfirmationOpen) {
+        // Confirmation modal is open - pending installation
+        event.preventDefault()
+        modalStore.showConfirm({
+          title: t('modal.confirmationOpenTitle'),
+          message: t('modal.confirmationOpenMessage'),
+          confirmText: t('modal.closeAnyway'),
+          cancelText: t('modal.goBack'),
+          type: 'warning',
+          onConfirm: async () => await appWindow.destroy(),
+          onCancel: () => {}
+        })
+      } else if (sceneryStore.hasChanges) {
+        // Unsaved scenery changes
+        event.preventDefault()
         modalStore.showConfirm({
           title: t('modal.unsavedSceneryChangesTitle'),
           message: t('modal.unsavedSceneryChangesMessage'),
@@ -294,16 +317,11 @@ onMounted(async () => {
           confirmText: t('modal.closeAnyway'),
           cancelText: t('modal.goBack'),
           type: 'warning',
-          onConfirm: async () => {
-            // User confirmed, close the window
-            await appWindow.destroy()
-          },
-          onCancel: () => {
-            // User cancelled, do nothing (window stays open)
-          }
+          onConfirm: async () => await appWindow.destroy(),
+          onCancel: () => {}
         })
       }
-      // If no changes, allow the window to close normally
+      // If no conditions match, allow the window to close normally
     })
   } catch (error) {
     logError(`Failed to setup window close listener: ${error}`, 'app')

@@ -1157,8 +1157,6 @@ impl SceneryIndexManager {
                 missing_libraries: info.missing_libraries.clone(),
                 required_libraries: info.required_libraries.clone(),
                 continent: info.continent.clone(),
-                primary_latitude: info.primary_latitude,
-                primary_longitude: info.primary_longitude,
             })
             .collect();
 

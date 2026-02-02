@@ -99,6 +99,27 @@
                 <span><AnimatedText>{{ $t('home.batchProcess') }}</AnimatedText></span>
               </span>
             </div>
+
+            <!-- Launch X-Plane Button -->
+            <button
+              v-if="store.xplanePath"
+              @click.stop="handleLaunchXPlane"
+              class="mt-4 px-4 py-2 bg-white/70 dark:bg-gray-700/50
+                     hover:bg-blue-50 dark:hover:bg-blue-900/30
+                     text-gray-700 dark:text-gray-200
+                     hover:text-blue-600 dark:hover:text-blue-400
+                     font-medium rounded-xl
+                     transition-all duration-300 hover:scale-105
+                     flex items-center gap-2
+                     border-2 border-gray-300 dark:border-gray-500/50
+                     hover:border-blue-400 dark:hover:border-blue-500/70
+                     shadow-sm hover:shadow-md"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3l14 9-14 9V3z"></path>
+              </svg>
+              <span>{{ $t('home.launchXPlane') }}</span>
+            </button>
           </div>
 
         <!-- Progress Overlays -->
@@ -132,6 +153,58 @@
         @confirm="handlePasswordSubmit"
         @cancel="handlePasswordCancel"
       />
+
+      <!-- Launch X-Plane Confirmation Dialog -->
+      <transition name="fade">
+        <div
+          v-if="showLaunchConfirmDialog"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          @click.self="cancelLaunchDialog"
+        >
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-bounce-in">
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
+              <div class="p-2 bg-amber-100 dark:bg-amber-500/20 rounded-lg">
+                <svg class="w-5 h-5 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                </svg>
+              </div>
+              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ $t('home.launchConfirmTitle') }}
+              </h3>
+            </div>
+
+            <!-- Content -->
+            <div class="px-6 py-4">
+              <p class="text-gray-600 dark:text-gray-300">
+                {{ $t('home.launchConfirmMessage') }}
+              </p>
+            </div>
+
+            <!-- Actions -->
+            <div class="px-6 py-4 bg-gray-50 dark:bg-gray-800/50 flex flex-col sm:flex-row gap-3 sm:justify-end">
+              <button
+                @click="cancelLaunchDialog"
+                class="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg font-medium transition-colors"
+              >
+                {{ $t('common.cancel') }}
+              </button>
+              <button
+                @click="launchXPlane"
+                class="px-4 py-2 text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-500/20 hover:bg-blue-200 dark:hover:bg-blue-500/30 rounded-lg font-medium transition-colors"
+              >
+                {{ $t('home.launchDirectly') }}
+              </button>
+              <button
+                @click="applyAndLaunch"
+                class="px-4 py-2 text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg font-medium transition-all shadow-md"
+              >
+                {{ $t('home.applyAndLaunch') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </transition>
     </div>
   </div>
 </template>
@@ -143,6 +216,7 @@ import { useToastStore } from '@/stores/toast'
 import { useModalStore } from '@/stores/modal'
 import { useProgressStore } from '@/stores/progress'
 import { useUpdateStore } from '@/stores/update'
+import { useSceneryStore } from '@/stores/scenery'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -165,9 +239,16 @@ const toast = useToastStore()
 const modal = useModalStore()
 const updateStore = useUpdateStore()
 const progressStore = useProgressStore()
+const sceneryStore = useSceneryStore()
 const isDragging = ref(false)
 const showConfirmation = ref(false)
+const showLaunchConfirmDialog = ref(false)
 const debugDropFlash = ref(false)
+
+// Sync confirmation modal state with store for exit confirmation
+watch(showConfirmation, (value) => {
+  store.setConfirmationOpen(value)
+})
 
 // Password modal state
 const showPasswordModal = ref(false)
@@ -719,6 +800,49 @@ function showConfirmDialog(options: {
       onCancel: () => resolve(false)
     })
   })
+}
+
+// Handle launch X-Plane button click
+async function handleLaunchXPlane() {
+  // Load fresh scenery data to check for pending changes
+  await sceneryStore.loadData()
+
+  if (sceneryStore.hasChanges) {
+    showLaunchConfirmDialog.value = true
+  } else {
+    await launchXPlane()
+  }
+}
+
+// Launch X-Plane directly
+async function launchXPlane() {
+  try {
+    // Parse launch args from store (split by whitespace, filter empty)
+    const args = store.xplaneLaunchArgs
+      ? store.xplaneLaunchArgs.split(/\s+/).filter(Boolean)
+      : []
+    await invoke('launch_xplane', { xplanePath: store.xplanePath, args: args.length > 0 ? args : null })
+    showLaunchConfirmDialog.value = false
+  } catch (error) {
+    logError(`Failed to launch X-Plane: ${error}`, 'app')
+    modal.showError(t('home.launchFailed') + ': ' + getErrorMessage(error))
+  }
+}
+
+// Apply scenery changes then launch X-Plane
+async function applyAndLaunch() {
+  try {
+    await sceneryStore.applyChanges()
+    await launchXPlane()
+  } catch (error) {
+    logError(`Failed to apply changes and launch: ${error}`, 'app')
+    modal.showError(getErrorMessage(error))
+  }
+}
+
+// Cancel launch confirmation dialog
+function cancelLaunchDialog() {
+  showLaunchConfirmDialog.value = false
 }
 
 function handleCompletionConfirm() {

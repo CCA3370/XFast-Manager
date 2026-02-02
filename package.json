@@ -1,6 +1,6 @@
 {
   "name": "xfast-manager",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "description": "XFast Manager - X-Plane Addon Auto Manager",
   "type": "module",
   "scripts": {

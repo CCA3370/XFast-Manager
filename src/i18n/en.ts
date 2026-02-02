@@ -54,7 +54,13 @@ export default {
     installed: 'Installed',
     failed: 'Failed',
     installingNow: 'Installing...',
-    waiting: 'Waiting'
+    waiting: 'Waiting',
+    launchXPlane: 'Launch X-Plane',
+    launchConfirmTitle: 'Pending Scenery Changes',
+    launchConfirmMessage: 'You have unapplied scenery changes. What would you like to do?',
+    applyAndLaunch: 'Apply & Launch',
+    launchDirectly: 'Launch Directly',
+    launchFailed: 'Failed to launch X-Plane'
   },
   addonType: {
     Aircraft: 'Aircraft',
@@ -70,6 +76,9 @@ export default {
     configureApp: 'Configure application preferences',
     xplanePath: 'X-Plane Installation Path',
     xplanePathDesc: 'Set the root directory path of X-Plane',
+    xplaneLaunchArgs: 'X-Plane Launch Arguments',
+    xplaneLaunchArgsDesc: 'Custom command-line arguments passed to X-Plane on launch',
+    xplaneLaunchArgsPlaceholder: 'e.g. --weather_seed=1 --fps_test=60',
     installPreferences: 'Installation Preferences',
     installPreferencesDesc: 'Choose which add-on types to auto-install',
     toggleAll: 'Enable/Disable All',
@@ -213,6 +222,13 @@ export default {
     unsavedSceneryChangesWarning: 'Unsaved changes will be lost',
     closeAnyway: 'Close Anyway',
     goBack: 'Go Back',
+    // Installation in progress
+    installInProgressTitle: 'Installation In Progress',
+    installInProgressMessage: 'An installation is currently in progress. Are you sure you want to close?',
+    installInProgressWarning: 'Closing now may corrupt installed files',
+    // Pending installation confirmation
+    confirmationOpenTitle: 'Pending Installation',
+    confirmationOpenMessage: 'You have a pending installation that has not been confirmed. Are you sure you want to close?',
   },
   password: {
     title: 'Password Required',

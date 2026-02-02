@@ -368,6 +368,47 @@ fn check_path_exists(path: String) -> bool {
 }
 
 #[tauri::command]
+fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), String> {
+    let path = std::path::Path::new(&xplane_path);
+    let extra_args = args.unwrap_or_default();
+
+    #[cfg(target_os = "windows")]
+    {
+        let exe_path = path.join("X-Plane.exe");
+        std::process::Command::new(exe_path)
+            .args(&extra_args)
+            .spawn()
+            .map_err(|e| format!("Failed to launch X-Plane: {}", e))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // macOS uses 'open' command for .app bundles
+        let app_path = path.join("X-Plane.app");
+        let mut cmd = std::process::Command::new("open");
+        cmd.arg(&app_path);
+        if !extra_args.is_empty() {
+            cmd.arg("--args");
+            cmd.args(&extra_args);
+        }
+        cmd.spawn()
+            .map_err(|e| format!("Failed to launch X-Plane: {}", e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let exe_path = path.join("X-Plane");
+        std::process::Command::new(exe_path)
+            .args(&extra_args)
+            .spawn()
+            .map_err(|e| format!("Failed to launch X-Plane: {}", e))?;
+    }
+
+    logger::log_info("X-Plane launched", Some("app"));
+    Ok(())
+}
+
+#[tauri::command]
 fn validate_xplane_path(path: String) -> Result<bool, String> {
     let path_obj = std::path::Path::new(&path);
 
@@ -826,6 +867,7 @@ pub fn run() {
             set_log_locale,
             set_log_level,
             check_path_exists,
+            launch_xplane,
             validate_xplane_path,
             check_for_updates,
             get_last_check_time,

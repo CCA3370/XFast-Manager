@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.5] - 2026-02-03
+
+### Added
+
+- **Launch X-Plane Button** - New button on the home page to launch X-Plane directly from the app
+  - Automatically detects pending scenery changes before launching
+  - If changes exist, offers three options: Apply & Launch, Launch Directly, or Cancel
+  - Supports custom command-line arguments (configurable in Settings)
+- **Window Close Protection** - Improved safety when closing the app during active operations
+  - Warning when closing during an installation in progress
+  - Warning when closing with a pending installation confirmation dialog open
+
+### Changed
+
+- **Onboarding Defaults** - Worry-Free Installation and Scenery Auto-Sorting are now enabled by default for new users
+- **Scenery Info Display** - Scenery cards now show continent instead of country for a cleaner layout
+
 ## [0.8.4] - 2026-02-02
 
 ### Added

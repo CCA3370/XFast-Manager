@@ -89,4 +89,5 @@ export const STORAGE_KEYS = {
   AUTO_CHECK_ENABLED: 'autoCheckEnabled',
   INCLUDE_PRE_RELEASE: 'includePreRelease',
   LAST_CHECK_TIME: 'lastCheckTime',
+  XPLANE_LAUNCH_ARGS: 'xplaneLaunchArgs',
 } as const;
