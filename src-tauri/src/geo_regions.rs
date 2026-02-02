@@ -319,35 +319,6 @@ pub fn lookup_region(lat: i32, lon: i32) -> &'static str {
     "Unknown"
 }
 
-/// Look up region for multiple coordinates and return the most common continent
-/// This is useful for scenery packages that span multiple tiles
-pub fn lookup_region_for_coordinates(coords: &[(i32, i32)]) -> &'static str {
-    if coords.is_empty() {
-        return "Unknown";
-    }
-
-    if coords.len() == 1 {
-        return lookup_region(coords[0].0, coords[0].1);
-    }
-
-    // Calculate the geographic center
-    let (center_lat, center_lon) = calculate_center(coords);
-    lookup_region(center_lat, center_lon)
-}
-
-/// Calculate the geographic center of a set of coordinates
-pub fn calculate_center(coords: &[(i32, i32)]) -> (i32, i32) {
-    if coords.is_empty() {
-        return (0, 0);
-    }
-
-    let sum_lat: i64 = coords.iter().map(|(lat, _)| *lat as i64).sum();
-    let sum_lon: i64 = coords.iter().map(|(_, lon)| *lon as i64).sum();
-    let count = coords.len() as i64;
-
-    ((sum_lat / count) as i32, (sum_lon / count) as i32)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -388,14 +359,6 @@ mod tests {
         let continent = lookup_region(0, -150);
         // Should fall back to a continent or Unknown
         assert!(!continent.is_empty());
-    }
-
-    #[test]
-    fn test_calculate_center() {
-        let coords = vec![(30, 110), (31, 111), (32, 112)];
-        let (lat, lon) = calculate_center(&coords);
-        assert_eq!(lat, 31);
-        assert_eq!(lon, 111);
     }
 
     #[test]

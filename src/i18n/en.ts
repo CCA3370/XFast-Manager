@@ -213,6 +213,13 @@ export default {
     unsavedSceneryChangesWarning: 'Unsaved changes will be lost',
     closeAnyway: 'Close Anyway',
     goBack: 'Go Back',
+    // Installation in progress
+    installInProgressTitle: 'Installation In Progress',
+    installInProgressMessage: 'An installation is currently in progress. Are you sure you want to close?',
+    installInProgressWarning: 'Closing now may corrupt installed files',
+    // Pending installation confirmation
+    confirmationOpenTitle: 'Pending Installation',
+    confirmationOpenMessage: 'You have a pending installation that has not been confirmed. Are you sure you want to close?',
   },
   password: {
     title: 'Password Required',

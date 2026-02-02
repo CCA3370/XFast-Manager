@@ -169,6 +169,11 @@ const isDragging = ref(false)
 const showConfirmation = ref(false)
 const debugDropFlash = ref(false)
 
+// Sync confirmation modal state with store for exit confirmation
+watch(showConfirmation, (value) => {
+  store.setConfirmationOpen(value)
+})
+
 // Password modal state
 const showPasswordModal = ref(false)
 const passwordRequiredPaths = ref<string[]>([])

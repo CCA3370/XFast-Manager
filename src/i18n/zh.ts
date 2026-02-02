@@ -226,6 +226,13 @@ export default {
     unsavedSceneryChangesWarning: '未保存的更改将会丢失',
     closeAnyway: '仍然关闭',
     goBack: '返回',
+    // Installation in progress
+    installInProgressTitle: '正在安装',
+    installInProgressMessage: '当前有安装任务正在进行中，确定要关闭吗？',
+    installInProgressWarning: '现在关闭可能会导致安装文件损坏',
+    // Pending installation confirmation
+    confirmationOpenTitle: '待确认安装',
+    confirmationOpenMessage: '您有待确认的安装任务尚未执行，确定要关闭吗？',
   },
   password: {
     title: '需要密码',

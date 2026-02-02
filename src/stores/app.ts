@@ -86,6 +86,9 @@ export const useAppStore = defineStore('app', () => {
   const sceneryManagerHintVisible = ref(false)
   const sceneryManagerHintMessageKey = ref<string | null>(null)
 
+  // Confirmation modal state (for exit confirmation)
+  const isConfirmationOpen = ref(false)
+
   // Unified per-task state management (taskId -> TaskState)
   const taskStates = ref<Record<string, TaskState>>({})
 
@@ -232,6 +235,10 @@ export const useAppStore = defineStore('app', () => {
 
   function dismissSceneryManagerHint() {
     sceneryManagerHintVisible.value = false
+  }
+
+  function setConfirmationOpen(open: boolean) {
+    isConfirmationOpen.value = open
   }
 
   async function setLogLevel(level: LogLevel) {
@@ -475,6 +482,7 @@ export const useAppStore = defineStore('app', () => {
     autoSortScenery,
     sceneryManagerHintVisible,
     sceneryManagerHintMessageKey,
+    isConfirmationOpen,
     logLevel,
     taskStates,
     getTaskState,
@@ -498,6 +506,7 @@ export const useAppStore = defineStore('app', () => {
     toggleAutoSortScenery,
     showSceneryManagerHint,
     dismissSceneryManagerHint,
+    setConfirmationOpen,
     setLogLevel,
     setCurrentTasks,
     appendTasks,

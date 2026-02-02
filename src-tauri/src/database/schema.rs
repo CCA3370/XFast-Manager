@@ -1,7 +1,7 @@
 //! Database schema definitions
 
 /// Current schema version for migration tracking
-pub const CURRENT_SCHEMA_VERSION: i32 = 2;
+pub const CURRENT_SCHEMA_VERSION: i32 = 3;
 
 /// SQL statements for creating the database schema
 pub const CREATE_SCHEMA: &str = r#"
@@ -30,9 +30,7 @@ CREATE TABLE IF NOT EXISTS scenery_packages (
     enabled INTEGER NOT NULL DEFAULT 1,
     sort_order INTEGER NOT NULL DEFAULT 0,
     actual_path TEXT,
-    continent TEXT,
-    primary_latitude INTEGER,
-    primary_longitude INTEGER
+    continent TEXT
 );
 
 -- Required libraries (libraries that this package depends on)
@@ -62,16 +60,6 @@ CREATE TABLE IF NOT EXISTS exported_libraries (
     UNIQUE(package_id, library_name)
 );
 
--- Scenery coordinates (DSF tile coordinates for each package)
-CREATE TABLE IF NOT EXISTS scenery_coordinates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    package_id INTEGER NOT NULL,
-    latitude INTEGER NOT NULL,
-    longitude INTEGER NOT NULL,
-    FOREIGN KEY (package_id) REFERENCES scenery_packages(id) ON DELETE CASCADE,
-    UNIQUE(package_id, latitude, longitude)
-);
-
 -- Index metadata (key-value store for general index info)
 CREATE TABLE IF NOT EXISTS index_metadata (
     key TEXT PRIMARY KEY,
@@ -86,7 +74,6 @@ CREATE INDEX IF NOT EXISTS idx_packages_enabled ON scenery_packages(enabled);
 CREATE INDEX IF NOT EXISTS idx_packages_continent ON scenery_packages(continent);
 CREATE INDEX IF NOT EXISTS idx_required_libraries_name ON required_libraries(library_name);
 CREATE INDEX IF NOT EXISTS idx_exported_libraries_name ON exported_libraries(library_name);
-CREATE INDEX IF NOT EXISTS idx_coordinates_package ON scenery_coordinates(package_id);
 "#;
 
 /// SQL statement to insert initial schema version
