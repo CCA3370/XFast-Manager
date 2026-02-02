@@ -4,6 +4,7 @@ mod atomic_installer;
 mod cache;
 mod database;
 mod error;
+mod geo_regions;
 mod hash_collector;
 mod installer;
 mod livery_patterns;

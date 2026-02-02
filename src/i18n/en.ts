@@ -398,7 +398,21 @@ export default {
     moreActions: 'More Actions',
     hintFromScan: 'Scenery changes detected. Open the Scenery Manager here to sort.',
     hintFromSettings: 'Scenery sorting is enabled. Open the Scenery Manager here.',
-    updatingIndex: 'Updating index...'
+    updatingIndex: 'Updating index...',
+    allContinents: 'All Continents',
+    allCountries: 'All Countries'
+  },
+  geo: {
+    continents: {
+      Asia: 'Asia',
+      Europe: 'Europe',
+      Africa: 'Africa',
+      'North America': 'North America',
+      'South America': 'South America',
+      Oceania: 'Oceania',
+      Antarctica: 'Antarctica',
+      Unknown: 'Unknown'
+    }
   },
   management: {
     navTitle: 'Manage',

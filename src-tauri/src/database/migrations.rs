@@ -92,17 +92,15 @@ fn create_initial_schema(conn: &Connection) -> Result<(), ApiError> {
 
 /// Apply incremental migrations from a given version
 fn apply_version_migrations(conn: &Connection, from_version: i32) -> Result<(), ApiError> {
-    // Currently no migrations needed since we're at version 1
-    // Future migrations would be applied here based on from_version
+    // Apply migrations incrementally
+    if from_version < 2 {
+        migrate_v1_to_v2(conn)?;
+    }
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs() as i64;
-
-    // For future migrations, add match arms like:
-    // if from_version < 2 { migrate_v1_to_v2(conn)?; }
-    // if from_version < 3 { migrate_v2_to_v3(conn)?; }
 
     // Record the final version
     conn.execute(
@@ -120,6 +118,72 @@ fn apply_version_migrations(conn: &Connection, from_version: i32) -> Result<(), 
         ),
         Some("database"),
     );
+
+    Ok(())
+}
+
+/// Migrate from schema version 1 to version 2
+/// Adds geographic information columns and coordinates table
+fn migrate_v1_to_v2(conn: &Connection) -> Result<(), ApiError> {
+    logger::log_info("Migrating database from v1 to v2", Some("database"));
+
+    // Add new columns to scenery_packages table
+    // SQLite doesn't support adding multiple columns in one ALTER TABLE,
+    // so we need to do them one at a time
+    let alter_statements = [
+        "ALTER TABLE scenery_packages ADD COLUMN continent TEXT",
+        "ALTER TABLE scenery_packages ADD COLUMN country TEXT",
+        "ALTER TABLE scenery_packages ADD COLUMN primary_latitude INTEGER",
+        "ALTER TABLE scenery_packages ADD COLUMN primary_longitude INTEGER",
+    ];
+
+    for stmt in &alter_statements {
+        // Ignore errors if column already exists (idempotent migration)
+        if let Err(e) = conn.execute(stmt, []) {
+            let err_str = e.to_string();
+            if !err_str.contains("duplicate column name") {
+                return Err(ApiError::migration_failed(format!(
+                    "Failed to alter table: {}",
+                    e
+                )));
+            }
+        }
+    }
+
+    // Create scenery_coordinates table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS scenery_coordinates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            package_id INTEGER NOT NULL,
+            latitude INTEGER NOT NULL,
+            longitude INTEGER NOT NULL,
+            FOREIGN KEY (package_id) REFERENCES scenery_packages(id) ON DELETE CASCADE,
+            UNIQUE(package_id, latitude, longitude)
+        )",
+        [],
+    )
+    .map_err(|e| ApiError::migration_failed(format!("Failed to create coordinates table: {}", e)))?;
+
+    // Create indexes for new columns
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_packages_continent ON scenery_packages(continent)",
+        [],
+    )
+    .map_err(|e| ApiError::migration_failed(format!("Failed to create continent index: {}", e)))?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_packages_country ON scenery_packages(country)",
+        [],
+    )
+    .map_err(|e| ApiError::migration_failed(format!("Failed to create country index: {}", e)))?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_coordinates_package ON scenery_coordinates(package_id)",
+        [],
+    )
+    .map_err(|e| ApiError::migration_failed(format!("Failed to create coordinates index: {}", e)))?;
+
+    logger::log_info("Database migration v1 to v2 completed", Some("database"));
 
     Ok(())
 }

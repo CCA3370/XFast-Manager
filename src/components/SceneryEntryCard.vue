@@ -220,6 +220,15 @@ async function handleDeleteConfirm() {
       {{ categoryConfig.label }}
     </span>
 
+    <!-- Geo info badge (country or continent) -->
+    <span
+      v-if="entry.country || entry.continent"
+      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700"
+      :title="entry.country ? `${entry.country}, ${entry.continent}` : entry.continent"
+    >
+      {{ entry.country || entry.continent }}
+    </span>
+
     <!-- Move buttons -->
     <div v-if="!props.disableReorder" class="flex-shrink-0 flex gap-0.5">
       <button

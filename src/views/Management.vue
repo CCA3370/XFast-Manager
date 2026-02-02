@@ -64,6 +64,10 @@ const suppressLoading = ref(false)
 const moreMenuRef = ref<HTMLElement | null>(null)
 const syncWarningDismissed = ref(false)
 
+// Geo filtering state
+const selectedContinent = ref<string>('')
+const selectedCountry = ref<string>('')
+
 // Index update state
 const isUpdatingIndex = ref(false)
 
@@ -383,6 +387,35 @@ const allSceneryEntries = computed(() => {
   return categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
 })
 
+// Unique continents from all entries
+const uniqueContinents = computed(() => {
+  const continents = new Set<string>()
+  for (const entry of allSceneryEntries.value) {
+    if (entry.continent) {
+      continents.add(entry.continent)
+    }
+  }
+  return Array.from(continents).sort()
+})
+
+// Unique countries filtered by selected continent
+const uniqueCountries = computed(() => {
+  const countries = new Set<string>()
+  for (const entry of allSceneryEntries.value) {
+    if (entry.country) {
+      if (!selectedContinent.value || entry.continent === selectedContinent.value) {
+        countries.add(entry.country)
+      }
+    }
+  }
+  return Array.from(countries).sort()
+})
+
+// Reset country when continent changes
+watch(selectedContinent, () => {
+  selectedCountry.value = ''
+})
+
 // The last entry before Unrecognized category should have move-down disabled
 const lastEntryBeforeUnrecognized = computed(() => {
   const unrecognizedEntries = localGroupedEntries.value['Unrecognized'] || []
@@ -398,8 +431,24 @@ const lastEntryBeforeUnrecognized = computed(() => {
 })
 
 const filteredSceneryEntries = computed(() => {
-  if (!showOnlyMissingLibs.value) return allSceneryEntries.value
-  return allSceneryEntries.value.filter(entry => entry.missingLibraries && entry.missingLibraries.length > 0)
+  let entries = allSceneryEntries.value
+
+  // Filter by missing libraries
+  if (showOnlyMissingLibs.value) {
+    entries = entries.filter(entry => entry.missingLibraries && entry.missingLibraries.length > 0)
+  }
+
+  // Filter by continent
+  if (selectedContinent.value) {
+    entries = entries.filter(entry => entry.continent === selectedContinent.value)
+  }
+
+  // Filter by country
+  if (selectedCountry.value) {
+    entries = entries.filter(entry => entry.country === selectedCountry.value)
+  }
+
+  return entries
 })
 
 // Cached map for O(1) lookup of entry index by folderName
@@ -806,7 +855,7 @@ const isLoading = computed(() => {
         <svg v-if="!managementStore.isCheckingUpdates" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
         </svg>
-        <svg v-else class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg v-else class="w-3.5 h-3.5 animate-spin [animation-direction:reverse]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
         </svg>
         <Transition name="text-fade" mode="out-in">
@@ -827,7 +876,7 @@ const isLoading = computed(() => {
             <svg v-if="!isSortingScenery" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path>
             </svg>
-            <svg v-else class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg v-else class="w-3.5 h-3.5 animate-spin [animation-direction:reverse]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
             </svg>
             <span class="transition-opacity">{{ isSortingScenery ? t('settings.sorting') : t('sceneryManager.autoSort') }}</span>
@@ -1030,6 +1079,28 @@ const isLoading = computed(() => {
             </Transition>
           </button>
         </div>
+        <!-- Geo filters -->
+        <div v-if="uniqueContinents.length > 0" class="flex items-center gap-2">
+          <select
+            v-model="selectedContinent"
+            class="text-xs px-2 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="">{{ t('sceneryManager.allContinents') }}</option>
+            <option v-for="continent in uniqueContinents" :key="continent" :value="continent">
+              {{ t(`geo.continents.${continent}`, continent) }}
+            </option>
+          </select>
+          <select
+            v-if="uniqueCountries.length > 0"
+            v-model="selectedCountry"
+            class="text-xs px-2 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="">{{ t('sceneryManager.allCountries') }}</option>
+            <option v-for="country in uniqueCountries" :key="country" :value="country">
+              {{ country }}
+            </option>
+          </select>
+        </div>
         <!-- Updating index indicator -->
         <div v-if="isUpdatingIndex" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
           <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1152,7 +1223,7 @@ const isLoading = computed(() => {
               <svg v-if="!isCreatingIndex" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
               </svg>
-              <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg v-else class="w-4 h-4 animate-spin [animation-direction:reverse]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
               </svg>
               <Transition name="text-fade" mode="out-in">
@@ -1170,7 +1241,7 @@ const isLoading = computed(() => {
         </div>
 
         <!-- Filtered view (no drag-and-drop) -->
-        <div v-else-if="showOnlyMissingLibs" class="space-y-1.5 px-1 pb-2">
+        <div v-else-if="showOnlyMissingLibs || selectedContinent || selectedCountry" class="space-y-1.5 px-1 pb-2">
           <div
             v-for="(element, index) in filteredSceneryEntries"
             :key="element.folderName"

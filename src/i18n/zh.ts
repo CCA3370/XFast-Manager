@@ -411,7 +411,21 @@ export default {
     moreActions: '更多操作',
     hintFromScan: '检测到地景变化，请从这里进入地景管理器进行排序',
     hintFromSettings: '已启用地景排序，请从这里进入地景管理器进行排序',
-    updatingIndex: '正在更新索引...'
+    updatingIndex: '正在更新索引...',
+    allContinents: '所有大洲',
+    allCountries: '所有国家'
+  },
+  geo: {
+    continents: {
+      Asia: '亚洲',
+      Europe: '欧洲',
+      Africa: '非洲',
+      'North America': '北美洲',
+      'South America': '南美洲',
+      Oceania: '大洋洲',
+      Antarctica: '南极洲',
+      Unknown: '未知'
+    }
   },
   management: {
     navTitle: '管理',
