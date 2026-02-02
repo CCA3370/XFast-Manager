@@ -63,12 +63,13 @@ impl SceneryQueries {
     pub fn load_all(conn: &Connection) -> Result<SceneryIndex, ApiError> {
         let mut packages: HashMap<String, SceneryPackageInfo> = HashMap::new();
 
-        // Query all packages
+        // Query all packages (including new geo columns)
         let mut stmt = conn
             .prepare(
                 "SELECT id, folder_name, category, sub_priority, last_modified, indexed_at,
                         has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
-                        texture_count, earth_nav_tile_count, enabled, sort_order, actual_path
+                        texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
+                        continent, primary_latitude, primary_longitude
                  FROM scenery_packages",
             )
             .map_err(|e| ApiError::database(format!("Failed to prepare query: {}", e)))?;
@@ -92,6 +93,9 @@ impl SceneryQueries {
                     row.get::<_, bool>(13)?,   // enabled
                     row.get::<_, u32>(14)?,    // sort_order
                     row.get::<_, Option<String>>(15)?, // actual_path
+                    row.get::<_, Option<String>>(16)?, // continent
+                    row.get::<_, Option<i32>>(17)?,    // primary_latitude
+                    row.get::<_, Option<i32>>(18)?,    // primary_longitude
                 ))
             })
             .map_err(|e| ApiError::database(format!("Failed to query packages: {}", e)))?;
@@ -120,6 +124,9 @@ impl SceneryQueries {
                 enabled,
                 sort_order,
                 actual_path,
+                continent,
+                primary_latitude,
+                primary_longitude,
             ) = row;
 
             let info = SceneryPackageInfo {
@@ -141,6 +148,10 @@ impl SceneryQueries {
                 missing_libraries: Vec::new(),
                 exported_library_names: Vec::new(),
                 actual_path,
+                coordinates: Vec::new(), // Will be loaded separately
+                primary_latitude,
+                primary_longitude,
+                continent,
             };
 
             package_data.push((id, info));
@@ -151,7 +162,10 @@ impl SceneryQueries {
         let missing_libs = Self::load_all_libraries(conn, "missing_libraries")?;
         let exported_libs = Self::load_all_libraries(conn, "exported_libraries")?;
 
-        // Associate libraries with packages
+        // Load coordinates for all packages
+        let all_coordinates = Self::load_all_coordinates(conn)?;
+
+        // Associate libraries and coordinates with packages
         for (id, mut info) in package_data {
             if let Some(libs) = required_libs.get(&id) {
                 info.required_libraries = libs.clone();
@@ -161,6 +175,9 @@ impl SceneryQueries {
             }
             if let Some(libs) = exported_libs.get(&id) {
                 info.exported_library_names = libs.clone();
+            }
+            if let Some(coords) = all_coordinates.get(&id) {
+                info.coordinates = coords.clone();
             }
             packages.insert(info.folder_name.clone(), info);
         }
@@ -213,6 +230,46 @@ impl SceneryQueries {
         Ok(result)
     }
 
+    /// Load all coordinates from scenery_coordinates table
+    fn load_all_coordinates(conn: &Connection) -> Result<HashMap<i64, Vec<(i32, i32)>>, ApiError> {
+        let mut result: HashMap<i64, Vec<(i32, i32)>> = HashMap::new();
+
+        // Check if table exists (for backwards compatibility during migration)
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='scenery_coordinates'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+        if !table_exists {
+            return Ok(result);
+        }
+
+        let mut stmt = conn
+            .prepare("SELECT package_id, latitude, longitude FROM scenery_coordinates ORDER BY package_id, id")
+            .map_err(|e| ApiError::database(format!("Failed to prepare coordinates query: {}", e)))?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i32>(1)?,
+                    row.get::<_, i32>(2)?,
+                ))
+            })
+            .map_err(|e| ApiError::database(format!("Failed to query coordinates: {}", e)))?;
+
+        for row_result in rows {
+            let (package_id, lat, lon) = row_result
+                .map_err(|e| ApiError::database(format!("Failed to read coordinate row: {}", e)))?;
+            result.entry(package_id).or_default().push((lat, lon));
+        }
+
+        Ok(result)
+    }
+
     /// Get metadata value by key
     fn get_metadata(conn: &Connection, key: &str) -> Result<Option<String>, ApiError> {
         let result: Option<String> = conn
@@ -242,11 +299,12 @@ impl SceneryQueries {
             .transaction()
             .map_err(|e| ApiError::database(format!("Failed to start transaction: {}", e)))?;
 
-        // Clear existing data
+        // Clear existing data (including coordinates)
         tx.execute_batch(
             "DELETE FROM required_libraries;
              DELETE FROM missing_libraries;
              DELETE FROM exported_libraries;
+             DELETE FROM scenery_coordinates;
              DELETE FROM scenery_packages;",
         )
         .map_err(|e| ApiError::database(format!("Failed to clear existing data: {}", e)))?;
@@ -256,8 +314,9 @@ impl SceneryQueries {
             "INSERT INTO scenery_packages (
                 folder_name, category, sub_priority, last_modified, indexed_at,
                 has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
-                texture_count, earth_nav_tile_count, enabled, sort_order, actual_path
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)"
+                texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
+                continent, primary_latitude, primary_longitude
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)"
         ).map_err(|e| ApiError::database(format!("Failed to prepare package statement: {}", e)))?;
 
         let mut req_lib_stmt = tx.prepare_cached(
@@ -271,6 +330,10 @@ impl SceneryQueries {
         let mut exp_lib_stmt = tx.prepare_cached(
             "INSERT INTO exported_libraries (package_id, library_name) VALUES (?1, ?2)"
         ).map_err(|e| ApiError::database(format!("Failed to prepare exported_libraries statement: {}", e)))?;
+
+        let mut coord_stmt = tx.prepare_cached(
+            "INSERT INTO scenery_coordinates (package_id, latitude, longitude) VALUES (?1, ?2, ?3)"
+        ).map_err(|e| ApiError::database(format!("Failed to prepare coordinates statement: {}", e)))?;
 
         // Insert all packages using prepared statements
         for info in index.packages.values() {
@@ -290,6 +353,9 @@ impl SceneryQueries {
                 info.enabled,
                 info.sort_order,
                 &info.actual_path,
+                &info.continent,
+                info.primary_latitude,
+                info.primary_longitude,
             ]).map_err(|e| ApiError::database(format!("Failed to insert package: {}", e)))?;
 
             let package_id = tx.last_insert_rowid();
@@ -309,6 +375,12 @@ impl SceneryQueries {
                 exp_lib_stmt.execute(params![package_id, lib_name])
                     .map_err(|e| ApiError::database(format!("Failed to insert exported library: {}", e)))?;
             }
+
+            // Insert coordinates
+            for (lat, lon) in &info.coordinates {
+                coord_stmt.execute(params![package_id, lat, lon])
+                    .map_err(|e| ApiError::database(format!("Failed to insert coordinate: {}", e)))?;
+            }
         }
 
         // Drop prepared statements before committing
@@ -316,6 +388,7 @@ impl SceneryQueries {
         drop(req_lib_stmt);
         drop(miss_lib_stmt);
         drop(exp_lib_stmt);
+        drop(coord_stmt);
 
         // Update metadata
         Self::set_metadata(&tx, "version", &index.version.to_string())?;
@@ -337,8 +410,9 @@ impl SceneryQueries {
             "INSERT INTO scenery_packages (
                 folder_name, category, sub_priority, last_modified, indexed_at,
                 has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
-                texture_count, earth_nav_tile_count, enabled, sort_order, actual_path
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
+                continent, primary_latitude, primary_longitude
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             params![
                 info.folder_name,
                 category_to_string(&info.category),
@@ -355,6 +429,9 @@ impl SceneryQueries {
                 info.enabled,
                 info.sort_order,
                 &info.actual_path,
+                &info.continent,
+                info.primary_latitude,
+                info.primary_longitude,
             ],
         )
         .map_err(|e| ApiError::database(format!("Failed to insert package: {}", e)))?;
@@ -371,7 +448,26 @@ impl SceneryQueries {
             "exported_libraries",
         )?;
 
+        // Insert coordinates
+        Self::insert_coordinates(conn, package_id, &info.coordinates)?;
+
         Ok(package_id)
+    }
+
+    /// Insert coordinates for a package
+    fn insert_coordinates(
+        conn: &Connection,
+        package_id: i64,
+        coordinates: &[(i32, i32)],
+    ) -> Result<(), ApiError> {
+        for (lat, lon) in coordinates {
+            conn.execute(
+                "INSERT INTO scenery_coordinates (package_id, latitude, longitude) VALUES (?1, ?2, ?3)",
+                params![package_id, lat, lon],
+            )
+            .map_err(|e| ApiError::database(format!("Failed to insert coordinate: {}", e)))?;
+        }
+        Ok(())
     }
 
     /// Insert libraries for a package
@@ -416,7 +512,8 @@ impl SceneryQueries {
                     category = ?2, sub_priority = ?3, last_modified = ?4, indexed_at = ?5,
                     has_apt_dat = ?6, has_dsf = ?7, has_library_txt = ?8, has_textures = ?9,
                     has_objects = ?10, texture_count = ?11, earth_nav_tile_count = ?12,
-                    enabled = ?13, sort_order = ?14, actual_path = ?15
+                    enabled = ?13, sort_order = ?14, actual_path = ?15,
+                    continent = ?16, primary_latitude = ?17, primary_longitude = ?18
                  WHERE id = ?1",
                 params![
                     id,
@@ -434,12 +531,16 @@ impl SceneryQueries {
                     info.enabled,
                     info.sort_order,
                     &info.actual_path,
+                    &info.continent,
+                    info.primary_latitude,
+                    info.primary_longitude,
                 ],
             )
             .map_err(|e| ApiError::database(format!("Failed to update package: {}", e)))?;
 
-            // Update libraries
+            // Update libraries and coordinates
             Self::update_package_libraries(&tx, id, info)?;
+            Self::update_package_coordinates(&tx, id, &info.coordinates)?;
         } else {
             // Insert new package
             Self::insert_package(&tx, info)?;
@@ -494,6 +595,31 @@ impl SceneryQueries {
         Ok(())
     }
 
+    /// Update coordinates for an existing package
+    fn update_package_coordinates(
+        conn: &Transaction,
+        package_id: i64,
+        coordinates: &[(i32, i32)],
+    ) -> Result<(), ApiError> {
+        // Delete existing coordinates
+        conn.execute(
+            "DELETE FROM scenery_coordinates WHERE package_id = ?1",
+            params![package_id],
+        )
+        .map_err(|e| ApiError::database(format!("Failed to delete coordinates: {}", e)))?;
+
+        // Insert new coordinates
+        for (lat, lon) in coordinates {
+            conn.execute(
+                "INSERT INTO scenery_coordinates (package_id, latitude, longitude) VALUES (?1, ?2, ?3)",
+                params![package_id, lat, lon],
+            )
+            .map_err(|e| ApiError::database(format!("Failed to insert coordinate: {}", e)))?;
+        }
+
+        Ok(())
+    }
+
     /// Delete a package from the database
     pub fn delete_package(conn: &Connection, folder_name: &str) -> Result<bool, ApiError> {
         let rows_affected = conn
@@ -512,11 +638,12 @@ impl SceneryQueries {
         conn: &Connection,
         folder_name: &str,
     ) -> Result<Option<SceneryPackageInfo>, ApiError> {
-        let row: Option<(i64, String, String, u8, i64, i64, bool, bool, bool, bool, bool, usize, u32, bool, u32, Option<String>)> = conn
+        let row: Option<(i64, String, String, u8, i64, i64, bool, bool, bool, bool, bool, usize, u32, bool, u32, Option<String>, Option<String>, Option<i32>, Option<i32>)> = conn
             .query_row(
                 "SELECT id, folder_name, category, sub_priority, last_modified, indexed_at,
                         has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
-                        texture_count, earth_nav_tile_count, enabled, sort_order, actual_path
+                        texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
+                        continent, primary_latitude, primary_longitude
                  FROM scenery_packages WHERE folder_name = ?1",
                 params![folder_name],
                 |row| {
@@ -537,6 +664,9 @@ impl SceneryQueries {
                         row.get(13)?,
                         row.get(14)?,
                         row.get(15)?,
+                        row.get(16)?,
+                        row.get(17)?,
+                        row.get(18)?,
                     ))
                 },
             )
@@ -560,6 +690,9 @@ impl SceneryQueries {
                 enabled,
                 sort_order,
                 actual_path,
+                continent,
+                primary_latitude,
+                primary_longitude,
             )) => {
                 let mut info = SceneryPackageInfo {
                     folder_name,
@@ -580,6 +713,10 @@ impl SceneryQueries {
                     missing_libraries: Vec::new(),
                     exported_library_names: Vec::new(),
                     actual_path,
+                    coordinates: Vec::new(),
+                    primary_latitude,
+                    primary_longitude,
+                    continent,
                 };
 
                 // Load libraries
@@ -748,6 +885,7 @@ impl SceneryQueries {
             "DELETE FROM required_libraries;
              DELETE FROM missing_libraries;
              DELETE FROM exported_libraries;
+             DELETE FROM scenery_coordinates;
              DELETE FROM scenery_packages;
              DELETE FROM index_metadata;",
         )
@@ -793,6 +931,10 @@ mod tests {
             missing_libraries: vec![],
             exported_library_names: vec![],
             actual_path: None,
+            coordinates: vec![(39, 116)],
+            primary_latitude: Some(39),
+            primary_longitude: Some(116),
+            continent: Some("Asia".to_string()),
         };
 
         SceneryQueries::update_package(&mut conn, &info).unwrap();
@@ -830,6 +972,10 @@ mod tests {
             missing_libraries: vec![],
             exported_library_names: vec!["mylib".to_string()],
             actual_path: None,
+            coordinates: vec![],
+            primary_latitude: None,
+            primary_longitude: None,
+            continent: None,
         };
 
         SceneryQueries::update_package(&mut conn, &info).unwrap();
@@ -866,6 +1012,10 @@ mod tests {
                 missing_libraries: vec![],
                 exported_library_names: vec![],
                 actual_path: None,
+                coordinates: vec![],
+                primary_latitude: None,
+                primary_longitude: None,
+                continent: None,
             };
             SceneryQueries::update_package(&mut conn, &info).unwrap();
         }

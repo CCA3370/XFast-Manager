@@ -2,6 +2,7 @@
 //!
 //! All persistent data (logs, database, cache) should use paths from this module
 //! to ensure consistent storage location across the application.
+//! The paths match Tauri store plugin's default locations.
 
 use std::path::PathBuf;
 
@@ -10,14 +11,14 @@ const APP_IDENTIFIER: &str = "com.xfastmanager.tool";
 
 /// Get the app data directory for persistent storage
 ///
-/// Returns platform-specific paths:
+/// Returns platform-specific paths (matching Tauri store default):
 /// - Windows: %LOCALAPPDATA%\com.xfastmanager.tool
 /// - macOS: ~/Library/Application Support/com.xfastmanager.tool
-/// - Linux: ~/.config/com.xfastmanager.tool
+/// - Linux: ~/.local/share/com.xfastmanager.tool (or $XDG_DATA_HOME)
 pub fn get_app_data_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
-        // Use LOCALAPPDATA (Local) instead of APPDATA (Roaming)
+        // Use LOCALAPPDATA (Local) to match Tauri store default location
         if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
             return PathBuf::from(local_app_data).join(APP_IDENTIFIER);
         }
@@ -35,9 +36,14 @@ pub fn get_app_data_dir() -> PathBuf {
 
     #[cfg(target_os = "linux")]
     {
+        // Use XDG_DATA_HOME if set, otherwise ~/.local/share (matches Tauri store default)
+        if let Some(data_home) = std::env::var_os("XDG_DATA_HOME") {
+            return PathBuf::from(data_home).join(APP_IDENTIFIER);
+        }
         if let Some(home) = std::env::var_os("HOME") {
             return PathBuf::from(home)
-                .join(".config")
+                .join(".local")
+                .join("share")
                 .join(APP_IDENTIFIER);
         }
     }

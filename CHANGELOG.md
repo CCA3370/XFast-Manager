@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.4] - 2026-02-02
+
+### Added
+
+- **Geographic Region Filter** - Filter scenery packages by continent in the Scenery Manager
+  - Dropdown selector to show only scenery from a specific continent
+  - Supports Asia, Europe, Africa, North America, South America, Oceania, and Antarctica
+- **Geographic Info Display** - Scenery entries now show country/region information
+  - Country or continent badge displayed on each scenery card
+  - Hover to see full location details
+- **Database Reset Option** - Handle incompatible database versions gracefully
+  - When opening a database created by a newer app version, a reset option is now provided
+  - One-click database reset with automatic index rebuild prompt
+
+### Changed
+
+- **Faster Page Navigation** - Improved transition speed when switching to Management page
+  - Views are preloaded in the background after app startup
+  - Heavy components loaded asynchronously to reduce initial render time
+
 ## [0.8.3] - 2026-02-01
 
 ### Added
@@ -21,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Data Storage Location** - All app data (logs, database, cache) now stored alongside Tauri store
+  - Linux: `~/.local/share/com.xfastmanager.tool/` (or `$XDG_DATA_HOME`)
 - **Progress Bar Gradient Effect** - Installation progress bar now displays a smooth gradient animation
   - Gradient moves through blue to green as progress increases
   - More visually appealing and intuitive progress indication
@@ -30,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Linux Rendering Freeze** - Fixed app freezing on startup with certain GPU configurations
+  - Automatically disables DMA-BUF renderer on Linux to prevent WebKitGTK rendering hangs
 - **Long Text Truncation** - Fixed display issues with long addon names in confirmation modal
   - Names are now properly truncated with ellipsis
   - Prevents layout breaking with very long navdata provider names

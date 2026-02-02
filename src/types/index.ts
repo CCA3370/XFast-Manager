@@ -268,6 +268,9 @@ export interface SceneryManagerEntry {
   sortOrder: number;
   missingLibraries: string[];
   requiredLibraries: string[];
+  continent?: string;
+  primaryLatitude?: number;
+  primaryLongitude?: number;
 }
 
 export interface SceneryManagerData {

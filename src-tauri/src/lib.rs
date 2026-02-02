@@ -4,6 +4,7 @@ mod atomic_installer;
 mod cache;
 mod database;
 mod error;
+mod geo_regions;
 mod hash_collector;
 mod installer;
 mod livery_patterns;
@@ -478,6 +479,19 @@ async fn rebuild_scenery_index(xplane_path: String) -> Result<SceneryIndexStats,
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// Reset the scenery database by deleting it entirely
+/// This is useful when the database schema version is incompatible
+#[tauri::command]
+async fn reset_scenery_database() -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || {
+        logger::log_info("Resetting scenery database", Some("database"));
+        database::delete_database()
+            .map_err(|e| format!("Failed to delete database: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
 #[tauri::command]
 async fn get_scenery_index_stats(xplane_path: String) -> Result<SceneryIndexStats, String> {
     tokio::task::spawn_blocking(move || {
@@ -819,6 +833,7 @@ pub fn run() {
             get_scenery_classification,
             sort_scenery_packs,
             rebuild_scenery_index,
+            reset_scenery_database,
             get_scenery_index_stats,
             get_scenery_index_status,
             quick_scan_scenery_index,

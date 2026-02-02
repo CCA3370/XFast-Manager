@@ -410,6 +410,18 @@ pub struct SceneryPackageInfo {
     /// instead of "Custom Scenery/{folder_name}/". Contains the resolved target path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actual_path: Option<String>,
+    /// DSF tile coordinates collected from this package
+    #[serde(default)]
+    pub coordinates: Vec<(i32, i32)>,
+    /// Primary latitude (geographic center of all coordinates)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_latitude: Option<i32>,
+    /// Primary longitude (geographic center of all coordinates)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_longitude: Option<i32>,
+    /// Continent name (e.g., "Asia", "Europe", "North America")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continent: Option<String>,
 }
 
 /// DSF file header information
@@ -478,6 +490,15 @@ pub struct SceneryManagerEntry {
     pub sort_order: u32,
     pub missing_libraries: Vec<String>,
     pub required_libraries: Vec<String>,
+    /// Continent name (e.g., "Asia", "Europe", "North America")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continent: Option<String>,
+    /// Primary latitude (geographic center)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_latitude: Option<i32>,
+    /// Primary longitude (geographic center)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_longitude: Option<i32>,
 }
 
 /// Simplified entry for batch updates (only fields that can be changed)
@@ -777,6 +798,9 @@ mod tests {
             sort_order: 10,
             missing_libraries: vec![],
             required_libraries: vec!["opensceneryx".to_string()],
+            continent: Some("Asia".to_string()),
+            primary_latitude: Some(39),
+            primary_longitude: Some(116),
         };
 
         let json = serde_json::to_string(&entry).unwrap();

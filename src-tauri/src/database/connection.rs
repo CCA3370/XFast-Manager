@@ -42,6 +42,29 @@ pub fn get_database_path() -> PathBuf {
     app_dirs::get_database_path()
 }
 
+/// Delete the database file to allow fresh rebuild
+/// Returns true if file was deleted, false if it didn't exist
+pub fn delete_database() -> Result<bool, ApiError> {
+    let db_path = get_database_path();
+
+    if db_path.exists() {
+        // Also delete WAL and SHM files if they exist
+        let wal_path = db_path.with_extension("db-wal");
+        let shm_path = db_path.with_extension("db-shm");
+
+        std::fs::remove_file(&db_path)
+            .map_err(|e| ApiError::database(format!("Failed to delete database: {}", e)))?;
+
+        // Ignore errors for WAL/SHM files - they may not exist
+        let _ = std::fs::remove_file(&wal_path);
+        let _ = std::fs::remove_file(&shm_path);
+
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
 /// Configure database pragmas for optimal performance
 fn configure_pragmas(conn: &Connection) -> Result<(), ApiError> {
     // Performance optimizations:

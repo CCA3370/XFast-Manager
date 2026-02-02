@@ -170,13 +170,18 @@ onMounted(async () => {
   logBasic(t('log.appStarted'), 'app')
   logDebug('Loading app store and initializing', 'app')
 
-  store.loadXplanePath()
+  // Non-blocking: load X-Plane path
+  store.loadXplanePath().then(() => {
+    logDebug(`X-Plane path loaded: ${store.xplanePath || '(not set)'}`, 'app')
+  }).catch(e => {
+    logError(`Failed to load X-Plane path: ${e}`, 'app')
+  })
 
-  logDebug(`X-Plane path loaded: ${store.xplanePath || '(not set)'}`, 'app')
   logDebug(`Log level: ${store.logLevel}`, 'app')
 
   // Detect platform and context menu status at startup (once)
   try {
+    logDebug('Detecting platform...', 'app')
     const platform = await invoke<string>('get_platform')
     store.isWindows = platform === 'windows'
     logDebug(`Platform detected: ${platform}`, 'app')
@@ -241,6 +246,7 @@ onMounted(async () => {
 
   // Listen for cli-args events from Rust (emitted by single-instance plugin for subsequent launches)
   try {
+    logDebug('Setting up CLI args listener...', 'app')
     await listen<string[]>('cli-args', async (event) => {
       logDebug(`CLI args event received: ${event.payload.join(', ')}`, 'app')
       logBasic(t('log.launchedWithArgs'), 'app')
@@ -258,6 +264,7 @@ onMounted(async () => {
   // On first launch, the cli-args event from setup() fires before this listener is ready,
   // so we also poll for CLI args to handle the cold-start case
   try {
+    logDebug('Getting CLI args from first launch...', 'app')
     const args = await invoke<string[]>('get_cli_args')
     if (args && args.length > 0) {
       logDebug(`CLI args from first launch: ${args.join(', ')}`, 'app')
@@ -271,6 +278,7 @@ onMounted(async () => {
 
   // Set up window close confirmation for unsaved scenery changes
   try {
+    logDebug('Setting up window close handler...', 'app')
     const appWindow = getCurrentWindow()
     await appWindow.onCloseRequested(async (event) => {
       // Check if there are unsaved scenery changes
@@ -300,6 +308,8 @@ onMounted(async () => {
   } catch (error) {
     logError(`Failed to setup window close listener: ${error}`, 'app')
   }
+
+  logDebug('App.vue onMounted completed', 'app')
 })
 </script>
 

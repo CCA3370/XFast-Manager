@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, onMounted, computed, watch, onBeforeUnmount, defineAsyncComponent } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { useManagementStore } from '@/stores/management'
@@ -11,9 +11,11 @@ import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import ManagementEntryCard from '@/components/ManagementEntryCard.vue'
-import SceneryEntryCard from '@/components/SceneryEntryCard.vue'
-import draggable from 'vuedraggable'
 import type { SceneryManagerEntry, ManagementTab, ManagementItemType, SceneryCategory, SceneryIndexScanResult, NavdataBackupInfo } from '@/types'
+
+// Lazy load heavy components to reduce initial render time
+const SceneryEntryCard = defineAsyncComponent(() => import('@/components/SceneryEntryCard.vue'))
+const draggable = defineAsyncComponent(() => import('vuedraggable'))
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -64,6 +66,9 @@ const suppressLoading = ref(false)
 const moreMenuRef = ref<HTMLElement | null>(null)
 const syncWarningDismissed = ref(false)
 
+// Geo filtering state
+const selectedContinent = ref<string>('')
+
 // Index update state
 const isUpdatingIndex = ref(false)
 
@@ -84,7 +89,7 @@ const localGroupedEntries = ref<Record<string, SceneryManagerEntry[]>>({
 const categoryOrder = ['FixedHighPriority', 'Airport', 'DefaultAirport', 'Library', 'Other', 'Overlay', 'AirportMesh', 'Mesh', 'Unrecognized']
 
 // Initialize tab from route query
-onMounted(async () => {
+onMounted(() => {
   const tabParam = route.query.tab as ManagementTab | undefined
   if (tabParam && availableTabs.value.includes(tabParam)) {
     activeTab.value = tabParam
@@ -92,8 +97,8 @@ onMounted(async () => {
 
   document.addEventListener('click', handleClickOutside)
 
-  // Load initial data
-  await loadTabData(activeTab.value)
+  // Load initial data (non-blocking to avoid route transition delay)
+  loadTabData(activeTab.value)
 })
 
 onBeforeUnmount(() => {
@@ -383,6 +388,17 @@ const allSceneryEntries = computed(() => {
   return categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
 })
 
+// Unique continents from all entries
+const uniqueContinents = computed(() => {
+  const continents = new Set<string>()
+  for (const entry of allSceneryEntries.value) {
+    if (entry.continent) {
+      continents.add(entry.continent)
+    }
+  }
+  return Array.from(continents).sort()
+})
+
 // The last entry before Unrecognized category should have move-down disabled
 const lastEntryBeforeUnrecognized = computed(() => {
   const unrecognizedEntries = localGroupedEntries.value['Unrecognized'] || []
@@ -398,8 +414,19 @@ const lastEntryBeforeUnrecognized = computed(() => {
 })
 
 const filteredSceneryEntries = computed(() => {
-  if (!showOnlyMissingLibs.value) return allSceneryEntries.value
-  return allSceneryEntries.value.filter(entry => entry.missingLibraries && entry.missingLibraries.length > 0)
+  let entries = allSceneryEntries.value
+
+  // Filter by missing libraries
+  if (showOnlyMissingLibs.value) {
+    entries = entries.filter(entry => entry.missingLibraries && entry.missingLibraries.length > 0)
+  }
+
+  // Filter by continent
+  if (selectedContinent.value) {
+    entries = entries.filter(entry => entry.continent === selectedContinent.value)
+  }
+
+  return entries
 })
 
 // Cached map for O(1) lookup of entry index by folderName
@@ -632,6 +659,35 @@ async function handleCreateIndex() {
   }
 }
 
+// State for database reset
+const isResettingDatabase = ref(false)
+
+async function handleResetDatabase() {
+  modalStore.showConfirm({
+    title: t('sceneryManager.resetDatabase'),
+    message: t('sceneryManager.resetDatabaseConfirm'),
+    confirmText: t('common.confirm'),
+    cancelText: t('common.cancel'),
+    type: 'warning',
+    onConfirm: async () => {
+      isResettingDatabase.value = true
+      try {
+        const success = await sceneryStore.resetDatabase()
+        if (success) {
+          toastStore.success(t('sceneryManager.resetDatabaseSuccess'))
+        } else {
+          modalStore.showError(t('sceneryManager.resetDatabaseFailed'))
+        }
+      } catch (e) {
+        modalStore.showError(t('sceneryManager.resetDatabaseFailed') + ': ' + String(e))
+      } finally {
+        isResettingDatabase.value = false
+      }
+    },
+    onCancel: () => {}
+  })
+}
+
 function handleClickOutside(event: MouseEvent) {
   if (moreMenuRef.value && !moreMenuRef.value.contains(event.target as Node)) {
     showMoreMenu.value = false
@@ -806,7 +862,7 @@ const isLoading = computed(() => {
         <svg v-if="!managementStore.isCheckingUpdates" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
         </svg>
-        <svg v-else class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg v-else class="w-3.5 h-3.5 animate-spin [animation-direction:reverse]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
         </svg>
         <Transition name="text-fade" mode="out-in">
@@ -827,7 +883,7 @@ const isLoading = computed(() => {
             <svg v-if="!isSortingScenery" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path>
             </svg>
-            <svg v-else class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg v-else class="w-3.5 h-3.5 animate-spin [animation-direction:reverse]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
             </svg>
             <span class="transition-opacity">{{ isSortingScenery ? t('settings.sorting') : t('sceneryManager.autoSort') }}</span>
@@ -1030,6 +1086,27 @@ const isLoading = computed(() => {
             </Transition>
           </button>
         </div>
+        <!-- Geo filters -->
+        <div v-if="uniqueContinents.length > 0" class="relative flex items-center">
+          <svg class="absolute left-1.5 w-3 h-3 pointer-events-none" :class="selectedContinent ? 'text-white' : 'text-blue-600 dark:text-blue-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <select
+            v-model="selectedContinent"
+            class="text-xs pl-5 pr-5 py-1 rounded transition-colors cursor-pointer appearance-none focus:outline-none focus:ring-1 focus:ring-blue-500"
+            :class="selectedContinent
+              ? 'bg-blue-500 text-white hover:bg-blue-600'
+              : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/60'"
+          >
+            <option value="" class="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">{{ t('sceneryManager.allContinents') }}</option>
+            <option v-for="continent in uniqueContinents" :key="continent" :value="continent" class="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+              {{ t(`geo.continents.${continent}`, continent) }}
+            </option>
+          </select>
+          <svg class="absolute right-1 w-3 h-3 pointer-events-none" :class="selectedContinent ? 'text-white' : 'text-blue-600 dark:text-blue-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
         <!-- Updating index indicator -->
         <div v-if="isUpdatingIndex" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
           <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1138,8 +1215,39 @@ const isLoading = computed(() => {
 
           <!-- Scenery Tab Content (migrated from SceneryManager.vue) -->
           <template v-else-if="activeTab === 'scenery'">
+        <!-- Database version error - needs reset -->
+        <div v-if="sceneryStore.needsDatabaseReset" class="text-center py-12">
+          <div class="flex flex-col items-center gap-4">
+            <svg class="w-12 h-12 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <Transition name="text-fade" mode="out-in">
+              <p :key="locale" class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ t('sceneryManager.databaseVersionError') }}</p>
+            </Transition>
+            <Transition name="text-fade" mode="out-in">
+              <p :key="locale" class="text-gray-600 dark:text-gray-400 max-w-md">{{ t('sceneryManager.databaseVersionErrorDesc') }}</p>
+            </Transition>
+            <button
+              @click="handleResetDatabase"
+              :disabled="isResettingDatabase"
+              class="px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center justify-center space-x-2"
+            >
+              <svg v-if="!isResettingDatabase" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              </svg>
+              <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <Transition name="text-fade" mode="out-in">
+                <span :key="locale">{{ t('sceneryManager.resetDatabase') }}</span>
+              </Transition>
+            </button>
+          </div>
+        </div>
+
         <!-- No index created -->
-        <div v-if="!sceneryStore.indexExists" class="text-center py-12">
+        <div v-else-if="!sceneryStore.indexExists" class="text-center py-12">
           <Transition name="text-fade" mode="out-in">
             <p :key="locale" class="text-gray-600 dark:text-gray-400 mb-4">{{ t('sceneryManager.noIndex') }}</p>
           </Transition>
@@ -1152,7 +1260,7 @@ const isLoading = computed(() => {
               <svg v-if="!isCreatingIndex" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
               </svg>
-              <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg v-else class="w-4 h-4 animate-spin [animation-direction:reverse]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
               </svg>
               <Transition name="text-fade" mode="out-in">
@@ -1170,7 +1278,7 @@ const isLoading = computed(() => {
         </div>
 
         <!-- Filtered view (no drag-and-drop) -->
-        <div v-else-if="showOnlyMissingLibs" class="space-y-1.5 px-1 pb-2">
+        <div v-else-if="showOnlyMissingLibs || selectedContinent" class="space-y-1.5 px-1 pb-2">
           <div
             v-for="(element, index) in filteredSceneryEntries"
             :key="element.folderName"

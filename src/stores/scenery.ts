@@ -16,6 +16,7 @@ export const useSceneryStore = defineStore('scenery', () => {
   const isSaving = ref(false)
   const error = ref<string | null>(null)
   const indexExists = ref(false)
+  const needsDatabaseReset = ref(false)
 
   // Track original state for change detection
   const originalEntries = ref<SceneryManagerEntry[]>([])
@@ -123,9 +124,18 @@ export const useSceneryStore = defineStore('scenery', () => {
       data.value = result
       // Store original state for change detection
       originalEntries.value = JSON.parse(JSON.stringify(result.entries))
+      // Clear any previous database reset flag on successful load
+      needsDatabaseReset.value = false
     } catch (e) {
-      error.value = String(e)
+      const errorStr = String(e)
+      error.value = errorStr
       logError(`Failed to load scenery data: ${e}`, 'scenery')
+
+      // Check if this is a migration error (newer database version)
+      if (errorStr.includes('migration_failed') && errorStr.includes('newer than supported')) {
+        // Mark that we need a database reset
+        needsDatabaseReset.value = true
+      }
     } finally {
       isLoading.value = false
     }
@@ -145,6 +155,24 @@ export const useSceneryStore = defineStore('scenery', () => {
     } catch (e) {
       indexExists.value = false
       logError(`Failed to load scenery index status: ${e}`, 'scenery')
+    }
+  }
+
+  // Reset the database (delete it) and reload
+  async function resetDatabase() {
+    try {
+      await invoke<boolean>('reset_scenery_database')
+      needsDatabaseReset.value = false
+      error.value = null
+      // After reset, the user needs to rebuild the index
+      indexExists.value = false
+      data.value = null
+      originalEntries.value = []
+      return true
+    } catch (e) {
+      logError(`Failed to reset database: ${e}`, 'scenery')
+      error.value = String(e)
+      return false
     }
   }
 
@@ -339,6 +367,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     data.value = null
     originalEntries.value = []
     error.value = null
+    needsDatabaseReset.value = false
   }
 
   return {
@@ -348,6 +377,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     isSaving,
     error,
     collapsedGroups,
+    needsDatabaseReset,
 
     // Computed
     entries,
@@ -364,6 +394,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     initStore,
     loadData,
     loadIndexStatus,
+    resetDatabase,
     toggleEnabled,
     updateCategory,
     moveEntry,

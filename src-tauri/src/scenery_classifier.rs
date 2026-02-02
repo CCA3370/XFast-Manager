@@ -3,6 +3,7 @@
 //! This module analyzes scenery packages and determines their category
 //! by parsing DSF file headers and checking file system structure.
 
+use crate::geo_regions;
 use crate::models::{DsfHeader, SceneryCategory, SceneryPackageInfo};
 use anyhow::{anyhow, Result};
 use std::collections::{HashMap, HashSet};
@@ -1235,7 +1236,78 @@ fn get_dir_modified_time(path: &Path) -> Result<SystemTime> {
     Ok(metadata.modified()?)
 }
 
-/// Build SceneryPackageInfo
+/// Collect DSF file coordinates from a scenery package
+/// Returns list of (latitude, longitude) tuples extracted from DSF filenames
+fn collect_dsf_coordinates(scenery_path: &Path) -> Vec<(i32, i32)> {
+    let earth_nav_data = scenery_path.join("Earth nav data");
+    if !earth_nav_data.exists() {
+        return Vec::new();
+    }
+
+    let mut coordinates: Vec<(i32, i32)> = Vec::new();
+
+    // Iterate through subdirectories (e.g., +30+135)
+    if let Ok(entries) = fs::read_dir(&earth_nav_data) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+
+            // Look for .dsf files in this directory
+            if let Ok(dsf_entries) = fs::read_dir(&path) {
+                for dsf_entry in dsf_entries.flatten() {
+                    let dsf_path = dsf_entry.path();
+                    if let Some(ext) = dsf_path.extension() {
+                        if ext.to_ascii_lowercase() == "dsf" {
+                            // Parse coordinates from filename (e.g., +30+135.dsf)
+                            if let Some(coord) = parse_dsf_coord_from_filename(&dsf_path) {
+                                coordinates.push(coord);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    coordinates
+}
+
+/// Parse DSF filename to extract coordinates
+/// Format: +30+135.dsf or -45-073.dsf (latitude + longitude)
+fn parse_dsf_coord_from_filename(dsf_path: &Path) -> Option<(i32, i32)> {
+    let stem = dsf_path.file_stem()?.to_str()?;
+
+    // DSF filenames are in format: [+-]NN[+-]NNN
+    // e.g., +30+135, -45-073, +09-079
+    if stem.len() < 7 {
+        return None;
+    }
+
+    // Find the second sign character (start of longitude)
+    let chars: Vec<char> = stem.chars().collect();
+    let mut lon_start = None;
+
+    for i in 1..chars.len() {
+        if chars[i] == '+' || chars[i] == '-' {
+            lon_start = Some(i);
+            break;
+        }
+    }
+
+    let lon_start = lon_start?;
+
+    let lat_str = &stem[0..lon_start];
+    let lon_str = &stem[lon_start..];
+
+    let lat: i32 = lat_str.parse().ok()?;
+    let lon: i32 = lon_str.parse().ok()?;
+
+    Some((lat, lon))
+}
+
+/// Build SceneryPackageInfo with geographic information
 fn build_package_info(
     folder_name: String,
     category: SceneryCategory,
@@ -1251,6 +1323,38 @@ fn build_package_info(
 ) -> Result<SceneryPackageInfo> {
     // Calculate sub-priority based on category and folder name
     let sub_priority = calculate_sub_priority(&category, &folder_name);
+
+    // Collect DSF coordinates
+    let coordinates = collect_dsf_coordinates(scenery_path);
+
+    // Calculate primary coordinate and lookup geographic region
+    // Continent is determined by the most frequent one among all coordinates
+    let (primary_latitude, primary_longitude, continent) = if !coordinates.is_empty() {
+        let (center_lat, center_lon) = geo_regions::calculate_center(&coordinates);
+
+        // Count continents for all coordinates
+        let mut continent_counts: HashMap<&'static str, usize> = HashMap::new();
+
+        for (lat, lon) in &coordinates {
+            let cont = geo_regions::lookup_region(*lat, *lon);
+            *continent_counts.entry(cont).or_insert(0) += 1;
+        }
+
+        // Find the most frequent continent
+        let most_frequent_continent = continent_counts
+            .into_iter()
+            .max_by_key(|(_, count)| *count)
+            .map(|(cont, _)| cont)
+            .unwrap_or("Unknown");
+
+        (
+            Some(center_lat),
+            Some(center_lon),
+            Some(most_frequent_continent.to_string()),
+        )
+    } else {
+        (None, None, None)
+    };
 
     Ok(SceneryPackageInfo {
         folder_name,
@@ -1271,6 +1375,10 @@ fn build_package_info(
         enabled: true, // Default to enabled
         sort_order: 0, // Will be assigned during index rebuild
         actual_path: None, // Will be set by index manager for shortcut entries
+        coordinates,
+        primary_latitude,
+        primary_longitude,
+        continent,
     })
 }
 

@@ -1122,6 +1122,7 @@ mod tests {
             backup_liveries: true,
             backup_config_files: true,
             config_file_patterns: vec!["*_prefs.txt".to_string()],
+            backup_navdata: true,
             extraction_chain: None,
             file_hashes: None,
             enable_verification: true,
