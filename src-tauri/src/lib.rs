@@ -415,6 +415,46 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
 }
 
 #[tauri::command]
+fn is_xplane_running() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        // Use tasklist to check if X-Plane.exe is running
+        if let Ok(output) = std::process::Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq X-Plane.exe", "/NH"])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return stdout.contains("X-Plane.exe");
+        }
+        false
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // Use pgrep to check if X-Plane process is running
+        if let Ok(output) = std::process::Command::new("pgrep")
+            .args(["-x", "X-Plane"])
+            .output()
+        {
+            return output.status.success();
+        }
+        false
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Use pgrep to check if X-Plane process is running
+        if let Ok(output) = std::process::Command::new("pgrep")
+            .args(["-x", "X-Plane"])
+            .output()
+        {
+            return output.status.success();
+        }
+        false
+    }
+}
+
+#[tauri::command]
 fn validate_xplane_path(path: String) -> Result<bool, String> {
     let path_obj = std::path::Path::new(&path);
 
@@ -875,6 +915,7 @@ pub fn run() {
             set_log_level,
             check_path_exists,
             launch_xplane,
+            is_xplane_running,
             validate_xplane_path,
             check_for_updates,
             get_last_check_time,

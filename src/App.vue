@@ -354,6 +354,12 @@ onMounted(async () => {
   background-color: var(--app-bg-from);
 }
 
+nav {
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
 .main-content {
   flex: 1;
   min-height: 0;
@@ -406,6 +412,8 @@ onMounted(async () => {
 .page-right-enter-active,
 .page-right-leave-active {
   transition: all 0.2s ease;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
 /* Going left (e.g., Home -> Management -> Settings) */

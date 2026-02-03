@@ -14,6 +14,8 @@ pub enum AddonType {
     Navdata,
     /// Aircraft livery (auto-detected by pattern)
     Livery,
+    /// FlyWithLua Lua script
+    LuaScript,
 }
 
 /// Represents a nested archive within another archive
@@ -173,6 +175,9 @@ pub struct InstallTask {
     /// For Livery: whether the target aircraft is installed
     #[serde(default = "default_true")]
     pub livery_aircraft_found: bool,
+    /// For LuaScript: whether FlyWithLua plugin is installed
+    #[serde(default = "default_true")]
+    pub flywithlua_installed: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

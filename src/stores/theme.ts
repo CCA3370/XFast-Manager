@@ -59,30 +59,15 @@ export const useThemeStore = defineStore('theme', () => {
   }
 
   async function applyTheme() {
-    // Check if there are many expanded scenery entries (performance optimization)
-    const expandedEntries = document.querySelectorAll('[data-scenery-index]')
-    const isLargeList = expandedEntries.length > 100
-    const transitionDurationMs = shouldSmoothThemeTransition() ? THEME_TRANSITION_DURATION_MS : 0
+    const transitionDurationMs = THEME_TRANSITION_DURATION_MS
 
     await syncWindowTheme()
-
-    if (isLargeList) {
-      // For large lists, use progressive theme switching
-      await applyThemeProgressively(expandedEntries, transitionDurationMs)
-    } else {
-      // For small lists, use instant theme switching
-      await applyThemeInstantly(transitionDurationMs)
-    }
+    await applyThemeInstantly(transitionDurationMs)
 
     // Sync Tauri window theme with app theme (with retry logic)
     if (transitionDurationMs > 0) {
       syncWindowThemeWithDelay(transitionDurationMs)
     }
-  }
-
-  function shouldSmoothThemeTransition(): boolean {
-    if (typeof document === 'undefined') return false
-    return !document.querySelector('.scenery-manager-view')
   }
 
   function scheduleThemeTransitionCleanup(transitionDurationMs: number) {
@@ -123,81 +108,6 @@ export const useThemeStore = defineStore('theme', () => {
     }
 
     scheduleThemeTransitionCleanup(transitionDurationMs)
-  }
-
-  async function applyThemeProgressively(entries: NodeListOf<Element>, transitionDurationMs: number) {
-    document.documentElement.classList.add('theme-transitioning')
-    document.documentElement.style.setProperty('--theme-transition-duration', `${transitionDurationMs}ms`)
-
-    // Apply theme to root first (for navbar, background, etc.)
-    if (isDark.value) {
-      document.documentElement.classList.add('dark')
-      await setItem(STORAGE_KEYS.THEME, 'dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-      await setItem(STORAGE_KEYS.THEME, 'light')
-    }
-
-    // Get viewport bounds
-    const viewportHeight = window.innerHeight
-    const scrollTop = document.documentElement.scrollTop || document.body.scrollTop
-
-    // Categorize entries: visible, above viewport, below viewport
-    const visibleEntries: Element[] = []
-    const aboveEntries: Element[] = []
-    const belowEntries: Element[] = []
-
-    entries.forEach(entry => {
-      const rect = entry.getBoundingClientRect()
-      const absoluteTop = rect.top + scrollTop
-
-      if (rect.top < viewportHeight && rect.bottom > 0) {
-        // Visible in viewport
-        visibleEntries.push(entry)
-      } else if (absoluteTop < scrollTop) {
-        // Above viewport
-        aboveEntries.push(entry)
-      } else {
-        // Below viewport
-        belowEntries.push(entry)
-      }
-    })
-
-    // Process in batches: visible first, then others
-    const batchSize = 20
-    const allBatches = [
-      ...chunkArray(visibleEntries, batchSize),
-      ...chunkArray(aboveEntries, batchSize),
-      ...chunkArray(belowEntries, batchSize)
-    ]
-
-    // Process batches with small delays
-    for (let i = 0; i < allBatches.length; i++) {
-      const batch = allBatches[i]
-      batch.forEach(entry => {
-        // Force a reflow for this entry to apply theme
-        entry.classList.add('theme-batch-update')
-        // Trigger reflow
-        void entry.clientHeight
-        entry.classList.remove('theme-batch-update')
-      })
-
-      // Small delay between batches (except for the last one)
-      if (i < allBatches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 16)) // ~1 frame
-      }
-    }
-
-    // Re-enable transitions after all batches are done
-    scheduleThemeTransitionCleanup(transitionDurationMs)
-  }
-
-  function chunkArray<T>(array: T[], size: number): T[][] {
-    const chunks: T[][] = []
-    for (let i = 0; i < array.length; i += size) {
-      chunks.push(array.slice(i, i + size))
-    }
-    return chunks
   }
 
   // Force sync window theme (can be called manually if needed)

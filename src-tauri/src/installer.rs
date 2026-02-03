@@ -1163,6 +1163,15 @@ impl Installer {
                     ));
                 }
             }
+            crate::models::AddonType::LuaScript => {
+                // For Lua scripts, check that the file exists
+                if !target.exists() {
+                    return Err(anyhow::anyhow!(
+                        "Installation verification failed: Lua script not found: {:?}",
+                        target
+                    ));
+                }
+            }
         }
 
         Ok(())

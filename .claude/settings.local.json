@@ -77,7 +77,8 @@
       "Bash(git --no-pager diff main..dev --stat)",
       "Bash(git --no-pager log main..dev --oneline)",
       "Bash(powershell -Command:*)",
-      "Bash(Select-String -Pattern '\\\\.xpl')"
+      "Bash(Select-String -Pattern '\\\\.xpl')",
+      "Bash(pnpm run type-check)"
     ]
   }
 }

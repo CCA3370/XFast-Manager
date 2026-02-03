@@ -60,7 +60,10 @@ export default {
     launchConfirmMessage: 'You have unapplied scenery changes. What would you like to do?',
     applyAndLaunch: 'Apply & Launch',
     launchDirectly: 'Launch Directly',
-    launchFailed: 'Failed to launch X-Plane'
+    launchFailed: 'Failed to launch X-Plane',
+    launchTimeout: 'X-Plane launch timed out. Please check if X-Plane is running properly.',
+    xplaneRunning: 'X-Plane Running',
+    xplaneAlreadyRunning: 'X-Plane is already running'
   },
   addonType: {
     Aircraft: 'Aircraft',
@@ -68,7 +71,8 @@ export default {
     SceneryLibrary: 'Scenery Library',
     Plugin: 'Plugin',
     Navdata: 'Navdata',
-    Livery: 'Livery'
+    Livery: 'Livery',
+    LuaScript: 'Lua Script'
   },
   settings: {
     title: 'Settings',
@@ -189,6 +193,7 @@ export default {
     installToXplane: 'Install the following add-ons to X-Plane',
     targetPath: 'Install to',
     folderExists: 'Target folder already exists',
+    fileExists: 'Target file already exists',
     errorInfo: 'Error details',
     startInstallation: 'Start Installation',
     cleanInstall: 'Clean Install',
@@ -216,6 +221,7 @@ export default {
     noConfigPatternsHint: 'Please configure backup rules in Settings',
     liveryAircraftNotFound: 'Target aircraft not found',
     targetLockedWarning: 'Target exists and is locked',
+    flyWithLuaRequired: 'Please install FlyWithLua plugin first',
     // Close confirmation
     unsavedSceneryChangesTitle: 'Unsaved Scenery Changes',
     unsavedSceneryChangesMessage: 'You have unsaved scenery sorting changes. Are you sure you want to close?',
@@ -416,6 +422,10 @@ export default {
     hintFromSettings: 'Scenery sorting is enabled. Open the Scenery Manager here.',
     updatingIndex: 'Updating index...',
     allContinents: 'All Continents',
+    groupByContinent: 'By Region',
+    otherRegion: 'Other / Global',
+    enableAll: 'Enable All',
+    disableAll: 'Disable All',
     databaseVersionError: 'Database version is incompatible',
     databaseVersionErrorDesc: 'The scenery database was created by a newer version of the application. Click the button below to reset and rebuild the index.',
     resetDatabase: 'Reset Database',
@@ -432,7 +442,8 @@ export default {
       'South America': 'South America',
       Oceania: 'Oceania',
       Antarctica: 'Antarctica',
-      Unknown: 'Unknown'
+      Unknown: 'Unknown',
+      Other: 'Other / Global'
     }
   },
   management: {

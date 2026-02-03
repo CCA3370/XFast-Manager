@@ -104,6 +104,8 @@
             <button
               v-if="store.xplanePath"
               @click.stop="handleLaunchXPlane"
+              :disabled="isLaunchingXPlane || isXPlaneRunning"
+              :title="isXPlaneRunning ? $t('home.xplaneAlreadyRunning') : ''"
               class="mt-4 px-4 py-2 bg-white/70 dark:bg-gray-700/50
                      hover:bg-blue-50 dark:hover:bg-blue-900/30
                      text-gray-700 dark:text-gray-200
@@ -113,12 +115,19 @@
                      flex items-center gap-2
                      border-2 border-gray-300 dark:border-gray-500/50
                      hover:border-blue-400 dark:hover:border-blue-500/70
-                     shadow-sm hover:shadow-md"
+                     shadow-sm hover:shadow-md
+                     disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <!-- Loading spinner -->
+              <svg v-if="isLaunchingXPlane" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <!-- Play icon -->
+              <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3l14 9-14 9V3z"></path>
               </svg>
-              <span>{{ $t('home.launchXPlane') }}</span>
+              <span>{{ isXPlaneRunning ? $t('home.xplaneRunning') : $t('home.launchXPlane') }}</span>
             </button>
           </div>
 
@@ -185,20 +194,31 @@
             <div class="px-6 py-4 bg-gray-50 dark:bg-gray-800/50 flex flex-col sm:flex-row gap-3 sm:justify-end">
               <button
                 @click="cancelLaunchDialog"
-                class="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg font-medium transition-colors"
+                :disabled="isLaunchingXPlane"
+                class="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {{ $t('common.cancel') }}
               </button>
               <button
                 @click="launchXPlane"
-                class="px-4 py-2 text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-500/20 hover:bg-blue-200 dark:hover:bg-blue-500/30 rounded-lg font-medium transition-colors"
+                :disabled="isLaunchingXPlane"
+                class="px-4 py-2 text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-500/20 hover:bg-blue-200 dark:hover:bg-blue-500/30 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
+                <svg v-if="isLaunchingXPlane" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
                 {{ $t('home.launchDirectly') }}
               </button>
               <button
                 @click="applyAndLaunch"
-                class="px-4 py-2 text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg font-medium transition-all shadow-md"
+                :disabled="isLaunchingXPlane"
+                class="px-4 py-2 text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg font-medium transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
+                <svg v-if="isLaunchingXPlane" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
                 {{ $t('home.applyAndLaunch') }}
               </button>
             </div>
@@ -229,6 +249,7 @@ import UpdateBanner from '@/components/UpdateBanner.vue'
 import InstallProgressOverlay from '@/components/InstallProgressOverlay.vue'
 import AnalyzingOverlay from '@/components/AnalyzingOverlay.vue'
 import type { AnalysisResult, InstallProgress, InstallResult } from '@/types'
+import { AddonType } from '@/types'
 import { getErrorMessage } from '@/types'
 import { logOperation, logError, logDebug, logBasic } from '@/services/logger'
 
@@ -243,6 +264,9 @@ const sceneryStore = useSceneryStore()
 const isDragging = ref(false)
 const showConfirmation = ref(false)
 const showLaunchConfirmDialog = ref(false)
+const isLaunchingXPlane = ref(false)
+const isXPlaneRunning = ref(false)
+let xplaneCheckInterval: number | null = null
 const debugDropFlash = ref(false)
 
 // Sync confirmation modal state with store for exit confirmation
@@ -421,6 +445,17 @@ onMounted(async () => {
 
   // Note: Pending CLI args are now handled by the watcher above
   // No need to manually check here - the watcher will trigger automatically
+
+  // Check if X-Plane is running on mount and periodically
+  const checkXPlaneRunning = async () => {
+    try {
+      isXPlaneRunning.value = await invoke<boolean>('is_xplane_running')
+    } catch (error) {
+      logDebug(`Failed to check X-Plane running status: ${error}`, 'app')
+    }
+  }
+  await checkXPlaneRunning()
+  xplaneCheckInterval = window.setInterval(checkXPlaneRunning, 3000) // Check every 3 seconds
 })
 
 onBeforeUnmount(() => {
@@ -441,6 +476,10 @@ onBeforeUnmount(() => {
   }
   if (unlistenDeletionSkipped) {
     unlistenDeletionSkipped()
+  }
+  if (xplaneCheckInterval !== null) {
+    clearInterval(xplaneCheckInterval)
+    xplaneCheckInterval = null
   }
 })
 
@@ -538,7 +577,11 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
 
     if (result.tasks.length > 0) {
       // Filter tasks based on preferences
-      const allowedTasks = result.tasks.filter(task => store.installPreferences[task.type])
+      const allowedTasks = result.tasks.filter(task => {
+        // LuaScript follows Plugin preference
+        const effectiveType = task.type === AddonType.LuaScript ? AddonType.Plugin : task.type
+        return store.installPreferences[effectiveType]
+      })
       const ignoredCount = result.tasks.length - allowedTasks.length
 
       logDebug(`Filtered tasks: ${allowedTasks.length} allowed, ${ignoredCount} ignored`, 'analysis')
@@ -804,6 +847,8 @@ function showConfirmDialog(options: {
 
 // Handle launch X-Plane button click
 async function handleLaunchXPlane() {
+  if (isLaunchingXPlane.value || isXPlaneRunning.value) return
+
   // Load fresh scenery data to check for pending changes
   await sceneryStore.loadData()
 
@@ -814,29 +859,59 @@ async function handleLaunchXPlane() {
   }
 }
 
-// Launch X-Plane directly
+// Launch X-Plane directly with loading state and timeout
 async function launchXPlane() {
+  if (isLaunchingXPlane.value || isXPlaneRunning.value) return
+
+  isLaunchingXPlane.value = true
+  const LAUNCH_TIMEOUT = 15000 // 15 seconds
+  const SUCCESS_DELAY = 5000 // 5 seconds after success
+
   try {
     // Parse launch args from store (split by whitespace, filter empty)
     const args = store.xplaneLaunchArgs
       ? store.xplaneLaunchArgs.split(/\s+/).filter(Boolean)
       : []
-    await invoke('launch_xplane', { xplanePath: store.xplanePath, args: args.length > 0 ? args : null })
+
+    // Race between launch and timeout
+    const launchPromise = invoke('launch_xplane', { xplanePath: store.xplanePath, args: args.length > 0 ? args : null })
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), LAUNCH_TIMEOUT)
+    )
+
+    await Promise.race([launchPromise, timeoutPromise])
+
+    // Keep loading state for 5 more seconds after success
+    await new Promise(resolve => setTimeout(resolve, SUCCESS_DELAY))
+
     showLaunchConfirmDialog.value = false
   } catch (error) {
     logError(`Failed to launch X-Plane: ${error}`, 'app')
-    modal.showError(t('home.launchFailed') + ': ' + getErrorMessage(error))
+    if (error instanceof Error && error.message === 'timeout') {
+      modal.showError(t('home.launchTimeout'))
+    } else {
+      modal.showError(t('home.launchFailed') + ': ' + getErrorMessage(error))
+    }
+  } finally {
+    isLaunchingXPlane.value = false
   }
 }
 
 // Apply scenery changes then launch X-Plane
 async function applyAndLaunch() {
+  if (isLaunchingXPlane.value) return
+
+  isLaunchingXPlane.value = true
+
   try {
     await sceneryStore.applyChanges()
+    // Reset loading state before calling launchXPlane since it will set it again
+    isLaunchingXPlane.value = false
     await launchXPlane()
   } catch (error) {
     logError(`Failed to apply changes and launch: ${error}`, 'app')
     modal.showError(getErrorMessage(error))
+    isLaunchingXPlane.value = false
   }
 }
 

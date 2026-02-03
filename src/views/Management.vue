@@ -58,6 +58,8 @@ const isCreatingIndex = ref(false)
 const highlightedIndex = ref(-1)
 const currentMatchIndex = ref(0)
 const searchExpandedGroups = ref<Record<string, boolean>>({})
+const searchExpandedContinents = ref<Record<string, boolean>>({})
+const searchExpandedContinentCategories = ref<Record<string, boolean>>({})
 const showOnlyMissingLibs = ref(false)
 const showOnlyUpdates = ref(false)
 const showOnlyOutdated = ref(false)
@@ -68,6 +70,16 @@ const syncWarningDismissed = ref(false)
 
 // Geo filtering state
 const selectedContinent = ref<string>('')
+
+// View mode state for scenery tab
+const viewMode = ref<'category' | 'continent'>('category')
+const isViewModeTransitioning = ref(false)
+
+// Collapsed state for continent groups
+const collapsedContinents = ref<Record<string, boolean>>({})
+
+// Collapsed state for categories within continent groups (key: "continent:category")
+const collapsedContinentCategories = ref<Record<string, boolean>>({})
 
 // Index update state
 const isUpdatingIndex = ref(false)
@@ -399,6 +411,166 @@ const uniqueContinents = computed(() => {
   return Array.from(continents).sort()
 })
 
+// Known continents list (for validation)
+const knownContinents = ['Asia', 'Europe', 'North America', 'South America', 'Africa', 'Oceania', 'Antarctica']
+
+// Entries grouped by continent, then by category within each continent
+const continentGroupedEntries = computed(() => {
+  const result: Record<string, Record<string, SceneryManagerEntry[]>> = {}
+
+  // Group entries by continent and category
+  for (const entry of allSceneryEntries.value) {
+    const continent = entry.continent || 'Other'
+    const targetContinent = knownContinents.includes(continent) ? continent : 'Other'
+    if (!result[targetContinent]) {
+      result[targetContinent] = {}
+      for (const cat of categoryOrder) {
+        result[targetContinent][cat] = []
+      }
+    }
+    result[targetContinent][entry.category].push(entry)
+  }
+
+  return result
+})
+
+// Sorted continent order for display (alphabetically, with 'Other' always at the end)
+const sortedContinentOrder = computed(() => {
+  const continentsWithEntries = Object.keys(continentGroupedEntries.value)
+    .filter(continent => {
+      const data = continentGroupedEntries.value[continent]
+      return categoryOrder.some(cat => (data[cat]?.length || 0) > 0)
+    })
+
+  // Sort alphabetically, but keep 'Other' at the end
+  return continentsWithEntries.sort((a, b) => {
+    if (a === 'Other') return 1
+    if (b === 'Other') return -1
+    return a.localeCompare(b)
+  })
+})
+
+// Check if a continent has any entries
+function hasContinentEntries(continent: string): boolean {
+  const continentData = continentGroupedEntries.value[continent]
+  if (!continentData) return false
+  return categoryOrder.some(cat => (continentData[cat]?.length || 0) > 0)
+}
+
+// Get stats for a continent (enabled/total)
+function getContinentStats(continent: string): { enabled: number; total: number } {
+  const continentData = continentGroupedEntries.value[continent]
+  if (!continentData) return { enabled: 0, total: 0 }
+
+  let enabled = 0
+  let total = 0
+  for (const cat of categoryOrder) {
+    const entries = continentData[cat] || []
+    total += entries.length
+    enabled += entries.filter(e => e.enabled).length
+  }
+  return { enabled, total }
+}
+
+// Check if continent is expanded (default: collapsed)
+function isContinentExpanded(continent: string): boolean {
+  return collapsedContinents.value[continent] === false
+}
+
+// Toggle continent collapse state
+function toggleContinentCollapse(continent: string) {
+  // If undefined (default collapsed), set to false (expanded)
+  // If false (expanded), set to true (collapsed)
+  // If true (collapsed), set to false (expanded)
+  if (collapsedContinents.value[continent] === undefined) {
+    collapsedContinents.value[continent] = false // expand
+  } else {
+    collapsedContinents.value[continent] = !collapsedContinents.value[continent]
+  }
+}
+
+// Toggle view mode with loading animation
+function toggleViewMode() {
+  isViewModeTransitioning.value = true
+  selectedContinent.value = ''
+
+  // Use setTimeout to allow loading spinner to render before heavy computation
+  setTimeout(() => {
+    viewMode.value = viewMode.value === 'category' ? 'continent' : 'category'
+    // Small delay to let Vue finish rendering before hiding spinner
+    setTimeout(() => {
+      isViewModeTransitioning.value = false
+    }, 50)
+  }, 10)
+}
+
+// Check if category within continent is expanded (default: collapsed)
+function isContinentCategoryExpanded(continent: string, category: string): boolean {
+  const key = `${continent}:${category}`
+  return collapsedContinentCategories.value[key] === false
+}
+
+// Toggle category collapse state within continent
+function toggleContinentCategoryCollapse(continent: string, category: string) {
+  const key = `${continent}:${category}`
+  // If undefined (default collapsed), set to false (expanded)
+  // If false (expanded), set to true (collapsed)
+  // If true (collapsed), set to false (expanded)
+  if (collapsedContinentCategories.value[key] === undefined) {
+    collapsedContinentCategories.value[key] = false // expand
+  } else {
+    collapsedContinentCategories.value[key] = !collapsedContinentCategories.value[key]
+  }
+}
+
+// Toggle all entries in a continent
+function toggleContinentEnabled(continent: string) {
+  const continentData = continentGroupedEntries.value[continent]
+  if (!continentData) return
+
+  const entries = categoryOrder.flatMap(cat => continentData[cat] || [])
+  const allEnabled = entries.every(e => e.enabled)
+  const newState = !allEnabled
+
+  for (const entry of entries) {
+    if (entry.enabled !== newState) {
+      sceneryStore.toggleEnabled(entry.folderName)
+    }
+  }
+  syncLocalEntries()
+}
+
+// Toggle all entries in a continent's category
+function toggleContinentCategoryEnabled(continent: string, category: string) {
+  const entries = continentGroupedEntries.value[continent]?.[category] || []
+  if (entries.length === 0) return
+
+  const allEnabled = entries.every(e => e.enabled)
+  const newState = !allEnabled
+
+  for (const entry of entries) {
+    if (entry.enabled !== newState) {
+      sceneryStore.toggleEnabled(entry.folderName)
+    }
+  }
+  syncLocalEntries()
+}
+
+// Check if all entries in a continent are enabled
+function isContinentAllEnabled(continent: string): boolean {
+  const continentData = continentGroupedEntries.value[continent]
+  if (!continentData) return false
+
+  const entries = categoryOrder.flatMap(cat => continentData[cat] || [])
+  return entries.length > 0 && entries.every(e => e.enabled)
+}
+
+// Check if all entries in a continent's category are enabled
+function isContinentCategoryAllEnabled(continent: string, category: string): boolean {
+  const entries = continentGroupedEntries.value[continent]?.[category] || []
+  return entries.length > 0 && entries.every(e => e.enabled)
+}
+
 // The last entry before Unrecognized category should have move-down disabled
 const lastEntryBeforeUnrecognized = computed(() => {
   const unrecognizedEntries = localGroupedEntries.value['Unrecognized'] || []
@@ -439,7 +611,10 @@ const globalIndexMap = computed(() => {
 })
 
 function isGroupExpanded(category: string): boolean {
-  return !sceneryStore.collapsedGroups[category as SceneryCategory] || !!searchExpandedGroups.value[category]
+  // Default: collapsed (undefined or true = collapsed, false = expanded)
+  // searchExpandedGroups can override to expand for search
+  if (searchExpandedGroups.value[category]) return true
+  return sceneryStore.collapsedGroups[category as SceneryCategory] === false
 }
 
 const matchedIndices = computed(() => {
@@ -695,12 +870,60 @@ function handleClickOutside(event: MouseEvent) {
 }
 
 // Search navigation functions
+// Collapse groups that were expanded for search
+function collapseSearchExpandedGroups() {
+  if (viewMode.value === 'continent') {
+    // Collapse continents that were expanded for search
+    for (const continent of Object.keys(searchExpandedContinents.value)) {
+      if (searchExpandedContinents.value[continent]) {
+        collapsedContinents.value[continent] = true
+      }
+    }
+    searchExpandedContinents.value = {}
+
+    // Collapse continent categories that were expanded for search
+    for (const key of Object.keys(searchExpandedContinentCategories.value)) {
+      if (searchExpandedContinentCategories.value[key]) {
+        collapsedContinentCategories.value[key] = true
+      }
+    }
+    searchExpandedContinentCategories.value = {}
+  } else {
+    // Collapse category groups that were expanded for search
+    searchExpandedGroups.value = {}
+  }
+}
+
 function ensureGroupExpandedForIndex(index: number) {
   if (showOnlyMissingLibs.value) return
   const entry = filteredSceneryEntries.value[index]
   if (!entry) return
-  if (sceneryStore.collapsedGroups[entry.category]) {
-    searchExpandedGroups.value[entry.category] = true
+
+  // First collapse previously expanded groups
+  collapseSearchExpandedGroups()
+
+  if (viewMode.value === 'continent') {
+    // In continent view, expand both continent and category within continent
+    const continent = entry.continent || 'Other'
+    const targetContinent = knownContinents.includes(continent) ? continent : 'Other'
+
+    // Expand continent if collapsed (undefined or true means collapsed)
+    if (collapsedContinents.value[targetContinent] !== false) {
+      collapsedContinents.value[targetContinent] = false
+      searchExpandedContinents.value[targetContinent] = true
+    }
+
+    // Expand category within continent if collapsed (undefined or true means collapsed)
+    const categoryKey = `${targetContinent}:${entry.category}`
+    if (collapsedContinentCategories.value[categoryKey] !== false) {
+      collapsedContinentCategories.value[categoryKey] = false
+      searchExpandedContinentCategories.value[categoryKey] = true
+    }
+  } else {
+    // In category view, expand category group
+    if (sceneryStore.collapsedGroups[entry.category]) {
+      searchExpandedGroups.value[entry.category] = true
+    }
   }
 }
 
@@ -729,7 +952,7 @@ function handleSearchInput() {
   if (!searchQuery.value.trim()) {
     highlightedIndex.value = -1
     currentMatchIndex.value = 0
-    searchExpandedGroups.value = {}
+    collapseSearchExpandedGroups()
     return
   }
 
@@ -738,7 +961,7 @@ function handleSearchInput() {
     scrollToMatch(matchedIndices.value[0])
   } else {
     highlightedIndex.value = -1
-    searchExpandedGroups.value = {}
+    collapseSearchExpandedGroups()
   }
 }
 
@@ -758,7 +981,7 @@ function clearSearch() {
   searchQuery.value = ''
   highlightedIndex.value = -1
   currentMatchIndex.value = 0
-  searchExpandedGroups.value = {}
+  collapseSearchExpandedGroups()
 }
 
 // Current loading state (suppressed during tab transitions)
@@ -1086,27 +1309,27 @@ const isLoading = computed(() => {
             </Transition>
           </button>
         </div>
-        <!-- Geo filters -->
-        <div v-if="uniqueContinents.length > 0" class="relative flex items-center">
-          <svg class="absolute left-1.5 w-3 h-3 pointer-events-none" :class="selectedContinent ? 'text-white' : 'text-blue-600 dark:text-blue-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <!-- Geo filters - Toggle button for continent view -->
+        <button
+          v-if="uniqueContinents.length > 0"
+          @click="toggleViewMode"
+          :disabled="isViewModeTransitioning"
+          class="text-xs px-3 py-1 rounded transition-colors flex items-center gap-1 disabled:opacity-70"
+          :class="viewMode === 'continent'
+            ? 'bg-blue-500 text-white hover:bg-blue-600'
+            : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/60'"
+        >
+          <svg v-if="isViewModeTransitioning" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <svg v-else class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <select
-            v-model="selectedContinent"
-            class="text-xs pl-5 pr-5 py-1 rounded transition-colors cursor-pointer appearance-none focus:outline-none focus:ring-1 focus:ring-blue-500"
-            :class="selectedContinent
-              ? 'bg-blue-500 text-white hover:bg-blue-600'
-              : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/60'"
-          >
-            <option value="" class="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">{{ t('sceneryManager.allContinents') }}</option>
-            <option v-for="continent in uniqueContinents" :key="continent" :value="continent" class="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
-              {{ t(`geo.continents.${continent}`, continent) }}
-            </option>
-          </select>
-          <svg class="absolute right-1 w-3 h-3 pointer-events-none" :class="selectedContinent ? 'text-white' : 'text-blue-600 dark:text-blue-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
+          <Transition name="text-fade" mode="out-in">
+            <span :key="locale">{{ t('sceneryManager.groupByContinent') }}</span>
+          </Transition>
+        </button>
         <!-- Updating index indicator -->
         <div v-if="isUpdatingIndex" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
           <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1277,8 +1500,13 @@ const isLoading = computed(() => {
           </Transition>
         </div>
 
-        <!-- Filtered view (no drag-and-drop) -->
-        <div v-else-if="showOnlyMissingLibs || selectedContinent" class="space-y-1.5 px-1 pb-2">
+        <!-- View mode transitioning loading -->
+        <div v-else-if="isViewModeTransitioning" class="flex items-center justify-center py-12">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        </div>
+
+        <!-- Filtered view (no drag-and-drop) - only for missing libs filter -->
+        <div v-else-if="showOnlyMissingLibs" class="space-y-1.5 px-1 pb-2">
           <div
             v-for="(element, index) in filteredSceneryEntries"
             :key="element.folderName"
@@ -1311,6 +1539,127 @@ const isLoading = computed(() => {
               <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('sceneryManager.noMissingLibs') }}</p>
             </Transition>
           </div>
+        </div>
+
+        <!-- Continent grouped view (no drag-and-drop) -->
+        <div v-else-if="viewMode === 'continent'" class="space-y-3 pb-2">
+          <template v-for="continent in sortedContinentOrder" :key="continent">
+            <div class="continent-group">
+              <!-- Continent Header -->
+              <div
+                @click="toggleContinentCollapse(continent)"
+                class="continent-header flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-blue-100 to-blue-200 dark:from-blue-900/50 dark:to-blue-800/50 rounded-lg cursor-pointer hover:from-blue-200 hover:to-blue-300 dark:hover:from-blue-800/50 dark:hover:to-blue-700/50 transition-all duration-200 mb-2 border border-blue-300 dark:border-blue-600 shadow-md"
+              >
+                <div class="flex-1 flex items-center gap-2">
+                  <svg
+                    class="w-4 h-4 text-blue-700 dark:text-blue-300 transition-transform duration-200"
+                    :class="{ 'rotate-90': isContinentExpanded(continent) }"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+                  </svg>
+                  <!-- Globe icon -->
+                  <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span class="font-semibold text-sm text-blue-900 dark:text-blue-100">
+                    {{ t(`geo.continents.${continent}`, continent) }}
+                  </span>
+                  <span class="text-xs font-medium text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                    <span class="text-green-700 dark:text-green-300">{{ getContinentStats(continent).enabled }}</span>
+                    <span class="mx-1 text-gray-400">/</span>
+                    <span class="text-gray-600 dark:text-gray-400">{{ getContinentStats(continent).total }}</span>
+                  </span>
+                </div>
+                <!-- Continent toggle switch -->
+                <button
+                  @click.stop="toggleContinentEnabled(continent)"
+                  class="flex-shrink-0 px-2 py-0.5 rounded text-xs font-medium transition-colors"
+                  :class="isContinentAllEnabled(continent)
+                    ? 'bg-green-500 text-white hover:bg-green-600'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'"
+                  :title="isContinentAllEnabled(continent) ? t('sceneryManager.disableAll') : t('sceneryManager.enableAll')"
+                >
+                  {{ isContinentAllEnabled(continent) ? t('sceneryManager.disableAll') : t('sceneryManager.enableAll') }}
+                </button>
+              </div>
+
+              <!-- Continent Content (Collapsible) -->
+              <Transition name="collapse">
+                <div v-if="isContinentExpanded(continent)" class="pl-4 space-y-2">
+                  <template v-for="category in categoryOrder" :key="category">
+                    <div v-if="continentGroupedEntries[continent][category]?.length > 0" class="category-in-continent">
+                      <!-- Category Header within Continent -->
+                      <div
+                        class="flex items-center gap-2 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded mb-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                        @click="toggleContinentCategoryCollapse(continent, category)"
+                      >
+                        <svg
+                          class="w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform duration-200"
+                          :class="{ 'rotate-90': isContinentCategoryExpanded(continent, category) }"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                        <span class="flex-1 text-xs font-medium text-gray-700 dark:text-gray-300">
+                          {{ t(getCategoryTranslationKey(category)) }}
+                          <span class="ml-1 text-gray-500 dark:text-gray-400">
+                            ({{ continentGroupedEntries[continent][category].filter(e => e.enabled).length }}/{{ continentGroupedEntries[continent][category].length }})
+                          </span>
+                        </span>
+                        <!-- Category toggle switch -->
+                        <button
+                          @click.stop="toggleContinentCategoryEnabled(continent, category)"
+                          class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors"
+                          :class="isContinentCategoryAllEnabled(continent, category)
+                            ? 'bg-green-500 text-white hover:bg-green-600'
+                            : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'"
+                        >
+                          {{ isContinentCategoryAllEnabled(continent, category) ? t('sceneryManager.disableAll') : t('sceneryManager.enableAll') }}
+                        </button>
+                      </div>
+                      <!-- Entries in this category (Collapsible) -->
+                      <Transition name="collapse">
+                        <div v-if="isContinentCategoryExpanded(continent, category)" class="space-y-1.5 px-1">
+                          <div
+                            v-for="element in continentGroupedEntries[continent][category]"
+                            :key="element.folderName"
+                            :data-scenery-index="getGlobalIndex(element.folderName)"
+                            class="relative scenery-entry-item"
+                            style="scroll-margin-top: 100px"
+                          >
+                            <div
+                              v-if="highlightedIndex === getGlobalIndex(element.folderName)"
+                              class="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none z-10"
+                            ></div>
+                            <div
+                              :class="{
+                                'opacity-30 transition-opacity': searchQuery && !element.folderName.toLowerCase().includes(searchQuery.toLowerCase())
+                              }"
+                            >
+                              <SceneryEntryCard
+                                :entry="element"
+                                :index="getGlobalIndex(element.folderName)"
+                                :total-count="sceneryStore.totalCount"
+                                :disable-reorder="true"
+                                @toggle-enabled="handleSceneryToggleEnabled"
+                                @move-up="handleMoveUp"
+                                @move-down="handleMoveDown"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </Transition>
+                    </div>
+                  </template>
+                </div>
+              </Transition>
+            </div>
+          </template>
         </div>
 
         <!-- Normal view with drag-and-drop groups -->

@@ -84,6 +84,8 @@ export enum AddonType {
   Navdata = 'Navdata',
   /** Aircraft livery (auto-detected by pattern) */
   Livery = 'Livery',
+  /** FlyWithLua Lua script */
+  LuaScript = 'LuaScript',
 }
 
 /** Represents a nested archive within another archive */
@@ -155,6 +157,8 @@ export interface InstallTask {
   liveryAircraftType?: string;
   /** For Livery: whether the target aircraft is installed */
   liveryAircraftFound?: boolean;
+  /** For LuaScript: whether FlyWithLua plugin is installed */
+  flyWithLuaInstalled?: boolean;
 }
 
 export interface AnalysisResult {

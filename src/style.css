@@ -52,12 +52,21 @@ body {
 }
 
 /* Smooth color transition during theme change */
-.theme-transitioning *,
-.theme-transitioning *::before,
-.theme-transitioning *::after {
+/* Theme transition: only target structural containers and navbar children.
+   Content inside main switches instantly to avoid performance issues on large DOMs. */
+.theme-transitioning,
+.theme-transitioning .app-container,
+.theme-transitioning nav,
+.theme-transitioning nav > div,
+.theme-transitioning nav a,
+.theme-transitioning nav button,
+.theme-transitioning nav span,
+.theme-transitioning nav svg,
+.theme-transitioning main {
   transition-property: background-color, color, border-color, fill, stroke, box-shadow, outline-color, --app-bg-from, --app-bg-via, --app-bg-to !important;
   transition-duration: var(--theme-transition-duration, 500ms) !important;
   transition-timing-function: ease !important;
+  backface-visibility: hidden;
 }
 
 /* Scrollbar styling */
@@ -188,4 +197,15 @@ input, textarea, select, option, button {
   -moz-user-select: text;
   -ms-user-select: text;
   user-select: text;
+}
+
+/* GPU Acceleration Utilities */
+.gpu-accelerated {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.gpu-layer {
+  will-change: transform;
+  transform: translateZ(0);
 }

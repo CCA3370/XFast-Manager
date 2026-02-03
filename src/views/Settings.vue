@@ -1206,6 +1206,7 @@ function getTypeName(type: AddonType): string {
     case AddonType.Plugin: return t('settings.typePlugin')
     case AddonType.Navdata: return t('settings.typeNavdata')
     case AddonType.Livery: return t('settings.typeLivery')
+    case AddonType.LuaScript: return t('settings.typeLuaScript')
     default: return type
   }
 }
