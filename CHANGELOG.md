@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.6] - 2026-02-03
+
+### Added
+
+- **Region Grouping View** - New view mode in Scenery Manager to group scenery by geographic region
+  - Click "By Region" button to switch between category view and region view
+  - First level groups by continent (Asia, Europe, North America, etc.)
+  - Second level groups by scenery type within each continent
+  - Non-regional packages (libraries, global resources) grouped under "Other / Global"
+  - Batch enable/disable toggle for entire regions or type groups within a region
+  - All groups collapsed by default for cleaner overview
+  - Drag sorting disabled in region view to preserve load order
+- **Always on Top** - New pin button in the title bar to keep the window above other windows
+  - Click to toggle window always-on-top state
+  - Visual indicator shows when pinned
+- **Lua Script Support** - Detection and installation of FlyWithLua scripts
+  - Automatically detects `.lua` files intended for FlyWithLua
+  - Installs to the correct FlyWithLua Scripts folder
+  - Shows warning if FlyWithLua plugin is not installed
+
+### Changed
+
+- **Scenery Groups Default Collapsed** - All scenery category groups now start collapsed for a cleaner initial view
+- **Search Auto-Expand** - When searching for scenery, groups containing matches automatically expand, then collapse again when navigating away
+
 ## [0.8.5] - 2026-02-03
 
 ### Added
