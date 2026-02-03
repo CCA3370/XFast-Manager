@@ -9,6 +9,7 @@
     "core:window:default",
     "core:window:allow-set-focus",
     "core:window:allow-set-theme",
+    "core:window:allow-set-always-on-top",
     "core:window:allow-destroy",
     "core:window:allow-close",
     "core:webview:default",

@@ -1542,9 +1542,9 @@ const isLoading = computed(() => {
         </div>
 
         <!-- Continent grouped view (no drag-and-drop) -->
-        <div v-else-if="viewMode === 'continent'" class="space-y-3 pb-2">
+        <div v-else-if="viewMode === 'continent'" class="space-y-3 pb-2" style="overflow: visible;">
           <template v-for="continent in sortedContinentOrder" :key="continent">
-            <div class="continent-group">
+            <div class="continent-group" style="overflow: visible;">
               <!-- Continent Header -->
               <div
                 @click="toggleContinentCollapse(continent)"
@@ -1588,7 +1588,7 @@ const isLoading = computed(() => {
 
               <!-- Continent Content (Collapsible) -->
               <Transition name="collapse">
-                <div v-if="isContinentExpanded(continent)" class="pl-4 space-y-2">
+                <div v-if="isContinentExpanded(continent)" class="pl-4 space-y-2" style="overflow: visible;">
                   <template v-for="category in categoryOrder" :key="category">
                     <div v-if="continentGroupedEntries[continent][category]?.length > 0" class="category-in-continent">
                       <!-- Category Header within Continent -->
