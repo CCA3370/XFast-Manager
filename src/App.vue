@@ -190,6 +190,18 @@ onMounted(async () => {
     if (store.isWindows) {
       store.isContextMenuRegistered = await invoke<boolean>('is_context_menu_registered')
       logDebug(`Context menu registered: ${store.isContextMenuRegistered}`, 'app')
+
+      // Sync context menu paths if registered (handles exe relocation)
+      if (store.isContextMenuRegistered) {
+        try {
+          const updated = await invoke<boolean>('sync_context_menu_paths')
+          if (updated) {
+            logDebug('Context menu paths synced to current location', 'app')
+          }
+        } catch (error) {
+          logError(`Failed to sync context menu paths: ${error}`, 'app')
+        }
+      }
     }
   } catch (error) {
     logError(`Failed to detect platform: ${error}`, 'app')

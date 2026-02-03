@@ -57,6 +57,41 @@ pub fn is_context_menu_registered() -> bool {
         .is_ok()
 }
 
+/// Get the exe path currently stored in the registry
+#[cfg(target_os = "windows")]
+fn get_registered_exe_path() -> Option<String> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let command_key = hkcu
+        .open_subkey(r"Software\Classes\*\shell\XFast Manager\command")
+        .ok()?;
+    let value: String = command_key.get_value("").ok()?;
+    // Parse "\"C:\path\to\exe.exe\" \"%1\"" format
+    let path = value.trim_start_matches('"');
+    let end = path.find("\" \"")?;
+    Some(path[..end].to_string())
+}
+
+/// Sync registry paths on startup
+/// Returns Ok(true) if paths were updated, Ok(false) if no update needed
+#[cfg(target_os = "windows")]
+pub fn sync_registry_paths() -> Result<bool> {
+    if !is_context_menu_registered() {
+        return Ok(false);
+    }
+
+    let current_path = env::current_exe()?.to_string_lossy().to_string();
+
+    if let Some(registered_path) = get_registered_exe_path() {
+        if registered_path != current_path {
+            // Path mismatch, re-register to update paths
+            register_context_menu()?;
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
 #[cfg(not(target_os = "windows"))]
 use anyhow::Result;
 
@@ -77,4 +112,9 @@ pub fn unregister_context_menu() -> Result<()> {
 #[cfg(not(target_os = "windows"))]
 pub fn is_context_menu_registered() -> bool {
     false
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn sync_registry_paths() -> Result<bool> {
+    Ok(false)
 }

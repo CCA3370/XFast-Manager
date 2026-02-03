@@ -199,6 +199,12 @@ fn is_context_menu_registered() -> bool {
     registry::is_context_menu_registered()
 }
 
+#[tauri::command]
+fn sync_context_menu_paths() -> Result<bool, String> {
+    registry::sync_registry_paths()
+        .map_err(|e| format!("Failed to sync context menu paths: {}", e))
+}
+
 // ============================================================================
 // Logging Commands
 // ============================================================================
@@ -857,6 +863,7 @@ pub fn run() {
             register_context_menu,
             unregister_context_menu,
             is_context_menu_registered,
+            sync_context_menu_paths,
             log_from_frontend,
             get_recent_logs,
             get_log_path,
