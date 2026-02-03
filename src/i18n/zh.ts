@@ -60,7 +60,10 @@ export default {
     launchConfirmMessage: '您有未应用的地景排序更改。请选择操作：',
     applyAndLaunch: '应用并启动',
     launchDirectly: '直接启动',
-    launchFailed: '启动 X-Plane 失败'
+    launchFailed: '启动 X-Plane 失败',
+    launchTimeout: '启动 X-Plane 超时，请检查 X-Plane 是否正常运行',
+    xplaneRunning: 'X-Plane 运行中',
+    xplaneAlreadyRunning: 'X-Plane 已在运行'
   },
   addonType: {
     Aircraft: '机模',
@@ -68,7 +71,8 @@ export default {
     SceneryLibrary: '地景库',
     Plugin: '插件',
     Navdata: '导航数据',
-    Livery: '涂装'
+    Livery: '涂装',
+    LuaScript: 'Lua 脚本'
   },
   settings: {
     title: '设置',
@@ -202,6 +206,7 @@ export default {
     installToXplane: '即将安装以下插件到X-Plane',
     targetPath: '安装到',
     folderExists: '目标文件夹已存在',
+    fileExists: '目标文件已存在',
     errorInfo: '错误信息',
     startInstallation: '开始安装',
     cleanInstall: '干净安装',
@@ -229,6 +234,7 @@ export default {
     noConfigPatternsHint: '需要在设置中配置备份规则',
     liveryAircraftNotFound: '未找到目标机模',
     targetLockedWarning: '目标已存在且被锁定',
+    flyWithLuaRequired: '请先安装 FlyWithLua 插件',
     // Close confirmation
     unsavedSceneryChangesTitle: '地景排序未保存',
     unsavedSceneryChangesMessage: '您有未保存的地景排序更改，确定要关闭吗？',
@@ -429,6 +435,10 @@ export default {
     hintFromSettings: '已启用地景排序，请从这里进入地景管理器进行排序',
     updatingIndex: '正在更新索引...',
     allContinents: '所有大洲',
+    groupByContinent: '按地区',
+    otherRegion: '其他 / 全局',
+    enableAll: '全部启用',
+    disableAll: '全部禁用',
     databaseVersionError: '数据库版本不兼容',
     databaseVersionErrorDesc: '地景数据库由较新版本的应用程序创建。点击下方按钮重置并重建索引。',
     resetDatabase: '重置数据库',
@@ -445,7 +455,8 @@ export default {
       'South America': '南美洲',
       Oceania: '大洋洲',
       Antarctica: '南极洲',
-      Unknown: '未知'
+      Unknown: '未知',
+      Other: '其他 / 全局'
     }
   },
   management: {

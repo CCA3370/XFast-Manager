@@ -156,7 +156,7 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf rpm
 
       - name: Add macOS targets
         if: matrix.platform == 'macos-latest'
@@ -210,9 +210,21 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ needs.prepare-release.outputs.version }}"
-          $newName = "XFast-Manager-$version-windows-portable.exe"
-          Rename-Item -Path "target/release/xfastmanager.exe" -NewName $newName -Force
-          echo "artifact_path=target/release/$newName" >> $env:GITHUB_OUTPUT
+
+          # Portable exe
+          $portableName = "XFast-Manager-$version-windows-portable.exe"
+          Rename-Item -Path "target/release/xfastmanager.exe" -NewName $portableName -Force
+          echo "artifact_path=target/release/$portableName" >> $env:GITHUB_OUTPUT
+
+          # NSIS installer (Tauri 2.0 generates this by default)
+          $nsisFile = Get-ChildItem -Path "target/release/bundle/nsis/*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($nsisFile) {
+            $setupName = "XFast-Manager-$version-windows-setup.exe"
+            Rename-Item -Path $nsisFile.FullName -NewName $setupName -Force
+            echo "✅ NSIS installer prepared: $setupName"
+          } else {
+            echo "⚠️ No NSIS installer found"
+          }
 
       - name: Prepare macOS artifact
         if: matrix.platform == 'macos-latest'
@@ -228,9 +240,27 @@ jobs:
         shell: bash
         run: |
           version="${{ needs.prepare-release.outputs.version }}"
-          appimage_file=$(ls target/release/bundle/appimage/*.AppImage)
-          new_name="XFast-Manager-${version}-linux-x64.AppImage"
-          mv "$appimage_file" "target/release/bundle/appimage/$new_name"
+
+          # AppImage
+          appimage_file=$(ls target/release/bundle/appimage/*.AppImage 2>/dev/null || true)
+          if [ -n "$appimage_file" ]; then
+            mv "$appimage_file" "target/release/bundle/appimage/XFast-Manager-${version}-linux-x64.AppImage"
+            echo "✅ AppImage prepared"
+          fi
+
+          # deb package
+          deb_file=$(ls target/release/bundle/deb/*.deb 2>/dev/null || true)
+          if [ -n "$deb_file" ]; then
+            mv "$deb_file" "target/release/bundle/deb/XFast-Manager-${version}-linux-x64.deb"
+            echo "✅ deb package prepared"
+          fi
+
+          # rpm package
+          rpm_file=$(ls target/release/bundle/rpm/*.rpm 2>/dev/null || true)
+          if [ -n "$rpm_file" ]; then
+            mv "$rpm_file" "target/release/bundle/rpm/XFast-Manager-${version}-linux-x64.rpm"
+            echo "✅ rpm package prepared"
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -238,8 +268,11 @@ jobs:
           name: release-${{ matrix.suffix }}
           path: |
             target/release/XFast-Manager-*-windows-portable.exe
+            target/release/bundle/nsis/XFast-Manager-*-windows-setup.exe
             target/universal-apple-darwin/release/bundle/dmg/XFast-Manager-*-macos-universal.dmg
             target/release/bundle/appimage/XFast-Manager-*-linux-x64.AppImage
+            target/release/bundle/deb/XFast-Manager-*-linux-x64.deb
+            target/release/bundle/rpm/XFast-Manager-*-linux-x64.rpm
           if-no-files-found: ignore
           retention-days: 1
 
@@ -312,8 +345,11 @@ jobs:
           prerelease: ${{ needs.prepare-release.outputs.is_prerelease == 'true' }}
           files: |
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-portable.zip
+            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-setup.exe
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-macos-universal.dmg
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.AppImage
+            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.deb
+            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.rpm
             release-files/checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -331,8 +367,11 @@ jobs:
           fi
           echo ""
           echo "📦 Artifacts included:"
-          echo "  - Windows: XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-portable.zip"
+          echo "  - Windows (portable): XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-portable.zip"
+          echo "  - Windows (installer): XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-setup.exe"
           echo "  - macOS:   XFast-Manager-${{ needs.prepare-release.outputs.version }}-macos-universal.dmg"
-          echo "  - Linux:   XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.AppImage"
+          echo "  - Linux (AppImage): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.AppImage"
+          echo "  - Linux (deb): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.deb"
+          echo "  - Linux (rpm): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.rpm"
           echo ""
           echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ needs.prepare-release.outputs.tag }}"

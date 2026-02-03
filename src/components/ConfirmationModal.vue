@@ -89,7 +89,7 @@
                       <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
                       </svg>
-                      <span><AnimatedText>{{ $t('modal.folderExists') }}</AnimatedText></span>
+                      <span><AnimatedText>{{ task.type === 'LuaScript' ? $t('modal.fileExists') : $t('modal.folderExists') }}</AnimatedText></span>
                       <!-- Inline version comparison for Aircraft/Plugin -->
                       <template v-if="(task.type === 'Aircraft' || task.type === 'Plugin')
                                       && (task.existingVersionInfo?.version || task.newVersionInfo?.version)">
@@ -216,6 +216,14 @@
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path>
                     </svg>
                     <span class="font-medium"><AnimatedText>{{ $t('modal.liveryAircraftNotFound') }}</AnimatedText></span>
+                  </div>
+
+                  <!-- FlyWithLua not installed warning -->
+                  <div v-if="task.type === 'LuaScript' && task.flyWithLuaInstalled === false" class="mt-1.5 flex items-center space-x-1.5 text-xs text-red-600 dark:text-red-400">
+                    <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path>
+                    </svg>
+                    <span class="font-medium"><AnimatedText>{{ $t('modal.flyWithLuaRequired') }}</AnimatedText></span>
                   </div>
 
                   <!-- Locked conflict warning -->
@@ -365,15 +373,20 @@ function isLiveryWithoutAircraft(task: any): boolean {
   return task.type === 'Livery' && task.liveryAircraftFound === false
 }
 
+// Check if task is a Lua script without FlyWithLua installed
+function isLuaWithoutFlyWithLua(task: any): boolean {
+  return task.type === 'LuaScript' && task.flyWithLuaInstalled === false
+}
+
 // Check if task has a locked conflict (target exists and is locked)
 function isLockedConflict(task: any): boolean {
   if (!task.conflictExists) return false
   return lockStore.isPathLocked(task.targetPath, store.xplanePath)
 }
 
-// Check if task should be disabled (livery without aircraft OR locked conflict)
+// Check if task should be disabled (livery without aircraft OR locked conflict OR lua without FlyWithLua)
 function isTaskDisabled(task: any): boolean {
-  return isLiveryWithoutAircraft(task) || isLockedConflict(task)
+  return isLiveryWithoutAircraft(task) || isLockedConflict(task) || isLuaWithoutFlyWithLua(task)
 }
 
 // Get backup liveries setting for a task
@@ -413,6 +426,8 @@ function getTypeBadgeClass(type: AddonType) {
       return 'bg-amber-600'
     case AddonType.Livery:
       return 'bg-pink-600'
+    case AddonType.LuaScript:
+      return 'bg-cyan-600'
     default:
       return 'bg-gray-600'
   }
@@ -684,6 +699,11 @@ function getTypeBadgeClass(type: AddonType) {
 
 .type-badge.bg-pink-600 {
   background: linear-gradient(135deg, rgba(219, 39, 119, 0.8), rgba(236, 72, 153, 0.8));
+  color: white;
+}
+
+.type-badge.bg-cyan-600 {
+  background: linear-gradient(135deg, rgba(8, 145, 178, 0.8), rgba(6, 182, 212, 0.8));
   color: white;
 }
 

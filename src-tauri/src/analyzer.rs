@@ -357,8 +357,8 @@ impl Analyzer {
         result
     }
 
-    /// Filter items by priority: plugins inside aircraft/scenery are removed
-    /// Priority: Aircraft, Scenery, SceneryLibrary, Navdata > Plugin
+    /// Filter items by priority: plugins/lua scripts inside aircraft/scenery are removed
+    /// Priority: Aircraft, Scenery, SceneryLibrary, Navdata > Plugin, Livery > LuaScript
     fn filter_by_priority(&self, items: Vec<DetectedItem>) -> Vec<DetectedItem> {
         let high_priority_types = [
             AddonType::Aircraft,
@@ -367,34 +367,74 @@ impl Analyzer {
             AddonType::Navdata,
         ];
 
-        // Separate high-priority and low-priority items
-        let (high_priority, low_priority): (Vec<_>, Vec<_>) = items
+        let medium_priority_types = [
+            AddonType::Plugin,
+            AddonType::Livery,
+        ];
+
+        // Separate items by priority level
+        let (high_priority, rest): (Vec<_>, Vec<_>) = items
             .into_iter()
             .partition(|item| high_priority_types.contains(&item.addon_type));
 
-        // Filter low-priority items: remove if nested inside any high-priority item
+        let (medium_priority, low_priority): (Vec<_>, Vec<_>) = rest
+            .into_iter()
+            .partition(|item| medium_priority_types.contains(&item.addon_type));
+
+        // Filter medium-priority items: remove if nested inside any high-priority item
+        let filtered_medium_priority: Vec<DetectedItem> = medium_priority
+            .into_iter()
+            .filter(|med_item| {
+                let med_path = self.get_effective_path(med_item);
+
+                // Check if this medium-priority item is inside any high-priority item
+                !high_priority.iter().any(|high_item| {
+                    // Must be from the same source (same archive or same directory tree)
+                    if !self.same_source(med_item, high_item) {
+                        return false;
+                    }
+
+                    let high_path = self.get_effective_path(high_item);
+
+                    // If medium-priority item is under high-priority path, filter it out
+                    med_path.starts_with(&high_path) && med_path != high_path
+                })
+            })
+            .collect();
+
+        // Filter low-priority items (LuaScript): remove if nested inside any high or medium priority item
         let filtered_low_priority: Vec<DetectedItem> = low_priority
             .into_iter()
             .filter(|low_item| {
                 let low_path = self.get_effective_path(low_item);
 
                 // Check if this low-priority item is inside any high-priority item
-                !high_priority.iter().any(|high_item| {
-                    // Must be from the same source (same archive or same directory tree)
+                let inside_high = high_priority.iter().any(|high_item| {
                     if !self.same_source(low_item, high_item) {
                         return false;
                     }
-
                     let high_path = self.get_effective_path(high_item);
-
-                    // If low-priority item is under high-priority path, filter it out
                     low_path.starts_with(&high_path) && low_path != high_path
+                });
+
+                if inside_high {
+                    return false;
+                }
+
+                // Check if this low-priority item is inside any medium-priority item
+                !filtered_medium_priority.iter().any(|med_item| {
+                    if !self.same_source(low_item, med_item) {
+                        return false;
+                    }
+                    let med_path = self.get_effective_path(med_item);
+                    low_path.starts_with(&med_path) && low_path != med_path
                 })
             })
             .collect();
 
         // Merge results
         let mut result = high_priority;
+        result.extend(filtered_medium_priority);
         result.extend(filtered_low_priority);
         result
     }
@@ -591,7 +631,8 @@ impl Analyzer {
         let xplane_root = Path::new(xplane_path);
 
         // For Livery type, we need special handling to find the target aircraft
-        let (target_path, livery_aircraft_found) = if item.addon_type == AddonType::Livery {
+        // For LuaScript type, we need to check if FlyWithLua is installed
+        let (target_path, livery_aircraft_found, flywithlua_installed) = if item.addon_type == AddonType::Livery {
             // Extract the livery name from display_name (remove the aircraft name suffix)
             // The display_name format is: "{livery_name} ({aircraft_name})"
             // We need to find the LAST " (" to handle livery names that contain parentheses
@@ -609,7 +650,7 @@ impl Analyzer {
                 {
                     // Found the aircraft, install to its liveries folder
                     let liveries_path = aircraft_folder.join("liveries").join(&livery_name);
-                    (liveries_path, true)
+                    (liveries_path, true, true)
                 } else {
                     // Aircraft not found, use a placeholder path
                     let placeholder = xplane_root
@@ -617,7 +658,7 @@ impl Analyzer {
                         .join("[Aircraft Not Found]")
                         .join("liveries")
                         .join(&livery_name);
-                    (placeholder, false)
+                    (placeholder, false, true)
                 }
             } else {
                 // No aircraft type specified, shouldn't happen but handle gracefully
@@ -626,10 +667,23 @@ impl Analyzer {
                     .join("[Unknown Aircraft]")
                     .join("liveries")
                     .join(&livery_name);
-                (placeholder, false)
+                (placeholder, false, true)
             }
+        } else if item.addon_type == AddonType::LuaScript {
+            // LuaScript: install to FlyWithLua/Scripts directory
+            let flywithlua_path = xplane_root
+                .join("Resources")
+                .join("plugins")
+                .join("FlyWithLua");
+            let flywithlua_exists = flywithlua_path.exists();
+
+            let target = flywithlua_path
+                .join("Scripts")
+                .join(&item.display_name);
+
+            (target, true, flywithlua_exists)
         } else {
-            // Standard handling for non-livery types
+            // Standard handling for non-livery, non-lua types
             let target_base = match item.addon_type {
                 AddonType::Aircraft => xplane_root.join("Aircraft"),
                 AddonType::Scenery | AddonType::SceneryLibrary => {
@@ -645,7 +699,7 @@ impl Analyzer {
                         xplane_root.join("Custom Data")
                     }
                 }
-                AddonType::Livery => unreachable!(), // Already handled above
+                AddonType::Livery | AddonType::LuaScript => unreachable!(), // Already handled above
             };
 
             // For Navdata, install directly into target_base (don't create subfolder)
@@ -655,7 +709,7 @@ impl Analyzer {
             } else {
                 target_base.join(&item.display_name)
             };
-            (path, true) // Non-livery types always have aircraft_found = true
+            (path, true, true) // Non-livery/lua types always have aircraft_found = true and flywithlua_installed = true
         };
 
         // Check if target already exists
@@ -760,6 +814,7 @@ impl Analyzer {
             enable_verification,       // Based on verification preferences
             livery_aircraft_type: item.livery_aircraft_type,
             livery_aircraft_found,
+            flywithlua_installed,
         }
     }
 
@@ -1128,6 +1183,7 @@ mod tests {
             enable_verification: true,
             livery_aircraft_type: None,
             livery_aircraft_found: false,
+            flywithlua_installed: true,
         }
     }
 

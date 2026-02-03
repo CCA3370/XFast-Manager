@@ -256,6 +256,7 @@ impl Scanner {
 
     /// Get marker type priority (lower number = higher priority)
     /// Aircraft (.acf) has highest priority to ensure plugins inside aircraft are skipped
+    /// LuaScript has lowest priority to ensure lua files inside other addons are skipped
     #[inline]
     fn marker_type_priority(marker_type: &str) -> u8 {
         match marker_type {
@@ -265,7 +266,8 @@ impl Scanner {
             "navdata" => 3,  // Navigation data
             "xpl" => 4,      // Plugin
             "livery" => 5,   // Livery
-            _ => 6,
+            "lua" => 6,      // Lua script - lowest priority
+            _ => 7,
         }
     }
 
@@ -298,7 +300,14 @@ impl Scanner {
         if path.is_dir() {
             detected_items.extend(self.scan_directory(path)?);
         } else if path.is_file() {
-            detected_items.extend(self.scan_archive_with_context(path, ctx)?);
+            // Check if it's a standalone .lua file
+            if path.extension().and_then(|s| s.to_str()) == Some("lua") {
+                if let Some(item) = self.check_lua_script(path, path)? {
+                    detected_items.push(item);
+                }
+            } else {
+                detected_items.extend(self.scan_archive_with_context(path, ctx)?);
+            }
         }
 
         Ok(detected_items)
@@ -469,6 +478,13 @@ impl Scanner {
                 if let Some(item) = self.check_livery(file_path, dir)? {
                     let root = PathBuf::from(&item.path);
                     skip_dirs.insert(root);
+                    detected.push(item);
+                    continue;
+                }
+
+                // Lua script detection (lowest priority - only standalone .lua files)
+                if let Some(item) = self.check_lua_script(file_path, dir)? {
+                    // Don't add to skip_dirs - lua files are single files, not directories
                     detected.push(item);
                     continue;
                 }
@@ -672,6 +688,9 @@ impl Scanner {
                 marker_files.push((normalized, "dsf"));
             } else if normalized.ends_with("cycle.json") {
                 marker_files.push((normalized, "navdata"));
+            } else if normalized.ends_with(".lua") {
+                // Lua script detection (lowest priority)
+                marker_files.push((normalized, "lua"));
             }
         }
 
@@ -755,6 +774,7 @@ impl Scanner {
                     }
                 }
                 "livery" => self.detect_livery_in_archive(&file_path, archive_path)?,
+                "lua" => self.detect_lua_script_in_archive(&file_path, archive_path)?,
                 _ => None,
             };
 
@@ -1480,6 +1500,9 @@ impl Scanner {
                 marker_files.push((normalized, "dsf"));
             } else if normalized.ends_with("cycle.json") {
                 marker_files.push((normalized, "navdata"));
+            } else if normalized.ends_with(".lua") {
+                // Lua script detection (lowest priority)
+                marker_files.push((normalized, "lua"));
             }
         }
 
@@ -1538,6 +1561,7 @@ impl Scanner {
                     }
                 }
                 "livery" => self.detect_livery_in_archive(&file_path, archive_path)?,
+                "lua" => self.detect_lua_script_in_archive(&file_path, archive_path)?,
                 _ => None,
             };
 
@@ -1728,6 +1752,9 @@ impl Scanner {
                 marker_files.push((file_path.clone(), "dsf"));
             } else if file_path.ends_with("cycle.json") {
                 marker_files.push((file_path.clone(), "navdata"));
+            } else if file_path.ends_with(".lua") {
+                // Lua script detection (lowest priority)
+                marker_files.push((file_path.clone(), "lua"));
             }
 
             // Check for livery patterns
@@ -1820,6 +1847,7 @@ impl Scanner {
                     }
                 }
                 "livery" => self.detect_livery_in_archive(&file_path, archive_path)?,
+                "lua" => self.detect_lua_script_in_archive(&file_path, archive_path)?,
                 _ => None,
             };
 
@@ -2041,6 +2069,9 @@ impl Scanner {
                 marker_files.push((i, file_path, is_encrypted, "dsf"));
             } else if file_path.ends_with("cycle.json") {
                 marker_files.push((i, file_path, is_encrypted, "navdata"));
+            } else if file_path.ends_with(".lua") {
+                // Lua script detection (lowest priority)
+                marker_files.push((i, file_path, is_encrypted, "lua"));
             }
         }
 
@@ -2193,6 +2224,7 @@ impl Scanner {
                     }
                 }
                 "livery" => self.detect_livery_in_archive(&file_path, zip_path)?,
+                "lua" => self.detect_lua_script_in_archive(&file_path, zip_path)?,
                 _ => None,
             };
 
@@ -2486,6 +2518,9 @@ impl Scanner {
                 marker_files.push((i, file_path, "dsf"));
             } else if file_path.ends_with("cycle.json") {
                 marker_files.push((i, file_path, "navdata"));
+            } else if file_path.ends_with(".lua") {
+                // Lua script detection (lowest priority)
+                marker_files.push((i, file_path, "lua"));
             }
         }
 
@@ -2549,6 +2584,7 @@ impl Scanner {
                     }
                 }
                 "livery" => self.detect_livery_in_archive(&file_path, parent_path)?,
+                "lua" => self.detect_lua_script_in_archive(&file_path, parent_path)?,
                 _ => None,
             };
 
@@ -2717,6 +2753,9 @@ impl Scanner {
                 marker_files.push((i, file_path, is_encrypted, "dsf"));
             } else if file_path.ends_with("cycle.json") {
                 marker_files.push((i, file_path, is_encrypted, "navdata"));
+            } else if file_path.ends_with(".lua") {
+                // Lua script detection (lowest priority)
+                marker_files.push((i, file_path, is_encrypted, "lua"));
             }
         }
 
@@ -2853,6 +2892,7 @@ impl Scanner {
                     }
                 }
                 "livery" => self.detect_livery_in_archive(&file_path, zip_path)?,
+                "lua" => self.detect_lua_script_in_archive(&file_path, zip_path)?,
                 _ => None,
             };
 
@@ -3525,5 +3565,65 @@ impl Scanner {
         } else {
             Ok(None)
         }
+    }
+
+    // Type G: Lua Script Detection (for FlyWithLua)
+    fn check_lua_script(&self, file_path: &Path, _root: &Path) -> Result<Option<DetectedItem>> {
+        // Only detect .lua files
+        if file_path.extension().and_then(|s| s.to_str()) != Some("lua") {
+            return Ok(None);
+        }
+
+        // Get the file name (without extension) as display name
+        let display_name = file_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Unknown Script")
+            .to_string();
+
+        Ok(Some(DetectedItem {
+            original_input_path: String::new(),
+            addon_type: AddonType::LuaScript,
+            path: file_path.to_string_lossy().to_string(),
+            display_name,
+            archive_internal_root: None,
+            extraction_chain: None,
+            navdata_info: None,
+            livery_aircraft_type: None,
+            version_info: None,
+        }))
+    }
+
+    fn detect_lua_script_in_archive(
+        &self,
+        file_path: &str,
+        archive_path: &Path,
+    ) -> Result<Option<DetectedItem>> {
+        let path = PathBuf::from(file_path);
+
+        // Get the file name as display name
+        let display_name = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Unknown Script")
+            .to_string();
+
+        // For archives, the internal root is the parent directory of the lua file (if any)
+        let internal_root = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(|p| p.to_string_lossy().to_string());
+
+        Ok(Some(DetectedItem {
+            original_input_path: String::new(),
+            addon_type: AddonType::LuaScript,
+            path: archive_path.to_string_lossy().to_string(),
+            display_name,
+            archive_internal_root: internal_root,
+            extraction_chain: None,
+            navdata_info: None,
+            livery_aircraft_type: None,
+            version_info: None,
+        }))
     }
 }

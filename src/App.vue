@@ -92,6 +92,25 @@
         <div class="h-6 w-px bg-gray-200 dark:bg-white/10 transition-colors"></div>
 
         <div class="flex items-center space-x-1">
+          <!-- Always on top button -->
+          <button
+            @click="toggleAlwaysOnTop"
+            class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
+            :class="isAlwaysOnTop ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
+            :title="isAlwaysOnTop ? 'Unpin window' : 'Pin window on top'"
+          >
+            <div
+              class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-center"
+              :class="isAlwaysOnTop ? 'scale-100 opacity-100' : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50'"
+            ></div>
+            <span class="relative flex items-center z-10">
+              <!-- Pin icon -->
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                <path v-if="isAlwaysOnTop" stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" fill="currentColor" />
+                <path v-else stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+              </svg>
+            </span>
+          </button>
           <ThemeSwitcher />
           <LanguageSwitcher />
         </div>
@@ -146,6 +165,19 @@ const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
 
+// Always on top state
+const isAlwaysOnTop = ref(false)
+
+async function toggleAlwaysOnTop() {
+  try {
+    const appWindow = getCurrentWindow()
+    isAlwaysOnTop.value = !isAlwaysOnTop.value
+    await appWindow.setAlwaysOnTop(isAlwaysOnTop.value)
+  } catch (error) {
+    logError(`Failed to toggle always on top: ${error}`, 'app')
+  }
+}
+
 // Route order for determining transition direction
 const routeOrder: Record<string, number> = {
   '/': 0,
@@ -190,6 +222,18 @@ onMounted(async () => {
     if (store.isWindows) {
       store.isContextMenuRegistered = await invoke<boolean>('is_context_menu_registered')
       logDebug(`Context menu registered: ${store.isContextMenuRegistered}`, 'app')
+
+      // Sync context menu paths if registered (handles exe relocation)
+      if (store.isContextMenuRegistered) {
+        try {
+          const updated = await invoke<boolean>('sync_context_menu_paths')
+          if (updated) {
+            logDebug('Context menu paths synced to current location', 'app')
+          }
+        } catch (error) {
+          logError(`Failed to sync context menu paths: ${error}`, 'app')
+        }
+      }
     }
   } catch (error) {
     logError(`Failed to detect platform: ${error}`, 'app')
@@ -342,6 +386,12 @@ onMounted(async () => {
   background-color: var(--app-bg-from);
 }
 
+nav {
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
 .main-content {
   flex: 1;
   min-height: 0;
@@ -394,6 +444,8 @@ onMounted(async () => {
 .page-right-enter-active,
 .page-right-leave-active {
   transition: all 0.2s ease;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
 /* Going left (e.g., Home -> Management -> Settings) */

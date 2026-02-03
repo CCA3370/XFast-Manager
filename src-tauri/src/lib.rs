@@ -199,6 +199,12 @@ fn is_context_menu_registered() -> bool {
     registry::is_context_menu_registered()
 }
 
+#[tauri::command]
+fn sync_context_menu_paths() -> Result<bool, String> {
+    registry::sync_registry_paths()
+        .map_err(|e| format!("Failed to sync context menu paths: {}", e))
+}
+
 // ============================================================================
 // Logging Commands
 // ============================================================================
@@ -406,6 +412,46 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
 
     logger::log_info("X-Plane launched", Some("app"));
     Ok(())
+}
+
+#[tauri::command]
+fn is_xplane_running() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        // Use tasklist to check if X-Plane.exe is running
+        if let Ok(output) = std::process::Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq X-Plane.exe", "/NH"])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return stdout.contains("X-Plane.exe");
+        }
+        false
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // Use pgrep to check if X-Plane process is running
+        if let Ok(output) = std::process::Command::new("pgrep")
+            .args(["-x", "X-Plane"])
+            .output()
+        {
+            return output.status.success();
+        }
+        false
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Use pgrep to check if X-Plane process is running
+        if let Ok(output) = std::process::Command::new("pgrep")
+            .args(["-x", "X-Plane"])
+            .output()
+        {
+            return output.status.success();
+        }
+        false
+    }
 }
 
 #[tauri::command]
@@ -857,6 +903,7 @@ pub fn run() {
             register_context_menu,
             unregister_context_menu,
             is_context_menu_registered,
+            sync_context_menu_paths,
             log_from_frontend,
             get_recent_logs,
             get_log_path,
@@ -868,6 +915,7 @@ pub fn run() {
             set_log_level,
             check_path_exists,
             launch_xplane,
+            is_xplane_running,
             validate_xplane_path,
             check_for_updates,
             get_last_check_time,
