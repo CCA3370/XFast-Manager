@@ -979,15 +979,44 @@ fn copy_symlink(src: &Path, dst: &Path, base_dir: &Path, depth: usize) -> Result
     };
 
     if target_is_dir {
-        symlink_dir(&target, dst).context(format!(
-            "Failed to create directory symlink: {:?} -> {:?}",
-            dst, target
-        ))?;
+        if let Err(e) = symlink_dir(&target, dst) {
+            logger::log_error(
+                &format!(
+                    "Failed to create directory symlink: {:?} -> {:?} ({}). Falling back to copy.",
+                    dst, target, e
+                ),
+                Some("atomic_installer"),
+            );
+            if resolved.exists() {
+                copy_directory_recursive(&resolved, dst)?;
+            } else {
+                return Err(anyhow::anyhow!(format!(
+                    "Failed to create directory symlink and target missing: {:?} -> {:?} ({})",
+                    dst, target, e
+                )));
+            }
+        }
     } else {
-        symlink_file(&target, dst).context(format!(
-            "Failed to create file symlink: {:?} -> {:?}",
-            dst, target
-        ))?;
+        if let Err(e) = symlink_file(&target, dst) {
+            logger::log_error(
+                &format!(
+                    "Failed to create file symlink: {:?} -> {:?} ({}). Falling back to copy.",
+                    dst, target, e
+                ),
+                Some("atomic_installer"),
+            );
+            if resolved.exists() {
+                fs::copy(&resolved, dst).context(format!(
+                    "Failed to copy symlink target: {:?} -> {:?}",
+                    resolved, dst
+                ))?;
+            } else {
+                return Err(anyhow::anyhow!(format!(
+                    "Failed to create file symlink and target missing: {:?} -> {:?} ({})",
+                    dst, target, e
+                )));
+            }
+        }
     }
 
     Ok(())

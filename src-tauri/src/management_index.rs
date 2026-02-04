@@ -12,8 +12,50 @@ use crate::models::{AircraftInfo, ManagementData, NavdataBackupInfo, NavdataBack
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+
+/// Validate a folder name to prevent path traversal and separator injection
+fn validate_folder_name(folder_name: &str) -> Result<()> {
+    if folder_name.is_empty()
+        || folder_name.contains("..")
+        || folder_name.contains('/')
+        || folder_name.contains('\\')
+    {
+        return Err(anyhow!("Invalid folder name"));
+    }
+    Ok(())
+}
+
+/// Resolve a management folder path with strict validation
+fn resolve_management_path(xplane_path: &Path, item_type: &str, folder_name: &str) -> Result<PathBuf> {
+    validate_folder_name(folder_name)?;
+
+    let base_path = match item_type {
+        "aircraft" => xplane_path.join("Aircraft"),
+        "plugin" => xplane_path.join("Resources").join("plugins"),
+        "navdata" => xplane_path.join("Custom Data"),
+        _ => return Err(anyhow!("Unknown item type: {}", item_type)),
+    };
+
+    let target_path = base_path.join(folder_name);
+    if !target_path.exists() {
+        return Err(anyhow!("Folder not found: {}", folder_name));
+    }
+
+    let canonical_base = base_path
+        .canonicalize()
+        .map_err(|e| anyhow!("Invalid base path: {}", e))?;
+    let canonical_target = target_path
+        .canonicalize()
+        .map_err(|e| anyhow!("Invalid path: {}", e))?;
+
+    if !canonical_target.starts_with(&canonical_base) {
+        return Err(anyhow!("Invalid path"));
+    }
+
+    Ok(canonical_target)
+}
 
 /// Scan aircraft in the X-Plane Aircraft folder
 pub fn scan_aircraft(xplane_path: &Path) -> Result<ManagementData<AircraftInfo>> {
@@ -663,16 +705,7 @@ pub fn toggle_management_item(
     item_type: &str,
     folder_name: &str,
 ) -> Result<bool> {
-    let base_path = match item_type {
-        "aircraft" => xplane_path.join("Aircraft"),
-        "plugin" => xplane_path.join("Resources").join("plugins"),
-        _ => return Err(anyhow!("Unknown item type: {}", item_type)),
-    };
-
-    let current_path = base_path.join(folder_name);
-    if !current_path.exists() {
-        return Err(anyhow!("Folder not found: {}", folder_name));
-    }
+    let current_path = resolve_management_path(xplane_path, item_type, folder_name)?;
 
     match item_type {
         "aircraft" => toggle_aircraft_files(&current_path, folder_name),
@@ -800,23 +833,7 @@ fn toggle_plugin_files(folder_path: &Path, folder_name: &str) -> Result<bool> {
 
 /// Delete a management item folder
 pub fn delete_management_item(xplane_path: &Path, item_type: &str, folder_name: &str) -> Result<()> {
-    let base_path = match item_type {
-        "aircraft" => xplane_path.join("Aircraft"),
-        "plugin" => xplane_path.join("Resources").join("plugins"),
-        "navdata" => xplane_path.join("Custom Data"),
-        _ => return Err(anyhow!("Unknown item type: {}", item_type)),
-    };
-
-    let target_path = base_path.join(folder_name);
-    if !target_path.exists() {
-        return Err(anyhow!("Folder not found: {}", folder_name));
-    }
-
-    // Safety check: ensure path is within the expected base directory
-    if !target_path.starts_with(&base_path) {
-        return Err(anyhow!("Invalid path"));
-    }
-
+    let target_path = resolve_management_path(xplane_path, item_type, folder_name)?;
     fs::remove_dir_all(&target_path)?;
 
     logger::log_info(
@@ -833,17 +850,7 @@ pub fn open_management_folder(
     item_type: &str,
     folder_name: &str,
 ) -> Result<()> {
-    let base_path = match item_type {
-        "aircraft" => xplane_path.join("Aircraft"),
-        "plugin" => xplane_path.join("Resources").join("plugins"),
-        "navdata" => xplane_path.join("Custom Data"),
-        _ => return Err(anyhow!("Unknown item type: {}", item_type)),
-    };
-
-    let target_path = base_path.join(folder_name);
-    if !target_path.exists() {
-        return Err(anyhow!("Folder not found: {}", folder_name));
-    }
+    let target_path = resolve_management_path(xplane_path, item_type, folder_name)?;
 
     #[cfg(target_os = "windows")]
     {
@@ -985,16 +992,7 @@ pub fn set_cfg_disabled(
     folder_name: &str,
     disabled: bool,
 ) -> Result<()> {
-    let base_path = match item_type {
-        "aircraft" => xplane_path.join("Aircraft"),
-        "plugin" => xplane_path.join("Resources").join("plugins"),
-        _ => return Err(anyhow!("Unknown item type: {}", item_type)),
-    };
-
-    let folder_path = base_path.join(folder_name);
-    if !folder_path.exists() {
-        return Err(anyhow!("Folder not found: {}", folder_name));
-    }
+    let folder_path = resolve_management_path(xplane_path, item_type, folder_name)?;
 
     let cfg_path = folder_path.join("skunkcrafts_updater.cfg");
 

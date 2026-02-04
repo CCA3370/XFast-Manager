@@ -22,6 +22,8 @@ mod updater;
 mod verifier;
 
 use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -247,33 +249,55 @@ fn open_log_folder() -> Result<(), String> {
 
 // ========== Scenery Folder Commands ==========
 
-#[tauri::command]
-fn open_scenery_folder(xplane_path: String, folder_name: String) -> error::ApiResult<()> {
-    // Security: Validate folder_name doesn't contain path traversal sequences
-    if folder_name.contains("..") || folder_name.contains('/') || folder_name.contains('\\') {
+fn validate_scenery_folder_name(folder_name: &str) -> error::ApiResult<()> {
+    if folder_name.is_empty() || folder_name.contains("..") || folder_name.contains('/') || folder_name.contains('\\') {
         return Err(error::ApiError::security_violation(
             "Invalid folder name: path traversal not allowed",
         ));
     }
+    Ok(())
+}
 
-    let scenery_path = std::path::PathBuf::from(&xplane_path)
-        .join("Custom Scenery")
-        .join(&folder_name);
+fn resolve_scenery_entry_path(xplane_path: &str, folder_name: &str) -> error::ApiResult<(PathBuf, PathBuf)> {
+    validate_scenery_folder_name(folder_name)?;
 
-    if !scenery_path.exists() {
-        return Err(error::ApiError::with_details(
-            error::ApiErrorCode::NotFound,
-            "Scenery folder not found",
-            &folder_name,
-        ));
+    let base_path = PathBuf::from(xplane_path).join("Custom Scenery");
+    let candidate = base_path.join(folder_name);
+    if candidate.exists() {
+        return Ok((candidate, base_path));
     }
 
-    // Security: Use canonicalize for strict path validation to prevent path traversal attacks
-    let canonical_path = scenery_path
+    #[cfg(target_os = "windows")]
+    {
+        let lnk_path = base_path.join(format!("{}.lnk", folder_name));
+        if lnk_path.exists() {
+            return Ok((lnk_path, base_path));
+        }
+    }
+
+    Err(error::ApiError::with_details(
+        error::ApiErrorCode::NotFound,
+        "Scenery folder not found",
+        folder_name,
+    ))
+}
+
+#[tauri::command]
+fn open_scenery_folder(xplane_path: String, folder_name: String) -> error::ApiResult<()> {
+    let (entry_path, base_path) = resolve_scenery_entry_path(&xplane_path, &folder_name)?;
+    let metadata = fs::symlink_metadata(&entry_path)
+        .map_err(|e| error::ApiError::validation(format!("Invalid path: {}", e)))?;
+
+    // If it's a symlink, open the link itself to allow external targets
+    if metadata.file_type().is_symlink() {
+        return open_in_explorer(&entry_path).map_err(|e| error::ApiError::internal(e));
+    }
+
+    // For regular directories/files, enforce canonical base containment
+    let canonical_path = entry_path
         .canonicalize()
         .map_err(|e| error::ApiError::validation(format!("Invalid path: {}", e)))?;
-    let canonical_base = std::path::PathBuf::from(&xplane_path)
-        .join("Custom Scenery")
+    let canonical_base = base_path
         .canonicalize()
         .map_err(|e| error::ApiError::validation(format!("Invalid base path: {}", e)))?;
 
@@ -291,51 +315,68 @@ async fn delete_scenery_folder(
     xplane_path: String,
     folder_name: String,
 ) -> error::ApiResult<()> {
-    // Security: Validate folder_name doesn't contain path traversal sequences
-    if folder_name.contains("..") || folder_name.contains('/') || folder_name.contains('\\') {
-        return Err(error::ApiError::security_violation(
-            "Invalid folder name: path traversal not allowed",
-        ));
-    }
-
-    let scenery_path = std::path::PathBuf::from(&xplane_path)
-        .join("Custom Scenery")
-        .join(&folder_name);
-
-    if !scenery_path.exists() {
-        return Err(error::ApiError::with_details(
-            error::ApiErrorCode::NotFound,
-            "Scenery folder not found",
-            &folder_name,
-        ));
-    }
-
-    // Security: Use canonicalize for strict path validation to prevent path traversal attacks
-    let canonical_path = scenery_path
-        .canonicalize()
+    let (entry_path, base_path) = resolve_scenery_entry_path(&xplane_path, &folder_name)?;
+    let metadata = fs::symlink_metadata(&entry_path)
         .map_err(|e| error::ApiError::validation(format!("Invalid path: {}", e)))?;
-    let canonical_base = std::path::PathBuf::from(&xplane_path)
-        .join("Custom Scenery")
-        .canonicalize()
-        .map_err(|e| error::ApiError::validation(format!("Invalid base path: {}", e)))?;
 
-    if !canonical_path.starts_with(&canonical_base) {
-        return Err(error::ApiError::security_violation(
-            "Path traversal attempt detected",
-        ));
-    }
-
-    // Delete the folder using the canonical path for safety
-    std::fs::remove_dir_all(&canonical_path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::PermissionDenied {
-            error::ApiError::permission_denied(format!(
-                "Permission denied when deleting: {}",
-                folder_name
-            ))
-        } else {
-            error::ApiError::internal(format!("Failed to delete scenery folder: {}", e))
+    if metadata.file_type().is_symlink() {
+        // Remove the symlink itself without following it
+        if let Err(e) = fs::remove_file(&entry_path) {
+            // Some platforms treat directory symlinks differently
+            if let Err(e2) = fs::remove_dir(&entry_path) {
+                if e.kind() == std::io::ErrorKind::PermissionDenied
+                    || e2.kind() == std::io::ErrorKind::PermissionDenied
+                {
+                    return Err(error::ApiError::permission_denied(format!(
+                        "Permission denied when deleting: {}",
+                        folder_name
+                    )));
+                }
+                return Err(error::ApiError::internal(format!(
+                    "Failed to delete scenery link: {} ({}; {})",
+                    folder_name, e, e2
+                )));
+            }
         }
-    })?;
+    } else if metadata.is_file() {
+        // Handle Windows .lnk shortcuts or other file entries
+        fs::remove_file(&entry_path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                error::ApiError::permission_denied(format!(
+                    "Permission denied when deleting: {}",
+                    folder_name
+                ))
+            } else {
+                error::ApiError::internal(format!("Failed to delete scenery file: {}", e))
+            }
+        })?;
+    } else {
+        // Security: Use canonicalize for strict path validation to prevent path traversal attacks
+        let canonical_path = entry_path
+            .canonicalize()
+            .map_err(|e| error::ApiError::validation(format!("Invalid path: {}", e)))?;
+        let canonical_base = base_path
+            .canonicalize()
+            .map_err(|e| error::ApiError::validation(format!("Invalid base path: {}", e)))?;
+
+        if !canonical_path.starts_with(&canonical_base) {
+            return Err(error::ApiError::security_violation(
+                "Path traversal attempt detected",
+            ));
+        }
+
+        // Delete the folder using the canonical path for safety
+        fs::remove_dir_all(&canonical_path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                error::ApiError::permission_denied(format!(
+                    "Permission denied when deleting: {}",
+                    folder_name
+                ))
+            } else {
+                error::ApiError::internal(format!("Failed to delete scenery folder: {}", e))
+            }
+        })?;
+    }
 
     // Remove from scenery index if it exists
     if let Err(e) = scenery_index::remove_scenery_entry(&xplane_path, &folder_name) {
