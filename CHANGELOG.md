@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.7] - 2026-02-04
+
+### Fixed
+
+- **Scenery External Links** - Opening and deleting scenery entries that are shortcuts/symlinks outside Custom Scenery now works, and deletion removes the link itself.
+- **Windows Symlink Installs** - Atomic install now falls back to copying when symlink creation isn't permitted, preventing install failures on Windows.
+- **Delete Source Safety** - "Delete source after install" now skips deletion when the dragged path and detected addon root are nested, avoiding accidental partial or parent deletions.
+- **Management Path Validation** - Safer path checks for aircraft/plugin/navdata actions to prevent invalid folder operations.
+- **Startup Window Flicker** - Fixed a brief window flicker when running.
+
+### Changed
+
+- **Linux Packages** - Added required GTK/WebKit dependencies for DEB packaging to improve first-run reliability.
+
 ## [0.8.6] - 2026-02-03
 
 ### Added

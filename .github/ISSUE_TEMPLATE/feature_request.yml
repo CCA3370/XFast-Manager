@@ -1,0 +1,52 @@
+name: Feature Request
+description: Suggest a new feature or improvement for XFast Manager
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing your idea! Please describe the problem and the change you'd like.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Use Case
+      description: What problem are you trying to solve?
+      placeholder: "Managing multiple scenery libraries is slow and confusing..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: What should the app do?
+      placeholder: "Add a quick filter and bulk enable/disable for libraries..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: value
+    attributes:
+      label: User Value
+      description: Why is this useful? Who benefits?
+      placeholder: "Helps users keep libraries organized and reduce loading issues."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered (optional)
+      description: Any other approaches you considered?
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional Context / Mockups (optional)
+      description: Add context, screenshots, or sketches if helpful.
+    validations:
+      required: false

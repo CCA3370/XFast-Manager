@@ -9,164 +9,113 @@
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> •
-  <a href="#download">Download</a> •
-  <a href="#usage">Usage</a> •
-  <a href="#developer-guide">Developer Guide</a> •
-  <a href="#license">License</a>
+  <a href="https://github.com/CCA3370/XFast-Manager/actions/workflows/build-tauri.yml">
+    <img src="https://github.com/CCA3370/XFast-Manager/actions/workflows/build-tauri.yml/badge.svg" alt="Build">
+  </a>
+  <a href="https://github.com/CCA3370/XFast-Manager/actions/workflows/release.yml">
+    <img src="https://github.com/CCA3370/XFast-Manager/actions/workflows/release.yml/badge.svg" alt="Release">
+  </a>
+  <a href="https://github.com/CCA3370/XFast-Manager/releases">
+    <img src="https://img.shields.io/github/v/release/CCA3370/XFast-Manager?display_name=tag" alt="Latest Release">
+  </a>
+  <a href="https://img.shields.io/github/downloads/CCA3370/XFast-Manager/total.svg">
+    <img src="https://img.shields.io/github/downloads/CCA3370/XFast-Manager/total.svg" alt="Downloads">
+  </a>
+  <a href="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue">
+    <img src="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue" alt="Platforms">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License">
+  </a>
 </p>
 
----
+<p align="center">
+  <a href="https://github.com/CCA3370/XFast-Manager/releases"><strong>Download Latest Release</strong></a>
+</p>
 
-XFast Manager makes installing and managing X-Plane addons effortless. Drag and drop any addon file, and it's automatically installed to the right place. Available for Windows, macOS, and Linux.
-
----
-
-## Features
-
-### Drag & Drop Installation
-
-Simply drag addon files into the window. XFast Manager automatically detects what you're installing and puts it in the correct location:
-
-- **Aircraft** - Goes to `Aircraft/` folder
-- **Scenery** - Goes to `Custom Scenery/` folder
-- **Scenery Libraries** - Resource libraries for other scenery
-- **Plugins** - Goes to `Resources/plugins/` folder
-- **Navigation Data** - Supports GNS430 and Navigraph formats
-- **Liveries** - Matched with the correct aircraft automatically
-
-### Archive Support
-
-Install directly from compressed files without manual extraction:
-
-| Format | Encrypted Archives |
-|--------|-------------------|
-| ZIP | Fully supported |
-| 7z | Fully supported |
-| RAR | Fully supported |
-| Folders | Direct installation |
-
-### Unified Management
-
-View and manage everything you've installed in one place:
-
-- **Aircraft** - See all aircraft with version info and livery counts. Enable, disable, or remove with one click.
-- **Plugins** - View platform compatibility at a glance. Quickly enable or disable any plugin.
-- **Navigation Data** - See AIRAC cycle status. Get notified when data is outdated.
-- **Scenery** - Visual list of all scenery packages. Drag to reorder loading priority.
-
-### Smart Scenery Sorting
-
-Keep your scenery loading in the optimal order:
-
-- Automatically organizes scenery by type (airports, libraries, overlays, ortho, mesh)
-- SAM libraries always load first for proper animations
-- Drag and drop to fine-tune the order
-- Changes saved directly to `scenery_packs.ini`
-
-### Installation Options
-
-Choose how to handle existing addons:
-
-- **Fresh Install** - Quick installation when no conflicts exist
-- **Clean Install** - Removes old version first, automatically backs up your liveries and settings
-- **Overwrite** - Keeps existing files, only updates changed ones
-
-Additional options:
-- Automatically delete source files after successful installation
-- Verify file integrity after installation
-- Atomic installation mode for maximum safety with automatic rollback on failure
-
-### Update Detection
-
-Stay up to date without manual checking:
-
-- See available updates for aircraft and plugins
-- Navigation data shows current vs outdated status
-- Filter views to show only items with updates
-- App notifies you when a new version is available
-
-### Safety Features
-
-Install with confidence:
-
-- Warning when an addon already exists at the target location
-- Protection against malicious archive contents
-- Large file warnings before extraction
-- Confirmation required before overwriting
-
-### Interface
-
-A clean, modern experience:
-
-- Dark and light themes
-- English and Chinese languages (auto-detected)
-- Real-time installation progress
-- Skip or cancel individual tasks during batch installation
-- Detailed logs for troubleshooting
-
-### Windows Integration
-
-Right-click any file or folder and select "Install to X-Plane" to install instantly. No administrator privileges required.
+XFast Manager makes installing and managing X-Plane addons effortless. Drop in a file and get a ready-to-fly setup in minutes. Available for Windows, macOS, and Linux.
 
 ---
 
-## Download
+## For Users
 
-Get the latest version from [Releases](https://github.com/CCA3370/XFast-Manager/releases).
+### Experience at a Glance
+
+- **Install in seconds**: drag and drop any addon file, archive, or folder
+- **Zero guesswork**: the app identifies addon types and puts them in the right place
+- **Stay organized**: manage aircraft, plugins, navdata, and scenery in one view
+- **Safe and reversible**: backups, verification, and clear conflict warnings
+- **Polished UI**: light/dark themes, English/Chinese support, smooth progress feedback
+
+### What You Can Do
+
+- Install directly from ZIP, 7z, RAR, or folders without manual extraction
+- Manage aircraft, plugins, navdata, scenery, and liveries with quick actions
+- Keep scenery load order clean and stable with smart sorting
+- See update availability at a glance
+- Use a right-click install menu on Windows
+
+### Screenshots
+
+![Home and drag-and-drop](screenshots/feature-1.png)
+![Install options](screenshots/feature-2.png)
+![Scenery management](screenshots/feature-3.png)
+![Management overview](screenshots/feature-4.png)
+![Settings and preferences](screenshots/feature-5.png)
 
 ### System Requirements
 
 - Windows 10/11 (x64)
-- macOS 10.15+ (Intel & Apple Silicon)
-- Linux (x64, requires GTK3)
+- macOS 10.15+ (Intel or Apple Silicon)
+- Linux (x64, GTK3 + WebKit2GTK required)
 
-### First Launch
+### Getting Started
 
-1. Run the installer
-2. Follow the setup wizard to set your X-Plane path
-3. Configure your preferences (optional)
+1. Download the latest release from the Releases page.
+2. Launch the app and select your X-Plane folder.
+3. Drag your addon into the window and install.
+
+### FAQ
+
+**Does it support ZIP/7z/RAR archives?**  
+Yes. You can install directly from ZIP, 7z, or RAR without extracting first.
+
+**Can it handle conflicting versions?**  
+Yes. Choose clean install or overwrite, and enable verification for safety.
+
+**Is it safe to run while X-Plane is running?**  
+We recommend closing X-Plane during installs to avoid file locks.
+
+**Does it run on macOS and Linux?**  
+Yes. XFast Manager ships for Windows, macOS, and Linux.
+
+### Troubleshooting
+
+- **Install fails due to permissions**  
+Close X-Plane and file explorer windows, then retry.
+
+- **Windows context menu missing**  
+Enable it in Settings, then relaunch the app.
+
+- **Linux app does not start**  
+Install GTK3 and WebKit2GTK packages.
+
+- **Password requested**  
+Provide the archive password when prompted.
+
+### Support & Feedback
+
+- Found a bug or need help? Please open an issue with your OS, app version, and logs.
+- Feature requests are welcome via GitHub Issues.
 
 ---
 
-## Usage
-
-### Installing Addons
-
-**Drag & Drop:**
-1. Drag a ZIP, 7z, RAR file, or folder into the window
-2. Review detected addons and adjust options if needed
-3. Click "Install"
-
-**Right-Click Menu (Windows):**
-1. Enable "Context Menu Integration" in Settings
-2. Right-click any addon file
-3. Select "Install to X-Plane"
-
-### Managing Installed Content
-
-Click the "Management" tab to:
-- Browse all installed aircraft, plugins, and navigation data
-- Check for available updates
-- Enable, disable, or delete items
-- Open the folder location
-
-### Scenery Organization
-
-1. Enable "Auto-sort Scenery" in Settings
-2. Click "Build Index" on first use
-3. Go to the "Scenery" tab in Management
-4. Drag items to reorder
-5. Click "Apply Changes" to save
-
----
-
-## Developer Guide
+## For Developers
 
 ### Tech Stack
 
 | Layer | Technology |
-|-------|------------|
+|------|------------|
 | Frontend | Vue 3 + TypeScript + Tailwind CSS v4 |
 | Backend | Rust + Tauri 2 |
 | Build | Vite + Cargo |
@@ -190,16 +139,18 @@ XFast-Manager/
 │   ├── icons/              # Application icons
 │   └── capabilities/       # Tauri permissions
 ├── public/                 # Static assets
+├── screenshots/            # Screenshot assets for README
 └── scripts/                # Build scripts
 ```
 
-### Building
+### Development
 
-**Requirements:**
+**Requirements**
 - Node.js 18+
 - Rust 1.70+
-- Platform-specific dependencies (see [Tauri Prerequisites](https://tauri.app/start/prerequisites/))
+- Platform dependencies per Tauri prerequisites
 
+**Commands**
 ```bash
 # Install dependencies
 npm install
@@ -211,70 +162,22 @@ npm run tauri:dev
 npm run tauri:build
 ```
 
-### Key Backend Modules
+### Tests
 
-| Module | Purpose |
-|--------|---------|
-| `analyzer.rs` | Addon detection and classification |
-| `installer.rs` | File installation and backup |
-| `scanner.rs` | Scanning installed content |
-| `scenery.rs` | Scenery classification and sorting |
-| `updater.rs` | Update checking |
-| `archive/` | Archive handling (ZIP/7z/RAR) |
+- Rust unit tests: `cargo test` (run inside `src-tauri`)
+- No dedicated frontend test suite yet
 
----
+### Testers
 
-## Notes
+Thanks to: SINO1660, enenY, 🍊, Tong Wu, HTony03, CHN131
 
-### Data Storage
+### Extra Notes
 
-| Platform | Location |
-|----------|----------|
-| Windows | `%LOCALAPPDATA%\XFast Manager\` |
-| macOS | `~/Library/Application Support/XFast Manager/` |
-| Linux | `~/.local/share/XFast Manager/` |
+- App data is stored in platform-specific application data directories using the app identifier `com.xfastmanager.tool`.
+- RAR archives do not support file integrity verification.
+- Windows shortcut (.lnk) resolution is supported on Windows only.
 
-Stores:
-- `scenery.db` - Scenery index database
-- `logs/` - Application logs
+### License
 
-### Known Limitations
+This project is licensed under the GNU General Public License v3.0. See `LICENSE` for details.
 
-- RAR archives do not support file integrity verification
-- Windows shortcuts (.lnk) only resolved on Windows
-
----
-
-## Contributors
-
-**Development** - [CCA3370](https://forums.x-plane.org/profile/1288218-3370/)
-
-**Testing** - SINO1660, enenY, 🍊, Tong Wu, HTony03
-
----
-
-## License
-
-This project is licensed under the [GNU General Public License v3.0](LICENSE).
-
-```
-XFast Manager - X-Plane Addon Manager
-Copyright (C) 2026 3370Tech
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-```
-
----
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for version history.
-
----
-
-## Feedback
-
-Report issues at [GitHub Issues](https://github.com/CCA3370/XFast-Manager/issues).

@@ -4120,14 +4120,19 @@ impl Installer {
         let original_path = Path::new(original_input_path);
         let source_path_buf = Path::new(source_path);
 
-        // Check if source_path is a parent (or ancestor) of original_input_path
-        // This happens when we drag a subdirectory but the addon root is detected higher up
-        // Example: drag "PLUGIN/win_x64" but addon root is "PLUGIN"
-        if source_path_buf.starts_with(original_path) && source_path_buf != original_path {
+        // Skip deletion if either path is an ancestor of the other
+        // - Dragging a parent folder (addon root detected inside) would delete too much
+        // - Dragging a subfolder (addon root detected above) would delete only part of the addon
+        let original_is_parent = source_path_buf.starts_with(original_path)
+            && source_path_buf != original_path;
+        let source_is_parent = original_path.starts_with(source_path_buf)
+            && source_path_buf != original_path;
+
+        if original_is_parent || source_is_parent {
             logger::log_info(
                 &format!(
-                    "Skipping deletion: detected addon root ({}) is a parent of input path ({})",
-                    source_path, original_input_path
+                    "Skipping deletion: input path ({}) and detected addon root ({}) are nested",
+                    original_input_path, source_path
                 ),
                 Some("installer"),
             );

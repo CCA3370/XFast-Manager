@@ -1,6 +1,6 @@
 {
   "productName": "XFast Manager",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "identifier": "com.xfastmanager.tool",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -29,7 +29,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg", "deb", "rpm", "appimage", "nsis"],
+    "targets": ["app", "dmg", "deb", "rpm", "appimage", "msi"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -54,7 +54,10 @@
         "bundleMediaFramework": true
       },
       "deb": {
-        "depends": []
+        "depends": [
+          "libgtk-3-0",
+          "libwebkit2gtk-4.0-37 | libwebkit2gtk-4.1-0"
+        ]
       }
     }
   },
