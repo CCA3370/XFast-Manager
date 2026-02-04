@@ -23,6 +23,9 @@ mod verifier;
 
 use std::collections::HashMap;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 use crate::error::ToTauriError;
 use analyzer::Analyzer;
 use installer::Installer;
@@ -415,42 +418,126 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
 }
 
 #[tauri::command]
-fn is_xplane_running() -> bool {
+async fn is_xplane_running() -> bool {
     #[cfg(target_os = "windows")]
     {
-        // Use tasklist to check if X-Plane.exe is running
-        if let Ok(output) = std::process::Command::new("tasklist")
-            .args(["/FI", "IMAGENAME eq X-Plane.exe", "/NH"])
-            .output()
-        {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            return stdout.contains("X-Plane.exe");
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        // Run tasklist in a blocking task to avoid blocking the async runtime
+        let result = tokio::task::spawn_blocking(|| {
+            std::process::Command::new("tasklist")
+                .args(["/FI", "IMAGENAME eq X-Plane.exe", "/NH"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+        })
+        .await;
+
+        match result {
+            Ok(Ok(output)) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let is_running = stdout.contains("X-Plane.exe");
+                logger::log_debug(
+                    &format!("X-Plane running check: {}", is_running),
+                    Some("app"),
+                    None,
+                );
+                return is_running;
+            }
+            Ok(Err(e)) => {
+                logger::log_debug(
+                    &format!("Failed to run tasklist: {}", e),
+                    Some("app"),
+                    None,
+                );
+                return false;
+            }
+            Err(e) => {
+                logger::log_debug(
+                    &format!("Task join error: {}", e),
+                    Some("app"),
+                    None,
+                );
+                return false;
+            }
         }
-        false
     }
 
     #[cfg(target_os = "macos")]
     {
-        // Use pgrep to check if X-Plane process is running
-        if let Ok(output) = std::process::Command::new("pgrep")
-            .args(["-x", "X-Plane"])
-            .output()
-        {
-            return output.status.success();
+        // Run pgrep in a blocking task to avoid blocking the async runtime
+        let result = tokio::task::spawn_blocking(|| {
+            std::process::Command::new("pgrep")
+                .args(["-x", "X-Plane"])
+                .output()
+        })
+        .await;
+
+        match result {
+            Ok(Ok(output)) => {
+                let is_running = output.status.success();
+                logger::log_debug(
+                    &format!("X-Plane running check: {}", is_running),
+                    Some("app"),
+                    None,
+                );
+                return is_running;
+            }
+            Ok(Err(e)) => {
+                logger::log_debug(
+                    &format!("Failed to run pgrep: {}", e),
+                    Some("app"),
+                    None,
+                );
+                return false;
+            }
+            Err(e) => {
+                logger::log_debug(
+                    &format!("Task join error: {}", e),
+                    Some("app"),
+                    None,
+                );
+                return false;
+            }
         }
-        false
     }
 
     #[cfg(target_os = "linux")]
     {
-        // Use pgrep to check if X-Plane process is running
-        if let Ok(output) = std::process::Command::new("pgrep")
-            .args(["-x", "X-Plane"])
-            .output()
-        {
-            return output.status.success();
+        // Run pgrep in a blocking task to avoid blocking the async runtime
+        let result = tokio::task::spawn_blocking(|| {
+            std::process::Command::new("pgrep")
+                .args(["-x", "X-Plane"])
+                .output()
+        })
+        .await;
+
+        match result {
+            Ok(Ok(output)) => {
+                let is_running = output.status.success();
+                logger::log_debug(
+                    &format!("X-Plane running check: {}", is_running),
+                    Some("app"),
+                    None,
+                );
+                return is_running;
+            }
+            Ok(Err(e)) => {
+                logger::log_debug(
+                    &format!("Failed to run pgrep: {}", e),
+                    Some("app"),
+                    None,
+                );
+                return false;
+            }
+            Err(e) => {
+                logger::log_debug(
+                    &format!("Task join error: {}", e),
+                    Some("app"),
+                    None,
+                );
+                return false;
+            }
         }
-        false
     }
 }
 
