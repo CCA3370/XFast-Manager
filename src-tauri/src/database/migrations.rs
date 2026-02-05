@@ -1,6 +1,8 @@
 //! Database schema migrations
 
-use super::schema::{CREATE_SCHEMA, CURRENT_SCHEMA_VERSION, GET_SCHEMA_VERSION, INSERT_SCHEMA_VERSION};
+use super::schema::{
+    CREATE_SCHEMA, CURRENT_SCHEMA_VERSION, GET_SCHEMA_VERSION, INSERT_SCHEMA_VERSION,
+};
 use crate::error::ApiError;
 use crate::logger;
 use rusqlite::Connection;
@@ -67,8 +69,9 @@ pub fn apply_migrations(conn: &Connection) -> Result<(), ApiError> {
 
 /// Create the initial database schema
 fn create_initial_schema(conn: &Connection) -> Result<(), ApiError> {
-    conn.execute_batch(CREATE_SCHEMA)
-        .map_err(|e| ApiError::migration_failed(format!("Failed to create database schema: {}", e)))?;
+    conn.execute_batch(CREATE_SCHEMA).map_err(|e| {
+        ApiError::migration_failed(format!("Failed to create database schema: {}", e))
+    })?;
 
     // Record the schema version
     let now = SystemTime::now()
@@ -83,7 +86,10 @@ fn create_initial_schema(conn: &Connection) -> Result<(), ApiError> {
     .map_err(|e| ApiError::migration_failed(format!("Failed to record schema version: {}", e)))?;
 
     logger::log_info(
-        &format!("Database schema created at version {}", CURRENT_SCHEMA_VERSION),
+        &format!(
+            "Database schema created at version {}",
+            CURRENT_SCHEMA_VERSION
+        ),
         Some("database"),
     );
 
@@ -111,7 +117,10 @@ fn apply_version_migrations(conn: &Connection, from_version: i32) -> Result<(), 
         rusqlite::params![CURRENT_SCHEMA_VERSION, now, "Migration completed"],
     )
     .map_err(|e| {
-        ApiError::migration_failed(format!("Failed to record schema version after migration: {}", e))
+        ApiError::migration_failed(format!(
+            "Failed to record schema version after migration: {}",
+            e
+        ))
     })?;
 
     logger::log_info(
@@ -165,7 +174,9 @@ fn migrate_v1_to_v2(conn: &Connection) -> Result<(), ApiError> {
         )",
         [],
     )
-    .map_err(|e| ApiError::migration_failed(format!("Failed to create coordinates table: {}", e)))?;
+    .map_err(|e| {
+        ApiError::migration_failed(format!("Failed to create coordinates table: {}", e))
+    })?;
 
     // Create indexes for new columns
     conn.execute(
@@ -184,7 +195,9 @@ fn migrate_v1_to_v2(conn: &Connection) -> Result<(), ApiError> {
         "CREATE INDEX IF NOT EXISTS idx_coordinates_package ON scenery_coordinates(package_id)",
         [],
     )
-    .map_err(|e| ApiError::migration_failed(format!("Failed to create coordinates index: {}", e)))?;
+    .map_err(|e| {
+        ApiError::migration_failed(format!("Failed to create coordinates index: {}", e))
+    })?;
 
     logger::log_info("Database migration v1 to v2 completed", Some("database"));
 
@@ -195,15 +208,22 @@ fn migrate_v1_to_v2(conn: &Connection) -> Result<(), ApiError> {
 /// Removes coordinates storage (scenery_coordinates table, primary_latitude, primary_longitude columns)
 /// Coordinates are now only used temporarily during scan to calculate continent
 fn migrate_v2_to_v3(conn: &Connection) -> Result<(), ApiError> {
-    logger::log_info("Migrating database from v2 to v3 (removing coordinates storage)", Some("database"));
+    logger::log_info(
+        "Migrating database from v2 to v3 (removing coordinates storage)",
+        Some("database"),
+    );
 
     // Drop the scenery_coordinates table if it exists
     conn.execute("DROP TABLE IF EXISTS scenery_coordinates", [])
-        .map_err(|e| ApiError::migration_failed(format!("Failed to drop scenery_coordinates table: {}", e)))?;
+        .map_err(|e| {
+            ApiError::migration_failed(format!("Failed to drop scenery_coordinates table: {}", e))
+        })?;
 
     // Drop the coordinates index if it exists
     conn.execute("DROP INDEX IF EXISTS idx_coordinates_package", [])
-        .map_err(|e| ApiError::migration_failed(format!("Failed to drop coordinates index: {}", e)))?;
+        .map_err(|e| {
+            ApiError::migration_failed(format!("Failed to drop coordinates index: {}", e))
+        })?;
 
     // Note: SQLite doesn't support DROP COLUMN directly in older versions.
     // The primary_latitude and primary_longitude columns will remain in the table

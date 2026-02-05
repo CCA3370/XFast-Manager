@@ -36,13 +36,11 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
     LiveryPattern {
         aircraft_type_id: "FF777",
         aircraft_name: "FlightFactor 777v2",
-        detection_rules: &[
-            DetectionRule {
-                pattern_type: "path",
-                pattern: "objects/777",
-                parent_levels: 0,
-            },
-        ],
+        detection_rules: &[DetectionRule {
+            pattern_type: "path",
+            pattern: "objects/777",
+            parent_levels: 0,
+        }],
         acf_identifiers: &[
             "777-200ER",
             "777-200ER_xp12",
@@ -78,12 +76,7 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
                 parent_levels: 0,
             },
         ],
-        acf_identifiers: &[
-            "a319",
-            "a319_StdDef",
-            "a319_XP11",
-            "a319_XP11_StdDef",
-        ],
+        acf_identifiers: &["a319", "a319_StdDef", "a319_XP11", "a319_XP11_StdDef"],
     },
     LiveryPattern {
         aircraft_type_id: "TOLISS_A320",
@@ -115,12 +108,7 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
                 parent_levels: 0,
             },
         ],
-        acf_identifiers: &[
-            "a320",
-            "a320_StdDef",
-            "a320_XP11",
-            "a320_XP11_StdDef",
-        ],
+        acf_identifiers: &["a320", "a320_StdDef", "a320_XP11", "a320_XP11_StdDef"],
     },
     LiveryPattern {
         aircraft_type_id: "TOLISS_A321",
@@ -142,12 +130,7 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
                 parent_levels: 0,
             },
         ],
-        acf_identifiers: &[
-            "a321",
-            "a321_StdDef",
-            "a321_XP11",
-            "a321_XP11_StdDef",
-        ],
+        acf_identifiers: &["a321", "a321_StdDef", "a321_XP11", "a321_XP11_StdDef"],
     },
     LiveryPattern {
         aircraft_type_id: "TOLISS_A339",
@@ -179,16 +162,12 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
     LiveryPattern {
         aircraft_type_id: "IXEG_733",
         aircraft_name: "IXEG 733 Classic",
-        detection_rules: &[
-            DetectionRule {
-                pattern_type: "path",
-                pattern: "liveries",
-                parent_levels: 0,
-            },
-        ],
-        acf_identifiers: &[
-            "B733",
-        ],
+        detection_rules: &[DetectionRule {
+            pattern_type: "path",
+            pattern: "liveries",
+            parent_levels: 0,
+        }],
+        acf_identifiers: &["B733"],
     },
 ];
 
@@ -216,7 +195,9 @@ pub fn check_livery_pattern(file_path: &str) -> Option<(&'static str, String)> {
                 }
                 "file" => {
                     // File-based detection: match filename with glob pattern
-                    if let Some(livery_root) = match_file_pattern(&normalized, &normalized_lower, rule) {
+                    if let Some(livery_root) =
+                        match_file_pattern(&normalized, &normalized_lower, rule)
+                    {
                         return Some((pattern.aircraft_type_id, livery_root));
                     }
                 }
@@ -229,7 +210,11 @@ pub fn check_livery_pattern(file_path: &str) -> Option<(&'static str, String)> {
 }
 
 /// Match a file pattern and return the livery root if matched
-fn match_file_pattern(normalized: &str, normalized_lower: &str, rule: &DetectionRule) -> Option<String> {
+fn match_file_pattern(
+    normalized: &str,
+    normalized_lower: &str,
+    rule: &DetectionRule,
+) -> Option<String> {
     let pattern_lower = rule.pattern.to_lowercase();
 
     // Check if pattern contains a path separator (e.g., "objects/fuselage319*.png")
@@ -255,7 +240,9 @@ fn match_file_pattern(normalized: &str, normalized_lower: &str, rule: &Detection
             if path_matches {
                 // Check if the filename matches (with glob)
                 let filename_idx = i + pattern_parts.len() - 1;
-                if filename_idx < path_parts.len() && matches_glob(pattern_filename, path_parts[filename_idx]) {
+                if filename_idx < path_parts.len()
+                    && matches_glob(pattern_filename, path_parts[filename_idx])
+                {
                     // Found a match! Calculate livery root
                     let original_parts: Vec<&str> = normalized.split('/').collect();
                     let mut livery_root = if i > 0 {
@@ -313,7 +300,9 @@ fn matches_glob(pattern: &str, text: &str) -> bool {
         // Single wildcard: prefix*suffix
         let prefix = parts[0];
         let suffix = parts[1];
-        return text.starts_with(prefix) && text.ends_with(suffix) && text.len() >= prefix.len() + suffix.len();
+        return text.starts_with(prefix)
+            && text.ends_with(suffix)
+            && text.len() >= prefix.len() + suffix.len();
     }
 
     // For more complex patterns, do a simple check

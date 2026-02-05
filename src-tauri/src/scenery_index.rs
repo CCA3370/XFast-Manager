@@ -19,6 +19,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::SystemTime;
 
+type AirportCoords = HashMap<(i32, i32), Vec<(String, Option<String>)>>;
+
 // ============================================================================
 // Windows Shortcut Resolution (COM API)
 // ============================================================================
@@ -56,13 +58,17 @@ mod shortcut_resolver {
             unsafe {
                 let hr = CoInitializeEx(ptr::null_mut(), COINIT_APARTMENTTHREADED);
                 if hr == S_OK || hr == S_FALSE {
-                    Some(Self { should_uninit: true })
+                    Some(Self {
+                        should_uninit: true,
+                    })
                 } else if hr == RPC_E_CHANGED_MODE {
                     logger::log_info(
                         "  COM already initialized with different threading model",
                         Some("scenery_index"),
                     );
-                    Some(Self { should_uninit: false })
+                    Some(Self {
+                        should_uninit: false,
+                    })
                 } else {
                     logger::log_info(
                         &format!("  Failed to initialize COM, HRESULT: 0x{:08X}", hr),
@@ -239,7 +245,7 @@ fn is_sam_folder_name(folder_name: &str) -> bool {
         .filter(|s| !s.is_empty())
         .collect();
 
-    let has_sam_word = parts.iter().any(|&part| part == "sam");
+    let has_sam_word = parts.contains(&"sam");
     let has_sam_suffix = parts.iter().any(|&part| {
         part.ends_with("sam") && part.len() > 3 && {
             let prefix = &part[..part.len() - 3];
@@ -266,9 +272,7 @@ fn compare_packages_for_sorting(
             if info_a.category == info_b.category
                 && matches!(
                     info_a.category,
-                    SceneryCategory::Overlay
-                        | SceneryCategory::AirportMesh
-                        | SceneryCategory::Mesh
+                    SceneryCategory::Overlay | SceneryCategory::AirportMesh | SceneryCategory::Mesh
                 )
             {
                 // For Mesh category with sub_priority > 0 (XPME), sort only by folder name
@@ -277,7 +281,10 @@ fn compare_packages_for_sorting(
                     name_a.to_lowercase().cmp(&name_b.to_lowercase())
                 } else {
                     // Non-XPME: sort by tile count first, then folder name
-                    match info_a.earth_nav_tile_count.cmp(&info_b.earth_nav_tile_count) {
+                    match info_a
+                        .earth_nav_tile_count
+                        .cmp(&info_b.earth_nav_tile_count)
+                    {
                         std::cmp::Ordering::Equal => {
                             name_a.to_lowercase().cmp(&name_b.to_lowercase())
                         }
@@ -388,7 +395,7 @@ impl SceneryIndexManager {
                 // Check if it's a .lnk file (Windows shortcut)
                 if path
                     .extension()
-                    .map_or(false, |ext| ext.eq_ignore_ascii_case("lnk"))
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("lnk"))
                 {
                     // Use shortcut file name (without .lnk extension) as the entry name
                     // This prevents conflicts when multiple shortcuts point to folders with the same name
@@ -413,7 +420,8 @@ impl SceneryIndexManager {
                         let target_path_str = target.to_string_lossy().to_string();
                         // Convert backslashes to forward slashes for scenery_packs.ini compatibility
                         let normalized_path_str = target_path_str.replace('\\', "/");
-                        shortcut_target_map.insert(target.clone(), (shortcut_name, normalized_path_str));
+                        shortcut_target_map
+                            .insert(target.clone(), (shortcut_name, normalized_path_str));
 
                         return Some(target);
                     } else {
@@ -445,7 +453,8 @@ impl SceneryIndexManager {
         // Classify all packages
         // Track which path each package came from to correctly handle shortcuts
         // Use sequential processing in debug log mode for ordered logs, parallel otherwise
-        let packages_with_paths: Vec<(PathBuf, SceneryPackageInfo)> = if logger::is_debug_enabled() {
+        let packages_with_paths: Vec<(PathBuf, SceneryPackageInfo)> = if logger::is_debug_enabled()
+        {
             // Sequential processing for ordered debug logs
             scenery_folders
                 .iter()
@@ -479,7 +488,8 @@ impl SceneryIndexManager {
 
         // Post-process: Set folder_name and actual_path for shortcut entries
         // For shortcuts, use the shortcut name (not target folder name) to avoid conflicts
-        let mut packages_vec: Vec<SceneryPackageInfo> = Vec::with_capacity(packages_with_paths.len());
+        let mut packages_vec: Vec<SceneryPackageInfo> =
+            Vec::with_capacity(packages_with_paths.len());
         for (path, mut info) in packages_with_paths {
             if let Some((shortcut_name, actual_path)) = shortcut_target_map.get(&path) {
                 // This entry came from a shortcut - use shortcut name and set actual_path
@@ -500,9 +510,8 @@ impl SceneryIndexManager {
         self.detect_airport_mesh_packages(&mut packages_vec);
 
         // Sort packages using the common sorting function
-        packages_vec.sort_by(|a, b| {
-            compare_packages_for_sorting(&a.folder_name, a, &b.folder_name, b)
-        });
+        packages_vec
+            .sort_by(|a, b| compare_packages_for_sorting(&a.folder_name, a, &b.folder_name, b));
 
         // Assign sort_order and set default enabled state
         // Fresh rebuild: Unrecognized packages default to disabled, others default to enabled
@@ -597,11 +606,10 @@ impl SceneryIndexManager {
                 && info.has_library_txt
                 && !info.has_dsf
                 && !info.has_apt_dat
+                && info.category != SceneryCategory::FixedHighPriority
             {
-                if info.category != SceneryCategory::FixedHighPriority {
-                    info.category = SceneryCategory::FixedHighPriority;
-                    info.sub_priority = 0;
-                }
+                info.category = SceneryCategory::FixedHighPriority;
+                info.sub_priority = 0;
             }
         }
 
@@ -682,7 +690,7 @@ impl SceneryIndexManager {
                 // Check if it's a .lnk file (Windows shortcut)
                 if path
                     .extension()
-                    .map_or(false, |ext| ext.eq_ignore_ascii_case("lnk"))
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("lnk"))
                 {
                     // Try to resolve the shortcut
                     if let Some(target) = resolve_shortcut(&path) {
@@ -697,7 +705,8 @@ impl SceneryIndexManager {
                         let target_path_str = target.to_string_lossy().to_string();
                         // Convert backslashes to forward slashes for scenery_packs.ini compatibility
                         let normalized_path_str = target_path_str.replace('\\', "/");
-                        shortcut_target_map.insert(target.clone(), (shortcut_name.clone(), normalized_path_str));
+                        shortcut_target_map
+                            .insert(target.clone(), (shortcut_name.clone(), normalized_path_str));
                         return Some((shortcut_name, target));
                     }
                     return None;
@@ -764,27 +773,28 @@ impl SceneryIndexManager {
             // Classify updated packages
             // Track which path each package came from to correctly handle shortcuts
             // Use sequential processing in debug log mode for ordered logs, parallel otherwise
-            let packages_with_paths: Vec<(PathBuf, SceneryPackageInfo)> = if logger::is_debug_enabled() {
-                // Sequential processing for ordered debug logs
-                packages_to_update
-                    .iter()
-                    .filter_map(|folder| {
-                        classify_scenery(folder, &self.xplane_path)
-                            .ok()
-                            .map(|info| (folder.clone(), info))
-                    })
-                    .collect()
-            } else {
-                // Parallel processing for better performance when not in debug mode
-                packages_to_update
-                    .par_iter()
-                    .filter_map(|folder| {
-                        classify_scenery(folder, &self.xplane_path)
-                            .ok()
-                            .map(|info| (folder.clone(), info))
-                    })
-                    .collect()
-            };
+            let packages_with_paths: Vec<(PathBuf, SceneryPackageInfo)> =
+                if logger::is_debug_enabled() {
+                    // Sequential processing for ordered debug logs
+                    packages_to_update
+                        .iter()
+                        .filter_map(|folder| {
+                            classify_scenery(folder, &self.xplane_path)
+                                .ok()
+                                .map(|info| (folder.clone(), info))
+                        })
+                        .collect()
+                } else {
+                    // Parallel processing for better performance when not in debug mode
+                    packages_to_update
+                        .par_iter()
+                        .filter_map(|folder| {
+                            classify_scenery(folder, &self.xplane_path)
+                                .ok()
+                                .map(|info| (folder.clone(), info))
+                        })
+                        .collect()
+                };
 
             for (path, mut info) in packages_with_paths {
                 // Check if this entry came from a shortcut
@@ -816,7 +826,8 @@ impl SceneryIndexManager {
             // Look up by folder_name in shortcut_target_map values (shortcut names)
             for (_, (shortcut_name, actual_path)) in shortcut_target_map.iter() {
                 if folder_name == shortcut_name {
-                    if info.actual_path.is_none() || info.actual_path.as_ref() != Some(actual_path) {
+                    if info.actual_path.is_none() || info.actual_path.as_ref() != Some(actual_path)
+                    {
                         info.actual_path = Some(actual_path.clone());
                     }
                     break;
@@ -874,7 +885,8 @@ impl SceneryIndexManager {
     pub fn index_status(&self) -> Result<SceneryIndexStatus> {
         self.ensure_initialized()?;
         let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
-        let total_packages = SceneryQueries::get_package_count(&conn).map_err(|e| anyhow!("{}", e))?;
+        let total_packages =
+            SceneryQueries::get_package_count(&conn).map_err(|e| anyhow!("{}", e))?;
         let index_exists = total_packages > 0;
 
         Ok(SceneryIndexStatus {
@@ -947,7 +959,10 @@ impl SceneryIndexManager {
     }
 
     /// Batch update multiple entries' enabled state and sort_order from UI
-    pub fn batch_update_entries(&self, entries: &[crate::models::SceneryEntryUpdate]) -> Result<()> {
+    pub fn batch_update_entries(
+        &self,
+        entries: &[crate::models::SceneryEntryUpdate],
+    ) -> Result<()> {
         if entries.is_empty() {
             return Ok(());
         }
@@ -983,8 +998,8 @@ impl SceneryIndexManager {
     pub fn remove_entry(&self, folder_name: &str) -> Result<()> {
         self.ensure_initialized()?;
         let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
-        let deleted = SceneryQueries::delete_package(&conn, folder_name)
-            .map_err(|e| anyhow!("{}", e))?;
+        let deleted =
+            SceneryQueries::delete_package(&conn, folder_name).map_err(|e| anyhow!("{}", e))?;
 
         if deleted {
             logger::log_info(
@@ -1060,12 +1075,11 @@ impl SceneryIndexManager {
                 && info.has_library_txt
                 && !info.has_dsf
                 && !info.has_apt_dat
+                && info.category != SceneryCategory::FixedHighPriority
             {
-                if info.category != SceneryCategory::FixedHighPriority {
-                    info.category = SceneryCategory::FixedHighPriority;
-                    info.sub_priority = 0;
-                    category_changed = true;
-                }
+                info.category = SceneryCategory::FixedHighPriority;
+                info.sub_priority = 0;
+                category_changed = true;
             }
         }
 
@@ -1141,7 +1155,8 @@ impl SceneryIndexManager {
         let index = self.load_index()?;
 
         // Check if ini is synced with index
-        let packs_manager = crate::scenery_packs_manager::SceneryPacksManager::new(&self.xplane_path);
+        let packs_manager =
+            crate::scenery_packs_manager::SceneryPacksManager::new(&self.xplane_path);
         let needs_sync = !packs_manager.is_synced_with_index().unwrap_or(true);
 
         // Convert to manager entries and sort by sort_order
@@ -1186,29 +1201,32 @@ impl SceneryIndexManager {
     /// 2. At least one DSF's coordinates match an airport's coordinates
     /// 3. If multiple meshes match the same airport, prefer the one whose folder name contains the airport's ICAO code
     /// 4. Also check if mesh shares a common naming prefix with an airport package
-    fn detect_airport_mesh_packages(&self, packages: &mut Vec<SceneryPackageInfo>) {
+    fn detect_airport_mesh_packages(&self, packages: &mut [SceneryPackageInfo]) {
         logger::log_info(
             "Detecting airport-associated mesh packages...",
             Some("scenery_index"),
         );
 
         // Step 1: Collect all airports with their coordinates, ICAO codes, and folder names
-        let mut airport_coords: HashMap<(i32, i32), Vec<(String, Option<String>)>> = HashMap::new();
-        
+        let mut airport_coords: AirportCoords = HashMap::new();
+
         // Also collect airport folder name prefixes for prefix matching
         let mut airport_prefixes: HashSet<String> = HashSet::new();
-        
+
         for pkg in packages.iter() {
             if pkg.category == SceneryCategory::Airport && pkg.has_apt_dat {
                 // Parse apt.dat to get coordinates and ICAO code
-                let scenery_path = self.xplane_path.join("Custom Scenery").join(&pkg.folder_name);
+                let scenery_path = self
+                    .xplane_path
+                    .join("Custom Scenery")
+                    .join(&pkg.folder_name);
                 if let Some((lat, lon, icao)) = parse_airport_coords(&scenery_path) {
                     let coord_key = (lat, lon);
                     airport_coords
                         .entry(coord_key)
                         .or_default()
                         .push((pkg.folder_name.clone(), icao));
-                    
+
                     // Extract common prefix (e.g., "ACS_Singapore" from "ACS_Singapore_0_Airport")
                     if let Some(prefix) = extract_scenery_prefix(&pkg.folder_name) {
                         airport_prefixes.insert(prefix);
@@ -1237,7 +1255,7 @@ impl SceneryIndexManager {
             }
 
             let scenery_path = custom_scenery_path.join(&pkg.folder_name);
-            
+
             // Count DSF files and get their coordinates
             if let Some(dsf_coords) = get_mesh_dsf_coordinates(&scenery_path) {
                 // Only consider meshes with 4 or fewer DSF files
@@ -1286,11 +1304,11 @@ impl SceneryIndexManager {
             } else {
                 // Multiple meshes match - check ICAO codes and prefixes
                 let mut matched_indices: Vec<usize> = Vec::new();
-                
+
                 for &mesh_idx in mesh_indices {
                     let mesh_name = &packages[mesh_idx].folder_name;
                     let mesh_name_upper = mesh_name.to_uppercase();
-                    
+
                     // Check 1: If mesh folder name contains any airport's ICAO code
                     let mut icao_matched = false;
                     for (_, icao_opt) in airports {
@@ -1301,14 +1319,15 @@ impl SceneryIndexManager {
                             }
                         }
                     }
-                    
+
                     // Check 2: If mesh shares a common naming prefix with any airport
-                    let prefix_matched = if let Some(mesh_prefix) = extract_scenery_prefix(mesh_name) {
-                        airport_prefixes.contains(&mesh_prefix)
-                    } else {
-                        false
-                    };
-                    
+                    let prefix_matched =
+                        if let Some(mesh_prefix) = extract_scenery_prefix(mesh_name) {
+                            airport_prefixes.contains(&mesh_prefix)
+                        } else {
+                            false
+                        };
+
                     if icao_matched {
                         matched_indices.push(mesh_idx);
                         logger::log_info(
@@ -1368,7 +1387,7 @@ pub fn parse_library_exports(library_txt_path: &Path) -> HashSet<String> {
     if let Ok(file) = fs::File::open(library_txt_path) {
         let reader = BufReader::new(file);
 
-        for line in reader.lines().flatten() {
+        for line in reader.lines().map_while(Result::ok) {
             let trimmed = line.trim();
 
             // Look for EXPORT lines (may have space or tab after EXPORT)
@@ -1448,7 +1467,7 @@ fn parse_airport_coords(scenery_path: &Path) -> Option<(i32, i32, Option<String>
     let mut runway_lat: Option<f64> = None;
     let mut runway_lon: Option<f64> = None;
 
-    for line in reader.lines().flatten() {
+    for line in reader.lines().map_while(Result::ok) {
         let trimmed = line.trim();
 
         // Look for 1302 metadata lines
@@ -1459,7 +1478,7 @@ fn parse_airport_coords(scenery_path: &Path) -> Option<(i32, i32, Option<String>
                     "datum_lat" => {
                         if let Ok(lat) = parts[2].parse::<f64>() {
                             // Validate latitude range
-                            if lat >= -90.0 && lat <= 90.0 {
+                            if (-90.0..=90.0).contains(&lat) {
                                 datum_lat = Some(lat);
                             }
                         }
@@ -1467,7 +1486,7 @@ fn parse_airport_coords(scenery_path: &Path) -> Option<(i32, i32, Option<String>
                     "datum_lon" => {
                         if let Ok(lon) = parts[2].parse::<f64>() {
                             // Validate longitude range
-                            if lon >= -180.0 && lon <= 180.0 {
+                            if (-180.0..=180.0).contains(&lon) {
                                 datum_lon = Some(lon);
                             }
                         }
@@ -1489,7 +1508,7 @@ fn parse_airport_coords(scenery_path: &Path) -> Option<(i32, i32, Option<String>
                 if let (Ok(lat), Ok(lon)) = (parts[9].parse::<f64>(), parts[10].parse::<f64>()) {
                     // Validate coordinate ranges to catch malformed data
                     // Latitude: -90 to 90, Longitude: -180 to 180
-                    if lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0 {
+                    if (-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon) {
                         runway_lat = Some(lat);
                         runway_lon = Some(lon);
                     }
@@ -1541,7 +1560,7 @@ fn get_mesh_dsf_coordinates(scenery_path: &Path) -> Option<Vec<(i32, i32)>> {
                 for dsf_entry in dsf_entries.flatten() {
                     let dsf_path = dsf_entry.path();
                     if let Some(ext) = dsf_path.extension() {
-                        if ext.to_ascii_lowercase() == "dsf" {
+                        if ext.eq_ignore_ascii_case("dsf") {
                             // Parse coordinates from filename (e.g., +30+135.dsf)
                             if let Some(coord) = parse_dsf_filename(&dsf_path) {
                                 coordinates.push(coord);
@@ -1575,8 +1594,8 @@ fn parse_dsf_filename(dsf_path: &Path) -> Option<(i32, i32)> {
     let chars: Vec<char> = stem.chars().collect();
     let mut lon_start = None;
 
-    for i in 1..chars.len() {
-        if chars[i] == '+' || chars[i] == '-' {
+    for (i, ch) in chars.iter().enumerate().skip(1) {
+        if *ch == '+' || *ch == '-' {
             lon_start = Some(i);
             break;
         }
@@ -1604,7 +1623,7 @@ fn extract_scenery_prefix(folder_name: &str) -> Option<String> {
     // Look for pattern: prefix_<number>_suffix
     // We want to extract "prefix" part
     let parts: Vec<&str> = folder_name.split('_').collect();
-    
+
     // Need at least 3 parts to have "prefix_number_suffix" pattern
     if parts.len() >= 3 {
         // Find index of numeric part
@@ -1618,23 +1637,23 @@ fn extract_scenery_prefix(folder_name: &str) -> Option<String> {
             }
         }
     }
-    
+
     // Fallback: if no "_<number>_" pattern found, try to extract meaningful prefix
     // by taking everything before common suffixes like "-MESH", "_Mesh", "_Orthos", "_Airport"
     let folder_lower = folder_name.to_lowercase();
     let suffixes = ["-mesh", "_mesh", "_orthos", "_orthophoto", "_airport"];
-    
+
     for suffix in suffixes {
         if let Some(pos) = folder_lower.rfind(suffix) {
             let prefix = &folder_name[..pos];
             // Strip trailing underscore or dash if present
-            let prefix = prefix.trim_end_matches(|c| c == '_' || c == '-');
+            let prefix = prefix.trim_end_matches(['_', '-']);
             if !prefix.is_empty() {
                 return Some(prefix.to_string());
             }
         }
     }
-    
+
     None
 }
 
@@ -1667,13 +1686,13 @@ mod tests {
             extract_scenery_prefix("FlyTampa_Amsterdam_3_mesh"),
             Some("FlyTampa_Amsterdam".to_string())
         );
-        
+
         // Test suffix-based extraction fallback
         assert_eq!(
             extract_scenery_prefix("Taimodels_WSSS_Singapore_Changi-MESH"),
             Some("Taimodels_WSSS_Singapore_Changi".to_string())
         );
-        
+
         // Test names without patterns
         assert_eq!(extract_scenery_prefix("SimpleFolder"), None);
     }

@@ -27,16 +27,11 @@ impl LogLevel {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Default)]
 pub enum Locale {
+    #[default]
     En,
     Zh,
-}
-
-impl Default for Locale {
-    fn default() -> Self {
-        Locale::En
-    }
 }
 
 /// Log message keys for translation
@@ -234,7 +229,7 @@ impl LoggerInner {
         };
 
         let reader = BufReader::new(file);
-        let all_lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+        let all_lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
 
         // Return last N lines
         let start = if all_lines.len() > count {

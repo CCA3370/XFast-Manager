@@ -8,7 +8,10 @@
 //! - Plugins: Rename .xpl <-> .xfmp files (including subdirectories)
 
 use crate::logger;
-use crate::models::{AircraftInfo, ManagementData, NavdataBackupInfo, NavdataBackupVerification, NavdataManagerInfo, PluginInfo};
+use crate::models::{
+    AircraftInfo, ManagementData, NavdataBackupInfo, NavdataBackupVerification, NavdataManagerInfo,
+    PluginInfo,
+};
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
 use std::fs;
@@ -28,7 +31,11 @@ fn validate_folder_name(folder_name: &str) -> Result<()> {
 }
 
 /// Resolve a management folder path with strict validation
-fn resolve_management_path(xplane_path: &Path, item_type: &str, folder_name: &str) -> Result<PathBuf> {
+fn resolve_management_path(
+    xplane_path: &Path,
+    item_type: &str,
+    folder_name: &str,
+) -> Result<PathBuf> {
     validate_folder_name(folder_name)?;
 
     let base_path = match item_type {
@@ -72,7 +79,11 @@ pub fn scan_aircraft(xplane_path: &Path) -> Result<ManagementData<AircraftInfo>>
     scan_aircraft_recursive(&aircraft_path, &aircraft_path, 0, 3, &mut entries)?;
 
     // Sort by display name
-    entries.sort_by(|a, b| a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase()));
+    entries.sort_by(|a, b| {
+        a.display_name
+            .to_lowercase()
+            .cmp(&b.display_name.to_lowercase())
+    });
 
     let total_count = entries.len();
     let enabled_count = entries.iter().filter(|e| e.enabled).count();
@@ -130,10 +141,7 @@ fn scan_aircraft_recursive(
     // Process subdirectories in parallel, each doing a single read_dir pass
     let results: Vec<Option<AircraftInfo>> = subdirs
         .par_iter()
-        .map(|(path, folder_name)| {
-            let info = scan_single_aircraft_folder(path, base_path, folder_name);
-            info
-        })
+        .map(|(path, folder_name)| scan_single_aircraft_folder(path, base_path, folder_name))
         .collect();
 
     // Collect results and recurse for non-aircraft folders
@@ -196,18 +204,16 @@ fn scan_single_aircraft_folder(
             {
                 version_file_paths.push(entry.path());
             }
-        } else if ft.is_dir() {
-            if name_lower == "liveries" {
-                // Count liveries
-                if let Ok(liveries_rd) = fs::read_dir(entry.path()) {
-                    for lv_entry in liveries_rd.flatten() {
-                        if lv_entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-                            livery_count += 1;
-                        }
+        } else if ft.is_dir() && name_lower == "liveries" {
+            // Count liveries
+            if let Ok(liveries_rd) = fs::read_dir(entry.path()) {
+                for lv_entry in liveries_rd.flatten() {
+                    if lv_entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+                        livery_count += 1;
                     }
                 }
-                has_liveries = livery_count > 0;
             }
+            has_liveries = livery_count > 0;
         }
     }
 
@@ -462,13 +468,15 @@ pub fn scan_plugins(xplane_path: &Path) -> Result<ManagementData<PluginInfo>> {
     // Process plugin folders in parallel
     let mut entries: Vec<PluginInfo> = subdirs
         .par_iter()
-        .filter_map(|(path, folder_name)| {
-            scan_single_plugin_folder(path, folder_name)
-        })
+        .filter_map(|(path, folder_name)| scan_single_plugin_folder(path, folder_name))
         .collect();
 
     // Sort by display name
-    entries.sort_by(|a, b| a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase()));
+    entries.sort_by(|a, b| {
+        a.display_name
+            .to_lowercase()
+            .cmp(&b.display_name.to_lowercase())
+    });
 
     let total_count = entries.len();
     let enabled_count = entries.iter().filter(|e| e.enabled).count();
@@ -502,7 +510,10 @@ fn scan_single_plugin_folder(path: &Path, folder_name: &str) -> Option<PluginInf
     let all_files: Vec<String> = if enabled {
         xpl_files.clone()
     } else {
-        xfmp_files.iter().map(|f| f.replace(".xfmp", ".xpl")).collect()
+        xfmp_files
+            .iter()
+            .map(|f| f.replace(".xfmp", ".xpl"))
+            .collect()
     };
 
     // Determine platform from xpl file locations
@@ -531,7 +542,11 @@ fn find_xpl_and_xfmp_files(folder: &Path) -> (Vec<String>, Vec<String>) {
     let mut xpl_files = Vec::new();
     let mut xfmp_files = Vec::new();
 
-    for entry in WalkDir::new(folder).max_depth(3).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(folder)
+        .max_depth(3)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         if !entry.file_type().is_file() {
             continue;
         }
@@ -648,13 +663,20 @@ pub fn scan_navdata(xplane_path: &Path) -> Result<ManagementData<NavdataManagerI
     }
 
     // Sort by provider name
-    entries.sort_by(|a, b| a.provider_name.to_lowercase().cmp(&b.provider_name.to_lowercase()));
+    entries.sort_by(|a, b| {
+        a.provider_name
+            .to_lowercase()
+            .cmp(&b.provider_name.to_lowercase())
+    });
 
     let total_count = entries.len();
     let enabled_count = entries.iter().filter(|e| e.enabled).count();
 
     logger::log_info(
-        &format!("Found {} navdata entries ({} enabled)", total_count, enabled_count),
+        &format!(
+            "Found {} navdata entries ({} enabled)",
+            total_count, enabled_count
+        ),
         Some("management"),
     );
 
@@ -679,8 +701,14 @@ fn parse_cycle_json(
         .unwrap_or("Unknown")
         .to_string();
 
-    let cycle = json.get("cycle").and_then(|v| v.as_str()).map(|s| s.to_string());
-    let airac = json.get("airac").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let cycle = json
+        .get("cycle")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let airac = json
+        .get("airac")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     let folder_name = parent_folder
         .strip_prefix(base_path)
@@ -779,7 +807,11 @@ fn toggle_plugin_files(folder_path: &Path, folder_name: &str) -> Result<bool> {
     let mut xfmp_files: Vec<std::path::PathBuf> = Vec::new();
 
     // Use walkdir to find all .xpl and .xfmp files recursively
-    for entry in WalkDir::new(folder_path).max_depth(10).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(folder_path)
+        .max_depth(10)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         let path = entry.path();
         if !path.is_file() {
             continue;
@@ -832,7 +864,11 @@ fn toggle_plugin_files(folder_path: &Path, folder_name: &str) -> Result<bool> {
 }
 
 /// Delete a management item folder
-pub fn delete_management_item(xplane_path: &Path, item_type: &str, folder_name: &str) -> Result<()> {
+pub fn delete_management_item(
+    xplane_path: &Path,
+    item_type: &str,
+    folder_name: &str,
+) -> Result<()> {
     let target_path = resolve_management_path(xplane_path, item_type, folder_name)?;
     fs::remove_dir_all(&target_path)?;
 
@@ -958,7 +994,11 @@ async fn fetch_remote_version(base_url: String) -> Option<String> {
 
     if !response.status().is_success() {
         logger::log_debug(
-            &format!("Failed to fetch remote config: {} - {}", url, response.status()),
+            &format!(
+                "Failed to fetch remote config: {} - {}",
+                url,
+                response.status()
+            ),
             Some("management"),
             None,
         );
@@ -1038,7 +1078,9 @@ pub fn set_cfg_disabled(
     logger::log_info(
         &format!(
             "Set disabled|{} in {} for {}",
-            disabled_value, cfg_path.display(), folder_name
+            disabled_value,
+            cfg_path.display(),
+            folder_name
         ),
         Some("management"),
     );
@@ -1074,30 +1116,22 @@ pub fn scan_navdata_backups(xplane_path: &Path) -> Result<Vec<NavdataBackupInfo>
         let verification_path = path.join("verification.json");
         if verification_path.exists() {
             match fs::read_to_string(&verification_path) {
-                Ok(content) => {
-                    match serde_json::from_str::<NavdataBackupVerification>(&content) {
-                        Ok(verification) => {
-                            let folder_name = entry
-                                .file_name()
-                                .to_string_lossy()
-                                .to_string();
+                Ok(content) => match serde_json::from_str::<NavdataBackupVerification>(&content) {
+                    Ok(verification) => {
+                        let folder_name = entry.file_name().to_string_lossy().to_string();
 
-                            backups.push(NavdataBackupInfo {
-                                folder_name,
-                                verification,
-                            });
-                        }
-                        Err(e) => {
-                            logger::log_error(
-                                &format!(
-                                    "Failed to parse verification.json in {:?}: {}",
-                                    path, e
-                                ),
-                                Some("management"),
-                            );
-                        }
+                        backups.push(NavdataBackupInfo {
+                            folder_name,
+                            verification,
+                        });
                     }
-                }
+                    Err(e) => {
+                        logger::log_error(
+                            &format!("Failed to parse verification.json in {:?}: {}", path, e),
+                            Some("management"),
+                        );
+                    }
+                },
                 Err(e) => {
                     logger::log_error(
                         &format!("Failed to read verification.json in {:?}: {}", path, e),
@@ -1151,7 +1185,10 @@ pub fn restore_navdata_backup(xplane_path: &Path, backup_folder_name: &str) -> R
 
     // Step 2: Verify backup file integrity (OPTIMIZED: size-only, single stat per file)
     // Checksum is now empty string, so we only check existence and size
-    logger::log_info("Verifying backup integrity (size-only)...", Some("management"));
+    logger::log_info(
+        "Verifying backup integrity (size-only)...",
+        Some("management"),
+    );
     for file_entry in &verification.files {
         let file_path = backup_path.join(&file_entry.relative_path);
         // OPTIMIZED: Use single fs::metadata() call instead of exists() + metadata()
@@ -1167,10 +1204,7 @@ pub fn restore_navdata_backup(xplane_path: &Path, backup_folder_name: &str) -> R
                 }
             }
             Err(_) => {
-                return Err(anyhow!(
-                    "Backup file missing: {}",
-                    file_entry.relative_path
-                ));
+                return Err(anyhow!("Backup file missing: {}", file_entry.relative_path));
             }
         }
     }

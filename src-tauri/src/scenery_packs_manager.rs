@@ -353,7 +353,7 @@ impl SceneryPacksManager {
         let mut packages: Vec<_> = index
             .packages
             .values()
-            .filter(|p| !(p.category == SceneryCategory::Unrecognized && !p.enabled))
+            .filter(|p| p.category != SceneryCategory::Unrecognized || p.enabled)
             .collect();
         packages.sort_by_key(|p| p.sort_order);
 

@@ -8,7 +8,9 @@ use walkdir::WalkDir;
 
 use crate::installer::sanitize_folder_name;
 use crate::logger;
-use crate::models::{BackupFileEntry, InstallPhase, InstallProgress, InstallTask, NavdataBackupVerification};
+use crate::models::{
+    BackupFileEntry, InstallPhase, InstallProgress, InstallTask, NavdataBackupVerification,
+};
 
 /// Minimum required free space (1 GB) as a safety buffer
 const MIN_FREE_SPACE_BYTES: u64 = 1024 * 1024 * 1024;
@@ -353,14 +355,19 @@ impl AtomicInstaller {
         );
 
         // Read provider name from new navdata (needed for both backup and cleanup)
-        let provider_name = self.read_navdata_info(&self.temp_dir)
+        let provider_name = self
+            .read_navdata_info(&self.temp_dir)
             .map(|(name, _, _)| name)
-            .or_else(|_| self.read_navdata_info(&self.target_dir).map(|(name, _, _)| name))
+            .or_else(|_| {
+                self.read_navdata_info(&self.target_dir)
+                    .map(|(name, _, _)| name)
+            })
             .unwrap_or_else(|_| "navdata".to_string());
 
         if backup_navdata {
             // Read old cycle/airac from target_dir (the data being backed up)
-            let (old_cycle, old_airac) = self.read_navdata_info(&self.target_dir)
+            let (old_cycle, old_airac) = self
+                .read_navdata_info(&self.target_dir)
                 .map(|(_, c, a)| (c, a))
                 .unwrap_or((None, None));
 
@@ -400,7 +407,8 @@ impl AtomicInstaller {
                         // Get size from walkdir's metadata (single stat call)
                         let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
                         // Relative path from Custom Data (not target_dir) for consistent restore
-                        let relative_path = entry.path()
+                        let relative_path = entry
+                            .path()
                             .strip_prefix(&custom_data_dir)
                             .unwrap_or(entry.path())
                             .to_string_lossy()
@@ -416,7 +424,10 @@ impl AtomicInstaller {
             }
 
             logger::log_info(
-                &format!("Found {} files to backup (checksum skipped)", backup_entries.len()),
+                &format!(
+                    "Found {} files to backup (checksum skipped)",
+                    backup_entries.len()
+                ),
                 Some("atomic_installer"),
             );
 
@@ -443,7 +454,10 @@ impl AtomicInstaller {
             verify_backup_fast(&backup_subdir, &backup_entries)?;
 
             logger::log_info(
-                &format!("Fast verification passed: {} files verified", backup_entries.len()),
+                &format!(
+                    "Fast verification passed: {} files verified",
+                    backup_entries.len()
+                ),
                 Some("atomic_installer"),
             );
 
@@ -546,16 +560,19 @@ impl AtomicInstaller {
         let json: serde_json::Value = serde_json::from_str(&content)?;
 
         // Use "name" field to match management_index::parse_cycle_json
-        let provider_name = json.get("name")
+        let provider_name = json
+            .get("name")
             .and_then(|v| v.as_str())
             .unwrap_or("navdata")
             .to_string();
 
-        let cycle = json.get("cycle")
+        let cycle = json
+            .get("cycle")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let airac = json.get("airac")
+        let airac = json
+            .get("airac")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
@@ -815,7 +832,13 @@ fn copy_directory_recursive_internal(
             copy_symlink(&src_path, &dst_path, base_dir, depth)?;
         } else if metadata.is_dir() {
             // Handle directory with incremented depth
-            copy_directory_recursive_internal(&src_path, &dst_path, base_dir, depth + 1, &new_visited)?;
+            copy_directory_recursive_internal(
+                &src_path,
+                &dst_path,
+                base_dir,
+                depth + 1,
+                &new_visited,
+            )?;
         } else {
             // Handle regular file
             fs::copy(&src_path, &dst_path)?;
@@ -862,7 +885,9 @@ fn copy_symlink(src: &Path, dst: &Path, base_dir: &Path, depth: usize) -> Result
         }
     } else {
         // Target doesn't exist - check for path traversal patterns
-        !target.components().any(|c| matches!(c, std::path::Component::ParentDir))
+        !target
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
     };
 
     if !is_safe {
@@ -937,7 +962,9 @@ fn copy_symlink(src: &Path, dst: &Path, base_dir: &Path, depth: usize) -> Result
         }
     } else {
         // Target doesn't exist - check for path traversal patterns
-        !target.components().any(|c| matches!(c, std::path::Component::ParentDir))
+        !target
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
     };
 
     if !is_safe {
@@ -996,26 +1023,24 @@ fn copy_symlink(src: &Path, dst: &Path, base_dir: &Path, depth: usize) -> Result
                 )));
             }
         }
-    } else {
-        if let Err(e) = symlink_file(&target, dst) {
-            logger::log_error(
-                &format!(
-                    "Failed to create file symlink: {:?} -> {:?} ({}). Falling back to copy.",
-                    dst, target, e
-                ),
-                Some("atomic_installer"),
-            );
-            if resolved.exists() {
-                fs::copy(&resolved, dst).context(format!(
-                    "Failed to copy symlink target: {:?} -> {:?}",
-                    resolved, dst
-                ))?;
-            } else {
-                return Err(anyhow::anyhow!(format!(
-                    "Failed to create file symlink and target missing: {:?} -> {:?} ({})",
-                    dst, target, e
-                )));
-            }
+    } else if let Err(e) = symlink_file(&target, dst) {
+        logger::log_error(
+            &format!(
+                "Failed to create file symlink: {:?} -> {:?} ({}). Falling back to copy.",
+                dst, target, e
+            ),
+            Some("atomic_installer"),
+        );
+        if resolved.exists() {
+            fs::copy(&resolved, dst).context(format!(
+                "Failed to copy symlink target: {:?} -> {:?}",
+                resolved, dst
+            ))?;
+        } else {
+            return Err(anyhow::anyhow!(format!(
+                "Failed to create file symlink and target missing: {:?} -> {:?} ({})",
+                dst, target, e
+            )));
         }
     }
 
@@ -1124,7 +1149,10 @@ fn move_directory(src: &Path, dst: &Path) -> Result<()> {
                 // Cross-device link error (EXDEV on Unix, different error on Windows)
                 // Fall back to recursive approach
                 logger::log_info(
-                    &format!("Directory rename failed ({}), falling back to recursive copy", e),
+                    &format!(
+                        "Directory rename failed ({}), falling back to recursive copy",
+                        e
+                    ),
                     Some("atomic_installer"),
                 );
             }

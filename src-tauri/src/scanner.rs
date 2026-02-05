@@ -105,6 +105,16 @@ impl ScanContext {
     }
 }
 
+struct NestedZipScanParams<'a> {
+    parent_archive: &'a mut zip::ZipArchive<fs::File>,
+    file_index: usize,
+    nested_path: &'a str,
+    parent_path: &'a Path,
+    ctx: &'a mut ScanContext,
+    parent_password: Option<&'a [u8]>,
+    is_encrypted: bool,
+}
+
 /// Check if a filename is an archive file
 fn is_archive_file(filename: &str) -> bool {
     let lower = filename.to_lowercase();
@@ -260,13 +270,13 @@ impl Scanner {
     #[inline]
     fn marker_type_priority(marker_type: &str) -> u8 {
         match marker_type {
-            "acf" => 0,      // Aircraft - highest priority
-            "library" => 1,  // Scenery library
-            "dsf" => 2,      // Scenery DSF
-            "navdata" => 3,  // Navigation data
-            "xpl" => 4,      // Plugin
-            "livery" => 5,   // Livery
-            "lua" => 6,      // Lua script - lowest priority
+            "acf" => 0,     // Aircraft - highest priority
+            "library" => 1, // Scenery library
+            "dsf" => 2,     // Scenery DSF
+            "navdata" => 3, // Navigation data
+            "xpl" => 4,     // Plugin
+            "livery" => 5,  // Livery
+            "lua" => 6,     // Lua script - lowest priority
             _ => 7,
         }
     }
@@ -427,7 +437,8 @@ impl Scanner {
                 // Check if inside a detected plugin directory
                 let is_inside_plugin = Self::is_path_inside_plugin_dirs(file_path, &plugin_dirs);
                 // Check if inside a detected aircraft directory
-                let is_inside_aircraft = Self::is_path_inside_aircraft_dirs(file_path, &aircraft_dirs);
+                let is_inside_aircraft =
+                    Self::is_path_inside_aircraft_dirs(file_path, &aircraft_dirs);
 
                 // Check if inside a skip directory
                 if Self::should_skip_path(file_path, &skip_dirs) {
@@ -747,17 +758,17 @@ impl Scanner {
             }
 
             // Skip .acf/.dsf inside plugin directories
-            if marker_type == "acf" || marker_type == "dsf" {
-                if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
-                    continue;
-                }
+            if (marker_type == "acf" || marker_type == "dsf")
+                && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
+            {
+                continue;
             }
 
             // Skip .xpl inside aircraft directories (embedded plugins)
-            if marker_type == "xpl" {
-                if Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs) {
-                    continue;
-                }
+            if marker_type == "xpl"
+                && Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs)
+            {
+                continue;
             }
 
             let item = match marker_type {
@@ -951,7 +962,7 @@ impl Scanner {
 
         // Check if this nested archive has its own password
         let nested_password =
-            ctx.get_nested_password(&parent_path.to_string_lossy().to_string(), nested_path);
+            ctx.get_nested_password(parent_path.to_string_lossy().as_ref(), nested_path);
 
         // Build nested archive info with password if available
         let nested_info = NestedArchiveInfo {
@@ -966,7 +977,7 @@ impl Scanner {
         // OPTIMIZATION: If nested archive is ZIP, try to load into memory
         let nested_result = if format == "zip" {
             crate::logger::log_info(
-                &format!("Optimizing: Loading nested ZIP from 7z into memory for scanning"),
+                "Optimizing: Loading nested ZIP from 7z into memory for scanning",
                 Some("scanner"),
             );
 
@@ -1175,7 +1186,7 @@ impl Scanner {
                             detected.extend(nested_items);
                         }
                         Err(e) => {
-                            if let Some(_) = e.downcast_ref::<PasswordRequiredError>() {
+                            if e.downcast_ref::<PasswordRequiredError>().is_some() {
                                 return Err(anyhow::anyhow!(NestedPasswordRequiredError {
                                     parent_archive: archive_path.to_string_lossy().to_string(),
                                     nested_archive: nested_path.clone(),
@@ -1286,7 +1297,7 @@ impl Scanner {
 
         // Check if this nested archive has its own password
         let nested_password =
-            ctx.get_nested_password(&parent_path.to_string_lossy().to_string(), nested_path);
+            ctx.get_nested_password(parent_path.to_string_lossy().as_ref(), nested_path);
 
         // Build nested archive info with password if available
         let nested_info = NestedArchiveInfo {
@@ -1301,7 +1312,7 @@ impl Scanner {
         // OPTIMIZATION: If nested archive is ZIP, try to load into memory
         let nested_result = if format == "zip" {
             crate::logger::log_info(
-                &format!("Optimizing: Loading nested ZIP from RAR into memory for scanning"),
+                "Optimizing: Loading nested ZIP from RAR into memory for scanning",
                 Some("scanner"),
             );
 
@@ -1533,17 +1544,17 @@ impl Scanner {
             }
 
             // Check if .acf/.dsf is inside a plugin directory
-            if marker_type == "acf" || marker_type == "dsf" {
-                if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
-                    continue;
-                }
+            if (marker_type == "acf" || marker_type == "dsf")
+                && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
+            {
+                continue;
             }
 
             // Skip .xpl inside aircraft directories (embedded plugins)
-            if marker_type == "xpl" {
-                if Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs) {
-                    continue;
-                }
+            if marker_type == "xpl"
+                && Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs)
+            {
+                continue;
             }
 
             // Detect addon based on marker type
@@ -1680,10 +1691,8 @@ impl Scanner {
 
         // Collect all file paths
         let enumerate_start = std::time::Instant::now();
-        for entry in archive {
-            if let Ok(e) = entry {
-                files.push(e.filename.to_string_lossy().to_string().replace('\\', "/"));
-            }
+        for e in archive.flatten() {
+            files.push(e.filename.to_string_lossy().to_string().replace('\\', "/"));
         }
 
         crate::log_debug!(
@@ -1819,17 +1828,17 @@ impl Scanner {
             }
 
             // Check if .acf/.dsf is inside a plugin directory
-            if marker_type == "acf" || marker_type == "dsf" {
-                if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
-                    continue;
-                }
+            if (marker_type == "acf" || marker_type == "dsf")
+                && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
+            {
+                continue;
             }
 
             // Skip .xpl inside aircraft directories (embedded plugins)
-            if marker_type == "xpl" {
-                if Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs) {
-                    continue;
-                }
+            if marker_type == "xpl"
+                && Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs)
+            {
+                continue;
             }
 
             // Detect addon based on marker type
@@ -1959,7 +1968,7 @@ impl Scanner {
         );
 
         // Check for empty archive
-        if archive.len() == 0 {
+        if archive.is_empty() {
             logger::log_info(
                 &format!("Empty ZIP archive: {}", zip_path.display()),
                 Some("scanner"),
@@ -2093,41 +2102,42 @@ impl Scanner {
         }
 
         // If password was provided and archive has encrypted files, verify password by trying to read first encrypted file
-        if has_encrypted && password_bytes.is_some() {
-            let pwd = password_bytes.unwrap();
-            // Find first encrypted file index
-            let mut encrypted_index: Option<usize> = None;
-            for i in 0..archive.len() {
-                if let Ok(file) = archive.by_index_raw(i) {
-                    if file.encrypted() && !file.is_dir() {
-                        encrypted_index = Some(i);
-                        break;
-                    }
-                }
-            }
-            // Try to decrypt the first encrypted file
-            if let Some(idx) = encrypted_index {
-                use std::io::Read;
-                match archive.by_index_decrypt(idx, pwd) {
-                    Ok(mut f) => {
-                        let mut buf = [0u8; 1];
-                        if f.read(&mut buf).is_err() {
-                            return Err(anyhow::anyhow!(
-                                "Wrong password for archive: {}",
-                                zip_path.display()
-                            ));
+        if has_encrypted {
+            if let Some(pwd) = password_bytes {
+                // Find first encrypted file index
+                let mut encrypted_index: Option<usize> = None;
+                for i in 0..archive.len() {
+                    if let Ok(file) = archive.by_index_raw(i) {
+                        if file.encrypted() && !file.is_dir() {
+                            encrypted_index = Some(i);
+                            break;
                         }
                     }
-                    Err(e) => {
-                        let err_str = format!("{:?}", e);
-                        if err_str.contains("password")
-                            || err_str.contains("Password")
-                            || err_str.contains("InvalidPassword")
-                        {
-                            return Err(anyhow::anyhow!(
-                                "Wrong password for archive: {}",
-                                zip_path.display()
-                            ));
+                }
+                // Try to decrypt the first encrypted file
+                if let Some(idx) = encrypted_index {
+                    use std::io::Read;
+                    match archive.by_index_decrypt(idx, pwd) {
+                        Ok(mut f) => {
+                            let mut buf = [0u8; 1];
+                            if f.read(&mut buf).is_err() {
+                                return Err(anyhow::anyhow!(
+                                    "Wrong password for archive: {}",
+                                    zip_path.display()
+                                ));
+                            }
+                        }
+                        Err(e) => {
+                            let err_str = format!("{:?}", e);
+                            if err_str.contains("password")
+                                || err_str.contains("Password")
+                                || err_str.contains("InvalidPassword")
+                            {
+                                return Err(anyhow::anyhow!(
+                                    "Wrong password for archive: {}",
+                                    zip_path.display()
+                                ));
+                            }
                         }
                     }
                 }
@@ -2178,17 +2188,17 @@ impl Scanner {
             }
 
             // Check if .acf/.dsf is inside a plugin directory
-            if marker_type == "acf" || marker_type == "dsf" {
-                if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
-                    continue;
-                }
+            if (marker_type == "acf" || marker_type == "dsf")
+                && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
+            {
+                continue;
             }
 
             // Skip .xpl inside aircraft directories (embedded plugins)
-            if marker_type == "xpl" {
-                if Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs) {
-                    continue;
-                }
+            if marker_type == "xpl"
+                && Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs)
+            {
+                continue;
             }
 
             // Detect addon based on marker type
@@ -2288,15 +2298,16 @@ impl Scanner {
                     continue;
                 }
 
-                match self.scan_nested_archive_in_zip(
-                    &mut archive,
-                    index,
-                    &nested_path,
-                    zip_path,
+                let params = NestedZipScanParams {
+                    parent_archive: &mut archive,
+                    file_index: index,
+                    nested_path: nested_path.as_str(),
+                    parent_path: zip_path,
                     ctx,
-                    password_bytes,
+                    parent_password: password_bytes,
                     is_encrypted,
-                ) {
+                };
+                match self.scan_nested_archive_in_zip(params) {
                     Ok(nested_items) => {
                         detected.extend(nested_items);
                     }
@@ -2342,14 +2353,17 @@ impl Scanner {
     /// Scan a nested archive within a ZIP file (in-memory)
     fn scan_nested_archive_in_zip(
         &self,
-        parent_archive: &mut zip::ZipArchive<fs::File>,
-        file_index: usize,
-        nested_path: &str,
-        parent_path: &Path,
-        ctx: &mut ScanContext,
-        parent_password: Option<&[u8]>,
-        is_encrypted: bool,
+        params: NestedZipScanParams<'_>,
     ) -> Result<Vec<DetectedItem>> {
+        let NestedZipScanParams {
+            parent_archive,
+            file_index,
+            nested_path,
+            parent_path,
+            ctx,
+            parent_password,
+            is_encrypted,
+        } = params;
         use std::io::Read;
 
         // Read nested archive into memory
@@ -2377,7 +2391,7 @@ impl Scanner {
 
         // Check if this nested archive has its own password
         let nested_password =
-            ctx.get_nested_password(&parent_path.to_string_lossy().to_string(), nested_path);
+            ctx.get_nested_password(parent_path.to_string_lossy().as_ref(), nested_path);
 
         // Build nested archive info with password if available
         let nested_info = NestedArchiveInfo {
@@ -2551,17 +2565,17 @@ impl Scanner {
             }
 
             // Check if .acf/.dsf is inside a plugin directory
-            if marker_type == "acf" || marker_type == "dsf" {
-                if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
-                    continue;
-                }
+            if (marker_type == "acf" || marker_type == "dsf")
+                && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
+            {
+                continue;
             }
 
             // Skip .xpl inside aircraft directories (embedded plugins)
-            if marker_type == "xpl" {
-                if Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs) {
-                    continue;
-                }
+            if marker_type == "xpl"
+                && Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs)
+            {
+                continue;
             }
 
             // Detect addon based on marker type
@@ -2640,10 +2654,9 @@ impl Scanner {
         let temp_path = temp_file.path();
 
         // Scan the temp file
-        let result = self.scan_path_with_context(temp_path, ctx);
 
         // Temp file is automatically deleted when NamedTempFile drops
-        result
+        self.scan_path_with_context(temp_path, ctx)
     }
 
     /// Scan a ZIP archive
@@ -2654,7 +2667,7 @@ impl Scanner {
         let mut archive = ZipArchive::new(file)?;
 
         // Check for empty archive
-        if archive.len() == 0 {
+        if archive.is_empty() {
             logger::log_info(
                 &format!("Empty ZIP archive: {}", zip_path.display()),
                 Some("scanner"),
@@ -2777,41 +2790,42 @@ impl Scanner {
         }
 
         // If password was provided and archive has encrypted files, verify password by trying to read first encrypted file
-        if has_encrypted && password_bytes.is_some() {
-            let pwd = password_bytes.unwrap();
-            // Find first encrypted file index
-            let mut encrypted_index: Option<usize> = None;
-            for i in 0..archive.len() {
-                if let Ok(file) = archive.by_index_raw(i) {
-                    if file.encrypted() && !file.is_dir() {
-                        encrypted_index = Some(i);
-                        break;
-                    }
-                }
-            }
-            // Try to decrypt the first encrypted file
-            if let Some(idx) = encrypted_index {
-                use std::io::Read;
-                match archive.by_index_decrypt(idx, pwd) {
-                    Ok(mut f) => {
-                        let mut buf = [0u8; 1];
-                        if f.read(&mut buf).is_err() {
-                            return Err(anyhow::anyhow!(
-                                "Wrong password for archive: {}",
-                                zip_path.display()
-                            ));
+        if has_encrypted {
+            if let Some(pwd) = password_bytes {
+                // Find first encrypted file index
+                let mut encrypted_index: Option<usize> = None;
+                for i in 0..archive.len() {
+                    if let Ok(file) = archive.by_index_raw(i) {
+                        if file.encrypted() && !file.is_dir() {
+                            encrypted_index = Some(i);
+                            break;
                         }
                     }
-                    Err(e) => {
-                        let err_str = format!("{:?}", e);
-                        if err_str.contains("password")
-                            || err_str.contains("Password")
-                            || err_str.contains("InvalidPassword")
-                        {
-                            return Err(anyhow::anyhow!(
-                                "Wrong password for archive: {}",
-                                zip_path.display()
-                            ));
+                }
+                // Try to decrypt the first encrypted file
+                if let Some(idx) = encrypted_index {
+                    use std::io::Read;
+                    match archive.by_index_decrypt(idx, pwd) {
+                        Ok(mut f) => {
+                            let mut buf = [0u8; 1];
+                            if f.read(&mut buf).is_err() {
+                                return Err(anyhow::anyhow!(
+                                    "Wrong password for archive: {}",
+                                    zip_path.display()
+                                ));
+                            }
+                        }
+                        Err(e) => {
+                            let err_str = format!("{:?}", e);
+                            if err_str.contains("password")
+                                || err_str.contains("Password")
+                                || err_str.contains("InvalidPassword")
+                            {
+                                return Err(anyhow::anyhow!(
+                                    "Wrong password for archive: {}",
+                                    zip_path.display()
+                                ));
+                            }
                         }
                     }
                 }
@@ -2845,17 +2859,17 @@ impl Scanner {
             }
 
             // Check if .acf/.dsf is inside a plugin directory
-            if marker_type == "acf" || marker_type == "dsf" {
-                if Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs) {
-                    continue;
-                }
+            if (marker_type == "acf" || marker_type == "dsf")
+                && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
+            {
+                continue;
             }
 
             // Skip .xpl inside aircraft directories (embedded plugins)
-            if marker_type == "xpl" {
-                if Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs) {
-                    continue;
-                }
+            if marker_type == "xpl"
+                && Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs)
+            {
+                continue;
             }
 
             // Detect addon based on marker type
@@ -3400,7 +3414,10 @@ impl Scanner {
         };
 
         // Validate navdata format
-        if !cycle.name.contains("X-Plane") && !cycle.name.contains("X-Plane 11") && !cycle.name.contains("X-Plane GNS430") {
+        if !cycle.name.contains("X-Plane")
+            && !cycle.name.contains("X-Plane 11")
+            && !cycle.name.contains("X-Plane GNS430")
+        {
             return Err(anyhow::anyhow!("Unknown Navdata Format: {}", cycle.name));
         }
 
@@ -3440,7 +3457,10 @@ impl Scanner {
         };
 
         // Validate navdata format
-        if !cycle.name.contains("X-Plane") && !cycle.name.contains("X-Plane 11") && !cycle.name.contains("X-Plane GNS430") {
+        if !cycle.name.contains("X-Plane")
+            && !cycle.name.contains("X-Plane 11")
+            && !cycle.name.contains("X-Plane GNS430")
+        {
             return Err(anyhow::anyhow!("Unknown Navdata Format: {}", cycle.name));
         }
 
@@ -3499,8 +3519,8 @@ impl Scanner {
                 .to_string();
 
             // Get the aircraft name for display
-            let aircraft_name = livery_patterns::get_aircraft_name(aircraft_type_id)
-                .unwrap_or(aircraft_type_id);
+            let aircraft_name =
+                livery_patterns::get_aircraft_name(aircraft_type_id).unwrap_or(aircraft_type_id);
 
             Ok(Some(DetectedItem {
                 original_input_path: String::new(),
@@ -3548,8 +3568,8 @@ impl Scanner {
             };
 
             // Get the aircraft name for display
-            let aircraft_name = livery_patterns::get_aircraft_name(aircraft_type_id)
-                .unwrap_or(aircraft_type_id);
+            let aircraft_name =
+                livery_patterns::get_aircraft_name(aircraft_type_id).unwrap_or(aircraft_type_id);
 
             Ok(Some(DetectedItem {
                 original_input_path: String::new(),

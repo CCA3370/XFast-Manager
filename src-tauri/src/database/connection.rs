@@ -104,8 +104,9 @@ pub fn open_connection() -> Result<DatabaseConnection, ApiError> {
 
     // Ensure parent directory exists
     if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| ApiError::database(format!("Failed to create database directory: {}", e)))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            ApiError::database(format!("Failed to create database directory: {}", e))
+        })?;
     }
 
     // Open the database connection

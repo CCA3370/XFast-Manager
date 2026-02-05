@@ -77,21 +77,21 @@ impl SceneryQueries {
         let package_rows = stmt
             .query_map([], |row| {
                 Ok((
-                    row.get::<_, i64>(0)?,  // id
-                    row.get::<_, String>(1)?,  // folder_name
-                    row.get::<_, String>(2)?,  // category
-                    row.get::<_, u8>(3)?,      // sub_priority
-                    row.get::<_, i64>(4)?,     // last_modified
-                    row.get::<_, i64>(5)?,     // indexed_at
-                    row.get::<_, bool>(6)?,    // has_apt_dat
-                    row.get::<_, bool>(7)?,    // has_dsf
-                    row.get::<_, bool>(8)?,    // has_library_txt
-                    row.get::<_, bool>(9)?,    // has_textures
-                    row.get::<_, bool>(10)?,   // has_objects
-                    row.get::<_, usize>(11)?,  // texture_count
-                    row.get::<_, u32>(12)?,    // earth_nav_tile_count
-                    row.get::<_, bool>(13)?,   // enabled
-                    row.get::<_, u32>(14)?,    // sort_order
+                    row.get::<_, i64>(0)?,             // id
+                    row.get::<_, String>(1)?,          // folder_name
+                    row.get::<_, String>(2)?,          // category
+                    row.get::<_, u8>(3)?,              // sub_priority
+                    row.get::<_, i64>(4)?,             // last_modified
+                    row.get::<_, i64>(5)?,             // indexed_at
+                    row.get::<_, bool>(6)?,            // has_apt_dat
+                    row.get::<_, bool>(7)?,            // has_dsf
+                    row.get::<_, bool>(8)?,            // has_library_txt
+                    row.get::<_, bool>(9)?,            // has_textures
+                    row.get::<_, bool>(10)?,           // has_objects
+                    row.get::<_, usize>(11)?,          // texture_count
+                    row.get::<_, u32>(12)?,            // earth_nav_tile_count
+                    row.get::<_, bool>(13)?,           // enabled
+                    row.get::<_, u32>(14)?,            // sort_order
                     row.get::<_, Option<String>>(15)?, // actual_path
                     row.get::<_, Option<String>>(16)?, // continent
                 ))
@@ -256,64 +256,100 @@ impl SceneryQueries {
         .map_err(|e| ApiError::database(format!("Failed to clear existing data: {}", e)))?;
 
         // Prepare statements once for batch insert (performance optimization)
-        let mut pkg_stmt = tx.prepare_cached(
-            "INSERT INTO scenery_packages (
+        let mut pkg_stmt = tx
+            .prepare_cached(
+                "INSERT INTO scenery_packages (
                 folder_name, category, sub_priority, last_modified, indexed_at,
                 has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
                 texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
                 continent
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)"
-        ).map_err(|e| ApiError::database(format!("Failed to prepare package statement: {}", e)))?;
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+            )
+            .map_err(|e| {
+                ApiError::database(format!("Failed to prepare package statement: {}", e))
+            })?;
 
-        let mut req_lib_stmt = tx.prepare_cached(
-            "INSERT INTO required_libraries (package_id, library_name) VALUES (?1, ?2)"
-        ).map_err(|e| ApiError::database(format!("Failed to prepare required_libraries statement: {}", e)))?;
+        let mut req_lib_stmt = tx
+            .prepare_cached(
+                "INSERT INTO required_libraries (package_id, library_name) VALUES (?1, ?2)",
+            )
+            .map_err(|e| {
+                ApiError::database(format!(
+                    "Failed to prepare required_libraries statement: {}",
+                    e
+                ))
+            })?;
 
-        let mut miss_lib_stmt = tx.prepare_cached(
-            "INSERT INTO missing_libraries (package_id, library_name) VALUES (?1, ?2)"
-        ).map_err(|e| ApiError::database(format!("Failed to prepare missing_libraries statement: {}", e)))?;
+        let mut miss_lib_stmt = tx
+            .prepare_cached(
+                "INSERT INTO missing_libraries (package_id, library_name) VALUES (?1, ?2)",
+            )
+            .map_err(|e| {
+                ApiError::database(format!(
+                    "Failed to prepare missing_libraries statement: {}",
+                    e
+                ))
+            })?;
 
-        let mut exp_lib_stmt = tx.prepare_cached(
-            "INSERT INTO exported_libraries (package_id, library_name) VALUES (?1, ?2)"
-        ).map_err(|e| ApiError::database(format!("Failed to prepare exported_libraries statement: {}", e)))?;
+        let mut exp_lib_stmt = tx
+            .prepare_cached(
+                "INSERT INTO exported_libraries (package_id, library_name) VALUES (?1, ?2)",
+            )
+            .map_err(|e| {
+                ApiError::database(format!(
+                    "Failed to prepare exported_libraries statement: {}",
+                    e
+                ))
+            })?;
 
         // Insert all packages using prepared statements
         for info in index.packages.values() {
-            pkg_stmt.execute(params![
-                info.folder_name,
-                category_to_string(&info.category),
-                info.sub_priority,
-                systemtime_to_unix(&info.last_modified),
-                systemtime_to_unix(&info.indexed_at),
-                info.has_apt_dat,
-                info.has_dsf,
-                info.has_library_txt,
-                info.has_textures,
-                info.has_objects,
-                info.texture_count,
-                info.earth_nav_tile_count,
-                info.enabled,
-                info.sort_order,
-                &info.actual_path,
-                &info.continent,
-            ]).map_err(|e| ApiError::database(format!("Failed to insert package: {}", e)))?;
+            pkg_stmt
+                .execute(params![
+                    info.folder_name,
+                    category_to_string(&info.category),
+                    info.sub_priority,
+                    systemtime_to_unix(&info.last_modified),
+                    systemtime_to_unix(&info.indexed_at),
+                    info.has_apt_dat,
+                    info.has_dsf,
+                    info.has_library_txt,
+                    info.has_textures,
+                    info.has_objects,
+                    info.texture_count,
+                    info.earth_nav_tile_count,
+                    info.enabled,
+                    info.sort_order,
+                    &info.actual_path,
+                    &info.continent,
+                ])
+                .map_err(|e| ApiError::database(format!("Failed to insert package: {}", e)))?;
 
             let package_id = tx.last_insert_rowid();
 
             // Insert libraries using prepared statements
             for lib_name in &info.required_libraries {
-                req_lib_stmt.execute(params![package_id, lib_name])
-                    .map_err(|e| ApiError::database(format!("Failed to insert required library: {}", e)))?;
+                req_lib_stmt
+                    .execute(params![package_id, lib_name])
+                    .map_err(|e| {
+                        ApiError::database(format!("Failed to insert required library: {}", e))
+                    })?;
             }
 
             for lib_name in &info.missing_libraries {
-                miss_lib_stmt.execute(params![package_id, lib_name])
-                    .map_err(|e| ApiError::database(format!("Failed to insert missing library: {}", e)))?;
+                miss_lib_stmt
+                    .execute(params![package_id, lib_name])
+                    .map_err(|e| {
+                        ApiError::database(format!("Failed to insert missing library: {}", e))
+                    })?;
             }
 
             for lib_name in &info.exported_library_names {
-                exp_lib_stmt.execute(params![package_id, lib_name])
-                    .map_err(|e| ApiError::database(format!("Failed to insert exported library: {}", e)))?;
+                exp_lib_stmt
+                    .execute(params![package_id, lib_name])
+                    .map_err(|e| {
+                        ApiError::database(format!("Failed to insert exported library: {}", e))
+                    })?;
             }
         }
 
@@ -370,8 +406,18 @@ impl SceneryQueries {
         let package_id = conn.last_insert_rowid();
 
         // Insert libraries
-        Self::insert_libraries(conn, package_id, &info.required_libraries, "required_libraries")?;
-        Self::insert_libraries(conn, package_id, &info.missing_libraries, "missing_libraries")?;
+        Self::insert_libraries(
+            conn,
+            package_id,
+            &info.required_libraries,
+            "required_libraries",
+        )?;
+        Self::insert_libraries(
+            conn,
+            package_id,
+            &info.missing_libraries,
+            "missing_libraries",
+        )?;
         Self::insert_libraries(
             conn,
             package_id,
@@ -403,7 +449,10 @@ impl SceneryQueries {
     }
 
     /// Update a single package in the database
-    pub fn update_package(conn: &mut Connection, info: &SceneryPackageInfo) -> Result<(), ApiError> {
+    pub fn update_package(
+        conn: &mut Connection,
+        info: &SceneryPackageInfo,
+    ) -> Result<(), ApiError> {
         let tx = conn
             .transaction()
             .map_err(|e| ApiError::database(format!("Failed to start transaction: {}", e)))?;
@@ -491,8 +540,18 @@ impl SceneryQueries {
         .map_err(|e| ApiError::database(format!("Failed to delete libraries: {}", e)))?;
 
         // Insert new libraries
-        Self::insert_libraries(conn, package_id, &info.required_libraries, "required_libraries")?;
-        Self::insert_libraries(conn, package_id, &info.missing_libraries, "missing_libraries")?;
+        Self::insert_libraries(
+            conn,
+            package_id,
+            &info.required_libraries,
+            "required_libraries",
+        )?;
+        Self::insert_libraries(
+            conn,
+            package_id,
+            &info.missing_libraries,
+            "missing_libraries",
+        )?;
         Self::insert_libraries(
             conn,
             package_id,
@@ -521,7 +580,25 @@ impl SceneryQueries {
         conn: &Connection,
         folder_name: &str,
     ) -> Result<Option<SceneryPackageInfo>, ApiError> {
-        let row: Option<(i64, String, String, u8, i64, i64, bool, bool, bool, bool, bool, usize, u32, bool, u32, Option<String>, Option<String>)> = conn
+        let row: Option<(
+            i64,
+            String,
+            String,
+            u8,
+            i64,
+            i64,
+            bool,
+            bool,
+            bool,
+            bool,
+            bool,
+            usize,
+            u32,
+            bool,
+            u32,
+            Option<String>,
+            Option<String>,
+        )> = conn
             .query_row(
                 "SELECT id, folder_name, category, sub_priority, last_modified, indexed_at,
                         has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
@@ -596,9 +673,12 @@ impl SceneryQueries {
                 };
 
                 // Load libraries
-                info.required_libraries = Self::load_package_libraries(conn, id, "required_libraries")?;
-                info.missing_libraries = Self::load_package_libraries(conn, id, "missing_libraries")?;
-                info.exported_library_names = Self::load_package_libraries(conn, id, "exported_libraries")?;
+                info.required_libraries =
+                    Self::load_package_libraries(conn, id, "required_libraries")?;
+                info.missing_libraries =
+                    Self::load_package_libraries(conn, id, "missing_libraries")?;
+                info.exported_library_names =
+                    Self::load_package_libraries(conn, id, "exported_libraries")?;
 
                 Ok(Some(info))
             }
@@ -627,8 +707,10 @@ impl SceneryQueries {
 
         let mut libraries = Vec::new();
         for row_result in rows {
-            libraries.push(row_result
-                .map_err(|e| ApiError::database(format!("Failed to read library: {}", e)))?);
+            libraries.push(
+                row_result
+                    .map_err(|e| ApiError::database(format!("Failed to read library: {}", e)))?,
+            );
         }
 
         Ok(libraries)
@@ -669,7 +751,8 @@ impl SceneryQueries {
             updates.join(", ")
         );
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
 
         let rows_affected = conn
             .execute(&query, params_refs.as_slice())
@@ -699,7 +782,8 @@ impl SceneryQueries {
             ).map_err(|e| ApiError::database(format!("Failed to prepare update statement: {}", e)))?;
 
             for entry in entries {
-                let rows_affected = stmt.execute(params![entry.enabled, entry.sort_order, &entry.folder_name])
+                let rows_affected = stmt
+                    .execute(params![entry.enabled, entry.sort_order, &entry.folder_name])
                     .map_err(|e| ApiError::database(format!("Failed to update entry: {}", e)))?;
 
                 // Check if the entry existed
@@ -737,7 +821,9 @@ impl SceneryQueries {
     /// Get package count
     pub fn get_package_count(conn: &Connection) -> Result<usize, ApiError> {
         let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM scenery_packages", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM scenery_packages", [], |row| {
+                row.get(0)
+            })
             .map_err(|e| ApiError::database(format!("Failed to count packages: {}", e)))?;
         Ok(count as usize)
     }
@@ -848,12 +934,16 @@ mod tests {
         };
 
         SceneryQueries::update_package(&mut conn, &info).unwrap();
-        assert!(SceneryQueries::get_package(&conn, "ToDelete").unwrap().is_some());
+        assert!(SceneryQueries::get_package(&conn, "ToDelete")
+            .unwrap()
+            .is_some());
 
         let deleted = SceneryQueries::delete_package(&conn, "ToDelete").unwrap();
         assert!(deleted);
 
-        assert!(SceneryQueries::get_package(&conn, "ToDelete").unwrap().is_none());
+        assert!(SceneryQueries::get_package(&conn, "ToDelete")
+            .unwrap()
+            .is_none());
     }
 
     #[test]
