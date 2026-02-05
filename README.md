@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>The Modern X-Plane Addon Manager</strong>
+  <strong>The Modern X-Plane Addon Installer & Manager</strong>
 </p>
 
 <p align="center">
@@ -32,8 +32,31 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/CCA3370/XFast-Manager/releases"><strong>Download Latest Release</strong></a>
+  <a href="https://github.com/CCA3370/XFast-Manager/releases" class="download-button">Download Latest Release</a>
 </p>
+
+<style>
+  a {
+    text-decoration: none;
+  }
+  .download-button {
+    display: inline-block;
+    background-color: #2ea44f;
+    color: white !important;
+    padding: 10px 24px;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 16px;
+    margin: 4px 0 10px 0;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+    transition: all 0.2s ease;
+  }
+  .download-button:hover {
+    background-color: #2c974b;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  }
+</style>
 
 XFast Manager makes installing and managing X-Plane addons effortless. Drop in a file and get a ready-to-fly setup in minutes. Available for Windows, macOS, and Linux.
 
