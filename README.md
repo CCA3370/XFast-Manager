@@ -9,12 +9,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/CCA3370/XFast-Manager/actions/workflows/build-tauri.yml">
-    <img src="https://github.com/CCA3370/XFast-Manager/actions/workflows/build-tauri.yml/badge.svg" alt="Build">
+  <a href="https://github.com/CCA3370/XFast-Manager/stargazers">
+    <img src="https://img.shields.io/github/stars/CCA3370/XFast-Manager?style=flat" alt="Stars">
   </a>
-  <a href="https://github.com/CCA3370/XFast-Manager/actions/workflows/release.yml">
-    <img src="https://github.com/CCA3370/XFast-Manager/actions/workflows/release.yml/badge.svg" alt="Release">
+  <a href="https://github.com/CCA3370/XFast-Manager/issues">
+    <img src="https://img.shields.io/github/issues/CCA3370/XFast-Manager" alt="Issues">
   </a>
+  <a href="https://github.com/CCA3370/XFast-Manager/commits">
+    <img src="https://img.shields.io/github/last-commit/CCA3370/XFast-Manager" alt="Last Commit">
   <a href="https://github.com/CCA3370/XFast-Manager/releases">
     <img src="https://img.shields.io/github/v/release/CCA3370/XFast-Manager?display_name=tag" alt="Latest Release">
   </a>
@@ -36,8 +38,6 @@
 XFast Manager makes installing and managing X-Plane addons effortless. Drop in a file and get a ready-to-fly setup in minutes. Available for Windows, macOS, and Linux.
 
 ---
-
-## For Users
 
 ### Experience at a Glance
 
@@ -109,39 +109,6 @@ Provide the archive password when prompted.
 - Feature requests are welcome via GitHub Issues.
 
 ---
-
-## For Developers
-
-### Tech Stack
-
-| Layer | Technology |
-|------|------------|
-| Frontend | Vue 3 + TypeScript + Tailwind CSS v4 |
-| Backend | Rust + Tauri 2 |
-| Build | Vite + Cargo |
-| State | Pinia |
-| i18n | vue-i18n |
-
-### Project Structure
-
-```
-XFast-Manager/
-├── src/                    # Frontend source
-│   ├── components/         # Vue components
-│   ├── views/              # Page views
-│   ├── stores/             # Pinia state management
-│   ├── services/           # API and logging services
-│   ├── i18n/               # Localization files
-│   ├── types/              # TypeScript definitions
-│   └── utils/              # Utility functions
-├── src-tauri/              # Rust backend
-│   ├── src/                # Rust source code
-│   ├── icons/              # Application icons
-│   └── capabilities/       # Tauri permissions
-├── public/                 # Static assets
-├── screenshots/            # Screenshot assets for README
-└── scripts/                # Build scripts
-```
 
 ### Development
 

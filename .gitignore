@@ -1,45 +1,61 @@
-# Node / Vite
+# Node/Vite
 node_modules/
 dist/
-dist-ssr/
+dist-*/
 .vite/
-*.tsbuildinfo
-.eslintcache
-.stylelintcache
+
+# Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-.pnpm-store/
+lerna-debug.log*
 
 # Rust / Tauri
 target/
 src-tauri/target/
-src-tauri/.cargo/
-src-tauri/Cargo.lock
+**/*.rs.bk
 
-# Coverage
-coverage/
-
-# Environment
+# Environment files
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
-# Logs
-logs/
-*.log
-
-# Editors / OS
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# OS files
 .DS_Store
+.AppleDouble
+.LSOverride
 Thumbs.db
+desktop.ini
 
-analysis/
-CLAUDE.md
-AGENTS.md
+# IDEs
+.idea/
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Temporary / cache
+.cache/
+.tmp/
+tmp/
+
+# AI assistants
 .claude/
+.codex/
+.cursor/
+.aider/
+.windsurf/
+.gemini/
+GEMINI.md
+CLAUDE.md
+CHATGPT.md
+AI.md
+.copilot/
+.github/copilot-instructions.md

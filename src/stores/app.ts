@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import { AddonType, type InstallTask, type InstallResult } from '@/types'
 import { useLockStore } from './lock'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
@@ -161,6 +162,9 @@ export const useAppStore = defineStore('app', () => {
     if (savedLogLevel && ['basic', 'full', 'debug'].includes(savedLogLevel)) {
       logLevel.value = savedLogLevel
     }
+    // Sync log level to backend
+    const backendLevel = logLevel.value === 'basic' ? 'error' : logLevel.value === 'full' ? 'info' : 'debug'
+    invoke('set_log_level', { level: backendLevel })
 
     // Load config file patterns
     const savedPatterns = await getItem<string[]>(STORAGE_KEYS.CONFIG_FILE_PATTERNS)
@@ -259,6 +263,9 @@ export const useAppStore = defineStore('app', () => {
   async function setLogLevel(level: LogLevel) {
     logLevel.value = level
     await setItem(STORAGE_KEYS.LOG_LEVEL, level)
+    // Also set the backend log level
+    const backendLevel = level === 'basic' ? 'error' : level === 'full' ? 'info' : 'debug'
+    invoke('set_log_level', { level: backendLevel })
   }
 
   function setCurrentTasks(tasks: InstallTask[]) {

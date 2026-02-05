@@ -32,9 +32,9 @@ use crate::error::ToTauriError;
 use analyzer::Analyzer;
 use installer::Installer;
 use models::{
-    AircraftInfo, AnalysisResult, InstallResult, InstallTask, ManagementData,
-    NavdataBackupInfo, NavdataManagerInfo, PluginInfo, SceneryIndexScanResult, SceneryIndexStats,
-    SceneryIndexStatus, SceneryManagerData, SceneryPackageInfo,
+    AircraftInfo, AnalysisResult, InstallResult, InstallTask, ManagementData, NavdataBackupInfo,
+    NavdataManagerInfo, PluginInfo, SceneryIndexScanResult, SceneryIndexStats, SceneryIndexStatus,
+    SceneryManagerData, SceneryPackageInfo,
 };
 use scenery_index::SceneryIndexManager;
 use scenery_packs_manager::SceneryPacksManager;
@@ -206,8 +206,7 @@ fn is_context_menu_registered() -> bool {
 
 #[tauri::command]
 fn sync_context_menu_paths() -> Result<bool, String> {
-    registry::sync_registry_paths()
-        .map_err(|e| format!("Failed to sync context menu paths: {}", e))
+    registry::sync_registry_paths().map_err(|e| format!("Failed to sync context menu paths: {}", e))
 }
 
 // ============================================================================
@@ -250,7 +249,11 @@ fn open_log_folder() -> Result<(), String> {
 // ========== Scenery Folder Commands ==========
 
 fn validate_scenery_folder_name(folder_name: &str) -> error::ApiResult<()> {
-    if folder_name.is_empty() || folder_name.contains("..") || folder_name.contains('/') || folder_name.contains('\\') {
+    if folder_name.is_empty()
+        || folder_name.contains("..")
+        || folder_name.contains('/')
+        || folder_name.contains('\\')
+    {
         return Err(error::ApiError::security_violation(
             "Invalid folder name: path traversal not allowed",
         ));
@@ -258,7 +261,10 @@ fn validate_scenery_folder_name(folder_name: &str) -> error::ApiResult<()> {
     Ok(())
 }
 
-fn resolve_scenery_entry_path(xplane_path: &str, folder_name: &str) -> error::ApiResult<(PathBuf, PathBuf)> {
+fn resolve_scenery_entry_path(
+    xplane_path: &str,
+    folder_name: &str,
+) -> error::ApiResult<(PathBuf, PathBuf)> {
     validate_scenery_folder_name(folder_name)?;
 
     let base_path = PathBuf::from(xplane_path).join("Custom Scenery");
@@ -290,7 +296,7 @@ fn open_scenery_folder(xplane_path: String, folder_name: String) -> error::ApiRe
 
     // If it's a symlink, open the link itself to allow external targets
     if metadata.file_type().is_symlink() {
-        return open_in_explorer(&entry_path).map_err(|e| error::ApiError::internal(e));
+        return open_in_explorer(&entry_path).map_err(error::ApiError::internal);
     }
 
     // For regular directories/files, enforce canonical base containment
@@ -307,14 +313,11 @@ fn open_scenery_folder(xplane_path: String, folder_name: String) -> error::ApiRe
         ));
     }
 
-    open_in_explorer(&canonical_path).map_err(|e| error::ApiError::internal(e))
+    open_in_explorer(&canonical_path).map_err(error::ApiError::internal)
 }
 
 #[tauri::command]
-async fn delete_scenery_folder(
-    xplane_path: String,
-    folder_name: String,
-) -> error::ApiResult<()> {
+async fn delete_scenery_folder(xplane_path: String, folder_name: String) -> error::ApiResult<()> {
     let (entry_path, base_path) = resolve_scenery_entry_path(&xplane_path, &folder_name)?;
     let metadata = fs::symlink_metadata(&entry_path)
         .map_err(|e| error::ApiError::validation(format!("Invalid path: {}", e)))?;
@@ -482,23 +485,15 @@ async fn is_xplane_running() -> bool {
                     Some("app"),
                     None,
                 );
-                return is_running;
+                is_running
             }
             Ok(Err(e)) => {
-                logger::log_debug(
-                    &format!("Failed to run tasklist: {}", e),
-                    Some("app"),
-                    None,
-                );
-                return false;
+                logger::log_debug(&format!("Failed to run tasklist: {}", e), Some("app"), None);
+                false
             }
             Err(e) => {
-                logger::log_debug(
-                    &format!("Task join error: {}", e),
-                    Some("app"),
-                    None,
-                );
-                return false;
+                logger::log_debug(&format!("Task join error: {}", e), Some("app"), None);
+                false
             }
         }
     }
@@ -524,19 +519,11 @@ async fn is_xplane_running() -> bool {
                 return is_running;
             }
             Ok(Err(e)) => {
-                logger::log_debug(
-                    &format!("Failed to run pgrep: {}", e),
-                    Some("app"),
-                    None,
-                );
+                logger::log_debug(&format!("Failed to run pgrep: {}", e), Some("app"), None);
                 return false;
             }
             Err(e) => {
-                logger::log_debug(
-                    &format!("Task join error: {}", e),
-                    Some("app"),
-                    None,
-                );
+                logger::log_debug(&format!("Task join error: {}", e), Some("app"), None);
                 return false;
             }
         }
@@ -563,19 +550,11 @@ async fn is_xplane_running() -> bool {
                 return is_running;
             }
             Ok(Err(e)) => {
-                logger::log_debug(
-                    &format!("Failed to run pgrep: {}", e),
-                    Some("app"),
-                    None,
-                );
+                logger::log_debug(&format!("Failed to run pgrep: {}", e), Some("app"), None);
                 return false;
             }
             Err(e) => {
-                logger::log_debug(
-                    &format!("Task join error: {}", e),
-                    Some("app"),
-                    None,
-                );
+                logger::log_debug(&format!("Task join error: {}", e), Some("app"), None);
                 return false;
             }
         }
@@ -700,8 +679,7 @@ async fn rebuild_scenery_index(xplane_path: String) -> Result<SceneryIndexStats,
 async fn reset_scenery_database() -> Result<bool, String> {
     tokio::task::spawn_blocking(move || {
         logger::log_info("Resetting scenery database", Some("database"));
-        database::delete_database()
-            .map_err(|e| format!("Failed to delete database: {}", e))
+        database::delete_database().map_err(|e| format!("Failed to delete database: {}", e))
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
@@ -866,9 +844,7 @@ async fn check_aircraft_updates(
 }
 
 #[tauri::command]
-async fn check_plugins_updates(
-    mut plugins: Vec<PluginInfo>,
-) -> Result<Vec<PluginInfo>, String> {
+async fn check_plugins_updates(mut plugins: Vec<PluginInfo>) -> Result<Vec<PluginInfo>, String> {
     management_index::check_plugins_updates(&mut plugins).await;
     Ok(plugins)
 }
@@ -929,7 +905,7 @@ async fn toggle_management_item(
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
         management_index::toggle_management_item(xplane_path, &item_type, &folder_name)
-            .map_err(|e| error::ApiError::from(e))
+            .map_err(error::ApiError::from)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
@@ -945,7 +921,7 @@ async fn delete_management_item(
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
         management_index::delete_management_item(xplane_path, &item_type, &folder_name)
-            .map_err(|e| error::ApiError::from(e))
+            .map_err(error::ApiError::from)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
@@ -961,7 +937,7 @@ async fn open_management_folder(
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
         management_index::open_management_folder(xplane_path, &item_type, &folder_name)
-            .map_err(|e| error::ApiError::from(e))
+            .map_err(error::ApiError::from)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
@@ -978,7 +954,7 @@ async fn set_cfg_disabled(
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
         management_index::set_cfg_disabled(xplane_path, &item_type, &folder_name, disabled)
-            .map_err(|e| error::ApiError::from(e))
+            .map_err(error::ApiError::from)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?

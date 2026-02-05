@@ -54,7 +54,7 @@ impl CompiledPatterns {
 /// Produces a 16-character hex string (first 8 bytes of hash) that is
 /// deterministic: the same provider name always yields the same result.
 pub fn sanitize_folder_name(name: &str) -> String {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let hash = Sha256::digest(name.as_bytes());
     // Take first 8 bytes → 16 hex chars, enough to avoid collisions in practice
     hash.iter().take(8).map(|b| format!("{:02x}", b)).collect()
@@ -102,6 +102,7 @@ fn copy_file_optimized<R: std::io::Read + ?Sized, W: std::io::Write>(
 
 /// Remove read-only attribute from a file (Windows only)
 #[cfg(target_os = "windows")]
+#[allow(clippy::permissions_set_readonly_false)]
 fn remove_readonly_attribute(path: &Path) -> Result<()> {
     let metadata = fs::metadata(path)?;
     let mut permissions = metadata.permissions();
@@ -132,13 +133,15 @@ fn remove_dir_all_robust(path: &Path) -> Result<()> {
     }
 
     // First pass: remove read-only attributes from all files
-    for entry in walkdir::WalkDir::new(path).follow_links(false) {
-        if let Ok(entry) = entry {
-            let entry_path = entry.path();
-            if entry_path.is_file() {
-                // Try to remove read-only attribute, but don't fail if it doesn't work
-                let _ = remove_readonly_attribute(entry_path);
-            }
+    for entry in walkdir::WalkDir::new(path)
+        .follow_links(false)
+        .into_iter()
+        .flatten()
+    {
+        let entry_path = entry.path();
+        if entry_path.is_file() {
+            // Try to remove read-only attribute, but don't fail if it doesn't work
+            let _ = remove_readonly_attribute(entry_path);
         }
     }
 
@@ -162,12 +165,8 @@ fn remove_dir_all_robust(path: &Path) -> Result<()> {
     }
 
     // All retries failed, provide detailed error information
-    let e = last_error.unwrap_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Unknown error during directory removal",
-        )
-    });
+    let e = last_error
+        .unwrap_or_else(|| std::io::Error::other("Unknown error during directory removal"));
     let err_msg = format!(
         "Failed to delete directory: {:?}\nError: {}\n\
         This may be caused by:\n\
@@ -194,6 +193,30 @@ struct AircraftBackup {
     // For verification
     original_liveries_info: Option<DirectoryInfo>,
     original_pref_sizes: Vec<(String, u64)>, // (filename, original_size)
+}
+
+struct AircraftInstallOptions<'a> {
+    backup_liveries: bool,
+    backup_config_files: bool,
+    config_patterns: &'a [String],
+}
+
+struct AircraftExtractionInstallParams<'a> {
+    source: &'a Path,
+    target: &'a Path,
+    chain: &'a crate::models::ExtractionChain,
+    ctx: &'a ProgressContext,
+    password: Option<&'a str>,
+    options: AircraftInstallOptions<'a>,
+}
+
+struct AircraftProgressInstallParams<'a> {
+    source: &'a Path,
+    target: &'a Path,
+    internal_root: Option<&'a str>,
+    ctx: &'a ProgressContext,
+    password: Option<&'a str>,
+    options: AircraftInstallOptions<'a>,
 }
 
 /// Progress tracking context
@@ -303,11 +326,19 @@ impl ProgressContext {
                 }
 
                 // Get cumulative bytes at start of current task
-                let cumulative = self.task_cumulative.get(self.current_task_index).copied().unwrap_or(0) as f64;
+                let cumulative = self
+                    .task_cumulative
+                    .get(self.current_task_index)
+                    .copied()
+                    .unwrap_or(0) as f64;
                 let base_pct = (cumulative / total_f) * 100.0;
 
                 // Get current task's size and its contribution to total progress
-                let task_size = self.task_sizes.get(self.current_task_index).copied().unwrap_or(0) as f64;
+                let task_size = self
+                    .task_sizes
+                    .get(self.current_task_index)
+                    .copied()
+                    .unwrap_or(0) as f64;
                 let task_pct = (task_size / total_f) * 100.0;
 
                 // Installation part is complete (90% of task's share), verification in progress (10%)
@@ -324,11 +355,19 @@ impl ProgressContext {
                 }
 
                 // Get cumulative bytes at start of current task
-                let cumulative = self.task_cumulative.get(self.current_task_index).copied().unwrap_or(0) as f64;
+                let cumulative = self
+                    .task_cumulative
+                    .get(self.current_task_index)
+                    .copied()
+                    .unwrap_or(0) as f64;
                 let base_pct = (cumulative / total_f) * 100.0;
 
                 // Get current task's size
-                let task_size = self.task_sizes.get(self.current_task_index).copied().unwrap_or(1) as f64;
+                let task_size = self
+                    .task_sizes
+                    .get(self.current_task_index)
+                    .copied()
+                    .unwrap_or(1) as f64;
                 let task_pct = (task_size / total_f) * 100.0;
 
                 // Calculate progress within current task (only 90% for installation phase)
@@ -794,7 +833,8 @@ impl Installer {
             if source.is_dir() {
                 task_size += self.get_directory_size(source)?;
             } else if source.is_file() {
-                task_size += self.get_archive_size(source, task.archive_internal_root.as_deref())?;
+                task_size +=
+                    self.get_archive_size(source, task.archive_internal_root.as_deref())?;
             }
 
             // For clean install with existing target, add backup/restore overhead
@@ -1142,7 +1182,9 @@ impl Installer {
                         .max_depth(3)
                         .into_iter()
                         .filter_map(|e| e.ok())
-                        .any(|e| e.file_type().is_file() && e.file_name().to_str() == Some("cycle.json"))
+                        .any(|e| {
+                            e.file_type().is_file() && e.file_name().to_str() == Some("cycle.json")
+                        })
                 } else {
                     target.join("cycle.json").exists()
                 };
@@ -1735,10 +1777,8 @@ impl Installer {
             .map_err(|e| anyhow::anyhow!("Failed to open RAR for size query: {:?}", e))?;
 
         let mut total = 0u64;
-        for entry in arch {
-            if let Ok(e) = entry {
-                total += e.unpacked_size;
-            }
+        for e in arch.flatten() {
+            total += e.unpacked_size;
         }
         Ok(total)
     }
@@ -1905,7 +1945,7 @@ impl Installer {
         let mut current_password = outermost_password.map(|s| s.as_bytes().to_vec());
 
         // Navigate through all layers
-        for (_index, archive_info) in chain.archives.iter().enumerate() {
+        for archive_info in chain.archives.iter() {
             let cursor = Cursor::new(&current_archive_data);
             let mut archive = ZipArchive::new(cursor)?;
 
@@ -2386,7 +2426,7 @@ impl Installer {
 
             if source_path.is_dir() {
                 // Try to rename (move) the directory
-                if let Err(_) = fs::rename(&source_path, &target_path) {
+                if fs::rename(&source_path, &target_path).is_err() {
                     // Fallback: copy and delete
                     self.copy_directory_with_progress(
                         &source_path,
@@ -2400,7 +2440,7 @@ impl Installer {
                 }
             } else {
                 // Try to rename (move) the file
-                if let Err(_) = fs::rename(&source_path, &target_path) {
+                if fs::rename(&source_path, &target_path).is_err() {
                     // Fallback: copy and delete
                     fs::copy(&source_path, &target_path)
                         .context(format!("Failed to copy file: {:?}", source_path))?;
@@ -2427,16 +2467,19 @@ impl Installer {
                 // For Aircraft: backup liveries and prefs, delete, install, restore
                 // Note: For nested archives, we don't have archive_internal_root,
                 // so we'll use the extraction chain's final_internal_root
-                self.handle_aircraft_clean_install_with_extraction_chain(
+                let params = AircraftExtractionInstallParams {
                     source,
                     target,
                     chain,
                     ctx,
                     password,
-                    task.backup_liveries,
-                    task.backup_config_files,
-                    &task.config_file_patterns,
-                )?;
+                    options: AircraftInstallOptions {
+                        backup_liveries: task.backup_liveries,
+                        backup_config_files: task.backup_config_files,
+                        config_patterns: &task.config_file_patterns,
+                    },
+                };
+                self.handle_aircraft_clean_install_with_extraction_chain(params)?;
             }
             crate::models::AddonType::Navdata => {
                 // For Navdata: DON'T delete Custom Data folder!
@@ -2458,15 +2501,21 @@ impl Installer {
     /// Handle aircraft clean install with extraction chain
     fn handle_aircraft_clean_install_with_extraction_chain(
         &self,
-        source: &Path,
-        target: &Path,
-        chain: &crate::models::ExtractionChain,
-        ctx: &ProgressContext,
-        password: Option<&str>,
-        backup_liveries: bool,
-        backup_config_files: bool,
-        config_file_patterns: &[String],
+        params: AircraftExtractionInstallParams<'_>,
     ) -> Result<()> {
+        let AircraftExtractionInstallParams {
+            source,
+            target,
+            chain,
+            ctx,
+            password,
+            options,
+        } = params;
+        let AircraftInstallOptions {
+            backup_liveries,
+            backup_config_files,
+            config_patterns: config_file_patterns,
+        } = options;
         use uuid::Uuid;
 
         // Step 1: Backup liveries and config files if requested
@@ -2487,18 +2536,17 @@ impl Installer {
             // Backup config files
             if backup_config_files {
                 for pattern in config_file_patterns {
-                    for entry in glob::glob(&target.join(pattern).to_string_lossy())
-                        .context("Failed to read glob pattern")?
+                    for config_file in (glob::glob(&target.join(pattern).to_string_lossy())
+                        .context("Failed to read glob pattern")?)
+                    .flatten()
                     {
-                        if let Ok(config_file) = entry {
-                            if config_file.is_file() {
-                                if let Some(file_name) = config_file.file_name() {
-                                    let backup_file = backup_path.join(file_name);
-                                    fs::copy(&config_file, &backup_file).context(format!(
-                                        "Failed to backup config file: {:?}",
-                                        config_file
-                                    ))?;
-                                }
+                        if config_file.is_file() {
+                            if let Some(file_name) = config_file.file_name() {
+                                let backup_file = backup_path.join(file_name);
+                                fs::copy(&config_file, &backup_file).context(format!(
+                                    "Failed to backup config file: {:?}",
+                                    config_file
+                                ))?;
                             }
                         }
                     }
@@ -2565,16 +2613,19 @@ impl Installer {
         match task.addon_type {
             AddonType::Aircraft => {
                 // For Aircraft: backup liveries and prefs, delete, install, restore
-                self.handle_aircraft_clean_install_with_progress(
+                let params = AircraftProgressInstallParams {
                     source,
                     target,
-                    task.archive_internal_root.as_deref(),
+                    internal_root: task.archive_internal_root.as_deref(),
                     ctx,
                     password,
-                    task.backup_liveries,
-                    task.backup_config_files,
-                    &task.config_file_patterns,
-                )?;
+                    options: AircraftInstallOptions {
+                        backup_liveries: task.backup_liveries,
+                        backup_config_files: task.backup_config_files,
+                        config_patterns: &task.config_file_patterns,
+                    },
+                };
+                self.handle_aircraft_clean_install_with_progress(params)?;
             }
             AddonType::Navdata => {
                 // For Navdata: backup matching old files before installing new ones
@@ -2608,15 +2659,21 @@ impl Installer {
     /// Aircraft clean install with progress tracking
     fn handle_aircraft_clean_install_with_progress(
         &self,
-        source: &Path,
-        target: &Path,
-        internal_root: Option<&str>,
-        ctx: &ProgressContext,
-        password: Option<&str>,
-        backup_liveries: bool,
-        backup_config_files: bool,
-        config_patterns: &[String],
+        params: AircraftProgressInstallParams<'_>,
     ) -> Result<()> {
+        let AircraftProgressInstallParams {
+            source,
+            target,
+            internal_root,
+            ctx,
+            password,
+            options,
+        } = params;
+        let AircraftInstallOptions {
+            backup_liveries,
+            backup_config_files,
+            config_patterns,
+        } = options;
         // Step 1: Create backup of important files
         let backup = self.backup_aircraft_data(
             target,
@@ -3007,13 +3064,8 @@ impl Installer {
         );
 
         // Extract new navdata to temp
-        let extract_result = self.install_content_with_progress(
-            source,
-            &temp_dir,
-            internal_root,
-            ctx,
-            password,
-        );
+        let extract_result =
+            self.install_content_with_progress(source, &temp_dir, internal_root, ctx, password);
 
         if let Err(e) = extract_result {
             let _ = fs::remove_dir_all(&temp_dir);
@@ -3025,13 +3077,20 @@ impl Installer {
             let cycle_path = dir.join("cycle.json");
             if let Ok(content) = fs::read_to_string(&cycle_path) {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                    let name = json.get("provider")
+                    let name = json
+                        .get("provider")
                         .or_else(|| json.get("name"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("navdata")
                         .to_string();
-                    let cycle = json.get("cycle").and_then(|v| v.as_str()).map(|s| s.to_string());
-                    let airac = json.get("airac").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let cycle = json
+                        .get("cycle")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let airac = json
+                        .get("airac")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
                     return (name, cycle, airac);
                 }
             }
@@ -3091,7 +3150,8 @@ impl Installer {
                         // Get size from walkdir's metadata (single stat call)
                         let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
                         // Relative path from Custom Data (not target) for consistent restore
-                        let relative_path = entry.path()
+                        let relative_path = entry
+                            .path()
                             .strip_prefix(custom_data_dir)
                             .unwrap_or(entry.path())
                             .to_string_lossy()
@@ -3107,7 +3167,10 @@ impl Installer {
             }
 
             logger::log_info(
-                &format!("Found {} files to backup (checksum skipped)", backup_entries.len()),
+                &format!(
+                    "Found {} files to backup (checksum skipped)",
+                    backup_entries.len()
+                ),
                 Some("installer"),
             );
 
@@ -3184,7 +3247,9 @@ impl Installer {
                             let _ = fs::remove_dir_all(&temp_dir);
                             anyhow::bail!(
                                 "Backup size mismatch for {}: expected {} bytes, got {} bytes",
-                                entry.relative_path, entry.size, meta.len()
+                                entry.relative_path,
+                                entry.size,
+                                meta.len()
                             );
                         }
                     }
@@ -3581,7 +3646,7 @@ impl Installer {
         // Calculate chunk size: aim for ~100-500 files per chunk to balance
         // ZipArchive reuse vs parallelism. Each chunk opens ZipArchive once.
         let num_threads = rayon::current_num_threads().max(1);
-        let chunk_size = (file_entries.len() / num_threads).max(100).min(500);
+        let chunk_size = (file_entries.len() / num_threads).clamp(100, 500);
 
         // Process files in chunks - each chunk shares one ZipArchive instance
         file_entries
@@ -3591,7 +3656,7 @@ impl Installer {
                 let file = fs::File::open(&archive_path)?;
                 let mut archive = ZipArchive::new(file)?;
 
-                for &(ref index, ref relative_path, _, ref is_encrypted, _) in chunk {
+                for (index, relative_path, _, is_encrypted, _) in chunk {
                     let outpath = target.join(relative_path);
 
                     if let Some(p) = outpath.parent() {
@@ -3732,7 +3797,7 @@ impl Installer {
                     let _ = remove_readonly_attribute(&dest_path);
 
                     // Report progress
-                    let file_size = entry.size() as u64;
+                    let file_size = entry.size();
                     let file_name = sanitized
                         .file_name()
                         .and_then(|s| s.to_str())
@@ -4123,10 +4188,10 @@ impl Installer {
         // Skip deletion if either path is an ancestor of the other
         // - Dragging a parent folder (addon root detected inside) would delete too much
         // - Dragging a subfolder (addon root detected above) would delete only part of the addon
-        let original_is_parent = source_path_buf.starts_with(original_path)
-            && source_path_buf != original_path;
-        let source_is_parent = original_path.starts_with(source_path_buf)
-            && source_path_buf != original_path;
+        let original_is_parent =
+            source_path_buf.starts_with(original_path) && source_path_buf != original_path;
+        let source_is_parent =
+            original_path.starts_with(source_path_buf) && source_path_buf != original_path;
 
         if original_is_parent || source_is_parent {
             logger::log_info(

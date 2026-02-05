@@ -367,10 +367,7 @@ impl Analyzer {
             AddonType::Navdata,
         ];
 
-        let medium_priority_types = [
-            AddonType::Plugin,
-            AddonType::Livery,
-        ];
+        let medium_priority_types = [AddonType::Plugin, AddonType::Livery];
 
         // Separate items by priority level
         let (high_priority, rest): (Vec<_>, Vec<_>) = items
@@ -533,9 +530,7 @@ impl Analyzer {
             .into_iter()
             .filter_map(|e| e.ok())
         {
-            if entry.file_type().is_file()
-                && entry.file_name().to_str() == Some("cycle.json")
-            {
+            if entry.file_type().is_file() && entry.file_name().to_str() == Some("cycle.json") {
                 return Some(entry.path().to_path_buf());
             }
         }
@@ -611,10 +606,7 @@ impl Analyzer {
         }
 
         logger::log_info(
-            &format!(
-                "Aircraft not found for livery type: {}",
-                aircraft_type_id
-            ),
+            &format!("Aircraft not found for livery type: {}", aircraft_type_id),
             Some("analyzer"),
         );
         None
@@ -632,85 +624,84 @@ impl Analyzer {
 
         // For Livery type, we need special handling to find the target aircraft
         // For LuaScript type, we need to check if FlyWithLua is installed
-        let (target_path, livery_aircraft_found, flywithlua_installed) = if item.addon_type == AddonType::Livery {
-            // Extract the livery name from display_name (remove the aircraft name suffix)
-            // The display_name format is: "{livery_name} ({aircraft_name})"
-            // We need to find the LAST " (" to handle livery names that contain parentheses
-            // e.g., "Qantas (XLR - PW - VH-OGA) 8K (ToLiss A321)" -> "Qantas (XLR - PW - VH-OGA) 8K"
-            let livery_name = if let Some(last_paren_pos) = item.display_name.rfind(" (") {
-                item.display_name[..last_paren_pos].to_string()
-            } else {
-                item.display_name.clone()
-            };
-
-            if let Some(ref aircraft_type_id) = item.livery_aircraft_type {
-                // Try to find the target aircraft
-                if let Some(aircraft_folder) =
-                    self.find_aircraft_for_livery(xplane_path, aircraft_type_id)
-                {
-                    // Found the aircraft, install to its liveries folder
-                    let liveries_path = aircraft_folder.join("liveries").join(&livery_name);
-                    (liveries_path, true, true)
+        let (target_path, livery_aircraft_found, flywithlua_installed) =
+            if item.addon_type == AddonType::Livery {
+                // Extract the livery name from display_name (remove the aircraft name suffix)
+                // The display_name format is: "{livery_name} ({aircraft_name})"
+                // We need to find the LAST " (" to handle livery names that contain parentheses
+                // e.g., "Qantas (XLR - PW - VH-OGA) 8K (ToLiss A321)" -> "Qantas (XLR - PW - VH-OGA) 8K"
+                let livery_name = if let Some(last_paren_pos) = item.display_name.rfind(" (") {
+                    item.display_name[..last_paren_pos].to_string()
                 } else {
-                    // Aircraft not found, use a placeholder path
+                    item.display_name.clone()
+                };
+
+                if let Some(ref aircraft_type_id) = item.livery_aircraft_type {
+                    // Try to find the target aircraft
+                    if let Some(aircraft_folder) =
+                        self.find_aircraft_for_livery(xplane_path, aircraft_type_id)
+                    {
+                        // Found the aircraft, install to its liveries folder
+                        let liveries_path = aircraft_folder.join("liveries").join(&livery_name);
+                        (liveries_path, true, true)
+                    } else {
+                        // Aircraft not found, use a placeholder path
+                        let placeholder = xplane_root
+                            .join("Aircraft")
+                            .join("[Aircraft Not Found]")
+                            .join("liveries")
+                            .join(&livery_name);
+                        (placeholder, false, true)
+                    }
+                } else {
+                    // No aircraft type specified, shouldn't happen but handle gracefully
                     let placeholder = xplane_root
                         .join("Aircraft")
-                        .join("[Aircraft Not Found]")
+                        .join("[Unknown Aircraft]")
                         .join("liveries")
                         .join(&livery_name);
                     (placeholder, false, true)
                 }
+            } else if item.addon_type == AddonType::LuaScript {
+                // LuaScript: install to FlyWithLua/Scripts directory
+                let flywithlua_path = xplane_root
+                    .join("Resources")
+                    .join("plugins")
+                    .join("FlyWithLua");
+                let flywithlua_exists = flywithlua_path.exists();
+
+                let target = flywithlua_path.join("Scripts").join(&item.display_name);
+
+                (target, true, flywithlua_exists)
             } else {
-                // No aircraft type specified, shouldn't happen but handle gracefully
-                let placeholder = xplane_root
-                    .join("Aircraft")
-                    .join("[Unknown Aircraft]")
-                    .join("liveries")
-                    .join(&livery_name);
-                (placeholder, false, true)
-            }
-        } else if item.addon_type == AddonType::LuaScript {
-            // LuaScript: install to FlyWithLua/Scripts directory
-            let flywithlua_path = xplane_root
-                .join("Resources")
-                .join("plugins")
-                .join("FlyWithLua");
-            let flywithlua_exists = flywithlua_path.exists();
-
-            let target = flywithlua_path
-                .join("Scripts")
-                .join(&item.display_name);
-
-            (target, true, flywithlua_exists)
-        } else {
-            // Standard handling for non-livery, non-lua types
-            let target_base = match item.addon_type {
-                AddonType::Aircraft => xplane_root.join("Aircraft"),
-                AddonType::Scenery | AddonType::SceneryLibrary => {
-                    xplane_root.join("Custom Scenery")
-                }
-                AddonType::Plugin => xplane_root.join("Resources").join("plugins"),
-                AddonType::Navdata => {
-                    // For GNS430: target is Custom Data/GNS430
-                    // For regular navdata: target is Custom Data
-                    if item.display_name.contains("GNS430") {
-                        xplane_root.join("Custom Data").join("GNS430")
-                    } else {
-                        xplane_root.join("Custom Data")
+                // Standard handling for non-livery, non-lua types
+                let target_base = match item.addon_type {
+                    AddonType::Aircraft => xplane_root.join("Aircraft"),
+                    AddonType::Scenery | AddonType::SceneryLibrary => {
+                        xplane_root.join("Custom Scenery")
                     }
-                }
-                AddonType::Livery | AddonType::LuaScript => unreachable!(), // Already handled above
-            };
+                    AddonType::Plugin => xplane_root.join("Resources").join("plugins"),
+                    AddonType::Navdata => {
+                        // For GNS430: target is Custom Data/GNS430
+                        // For regular navdata: target is Custom Data
+                        if item.display_name.contains("GNS430") {
+                            xplane_root.join("Custom Data").join("GNS430")
+                        } else {
+                            xplane_root.join("Custom Data")
+                        }
+                    }
+                    AddonType::Livery | AddonType::LuaScript => unreachable!(), // Already handled above
+                };
 
-            // For Navdata, install directly into target_base (don't create subfolder)
-            // For other types, create a subfolder with the display_name
-            let path = if item.addon_type == AddonType::Navdata {
-                target_base
-            } else {
-                target_base.join(&item.display_name)
+                // For Navdata, install directly into target_base (don't create subfolder)
+                // For other types, create a subfolder with the display_name
+                let path = if item.addon_type == AddonType::Navdata {
+                    target_base
+                } else {
+                    target_base.join(&item.display_name)
+                };
+                (path, true, true) // Non-livery/lua types always have aircraft_found = true and flywithlua_installed = true
             };
-            (path, true, true) // Non-livery/lua types always have aircraft_found = true and flywithlua_installed = true
-        };
 
         // Check if target already exists
         // For Navdata, check if cycle.json exists and read existing cycle info
@@ -721,7 +712,11 @@ impl Analyzer {
                 Self::find_cycle_json(&target_path)
             } else {
                 let p = target_path.join("cycle.json");
-                if p.exists() { Some(p) } else { None }
+                if p.exists() {
+                    Some(p)
+                } else {
+                    None
+                }
             };
             if let Some(ref cp) = cycle_path {
                 let navdata_dir = cp.parent().unwrap_or(&target_path);
@@ -947,7 +942,7 @@ impl Analyzer {
         }
 
         // If we couldn't get any size info, use conservative estimate
-        if total_uncompressed == 0 && archive.len() > 0 {
+        if total_uncompressed == 0 && !archive.is_empty() {
             total_uncompressed = archive_size.saturating_mul(5);
         }
 
@@ -1030,11 +1025,9 @@ impl Analyzer {
             Ok(archive) => {
                 let mut total: u64 = 0;
                 let mut file_count: usize = 0;
-                for entry in archive {
-                    if let Ok(e) = entry {
-                        total = total.saturating_add(e.unpacked_size);
-                        file_count += 1;
-                    }
+                for e in archive.flatten() {
+                    total = total.saturating_add(e.unpacked_size);
+                    file_count += 1;
                 }
 
                 // Cache the result

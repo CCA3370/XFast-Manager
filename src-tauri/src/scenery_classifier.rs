@@ -100,7 +100,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
     let has_plugin_files = has_plugins(scenery_path);
     if has_plugin_files {
         crate::log_debug!(
-            &format!("  Found plugins folder with .xpl files"),
+            "  Found plugins folder with .xpl files",
             "scenery_classifier"
         );
     }
@@ -115,45 +115,29 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
 
     if !has_library_txt && !has_earth_nav_data && !has_plugin_files {
         crate::log_debug!(
-            &format!(
-                "  ⚠ Classified as Unrecognized: missing 'Earth nav data', 'library.txt', and plugins"
-            ),
+            "  ⚠ Classified as Unrecognized: missing 'Earth nav data', 'library.txt', and plugins",
             "scenery_classifier"
         );
-        return Ok(build_package_info(
+        return build_package_info(
             folder_name,
             SceneryCategory::Unrecognized,
             scenery_path,
-            false,
-            false,
-            false,
-            0,
-            0,
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-        )?);
+            PackageInfoDetails::default(),
+        );
     }
 
     // If only has plugins (no scenery features), classify as Other
     if has_plugin_files && !has_library_txt && !has_earth_nav_data {
         crate::log_debug!(
-            &format!("  ✓ Classified as Other (has plugins but no scenery features)"),
+            "  ✓ Classified as Other (has plugins but no scenery features)",
             "scenery_classifier"
         );
-        return Ok(build_package_info(
+        return build_package_info(
             folder_name,
             SceneryCategory::Other,
             scenery_path,
-            false,
-            false,
-            false,
-            0,
-            0,
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-        )?);
+            PackageInfoDetails::default(),
+        );
     }
 
     // Collect file system information
@@ -238,7 +222,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
     // 1. Has apt.dat OR (DSF with WorldEditor creation_agent) → Airport
     if has_apt_dat {
         crate::log_debug!(
-            &format!("  ✓ Classified as Airport (has apt.dat)"),
+            "  ✓ Classified as Airport (has apt.dat)",
             "scenery_classifier"
         );
 
@@ -270,26 +254,28 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
             );
         }
 
-        return Ok(build_package_info(
+        return build_package_info(
             folder_name,
             SceneryCategory::Airport,
             scenery_path,
-            true,
-            !dsf_files.is_empty(),
-            has_library_txt,
-            texture_count,
-            0,
-            required_libraries,
-            Vec::new(), // missing_libraries will be filled later
-            exported_library_names,
-        )?);
+            PackageInfoDetails {
+                has_apt_dat: true,
+                has_dsf: !dsf_files.is_empty(),
+                has_library_txt,
+                texture_count,
+                earth_nav_tile_count: 0,
+                required_libraries,
+                missing_libraries: Vec::new(), // missing_libraries will be filled later
+                exported_library_names,
+            },
+        );
     }
 
     if let Some(ref header) = dsf_header_opt {
         if let Some(ref agent) = header.creation_agent {
             if agent.to_lowercase().contains("worldeditor") {
                 crate::log_debug!(
-                    &format!("  ✓ Classified as Airport (WorldEditor without apt.dat)"),
+                    "  ✓ Classified as Airport (WorldEditor without apt.dat)",
                     "scenery_classifier"
                 );
                 let required = extract_required_libraries(&header.object_references);
@@ -314,19 +300,21 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
                     );
                 }
 
-                return Ok(build_package_info(
+                return build_package_info(
                     folder_name,
                     SceneryCategory::Airport,
                     scenery_path,
-                    false,
-                    true,
-                    has_library_txt,
-                    texture_count,
-                    0,
-                    required,
-                    Vec::new(), // missing_libraries will be filled later
-                    exported_library_names,
-                )?);
+                    PackageInfoDetails {
+                        has_apt_dat: false,
+                        has_dsf: true,
+                        has_library_txt,
+                        texture_count,
+                        earth_nav_tile_count: 0,
+                        required_libraries: required,
+                        missing_libraries: Vec::new(), // missing_libraries will be filled later
+                        exported_library_names,
+                    },
+                );
             }
         }
     }
@@ -335,7 +323,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
     if let Some(ref header) = dsf_header_opt {
         if header.is_overlay {
             crate::log_debug!(
-                &format!("  ✓ Classified as Overlay (sim/overlay without apt.dat)"),
+                "  ✓ Classified as Overlay (sim/overlay without apt.dat)",
                 "scenery_classifier"
             );
             let required = extract_required_libraries(&header.object_references);
@@ -362,19 +350,21 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
 
             let tile_count = count_earth_nav_tile_folders(scenery_path)?;
 
-            return Ok(build_package_info(
+            return build_package_info(
                 folder_name,
                 SceneryCategory::Overlay,
                 scenery_path,
-                false,
-                true,
-                has_library_txt,
-                texture_count,
-                tile_count,
-                required,
-                Vec::new(), // missing_libraries will be filled later
-                exported_library_names,
-            )?);
+                PackageInfoDetails {
+                    has_apt_dat: false,
+                    has_dsf: true,
+                    has_library_txt,
+                    texture_count,
+                    earth_nav_tile_count: tile_count,
+                    required_libraries: required,
+                    missing_libraries: Vec::new(), // missing_libraries will be filled later
+                    exported_library_names,
+                },
+            );
         }
     }
 
@@ -394,7 +384,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
             .split(|c: char| !c.is_ascii_alphanumeric())
             .filter(|s| !s.is_empty())
             .collect();
-        let has_sam_word = parts.iter().any(|&part| part == "sam");
+        let has_sam_word = parts.contains(&"sam");
 
         // Check if any part ends with "sam" (like "opensam")
         let has_sam_suffix = parts.iter().any(|&part| {
@@ -410,13 +400,13 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
 
         let category = if is_sam {
             crate::log_debug!(
-                &format!("  ✓ Classified as FixedHighPriority (SAM library)"),
+                "  ✓ Classified as FixedHighPriority (SAM library)",
                 "scenery_classifier"
             );
             SceneryCategory::FixedHighPriority
         } else {
             crate::log_debug!(
-                &format!("  ✓ Classified as Library (has library.txt but no Earth nav data)"),
+                "  ✓ Classified as Library (has library.txt but no Earth nav data)",
                 "scenery_classifier"
             );
             SceneryCategory::Library
@@ -433,19 +423,21 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
             "scenery_classifier"
         );
 
-        return Ok(build_package_info(
+        return build_package_info(
             folder_name,
             category,
             scenery_path,
-            false,
-            !dsf_files.is_empty(),
-            true,
-            texture_count,
-            0,
-            Vec::new(),
-            Vec::new(),
-            exported_library_names,
-        )?);
+            PackageInfoDetails {
+                has_apt_dat: false,
+                has_dsf: !dsf_files.is_empty(),
+                has_library_txt: true,
+                texture_count,
+                earth_nav_tile_count: 0,
+                required_libraries: Vec::new(),
+                missing_libraries: Vec::new(),
+                exported_library_names,
+            },
+        );
     }
 
     // 4. No sim/overlay and no apt.dat, OR has TERRAIN_DEF → Mesh
@@ -459,7 +451,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
     if !has_apt_dat && has_earth_nav_data {
         // Has Earth nav data but no apt.dat and no sim/overlay → Mesh
         crate::log_debug!(
-            &format!("  ✓ Classified as Mesh (Earth nav data without apt.dat/overlay)"),
+            "  ✓ Classified as Mesh (Earth nav data without apt.dat/overlay)",
             "scenery_classifier"
         );
 
@@ -496,24 +488,26 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
 
         let tile_count = count_earth_nav_tile_folders(scenery_path)?;
 
-        return Ok(build_package_info(
+        return build_package_info(
             folder_name,
             category,
             scenery_path,
-            false,
-            !dsf_files.is_empty(),
-            has_library_txt,
-            texture_count,
-            tile_count,
-            required_libraries,
-            missing_libraries,
-            exported_library_names,
-        )?);
+            PackageInfoDetails {
+                has_apt_dat: false,
+                has_dsf: !dsf_files.is_empty(),
+                has_library_txt,
+                texture_count,
+                earth_nav_tile_count: tile_count,
+                required_libraries,
+                missing_libraries,
+                exported_library_names,
+            },
+        );
     }
 
     if has_terrain_def {
         crate::log_debug!(
-            &format!("  ✓ Classified as Mesh (has TERRAIN_DEF)"),
+            "  ✓ Classified as Mesh (has TERRAIN_DEF)",
             "scenery_classifier"
         );
         let (required_libraries, missing_libraries) = if let Some(ref header) = dsf_header_opt {
@@ -546,24 +540,26 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
 
         let tile_count = count_earth_nav_tile_folders(scenery_path)?;
 
-        return Ok(build_package_info(
+        return build_package_info(
             folder_name,
             SceneryCategory::Mesh,
             scenery_path,
-            false,
-            true,
-            has_library_txt,
-            texture_count,
-            tile_count,
-            required_libraries,
-            missing_libraries,
-            exported_library_names,
-        )?);
+            PackageInfoDetails {
+                has_apt_dat: false,
+                has_dsf: true,
+                has_library_txt,
+                texture_count,
+                earth_nav_tile_count: tile_count,
+                required_libraries,
+                missing_libraries,
+                exported_library_names,
+            },
+        );
     }
 
     // Default: Other
     crate::log_debug!(
-        &format!("  ✓ Classified as Other (no clear indicators)"),
+        "  ✓ Classified as Other (no clear indicators)",
         "scenery_classifier"
     );
 
@@ -587,19 +583,21 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
         );
     }
 
-    Ok(build_package_info(
+    build_package_info(
         folder_name,
         SceneryCategory::Other,
         scenery_path,
-        false,
-        !dsf_files.is_empty(),
-        has_library_txt,
-        texture_count,
-        0,
-        Vec::new(),
-        Vec::new(),
-        exported_library_names,
-    )?)
+        PackageInfoDetails {
+            has_apt_dat: false,
+            has_dsf: !dsf_files.is_empty(),
+            has_library_txt,
+            texture_count,
+            earth_nav_tile_count: 0,
+            required_libraries: Vec::new(),
+            missing_libraries: Vec::new(),
+            exported_library_names,
+        },
+    )
 }
 
 /// Check if apt.dat exists recursively in Earth nav data directories
@@ -771,7 +769,11 @@ fn decompress_dsf(dsf_path: &Path) -> Result<Vec<u8>> {
     {
         if entry.file_type().is_file() {
             // Prefer files with .dsf extension
-            if entry.path().extension().map_or(false, |e| e.eq_ignore_ascii_case("dsf")) {
+            if entry
+                .path()
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("dsf"))
+            {
                 return std::fs::read(entry.path()).map_err(|e| anyhow!("{}", e));
             }
         }
@@ -1102,7 +1104,7 @@ fn is_ten_degree_tile_folder_name(name: &str) -> bool {
         return false;
     }
 
-    lat % 10 == 0 && lon % 10 == 0
+    lat.is_multiple_of(10) && lon.is_multiple_of(10)
 }
 
 fn count_earth_nav_tile_folders(scenery_path: &Path) -> Result<u32> {
@@ -1259,7 +1261,7 @@ fn collect_dsf_coordinates(scenery_path: &Path) -> Vec<(i32, i32)> {
                 for dsf_entry in dsf_entries.flatten() {
                     let dsf_path = dsf_entry.path();
                     if let Some(ext) = dsf_path.extension() {
-                        if ext.to_ascii_lowercase() == "dsf" {
+                        if ext.eq_ignore_ascii_case("dsf") {
                             // Parse coordinates from filename (e.g., +30+135.dsf)
                             if let Some(coord) = parse_dsf_coord_from_filename(&dsf_path) {
                                 coordinates.push(coord);
@@ -1289,8 +1291,8 @@ fn parse_dsf_coord_from_filename(dsf_path: &Path) -> Option<(i32, i32)> {
     let chars: Vec<char> = stem.chars().collect();
     let mut lon_start = None;
 
-    for i in 1..chars.len() {
-        if chars[i] == '+' || chars[i] == '-' {
+    for (i, ch) in chars.iter().enumerate().skip(1) {
+        if *ch == '+' || *ch == '-' {
             lon_start = Some(i);
             break;
         }
@@ -1307,11 +1309,8 @@ fn parse_dsf_coord_from_filename(dsf_path: &Path) -> Option<(i32, i32)> {
     Some((lat, lon))
 }
 
-/// Build SceneryPackageInfo with geographic information
-fn build_package_info(
-    folder_name: String,
-    category: SceneryCategory,
-    scenery_path: &Path,
+#[derive(Default)]
+struct PackageInfoDetails {
     has_apt_dat: bool,
     has_dsf: bool,
     has_library_txt: bool,
@@ -1320,7 +1319,25 @@ fn build_package_info(
     required_libraries: Vec<String>,
     missing_libraries: Vec<String>,
     exported_library_names: Vec<String>,
+}
+
+/// Build SceneryPackageInfo with geographic information
+fn build_package_info(
+    folder_name: String,
+    category: SceneryCategory,
+    scenery_path: &Path,
+    details: PackageInfoDetails,
 ) -> Result<SceneryPackageInfo> {
+    let PackageInfoDetails {
+        has_apt_dat,
+        has_dsf,
+        has_library_txt,
+        texture_count,
+        earth_nav_tile_count,
+        required_libraries,
+        missing_libraries,
+        exported_library_names,
+    } = details;
     // Calculate sub-priority based on category and folder name
     let sub_priority = calculate_sub_priority(&category, &folder_name);
 
@@ -1346,6 +1363,26 @@ fn build_package_info(
         None
     };
 
+    crate::log_debug!(
+        &format!(
+            "=== 分类结果 ===\n  \
+             包名: {}\n  \
+             类型: {:?}\n  \
+             依据: apt_dat={}, library_txt={}, dsf={}, textures={}\n  \
+             tiles={}, 依赖库={}, 导出库={}",
+            folder_name,
+            category,
+            has_apt_dat,
+            has_library_txt,
+            has_dsf,
+            texture_count > 0,
+            earth_nav_tile_count,
+            required_libraries.len(),
+            exported_library_names.len()
+        ),
+        "scenery_classifier"
+    );
+
     Ok(SceneryPackageInfo {
         folder_name,
         category,
@@ -1362,8 +1399,8 @@ fn build_package_info(
         required_libraries,
         missing_libraries,
         exported_library_names,
-        enabled: true, // Default to enabled
-        sort_order: 0, // Will be assigned during index rebuild
+        enabled: true,     // Default to enabled
+        sort_order: 0,     // Will be assigned during index rebuild
         actual_path: None, // Will be set by index manager for shortcut entries
         continent,
     })
@@ -1391,7 +1428,7 @@ fn calculate_sub_priority(category: &SceneryCategory, folder_name: &str) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_sam_library_detection() {
         // SAM libraries should be classified as FixedHighPriority

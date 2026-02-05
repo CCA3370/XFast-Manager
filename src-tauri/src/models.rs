@@ -630,7 +630,9 @@ mod tests {
     #[test]
     fn test_scenery_category_priority_ordering() {
         // FixedHighPriority should have lowest number (highest priority)
-        assert!(SceneryCategory::FixedHighPriority.priority() < SceneryCategory::Airport.priority());
+        assert!(
+            SceneryCategory::FixedHighPriority.priority() < SceneryCategory::Airport.priority()
+        );
         assert!(SceneryCategory::Airport.priority() < SceneryCategory::DefaultAirport.priority());
         assert!(SceneryCategory::DefaultAirport.priority() < SceneryCategory::Library.priority());
         assert!(SceneryCategory::Library.priority() < SceneryCategory::Other.priority());
@@ -689,7 +691,10 @@ mod tests {
             task_results: vec![],
         };
 
-        assert_eq!(result.total_tasks, result.successful_tasks + result.failed_tasks);
+        assert_eq!(
+            result.total_tasks,
+            result.successful_tasks + result.failed_tasks
+        );
     }
 
     #[test]
@@ -800,21 +805,19 @@ mod tests {
     #[test]
     fn test_management_data_structure() {
         let data = ManagementData {
-            entries: vec![
-                AircraftInfo {
-                    folder_name: "A320".to_string(),
-                    display_name: "Airbus A320".to_string(),
-                    acf_file: "A320.acf".to_string(),
-                    enabled: true,
-                    has_liveries: true,
-                    livery_count: 5,
-                    version: Some("1.0".to_string()),
-                    update_url: None,
-                    latest_version: None,
-                    has_update: false,
-                    cfg_disabled: None,
-                },
-            ],
+            entries: vec![AircraftInfo {
+                folder_name: "A320".to_string(),
+                display_name: "Airbus A320".to_string(),
+                acf_file: "A320.acf".to_string(),
+                enabled: true,
+                has_liveries: true,
+                livery_count: 5,
+                version: Some("1.0".to_string()),
+                update_url: None,
+                latest_version: None,
+                has_update: false,
+                cfg_disabled: None,
+            }],
             total_count: 1,
             enabled_count: 1,
         };

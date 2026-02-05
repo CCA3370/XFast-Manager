@@ -6,6 +6,7 @@
 
 /// Geographic region with bounding box
 pub struct GeoRegion {
+    #[allow(dead_code)]
     pub name: &'static str,
     pub continent: &'static str,
     pub min_lat: i32,
@@ -56,7 +57,6 @@ pub static GEO_REGIONS: &[GeoRegion] = &[
     GeoRegion::new("Brunei", "Asia", 4, 6, 114, 116),
     GeoRegion::new("Hong Kong", "Asia", 22, 23, 113, 115),
     GeoRegion::new("Macau", "Asia", 22, 23, 113, 114),
-
     // ========== Caribbean & Central America (Small) ==========
     GeoRegion::new("Barbados", "North America", 13, 14, -60, -59),
     GeoRegion::new("Antigua and Barbuda", "North America", 16, 18, -62, -61),
@@ -76,7 +76,6 @@ pub static GEO_REGIONS: &[GeoRegion] = &[
     GeoRegion::new("US Virgin Islands", "North America", 17, 19, -65, -64),
     GeoRegion::new("British Virgin Islands", "North America", 18, 19, -65, -64),
     GeoRegion::new("Turks and Caicos", "North America", 21, 22, -73, -71),
-
     // ========== Pacific Islands ==========
     GeoRegion::new("Guam", "Oceania", 13, 14, 144, 145),
     GeoRegion::new("Palau", "Oceania", 2, 9, 131, 135),
@@ -95,7 +94,6 @@ pub static GEO_REGIONS: &[GeoRegion] = &[
     GeoRegion::new("Cook Islands", "Oceania", -22, -8, -166, -157),
     GeoRegion::new("Northern Mariana Islands", "Oceania", 14, 21, 144, 146),
     GeoRegion::new("American Samoa", "Oceania", -15, -14, -171, -169),
-
     // ========== Small European Countries ==========
     GeoRegion::new("Cyprus", "Europe", 34, 36, 32, 35),
     GeoRegion::new("Slovenia", "Europe", 45, 47, 13, 17),
@@ -122,7 +120,6 @@ pub static GEO_REGIONS: &[GeoRegion] = &[
     GeoRegion::new("Serbia", "Europe", 42, 47, 18, 23),
     GeoRegion::new("Bulgaria", "Europe", 41, 45, 22, 29),
     GeoRegion::new("Greece", "Europe", 34, 42, 19, 30),
-
     // ========== Middle East (Small to Medium) ==========
     GeoRegion::new("Qatar", "Asia", 24, 27, 50, 52),
     GeoRegion::new("Kuwait", "Asia", 28, 31, 46, 49),
@@ -135,7 +132,6 @@ pub static GEO_REGIONS: &[GeoRegion] = &[
     GeoRegion::new("Yemen", "Asia", 12, 19, 42, 55),
     GeoRegion::new("Syria", "Asia", 32, 38, 35, 43),
     GeoRegion::new("Iraq", "Asia", 29, 38, 38, 49),
-
     // ========== Small African Countries ==========
     GeoRegion::new("Gambia", "Africa", 13, 14, -17, -13),
     GeoRegion::new("Cabo Verde", "Africa", 14, 18, -26, -22),
@@ -192,7 +188,6 @@ pub static GEO_REGIONS: &[GeoRegion] = &[
     GeoRegion::new("Mauritania", "Africa", 14, 28, -18, -4),
     GeoRegion::new("Democratic Republic of the Congo", "Africa", -14, 6, 12, 32),
     GeoRegion::new("Algeria", "Africa", 18, 38, -9, 12),
-
     // ========== Small Asian Countries ==========
     GeoRegion::new("Bhutan", "Asia", 26, 29, 88, 93),
     GeoRegion::new("Nepal", "Asia", 26, 31, 80, 89),
@@ -225,7 +220,6 @@ pub static GEO_REGIONS: &[GeoRegion] = &[
     GeoRegion::new("Mongolia", "Asia", 41, 53, 87, 120),
     GeoRegion::new("Kazakhstan", "Asia", 40, 56, 46, 88),
     GeoRegion::new("India", "Asia", 6, 36, 68, 98),
-
     // ========== Medium European Countries ==========
     GeoRegion::new("Romania", "Europe", 43, 49, 20, 30),
     GeoRegion::new("Poland", "Europe", 49, 55, 14, 25),
@@ -240,7 +234,6 @@ pub static GEO_REGIONS: &[GeoRegion] = &[
     GeoRegion::new("Ukraine", "Europe", 44, 53, 22, 41),
     GeoRegion::new("Belarus", "Europe", 51, 57, 23, 33),
     GeoRegion::new("Iceland", "Europe", 63, 67, -25, -13),
-
     // ========== North America ==========
     GeoRegion::new("Belize", "North America", 15, 19, -90, -87),
     GeoRegion::new("El Salvador", "North America", 13, 15, -91, -87),
@@ -258,7 +251,6 @@ pub static GEO_REGIONS: &[GeoRegion] = &[
     GeoRegion::new("United States", "North America", 24, 50, -125, -66),
     GeoRegion::new("Alaska", "North America", 51, 72, -180, -130),
     GeoRegion::new("Hawaii", "North America", 18, 23, -161, -154),
-
     // ========== South America ==========
     GeoRegion::new("Suriname", "South America", 1, 6, -59, -53),
     GeoRegion::new("Guyana", "South America", 1, 9, -62, -56),
@@ -273,16 +265,13 @@ pub static GEO_REGIONS: &[GeoRegion] = &[
     GeoRegion::new("Peru", "South America", -19, 0, -82, -68),
     GeoRegion::new("Argentina", "South America", -56, -21, -74, -53),
     GeoRegion::new("Brazil", "South America", -34, 6, -74, -34),
-
     // ========== Oceania (Large) ==========
     GeoRegion::new("Papua New Guinea", "Oceania", -12, 0, 140, 160),
     GeoRegion::new("New Zealand", "Oceania", -48, -34, 166, 179),
     GeoRegion::new("Australia", "Oceania", -45, -10, 112, 154),
-
     // ========== Large Countries (Last) ==========
     GeoRegion::new("China", "Asia", 18, 54, 73, 135),
     GeoRegion::new("Russia", "Europe", 41, 82, 19, 180),
-
     // ========== Antarctica ==========
     GeoRegion::new("Antarctica", "Antarctica", -90, -60, -180, 180),
 ];
