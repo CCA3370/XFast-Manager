@@ -1363,6 +1363,26 @@ fn build_package_info(
         None
     };
 
+    crate::log_debug!(
+        &format!(
+            "=== 分类结果 ===\n  \
+             包名: {}\n  \
+             类型: {:?}\n  \
+             依据: apt_dat={}, library_txt={}, dsf={}, textures={}\n  \
+             tiles={}, 依赖库={}, 导出库={}",
+            folder_name,
+            category,
+            has_apt_dat,
+            has_library_txt,
+            has_dsf,
+            texture_count > 0,
+            earth_nav_tile_count,
+            required_libraries.len(),
+            exported_library_names.len()
+        ),
+        "scenery_classifier"
+    );
+
     Ok(SceneryPackageInfo {
         folder_name,
         category,
