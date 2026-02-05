@@ -272,7 +272,7 @@ fn compare_packages_for_sorting(
             if info_a.category == info_b.category
                 && matches!(
                     info_a.category,
-                    SceneryCategory::Overlay | SceneryCategory::AirportMesh | SceneryCategory::Mesh
+                    SceneryCategory::AirportMesh | SceneryCategory::Mesh
                 )
             {
                 // For Mesh category with sub_priority > 0 (XPME), sort only by folder name
