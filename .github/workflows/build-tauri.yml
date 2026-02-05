@@ -146,12 +146,21 @@ jobs:
         run: |
           Rename-Item -Path "target/release/xfastmanager.exe" -NewName "XFast-Manager.exe" -Force
 
-      - name: Upload Windows artifact
+      - name: Upload Windows portable artifact
         if: matrix.platform == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: 'target/release/XFast-Manager.exe'
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Windows MSI artifact
+        if: matrix.platform == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: XFast-Manager-windows-msi
+          path: 'target/release/bundle/msi/*.msi'
           if-no-files-found: error
           retention-days: 7
 
