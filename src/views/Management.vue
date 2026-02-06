@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch, onBeforeUnmount, defineAsyncComponent } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useManagementStore } from '@/stores/management'
 import { useSceneryStore } from '@/stores/scenery'
 import { useToastStore } from '@/stores/toast'
@@ -19,6 +19,7 @@ const draggable = defineAsyncComponent(() => import('vuedraggable'))
 
 const { t, locale } = useI18n()
 const route = useRoute()
+const router = useRouter()
 const managementStore = useManagementStore()
 const sceneryStore = useSceneryStore()
 const toastStore = useToastStore()
@@ -61,6 +62,7 @@ const searchExpandedGroups = ref<Record<string, boolean>>({})
 const searchExpandedContinents = ref<Record<string, boolean>>({})
 const searchExpandedContinentCategories = ref<Record<string, boolean>>({})
 const showOnlyMissingLibs = ref(false)
+const showOnlyDuplicateTiles = ref(false)
 const showOnlyUpdates = ref(false)
 const showOnlyOutdated = ref(false)
 const showMoreMenu = ref(false)
@@ -162,6 +164,13 @@ watch(sceneryDataTrigger, () => {
 watch(() => sceneryStore.missingDepsCount, (newCount) => {
   if (newCount === 0 && showOnlyMissingLibs.value) {
     showOnlyMissingLibs.value = false
+  }
+})
+
+// Auto-reset filter when no duplicate tiles remain
+watch(() => sceneryStore.duplicateTilesCount, (newCount) => {
+  if (newCount === 0 && showOnlyDuplicateTiles.value) {
+    showOnlyDuplicateTiles.value = false
   }
 })
 
@@ -337,6 +346,16 @@ async function handleOpenFolder(itemType: ManagementItemType, folderName: string
   } catch (e) {
     modalStore.showError(t('management.openFolderFailed') + ': ' + String(e))
   }
+}
+
+// Handle view liveries for aircraft
+function handleViewLiveries(folderName: string) {
+  router.push('/management/liveries?aircraft=' + encodeURIComponent(folderName))
+}
+
+// Handle view scripts for FlyWithLua
+function handleViewScripts(folderName: string) {
+  router.push('/management/scripts')
 }
 
 // Handle manual check updates for aircraft/plugin tabs
@@ -591,6 +610,11 @@ const filteredSceneryEntries = computed(() => {
   // Filter by missing libraries
   if (showOnlyMissingLibs.value) {
     entries = entries.filter(entry => entry.missingLibraries && entry.missingLibraries.length > 0)
+  }
+
+  // Filter by duplicate tiles
+  if (showOnlyDuplicateTiles.value) {
+    entries = entries.filter(entry => entry.duplicateTiles && entry.duplicateTiles.length > 0)
   }
 
   // Filter by continent
@@ -895,7 +919,7 @@ function collapseSearchExpandedGroups() {
 }
 
 function ensureGroupExpandedForIndex(index: number) {
-  if (showOnlyMissingLibs.value) return
+  if (showOnlyMissingLibs.value || showOnlyDuplicateTiles.value) return
   const entry = filteredSceneryEntries.value[index]
   if (!entry) return
 
@@ -1309,6 +1333,24 @@ const isLoading = computed(() => {
             </Transition>
           </button>
         </div>
+        <div v-if="sceneryStore.duplicateTilesCount > 0" class="flex items-center gap-2">
+          <Transition name="text-fade" mode="out-in">
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.duplicateTiles') }}:</span>
+          </Transition>
+          <span class="font-semibold text-orange-600 dark:text-orange-400">{{ sceneryStore.duplicateTilesCount }}</span>
+          <button
+            @click="showOnlyDuplicateTiles = !showOnlyDuplicateTiles"
+            class="ml-1 px-2 py-0.5 rounded text-xs transition-colors"
+            :class="showOnlyDuplicateTiles
+              ? 'bg-orange-500 text-white hover:bg-orange-600'
+              : 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-900/50'"
+            :title="t('sceneryManager.clickToViewDuplicates')"
+          >
+            <Transition name="text-fade" mode="out-in">
+              <span :key="locale">{{ showOnlyDuplicateTiles ? t('sceneryManager.showAll') : t('sceneryManager.filterOnly') }}</span>
+            </Transition>
+          </button>
+        </div>
         <!-- Geo filters - Toggle button for continent view -->
         <button
           v-if="uniqueContinents.length > 0"
@@ -1388,6 +1430,7 @@ const isLoading = computed(() => {
                 @toggle-enabled="(fn) => handleToggleEnabled('aircraft', fn)"
                 @delete="(fn) => handleDelete('aircraft', fn)"
                 @open-folder="(fn) => handleOpenFolder('aircraft', fn)"
+                @view-liveries="handleViewLiveries"
               />
             </div>
           </template>
@@ -1409,6 +1452,7 @@ const isLoading = computed(() => {
                 @toggle-enabled="(fn) => handleToggleEnabled('plugin', fn)"
                 @delete="(fn) => handleDelete('plugin', fn)"
                 @open-folder="(fn) => handleOpenFolder('plugin', fn)"
+                @view-scripts="handleViewScripts"
               />
             </div>
           </template>
@@ -1505,8 +1549,8 @@ const isLoading = computed(() => {
           <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
         </div>
 
-        <!-- Filtered view (no drag-and-drop) - only for missing libs filter -->
-        <div v-else-if="showOnlyMissingLibs" class="space-y-1.5 px-1 pb-2">
+        <!-- Filtered view (no drag-and-drop) - only for missing libs or duplicate tiles filter -->
+        <div v-else-if="showOnlyMissingLibs || showOnlyDuplicateTiles" class="space-y-1.5 px-1 pb-2">
           <div
             v-for="(element, index) in filteredSceneryEntries"
             :key="element.folderName"

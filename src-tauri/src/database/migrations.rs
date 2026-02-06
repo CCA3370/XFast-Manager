@@ -105,6 +105,9 @@ fn apply_version_migrations(conn: &Connection, from_version: i32) -> Result<(), 
     if from_version < 3 {
         migrate_v2_to_v3(conn)?;
     }
+    if from_version < 4 {
+        migrate_v3_to_v4(conn)?;
+    }
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -236,6 +239,43 @@ fn migrate_v2_to_v3(conn: &Connection) -> Result<(), ApiError> {
     // create a fresh database with the new schema.
 
     logger::log_info("Database migration v2 to v3 completed", Some("database"));
+
+    Ok(())
+}
+
+/// Migrate from schema version 3 to version 4
+/// Adds original_category column to preserve initial classification when packages are manually moved
+fn migrate_v3_to_v4(conn: &Connection) -> Result<(), ApiError> {
+    logger::log_info(
+        "Migrating database from v3 to v4 (adding original_category column)",
+        Some("database"),
+    );
+
+    // Add original_category column
+    // Ignore error if column already exists (idempotent migration)
+    if let Err(e) = conn.execute(
+        "ALTER TABLE scenery_packages ADD COLUMN original_category TEXT",
+        [],
+    ) {
+        let err_str = e.to_string();
+        if !err_str.contains("duplicate column name") {
+            return Err(ApiError::migration_failed(format!(
+                "Failed to add original_category column: {}",
+                e
+            )));
+        }
+    }
+
+    // Initialize original_category to match current category for existing packages
+    conn.execute(
+        "UPDATE scenery_packages SET original_category = category WHERE original_category IS NULL",
+        [],
+    )
+    .map_err(|e| {
+        ApiError::migration_failed(format!("Failed to initialize original_category: {}", e))
+    })?;
+
+    logger::log_info("Database migration v3 to v4 completed", Some("database"));
 
     Ok(())
 }

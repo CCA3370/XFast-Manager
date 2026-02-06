@@ -194,6 +194,8 @@ const router = createRouter({
     { path: '/', component: Home },
     { path: '/onboarding', component: () => import('./views/Onboarding.vue') },
     { path: '/management', component: preloadManagement },
+    { path: '/management/liveries', component: () => import('./views/Liveries.vue') },
+    { path: '/management/scripts', component: () => import('./views/Scripts.vue') },
     { path: '/scenery', redirect: '/management?tab=scenery' },
     { path: '/settings', component: preloadSettings },
   ],

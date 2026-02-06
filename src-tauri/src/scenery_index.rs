@@ -1159,6 +1159,10 @@ impl SceneryIndexManager {
             crate::scenery_packs_manager::SceneryPacksManager::new(&self.xplane_path);
         let needs_sync = !packs_manager.is_synced_with_index().unwrap_or(true);
 
+        // Detect duplicate tiles within Mesh and AirportMesh categories
+        let custom_scenery_path = self.xplane_path.join("Custom Scenery");
+        let duplicate_tiles_map = detect_duplicate_tiles(&index.packages, &custom_scenery_path);
+
         // Convert to manager entries and sort by sort_order
         let mut entries: Vec<SceneryManagerEntry> = index
             .packages
@@ -1172,6 +1176,11 @@ impl SceneryIndexManager {
                 missing_libraries: info.missing_libraries.clone(),
                 required_libraries: info.required_libraries.clone(),
                 continent: info.continent.clone(),
+                duplicate_tiles: duplicate_tiles_map
+                    .get(&info.folder_name)
+                    .cloned()
+                    .unwrap_or_default(),
+                original_category: info.original_category.clone(),
             })
             .collect();
 
@@ -1185,12 +1194,17 @@ impl SceneryIndexManager {
             .iter()
             .filter(|e| !e.missing_libraries.is_empty())
             .count();
+        let duplicate_tiles_count = entries
+            .iter()
+            .filter(|e| !e.duplicate_tiles.is_empty())
+            .count();
 
         Ok(SceneryManagerData {
             entries,
             total_count,
             enabled_count,
             missing_deps_count,
+            duplicate_tiles_count,
             needs_sync,
         })
     }
@@ -1610,6 +1624,70 @@ fn parse_dsf_filename(dsf_path: &Path) -> Option<(i32, i32)> {
     let lon: i32 = lon_str.parse().ok()?;
 
     Some((lat, lon))
+}
+
+/// Detect duplicate DSF tiles within Mesh and AirportMesh categories separately.
+/// Returns a map of folder_name -> list of conflicting folder names.
+/// Cross-category duplicates (Mesh vs AirportMesh) are NOT flagged.
+fn detect_duplicate_tiles(
+    packages: &HashMap<String, SceneryPackageInfo>,
+    custom_scenery_path: &Path,
+) -> HashMap<String, Vec<String>> {
+    let mut result: HashMap<String, Vec<String>> = HashMap::new();
+
+    // Process each category separately
+    for category in [SceneryCategory::Mesh, SceneryCategory::AirportMesh] {
+        // Build coordinate index: (lat, lon) -> list of folder names
+        let mut coord_map: HashMap<(i32, i32), Vec<String>> = HashMap::new();
+
+        for (folder_name, info) in packages.iter() {
+            if info.category != category {
+                continue;
+            }
+
+            // Use actual_path if available (for shortcuts/symlinks), otherwise use folder_name
+            let scenery_path = if let Some(ref actual_path) = info.actual_path {
+                PathBuf::from(actual_path)
+            } else {
+                custom_scenery_path.join(folder_name)
+            };
+
+            if let Some(coords) = get_mesh_dsf_coordinates(&scenery_path) {
+                for coord in coords {
+                    coord_map
+                        .entry(coord)
+                        .or_default()
+                        .push(folder_name.clone());
+                }
+            }
+        }
+
+        // For each coordinate with multiple packages, mark them as duplicates of each other
+        for (_coord, folder_names) in coord_map.iter() {
+            if folder_names.len() > 1 {
+                for folder in folder_names {
+                    let others: Vec<String> = folder_names
+                        .iter()
+                        .filter(|f| *f != folder)
+                        .cloned()
+                        .collect();
+
+                    result
+                        .entry(folder.clone())
+                        .or_default()
+                        .extend(others);
+                }
+            }
+        }
+    }
+
+    // Deduplicate each folder's duplicate_tiles list
+    for duplicates in result.values_mut() {
+        duplicates.sort();
+        duplicates.dedup();
+    }
+
+    result
 }
 
 /// Extract scenery package naming prefix for matching related packages

@@ -1385,7 +1385,7 @@ fn build_package_info(
 
     Ok(SceneryPackageInfo {
         folder_name,
-        category,
+        category: category.clone(),
         sub_priority,
         last_modified: get_dir_modified_time(scenery_path)?,
         has_apt_dat,
@@ -1403,6 +1403,7 @@ fn build_package_info(
         sort_order: 0,     // Will be assigned during index rebuild
         actual_path: None, // Will be set by index manager for shortcut entries
         continent,
+        original_category: Some(category), // Preserve original classification
     })
 }
 

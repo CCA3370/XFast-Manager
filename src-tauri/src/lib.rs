@@ -32,9 +32,9 @@ use crate::error::ToTauriError;
 use analyzer::Analyzer;
 use installer::Installer;
 use models::{
-    AircraftInfo, AnalysisResult, InstallResult, InstallTask, ManagementData, NavdataBackupInfo,
-    NavdataManagerInfo, PluginInfo, SceneryIndexScanResult, SceneryIndexStats, SceneryIndexStatus,
-    SceneryManagerData, SceneryPackageInfo,
+    AircraftInfo, AnalysisResult, InstallResult, InstallTask, LiveryInfo, LuaScriptInfo,
+    ManagementData, NavdataBackupInfo, NavdataManagerInfo, PluginInfo, SceneryIndexScanResult,
+    SceneryIndexStats, SceneryIndexStatus, SceneryManagerData, SceneryPackageInfo,
 };
 use scenery_index::SceneryIndexManager;
 use scenery_packs_manager::SceneryPacksManager;
@@ -945,6 +945,37 @@ async fn open_management_folder(
 }
 
 #[tauri::command]
+async fn get_aircraft_liveries(
+    xplane_path: String,
+    aircraft_folder: String,
+) -> Result<Vec<LiveryInfo>, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::get_aircraft_liveries(xplane_path, &aircraft_folder)
+            .map_err(error::ApiError::from)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .to_tauri_error()
+}
+
+#[tauri::command]
+async fn delete_aircraft_livery(
+    xplane_path: String,
+    aircraft_folder: String,
+    livery_folder: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::delete_aircraft_livery(xplane_path, &aircraft_folder, &livery_folder)
+            .map_err(error::ApiError::from)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .to_tauri_error()
+}
+
+#[tauri::command]
 async fn set_cfg_disabled(
     xplane_path: String,
     item_type: String,
@@ -954,6 +985,42 @@ async fn set_cfg_disabled(
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
         management_index::set_cfg_disabled(xplane_path, &item_type, &folder_name, disabled)
+            .map_err(error::ApiError::from)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .to_tauri_error()
+}
+
+#[tauri::command]
+async fn get_lua_scripts(xplane_path: String) -> Result<Vec<LuaScriptInfo>, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::scan_lua_scripts(xplane_path)
+            .map_err(error::ApiError::from)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .to_tauri_error()
+}
+
+#[tauri::command]
+async fn toggle_lua_script(xplane_path: String, file_name: String) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::toggle_lua_script(xplane_path, &file_name)
+            .map_err(error::ApiError::from)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .to_tauri_error()
+}
+
+#[tauri::command]
+async fn delete_lua_script(xplane_path: String, file_name: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::delete_lua_script(xplane_path, &file_name)
             .map_err(error::ApiError::from)
     })
     .await
@@ -1048,7 +1115,12 @@ pub fn run() {
             toggle_management_item,
             delete_management_item,
             open_management_folder,
-            set_cfg_disabled
+            get_aircraft_liveries,
+            delete_aircraft_livery,
+            set_cfg_disabled,
+            get_lua_scripts,
+            toggle_lua_script,
+            delete_lua_script
         ])
         .setup(|app| {
             // Initialize TaskControl state

@@ -418,6 +418,10 @@ pub struct SceneryPackageInfo {
     /// Continent name (e.g., "Asia", "Europe", "North America")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub continent: Option<String>,
+    /// Original category assigned during initial classification (before any manual changes)
+    /// Used to preserve the original label when package is manually moved to a different group
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_category: Option<SceneryCategory>,
 }
 
 /// DSF file header information
@@ -489,6 +493,13 @@ pub struct SceneryManagerEntry {
     /// Continent name (e.g., "Asia", "Europe", "North America")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub continent: Option<String>,
+    /// Folder names of other packages with overlapping DSF tiles (within same category)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub duplicate_tiles: Vec<String>,
+    /// Original category assigned during initial classification
+    /// Used to show original label when package is manually moved to FixedHighPriority
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_category: Option<SceneryCategory>,
 }
 
 /// Simplified entry for batch updates (only fields that can be changed)
@@ -508,6 +519,8 @@ pub struct SceneryManagerData {
     pub total_count: usize,
     pub enabled_count: usize,
     pub missing_deps_count: usize,
+    /// Count of packages with duplicate DSF tiles
+    pub duplicate_tiles_count: usize,
     /// Whether the index differs from the ini file and needs to be synced
     pub needs_sync: bool,
 }
@@ -535,6 +548,15 @@ pub struct AircraftInfo {
     pub cfg_disabled: Option<bool>,
 }
 
+/// Livery information for livery management UI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveryInfo {
+    pub folder_name: String,
+    pub display_name: String,
+    pub icon_path: Option<String>,
+}
+
 /// Plugin information for management UI
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -553,6 +575,22 @@ pub struct PluginInfo {
     pub has_update: bool,
     /// Whether disabled in skunkcrafts_updater.cfg (disabled|true)
     pub cfg_disabled: Option<bool>,
+    /// Whether this plugin has a Scripts directory (FlyWithLua)
+    pub has_scripts: bool,
+    /// Number of scripts in the Scripts directory
+    pub script_count: usize,
+}
+
+/// FlyWithLua script information for script management UI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LuaScriptInfo {
+    /// File name with extension (e.g. "auto_ortho.lua" or "auto_ortho.xfml")
+    pub file_name: String,
+    /// Display name without extension (e.g. "auto_ortho")
+    pub display_name: String,
+    /// Whether the script is enabled (.lua = true, .xfml = false)
+    pub enabled: bool,
 }
 
 /// Navdata manager information for management UI
@@ -794,6 +832,8 @@ mod tests {
             missing_libraries: vec![],
             required_libraries: vec!["opensceneryx".to_string()],
             continent: Some("Asia".to_string()),
+            duplicate_tiles: vec![],
+            original_category: Some(SceneryCategory::Airport),
         };
 
         let json = serde_json::to_string(&entry).unwrap();

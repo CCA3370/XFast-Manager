@@ -23,6 +23,8 @@ const emit = defineEmits<{
   (e: 'delete', folderName: string): void
   (e: 'open-folder', folderName: string): void
   (e: 'restore-backup', backupInfo: NavdataBackupInfo): void
+  (e: 'view-liveries', folderName: string): void
+  (e: 'view-scripts', folderName: string): void
 }>()
 
 const { t } = useI18n()
@@ -71,6 +73,12 @@ const badgeInfo = computed(() => {
       text: `${props.entry.liveryCount} ${t('management.liveries')}`,
       color: 'text-blue-700 dark:text-blue-300',
       bgColor: 'bg-blue-100 dark:bg-blue-900/30'
+    }
+  } else if (isPlugin(props.entry) && props.entry.hasScripts) {
+    return {
+      text: `${props.entry.scriptCount} ${t('scripts.scriptCount')}`,
+      color: 'text-emerald-700 dark:text-emerald-300',
+      bgColor: 'bg-emerald-100 dark:bg-emerald-900/30'
     }
   } else if (isPlugin(props.entry)) {
     const platformColors: Record<string, { color: string; bgColor: string }> = {
@@ -132,6 +140,14 @@ function handleDoubleClick() {
   emit('open-folder', props.entry.folderName)
 }
 
+function handleClick() {
+  if (isAircraft(props.entry) && props.entry.hasLiveries) {
+    emit('view-liveries', props.entry.folderName)
+  } else if (isPlugin(props.entry) && props.entry.hasScripts) {
+    emit('view-scripts', props.entry.folderName)
+  }
+}
+
 function handleDeleteConfirm() {
   isDeleting.value = true
   emit('delete', props.entry.folderName)
@@ -149,8 +165,10 @@ function handleDeleteConfirm() {
     :class="[
       (isNavdata(entry) || entry.enabled)
         ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
-        : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200/50 dark:border-gray-700/50 opacity-60'
+        : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200/50 dark:border-gray-700/50 opacity-60',
+      (isAircraft(entry) && entry.hasLiveries) || (isPlugin(entry) && entry.hasScripts) ? 'cursor-pointer' : ''
     ]"
+    @click="handleClick"
     @dblclick="handleDoubleClick"
   >
     <!-- Enable/Disable toggle (not for navdata) -->

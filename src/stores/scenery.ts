@@ -43,6 +43,7 @@ export const useSceneryStore = defineStore('scenery', () => {
   const totalCount = computed(() => data.value?.totalCount ?? 0)
   const enabledCount = computed(() => data.value?.enabledCount ?? 0)
   const missingDepsCount = computed(() => data.value?.missingDepsCount ?? 0)
+  const duplicateTilesCount = computed(() => data.value?.duplicateTilesCount ?? 0)
 
   // Sort entries by sortOrder
   const sortedEntries = computed(() => {
@@ -386,6 +387,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     totalCount,
     enabledCount,
     missingDepsCount,
+    duplicateTilesCount,
     hasChanges,
     hasLocalChanges,
     indexExists,

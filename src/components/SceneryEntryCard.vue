@@ -36,6 +36,7 @@ const sceneryStore = useSceneryStore()
 const lockStore = useLockStore()
 
 const showMissingLibsModal = ref(false)
+const showDuplicateTilesModal = ref(false)
 const showDeleteConfirmModal = ref(false)
 const isSearching = ref(false)
 const isDeleting = ref(false)
@@ -56,10 +57,22 @@ const categoryConfig = computed(() => {
     [SceneryCategory.Other]: { label: t('sceneryManager.categoryOther'), color: 'text-gray-600 dark:text-gray-400', bgColor: 'bg-gray-100 dark:bg-gray-800/50' },
     [SceneryCategory.Unrecognized]: { label: t('sceneryManager.categoryUnrecognized'), color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/40' },
   }
+
+  // For FixedHighPriority entries, check if it was originally classified as SAM
+  // If originalCategory is different (manually moved), show the original category's label and color
+  if (props.entry.category === SceneryCategory.FixedHighPriority) {
+    const originalCat = props.entry.originalCategory
+    if (originalCat && originalCat !== SceneryCategory.FixedHighPriority) {
+      // Entry was manually moved to FixedHighPriority, show original label and color
+      return configs[originalCat] || configs[SceneryCategory.Other]
+    }
+  }
+
   return configs[props.entry.category] || configs[SceneryCategory.Other]
 })
 
 const hasMissingDeps = computed(() => props.entry.missingLibraries.length > 0)
+const hasDuplicateTiles = computed(() => props.entry.duplicateTiles && props.entry.duplicateTiles.length > 0)
 const isFirst = computed(() => props.index === 0)
 const isLast = computed(() => props.index === props.totalCount - 1)
 
@@ -87,15 +100,20 @@ async function handleDoubleClick() {
 }
 
 function handleClick(event: Event) {
+  // Don't trigger if clicking on interactive elements
+  const target = event.target as HTMLElement
+  if (target.closest('button') || target.closest('.drag-handle')) {
+    return
+  }
+
   // If has missing libraries, show modal on single click
   if (hasMissingDeps.value) {
-    // Don't trigger if clicking on interactive elements
-    const target = event.target as HTMLElement
-    if (target.closest('button') || target.closest('.drag-handle')) {
-      return
-    }
     event.stopPropagation()
     showMissingLibsModal.value = true
+  } else if (hasDuplicateTiles.value) {
+    // If has duplicate tiles (but no missing deps), show that modal
+    event.stopPropagation()
+    showDuplicateTilesModal.value = true
   }
 }
 
@@ -169,7 +187,7 @@ async function handleDeleteConfirm() {
         : (entry.enabled
           ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
           : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200/50 dark:border-gray-700/50 opacity-60'),
-      hasMissingDeps ? 'cursor-pointer' : ''
+      (hasMissingDeps || hasDuplicateTiles) ? 'cursor-pointer' : ''
     ]"
     @click="handleClick"
     @dblclick="handleDoubleClick"
@@ -203,13 +221,27 @@ async function handleDeleteConfirm() {
     <!-- Missing dependencies warning (before category badge) -->
     <div
       v-if="hasMissingDeps"
-      class="flex-shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20"
+      class="flex-shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 cursor-pointer"
       :title="t('sceneryManager.clickToViewMissingLibs')"
+      @click.stop="showMissingLibsModal = true"
     >
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
       </svg>
       <span class="text-[10px] font-medium">{{ entry.missingLibraries.length }}</span>
+    </div>
+
+    <!-- Duplicate tiles warning badge -->
+    <div
+      v-if="hasDuplicateTiles"
+      class="flex-shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 cursor-pointer"
+      :title="t('sceneryManager.clickToViewDuplicates')"
+      @click.stop="showDuplicateTilesModal = true"
+    >
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+      </svg>
+      <span class="text-[10px] font-medium">{{ entry.duplicateTiles.length }}</span>
     </div>
 
     <!-- Category badge -->
@@ -361,6 +393,72 @@ async function handleDeleteConfirm() {
           </div>
           <button
             @click="showMissingLibsModal = false"
+            class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
+          >
+            {{ t('common.close') }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- Duplicate Tiles Modal -->
+  <Teleport to="body">
+    <div
+      v-if="showDuplicateTilesModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      @click="showDuplicateTilesModal = false"
+    >
+      <div
+        class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full mx-4 flex flex-col"
+        style="max-width: 500px; max-height: 80vh;"
+        @click.stop
+      >
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between p-5 pb-3 flex-shrink-0">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+            {{ t('sceneryManager.duplicateTilesTitle') }}
+          </h3>
+          <button
+            @click="showDuplicateTilesModal = false"
+            class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Scrollable Content Area -->
+        <div class="flex-1 overflow-y-auto px-5 pb-3 min-h-0">
+          <!-- Scenery Name -->
+          <div class="mb-3 text-sm text-gray-600 dark:text-gray-400">
+            {{ entry.folderName }}
+          </div>
+
+          <!-- Description -->
+          <div class="mb-3 text-sm text-gray-600 dark:text-gray-400">
+            {{ t('sceneryManager.duplicateTilesDesc') }}
+          </div>
+
+          <!-- Conflicting Packages List -->
+          <div class="bg-gray-50 dark:bg-gray-900 rounded p-3">
+            <ul class="space-y-1">
+              <li
+                v-for="pkg in entry.duplicateTiles"
+                :key="pkg"
+                class="text-sm text-gray-800 dark:text-gray-200 font-mono"
+              >
+                • {{ pkg }}
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Close Button -->
+        <div class="flex flex-col gap-2 p-5 pt-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
+          <button
+            @click="showDuplicateTilesModal = false"
             class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
           >
             {{ t('common.close') }}

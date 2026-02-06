@@ -138,7 +138,6 @@ Provide the archive password when prompted.
 **Requirements**
 - Node.js 18+
 - Rust 1.70+
-- Platform dependencies per Tauri prerequisites
 
 **Commands**
 ```bash
@@ -154,8 +153,7 @@ npm run tauri:build
 
 ### Tests
 
-- Rust unit tests: `cargo test` (run inside `src-tauri`)
-- No dedicated frontend test suite yet
+- Rust unit tests: `cargo test`
 
 ### Testers
 
