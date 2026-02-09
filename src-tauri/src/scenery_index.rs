@@ -1161,7 +1161,9 @@ impl SceneryIndexManager {
 
         // Detect duplicate tiles within Mesh and AirportMesh categories
         let custom_scenery_path = self.xplane_path.join("Custom Scenery");
-        let duplicate_tiles_map = detect_duplicate_tiles(&index.packages, &custom_scenery_path);
+        let raw_tile_overlaps = detect_raw_tile_overlaps(&index.packages, &custom_scenery_path);
+        let duplicate_tiles_map =
+            filter_tile_overlaps_with_xpme_rules(&raw_tile_overlaps, &index.packages);
 
         // Convert to manager entries and sort by sort_order
         let mut entries: Vec<SceneryManagerEntry> = index
@@ -1206,6 +1208,7 @@ impl SceneryIndexManager {
             missing_deps_count,
             duplicate_tiles_count,
             needs_sync,
+            tile_overlaps: raw_tile_overlaps,
         })
     }
 
@@ -1626,10 +1629,10 @@ fn parse_dsf_filename(dsf_path: &Path) -> Option<(i32, i32)> {
     Some((lat, lon))
 }
 
-/// Detect duplicate DSF tiles within Mesh and AirportMesh categories separately.
-/// Returns a map of folder_name -> list of conflicting folder names.
+/// Detect all DSF tile overlaps within Mesh and AirportMesh categories separately.
+/// Returns a raw map of folder_name -> list of ALL overlapping folder names (no XPME filtering).
 /// Cross-category duplicates (Mesh vs AirportMesh) are NOT flagged.
-fn detect_duplicate_tiles(
+fn detect_raw_tile_overlaps(
     packages: &HashMap<String, SceneryPackageInfo>,
     custom_scenery_path: &Path,
 ) -> HashMap<String, Vec<String>> {
@@ -1662,7 +1665,7 @@ fn detect_duplicate_tiles(
             }
         }
 
-        // For each coordinate with multiple packages, mark them as duplicates of each other
+        // For each coordinate with multiple packages, record all overlaps
         for (_coord, folder_names) in coord_map.iter() {
             if folder_names.len() > 1 {
                 for folder in folder_names {
@@ -1672,19 +1675,65 @@ fn detect_duplicate_tiles(
                         .cloned()
                         .collect();
 
-                    result
-                        .entry(folder.clone())
-                        .or_default()
-                        .extend(others);
+                    if !others.is_empty() {
+                        result
+                            .entry(folder.clone())
+                            .or_default()
+                            .extend(others);
+                    }
                 }
             }
         }
     }
 
-    // Deduplicate each folder's duplicate_tiles list
+    // Deduplicate each folder's overlap list
     for duplicates in result.values_mut() {
         duplicates.sort();
         duplicates.dedup();
+    }
+
+    result
+}
+
+/// Apply XPME filtering rules to raw tile overlaps based on current sort_order.
+/// - XPME_ packages never receive duplicate warnings themselves.
+/// - Non-XPME packages are only warned about XPME overlap when they are
+///   sorted below (higher sort_order = lower priority than) the XPME package.
+fn filter_tile_overlaps_with_xpme_rules(
+    raw_overlaps: &HashMap<String, Vec<String>>,
+    packages: &HashMap<String, SceneryPackageInfo>,
+) -> HashMap<String, Vec<String>> {
+    let mut result: HashMap<String, Vec<String>> = HashMap::new();
+
+    for (folder, overlaps) in raw_overlaps {
+        // XPME_ packages never get flagged
+        if folder.starts_with("XPME_") {
+            continue;
+        }
+
+        let folder_sort = packages
+            .get(folder.as_str())
+            .map(|i| i.sort_order)
+            .unwrap_or(u32::MAX);
+
+        let filtered: Vec<String> = overlaps
+            .iter()
+            .filter(|other| {
+                if other.starts_with("XPME_") {
+                    let xpme_sort = packages
+                        .get(other.as_str())
+                        .map(|i| i.sort_order)
+                        .unwrap_or(0);
+                    return folder_sort > xpme_sort;
+                }
+                true
+            })
+            .cloned()
+            .collect();
+
+        if !filtered.is_empty() {
+            result.insert(folder.clone(), filtered);
+        }
     }
 
     result

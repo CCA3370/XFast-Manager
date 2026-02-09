@@ -435,7 +435,10 @@ export default {
     duplicateTiles: 'Duplicate tiles',
     duplicateTilesTitle: 'Duplicate DSF Tiles',
     duplicateTilesDesc: 'These packages contain DSF tiles at the same coordinates. Only the highest priority package\'s tiles will be used.',
-    clickToViewDuplicates: 'Click to view duplicate tiles'
+    clickToViewDuplicates: 'Click to view duplicate tiles',
+    filters: 'Filters',
+    showOnlyEnabled: 'Enabled Only',
+    showOnlyDisabled: 'Disabled Only'
   },
   geo: {
     continents: {

@@ -523,6 +523,9 @@ pub struct SceneryManagerData {
     pub duplicate_tiles_count: usize,
     /// Whether the index differs from the ini file and needs to be synced
     pub needs_sync: bool,
+    /// Raw tile overlap data (all overlaps, before XPME filtering) for frontend real-time recalculation
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub tile_overlaps: HashMap<String, Vec<String>>,
 }
 
 // ========== Management Data Structures ==========

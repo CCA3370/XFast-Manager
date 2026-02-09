@@ -295,13 +295,13 @@ async function initApp(): Promise<void> {
     app = createApp(App)
 
     // Setup Vue error handler
-    app.config.errorHandler = (err, instance, info) => {
+    app.config.errorHandler = (err, _instance, info) => {
       const errorMsg = formatError(err)
       bootstrapError(`Vue error [${info}]: ${errorMsg}`, 'vue-error')
-      console.error('Vue error:', err, '\nComponent:', instance, '\nInfo:', info)
+      console.error('Vue error:', err, '\nInfo:', info)
     }
 
-    app.config.warnHandler = (msg, instance, trace) => {
+    app.config.warnHandler = (msg, _instance, trace) => {
       bootstrapDebug(`Vue warning: ${msg}`, 'vue-warn')
       console.warn('Vue warning:', msg, '\nTrace:', trace)
     }

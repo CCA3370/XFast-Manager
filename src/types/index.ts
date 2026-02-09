@@ -284,6 +284,8 @@ export interface SceneryManagerData {
   missingDepsCount: number;
   duplicateTilesCount: number;
   needsSync: boolean;
+  /** Raw tile overlap data (all overlaps, before XPME filtering) for real-time recalculation */
+  tileOverlaps: Record<string, string[]>;
 }
 
 // ========== Management Types ==========

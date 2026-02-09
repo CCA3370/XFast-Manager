@@ -221,13 +221,80 @@ export const useSceneryStore = defineStore('scenery', () => {
     }
   }
 
-  // Apply a local sort order without persisting immediately
+  // Recalculate duplicate tiles based on raw tile overlaps and current sort order.
+  // This enables real-time conflict display when entries are reordered.
+  // Creates new entry objects for changed entries to force Vue reactivity propagation
+  // through computed properties (groupedEntries) into the template.
+  let recalcTimer: ReturnType<typeof setTimeout> | null = null
+
+  function recalcDuplicateTiles() {
+    if (!data.value) return
+    const overlaps = data.value.tileOverlaps
+    if (!overlaps || Object.keys(overlaps).length === 0) return
+
+    const entryMap = new Map(data.value.entries.map(e => [e.folderName, e]))
+    let anyChanged = false
+
+    const newEntries = data.value.entries.map(entry => {
+      let newTiles: string[]
+
+      if (entry.folderName.startsWith('XPME_')) {
+        newTiles = []
+      } else {
+        const rawOverlaps = overlaps[entry.folderName]
+        if (!rawOverlaps || rawOverlaps.length === 0) {
+          newTiles = []
+        } else {
+          newTiles = rawOverlaps.filter(other => {
+            const otherEntry = entryMap.get(other)
+            if (!otherEntry) return false
+            if (other.startsWith('XPME_')) {
+              return entry.sortOrder > otherEntry.sortOrder
+            }
+            return true
+          })
+        }
+      }
+
+      // Only create a new object when duplicateTiles actually differs
+      // Note: duplicateTiles may be undefined — backend omits empty arrays via skip_serializing_if
+      const prev = entry.duplicateTiles ?? []
+      if (prev.length !== newTiles.length || prev.some((v, i) => v !== newTiles[i])) {
+        anyChanged = true
+        return { ...entry, duplicateTiles: newTiles }
+      }
+      return entry
+    })
+
+    if (anyChanged) {
+      data.value.entries = newEntries
+      data.value.duplicateTilesCount = newEntries.filter(e => (e.duplicateTiles ?? []).length > 0).length
+    }
+  }
+
+  // Debounced, deferred recalculation — yields to the UI thread first
+  function scheduleRecalcDuplicateTiles() {
+    if (recalcTimer !== null) {
+      clearTimeout(recalcTimer)
+    }
+    recalcTimer = setTimeout(() => {
+      recalcTimer = null
+      recalcDuplicateTiles()
+    }, 0)
+  }
+
+  // Apply a local sort order without persisting immediately.
+  // Mutates sortOrder in-place to avoid creating new objects and triggering
+  // a full re-render of the entire list.
+  // Runs recalcDuplicateTiles synchronously so that callers (e.g. handleDragEnd)
+  // get entries with up-to-date duplicateTiles before syncLocalEntries copies them.
   function applyLocalOrder(newOrder: SceneryManagerEntry[]) {
     if (!data.value) return
-    data.value.entries = newOrder.map((entry, index) => ({
-      ...entry,
-      sortOrder: index
-    }))
+    for (let i = 0; i < newOrder.length; i++) {
+      newOrder[i].sortOrder = i
+    }
+    data.value.entries = newOrder
+    recalcDuplicateTiles()
   }
 
   // Move an entry locally to a new position (no persistence until apply)
@@ -336,6 +403,7 @@ export const useSceneryStore = defineStore('scenery', () => {
         data.value.totalCount = data.value.entries.length
         data.value.enabledCount = data.value.entries.filter(e => e.enabled).length
         data.value.missingDepsCount = data.value.entries.filter(e => e.missingLibraries.length > 0).length
+        scheduleRecalcDuplicateTiles()
       }
 
       // Also remove from original entries and recalculate their sortOrder

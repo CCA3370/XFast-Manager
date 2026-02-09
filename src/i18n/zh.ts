@@ -448,7 +448,10 @@ export default {
     duplicateTiles: '重复地块',
     duplicateTilesTitle: '重复的DSF地块',
     duplicateTilesDesc: '这些地景包含相同坐标的DSF地块。只有最高优先级的地景包的地块会被使用。',
-    clickToViewDuplicates: '点击查看重复地块'
+    clickToViewDuplicates: '点击查看重复地块',
+    filters: '筛选',
+    showOnlyEnabled: '仅显示已启用',
+    showOnlyDisabled: '仅显示未启用'
   },
   geo: {
     continents: {
