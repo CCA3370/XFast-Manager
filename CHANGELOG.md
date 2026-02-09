@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.9] - 2026-02-09
+
+### Added
+
+- **Aircraft Livery Management** - Browse and manage aircraft liveries
+  - View all liveries for each aircraft with thumbnail icons
+  - Preview livery images with zoom and pan controls
+  - Open livery folders in file explorer
+  - Delete individual liveries
+- **Lua Script Management** - Manage FlyWithLua scripts
+  - View all installed FlyWithLua scripts with enable/disable status
+  - Toggle scripts between enabled (.lua) and disabled (.xfml) states
+  - Delete scripts directly from the manager
+  - Right-click context menu support for quick actions
+- **DSF Tile Overlap Detection** - Identify conflicting scenery packages
+  - Automatically detect packages with overlapping terrain tiles
+  - Show conflicting packages in detail view
+  - New filter to show only packages with conflicts
+  - XPME-aware conflict detection (respects XPME load order)
+- **Enhanced Filtering System** - More control over scenery display
+  - New filter dropdown with checkbox-based controls
+  - Filter by enabled/disabled status
+  - Improved filter UX with visual indicators
+
+### Changed
+
+- **Release Artifacts** - All platform installers now packaged as .zip files for consistency
+- **README** - Updated tagline to "The Modern X-Plane Addon Installer & Manager"
+- **Plugin Display** - Show script count for FlyWithLua plugin
+
+### Technical
+
+- Database schema updated to v4 with original_category tracking for better package classification
+- Improved asset protocol support for local file access
+- Optimized CI/CD artifacts handling with compression
+
 ## [0.8.8] - 2026-02-05
 
 ### Fixed

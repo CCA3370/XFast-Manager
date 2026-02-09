@@ -154,6 +154,7 @@ jobs:
           path: 'target/release/XFast-Manager.exe'
           if-no-files-found: error
           retention-days: 7
+          compression-level: 9
 
       - name: Upload Windows MSI artifact
         if: matrix.platform == 'windows-latest'
@@ -163,6 +164,7 @@ jobs:
           path: 'target/release/bundle/msi/*.msi'
           if-no-files-found: error
           retention-days: 7
+          compression-level: 9
 
       - name: Upload macOS artifact
         if: matrix.platform == 'macos-latest'
@@ -172,6 +174,7 @@ jobs:
           path: 'target/universal-apple-darwin/release/bundle/dmg/*.dmg'
           if-no-files-found: error
           retention-days: 7
+          compression-level: 9
 
       - name: Upload Linux artifact
         if: matrix.platform == 'ubuntu-22.04'
@@ -181,3 +184,4 @@ jobs:
           path: 'target/release/bundle/appimage/*.AppImage'
           if-no-files-found: error
           retention-days: 7
+          compression-level: 9

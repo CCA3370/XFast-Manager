@@ -69,7 +69,7 @@ impl SceneryQueries {
                 "SELECT id, folder_name, category, sub_priority, last_modified, indexed_at,
                         has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
                         texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
-                        continent
+                        continent, original_category
                  FROM scenery_packages",
             )
             .map_err(|e| ApiError::database(format!("Failed to prepare query: {}", e)))?;
@@ -94,6 +94,7 @@ impl SceneryQueries {
                     row.get::<_, u32>(14)?,            // sort_order
                     row.get::<_, Option<String>>(15)?, // actual_path
                     row.get::<_, Option<String>>(16)?, // continent
+                    row.get::<_, Option<String>>(17)?, // original_category
                 ))
             })
             .map_err(|e| ApiError::database(format!("Failed to query packages: {}", e)))?;
@@ -123,6 +124,7 @@ impl SceneryQueries {
                 sort_order,
                 actual_path,
                 continent,
+                original_category_str,
             ) = row;
 
             let info = SceneryPackageInfo {
@@ -145,6 +147,7 @@ impl SceneryQueries {
                 exported_library_names: Vec::new(),
                 actual_path,
                 continent,
+                original_category: original_category_str.map(|s| string_to_category(&s)),
             };
 
             package_data.push((id, info));
@@ -262,8 +265,8 @@ impl SceneryQueries {
                 folder_name, category, sub_priority, last_modified, indexed_at,
                 has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
                 texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
-                continent
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                continent, original_category
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             )
             .map_err(|e| {
                 ApiError::database(format!("Failed to prepare package statement: {}", e))
@@ -322,6 +325,7 @@ impl SceneryQueries {
                     info.sort_order,
                     &info.actual_path,
                     &info.continent,
+                    info.original_category.as_ref().map(category_to_string),
                 ])
                 .map_err(|e| ApiError::database(format!("Failed to insert package: {}", e)))?;
 
@@ -380,8 +384,8 @@ impl SceneryQueries {
                 folder_name, category, sub_priority, last_modified, indexed_at,
                 has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
                 texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
-                continent
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                continent, original_category
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             params![
                 info.folder_name,
                 category_to_string(&info.category),
@@ -399,6 +403,7 @@ impl SceneryQueries {
                 info.sort_order,
                 &info.actual_path,
                 &info.continent,
+                info.original_category.as_ref().map(category_to_string),
             ],
         )
         .map_err(|e| ApiError::database(format!("Failed to insert package: {}", e)))?;
@@ -598,12 +603,13 @@ impl SceneryQueries {
             u32,
             Option<String>,
             Option<String>,
+            Option<String>,
         )> = conn
             .query_row(
                 "SELECT id, folder_name, category, sub_priority, last_modified, indexed_at,
                         has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
                         texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
-                        continent
+                        continent, original_category
                  FROM scenery_packages WHERE folder_name = ?1",
                 params![folder_name],
                 |row| {
@@ -625,6 +631,7 @@ impl SceneryQueries {
                         row.get(14)?,
                         row.get(15)?,
                         row.get(16)?,
+                        row.get(17)?,
                     ))
                 },
             )
@@ -649,6 +656,7 @@ impl SceneryQueries {
                 sort_order,
                 actual_path,
                 continent,
+                original_category_str,
             )) => {
                 let mut info = SceneryPackageInfo {
                     folder_name,
@@ -670,6 +678,7 @@ impl SceneryQueries {
                     exported_library_names: Vec::new(),
                     actual_path,
                     continent,
+                    original_category: original_category_str.map(|s| string_to_category(&s)),
                 };
 
                 // Load libraries
@@ -893,6 +902,7 @@ mod tests {
             exported_library_names: vec![],
             actual_path: None,
             continent: Some("Asia".to_string()),
+            original_category: Some(SceneryCategory::Airport),
         };
 
         SceneryQueries::update_package(&mut conn, &info).unwrap();
@@ -931,6 +941,7 @@ mod tests {
             exported_library_names: vec!["mylib".to_string()],
             actual_path: None,
             continent: None,
+            original_category: Some(SceneryCategory::Library),
         };
 
         SceneryQueries::update_package(&mut conn, &info).unwrap();
@@ -972,6 +983,7 @@ mod tests {
                 exported_library_names: vec![],
                 actual_path: None,
                 continent: None,
+                original_category: Some(SceneryCategory::Other),
             };
             SceneryQueries::update_package(&mut conn, &info).unwrap();
         }

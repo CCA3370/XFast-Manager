@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch, onBeforeUnmount, defineAsyncComponent } from 'vue'
+import { ref, onMounted, computed, watch, onBeforeUnmount, defineAsyncComponent, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useManagementStore } from '@/stores/management'
 import { useSceneryStore } from '@/stores/scenery'
 import { useToastStore } from '@/stores/toast'
@@ -11,7 +11,9 @@ import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import ManagementEntryCard from '@/components/ManagementEntryCard.vue'
+import ConfirmModal from '@/components/ConfirmModal.vue'
 import type { SceneryManagerEntry, ManagementTab, ManagementItemType, SceneryCategory, SceneryIndexScanResult, NavdataBackupInfo } from '@/types'
+import { parseApiError, getErrorMessage } from '@/types'
 
 // Lazy load heavy components to reduce initial render time
 const SceneryEntryCard = defineAsyncComponent(() => import('@/components/SceneryEntryCard.vue'))
@@ -19,6 +21,7 @@ const draggable = defineAsyncComponent(() => import('vuedraggable'))
 
 const { t, locale } = useI18n()
 const route = useRoute()
+const router = useRouter()
 const managementStore = useManagementStore()
 const sceneryStore = useSceneryStore()
 const toastStore = useToastStore()
@@ -61,12 +64,30 @@ const searchExpandedGroups = ref<Record<string, boolean>>({})
 const searchExpandedContinents = ref<Record<string, boolean>>({})
 const searchExpandedContinentCategories = ref<Record<string, boolean>>({})
 const showOnlyMissingLibs = ref(false)
+const showOnlyDuplicateTiles = ref(false)
 const showOnlyUpdates = ref(false)
 const showOnlyOutdated = ref(false)
 const showMoreMenu = ref(false)
 const suppressLoading = ref(false)
 const moreMenuRef = ref<HTMLElement | null>(null)
+const scrollContainerRef = ref<HTMLElement | null>(null)
 const syncWarningDismissed = ref(false)
+const showFilterDropdown = ref(false)
+const filterDropdownRef = ref<HTMLElement | null>(null)
+const enabledFilter = ref<'all' | 'enabled' | 'disabled'>('all')
+const isFilterTransitioning = ref(false)
+
+// Shared modal state for scenery entry actions
+const selectedModalEntry = ref<SceneryManagerEntry | null>(null)
+const showMissingLibsModal = ref(false)
+const showDuplicateTilesModal = ref(false)
+const showDeleteConfirmModal = ref(false)
+const isSearchingLibs = ref(false)
+const isDeletingEntry = ref(false)
+
+// 拖拽自动滚动状态 (非响应式，无需触发渲染)
+let dragAutoScrollRafId: number | null = null
+let dragPointerY: number = 0
 
 // Geo filtering state
 const selectedContinent = ref<string>('')
@@ -83,6 +104,16 @@ const collapsedContinentCategories = ref<Record<string, boolean>>({})
 
 // Index update state
 const isUpdatingIndex = ref(false)
+
+// Whether any filter is active (for button highlight)
+const hasActiveFilters = computed(() => {
+  return showOnlyMissingLibs.value || showOnlyDuplicateTiles.value || enabledFilter.value !== 'all' || viewMode.value === 'continent'
+})
+
+// Whether any data-level filter is active (excluding view mode)
+const hasDataFilters = computed(() => {
+  return showOnlyMissingLibs.value || showOnlyDuplicateTiles.value || enabledFilter.value !== 'all'
+})
 
 // Local copy of grouped entries for drag-and-drop
 const localGroupedEntries = ref<Record<string, SceneryManagerEntry[]>>({
@@ -115,6 +146,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
+  stopDragAutoScroll()
 })
 
 // Watch for tab changes
@@ -131,6 +163,7 @@ watch(activeTab, async (newTab, oldTab) => {
   // Reset filter states when switching tabs
   showOnlyUpdates.value = false
   showOnlyOutdated.value = false
+  enabledFilter.value = 'all'
 
   // Start loading data (non-blocking)
   const loadPromise = loadTabData(newTab)
@@ -162,6 +195,13 @@ watch(sceneryDataTrigger, () => {
 watch(() => sceneryStore.missingDepsCount, (newCount) => {
   if (newCount === 0 && showOnlyMissingLibs.value) {
     showOnlyMissingLibs.value = false
+  }
+})
+
+// Auto-reset filter when no duplicate tiles remain
+watch(() => sceneryStore.duplicateTilesCount, (newCount) => {
+  if (newCount === 0 && showOnlyDuplicateTiles.value) {
+    showOnlyDuplicateTiles.value = false
   }
 })
 
@@ -339,6 +379,16 @@ async function handleOpenFolder(itemType: ManagementItemType, folderName: string
   }
 }
 
+// Handle view liveries for aircraft
+function handleViewLiveries(folderName: string) {
+  router.push('/management/liveries?aircraft=' + encodeURIComponent(folderName))
+}
+
+// Handle view scripts for FlyWithLua
+function handleViewScripts(_folderName: string) {
+  router.push('/management/scripts')
+}
+
 // Handle manual check updates for aircraft/plugin tabs
 async function handleCheckUpdates() {
   if (managementStore.isCheckingUpdates) return
@@ -450,16 +500,23 @@ const sortedContinentOrder = computed(() => {
   })
 })
 
-// Check if a continent has any entries
-function hasContinentEntries(continent: string): boolean {
-  const continentData = continentGroupedEntries.value[continent]
-  if (!continentData) return false
-  return categoryOrder.some(cat => (continentData[cat]?.length || 0) > 0)
-}
-
 // Get stats for a continent (enabled/total)
 function getContinentStats(continent: string): { enabled: number; total: number } {
   const continentData = continentGroupedEntries.value[continent]
+  if (!continentData) return { enabled: 0, total: 0 }
+
+  let enabled = 0
+  let total = 0
+  for (const cat of categoryOrder) {
+    const entries = continentData[cat] || []
+    total += entries.length
+    enabled += entries.filter(e => e.enabled).length
+  }
+  return { enabled, total }
+}
+
+function getFilteredContinentStats(continent: string): { enabled: number; total: number } {
+  const continentData = filteredContinentGroupedEntries.value[continent]
   if (!continentData) return { enabled: 0, total: 0 }
 
   let enabled = 0
@@ -501,6 +558,18 @@ function toggleViewMode() {
     setTimeout(() => {
       isViewModeTransitioning.value = false
     }, 50)
+  }, 10)
+}
+
+// Apply a filter change with loading animation to avoid UI freeze
+function applyFilterWithTransition(fn: () => void) {
+  isFilterTransitioning.value = true
+  // Let spinner render first, then apply the actual state change
+  setTimeout(() => {
+    fn()
+    nextTick(() => {
+      isFilterTransitioning.value = false
+    })
   }, 10)
 }
 
@@ -593,12 +662,72 @@ const filteredSceneryEntries = computed(() => {
     entries = entries.filter(entry => entry.missingLibraries && entry.missingLibraries.length > 0)
   }
 
+  // Filter by duplicate tiles
+  if (showOnlyDuplicateTiles.value) {
+    entries = entries.filter(entry => entry.duplicateTiles && entry.duplicateTiles.length > 0)
+  }
+
   // Filter by continent
   if (selectedContinent.value) {
     entries = entries.filter(entry => entry.continent === selectedContinent.value)
   }
 
+  // Filter by enabled/disabled state
+  if (enabledFilter.value === 'enabled') {
+    entries = entries.filter(entry => entry.enabled)
+  } else if (enabledFilter.value === 'disabled') {
+    entries = entries.filter(entry => !entry.enabled)
+  }
+
   return entries
+})
+
+// Filtered entries grouped by category (for grouped filtered view)
+const filteredGroupedEntries = computed(() => {
+  const result: Record<string, SceneryManagerEntry[]> = {}
+  for (const category of categoryOrder) {
+    result[category] = []
+  }
+  for (const entry of filteredSceneryEntries.value) {
+    const cat = entry.category || 'Unrecognized'
+    if (result[cat]) {
+      result[cat].push(entry)
+    } else {
+      result['Unrecognized'].push(entry)
+    }
+  }
+  return result
+})
+
+// Filtered entries grouped by continent then category (for continent filtered view)
+const filteredContinentGroupedEntries = computed(() => {
+  const result: Record<string, Record<string, SceneryManagerEntry[]>> = {}
+  for (const entry of filteredSceneryEntries.value) {
+    const continent = entry.continent || 'Other'
+    const targetContinent = knownContinents.includes(continent) ? continent : 'Other'
+    if (!result[targetContinent]) {
+      result[targetContinent] = {}
+      for (const cat of categoryOrder) {
+        result[targetContinent][cat] = []
+      }
+    }
+    result[targetContinent][entry.category].push(entry)
+  }
+  return result
+})
+
+// Sorted continent order based on filtered entries
+const filteredSortedContinentOrder = computed(() => {
+  const continentsWithEntries = Object.keys(filteredContinentGroupedEntries.value)
+    .filter(continent => {
+      const data = filteredContinentGroupedEntries.value[continent]
+      return categoryOrder.some(cat => (data[cat]?.length || 0) > 0)
+    })
+  return continentsWithEntries.sort((a, b) => {
+    if (a === 'Other') return 1
+    if (b === 'Other') return -1
+    return a.localeCompare(b)
+  })
 })
 
 // Cached map for O(1) lookup of entry index by folderName
@@ -617,9 +746,11 @@ function isGroupExpanded(category: string): boolean {
   return sceneryStore.collapsedGroups[category as SceneryCategory] === false
 }
 
+const searchQueryLower = computed(() => searchQuery.value?.toLowerCase() ?? '')
+
 const matchedIndices = computed(() => {
   if (!searchQuery.value.trim() || activeTab.value !== 'scenery') return []
-  const query = searchQuery.value.toLowerCase()
+  const query = searchQueryLower.value
   return filteredSceneryEntries.value
     .map((entry, index) => ({ entry, index }))
     .filter(({ entry }) => entry.folderName.toLowerCase().includes(query))
@@ -628,16 +759,12 @@ const matchedIndices = computed(() => {
 
 function syncLocalEntries() {
   const grouped = sceneryStore.groupedEntries
-  localGroupedEntries.value = {
-    FixedHighPriority: [...(grouped.FixedHighPriority || [])],
-    Airport: [...(grouped.Airport || [])],
-    DefaultAirport: [...(grouped.DefaultAirport || [])],
-    Library: [...(grouped.Library || [])],
-    Other: [...(grouped.Other || [])],
-    Overlay: [...(grouped.Overlay || [])],
-    AirportMesh: [...(grouped.AirportMesh || [])],
-    Mesh: [...(grouped.Mesh || [])],
-    Unrecognized: [...(grouped.Unrecognized || [])]
+  for (const cat of categoryOrder) {
+    const newArr = grouped[cat as SceneryCategory] || []
+    const oldArr = localGroupedEntries.value[cat] || []
+    if (newArr.length !== oldArr.length || newArr.some((e, i) => e !== oldArr[i])) {
+      localGroupedEntries.value[cat] = [...newArr]
+    }
   }
 }
 
@@ -657,8 +784,67 @@ function getCategoryTranslationKey(category: string): string {
   return `sceneryManager.category${category}`
 }
 
+function handleDragPointerMove(e: PointerEvent) {
+  dragPointerY = e.clientY
+}
+
+function dragAutoScrollLoop() {
+  const container = scrollContainerRef.value
+  if (!container) {
+    dragAutoScrollRafId = requestAnimationFrame(dragAutoScrollLoop)
+    return
+  }
+
+  const rect = container.getBoundingClientRect()
+  const edgeZone = 60        // 容器内边缘触发区域 (px)
+  const maxSpeed = 18        // 到达边缘时的最大速度 (px/frame)
+  const outsideAccel = 0.4   // 超出边界后每像素额外加速 (px/frame/px)
+
+  let scrollDelta = 0
+
+  if (dragPointerY < rect.top + edgeZone) {
+    // 光标在顶部边缘或上方 → 向上滚动
+    if (dragPointerY < rect.top) {
+      const dist = rect.top - dragPointerY
+      scrollDelta = -(maxSpeed + dist * outsideAccel)
+    } else {
+      const ratio = ((rect.top + edgeZone) - dragPointerY) / edgeZone
+      scrollDelta = -ratio * maxSpeed
+    }
+  } else if (dragPointerY > rect.bottom - edgeZone) {
+    // 光标在底部边缘或下方 → 向下滚动
+    if (dragPointerY > rect.bottom) {
+      const dist = dragPointerY - rect.bottom
+      scrollDelta = maxSpeed + dist * outsideAccel
+    } else {
+      const ratio = (dragPointerY - (rect.bottom - edgeZone)) / edgeZone
+      scrollDelta = ratio * maxSpeed
+    }
+  }
+
+  if (scrollDelta !== 0) {
+    container.scrollTop += scrollDelta
+  }
+
+  dragAutoScrollRafId = requestAnimationFrame(dragAutoScrollLoop)
+}
+
+function startDragAutoScroll() {
+  document.addEventListener('pointermove', handleDragPointerMove)
+  dragAutoScrollRafId = requestAnimationFrame(dragAutoScrollLoop)
+}
+
+function stopDragAutoScroll() {
+  document.removeEventListener('pointermove', handleDragPointerMove)
+  if (dragAutoScrollRafId !== null) {
+    cancelAnimationFrame(dragAutoScrollRafId)
+    dragAutoScrollRafId = null
+  }
+}
+
 function handleDragStart() {
   drag.value = true
+  startDragAutoScroll()
 }
 
 async function handleSceneryToggleEnabled(folderName: string) {
@@ -710,6 +896,7 @@ async function handleMoveDown(folderName: string) {
 
 async function handleDragEnd() {
   drag.value = false
+  stopDragAutoScroll()
   syncWarningDismissed.value = true
   const allEntries = categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
   await sceneryStore.reorderEntries(allEntries)
@@ -718,6 +905,80 @@ async function handleDragEnd() {
 
 function getGlobalIndex(folderName: string): number {
   return globalIndexMap.value.get(folderName) ?? -1
+}
+
+// Delay between opening multiple browser tabs to avoid overwhelming the browser
+const TAB_OPEN_DELAY_MS = 300
+
+// Shared modal handlers for scenery entry actions
+function handleShowMissingLibs(entry: SceneryManagerEntry) {
+  selectedModalEntry.value = entry
+  showMissingLibsModal.value = true
+}
+
+function handleShowDuplicateTiles(entry: SceneryManagerEntry) {
+  selectedModalEntry.value = entry
+  showDuplicateTilesModal.value = true
+}
+
+function handleShowDeleteConfirm(entry: SceneryManagerEntry) {
+  selectedModalEntry.value = entry
+  showDeleteConfirmModal.value = true
+}
+
+function handleCopyMissingLibs() {
+  if (!selectedModalEntry.value) return
+  const libNames = selectedModalEntry.value.missingLibraries.join('\n')
+  navigator.clipboard.writeText(libNames).then(() => {
+    toastStore.success(t('sceneryManager.missingLibsCopied'))
+  }).catch(() => {
+    modalStore.showError(t('copy.copyFailed'))
+  })
+}
+
+async function handleSearchMissingLibs() {
+  if (!selectedModalEntry.value || isSearchingLibs.value) return
+
+  isSearchingLibs.value = true
+  try {
+    for (const libName of selectedModalEntry.value.missingLibraries) {
+      const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(libName + ' X-Plane library')}`
+
+      try {
+        await invoke('open_url', { url: bingUrl })
+        await new Promise(resolve => setTimeout(resolve, TAB_OPEN_DELAY_MS))
+      } catch (error) {
+        modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + getErrorMessage(error))
+        break
+      }
+    }
+  } finally {
+    isSearchingLibs.value = false
+  }
+}
+
+async function handleDeleteEntryConfirm() {
+  if (!selectedModalEntry.value || isDeletingEntry.value) return
+
+  isDeletingEntry.value = true
+  try {
+    await sceneryStore.deleteEntry(selectedModalEntry.value.folderName)
+    toastStore.success(t('sceneryManager.deleteSuccess'))
+    showDeleteConfirmModal.value = false
+  } catch (error) {
+    const apiError = parseApiError(error)
+    if (apiError) {
+      const errorKey = `errors.${apiError.code}`
+      const localizedMessage = t(errorKey) !== errorKey
+        ? t(errorKey)
+        : apiError.message
+      modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + localizedMessage)
+    } else {
+      modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + getErrorMessage(error))
+    }
+  } finally {
+    isDeletingEntry.value = false
+  }
 }
 
 // Type for vuedraggable change event
@@ -867,6 +1128,9 @@ function handleClickOutside(event: MouseEvent) {
   if (moreMenuRef.value && !moreMenuRef.value.contains(event.target as Node)) {
     showMoreMenu.value = false
   }
+  if (filterDropdownRef.value && !filterDropdownRef.value.contains(event.target as Node)) {
+    showFilterDropdown.value = false
+  }
 }
 
 // Search navigation functions
@@ -895,7 +1159,7 @@ function collapseSearchExpandedGroups() {
 }
 
 function ensureGroupExpandedForIndex(index: number) {
-  if (showOnlyMissingLibs.value) return
+  if (showOnlyMissingLibs.value || showOnlyDuplicateTiles.value) return
   const entry = filteredSceneryEntries.value[index]
   if (!entry) return
 
@@ -1296,40 +1560,106 @@ const isLoading = computed(() => {
             <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.missingDeps') }}:</span>
           </Transition>
           <span class="font-semibold text-amber-600 dark:text-amber-400">{{ sceneryStore.missingDepsCount }}</span>
-          <button
-            @click="showOnlyMissingLibs = !showOnlyMissingLibs"
-            class="ml-1 px-2 py-0.5 rounded text-xs transition-colors"
-            :class="showOnlyMissingLibs
-              ? 'bg-amber-500 text-white hover:bg-amber-600'
-              : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50'"
-            :title="t('sceneryManager.filterMissingLibs')"
-          >
-            <Transition name="text-fade" mode="out-in">
-              <span :key="locale">{{ showOnlyMissingLibs ? t('sceneryManager.showAll') : t('sceneryManager.filterOnly') }}</span>
-            </Transition>
-          </button>
         </div>
-        <!-- Geo filters - Toggle button for continent view -->
-        <button
-          v-if="uniqueContinents.length > 0"
-          @click="toggleViewMode"
-          :disabled="isViewModeTransitioning"
-          class="text-xs px-3 py-1 rounded transition-colors flex items-center gap-1 disabled:opacity-70"
-          :class="viewMode === 'continent'
-            ? 'bg-blue-500 text-white hover:bg-blue-600'
-            : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/60'"
-        >
-          <svg v-if="isViewModeTransitioning" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <svg v-else class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+        <div v-if="sceneryStore.duplicateTilesCount > 0" class="flex items-center gap-2">
           <Transition name="text-fade" mode="out-in">
-            <span :key="locale">{{ t('sceneryManager.groupByContinent') }}</span>
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.duplicateTiles') }}:</span>
           </Transition>
-        </button>
+          <span class="font-semibold text-orange-600 dark:text-orange-400">{{ sceneryStore.duplicateTilesCount }}</span>
+        </div>
+        <!-- Filter dropdown menu -->
+        <div ref="filterDropdownRef" class="relative">
+          <button
+            @click="showFilterDropdown = !showFilterDropdown"
+            class="text-xs px-2.5 py-1 rounded-md transition-all duration-200 flex items-center gap-1.5 border"
+            :class="hasActiveFilters
+              ? 'bg-blue-500 text-white border-blue-500 hover:bg-blue-600 hover:border-blue-600 shadow-sm shadow-blue-500/25'
+              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700'"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+            </svg>
+            <Transition name="text-fade" mode="out-in">
+              <span :key="locale">{{ t('sceneryManager.filters') }}</span>
+            </Transition>
+            <svg class="w-3 h-3 transition-transform duration-200" :class="showFilterDropdown ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+            </svg>
+          </button>
+          <!-- Dropdown panel -->
+          <Transition name="dropdown">
+            <div
+              v-if="showFilterDropdown"
+              class="absolute right-0 top-full mt-1.5 w-60 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-black/8 dark:shadow-black/25 z-50 py-1.5 ring-1 ring-black/5 dark:ring-white/5"
+            >
+              <!-- Issues section -->
+              <template v-if="sceneryStore.missingDepsCount > 0 || sceneryStore.duplicateTilesCount > 0">
+                <!-- Missing deps -->
+                <div
+                  v-if="sceneryStore.missingDepsCount > 0"
+                  @click="applyFilterWithTransition(() => showOnlyMissingLibs = !showOnlyMissingLibs)"
+                  class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+                >
+                  <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-amber-400 dark:group-hover:border-amber-500" :class="showOnlyMissingLibs && 'filter-check-active bg-amber-500 !border-amber-500'">
+                    <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </span>
+                  <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.missingDeps') }}</span>
+                  <span class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium">{{ sceneryStore.missingDepsCount }}</span>
+                </div>
+                <!-- Duplicate tiles -->
+                <div
+                  v-if="sceneryStore.duplicateTilesCount > 0"
+                  @click="applyFilterWithTransition(() => showOnlyDuplicateTiles = !showOnlyDuplicateTiles)"
+                  class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+                >
+                  <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-orange-400 dark:group-hover:border-orange-500" :class="showOnlyDuplicateTiles && 'filter-check-active bg-orange-500 !border-orange-500'">
+                    <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </span>
+                  <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.duplicateTiles') }}</span>
+                  <span class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium">{{ sceneryStore.duplicateTilesCount }}</span>
+                </div>
+                <!-- Separator -->
+                <div class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"></div>
+              </template>
+              <!-- Enabled only -->
+              <div
+                @click="applyFilterWithTransition(() => enabledFilter = enabledFilter === 'enabled' ? 'all' : 'enabled')"
+                class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+              >
+                <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-green-400 dark:group-hover:border-green-500" :class="enabledFilter === 'enabled' && 'filter-check-active bg-green-500 !border-green-500'">
+                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+                <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.showOnlyEnabled') }}</span>
+              </div>
+              <!-- Disabled only -->
+              <div
+                @click="applyFilterWithTransition(() => enabledFilter = enabledFilter === 'disabled' ? 'all' : 'disabled')"
+                class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+              >
+                <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-red-400 dark:group-hover:border-red-500" :class="enabledFilter === 'disabled' && 'filter-check-active bg-red-500 !border-red-500'">
+                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+                <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.showOnlyDisabled') }}</span>
+              </div>
+              <!-- Separator -->
+              <div v-if="uniqueContinents.length > 0" class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"></div>
+              <!-- Group by continent -->
+              <div
+                v-if="uniqueContinents.length > 0"
+                @click="toggleViewMode"
+                class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+              >
+                <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-blue-400 dark:group-hover:border-blue-500" :class="viewMode === 'continent' && 'filter-check-active bg-blue-500 !border-blue-500'">
+                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+                <svg class="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
+                </svg>
+                <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.groupByContinent') }}</span>
+              </div>
+            </div>
+          </Transition>
+        </div>
         <!-- Updating index indicator -->
         <div v-if="isUpdatingIndex" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
           <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1350,7 +1680,7 @@ const isLoading = computed(() => {
     </div>
 
     <!-- Content -->
-    <div class="flex-1 overflow-y-auto tab-content-container">
+    <div ref="scrollContainerRef" class="flex-1 overflow-y-auto tab-content-container">
       <!-- No X-Plane path set -->
       <div v-if="!appStore.xplanePath" class="flex items-center justify-center h-full">
         <div class="text-center">
@@ -1388,6 +1718,7 @@ const isLoading = computed(() => {
                 @toggle-enabled="(fn) => handleToggleEnabled('aircraft', fn)"
                 @delete="(fn) => handleDelete('aircraft', fn)"
                 @open-folder="(fn) => handleOpenFolder('aircraft', fn)"
+                @view-liveries="handleViewLiveries"
               />
             </div>
           </template>
@@ -1409,6 +1740,7 @@ const isLoading = computed(() => {
                 @toggle-enabled="(fn) => handleToggleEnabled('plugin', fn)"
                 @delete="(fn) => handleDelete('plugin', fn)"
                 @open-folder="(fn) => handleOpenFolder('plugin', fn)"
+                @view-scripts="handleViewScripts"
               />
             </div>
           </template>
@@ -1501,49 +1833,13 @@ const isLoading = computed(() => {
         </div>
 
         <!-- View mode transitioning loading -->
-        <div v-else-if="isViewModeTransitioning" class="flex items-center justify-center py-12">
+        <div v-else-if="isViewModeTransitioning || isFilterTransitioning" class="flex items-center justify-center py-12">
           <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
         </div>
 
-        <!-- Filtered view (no drag-and-drop) - only for missing libs filter -->
-        <div v-else-if="showOnlyMissingLibs" class="space-y-1.5 px-1 pb-2">
-          <div
-            v-for="(element, index) in filteredSceneryEntries"
-            :key="element.folderName"
-            :data-scenery-index="index"
-            class="relative scenery-entry-item"
-            style="scroll-margin-top: 100px"
-          >
-            <div
-              v-if="highlightedIndex === index"
-              class="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none z-10"
-            ></div>
-            <div
-              :class="{
-                'opacity-30 transition-opacity': searchQuery && !element.folderName.toLowerCase().includes(searchQuery.toLowerCase())
-              }"
-            >
-              <SceneryEntryCard
-                :entry="element"
-                :index="index"
-                :total-count="sceneryStore.totalCount"
-                :disable-reorder="true"
-                @toggle-enabled="handleSceneryToggleEnabled"
-                @move-up="handleMoveUp"
-                @move-down="handleMoveDown"
-              />
-            </div>
-          </div>
-          <div v-if="filteredSceneryEntries.length === 0" class="text-center py-12">
-            <Transition name="text-fade" mode="out-in">
-              <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('sceneryManager.noMissingLibs') }}</p>
-            </Transition>
-          </div>
-        </div>
-
-        <!-- Continent grouped view (no drag-and-drop) -->
+        <!-- Continent grouped view (no drag-and-drop, filter-aware) -->
         <div v-else-if="viewMode === 'continent'" class="space-y-3 pb-2" style="overflow: visible;">
-          <template v-for="continent in sortedContinentOrder" :key="continent">
+          <template v-for="continent in (hasDataFilters ? filteredSortedContinentOrder : sortedContinentOrder)" :key="continent">
             <div class="continent-group" style="overflow: visible;">
               <!-- Continent Header -->
               <div
@@ -1568,13 +1864,14 @@ const isLoading = computed(() => {
                     {{ t(`geo.continents.${continent}`, continent) }}
                   </span>
                   <span class="text-xs font-medium text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                    <span class="text-green-700 dark:text-green-300">{{ getContinentStats(continent).enabled }}</span>
+                    <span class="text-green-700 dark:text-green-300">{{ (hasDataFilters ? getFilteredContinentStats(continent) : getContinentStats(continent)).enabled }}</span>
                     <span class="mx-1 text-gray-400">/</span>
-                    <span class="text-gray-600 dark:text-gray-400">{{ getContinentStats(continent).total }}</span>
+                    <span class="text-gray-600 dark:text-gray-400">{{ (hasDataFilters ? getFilteredContinentStats(continent) : getContinentStats(continent)).total }}</span>
                   </span>
                 </div>
                 <!-- Continent toggle switch -->
                 <button
+                  v-if="!hasDataFilters"
                   @click.stop="toggleContinentEnabled(continent)"
                   class="flex-shrink-0 px-2 py-0.5 rounded text-xs font-medium transition-colors"
                   :class="isContinentAllEnabled(continent)
@@ -1590,7 +1887,7 @@ const isLoading = computed(() => {
               <Transition name="collapse">
                 <div v-if="isContinentExpanded(continent)" class="pl-4 space-y-2" style="overflow: visible;">
                   <template v-for="category in categoryOrder" :key="category">
-                    <div v-if="continentGroupedEntries[continent][category]?.length > 0" class="category-in-continent">
+                    <div v-if="(hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category]?.length > 0" class="category-in-continent">
                       <!-- Category Header within Continent -->
                       <div
                         class="flex items-center gap-2 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded mb-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -1608,11 +1905,12 @@ const isLoading = computed(() => {
                         <span class="flex-1 text-xs font-medium text-gray-700 dark:text-gray-300">
                           {{ t(getCategoryTranslationKey(category)) }}
                           <span class="ml-1 text-gray-500 dark:text-gray-400">
-                            ({{ continentGroupedEntries[continent][category].filter(e => e.enabled).length }}/{{ continentGroupedEntries[continent][category].length }})
+                            ({{ (hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category].filter(e => e.enabled).length }}/{{ (hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category].length }})
                           </span>
                         </span>
                         <!-- Category toggle switch -->
                         <button
+                          v-if="!hasDataFilters"
                           @click.stop="toggleContinentCategoryEnabled(continent, category)"
                           class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors"
                           :class="isContinentCategoryAllEnabled(continent, category)
@@ -1626,8 +1924,16 @@ const isLoading = computed(() => {
                       <Transition name="collapse">
                         <div v-if="isContinentCategoryExpanded(continent, category)" class="space-y-1.5 px-1">
                           <div
-                            v-for="element in continentGroupedEntries[continent][category]"
+                            v-for="element in (hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category]"
                             :key="element.folderName"
+                            v-memo="[
+                              element.enabled,
+                              element.category,
+                              element.missingLibraries?.length ?? 0,
+                              element.duplicateTiles?.length ?? 0,
+                              searchQueryLower,
+                              highlightedIndex === getGlobalIndex(element.folderName)
+                            ]"
                             :data-scenery-index="getGlobalIndex(element.folderName)"
                             class="relative scenery-entry-item"
                             style="scroll-margin-top: 100px"
@@ -1638,7 +1944,7 @@ const isLoading = computed(() => {
                             ></div>
                             <div
                               :class="{
-                                'opacity-30 transition-opacity': searchQuery && !element.folderName.toLowerCase().includes(searchQuery.toLowerCase())
+                                'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
                               }"
                             >
                               <SceneryEntryCard
@@ -1649,6 +1955,9 @@ const isLoading = computed(() => {
                                 @toggle-enabled="handleSceneryToggleEnabled"
                                 @move-up="handleMoveUp"
                                 @move-down="handleMoveDown"
+                                @show-missing-libs="handleShowMissingLibs"
+                                @show-duplicate-tiles="handleShowDuplicateTiles"
+                                @show-delete-confirm="handleShowDeleteConfirm"
                               />
                             </div>
                           </div>
@@ -1660,6 +1969,100 @@ const isLoading = computed(() => {
               </Transition>
             </div>
           </template>
+          <div v-if="hasDataFilters && filteredSceneryEntries.length === 0" class="text-center py-12">
+            <Transition name="text-fade" mode="out-in">
+              <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('sceneryManager.noMissingLibs') }}</p>
+            </Transition>
+          </div>
+        </div>
+
+        <!-- Filtered view with groups (no drag-and-drop) -->
+        <div v-else-if="hasDataFilters" class="space-y-3 pb-2" style="overflow: visible;">
+          <template
+            v-for="category in categoryOrder"
+            :key="category"
+          >
+            <div
+              v-if="filteredGroupedEntries[category] && filteredGroupedEntries[category].length > 0"
+              class="scenery-group"
+              style="overflow: visible;"
+            >
+              <!-- Group Header -->
+              <div
+                @click="toggleGroupCollapse(category)"
+                class="group-header flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-lg cursor-pointer hover:from-gray-200 hover:to-gray-300 dark:hover:from-gray-600 dark:hover:to-gray-500 transition-all duration-200 mb-2 border border-gray-300 dark:border-gray-500 shadow-md"
+              >
+                <svg
+                  class="w-4 h-4 text-gray-700 dark:text-gray-200 transition-transform duration-200"
+                  :class="{ 'rotate-90': isGroupExpanded(category) }"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+                </svg>
+                <span class="font-semibold text-sm text-gray-900 dark:text-gray-50">
+                  <Transition name="text-fade" mode="out-in">
+                    <span :key="locale">{{ t(getCategoryTranslationKey(category)) }}</span>
+                  </Transition>
+                </span>
+                <span class="text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                  <span class="text-green-700 dark:text-green-300">{{ filteredGroupedEntries[category].filter(e => e.enabled).length }}</span>
+                  <span class="mx-1 text-gray-400">/</span>
+                  <span class="text-gray-600 dark:text-gray-400">{{ filteredGroupedEntries[category].length }}</span>
+                </span>
+              </div>
+
+              <!-- Group Content (Collapsible) -->
+              <Transition name="collapse">
+                <div v-if="isGroupExpanded(category)" class="space-y-1.5 px-1">
+                  <div
+                    v-for="element in filteredGroupedEntries[category]"
+                    :key="element.folderName"
+                    v-memo="[
+                      element.enabled,
+                      element.category,
+                      element.missingLibraries?.length ?? 0,
+                      element.duplicateTiles?.length ?? 0,
+                      searchQueryLower,
+                      highlightedIndex === getGlobalIndex(element.folderName)
+                    ]"
+                    :data-scenery-index="getGlobalIndex(element.folderName)"
+                    class="relative scenery-entry-item"
+                    style="scroll-margin-top: 100px"
+                  >
+                    <div
+                      v-if="highlightedIndex === getGlobalIndex(element.folderName)"
+                      class="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none z-10"
+                    ></div>
+                    <div
+                      :class="{
+                        'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
+                      }"
+                    >
+                      <SceneryEntryCard
+                        :entry="element"
+                        :index="getGlobalIndex(element.folderName)"
+                        :total-count="sceneryStore.totalCount"
+                        :disable-reorder="true"
+                        @toggle-enabled="handleSceneryToggleEnabled"
+                        @move-up="handleMoveUp"
+                        @move-down="handleMoveDown"
+                        @show-missing-libs="handleShowMissingLibs"
+                        @show-duplicate-tiles="handleShowDuplicateTiles"
+                        @show-delete-confirm="handleShowDeleteConfirm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </Transition>
+            </div>
+          </template>
+          <div v-if="filteredSceneryEntries.length === 0" class="text-center py-12">
+            <Transition name="text-fade" mode="out-in">
+              <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('sceneryManager.noMissingLibs') }}</p>
+            </Transition>
+          </div>
         </div>
 
         <!-- Normal view with drag-and-drop groups -->
@@ -1736,7 +2139,7 @@ const isLoading = computed(() => {
                         ></div>
                         <div
                           :class="{
-                            'opacity-30 transition-opacity': searchQuery && !element.folderName.toLowerCase().includes(searchQuery.toLowerCase())
+                            'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
                           }"
                         >
                           <SceneryEntryCard
@@ -1748,6 +2151,9 @@ const isLoading = computed(() => {
                             @toggle-enabled="handleSceneryToggleEnabled"
                             @move-up="handleMoveUp"
                             @move-down="handleMoveDown"
+                            @show-missing-libs="handleShowMissingLibs"
+                            @show-duplicate-tiles="handleShowDuplicateTiles"
+                            @show-delete-confirm="handleShowDeleteConfirm"
                           />
                         </div>
                       </div>
@@ -1762,6 +2168,171 @@ const isLoading = computed(() => {
         </div>
       </Transition>
     </div>
+
+    <!-- Shared Missing Libraries Modal -->
+    <Teleport to="body">
+      <div
+        v-if="showMissingLibsModal && selectedModalEntry"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        @click="showMissingLibsModal = false"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full mx-4 flex flex-col"
+          style="max-width: 500px; max-height: 80vh;"
+          @click.stop
+        >
+          <!-- Modal Header -->
+          <div class="flex items-center justify-between p-5 pb-3 flex-shrink-0">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('sceneryManager.missingLibrariesTitle') }}
+            </h3>
+            <button
+              @click="showMissingLibsModal = false"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Scrollable Content Area -->
+          <div class="flex-1 overflow-y-auto px-5 pb-3 min-h-0">
+            <!-- Scenery Name -->
+            <div class="mb-3 text-sm text-gray-600 dark:text-gray-400">
+              {{ selectedModalEntry.folderName }}
+            </div>
+
+            <!-- Missing Libraries List -->
+            <div class="bg-gray-50 dark:bg-gray-900 rounded p-3">
+              <ul class="space-y-1">
+                <li
+                  v-for="lib in selectedModalEntry.missingLibraries"
+                  :key="lib"
+                  class="text-sm text-gray-800 dark:text-gray-200 font-mono"
+                >
+                  • {{ lib }}
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Action Buttons (Fixed at bottom) -->
+          <div class="flex flex-col gap-2 p-5 pt-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
+            <div class="flex gap-2">
+              <button
+                @click="handleCopyMissingLibs"
+                class="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                {{ t('sceneryManager.copyAllLibNames') }}
+              </button>
+              <button
+                @click="handleSearchMissingLibs"
+                :disabled="isSearchingLibs"
+                class="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                <svg v-if="!isSearchingLibs" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                {{ isSearchingLibs ? t('sceneryManager.searching') : t('sceneryManager.searchOnBing') }}
+              </button>
+            </div>
+            <button
+              @click="showMissingLibsModal = false"
+              class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
+            >
+              {{ t('common.close') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Shared Duplicate Tiles Modal -->
+    <Teleport to="body">
+      <div
+        v-if="showDuplicateTilesModal && selectedModalEntry"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        @click="showDuplicateTilesModal = false"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full mx-4 flex flex-col"
+          style="max-width: 500px; max-height: 80vh;"
+          @click.stop
+        >
+          <!-- Modal Header -->
+          <div class="flex items-center justify-between p-5 pb-3 flex-shrink-0">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('sceneryManager.duplicateTilesTitle') }}
+            </h3>
+            <button
+              @click="showDuplicateTilesModal = false"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Scrollable Content Area -->
+          <div class="flex-1 overflow-y-auto px-5 pb-3 min-h-0">
+            <!-- Scenery Name -->
+            <div class="mb-3 text-sm text-gray-600 dark:text-gray-400">
+              {{ selectedModalEntry.folderName }}
+            </div>
+
+            <!-- Description -->
+            <div class="mb-3 text-sm text-gray-600 dark:text-gray-400">
+              {{ t('sceneryManager.duplicateTilesDesc') }}
+            </div>
+
+            <!-- Conflicting Packages List -->
+            <div class="bg-gray-50 dark:bg-gray-900 rounded p-3">
+              <ul class="space-y-1">
+                <li
+                  v-for="pkg in selectedModalEntry.duplicateTiles"
+                  :key="pkg"
+                  class="text-sm text-gray-800 dark:text-gray-200 font-mono"
+                >
+                  • {{ pkg }}
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Close Button -->
+          <div class="flex flex-col gap-2 p-5 pt-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
+            <button
+              @click="showDuplicateTilesModal = false"
+              class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
+            >
+              {{ t('common.close') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Shared Delete Confirmation Modal -->
+    <ConfirmModal
+      v-model:show="showDeleteConfirmModal"
+      :title="t('sceneryManager.deleteConfirmTitle')"
+      :message="t('sceneryManager.deleteConfirmMessage')"
+      :item-name="selectedModalEntry?.folderName ?? ''"
+      :confirm-text="t('common.delete')"
+      :loading-text="t('common.deleting')"
+      :is-loading="isDeletingEntry"
+      variant="danger"
+      @confirm="handleDeleteEntryConfirm"
+    />
   </div>
 </template>
 
@@ -1782,6 +2353,45 @@ const isLoading = computed(() => {
 /* Tab content wrapper for transitions */
 .tab-content-wrapper {
   width: 100%;
+}
+
+/* Dropdown enter/leave transition */
+.dropdown-enter-active {
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+}
+.dropdown-leave-active {
+  transition: opacity 0.1s ease-in, transform 0.1s ease-in;
+}
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.97);
+}
+
+/* Custom filter checkbox */
+.filter-check {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border-width: 1.5px;
+  border-style: solid;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.filter-check-icon {
+  width: 12px;
+  height: 12px;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.2, 0, 0.13, 2);
+}
+.filter-check-active .filter-check-icon {
+  opacity: 1;
+  transform: scale(1);
 }
 
 /* Collapse/Expand transition */

@@ -1,6 +1,6 @@
 {
   "productName": "XFast Manager",
-  "version": "0.8.8",
+  "version": "0.8.9",
   "identifier": "com.xfastmanager.tool",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -23,7 +23,11 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: https://asset.localhost; connect-src 'self' https://api.github.com"
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      },
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost https://asset.localhost; connect-src 'self' https://api.github.com"
     },
     "withGlobalTauri": false
   },

@@ -9,8 +9,8 @@
 
 use crate::logger;
 use crate::models::{
-    AircraftInfo, ManagementData, NavdataBackupInfo, NavdataBackupVerification, NavdataManagerInfo,
-    PluginInfo,
+    AircraftInfo, LiveryInfo, LuaScriptInfo, ManagementData, NavdataBackupInfo,
+    NavdataBackupVerification, NavdataManagerInfo, PluginInfo,
 };
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
@@ -36,7 +36,12 @@ fn resolve_management_path(
     item_type: &str,
     folder_name: &str,
 ) -> Result<PathBuf> {
-    validate_folder_name(folder_name)?;
+    // folder_name can be a relative path for nested items (e.g. "LevelUp\737NG"
+    // for aircraft, "navigraph\navdata" for navdata). Only reject empty names
+    // and ".." components; the canonical path check below prevents traversal.
+    if folder_name.is_empty() || folder_name.contains("..") {
+        return Err(anyhow!("Invalid folder name"));
+    }
 
     let base_path = match item_type {
         "aircraft" => xplane_path.join("Aircraft"),
@@ -522,6 +527,36 @@ fn scan_single_plugin_folder(path: &Path, folder_name: &str) -> Option<PluginInf
     // Read version info with update URL
     let (version, update_url, cfg_disabled) = read_version_info_with_url(path);
 
+    // Detect FlyWithLua scripts
+    let (has_scripts, script_count) = if folder_name.eq_ignore_ascii_case("FlyWithLua") {
+        let scripts_path = path.join("Scripts");
+        if scripts_path.is_dir() {
+            let count = fs::read_dir(&scripts_path)
+                .ok()
+                .map(|rd| {
+                    rd.flatten()
+                        .filter(|e| {
+                            e.file_type().map(|ft| ft.is_file()).unwrap_or(false)
+                                && e.path()
+                                    .extension()
+                                    .and_then(|ext| ext.to_str())
+                                    .map(|ext| {
+                                        ext.eq_ignore_ascii_case("lua")
+                                            || ext.eq_ignore_ascii_case("xfml")
+                                    })
+                                    .unwrap_or(false)
+                        })
+                        .count()
+                })
+                .unwrap_or(0);
+            (count > 0, count)
+        } else {
+            (false, 0)
+        }
+    } else {
+        (false, 0)
+    };
+
     Some(PluginInfo {
         folder_name: folder_name.to_string(),
         display_name: folder_name.to_string(),
@@ -533,6 +568,8 @@ fn scan_single_plugin_folder(path: &Path, folder_name: &str) -> Option<PluginInf
         latest_version: None, // Will be populated by check_plugins_updates
         has_update: false,    // Will be set by check_plugins_updates
         cfg_disabled,
+        has_scripts,
+        script_count,
     })
 }
 
@@ -906,6 +943,59 @@ pub fn open_management_folder(
     {
         std::process::Command::new("xdg-open")
             .arg(&target_path)
+            .spawn()?;
+    }
+
+    Ok(())
+}
+
+/// Open a livery folder in the system file explorer
+pub fn open_livery_folder(
+    xplane_path: &Path,
+    aircraft_folder: &str,
+    livery_folder: &str,
+) -> Result<()> {
+    if aircraft_folder.is_empty() || aircraft_folder.contains("..") {
+        return Err(anyhow!("Invalid aircraft folder name"));
+    }
+    validate_folder_name(livery_folder)?;
+
+    let aircraft_base = xplane_path.join("Aircraft");
+    let livery_path = aircraft_base.join(aircraft_folder).join("liveries").join(livery_folder);
+
+    if !livery_path.exists() {
+        return Err(anyhow!("Livery folder not found: {}", livery_folder));
+    }
+
+    let canonical_base = aircraft_base
+        .canonicalize()
+        .map_err(|e| anyhow!("Invalid base path: {}", e))?;
+    let canonical_target = livery_path
+        .canonicalize()
+        .map_err(|e| anyhow!("Invalid path: {}", e))?;
+
+    if !canonical_target.starts_with(&canonical_base) {
+        return Err(anyhow!("Invalid path"));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&canonical_target)
+            .spawn()?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&canonical_target)
+            .spawn()?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&canonical_target)
             .spawn()?;
     }
 
@@ -1328,6 +1418,396 @@ pub fn restore_navdata_backup(xplane_path: &Path, backup_folder_name: &str) -> R
             "Navdata backup restored successfully: {} files (extreme optimized)",
             verification.file_count
         ),
+        Some("management"),
+    );
+
+    Ok(())
+}
+
+/// Find a livery icon file (*_icon11.png) in a livery folder.
+/// Priority: if a .cfg file exists whose stem + "_icon11.png" is present, use that.
+/// Otherwise fall back to any *_icon11.png file.
+fn find_livery_icon(livery_path: &Path) -> Option<String> {
+    let read_dir = fs::read_dir(livery_path).ok()?;
+
+    let mut cfg_stems: Vec<String> = Vec::new();
+    let mut fallback_icon: Option<String> = None;
+
+    for entry in read_dir.flatten() {
+        let is_file = match entry.file_type() {
+            Ok(ft) => ft.is_file(),
+            Err(_) => continue,
+        };
+        if !is_file {
+            continue;
+        }
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        let name_lower = name_str.to_lowercase();
+
+        if name_lower.ends_with(".cfg") {
+            let stem = &name_str[..name_str.len() - 4];
+            cfg_stems.push(stem.to_string());
+        }
+
+        if name_lower.ends_with("_icon11.png") && fallback_icon.is_none() {
+            fallback_icon = Some(entry.path().to_string_lossy().to_string());
+        }
+    }
+
+    // Check if any cfg stem has a matching _icon11.png
+    for stem in &cfg_stems {
+        let icon_name = format!("{}_icon11.png", stem);
+        let icon_path = livery_path.join(&icon_name);
+        if icon_path.exists() {
+            return Some(icon_path.to_string_lossy().to_string());
+        }
+    }
+
+    fallback_icon
+}
+
+/// Get liveries for a specific aircraft
+pub fn get_aircraft_liveries(
+    xplane_path: &Path,
+    aircraft_folder: &str,
+) -> Result<Vec<LiveryInfo>> {
+    // Validate aircraft_folder: reject empty and ".."
+    if aircraft_folder.is_empty() || aircraft_folder.contains("..") {
+        return Err(anyhow!("Invalid aircraft folder name"));
+    }
+
+    let aircraft_base = xplane_path.join("Aircraft");
+    let aircraft_path = aircraft_base.join(aircraft_folder);
+
+    if !aircraft_path.exists() {
+        return Err(anyhow!("Aircraft folder not found"));
+    }
+
+    // Canonical path check to prevent traversal
+    let canonical_base = aircraft_base
+        .canonicalize()
+        .map_err(|e| anyhow!("Invalid base path: {}", e))?;
+    let canonical_aircraft = aircraft_path
+        .canonicalize()
+        .map_err(|e| anyhow!("Invalid aircraft path: {}", e))?;
+
+    if !canonical_aircraft.starts_with(&canonical_base) {
+        return Err(anyhow!("Invalid path"));
+    }
+
+    let liveries_path = canonical_aircraft.join("liveries");
+    if !liveries_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut liveries: Vec<LiveryInfo> = Vec::new();
+
+    let read_dir = fs::read_dir(&liveries_path)
+        .map_err(|e| anyhow!("Failed to read liveries folder: {}", e))?;
+
+    for entry in read_dir.flatten() {
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if !ft.is_dir() {
+            continue;
+        }
+
+        let folder_name = match entry.file_name().into_string() {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+
+        // Skip hidden folders
+        if folder_name.starts_with('.') {
+            continue;
+        }
+
+        let icon_path = find_livery_icon(&entry.path());
+
+        liveries.push(LiveryInfo {
+            display_name: folder_name.clone(),
+            folder_name,
+            icon_path,
+        });
+    }
+
+    // Sort by display name
+    liveries.sort_by(|a, b| {
+        a.display_name
+            .to_lowercase()
+            .cmp(&b.display_name.to_lowercase())
+    });
+
+    logger::log_info(
+        &format!(
+            "Found {} liveries for aircraft '{}'",
+            liveries.len(),
+            aircraft_folder
+        ),
+        Some("management"),
+    );
+
+    Ok(liveries)
+}
+
+/// Delete a specific livery from an aircraft
+pub fn delete_aircraft_livery(
+    xplane_path: &Path,
+    aircraft_folder: &str,
+    livery_folder: &str,
+) -> Result<()> {
+    // Validate aircraft_folder: reject empty and ".."
+    if aircraft_folder.is_empty() || aircraft_folder.contains("..") {
+        return Err(anyhow!("Invalid aircraft folder name"));
+    }
+
+    // Validate livery_folder: single segment, no path separators
+    validate_folder_name(livery_folder)?;
+
+    let aircraft_base = xplane_path.join("Aircraft");
+    let aircraft_path = aircraft_base.join(aircraft_folder);
+
+    if !aircraft_path.exists() {
+        return Err(anyhow!("Aircraft folder not found"));
+    }
+
+    let liveries_path = aircraft_path.join("liveries");
+    let livery_path = liveries_path.join(livery_folder);
+
+    if !livery_path.exists() {
+        return Err(anyhow!("Livery folder not found: {}", livery_folder));
+    }
+
+    // Canonical path check to ensure livery is under the liveries directory
+    let canonical_liveries = liveries_path
+        .canonicalize()
+        .map_err(|e| anyhow!("Invalid liveries path: {}", e))?;
+    let canonical_livery = livery_path
+        .canonicalize()
+        .map_err(|e| anyhow!("Invalid livery path: {}", e))?;
+
+    if !canonical_livery.starts_with(&canonical_liveries) {
+        return Err(anyhow!("Invalid path"));
+    }
+
+    fs::remove_dir_all(&canonical_livery)
+        .map_err(|e| anyhow!("Failed to delete livery: {}", e))?;
+
+    logger::log_info(
+        &format!(
+            "Deleted livery '{}' from aircraft '{}'",
+            livery_folder, aircraft_folder
+        ),
+        Some("management"),
+    );
+
+    Ok(())
+}
+
+/// Scan FlyWithLua scripts in the Scripts directory
+pub fn scan_lua_scripts(xplane_path: &Path) -> Result<Vec<LuaScriptInfo>> {
+    let scripts_path = xplane_path
+        .join("Resources")
+        .join("plugins")
+        .join("FlyWithLua")
+        .join("Scripts");
+
+    if !scripts_path.exists() {
+        return Err(anyhow!("FlyWithLua Scripts folder not found"));
+    }
+
+    logger::log_info("Scanning FlyWithLua scripts...", Some("management"));
+
+    let mut scripts: Vec<LuaScriptInfo> = Vec::new();
+
+    let read_dir = fs::read_dir(&scripts_path)
+        .map_err(|e| anyhow!("Failed to read Scripts folder: {}", e))?;
+
+    for entry in read_dir.flatten() {
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if !ft.is_file() {
+            continue;
+        }
+
+        let path = entry.path();
+        let ext = match path.extension().and_then(|e| e.to_str()) {
+            Some(ext) => ext.to_lowercase(),
+            None => continue,
+        };
+
+        let enabled = match ext.as_str() {
+            "lua" => true,
+            "xfml" => false,
+            _ => continue,
+        };
+
+        let file_name = match entry.file_name().into_string() {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+
+        let display_name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or(&file_name)
+            .to_string();
+
+        scripts.push(LuaScriptInfo {
+            file_name,
+            display_name,
+            enabled,
+        });
+    }
+
+    // Sort by display_name case-insensitive
+    scripts.sort_by(|a, b| {
+        a.display_name
+            .to_lowercase()
+            .cmp(&b.display_name.to_lowercase())
+    });
+
+    logger::log_info(
+        &format!("Found {} FlyWithLua scripts", scripts.len()),
+        Some("management"),
+    );
+
+    Ok(scripts)
+}
+
+/// Toggle a FlyWithLua script: .lua <-> .xfml
+/// Returns the new enabled state (true = .lua, false = .xfml)
+pub fn toggle_lua_script(xplane_path: &Path, file_name: &str) -> Result<bool> {
+    // Validate file_name
+    if file_name.is_empty()
+        || file_name.contains("..")
+        || file_name.contains('/')
+        || file_name.contains('\\')
+    {
+        return Err(anyhow!("Invalid file name"));
+    }
+
+    let scripts_path = xplane_path
+        .join("Resources")
+        .join("plugins")
+        .join("FlyWithLua")
+        .join("Scripts");
+
+    if !scripts_path.exists() {
+        return Err(anyhow!("FlyWithLua Scripts folder not found"));
+    }
+
+    let file_path = scripts_path.join(file_name);
+    if !file_path.exists() {
+        return Err(anyhow!("Script file not found: {}", file_name));
+    }
+
+    // Canonical path check to ensure file is within Scripts dir
+    let canonical_scripts = scripts_path
+        .canonicalize()
+        .map_err(|e| anyhow!("Invalid Scripts path: {}", e))?;
+    let canonical_file = file_path
+        .canonicalize()
+        .map_err(|e| anyhow!("Invalid file path: {}", e))?;
+
+    if !canonical_file.starts_with(&canonical_scripts) {
+        return Err(anyhow!("Invalid path"));
+    }
+
+    let ext = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+
+    let new_enabled = match ext.as_str() {
+        "lua" => {
+            // Disable: rename .lua -> .xfml
+            let new_path = file_path.with_extension("xfml");
+            fs::rename(&canonical_file, &new_path)
+                .map_err(|e| anyhow!("Failed to rename script: {}", e))?;
+            logger::log_info(
+                &format!("Disabled script: {} -> .xfml", file_name),
+                Some("management"),
+            );
+            false
+        }
+        "xfml" => {
+            // Enable: rename .xfml -> .lua
+            let new_path = file_path.with_extension("lua");
+            fs::rename(&canonical_file, &new_path)
+                .map_err(|e| anyhow!("Failed to rename script: {}", e))?;
+            logger::log_info(
+                &format!("Enabled script: {} -> .lua", file_name),
+                Some("management"),
+            );
+            true
+        }
+        _ => return Err(anyhow!("Unsupported file extension: {}", ext)),
+    };
+
+    Ok(new_enabled)
+}
+
+/// Delete a FlyWithLua script file
+pub fn delete_lua_script(xplane_path: &Path, file_name: &str) -> Result<()> {
+    // Validate file_name
+    if file_name.is_empty()
+        || file_name.contains("..")
+        || file_name.contains('/')
+        || file_name.contains('\\')
+    {
+        return Err(anyhow!("Invalid file name"));
+    }
+
+    let scripts_path = xplane_path
+        .join("Resources")
+        .join("plugins")
+        .join("FlyWithLua")
+        .join("Scripts");
+
+    if !scripts_path.exists() {
+        return Err(anyhow!("FlyWithLua Scripts folder not found"));
+    }
+
+    let file_path = scripts_path.join(file_name);
+    if !file_path.exists() {
+        return Err(anyhow!("Script file not found: {}", file_name));
+    }
+
+    // Canonical path check to ensure file is within Scripts dir
+    let canonical_scripts = scripts_path
+        .canonicalize()
+        .map_err(|e| anyhow!("Invalid Scripts path: {}", e))?;
+    let canonical_file = file_path
+        .canonicalize()
+        .map_err(|e| anyhow!("Invalid file path: {}", e))?;
+
+    if !canonical_file.starts_with(&canonical_scripts) {
+        return Err(anyhow!("Invalid path"));
+    }
+
+    // Verify it's a script file (.lua or .xfml)
+    let ext = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+
+    if ext != "lua" && ext != "xfml" {
+        return Err(anyhow!("Not a script file: {}", file_name));
+    }
+
+    fs::remove_file(&canonical_file)
+        .map_err(|e| anyhow!("Failed to delete script: {}", e))?;
+
+    logger::log_info(
+        &format!("Deleted script: {}", file_name),
         Some("management"),
     );
 

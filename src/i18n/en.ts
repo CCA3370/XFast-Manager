@@ -431,7 +431,14 @@ export default {
     resetDatabase: 'Reset Database',
     resetDatabaseConfirm: 'This will delete the existing database and require rebuilding the index. Continue?',
     resetDatabaseSuccess: 'Database reset successfully. Please rebuild the index.',
-    resetDatabaseFailed: 'Failed to reset database'
+    resetDatabaseFailed: 'Failed to reset database',
+    duplicateTiles: 'Duplicate tiles',
+    duplicateTilesTitle: 'Duplicate DSF Tiles',
+    duplicateTilesDesc: 'These packages contain DSF tiles at the same coordinates. Only the highest priority package\'s tiles will be used.',
+    clickToViewDuplicates: 'Click to view duplicate tiles',
+    filters: 'Filters',
+    showOnlyEnabled: 'Enabled Only',
+    showOnlyDisabled: 'Disabled Only'
   },
   geo: {
     continents: {
@@ -485,6 +492,35 @@ export default {
     restoringBackup: 'Restoring backup...',
     backupVersion: 'Backup Version',
     backupTime: 'Backup Time'
+  },
+  livery: {
+    noLiveries: 'No liveries found',
+    loadFailed: 'Failed to load liveries',
+    deleteConfirmTitle: 'Confirm Delete',
+    deleteConfirmMessage: 'Are you sure you want to delete this livery? This action cannot be undone.',
+    deleteSuccess: 'Livery deleted successfully',
+    deleteFailed: 'Failed to delete livery'
+  },
+  scripts: {
+    title: 'FlyWithLua Scripts',
+    loadFailed: 'Failed to load scripts',
+    noScripts: 'No scripts found',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    toggleFailed: 'Failed to toggle script',
+    scriptCount: 'scripts',
+    deleteConfirmTitle: 'Confirm Delete',
+    deleteConfirmMessage: 'Are you sure you want to delete this script? This action cannot be undone.',
+    deleteSuccess: 'Script deleted successfully',
+    deleteFailed: 'Failed to delete script',
+  },
+  contextMenu: {
+    enable: 'Enable',
+    disable: 'Disable',
+    openFolder: 'Open Folder',
+    viewLiveries: 'View Liveries',
+    viewScripts: 'View Scripts',
+    previewImage: 'Preview Image'
   },
   errors: {
     validation_failed: 'Invalid input data',

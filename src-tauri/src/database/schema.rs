@@ -1,7 +1,7 @@
 //! Database schema definitions
 
 /// Current schema version for migration tracking
-pub const CURRENT_SCHEMA_VERSION: i32 = 3;
+pub const CURRENT_SCHEMA_VERSION: i32 = 4;
 
 /// SQL statements for creating the database schema
 pub const CREATE_SCHEMA: &str = r#"
@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS scenery_packages (
     enabled INTEGER NOT NULL DEFAULT 1,
     sort_order INTEGER NOT NULL DEFAULT 0,
     actual_path TEXT,
-    continent TEXT
+    continent TEXT,
+    original_category TEXT
 );
 
 -- Required libraries (libraries that this package depends on)

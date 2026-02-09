@@ -444,7 +444,14 @@ export default {
     resetDatabase: '重置数据库',
     resetDatabaseConfirm: '此操作将删除现有数据库并需要重建索引。是否继续？',
     resetDatabaseSuccess: '数据库重置成功，请重建索引。',
-    resetDatabaseFailed: '重置数据库失败'
+    resetDatabaseFailed: '重置数据库失败',
+    duplicateTiles: '重复地块',
+    duplicateTilesTitle: '重复的DSF地块',
+    duplicateTilesDesc: '这些地景包含相同坐标的DSF地块。只有最高优先级的地景包的地块会被使用。',
+    clickToViewDuplicates: '点击查看重复地块',
+    filters: '筛选',
+    showOnlyEnabled: '仅显示已启用',
+    showOnlyDisabled: '仅显示未启用'
   },
   geo: {
     continents: {
@@ -498,6 +505,35 @@ export default {
     restoringBackup: '正在恢复备份...',
     backupVersion: '备份版本',
     backupTime: '备份时间'
+  },
+  livery: {
+    noLiveries: '未找到涂装',
+    loadFailed: '加载涂装失败',
+    deleteConfirmTitle: '确认删除',
+    deleteConfirmMessage: '确定要删除此涂装吗？此操作不可撤销。',
+    deleteSuccess: '涂装删除成功',
+    deleteFailed: '删除涂装失败'
+  },
+  scripts: {
+    title: 'FlyWithLua 脚本',
+    loadFailed: '加载脚本失败',
+    noScripts: '未找到脚本',
+    enabled: '已启用',
+    disabled: '已禁用',
+    toggleFailed: '切换脚本失败',
+    scriptCount: '个脚本',
+    deleteConfirmTitle: '确认删除',
+    deleteConfirmMessage: '确定要删除此脚本吗？此操作不可撤销。',
+    deleteSuccess: '脚本删除成功',
+    deleteFailed: '删除脚本失败',
+  },
+  contextMenu: {
+    enable: '启用',
+    disable: '禁用',
+    openFolder: '打开文件夹',
+    viewLiveries: '查看涂装',
+    viewScripts: '查看脚本',
+    previewImage: '预览图片'
   },
   errors: {
     validation_failed: '输入数据无效',

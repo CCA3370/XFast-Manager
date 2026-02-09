@@ -273,6 +273,8 @@ export interface SceneryManagerEntry {
   missingLibraries: string[];
   requiredLibraries: string[];
   continent?: string;
+  duplicateTiles: string[];
+  originalCategory?: SceneryCategory;
 }
 
 export interface SceneryManagerData {
@@ -280,7 +282,10 @@ export interface SceneryManagerData {
   totalCount: number;
   enabledCount: number;
   missingDepsCount: number;
+  duplicateTilesCount: number;
   needsSync: boolean;
+  /** Raw tile overlap data (all overlaps, before XPME filtering) for real-time recalculation */
+  tileOverlaps: Record<string, string[]>;
 }
 
 // ========== Management Types ==========
@@ -299,6 +304,12 @@ export interface AircraftInfo {
   cfgDisabled?: boolean;
 }
 
+export interface LiveryInfo {
+  folderName: string
+  displayName: string
+  iconPath: string | null
+}
+
 export interface PluginInfo {
   folderName: string;
   displayName: string;
@@ -310,6 +321,14 @@ export interface PluginInfo {
   latestVersion?: string;
   hasUpdate: boolean;
   cfgDisabled?: boolean;
+  hasScripts: boolean;
+  scriptCount: number;
+}
+
+export interface LuaScriptInfo {
+  fileName: string;
+  displayName: string;
+  enabled: boolean;
 }
 
 export interface NavdataManagerInfo {

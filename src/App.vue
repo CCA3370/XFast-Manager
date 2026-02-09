@@ -38,11 +38,11 @@
             <router-link
               to="/management"
               class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
-              :class="$route.path === '/management' ? 'text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
+              :class="$route.path.startsWith('/management') ? 'text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
             >
               <div
                 class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
-                :class="$route.path === '/management' ? 'scale-x-100 opacity-100' : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'"
+                :class="$route.path.startsWith('/management') ? 'scale-x-100 opacity-100' : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'"
               ></div>
               <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -133,6 +133,7 @@
     <ToastNotification />
     <ErrorModal />
     <ConfirmModal />
+    <ContextMenu />
   </div>
 </template>
 
@@ -155,6 +156,7 @@ import ThemeSwitcher from '@/components/ThemeSwitcher.vue'
 import AnimatedText from '@/components/AnimatedText.vue'
 import ErrorModal from '@/components/ErrorModal.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
+import ContextMenu from '@/components/ContextMenu.vue'
 
 const { t } = useI18n()
 const store = useAppStore()
@@ -182,6 +184,7 @@ async function toggleAlwaysOnTop() {
 const routeOrder: Record<string, number> = {
   '/': 0,
   '/management': 1,
+  '/management/liveries': 1,
   '/settings': 2,
   '/onboarding': -1
 }
