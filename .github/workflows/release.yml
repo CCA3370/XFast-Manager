@@ -311,14 +311,46 @@ jobs:
           # Find and copy all artifacts to release-files
           find artifacts -type f -name "XFast-Manager-*" -exec cp {} release-files/ \;
 
-          # Create zip for Windows exe
           cd release-files
+
+          # Zip Windows portable exe
           if [ -f "XFast-Manager-${version}-windows-portable.exe" ]; then
             zip "XFast-Manager-${version}-windows-portable.zip" "XFast-Manager-${version}-windows-portable.exe"
+            rm "XFast-Manager-${version}-windows-portable.exe"
           fi
 
-          # Generate checksums
-          sha256sum XFast-Manager-* > checksums.txt
+          # Zip Windows MSI installer
+          if [ -f "XFast-Manager-${version}-windows-setup.msi" ]; then
+            zip "XFast-Manager-${version}-windows-setup.zip" "XFast-Manager-${version}-windows-setup.msi"
+            rm "XFast-Manager-${version}-windows-setup.msi"
+          fi
+
+          # Zip macOS DMG
+          if [ -f "XFast-Manager-${version}-macos-universal.dmg" ]; then
+            zip "XFast-Manager-${version}-macos-universal.zip" "XFast-Manager-${version}-macos-universal.dmg"
+            rm "XFast-Manager-${version}-macos-universal.dmg"
+          fi
+
+          # Zip Linux AppImage
+          if [ -f "XFast-Manager-${version}-linux-x64.AppImage" ]; then
+            zip "XFast-Manager-${version}-linux-x64-AppImage.zip" "XFast-Manager-${version}-linux-x64.AppImage"
+            rm "XFast-Manager-${version}-linux-x64.AppImage"
+          fi
+
+          # Zip Linux deb
+          if [ -f "XFast-Manager-${version}-linux-x64.deb" ]; then
+            zip "XFast-Manager-${version}-linux-x64-deb.zip" "XFast-Manager-${version}-linux-x64.deb"
+            rm "XFast-Manager-${version}-linux-x64.deb"
+          fi
+
+          # Zip Linux rpm
+          if [ -f "XFast-Manager-${version}-linux-x64.rpm" ]; then
+            zip "XFast-Manager-${version}-linux-x64-rpm.zip" "XFast-Manager-${version}-linux-x64.rpm"
+            rm "XFast-Manager-${version}-linux-x64.rpm"
+          fi
+
+          # Generate checksums (only for zip files)
+          sha256sum XFast-Manager-*.zip > checksums.txt
 
           echo "✅ Release files prepared:"
           ls -la
@@ -345,11 +377,11 @@ jobs:
           prerelease: ${{ needs.prepare-release.outputs.is_prerelease == 'true' }}
           files: |
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-portable.zip
-            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-setup.msi
-            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-macos-universal.dmg
-            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.AppImage
-            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.deb
-            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.rpm
+            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-setup.zip
+            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-macos-universal.zip
+            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-AppImage.zip
+            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-deb.zip
+            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-rpm.zip
             release-files/checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -368,10 +400,10 @@ jobs:
           echo ""
           echo "📦 Artifacts included:"
           echo "  - Windows (portable): XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-portable.zip"
-          echo "  - Windows (installer): XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-setup.msi"
-          echo "  - macOS:   XFast-Manager-${{ needs.prepare-release.outputs.version }}-macos-universal.dmg"
-          echo "  - Linux (AppImage): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.AppImage"
-          echo "  - Linux (deb): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.deb"
-          echo "  - Linux (rpm): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64.rpm"
+          echo "  - Windows (installer): XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-setup.zip"
+          echo "  - macOS:   XFast-Manager-${{ needs.prepare-release.outputs.version }}-macos-universal.zip"
+          echo "  - Linux (AppImage): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-AppImage.zip"
+          echo "  - Linux (deb): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-deb.zip"
+          echo "  - Linux (rpm): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-rpm.zip"
           echo ""
           echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ needs.prepare-release.outputs.tag }}"

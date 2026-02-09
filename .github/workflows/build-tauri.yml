@@ -145,13 +145,18 @@ jobs:
         shell: pwsh
         run: |
           Rename-Item -Path "target/release/xfastmanager.exe" -NewName "XFast-Manager.exe" -Force
+          Compress-Archive -Path "target/release/XFast-Manager.exe" -DestinationPath "target/release/XFast-Manager-windows-portable.zip" -Force
+          $msiFile = Get-ChildItem -Path "target/release/bundle/msi/*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($msiFile) {
+            Compress-Archive -Path $msiFile.FullName -DestinationPath "target/release/bundle/msi/XFast-Manager-windows-msi.zip" -Force
+          }
 
       - name: Upload Windows portable artifact
         if: matrix.platform == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: 'target/release/XFast-Manager.exe'
+          path: 'target/release/XFast-Manager-windows-portable.zip'
           if-no-files-found: error
           retention-days: 7
 
@@ -160,24 +165,40 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: XFast-Manager-windows-msi
-          path: 'target/release/bundle/msi/*.msi'
+          path: 'target/release/bundle/msi/XFast-Manager-windows-msi.zip'
           if-no-files-found: error
           retention-days: 7
+
+      - name: Prepare and upload macOS artifact
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        run: |
+          dmg_file=$(ls target/universal-apple-darwin/release/bundle/dmg/*.dmg)
+          cd "$(dirname "$dmg_file")"
+          zip "XFast-Manager-macos-universal.zip" "$(basename "$dmg_file")"
 
       - name: Upload macOS artifact
         if: matrix.platform == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: 'target/universal-apple-darwin/release/bundle/dmg/*.dmg'
+          path: 'target/universal-apple-darwin/release/bundle/dmg/XFast-Manager-macos-universal.zip'
           if-no-files-found: error
           retention-days: 7
+
+      - name: Prepare and upload Linux artifact
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          appimage_file=$(ls target/release/bundle/appimage/*.AppImage)
+          cd "$(dirname "$appimage_file")"
+          zip "XFast-Manager-linux-x64.zip" "$(basename "$appimage_file")"
 
       - name: Upload Linux artifact
         if: matrix.platform == 'ubuntu-22.04'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: 'target/release/bundle/appimage/*.AppImage'
+          path: 'target/release/bundle/appimage/XFast-Manager-linux-x64.zip'
           if-no-files-found: error
           retention-days: 7
