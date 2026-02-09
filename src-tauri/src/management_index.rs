@@ -1434,7 +1434,11 @@ fn find_livery_icon(livery_path: &Path) -> Option<String> {
     let mut fallback_icon: Option<String> = None;
 
     for entry in read_dir.flatten() {
-        if !entry.file_type().ok()?.is_file() {
+        let is_file = match entry.file_type() {
+            Ok(ft) => ft.is_file(),
+            Err(_) => continue,
+        };
+        if !is_file {
             continue;
         }
         let name = entry.file_name();
@@ -1442,22 +1446,12 @@ fn find_livery_icon(livery_path: &Path) -> Option<String> {
         let name_lower = name_str.to_lowercase();
 
         if name_lower.ends_with(".cfg") {
-            // Store the stem (filename without .cfg extension)
-            if let Some(stem) = name_str.strip_suffix(".cfg")
-                .or_else(|| name_str.strip_suffix(".CFG"))
-            {
-                cfg_stems.push(stem.to_string());
-            } else {
-                // Handle mixed case by stripping last 4 chars
-                let stem = &name_str[..name_str.len() - 4];
-                cfg_stems.push(stem.to_string());
-            }
+            let stem = &name_str[..name_str.len() - 4];
+            cfg_stems.push(stem.to_string());
         }
 
-        if name_lower.ends_with("_icon11.png") {
-            if fallback_icon.is_none() {
-                fallback_icon = Some(entry.path().to_string_lossy().to_string());
-            }
+        if name_lower.ends_with("_icon11.png") && fallback_icon.is_none() {
+            fallback_icon = Some(entry.path().to_string_lossy().to_string());
         }
     }
 
