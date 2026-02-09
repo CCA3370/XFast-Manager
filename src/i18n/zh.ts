@@ -527,6 +527,14 @@ export default {
     deleteSuccess: '脚本删除成功',
     deleteFailed: '删除脚本失败',
   },
+  contextMenu: {
+    enable: '启用',
+    disable: '禁用',
+    openFolder: '打开文件夹',
+    viewLiveries: '查看涂装',
+    viewScripts: '查看脚本',
+    previewImage: '预览图片'
+  },
   errors: {
     validation_failed: '输入数据无效',
     permission_denied: '权限被拒绝',

@@ -8,12 +8,15 @@ import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import type { LuaScriptInfo } from '@/types'
+import { useContextMenu } from '@/composables/useContextMenu'
+import type { ContextMenuItem } from '@/composables/useContextMenu'
 
 const { t } = useI18n()
 const router = useRouter()
 const appStore = useAppStore()
 const modalStore = useModalStore()
 const toastStore = useToastStore()
+const contextMenu = useContextMenu()
 
 const scripts = ref<LuaScriptInfo[]>([])
 const isLoading = ref(true)
@@ -105,6 +108,36 @@ function goBack() {
   router.push('/management?tab=plugin')
 }
 
+function handleScriptContextMenu(event: MouseEvent, script: LuaScriptInfo) {
+  const menuItems: ContextMenuItem[] = [
+    {
+      id: 'toggle-enabled',
+      label: script.enabled ? t('contextMenu.disable') : t('contextMenu.enable'),
+      icon: script.enabled
+        ? '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>'
+        : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>',
+      dividerAfter: true
+    },
+    {
+      id: 'delete',
+      label: t('common.delete'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>',
+      danger: true
+    }
+  ]
+
+  contextMenu.show(event, menuItems, (id: string) => {
+    switch (id) {
+      case 'toggle-enabled':
+        handleToggle(script.fileName)
+        break
+      case 'delete':
+        confirmDelete(script)
+        break
+    }
+  })
+}
+
 onMounted(() => {
   loadScripts()
 })
@@ -162,6 +195,7 @@ onMounted(() => {
           :class="script.enabled
             ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
             : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200/50 dark:border-gray-700/50 opacity-60'"
+          @contextmenu.prevent="handleScriptContextMenu($event, script)"
         >
           <!-- Toggle switch -->
           <button

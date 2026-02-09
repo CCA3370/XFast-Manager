@@ -5,6 +5,8 @@ import type { AircraftInfo, PluginInfo, NavdataManagerInfo, NavdataBackupInfo, M
 import { getNavdataCycleStatus } from '@/utils/airac'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import { useLockStore } from '@/stores/lock'
+import { useContextMenu } from '@/composables/useContextMenu'
+import type { ContextMenuItem } from '@/composables/useContextMenu'
 
 type EntryType = AircraftInfo | PluginInfo | NavdataManagerInfo
 
@@ -29,6 +31,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const lockStore = useLockStore()
+const contextMenu = useContextMenu()
 
 const showDeleteConfirmModal = ref(false)
 const isDeleting = ref(false)
@@ -157,6 +160,96 @@ function handleDeleteConfirm() {
     showDeleteConfirmModal.value = false
   }, 500)
 }
+
+function handleContextMenu(event: MouseEvent) {
+  const menuItems: ContextMenuItem[] = []
+
+  if (!isNavdata(props.entry)) {
+    menuItems.push({
+      id: 'toggle-enabled',
+      label: props.entry.enabled ? t('contextMenu.disable') : t('contextMenu.enable'),
+      icon: props.entry.enabled
+        ? '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>'
+        : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
+    })
+  }
+
+  menuItems.push({
+    id: 'open-folder',
+    label: t('contextMenu.openFolder'),
+    icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/></svg>'
+  })
+
+  if (isAircraft(props.entry) && props.entry.hasLiveries) {
+    menuItems.push({
+      id: 'view-liveries',
+      label: t('contextMenu.viewLiveries'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>'
+    })
+  }
+
+  if (isPlugin(props.entry) && props.entry.hasScripts) {
+    menuItems.push({
+      id: 'view-scripts',
+      label: t('contextMenu.viewScripts'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>'
+    })
+  }
+
+  if (isNavdata(props.entry) && props.backupInfo) {
+    menuItems.push({
+      id: 'restore-backup',
+      label: t('management.restoreBackup'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>'
+    })
+  }
+
+  // Divider before lock/delete
+  if (menuItems.length > 0) {
+    menuItems[menuItems.length - 1].dividerAfter = true
+  }
+
+  menuItems.push({
+    id: 'toggle-lock',
+    label: isItemLocked.value ? t('management.unlock') : t('management.lock'),
+    icon: isItemLocked.value
+      ? '<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>'
+      : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>'
+  })
+
+  menuItems.push({
+    id: 'delete',
+    label: t('common.delete'),
+    icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>',
+    danger: true
+  })
+
+  contextMenu.show(event, menuItems, (id: string) => {
+    switch (id) {
+      case 'toggle-enabled':
+        emit('toggle-enabled', props.entry.folderName)
+        break
+      case 'open-folder':
+        emit('open-folder', props.entry.folderName)
+        break
+      case 'view-liveries':
+        emit('view-liveries', props.entry.folderName)
+        break
+      case 'view-scripts':
+        emit('view-scripts', props.entry.folderName)
+        break
+      case 'restore-backup':
+        if (props.backupInfo) emit('restore-backup', props.backupInfo)
+        break
+      case 'toggle-lock':
+        handleToggleLock()
+        break
+      case 'delete':
+        showDeleteConfirmModal.value = true
+        break
+    }
+  })
+}
 </script>
 
 <template>
@@ -170,6 +263,7 @@ function handleDeleteConfirm() {
     ]"
     @click="handleClick"
     @dblclick="handleDoubleClick"
+    @contextmenu.prevent="handleContextMenu"
   >
     <!-- Enable/Disable toggle (not for navdata) -->
     <button

@@ -25,6 +25,13 @@ const loadError = ref(false)
 const previewSrc = ref<string | null>(null)
 const previewName = ref('')
 const previewScale = ref(1)
+const previewX = ref(0)
+const previewY = ref(0)
+const isDragging = ref(false)
+let dragStartX = 0
+let dragStartY = 0
+let dragStartPanX = 0
+let dragStartPanY = 0
 
 // Look up aircraft display name from management store
 const aircraftDisplayName = computed(() => {
@@ -87,17 +94,47 @@ function handlePreview(src: string, name: string) {
   previewSrc.value = src
   previewName.value = name
   previewScale.value = 1
+  previewX.value = 0
+  previewY.value = 0
 }
 
 function closePreview() {
   previewSrc.value = null
   previewScale.value = 1
+  previewX.value = 0
+  previewY.value = 0
+  isDragging.value = false
 }
 
 function handleWheel(e: WheelEvent) {
   e.preventDefault()
   const delta = e.deltaY > 0 ? -0.1 : 0.1
-  previewScale.value = Math.min(5, Math.max(0.5, previewScale.value + delta))
+  const newScale = Math.min(5, Math.max(0.5, previewScale.value + delta))
+  previewScale.value = newScale
+  if (newScale <= 1) {
+    previewX.value = 0
+    previewY.value = 0
+  }
+}
+
+function handlePointerDown(e: PointerEvent) {
+  if (previewScale.value <= 1) return
+  isDragging.value = true
+  dragStartX = e.clientX
+  dragStartY = e.clientY
+  dragStartPanX = previewX.value
+  dragStartPanY = previewY.value
+  ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+}
+
+function handlePointerMove(e: PointerEvent) {
+  if (!isDragging.value) return
+  previewX.value = dragStartPanX + (e.clientX - dragStartX)
+  previewY.value = dragStartPanY + (e.clientY - dragStartY)
+}
+
+function handlePointerUp() {
+  isDragging.value = false
 }
 
 watch(previewSrc, (val) => {
@@ -119,6 +156,19 @@ watch(previewSrc, (val) => {
 
 function goBack() {
   router.push('/management')
+}
+
+async function handleOpenLiveryFolder(folderName: string) {
+  if (!appStore.xplanePath || !aircraftFolder.value) return
+  try {
+    await invoke('open_livery_folder', {
+      xplanePath: appStore.xplanePath,
+      aircraftFolder: aircraftFolder.value,
+      liveryFolder: folderName
+    })
+  } catch (e) {
+    modalStore.showError(t('management.openFolderFailed') + ': ' + String(e))
+  }
 }
 
 onMounted(() => {
@@ -177,6 +227,7 @@ onMounted(() => {
           :livery="livery"
           @delete="handleDeleteLivery"
           @preview="(src: string) => handlePreview(src, livery.displayName)"
+          @open-folder="handleOpenLiveryFolder"
         />
       </div>
     </div>
@@ -196,11 +247,22 @@ onMounted(() => {
           class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm"
           @click.self="closePreview"
         >
+          <button
+            class="absolute top-4 right-4 z-10 w-10 h-10 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/30 text-white text-xl transition-colors"
+            @click="closePreview"
+          >
+            ✕
+          </button>
           <img
             :src="previewSrc"
             :alt="previewName"
-            class="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl transition-transform duration-100"
-            :style="{ transform: `scale(${previewScale})` }"
+            class="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl select-none"
+            :class="previewScale > 1 ? 'cursor-grab' : ''"
+            :style="{ transform: `translate(${previewX}px, ${previewY}px) scale(${previewScale})`, transition: isDragging ? 'none' : 'transform 0.1s' }"
+            draggable="false"
+            @pointerdown="handlePointerDown"
+            @pointermove="handlePointerMove"
+            @pointerup="handlePointerUp"
           />
           <p class="mt-3 text-sm text-white/80 text-center truncate max-w-[90vw]">{{ previewName }}</p>
         </div>

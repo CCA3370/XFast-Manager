@@ -36,7 +36,12 @@ fn resolve_management_path(
     item_type: &str,
     folder_name: &str,
 ) -> Result<PathBuf> {
-    validate_folder_name(folder_name)?;
+    // folder_name can be a relative path for nested items (e.g. "LevelUp\737NG"
+    // for aircraft, "navigraph\navdata" for navdata). Only reject empty names
+    // and ".." components; the canonical path check below prevents traversal.
+    if folder_name.is_empty() || folder_name.contains("..") {
+        return Err(anyhow!("Invalid folder name"));
+    }
 
     let base_path = match item_type {
         "aircraft" => xplane_path.join("Aircraft"),
@@ -944,6 +949,59 @@ pub fn open_management_folder(
     Ok(())
 }
 
+/// Open a livery folder in the system file explorer
+pub fn open_livery_folder(
+    xplane_path: &Path,
+    aircraft_folder: &str,
+    livery_folder: &str,
+) -> Result<()> {
+    if aircraft_folder.is_empty() || aircraft_folder.contains("..") {
+        return Err(anyhow!("Invalid aircraft folder name"));
+    }
+    validate_folder_name(livery_folder)?;
+
+    let aircraft_base = xplane_path.join("Aircraft");
+    let livery_path = aircraft_base.join(aircraft_folder).join("liveries").join(livery_folder);
+
+    if !livery_path.exists() {
+        return Err(anyhow!("Livery folder not found: {}", livery_folder));
+    }
+
+    let canonical_base = aircraft_base
+        .canonicalize()
+        .map_err(|e| anyhow!("Invalid base path: {}", e))?;
+    let canonical_target = livery_path
+        .canonicalize()
+        .map_err(|e| anyhow!("Invalid path: {}", e))?;
+
+    if !canonical_target.starts_with(&canonical_base) {
+        return Err(anyhow!("Invalid path"));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&canonical_target)
+            .spawn()?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&canonical_target)
+            .spawn()?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&canonical_target)
+            .spawn()?;
+    }
+
+    Ok(())
+}
+
 /// Check for aircraft updates by fetching remote skunkcrafts_updater.cfg files
 /// This function modifies the aircraft list in place, setting latest_version and has_update
 pub async fn check_aircraft_updates(aircraft: &mut [AircraftInfo]) {
@@ -1366,20 +1424,53 @@ pub fn restore_navdata_backup(xplane_path: &Path, backup_folder_name: &str) -> R
     Ok(())
 }
 
-/// Find a livery icon file (*_icon11.png) in a livery folder
+/// Find a livery icon file (*_icon11.png) in a livery folder.
+/// Priority: if a .cfg file exists whose stem + "_icon11.png" is present, use that.
+/// Otherwise fall back to any *_icon11.png file.
 fn find_livery_icon(livery_path: &Path) -> Option<String> {
     let read_dir = fs::read_dir(livery_path).ok()?;
+
+    let mut cfg_stems: Vec<String> = Vec::new();
+    let mut fallback_icon: Option<String> = None;
+
     for entry in read_dir.flatten() {
         if !entry.file_type().ok()?.is_file() {
             continue;
         }
         let name = entry.file_name();
-        let name_str = name.to_string_lossy().to_lowercase();
-        if name_str.ends_with("_icon11.png") {
-            return Some(entry.path().to_string_lossy().to_string());
+        let name_str = name.to_string_lossy();
+        let name_lower = name_str.to_lowercase();
+
+        if name_lower.ends_with(".cfg") {
+            // Store the stem (filename without .cfg extension)
+            if let Some(stem) = name_str.strip_suffix(".cfg")
+                .or_else(|| name_str.strip_suffix(".CFG"))
+            {
+                cfg_stems.push(stem.to_string());
+            } else {
+                // Handle mixed case by stripping last 4 chars
+                let stem = &name_str[..name_str.len() - 4];
+                cfg_stems.push(stem.to_string());
+            }
+        }
+
+        if name_lower.ends_with("_icon11.png") {
+            if fallback_icon.is_none() {
+                fallback_icon = Some(entry.path().to_string_lossy().to_string());
+            }
         }
     }
-    None
+
+    // Check if any cfg stem has a matching _icon11.png
+    for stem in &cfg_stems {
+        let icon_name = format!("{}_icon11.png", stem);
+        let icon_path = livery_path.join(&icon_name);
+        if icon_path.exists() {
+            return Some(icon_path.to_string_lossy().to_string());
+        }
+    }
+
+    fallback_icon
 }
 
 /// Get liveries for a specific aircraft

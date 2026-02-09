@@ -514,6 +514,14 @@ export default {
     deleteSuccess: 'Script deleted successfully',
     deleteFailed: 'Failed to delete script',
   },
+  contextMenu: {
+    enable: 'Enable',
+    disable: 'Disable',
+    openFolder: 'Open Folder',
+    viewLiveries: 'View Liveries',
+    viewScripts: 'View Scripts',
+    previewImage: 'Preview Image'
+  },
   errors: {
     validation_failed: 'Invalid input data',
     permission_denied: 'Permission denied',

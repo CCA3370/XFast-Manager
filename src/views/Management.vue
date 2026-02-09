@@ -11,7 +11,9 @@ import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import ManagementEntryCard from '@/components/ManagementEntryCard.vue'
+import ConfirmModal from '@/components/ConfirmModal.vue'
 import type { SceneryManagerEntry, ManagementTab, ManagementItemType, SceneryCategory, SceneryIndexScanResult, NavdataBackupInfo } from '@/types'
+import { parseApiError, getErrorMessage } from '@/types'
 
 // Lazy load heavy components to reduce initial render time
 const SceneryEntryCard = defineAsyncComponent(() => import('@/components/SceneryEntryCard.vue'))
@@ -74,6 +76,14 @@ const showFilterDropdown = ref(false)
 const filterDropdownRef = ref<HTMLElement | null>(null)
 const enabledFilter = ref<'all' | 'enabled' | 'disabled'>('all')
 const isFilterTransitioning = ref(false)
+
+// Shared modal state for scenery entry actions
+const selectedModalEntry = ref<SceneryManagerEntry | null>(null)
+const showMissingLibsModal = ref(false)
+const showDuplicateTilesModal = ref(false)
+const showDeleteConfirmModal = ref(false)
+const isSearchingLibs = ref(false)
+const isDeletingEntry = ref(false)
 
 // 拖拽自动滚动状态 (非响应式，无需触发渲染)
 let dragAutoScrollRafId: number | null = null
@@ -736,9 +746,11 @@ function isGroupExpanded(category: string): boolean {
   return sceneryStore.collapsedGroups[category as SceneryCategory] === false
 }
 
+const searchQueryLower = computed(() => searchQuery.value?.toLowerCase() ?? '')
+
 const matchedIndices = computed(() => {
   if (!searchQuery.value.trim() || activeTab.value !== 'scenery') return []
-  const query = searchQuery.value.toLowerCase()
+  const query = searchQueryLower.value
   return filteredSceneryEntries.value
     .map((entry, index) => ({ entry, index }))
     .filter(({ entry }) => entry.folderName.toLowerCase().includes(query))
@@ -747,16 +759,12 @@ const matchedIndices = computed(() => {
 
 function syncLocalEntries() {
   const grouped = sceneryStore.groupedEntries
-  localGroupedEntries.value = {
-    FixedHighPriority: [...(grouped.FixedHighPriority || [])],
-    Airport: [...(grouped.Airport || [])],
-    DefaultAirport: [...(grouped.DefaultAirport || [])],
-    Library: [...(grouped.Library || [])],
-    Other: [...(grouped.Other || [])],
-    Overlay: [...(grouped.Overlay || [])],
-    AirportMesh: [...(grouped.AirportMesh || [])],
-    Mesh: [...(grouped.Mesh || [])],
-    Unrecognized: [...(grouped.Unrecognized || [])]
+  for (const cat of categoryOrder) {
+    const newArr = grouped[cat as SceneryCategory] || []
+    const oldArr = localGroupedEntries.value[cat] || []
+    if (newArr.length !== oldArr.length || newArr.some((e, i) => e !== oldArr[i])) {
+      localGroupedEntries.value[cat] = [...newArr]
+    }
   }
 }
 
@@ -897,6 +905,80 @@ async function handleDragEnd() {
 
 function getGlobalIndex(folderName: string): number {
   return globalIndexMap.value.get(folderName) ?? -1
+}
+
+// Delay between opening multiple browser tabs to avoid overwhelming the browser
+const TAB_OPEN_DELAY_MS = 300
+
+// Shared modal handlers for scenery entry actions
+function handleShowMissingLibs(entry: SceneryManagerEntry) {
+  selectedModalEntry.value = entry
+  showMissingLibsModal.value = true
+}
+
+function handleShowDuplicateTiles(entry: SceneryManagerEntry) {
+  selectedModalEntry.value = entry
+  showDuplicateTilesModal.value = true
+}
+
+function handleShowDeleteConfirm(entry: SceneryManagerEntry) {
+  selectedModalEntry.value = entry
+  showDeleteConfirmModal.value = true
+}
+
+function handleCopyMissingLibs() {
+  if (!selectedModalEntry.value) return
+  const libNames = selectedModalEntry.value.missingLibraries.join('\n')
+  navigator.clipboard.writeText(libNames).then(() => {
+    toastStore.success(t('sceneryManager.missingLibsCopied'))
+  }).catch(() => {
+    modalStore.showError(t('copy.copyFailed'))
+  })
+}
+
+async function handleSearchMissingLibs() {
+  if (!selectedModalEntry.value || isSearchingLibs.value) return
+
+  isSearchingLibs.value = true
+  try {
+    for (const libName of selectedModalEntry.value.missingLibraries) {
+      const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(libName + ' X-Plane library')}`
+
+      try {
+        await invoke('open_url', { url: bingUrl })
+        await new Promise(resolve => setTimeout(resolve, TAB_OPEN_DELAY_MS))
+      } catch (error) {
+        modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + getErrorMessage(error))
+        break
+      }
+    }
+  } finally {
+    isSearchingLibs.value = false
+  }
+}
+
+async function handleDeleteEntryConfirm() {
+  if (!selectedModalEntry.value || isDeletingEntry.value) return
+
+  isDeletingEntry.value = true
+  try {
+    await sceneryStore.deleteEntry(selectedModalEntry.value.folderName)
+    toastStore.success(t('sceneryManager.deleteSuccess'))
+    showDeleteConfirmModal.value = false
+  } catch (error) {
+    const apiError = parseApiError(error)
+    if (apiError) {
+      const errorKey = `errors.${apiError.code}`
+      const localizedMessage = t(errorKey) !== errorKey
+        ? t(errorKey)
+        : apiError.message
+      modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + localizedMessage)
+    } else {
+      modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + getErrorMessage(error))
+    }
+  } finally {
+    isDeletingEntry.value = false
+  }
 }
 
 // Type for vuedraggable change event
@@ -1844,6 +1926,14 @@ const isLoading = computed(() => {
                           <div
                             v-for="element in (hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category]"
                             :key="element.folderName"
+                            v-memo="[
+                              element.enabled,
+                              element.category,
+                              element.missingLibraries?.length ?? 0,
+                              element.duplicateTiles?.length ?? 0,
+                              searchQueryLower,
+                              highlightedIndex === getGlobalIndex(element.folderName)
+                            ]"
                             :data-scenery-index="getGlobalIndex(element.folderName)"
                             class="relative scenery-entry-item"
                             style="scroll-margin-top: 100px"
@@ -1854,7 +1944,7 @@ const isLoading = computed(() => {
                             ></div>
                             <div
                               :class="{
-                                'opacity-30 transition-opacity': searchQuery && !element.folderName.toLowerCase().includes(searchQuery.toLowerCase())
+                                'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
                               }"
                             >
                               <SceneryEntryCard
@@ -1865,6 +1955,9 @@ const isLoading = computed(() => {
                                 @toggle-enabled="handleSceneryToggleEnabled"
                                 @move-up="handleMoveUp"
                                 @move-down="handleMoveDown"
+                                @show-missing-libs="handleShowMissingLibs"
+                                @show-duplicate-tiles="handleShowDuplicateTiles"
+                                @show-delete-confirm="handleShowDeleteConfirm"
                               />
                             </div>
                           </div>
@@ -1926,6 +2019,14 @@ const isLoading = computed(() => {
                   <div
                     v-for="element in filteredGroupedEntries[category]"
                     :key="element.folderName"
+                    v-memo="[
+                      element.enabled,
+                      element.category,
+                      element.missingLibraries?.length ?? 0,
+                      element.duplicateTiles?.length ?? 0,
+                      searchQueryLower,
+                      highlightedIndex === getGlobalIndex(element.folderName)
+                    ]"
                     :data-scenery-index="getGlobalIndex(element.folderName)"
                     class="relative scenery-entry-item"
                     style="scroll-margin-top: 100px"
@@ -1936,7 +2037,7 @@ const isLoading = computed(() => {
                     ></div>
                     <div
                       :class="{
-                        'opacity-30 transition-opacity': searchQuery && !element.folderName.toLowerCase().includes(searchQuery.toLowerCase())
+                        'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
                       }"
                     >
                       <SceneryEntryCard
@@ -1947,6 +2048,9 @@ const isLoading = computed(() => {
                         @toggle-enabled="handleSceneryToggleEnabled"
                         @move-up="handleMoveUp"
                         @move-down="handleMoveDown"
+                        @show-missing-libs="handleShowMissingLibs"
+                        @show-duplicate-tiles="handleShowDuplicateTiles"
+                        @show-delete-confirm="handleShowDeleteConfirm"
                       />
                     </div>
                   </div>
@@ -2035,7 +2139,7 @@ const isLoading = computed(() => {
                         ></div>
                         <div
                           :class="{
-                            'opacity-30 transition-opacity': searchQuery && !element.folderName.toLowerCase().includes(searchQuery.toLowerCase())
+                            'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
                           }"
                         >
                           <SceneryEntryCard
@@ -2047,6 +2151,9 @@ const isLoading = computed(() => {
                             @toggle-enabled="handleSceneryToggleEnabled"
                             @move-up="handleMoveUp"
                             @move-down="handleMoveDown"
+                            @show-missing-libs="handleShowMissingLibs"
+                            @show-duplicate-tiles="handleShowDuplicateTiles"
+                            @show-delete-confirm="handleShowDeleteConfirm"
                           />
                         </div>
                       </div>
@@ -2061,6 +2168,171 @@ const isLoading = computed(() => {
         </div>
       </Transition>
     </div>
+
+    <!-- Shared Missing Libraries Modal -->
+    <Teleport to="body">
+      <div
+        v-if="showMissingLibsModal && selectedModalEntry"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        @click="showMissingLibsModal = false"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full mx-4 flex flex-col"
+          style="max-width: 500px; max-height: 80vh;"
+          @click.stop
+        >
+          <!-- Modal Header -->
+          <div class="flex items-center justify-between p-5 pb-3 flex-shrink-0">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('sceneryManager.missingLibrariesTitle') }}
+            </h3>
+            <button
+              @click="showMissingLibsModal = false"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Scrollable Content Area -->
+          <div class="flex-1 overflow-y-auto px-5 pb-3 min-h-0">
+            <!-- Scenery Name -->
+            <div class="mb-3 text-sm text-gray-600 dark:text-gray-400">
+              {{ selectedModalEntry.folderName }}
+            </div>
+
+            <!-- Missing Libraries List -->
+            <div class="bg-gray-50 dark:bg-gray-900 rounded p-3">
+              <ul class="space-y-1">
+                <li
+                  v-for="lib in selectedModalEntry.missingLibraries"
+                  :key="lib"
+                  class="text-sm text-gray-800 dark:text-gray-200 font-mono"
+                >
+                  • {{ lib }}
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Action Buttons (Fixed at bottom) -->
+          <div class="flex flex-col gap-2 p-5 pt-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
+            <div class="flex gap-2">
+              <button
+                @click="handleCopyMissingLibs"
+                class="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                {{ t('sceneryManager.copyAllLibNames') }}
+              </button>
+              <button
+                @click="handleSearchMissingLibs"
+                :disabled="isSearchingLibs"
+                class="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                <svg v-if="!isSearchingLibs" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                {{ isSearchingLibs ? t('sceneryManager.searching') : t('sceneryManager.searchOnBing') }}
+              </button>
+            </div>
+            <button
+              @click="showMissingLibsModal = false"
+              class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
+            >
+              {{ t('common.close') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Shared Duplicate Tiles Modal -->
+    <Teleport to="body">
+      <div
+        v-if="showDuplicateTilesModal && selectedModalEntry"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        @click="showDuplicateTilesModal = false"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full mx-4 flex flex-col"
+          style="max-width: 500px; max-height: 80vh;"
+          @click.stop
+        >
+          <!-- Modal Header -->
+          <div class="flex items-center justify-between p-5 pb-3 flex-shrink-0">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('sceneryManager.duplicateTilesTitle') }}
+            </h3>
+            <button
+              @click="showDuplicateTilesModal = false"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Scrollable Content Area -->
+          <div class="flex-1 overflow-y-auto px-5 pb-3 min-h-0">
+            <!-- Scenery Name -->
+            <div class="mb-3 text-sm text-gray-600 dark:text-gray-400">
+              {{ selectedModalEntry.folderName }}
+            </div>
+
+            <!-- Description -->
+            <div class="mb-3 text-sm text-gray-600 dark:text-gray-400">
+              {{ t('sceneryManager.duplicateTilesDesc') }}
+            </div>
+
+            <!-- Conflicting Packages List -->
+            <div class="bg-gray-50 dark:bg-gray-900 rounded p-3">
+              <ul class="space-y-1">
+                <li
+                  v-for="pkg in selectedModalEntry.duplicateTiles"
+                  :key="pkg"
+                  class="text-sm text-gray-800 dark:text-gray-200 font-mono"
+                >
+                  • {{ pkg }}
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Close Button -->
+          <div class="flex flex-col gap-2 p-5 pt-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
+            <button
+              @click="showDuplicateTilesModal = false"
+              class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
+            >
+              {{ t('common.close') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Shared Delete Confirmation Modal -->
+    <ConfirmModal
+      v-model:show="showDeleteConfirmModal"
+      :title="t('sceneryManager.deleteConfirmTitle')"
+      :message="t('sceneryManager.deleteConfirmMessage')"
+      :item-name="selectedModalEntry?.folderName ?? ''"
+      :confirm-text="t('common.delete')"
+      :loading-text="t('common.deleting')"
+      :is-loading="isDeletingEntry"
+      variant="danger"
+      @confirm="handleDeleteEntryConfirm"
+    />
   </div>
 </template>
 

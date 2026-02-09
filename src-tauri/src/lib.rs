@@ -976,6 +976,22 @@ async fn delete_aircraft_livery(
 }
 
 #[tauri::command]
+async fn open_livery_folder(
+    xplane_path: String,
+    aircraft_folder: String,
+    livery_folder: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::open_livery_folder(xplane_path, &aircraft_folder, &livery_folder)
+            .map_err(error::ApiError::from)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .to_tauri_error()
+}
+
+#[tauri::command]
 async fn set_cfg_disabled(
     xplane_path: String,
     item_type: String,
@@ -1117,6 +1133,7 @@ pub fn run() {
             open_management_folder,
             get_aircraft_liveries,
             delete_aircraft_livery,
+            open_livery_folder,
             set_cfg_disabled,
             get_lua_scripts,
             toggle_lua_script,
