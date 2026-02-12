@@ -78,6 +78,7 @@ const enabledFilter = ref<'all' | 'enabled' | 'disabled'>('all')
 const isFilterTransitioning = ref(false)
 let activeScrollRequestId = 0
 const COLLAPSE_TRANSITION_WAIT_MS = 380
+const FINAL_CALIBRATION_VIEWPORT_PADDING_PX = 28
 
 // Shared modal state for scenery entry actions
 const selectedModalEntry = ref<SceneryManagerEntry | null>(null)
@@ -1250,12 +1251,40 @@ function waitForCollapseTransitions(): Promise<void> {
   })
 }
 
+function estimatePostCollapseDelta(container: HTMLElement, targetElement: HTMLElement): number {
+  const targetRect = targetElement.getBoundingClientRect()
+  let delta = 0
+
+  const transitioning = container.querySelectorAll('.collapse-enter-active, .collapse-leave-active') as NodeListOf<HTMLElement>
+  transitioning.forEach((element) => {
+    const rect = element.getBoundingClientRect()
+    if (rect.bottom <= targetRect.top) {
+      const currentHeight = rect.height
+      if (element.classList.contains('collapse-enter-active')) {
+        const finalHeight = Math.max(element.scrollHeight, currentHeight)
+        delta += finalHeight - currentHeight
+      } else if (element.classList.contains('collapse-leave-active')) {
+        delta -= currentHeight
+      }
+    }
+  })
+
+  return delta
+}
+
+function isSafelyInsideContainerViewport(container: HTMLElement, element: HTMLElement, padding: number): boolean {
+  const containerRect = container.getBoundingClientRect()
+  const elementRect = element.getBoundingClientRect()
+  return elementRect.top >= containerRect.top + padding
+    && elementRect.bottom <= containerRect.bottom - padding
+}
+
 function scrollToMatch(index: number) {
   ensureGroupExpandedForIndex(index)
   highlightedIndex.value = index
   const requestId = ++activeScrollRequestId
 
-  const attemptScroll = (attempt: number) => {
+  const attemptScroll = (attempt: number, behavior: ScrollBehavior, predictPostCollapse = false) => {
     if (highlightedIndex.value !== index || requestId !== activeScrollRequestId) return
     const container = scrollContainerRef.value
     if (!container) return
@@ -1270,29 +1299,47 @@ function scrollToMatch(index: number) {
         - (container.clientHeight / 2)
         + (elementRect.height / 2)
 
+      const predictedDelta = predictPostCollapse
+        ? estimatePostCollapseDelta(container, element)
+        : 0
+
+      const predictedTargetScrollTop = targetScrollTop + predictedDelta
+
       const clampedScrollTop = Math.max(0, Math.min(
-        targetScrollTop,
+        predictedTargetScrollTop,
         container.scrollHeight - container.clientHeight
       ))
 
       container.scrollTo({
         top: clampedScrollTop,
-        behavior: 'smooth'
+        behavior
       })
       return
     }
     if (attempt < 6) {
-      setTimeout(() => attemptScroll(attempt + 1), 60)
+      setTimeout(() => attemptScroll(attempt + 1, behavior, predictPostCollapse), 60)
     }
   }
 
   void nextTick(async () => {
     if (requestId !== activeScrollRequestId || highlightedIndex.value !== index) return
+
+    // Start scroll immediately so it animates in parallel with collapse/expand animation
+    attemptScroll(0, 'smooth', true)
+
+    // After collapse animation settles, do one precise correction pass
     await waitForCollapseTransitions()
     if (requestId !== activeScrollRequestId || highlightedIndex.value !== index) return
     await nextTick()
     if (requestId !== activeScrollRequestId || highlightedIndex.value !== index) return
-    attemptScroll(0)
+
+    const container = scrollContainerRef.value
+    const element = container?.querySelector(`[data-scenery-index="${index}"]`) as HTMLElement | null
+    if (container && element && isSafelyInsideContainerViewport(container, element, FINAL_CALIBRATION_VIEWPORT_PADDING_PX)) {
+      return
+    }
+
+    attemptScroll(0, 'auto')
   })
 }
 
