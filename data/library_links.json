@@ -1,0 +1,25 @@
+{
+	"version": 1,
+	"updated": "2026-02-12",
+	"libraries": {
+    	"opensceneryx": "https://www.opensceneryx.com/",
+    	"opensam": "https://github.com/hotbso/openSAM/releases/latest",
+    	"sam": "https://d1o9n9onlv91pa.cloudfront.net/sam3/base_plugin/3.1.10/SAM.zip",
+		"misterx": "https://forums.x-plane.org/index.php?/files/file/28167-misterx-library-and-static-aircraft-extension/",
+		"re_library": "https://forums.x-plane.org/index.php?/files/file/24722-re_library-airport-buildings-and-related-objects/",
+    	"the_handy_objects_library": "https://forums.x-plane.org/index.php?/files/file/24261-the-handy-objects-library/",
+    	"handy": "https://forums.x-plane.org/index.php?/files/file/24261-the-handy-objects-library/",
+		"cdb-library": "https://forums.x-plane.org/index.php?/files/file/27907-cdb-library/",
+		"cdb": "https://forums.x-plane.org/index.php?/files/file/27907-cdb-library/",
+		"ff_library": "https://forums.x-plane.org/index.php?/files/file/12836-ff-library-extended-lod-version/",
+		"r2_library": "https://forums.x-plane.org/index.php?/files/file/14388-r2_library/",
+    	"bs2001": "https://forums.x-plane.org/files/file/28045-bs2001-object-library/",
+    	"ruscenery": "https://forums.x-plane.org/index.php?/files/file/24460-ruscenery-library/",
+		"world-models": "https://forums.x-plane.org/index.php?/files/file/32135-world-models-library/",
+		"gt_library": "https://forums.x-plane.org/index.php?/files/file/29461-ground-textures-library/",
+    	"naps": "https://forum.thresholdx.net/files/file/690-naps_library/",
+		"pp_library": "https://forums.x-plane.org/index.php?/files/file/37088-pavement-paintings-library-pplibrary/",
+		"pp": "https://forums.x-plane.org/index.php?/files/file/37088-pavement-paintings-library-pplibrary/",
+		"3d_people": "https://forums.x-plane.org/index.php?/files/file/26611-3d-people-library/"
+	}
+}
