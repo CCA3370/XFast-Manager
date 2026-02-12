@@ -82,7 +82,8 @@ const selectedModalEntry = ref<SceneryManagerEntry | null>(null)
 const showMissingLibsModal = ref(false)
 const showDuplicateTilesModal = ref(false)
 const showDeleteConfirmModal = ref(false)
-const isSearchingLibs = ref(false)
+const libraryLinksMap = ref<Record<string, string | null>>({})
+const isLoadingLinks = ref(false)
 const isDeletingEntry = ref(false)
 
 // 拖拽自动滚动状态 (非响应式，无需触发渲染)
@@ -907,13 +908,25 @@ function getGlobalIndex(folderName: string): number {
   return globalIndexMap.value.get(folderName) ?? -1
 }
 
-// Delay between opening multiple browser tabs to avoid overwhelming the browser
-const TAB_OPEN_DELAY_MS = 300
-
 // Shared modal handlers for scenery entry actions
-function handleShowMissingLibs(entry: SceneryManagerEntry) {
+async function handleShowMissingLibs(entry: SceneryManagerEntry) {
   selectedModalEntry.value = entry
   showMissingLibsModal.value = true
+  libraryLinksMap.value = {}
+
+  // Fetch download links for the missing libraries
+  isLoadingLinks.value = true
+  try {
+    const links: Record<string, string | null> = await invoke('lookup_library_links', {
+      libraryNames: entry.missingLibraries,
+    })
+    libraryLinksMap.value = links
+  } catch {
+    // Silently fail -- per-library download buttons simply won't show
+    libraryLinksMap.value = {}
+  } finally {
+    isLoadingLinks.value = false
+  }
 }
 
 function handleShowDuplicateTiles(entry: SceneryManagerEntry) {
@@ -936,24 +949,28 @@ function handleCopyMissingLibs() {
   })
 }
 
-async function handleSearchMissingLibs() {
-  if (!selectedModalEntry.value || isSearchingLibs.value) return
+function handleCopySingleLib(libName: string) {
+  navigator.clipboard.writeText(libName).then(() => {
+    toastStore.success(t('sceneryManager.libNameCopied'))
+  }).catch(() => {
+    modalStore.showError(t('copy.copyFailed'))
+  })
+}
 
-  isSearchingLibs.value = true
+async function handleDirectDownload(url: string) {
   try {
-    for (const libName of selectedModalEntry.value.missingLibraries) {
-      const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(libName + ' X-Plane library')}`
+    await invoke('open_url', { url })
+  } catch (error) {
+    modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + getErrorMessage(error))
+  }
+}
 
-      try {
-        await invoke('open_url', { url: bingUrl })
-        await new Promise(resolve => setTimeout(resolve, TAB_OPEN_DELAY_MS))
-      } catch (error) {
-        modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + getErrorMessage(error))
-        break
-      }
-    }
-  } finally {
-    isSearchingLibs.value = false
+async function handleSearchSingleLib(libName: string) {
+  const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(libName + ' X-Plane library')}`
+  try {
+    await invoke('open_url', { url: bingUrl })
+  } catch (error) {
+    modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + getErrorMessage(error))
   }
 }
 
@@ -2177,18 +2194,30 @@ const isLoading = computed(() => {
         @click="showMissingLibsModal = false"
       >
         <div
-          class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full mx-4 flex flex-col"
-          style="max-width: 500px; max-height: 80vh;"
+          class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full mx-4 flex flex-col"
+          style="max-width: 520px; max-height: 80vh;"
           @click.stop
         >
           <!-- Modal Header -->
-          <div class="flex items-center justify-between p-5 pb-3 flex-shrink-0">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('sceneryManager.missingLibrariesTitle') }}
-            </h3>
+          <div class="flex items-center justify-between px-5 pt-4 pb-3 flex-shrink-0">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
+                <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white leading-tight">
+                  {{ t('sceneryManager.missingLibrariesTitle') }}
+                </h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate max-w-[320px]">
+                  {{ selectedModalEntry.folderName }}
+                </p>
+              </div>
+            </div>
             <button
               @click="showMissingLibsModal = false"
-              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+              class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-md"
             >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -2198,55 +2227,81 @@ const isLoading = computed(() => {
 
           <!-- Scrollable Content Area -->
           <div class="flex-1 overflow-y-auto px-5 pb-3 min-h-0">
-            <!-- Scenery Name -->
-            <div class="mb-3 text-sm text-gray-600 dark:text-gray-400">
-              {{ selectedModalEntry.folderName }}
-            </div>
-
             <!-- Missing Libraries List -->
-            <div class="bg-gray-50 dark:bg-gray-900 rounded p-3">
-              <ul class="space-y-1">
-                <li
-                  v-for="lib in selectedModalEntry.missingLibraries"
-                  :key="lib"
-                  class="text-sm text-gray-800 dark:text-gray-200 font-mono"
-                >
-                  • {{ lib }}
-                </li>
-              </ul>
+            <div class="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div
+                v-for="(lib, index) in selectedModalEntry.missingLibraries"
+                :key="lib"
+                class="flex items-center justify-between gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                :class="{ 'border-t border-gray-200 dark:border-gray-700': index > 0 }"
+              >
+                <!-- Library Name with status indicator -->
+                <div class="flex items-center gap-2 min-w-0 flex-1">
+                  <div
+                    class="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    :class="libraryLinksMap[lib] ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'"
+                  ></div>
+                  <span class="text-[13px] text-gray-700 dark:text-gray-200 font-mono truncate">
+                    {{ lib }}
+                  </span>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex items-center gap-0.5 flex-shrink-0">
+                  <!-- Copy -->
+                  <button
+                    @click="handleCopySingleLib(lib)"
+                    class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    :title="t('sceneryManager.copyAllLibNames')"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+
+                  <!-- Direct Download -->
+                  <button
+                    v-if="libraryLinksMap[lib]"
+                    @click="handleDirectDownload(libraryLinksMap[lib]!)"
+                    class="px-2 py-1 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 rounded bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-800/40 transition-colors flex items-center gap-1.5 text-xs font-medium"
+                    :title="t('sceneryManager.directDownload')"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    {{ t('sceneryManager.directDownload') }}
+                  </button>
+
+                  <!-- Bing Search (only when no direct link) -->
+                  <button
+                    v-else
+                    @click="handleSearchSingleLib(lib)"
+                    class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    :title="t('sceneryManager.searchOnBing')"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Action Buttons (Fixed at bottom) -->
-          <div class="flex flex-col gap-2 p-5 pt-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
-            <div class="flex gap-2">
-              <button
-                @click="handleCopyMissingLibs"
-                class="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                {{ t('sceneryManager.copyAllLibNames') }}
-              </button>
-              <button
-                @click="handleSearchMissingLibs"
-                :disabled="isSearchingLibs"
-                class="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                <svg v-if="!isSearchingLibs" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                {{ isSearchingLibs ? t('sceneryManager.searching') : t('sceneryManager.searchOnBing') }}
-              </button>
-            </div>
+          <!-- Footer -->
+          <div class="flex gap-2 px-5 py-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
+            <button
+              @click="handleCopyMissingLibs"
+              class="flex-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm rounded-lg transition-colors flex items-center justify-center gap-1.5"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              {{ t('sceneryManager.copyAllLibNames') }}
+            </button>
             <button
               @click="showMissingLibsModal = false"
-              class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
+              class="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm rounded-lg transition-colors"
             >
               {{ t('common.close') }}
             </button>

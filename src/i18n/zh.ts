@@ -408,6 +408,8 @@ export default {
     searchOnBing: '在必应搜索',
     searching: '搜索中...',
     openUrlFailed: '打开链接失败',
+    directDownload: '下载',
+    libNameCopied: '库名已复制',
     reset: '重置',
     resetConfirm: '确定要重置所有更改吗？',
     noXplanePath: '请先设置 X-Plane 路径',

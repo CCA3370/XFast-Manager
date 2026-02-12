@@ -395,6 +395,8 @@ export default {
     searchOnBing: 'Search on Bing',
     searching: 'Searching...',
     openUrlFailed: 'Failed to open URL',
+    directDownload: 'Download',
+    libNameCopied: 'Library name copied',
     reset: 'Reset',
     resetConfirm: 'Are you sure you want to reset all changes?',
     noXplanePath: 'Please set X-Plane path first',

@@ -7,6 +7,7 @@ mod error;
 mod geo_regions;
 mod hash_collector;
 mod installer;
+mod library_links;
 mod livery_patterns;
 mod logger;
 mod management_index;
@@ -604,6 +605,15 @@ fn get_last_check_time() -> Option<i64> {
     updater::get_last_check_time()
 }
 
+// ========== Library Download Links Commands ==========
+
+#[tauri::command]
+async fn lookup_library_links(
+    library_names: Vec<String>,
+) -> Result<std::collections::HashMap<String, Option<String>>, String> {
+    Ok(library_links::lookup_library_links(library_names).await)
+}
+
 // ========== Scenery Auto-Sorting Commands ==========
 
 #[tauri::command]
@@ -1106,6 +1116,8 @@ pub fn run() {
             validate_xplane_path,
             check_for_updates,
             get_last_check_time,
+            // Library download links
+            lookup_library_links,
             // Scenery auto-sorting commands
             get_scenery_classification,
             sort_scenery_packs,
