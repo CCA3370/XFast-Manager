@@ -76,6 +76,8 @@ const showFilterDropdown = ref(false)
 const filterDropdownRef = ref<HTMLElement | null>(null)
 const enabledFilter = ref<'all' | 'enabled' | 'disabled'>('all')
 const isFilterTransitioning = ref(false)
+let activeScrollRequestId = 0
+const COLLAPSE_TRANSITION_WAIT_MS = 380
 
 // Shared modal state for scenery entry actions
 const selectedModalEntry = ref<SceneryManagerEntry | null>(null)
@@ -753,7 +755,11 @@ const matchedIndices = computed(() => {
   if (!searchQuery.value.trim() || activeTab.value !== 'scenery') return []
   const query = searchQueryLower.value
   return filteredSceneryEntries.value
-    .map((entry, index) => ({ entry, index }))
+    .map((entry) => ({
+      entry,
+      index: getGlobalIndex(entry.folderName)
+    }))
+    .filter(({ index }) => index >= 0)
     .filter(({ entry }) => entry.folderName.toLowerCase().includes(query))
     .map(({ index }) => index)
 })
@@ -1177,7 +1183,7 @@ function collapseSearchExpandedGroups() {
 
 function ensureGroupExpandedForIndex(index: number) {
   if (showOnlyMissingLibs.value || showOnlyDuplicateTiles.value) return
-  const entry = filteredSceneryEntries.value[index]
+  const entry = allSceneryEntries.value[index]
   if (!entry) return
 
   // First collapse previously expanded groups
@@ -1208,15 +1214,71 @@ function ensureGroupExpandedForIndex(index: number) {
   }
 }
 
+function waitForCollapseTransitions(): Promise<void> {
+  const container = scrollContainerRef.value
+  if (!container) return Promise.resolve()
+
+  const hasActiveCollapseTransition = () => {
+    return !!container.querySelector('.collapse-enter-active, .collapse-leave-active')
+  }
+
+  if (!hasActiveCollapseTransition()) {
+    return Promise.resolve()
+  }
+
+  return new Promise((resolve) => {
+    let settled = false
+
+    const finalize = () => {
+      if (settled) return
+      settled = true
+      container.removeEventListener('transitionend', onTransitionEvent, true)
+      container.removeEventListener('transitioncancel', onTransitionEvent, true)
+      clearTimeout(timeoutId)
+      resolve()
+    }
+
+    const onTransitionEvent = () => {
+      if (!hasActiveCollapseTransition()) {
+        finalize()
+      }
+    }
+
+    const timeoutId = setTimeout(finalize, COLLAPSE_TRANSITION_WAIT_MS)
+    container.addEventListener('transitionend', onTransitionEvent, true)
+    container.addEventListener('transitioncancel', onTransitionEvent, true)
+  })
+}
+
 function scrollToMatch(index: number) {
   ensureGroupExpandedForIndex(index)
   highlightedIndex.value = index
+  const requestId = ++activeScrollRequestId
 
   const attemptScroll = (attempt: number) => {
-    if (highlightedIndex.value !== index) return
-    const element = document.querySelector(`[data-scenery-index="${index}"]`) as HTMLElement | null
+    if (highlightedIndex.value !== index || requestId !== activeScrollRequestId) return
+    const container = scrollContainerRef.value
+    if (!container) return
+
+    const element = container.querySelector(`[data-scenery-index="${index}"]`) as HTMLElement | null
     if (element && element.getClientRects().length > 0) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      const containerRect = container.getBoundingClientRect()
+      const elementRect = element.getBoundingClientRect()
+      const currentScrollTop = container.scrollTop
+      const targetScrollTop = currentScrollTop
+        + (elementRect.top - containerRect.top)
+        - (container.clientHeight / 2)
+        + (elementRect.height / 2)
+
+      const clampedScrollTop = Math.max(0, Math.min(
+        targetScrollTop,
+        container.scrollHeight - container.clientHeight
+      ))
+
+      container.scrollTo({
+        top: clampedScrollTop,
+        behavior: 'smooth'
+      })
       return
     }
     if (attempt < 6) {
@@ -1224,7 +1286,14 @@ function scrollToMatch(index: number) {
     }
   }
 
-  setTimeout(() => attemptScroll(0), 0)
+  void nextTick(async () => {
+    if (requestId !== activeScrollRequestId || highlightedIndex.value !== index) return
+    await waitForCollapseTransitions()
+    if (requestId !== activeScrollRequestId || highlightedIndex.value !== index) return
+    await nextTick()
+    if (requestId !== activeScrollRequestId || highlightedIndex.value !== index) return
+    attemptScroll(0)
+  })
 }
 
 function handleSearchInput() {
