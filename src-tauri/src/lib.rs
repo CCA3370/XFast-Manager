@@ -98,6 +98,70 @@ async fn open_url(url: String) -> Result<(), String> {
     opener::open(&url).map_err(|e| format!("Failed to open URL: {}", e))
 }
 
+#[tauri::command]
+async fn create_library_link_issue(
+    library_name: String,
+    download_url: String,
+    referenced_by: Option<String>,
+) -> Result<String, String> {
+    let library_name = library_name.trim();
+    let download_url = download_url.trim();
+
+    if library_name.is_empty() {
+        return Err("Library name is empty".to_string());
+    }
+
+    let parsed_url = reqwest::Url::parse(download_url)
+        .map_err(|_| "Download URL is invalid".to_string())?;
+    if parsed_url.scheme() != "http" && parsed_url.scheme() != "https" {
+        return Err("Download URL must be http/https".to_string());
+    }
+
+    let api_url = std::env::var("XFAST_LINK_API_URL")
+        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/library-link".to_string());
+
+    let client = reqwest::Client::builder()
+        .user_agent("XFast Manager")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client
+        .post(&api_url)
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "libraryName": library_name,
+            "downloadUrl": download_url,
+            "referencedBy": referenced_by
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to create issue: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("Link API error {}: {}", status, error_text));
+    }
+
+    let response_json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse API response: {}", e))?;
+
+    let issue_url = response_json
+        .get("issueUrl")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if issue_url.is_empty() {
+        return Err("Issue created but response URL missing".to_string());
+    }
+
+    Ok(issue_url)
+}
+
 // ============================================================================
 // Installation Commands
 // ============================================================================
@@ -1100,6 +1164,7 @@ pub fn run() {
             get_platform,
             get_app_version,
             open_url,
+            create_library_link_issue,
             analyze_addons,
             install_addons,
             cancel_installation,

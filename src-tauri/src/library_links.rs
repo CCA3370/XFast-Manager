@@ -32,6 +32,35 @@ const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 const REMOTE_URL: &str =
     "https://raw.githubusercontent.com/CCA3370/XFast-Manager/dev/data/library_links.json";
 
+fn normalize_library_key(raw: &str) -> String {
+    let trimmed = raw
+        .trim()
+        .trim_matches(|c| c == '/' || c == '\\' || c == '\0');
+    let first_component = trimmed.split(&['/', '\\'][..]).next().unwrap_or(trimmed);
+    first_component.trim().to_lowercase()
+}
+
+fn find_library_url(links_db: &HashMap<String, String>, name: &str) -> Option<String> {
+    let normalized = normalize_library_key(name);
+    if normalized.is_empty() {
+        return None;
+    }
+
+    links_db.get(&normalized).cloned().or_else(|| {
+        let dashed = normalized.replace('_', "-");
+        if dashed != normalized {
+            return links_db.get(&dashed).cloned();
+        }
+
+        let underscored = normalized.replace('-', "_");
+        if underscored != normalized {
+            return links_db.get(&underscored).cloned();
+        }
+
+        None
+    })
+}
+
 /// Returns the hardcoded fallback library links database.
 /// Used when the remote fetch fails (network unavailable, timeout, etc.).
 fn hardcoded_links() -> HashMap<String, String> {
@@ -41,7 +70,8 @@ fn hardcoded_links() -> HashMap<String, String> {
         Ok(data) => data
             .libraries
             .into_iter()
-            .map(|(k, v)| (k.to_lowercase(), v))
+            .map(|(k, v)| (normalize_library_key(&k), v))
+            .filter(|(k, _)| !k.is_empty())
             .collect(),
         Err(e) => {
             logger::log_info(
@@ -117,7 +147,8 @@ async fn fetch_remote_links() -> Result<HashMap<String, String>, String> {
     let links: HashMap<String, String> = data
         .libraries
         .into_iter()
-        .map(|(k, v)| (k.to_lowercase(), v))
+        .map(|(k, v)| (normalize_library_key(&k), v))
+        .filter(|(k, _)| !k.is_empty())
         .collect();
 
     Ok(links)
@@ -134,7 +165,7 @@ pub async fn lookup_library_links_local(
     library_names
         .into_iter()
         .map(|name| {
-            let url = links_db.get(&name.to_lowercase()).cloned();
+            let url = find_library_url(&links_db, &name);
             (name, url)
         })
         .collect()
@@ -150,7 +181,7 @@ pub async fn lookup_library_links_remote(
     Ok(library_names
         .into_iter()
         .map(|name| {
-            let url = links_db.get(&name.to_lowercase()).cloned();
+            let url = find_library_url(&links_db, &name);
             (name, url)
         })
         .collect())
