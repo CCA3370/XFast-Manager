@@ -30,51 +30,41 @@ const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// Remote URL for the library links JSON file
 const REMOTE_URL: &str =
-    "https://raw.githubusercontent.com/CCA3370/XFast-Manager/main/data/library_links.json";
+    "https://raw.githubusercontent.com/CCA3370/XFast-Manager/dev/data/library_links.json";
 
 /// Returns the hardcoded fallback library links database.
 /// Used when the remote fetch fails (network unavailable, timeout, etc.).
 fn hardcoded_links() -> HashMap<String, String> {
-    let entries = [
-        ("opensceneryx", "https://www.opensceneryx.com/"),
-        ("opensam", "https://www.stairport.com/sam/"),
-        ("sam", "https://www.stairport.com/sam/"),
-        ("misterx", "https://forums.x-plane.org/index.php?/files/file/28167-misterx-library/"),
-        ("re_library", "https://forums.x-plane.org/index.php?/files/file/30389-re_library/"),
-        ("the_handy_objects_library", "https://forums.x-plane.org/index.php?/files/file/24261-the-handy-objects-library/"),
-        ("handy", "https://forums.x-plane.org/index.php?/files/file/24261-the-handy-objects-library/"),
-        ("cdb-library", "https://forums.x-plane.org/index.php?/files/file/23316-cdb-library/"),
-        ("cdb", "https://forums.x-plane.org/index.php?/files/file/23316-cdb-library/"),
-        ("ff_library", "https://forums.x-plane.org/index.php?/files/file/14391-ff-library/"),
-        ("r2_library", "https://forums.x-plane.org/index.php?/files/file/14388-r2-library/"),
-        ("bs2001", "https://forums.x-plane.org/index.php?/files/file/38049-bs2001-object-library/"),
-        ("ruscenery", "https://forums.x-plane.org/index.php?/files/file/24460-ruscenery-library/"),
-        ("world-models", "https://developer.x-plane.com/tools/worldmodels/"),
-        ("gt_library", "https://forums.x-plane.org/index.php?/files/file/29045-gt_library/"),
-        ("flyagi", "https://forums.x-plane.org/index.php?/files/file/26891-flyagi-vegetation/"),
-        ("prefab_library", "https://forums.x-plane.org/index.php?/files/file/30054-prefab-library/"),
-        ("naps", "https://forums.x-plane.org/index.php?/files/file/48701-naps-library/"),
-        ("pp_library", "https://forums.x-plane.org/index.php?/files/file/31712-pp_library/"),
-        ("pp", "https://forums.x-plane.org/index.php?/files/file/31712-pp_library/"),
-        ("dense_forests", "https://forums.x-plane.org/index.php?/files/file/76474-dense-forests-library/"),
-        ("3d_people", "https://forums.x-plane.org/index.php?/files/file/46498-3d-people-library/"),
-    ];
+    let embedded_json = include_str!("../../data/library_links.json");
 
-    entries
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect()
+    match serde_json::from_str::<LibraryLinksData>(embedded_json) {
+        Ok(data) => data
+            .libraries
+            .into_iter()
+            .map(|(k, v)| (k.to_lowercase(), v))
+            .collect(),
+        Err(e) => {
+            logger::log_info(
+                &format!(
+                    "Failed to parse embedded data/library_links.json: {}, using empty fallback",
+                    e
+                ),
+                Some("library_links"),
+            );
+            HashMap::new()
+        }
+    }
 }
 
 /// Fetch library links from the remote JSON, with in-memory caching.
-/// Falls back to hardcoded data on any failure.
-async fn get_library_links() -> HashMap<String, String> {
+/// Returns an error on fetch/parse failure.
+async fn get_remote_links() -> Result<HashMap<String, String>, String> {
     // Check cache first
     {
         let cache = CACHE.lock().unwrap();
         if let Some(ref cached) = *cache {
             if cached.fetched_at.elapsed().unwrap_or(CACHE_TTL) < CACHE_TTL {
-                return cached.links.clone();
+                return Ok(cached.links.clone());
             }
         }
     }
@@ -94,25 +84,9 @@ async fn get_library_links() -> HashMap<String, String> {
                 links: links.clone(),
                 fetched_at: SystemTime::now(),
             });
-            links
+            Ok(links)
         }
-        Err(e) => {
-            logger::log_info(
-                &format!(
-                    "Failed to fetch remote library links: {}, using hardcoded fallback",
-                    e
-                ),
-                Some("library_links"),
-            );
-            let fallback = hardcoded_links();
-            // Cache the fallback too, but with a shorter TTL to retry sooner
-            let mut cache = CACHE.lock().unwrap();
-            *cache = Some(CachedLinks {
-                links: fallback.clone(),
-                fetched_at: SystemTime::now(),
-            });
-            fallback
-        }
+        Err(e) => Err(e),
     }
 }
 
@@ -152,10 +126,10 @@ async fn fetch_remote_links() -> Result<HashMap<String, String>, String> {
 /// Look up download links for a list of missing library names.
 /// Returns a map of library_name -> Option<download_url>.
 /// Lookup is case-insensitive.
-pub async fn lookup_library_links(
+pub async fn lookup_library_links_local(
     library_names: Vec<String>,
 ) -> HashMap<String, Option<String>> {
-    let links_db = get_library_links().await;
+    let links_db = hardcoded_links();
 
     library_names
         .into_iter()
@@ -164,4 +138,20 @@ pub async fn lookup_library_links(
             (name, url)
         })
         .collect()
+}
+
+/// Look up download links using remote JSON source.
+/// Uses in-memory cache and returns error when remote is unavailable.
+pub async fn lookup_library_links_remote(
+    library_names: Vec<String>,
+) -> Result<HashMap<String, Option<String>>, String> {
+    let links_db = get_remote_links().await?;
+
+    Ok(library_names
+        .into_iter()
+        .map(|name| {
+            let url = links_db.get(&name.to_lowercase()).cloned();
+            (name, url)
+        })
+        .collect())
 }

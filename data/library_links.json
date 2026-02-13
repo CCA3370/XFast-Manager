@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"updated": "2026-02-12",
+	"updated": "2026-02-13",
 	"libraries": {
 		"3d_people": "https://forums.x-plane.org/index.php?/files/file/26611-3d-people-library/",
 		"adsparks_library": "https://forums.x-plane.org/files/file/47600-parking-stands-signs/",
@@ -12,6 +12,7 @@
 		"faib_aircraft": "https://forums.x-plane.org/files/file/29079-the-faib-aircraft-library/",
 		"fjs_scenery_library": "https://forums.x-plane.org/files/file/28594-fjs_scenery_library/",
 		"fruitstand_aircraft": "https://forums.x-plane.org/files/file/27545-the-fruit-stand-aircraft-library/",
+		"ground_services_tw": "https://forums.x-plane.org/files/file/39537-ground_services-twground-service-pack-for-taiwan/",
 		"gt_library": "https://forums.x-plane.org/index.php?/files/file/29461-ground-textures-library/",
 		"handyobjects": "https://forums.x-plane.org/index.php?/files/file/24261-the-handy-objects-library/",
 		"jb_library": "https://forums.x-plane.org/files/file/26531-jb_libraryzip/",

@@ -87,6 +87,7 @@ const showDuplicateTilesModal = ref(false)
 const showDeleteConfirmModal = ref(false)
 const libraryLinksMap = ref<Record<string, string | null>>({})
 const isLoadingLinks = ref(false)
+const libraryLinksRequestSeq = ref(0)
 const isDeletingEntry = ref(false)
 
 // 拖拽自动滚动状态 (非响应式，无需触发渲染)
@@ -920,8 +921,10 @@ async function handleShowMissingLibs(entry: SceneryManagerEntry) {
   selectedModalEntry.value = entry
   showMissingLibsModal.value = true
   libraryLinksMap.value = {}
+  libraryLinksRequestSeq.value += 1
+  const requestSeq = libraryLinksRequestSeq.value
 
-  // Fetch download links for the missing libraries
+  // Phase 1: immediate local links (embedded JSON)
   isLoadingLinks.value = true
   try {
     const links: Record<string, string | null> = await invoke('lookup_library_links', {
@@ -934,6 +937,19 @@ async function handleShowMissingLibs(entry: SceneryManagerEntry) {
   } finally {
     isLoadingLinks.value = false
   }
+
+  // Phase 2: remote refresh, then replace current displayed links (add/remove)
+  void invoke<Record<string, string | null>>('lookup_library_links_remote', {
+    libraryNames: entry.missingLibraries,
+  }).then((remoteLinks) => {
+    if (!showMissingLibsModal.value) return
+    if (!selectedModalEntry.value) return
+    if (selectedModalEntry.value.folderName !== entry.folderName) return
+    if (libraryLinksRequestSeq.value !== requestSeq) return
+    libraryLinksMap.value = remoteLinks
+  }).catch(() => {
+    // Keep local links if remote refresh fails
+  })
 }
 
 function handleShowDuplicateTiles(entry: SceneryManagerEntry) {

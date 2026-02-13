@@ -611,7 +611,14 @@ fn get_last_check_time() -> Option<i64> {
 async fn lookup_library_links(
     library_names: Vec<String>,
 ) -> Result<std::collections::HashMap<String, Option<String>>, String> {
-    Ok(library_links::lookup_library_links(library_names).await)
+    Ok(library_links::lookup_library_links_local(library_names).await)
+}
+
+#[tauri::command]
+async fn lookup_library_links_remote(
+    library_names: Vec<String>,
+) -> Result<std::collections::HashMap<String, Option<String>>, String> {
+    library_links::lookup_library_links_remote(library_names).await
 }
 
 // ========== Scenery Auto-Sorting Commands ==========
@@ -1118,6 +1125,7 @@ pub fn run() {
             get_last_check_time,
             // Library download links
             lookup_library_links,
+            lookup_library_links_remote,
             // Scenery auto-sorting commands
             get_scenery_classification,
             sort_scenery_packs,
