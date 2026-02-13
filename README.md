@@ -11,7 +11,6 @@
 <p align="center">
   <a href="https://github.com/CCA3370/XFast-Manager/stargazers"><img src="https://img.shields.io/github/stars/CCA3370/XFast-Manager?style=flat" alt="Stars"></a>&nbsp;
   <a href="https://github.com/CCA3370/XFast-Manager/issues"><img src="https://img.shields.io/github/issues/CCA3370/XFast-Manager" alt="Issues"></a>&nbsp;
-  <a href="https://github.com/CCA3370/XFast-Manager/commits"><img src="https://img.shields.io/github/last-commit/CCA3370/XFast-Manager" alt="Last Commit"></a>&nbsp;
   <a href="https://github.com/CCA3370/XFast-Manager/releases"><img src="https://img.shields.io/github/v/release/CCA3370/XFast-Manager?display_name=tag" alt="Latest Release"></a>&nbsp;
   <a href="https://img.shields.io/github/downloads/CCA3370/XFast-Manager/total.svg"><img src="https://img.shields.io/github/downloads/CCA3370/XFast-Manager/total.svg" alt="Downloads"></a>&nbsp;
   <a href="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue"><img src="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue" alt="Platforms"></a>&nbsp;
