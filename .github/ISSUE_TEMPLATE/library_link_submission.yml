@@ -13,7 +13,6 @@ body:
     attributes:
       label: Library Name
       description: Use the exact missing library name shown in XFast Manager
-      placeholder: AR_Library
     validations:
       required: true
 
@@ -31,7 +30,6 @@ body:
     attributes:
       label: Referenced By Scenery (optional)
       description: Scenery package that reported this missing library
-      placeholder: a_RCSS
     validations:
       required: false
 
