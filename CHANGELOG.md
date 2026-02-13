@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.10] - 2026-02-13
+
+### Added
+
+- **Missing Library Download Links** - Missing library dialog now supports direct download links for many common libraries.
+- **Link Contribution Flow** - You can now submit missing library download links directly from the Missing Libraries dialog.
+  - Added a contribution form with copy/search helpers for the selected library name.
+  - Added automatic review pipeline integration for submitted links.
+
+### Changed
+
+- **Smarter Link Source Updates** - Missing library links now load immediately from bundled data, then refresh in the background from the latest online list.
+
+### Fixed
+
+- **Missing Library False Positives** - Improved library matching logic to handle case differences.
+- **Library Export Parsing Reliability** - Improved `library.txt` parsing for non-UTF8 files so installed libraries are less likely to be incorrectly marked as missing.
+- **Incremental Scenery Scan Accuracy** - Entering Scenery Manager now better re-evaluates library packages with incomplete cached export data.
+
 ## [0.8.9] - 2026-02-09
 
 ### Added
