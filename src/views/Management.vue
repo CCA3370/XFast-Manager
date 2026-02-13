@@ -88,6 +88,9 @@ const showDeleteConfirmModal = ref(false)
 const libraryLinksMap = ref<Record<string, string | null>>({})
 const isLoadingLinks = ref(false)
 const libraryLinksRequestSeq = ref(0)
+const showContributeLinkModal = ref(false)
+const contributingLibName = ref('')
+const contributingLibUrl = ref('')
 const isDeletingEntry = ref(false)
 
 // 拖拽自动滚动状态 (非响应式，无需触发渲染)
@@ -992,6 +995,60 @@ async function handleSearchSingleLib(libName: string) {
   const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(libName + ' X-Plane library')}`
   try {
     await invoke('open_url', { url: bingUrl })
+  } catch (error) {
+    modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + getErrorMessage(error))
+  }
+}
+
+function handleOpenContributeLink(libName: string) {
+  contributingLibName.value = libName
+  contributingLibUrl.value = ''
+  showContributeLinkModal.value = true
+}
+
+function closeContributeLinkModal() {
+  showContributeLinkModal.value = false
+  contributingLibName.value = ''
+  contributingLibUrl.value = ''
+}
+
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+async function handleSubmitContributeLink() {
+  const libName = contributingLibName.value.trim()
+  const inputUrl = contributingLibUrl.value.trim()
+
+  if (!libName || !selectedModalEntry.value) return
+
+  if (!isValidHttpUrl(inputUrl)) {
+    modalStore.showError(t('sceneryManager.invalidContributionUrl'))
+    return
+  }
+
+  const title = `[Library Link] ${libName}`
+  const body = [
+    '### Library Link Submission',
+    '',
+    `- Library Name: \`${libName}\``,
+    `- Download URL: ${inputUrl}`,
+    `- Referenced By Scenery: \`${selectedModalEntry.value.folderName}\``,
+    '',
+    'Please review this link. If valid, add the `approved-link` label to trigger auto-update for `data/library_links.json` on `dev`.'
+  ].join('\n')
+
+  const issueUrl = `https://github.com/CCA3370/XFast-Manager/issues/new?template=library_link_submission.yml&labels=${encodeURIComponent('library-link')}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
+
+  try {
+    await invoke('open_url', { url: issueUrl })
+    toastStore.success(t('sceneryManager.contributionOpened'))
+    closeContributeLinkModal()
   } catch (error) {
     modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + getErrorMessage(error))
   }
@@ -2415,6 +2472,15 @@ const isLoading = computed(() => {
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </button>
+
+                  <button
+                    v-if="!libraryLinksMap[lib]"
+                    @click="handleOpenContributeLink(lib)"
+                    class="px-2 py-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 rounded bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-800/40 transition-colors text-xs font-medium"
+                    :title="t('sceneryManager.contributeLink')"
+                  >
+                    {{ t('sceneryManager.contributeLink') }}
+                  </button>
                 </div>
               </div>
             </div>
@@ -2436,6 +2502,62 @@ const isLoading = computed(() => {
               class="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm rounded-lg transition-colors"
             >
               {{ t('common.close') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Contribution Link Modal -->
+    <Teleport to="body">
+      <div
+        v-if="showContributeLinkModal"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+        @click="closeContributeLinkModal"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-5"
+          @click.stop
+        >
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+            {{ t('sceneryManager.contributeLinkTitle') }}
+          </h3>
+          <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+            {{ t('sceneryManager.contributeLinkDesc') }}
+          </p>
+
+          <div class="mt-4 space-y-3">
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('sceneryManager.libraryNameLabel') }}</label>
+              <input
+                :value="contributingLibName"
+                disabled
+                class="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 px-3 py-2 text-sm text-gray-700 dark:text-gray-200"
+              />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('sceneryManager.downloadUrlLabel') }}</label>
+              <input
+                v-model="contributingLibUrl"
+                type="url"
+                :placeholder="t('sceneryManager.downloadUrlPlaceholder')"
+                class="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
+              />
+            </div>
+          </div>
+
+          <div class="mt-5 flex justify-end gap-2">
+            <button
+              @click="closeContributeLinkModal"
+              class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-sm rounded-lg text-gray-700 dark:text-gray-200"
+            >
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              @click="handleSubmitContributeLink"
+              class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-sm rounded-lg text-white"
+            >
+              {{ t('sceneryManager.submitContribution') }}
             </button>
           </div>
         </div>
