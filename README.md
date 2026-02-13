@@ -20,7 +20,7 @@
 
 <p align="center">
   <a href="https://github.com/CCA3370/XFast-Manager/releases">
-    <img src="https://img.shields.io/badge/Download-Latest%20Release-2ea44f?style=for-the-badge" alt="Download Latest Release">
+    <img src="https://img.shields.io/badge/Download-Latest%20Release-2ea44f?style=for-the-badge" alt="Download Latest Release" height="56">
   </a>
 </p>
 
