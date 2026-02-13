@@ -94,6 +94,9 @@ export const useAppStore = defineStore('app', () => {
   // Confirmation modal state (for exit confirmation)
   const isConfirmationOpen = ref(false)
 
+  // Library link contribution submission state (for close protection)
+  const isLibraryLinkSubmitting = ref(false)
+
   // Unified per-task state management (taskId -> TaskState)
   const taskStates = ref<Record<string, TaskState>>({})
 
@@ -258,6 +261,10 @@ export const useAppStore = defineStore('app', () => {
 
   function setConfirmationOpen(open: boolean) {
     isConfirmationOpen.value = open
+  }
+
+  function setLibraryLinkSubmitting(submitting: boolean) {
+    isLibraryLinkSubmitting.value = submitting
   }
 
   async function setLogLevel(level: LogLevel) {
@@ -506,6 +513,7 @@ export const useAppStore = defineStore('app', () => {
     sceneryManagerHintVisible,
     sceneryManagerHintMessageKey,
     isConfirmationOpen,
+    isLibraryLinkSubmitting,
     logLevel,
     taskStates,
     getTaskState,
@@ -531,6 +539,7 @@ export const useAppStore = defineStore('app', () => {
     showSceneryManagerHint,
     dismissSceneryManagerHint,
     setConfirmationOpen,
+    setLibraryLinkSubmitting,
     setLogLevel,
     setCurrentTasks,
     appendTasks,
