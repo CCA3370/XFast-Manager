@@ -342,6 +342,10 @@ onMounted(async () => {
           onConfirm: async () => await appWindow.destroy(),
           onCancel: () => {}
         })
+      } else if (store.isLibraryLinkSubmitting) {
+        // Library link submission in progress
+        event.preventDefault()
+        modalStore.showError(t('sceneryManager.submissionInProgressCloseBlocked'))
       } else if (store.isConfirmationOpen) {
         // Confirmation modal is open - pending installation
         event.preventDefault()

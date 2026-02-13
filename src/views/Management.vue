@@ -79,6 +79,7 @@ const isFilterTransitioning = ref(false)
 let activeScrollRequestId = 0
 const COLLAPSE_TRANSITION_WAIT_MS = 380
 const FINAL_CALIBRATION_VIEWPORT_PADDING_PX = 28
+const CONTRIBUTION_SUBMIT_TIMEOUT_MS = 10000
 
 // Shared modal state for scenery entry actions
 const selectedModalEntry = ref<SceneryManagerEntry | null>(null)
@@ -91,6 +92,7 @@ const libraryLinksRequestSeq = ref(0)
 const showContributeLinkModal = ref(false)
 const contributingLibName = ref('')
 const contributingLibUrl = ref('')
+const isSubmittingContributeLink = ref(false)
 const isDeletingEntry = ref(false)
 
 // 拖拽自动滚动状态 (非响应式，无需触发渲染)
@@ -1007,6 +1009,7 @@ function handleOpenContributeLink(libName: string) {
 }
 
 function closeContributeLinkModal() {
+  isSubmittingContributeLink.value = false
   showContributeLinkModal.value = false
   contributingLibName.value = ''
   contributingLibUrl.value = ''
@@ -1022,6 +1025,8 @@ function isValidHttpUrl(value: string): boolean {
 }
 
 async function handleSubmitContributeLink() {
+  if (isSubmittingContributeLink.value) return
+
   const libName = contributingLibName.value.trim()
   const inputUrl = contributingLibUrl.value.trim()
 
@@ -1045,12 +1050,22 @@ async function handleSubmitContributeLink() {
 
   const issueUrl = `https://github.com/CCA3370/XFast-Manager/issues/new?template=library_link_submission.yml&labels=${encodeURIComponent('library-link')}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
 
+  isSubmittingContributeLink.value = true
+  appStore.setLibraryLinkSubmitting(true)
+  let submitTimeoutId: ReturnType<typeof setTimeout> | null = null
   try {
-    const createdIssueUrl = await invoke<string>('create_library_link_issue', {
-      libraryName: libName,
-      downloadUrl: inputUrl,
-      referencedBy: selectedModalEntry.value.folderName,
-    })
+    const createdIssueUrl = await Promise.race<string>([
+      invoke<string>('create_library_link_issue', {
+        libraryName: libName,
+        downloadUrl: inputUrl,
+        referencedBy: selectedModalEntry.value.folderName,
+      }),
+      new Promise<string>((_, reject) => {
+        submitTimeoutId = setTimeout(() => {
+          reject(new Error('CONTRIBUTION_SUBMIT_TIMEOUT'))
+        }, CONTRIBUTION_SUBMIT_TIMEOUT_MS)
+      })
+    ])
 
     toastStore.success(t('sceneryManager.contributionCreated'))
     closeContributeLinkModal()
@@ -1066,6 +1081,12 @@ async function handleSubmitContributeLink() {
     } catch {
       modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + getErrorMessage(error))
     }
+  } finally {
+    if (submitTimeoutId !== null) {
+      clearTimeout(submitTimeoutId)
+    }
+    isSubmittingContributeLink.value = false
+    appStore.setLibraryLinkSubmitting(false)
   }
 }
 
@@ -2528,7 +2549,7 @@ const isLoading = computed(() => {
       <div
         v-if="showContributeLinkModal"
         class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-        @click="closeContributeLinkModal"
+        @click="!isSubmittingContributeLink && closeContributeLinkModal()"
       >
         <div
           class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-5"
@@ -2586,15 +2607,27 @@ const isLoading = computed(() => {
           <div class="mt-5 flex justify-end gap-2">
             <button
               @click="closeContributeLinkModal"
+              :disabled="isSubmittingContributeLink"
               class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-sm rounded-lg text-gray-700 dark:text-gray-200"
             >
               {{ t('common.cancel') }}
             </button>
             <button
               @click="handleSubmitContributeLink"
-              class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-sm rounded-lg text-white"
+              :disabled="isSubmittingContributeLink"
+              class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-70 disabled:cursor-not-allowed text-sm rounded-lg text-white inline-flex items-center gap-1.5"
             >
-              {{ t('sceneryManager.submitContribution') }}
+              <svg
+                v-if="isSubmittingContributeLink"
+                class="w-4 h-4 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              {{ isSubmittingContributeLink ? t('sceneryManager.submittingContribution') : t('sceneryManager.submitContribution') }}
             </button>
           </div>
         </div>

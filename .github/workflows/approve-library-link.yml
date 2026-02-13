@@ -26,22 +26,38 @@ jobs:
           script: |
             const body = context.payload.issue.body || '';
 
-            const field = (name) => {
+            const fieldInline = (name) => {
               const re = new RegExp(`^\\s*${name}\\s*:\\s*(.+)$`, 'im');
               const m = body.match(re);
               return m ? m[1].trim() : null;
             };
 
-            let libraryName = field('Library Name');
-            let downloadUrl = field('Download URL');
+            const fieldBySection = (name) => {
+              const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const re = new RegExp(`^###\\s*${escaped}\\s*$([\\s\\S]*?)(?=^###\\s|$)`, 'im');
+              const m = body.match(re);
+              if (!m) {
+                return null;
+              }
+
+              const lines = m[1]
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter((line) => line && line !== '_No response_' && line !== 'No response');
+
+              return lines.length ? lines[0] : null;
+            };
+
+            let libraryName = fieldInline('Library Name') || fieldBySection('Library Name');
+            let downloadUrl = fieldInline('Download URL') || fieldBySection('Download URL');
 
             // Fallback to bullet style from app prefill
             if (!libraryName) {
-              const m = body.match(/-\\s*Library Name\\s*:\\s*`?([^`\\n]+)`?/i);
+              const m = body.match(/-\s*Library Name\s*:\s*`?([^`\n]+)`?/i);
               libraryName = m ? m[1].trim() : null;
             }
             if (!downloadUrl) {
-              const m = body.match(/-\\s*Download URL\\s*:\\s*([^\\s\\n]+)/i);
+              const m = body.match(/-\s*Download URL\s*:\s*([^\s\n]+)/i);
               downloadUrl = m ? m[1].trim() : null;
             }
 
