@@ -7,6 +7,7 @@ mod error;
 mod geo_regions;
 mod hash_collector;
 mod installer;
+mod library_links;
 mod livery_patterns;
 mod logger;
 mod management_index;
@@ -95,6 +96,70 @@ fn get_app_version() -> String {
 #[tauri::command]
 async fn open_url(url: String) -> Result<(), String> {
     opener::open(&url).map_err(|e| format!("Failed to open URL: {}", e))
+}
+
+#[tauri::command]
+async fn create_library_link_issue(
+    library_name: String,
+    download_url: String,
+    referenced_by: Option<String>,
+) -> Result<String, String> {
+    let library_name = library_name.trim();
+    let download_url = download_url.trim();
+
+    if library_name.is_empty() {
+        return Err("Library name is empty".to_string());
+    }
+
+    let parsed_url = reqwest::Url::parse(download_url)
+        .map_err(|_| "Download URL is invalid".to_string())?;
+    if parsed_url.scheme() != "http" && parsed_url.scheme() != "https" {
+        return Err("Download URL must be http/https".to_string());
+    }
+
+    let api_url = std::env::var("XFAST_LINK_API_URL")
+        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/library-link".to_string());
+
+    let client = reqwest::Client::builder()
+        .user_agent("XFast Manager")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client
+        .post(&api_url)
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "libraryName": library_name,
+            "downloadUrl": download_url,
+            "referencedBy": referenced_by
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to create issue: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("Link API error {}: {}", status, error_text));
+    }
+
+    let response_json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse API response: {}", e))?;
+
+    let issue_url = response_json
+        .get("issueUrl")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if issue_url.is_empty() {
+        return Err("Issue created but response URL missing".to_string());
+    }
+
+    Ok(issue_url)
 }
 
 // ============================================================================
@@ -604,6 +669,22 @@ fn get_last_check_time() -> Option<i64> {
     updater::get_last_check_time()
 }
 
+// ========== Library Download Links Commands ==========
+
+#[tauri::command]
+async fn lookup_library_links(
+    library_names: Vec<String>,
+) -> Result<std::collections::HashMap<String, Option<String>>, String> {
+    Ok(library_links::lookup_library_links_local(library_names).await)
+}
+
+#[tauri::command]
+async fn lookup_library_links_remote(
+    library_names: Vec<String>,
+) -> Result<std::collections::HashMap<String, Option<String>>, String> {
+    library_links::lookup_library_links_remote(library_names).await
+}
+
 // ========== Scenery Auto-Sorting Commands ==========
 
 #[tauri::command]
@@ -1083,6 +1164,7 @@ pub fn run() {
             get_platform,
             get_app_version,
             open_url,
+            create_library_link_issue,
             analyze_addons,
             install_addons,
             cancel_installation,
@@ -1106,6 +1188,9 @@ pub fn run() {
             validate_xplane_path,
             check_for_updates,
             get_last_check_time,
+            // Library download links
+            lookup_library_links,
+            lookup_library_links_remote,
             // Scenery auto-sorting commands
             get_scenery_classification,
             sort_scenery_packs,

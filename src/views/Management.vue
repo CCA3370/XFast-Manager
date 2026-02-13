@@ -76,13 +76,21 @@ const showFilterDropdown = ref(false)
 const filterDropdownRef = ref<HTMLElement | null>(null)
 const enabledFilter = ref<'all' | 'enabled' | 'disabled'>('all')
 const isFilterTransitioning = ref(false)
+let activeScrollRequestId = 0
+const COLLAPSE_TRANSITION_WAIT_MS = 380
+const FINAL_CALIBRATION_VIEWPORT_PADDING_PX = 28
 
 // Shared modal state for scenery entry actions
 const selectedModalEntry = ref<SceneryManagerEntry | null>(null)
 const showMissingLibsModal = ref(false)
 const showDuplicateTilesModal = ref(false)
 const showDeleteConfirmModal = ref(false)
-const isSearchingLibs = ref(false)
+const libraryLinksMap = ref<Record<string, string | null>>({})
+const isLoadingLinks = ref(false)
+const libraryLinksRequestSeq = ref(0)
+const showContributeLinkModal = ref(false)
+const contributingLibName = ref('')
+const contributingLibUrl = ref('')
 const isDeletingEntry = ref(false)
 
 // 拖拽自动滚动状态 (非响应式，无需触发渲染)
@@ -752,7 +760,11 @@ const matchedIndices = computed(() => {
   if (!searchQuery.value.trim() || activeTab.value !== 'scenery') return []
   const query = searchQueryLower.value
   return filteredSceneryEntries.value
-    .map((entry, index) => ({ entry, index }))
+    .map((entry) => ({
+      entry,
+      index: getGlobalIndex(entry.folderName)
+    }))
+    .filter(({ index }) => index >= 0)
     .filter(({ entry }) => entry.folderName.toLowerCase().includes(query))
     .map(({ index }) => index)
 })
@@ -907,13 +919,40 @@ function getGlobalIndex(folderName: string): number {
   return globalIndexMap.value.get(folderName) ?? -1
 }
 
-// Delay between opening multiple browser tabs to avoid overwhelming the browser
-const TAB_OPEN_DELAY_MS = 300
-
 // Shared modal handlers for scenery entry actions
-function handleShowMissingLibs(entry: SceneryManagerEntry) {
+async function handleShowMissingLibs(entry: SceneryManagerEntry) {
   selectedModalEntry.value = entry
   showMissingLibsModal.value = true
+  libraryLinksMap.value = {}
+  libraryLinksRequestSeq.value += 1
+  const requestSeq = libraryLinksRequestSeq.value
+
+  // Phase 1: immediate local links (embedded JSON)
+  isLoadingLinks.value = true
+  try {
+    const links: Record<string, string | null> = await invoke('lookup_library_links', {
+      libraryNames: entry.missingLibraries,
+    })
+    libraryLinksMap.value = links
+  } catch {
+    // Silently fail -- per-library download buttons simply won't show
+    libraryLinksMap.value = {}
+  } finally {
+    isLoadingLinks.value = false
+  }
+
+  // Phase 2: remote refresh, then replace current displayed links (add/remove)
+  void invoke<Record<string, string | null>>('lookup_library_links_remote', {
+    libraryNames: entry.missingLibraries,
+  }).then((remoteLinks) => {
+    if (!showMissingLibsModal.value) return
+    if (!selectedModalEntry.value) return
+    if (selectedModalEntry.value.folderName !== entry.folderName) return
+    if (libraryLinksRequestSeq.value !== requestSeq) return
+    libraryLinksMap.value = remoteLinks
+  }).catch(() => {
+    // Keep local links if remote refresh fails
+  })
 }
 
 function handleShowDuplicateTiles(entry: SceneryManagerEntry) {
@@ -936,24 +975,97 @@ function handleCopyMissingLibs() {
   })
 }
 
-async function handleSearchMissingLibs() {
-  if (!selectedModalEntry.value || isSearchingLibs.value) return
+function handleCopySingleLib(libName: string) {
+  navigator.clipboard.writeText(libName).then(() => {
+    toastStore.success(t('sceneryManager.libNameCopied'))
+  }).catch(() => {
+    modalStore.showError(t('copy.copyFailed'))
+  })
+}
 
-  isSearchingLibs.value = true
+async function handleDirectDownload(url: string) {
   try {
-    for (const libName of selectedModalEntry.value.missingLibraries) {
-      const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(libName + ' X-Plane library')}`
+    await invoke('open_url', { url })
+  } catch (error) {
+    modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + getErrorMessage(error))
+  }
+}
 
-      try {
-        await invoke('open_url', { url: bingUrl })
-        await new Promise(resolve => setTimeout(resolve, TAB_OPEN_DELAY_MS))
-      } catch (error) {
-        modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + getErrorMessage(error))
-        break
-      }
+async function handleSearchSingleLib(libName: string) {
+  const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(libName + ' X-Plane library')}`
+  try {
+    await invoke('open_url', { url: bingUrl })
+  } catch (error) {
+    modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + getErrorMessage(error))
+  }
+}
+
+function handleOpenContributeLink(libName: string) {
+  contributingLibName.value = libName
+  contributingLibUrl.value = ''
+  showContributeLinkModal.value = true
+}
+
+function closeContributeLinkModal() {
+  showContributeLinkModal.value = false
+  contributingLibName.value = ''
+  contributingLibUrl.value = ''
+}
+
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+async function handleSubmitContributeLink() {
+  const libName = contributingLibName.value.trim()
+  const inputUrl = contributingLibUrl.value.trim()
+
+  if (!libName || !selectedModalEntry.value) return
+
+  if (!isValidHttpUrl(inputUrl)) {
+    modalStore.showError(t('sceneryManager.invalidContributionUrl'))
+    return
+  }
+
+  const title = `[Library Link] ${libName}`
+  const body = [
+    '### Library Link Submission',
+    '',
+    `- Library Name: \`${libName}\``,
+    `- Download URL: ${inputUrl}`,
+    `- Referenced By Scenery: \`${selectedModalEntry.value.folderName}\``,
+    '',
+    'Please review this link. If valid, add the `approved-link` label to trigger auto-update for `data/library_links.json` on `dev`.'
+  ].join('\n')
+
+  const issueUrl = `https://github.com/CCA3370/XFast-Manager/issues/new?template=library_link_submission.yml&labels=${encodeURIComponent('library-link')}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
+
+  try {
+    const createdIssueUrl = await invoke<string>('create_library_link_issue', {
+      libraryName: libName,
+      downloadUrl: inputUrl,
+      referencedBy: selectedModalEntry.value.folderName,
+    })
+
+    toastStore.success(t('sceneryManager.contributionCreated'))
+    closeContributeLinkModal()
+
+    // Open created issue for user visibility
+    await invoke('open_url', { url: createdIssueUrl })
+  } catch (error) {
+    // Fallback: open prefilled GitHub issue page if direct API creation is unavailable
+    try {
+      await invoke('open_url', { url: issueUrl })
+      toastStore.success(t('sceneryManager.contributionOpened'))
+      closeContributeLinkModal()
+    } catch {
+      modalStore.showError(t('sceneryManager.openUrlFailed') + ': ' + getErrorMessage(error))
     }
-  } finally {
-    isSearchingLibs.value = false
   }
 }
 
@@ -1160,7 +1272,7 @@ function collapseSearchExpandedGroups() {
 
 function ensureGroupExpandedForIndex(index: number) {
   if (showOnlyMissingLibs.value || showOnlyDuplicateTiles.value) return
-  const entry = filteredSceneryEntries.value[index]
+  const entry = allSceneryEntries.value[index]
   if (!entry) return
 
   // First collapse previously expanded groups
@@ -1191,23 +1303,132 @@ function ensureGroupExpandedForIndex(index: number) {
   }
 }
 
+function waitForCollapseTransitions(): Promise<void> {
+  const container = scrollContainerRef.value
+  if (!container) return Promise.resolve()
+
+  const hasActiveCollapseTransition = () => {
+    return !!container.querySelector('.collapse-enter-active, .collapse-leave-active')
+  }
+
+  if (!hasActiveCollapseTransition()) {
+    return Promise.resolve()
+  }
+
+  return new Promise((resolve) => {
+    let settled = false
+
+    const finalize = () => {
+      if (settled) return
+      settled = true
+      container.removeEventListener('transitionend', onTransitionEvent, true)
+      container.removeEventListener('transitioncancel', onTransitionEvent, true)
+      clearTimeout(timeoutId)
+      resolve()
+    }
+
+    const onTransitionEvent = () => {
+      if (!hasActiveCollapseTransition()) {
+        finalize()
+      }
+    }
+
+    const timeoutId = setTimeout(finalize, COLLAPSE_TRANSITION_WAIT_MS)
+    container.addEventListener('transitionend', onTransitionEvent, true)
+    container.addEventListener('transitioncancel', onTransitionEvent, true)
+  })
+}
+
+function estimatePostCollapseDelta(container: HTMLElement, targetElement: HTMLElement): number {
+  const targetRect = targetElement.getBoundingClientRect()
+  let delta = 0
+
+  const transitioning = container.querySelectorAll('.collapse-enter-active, .collapse-leave-active') as NodeListOf<HTMLElement>
+  transitioning.forEach((element) => {
+    const rect = element.getBoundingClientRect()
+    if (rect.bottom <= targetRect.top) {
+      const currentHeight = rect.height
+      if (element.classList.contains('collapse-enter-active')) {
+        const finalHeight = Math.max(element.scrollHeight, currentHeight)
+        delta += finalHeight - currentHeight
+      } else if (element.classList.contains('collapse-leave-active')) {
+        delta -= currentHeight
+      }
+    }
+  })
+
+  return delta
+}
+
+function isSafelyInsideContainerViewport(container: HTMLElement, element: HTMLElement, padding: number): boolean {
+  const containerRect = container.getBoundingClientRect()
+  const elementRect = element.getBoundingClientRect()
+  return elementRect.top >= containerRect.top + padding
+    && elementRect.bottom <= containerRect.bottom - padding
+}
+
 function scrollToMatch(index: number) {
   ensureGroupExpandedForIndex(index)
   highlightedIndex.value = index
+  const requestId = ++activeScrollRequestId
 
-  const attemptScroll = (attempt: number) => {
-    if (highlightedIndex.value !== index) return
-    const element = document.querySelector(`[data-scenery-index="${index}"]`) as HTMLElement | null
+  const attemptScroll = (attempt: number, behavior: ScrollBehavior, predictPostCollapse = false) => {
+    if (highlightedIndex.value !== index || requestId !== activeScrollRequestId) return
+    const container = scrollContainerRef.value
+    if (!container) return
+
+    const element = container.querySelector(`[data-scenery-index="${index}"]`) as HTMLElement | null
     if (element && element.getClientRects().length > 0) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      const containerRect = container.getBoundingClientRect()
+      const elementRect = element.getBoundingClientRect()
+      const currentScrollTop = container.scrollTop
+      const targetScrollTop = currentScrollTop
+        + (elementRect.top - containerRect.top)
+        - (container.clientHeight / 2)
+        + (elementRect.height / 2)
+
+      const predictedDelta = predictPostCollapse
+        ? estimatePostCollapseDelta(container, element)
+        : 0
+
+      const predictedTargetScrollTop = targetScrollTop + predictedDelta
+
+      const clampedScrollTop = Math.max(0, Math.min(
+        predictedTargetScrollTop,
+        container.scrollHeight - container.clientHeight
+      ))
+
+      container.scrollTo({
+        top: clampedScrollTop,
+        behavior
+      })
       return
     }
     if (attempt < 6) {
-      setTimeout(() => attemptScroll(attempt + 1), 60)
+      setTimeout(() => attemptScroll(attempt + 1, behavior, predictPostCollapse), 60)
     }
   }
 
-  setTimeout(() => attemptScroll(0), 0)
+  void nextTick(async () => {
+    if (requestId !== activeScrollRequestId || highlightedIndex.value !== index) return
+
+    // Start scroll immediately so it animates in parallel with collapse/expand animation
+    attemptScroll(0, 'smooth', true)
+
+    // After collapse animation settles, do one precise correction pass
+    await waitForCollapseTransitions()
+    if (requestId !== activeScrollRequestId || highlightedIndex.value !== index) return
+    await nextTick()
+    if (requestId !== activeScrollRequestId || highlightedIndex.value !== index) return
+
+    const container = scrollContainerRef.value
+    const element = container?.querySelector(`[data-scenery-index="${index}"]`) as HTMLElement | null
+    if (container && element && isSafelyInsideContainerViewport(container, element, FINAL_CALIBRATION_VIEWPORT_PADDING_PX)) {
+      return
+    }
+
+    attemptScroll(0, 'auto')
+  })
 }
 
 function handleSearchInput() {
@@ -2177,18 +2398,30 @@ const isLoading = computed(() => {
         @click="showMissingLibsModal = false"
       >
         <div
-          class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full mx-4 flex flex-col"
-          style="max-width: 500px; max-height: 80vh;"
+          class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full mx-4 flex flex-col"
+          style="max-width: 520px; max-height: 80vh;"
           @click.stop
         >
           <!-- Modal Header -->
-          <div class="flex items-center justify-between p-5 pb-3 flex-shrink-0">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('sceneryManager.missingLibrariesTitle') }}
-            </h3>
+          <div class="flex items-center justify-between px-5 pt-4 pb-3 flex-shrink-0">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
+                <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white leading-tight">
+                  {{ t('sceneryManager.missingLibrariesTitle') }}
+                </h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate max-w-[320px]">
+                  {{ selectedModalEntry.folderName }}
+                </p>
+              </div>
+            </div>
             <button
               @click="showMissingLibsModal = false"
-              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+              class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-md"
             >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -2198,57 +2431,170 @@ const isLoading = computed(() => {
 
           <!-- Scrollable Content Area -->
           <div class="flex-1 overflow-y-auto px-5 pb-3 min-h-0">
-            <!-- Scenery Name -->
-            <div class="mb-3 text-sm text-gray-600 dark:text-gray-400">
-              {{ selectedModalEntry.folderName }}
-            </div>
-
             <!-- Missing Libraries List -->
-            <div class="bg-gray-50 dark:bg-gray-900 rounded p-3">
-              <ul class="space-y-1">
-                <li
-                  v-for="lib in selectedModalEntry.missingLibraries"
-                  :key="lib"
-                  class="text-sm text-gray-800 dark:text-gray-200 font-mono"
-                >
-                  • {{ lib }}
-                </li>
-              </ul>
+            <div class="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div
+                v-for="(lib, index) in selectedModalEntry.missingLibraries"
+                :key="lib"
+                class="flex items-center justify-between gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                :class="{ 'border-t border-gray-200 dark:border-gray-700': index > 0 }"
+              >
+                <!-- Library Name with status indicator -->
+                <div class="flex items-center gap-2 min-w-0 flex-1">
+                  <div
+                    class="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    :class="libraryLinksMap[lib] ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'"
+                  ></div>
+                  <span class="text-[13px] text-gray-700 dark:text-gray-200 font-mono truncate">
+                    {{ lib }}
+                  </span>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex items-center gap-0.5 flex-shrink-0">
+                  <!-- Copy -->
+                  <button
+                    @click="handleCopySingleLib(lib)"
+                    class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    :title="t('sceneryManager.copyAllLibNames')"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+
+                  <!-- Direct Download -->
+                  <button
+                    v-if="libraryLinksMap[lib]"
+                    @click="handleDirectDownload(libraryLinksMap[lib]!)"
+                    class="px-2 py-1 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 rounded bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-800/40 transition-colors flex items-center gap-1.5 text-xs font-medium"
+                    :title="t('sceneryManager.directDownload')"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    {{ t('sceneryManager.directDownload') }}
+                  </button>
+
+                  <!-- Bing Search (only when no direct link) -->
+                  <button
+                    v-else
+                    @click="handleSearchSingleLib(lib)"
+                    class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    :title="t('sceneryManager.searchOnBing')"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </button>
+
+                  <button
+                    v-if="!libraryLinksMap[lib]"
+                    @click="handleOpenContributeLink(lib)"
+                    class="px-2 py-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 rounded bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-800/40 transition-colors text-xs font-medium"
+                    :title="t('sceneryManager.contributeLink')"
+                  >
+                    {{ t('sceneryManager.contributeLink') }}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Action Buttons (Fixed at bottom) -->
-          <div class="flex flex-col gap-2 p-5 pt-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
-            <div class="flex gap-2">
-              <button
-                @click="handleCopyMissingLibs"
-                class="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                {{ t('sceneryManager.copyAllLibNames') }}
-              </button>
-              <button
-                @click="handleSearchMissingLibs"
-                :disabled="isSearchingLibs"
-                class="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-green-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                <svg v-if="!isSearchingLibs" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                {{ isSearchingLibs ? t('sceneryManager.searching') : t('sceneryManager.searchOnBing') }}
-              </button>
-            </div>
+          <!-- Footer -->
+          <div class="flex gap-2 px-5 py-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
+            <button
+              @click="handleCopyMissingLibs"
+              class="flex-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm rounded-lg transition-colors flex items-center justify-center gap-1.5"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              {{ t('sceneryManager.copyAllLibNames') }}
+            </button>
             <button
               @click="showMissingLibsModal = false"
-              class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
+              class="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm rounded-lg transition-colors"
             >
               {{ t('common.close') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Contribution Link Modal -->
+    <Teleport to="body">
+      <div
+        v-if="showContributeLinkModal"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+        @click="closeContributeLinkModal"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-5"
+          @click.stop
+        >
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+            {{ t('sceneryManager.contributeLinkTitle') }}
+          </h3>
+          <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+            {{ t('sceneryManager.contributeLinkDesc') }}
+          </p>
+
+          <div class="mt-4 space-y-3">
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('sceneryManager.libraryNameLabel') }}</label>
+              <div class="relative">
+                <input
+                  :value="contributingLibName"
+                  disabled
+                  class="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 pl-3 pr-20 py-2 text-sm text-gray-700 dark:text-gray-200"
+                />
+                <div class="absolute inset-y-0 right-2 flex items-center gap-1">
+                  <button
+                    @click="handleCopySingleLib(contributingLibName)"
+                    class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    :title="t('sceneryManager.copyAllLibNames')"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+                  <button
+                    @click="handleSearchSingleLib(contributingLibName)"
+                    class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    :title="t('sceneryManager.searchOnBing')"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('sceneryManager.downloadUrlLabel') }}</label>
+              <input
+                v-model="contributingLibUrl"
+                type="url"
+                :placeholder="t('sceneryManager.downloadUrlPlaceholder')"
+                class="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
+              />
+            </div>
+          </div>
+
+          <div class="mt-5 flex justify-end gap-2">
+            <button
+              @click="closeContributeLinkModal"
+              class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-sm rounded-lg text-gray-700 dark:text-gray-200"
+            >
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              @click="handleSubmitContributeLink"
+              class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-sm rounded-lg text-white"
+            >
+              {{ t('sceneryManager.submitContribution') }}
             </button>
           </div>
         </div>

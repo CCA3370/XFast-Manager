@@ -9,54 +9,19 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/CCA3370/XFast-Manager/stargazers">
-    <img src="https://img.shields.io/github/stars/CCA3370/XFast-Manager?style=flat" alt="Stars">
-  </a>
-  <a href="https://github.com/CCA3370/XFast-Manager/issues">
-    <img src="https://img.shields.io/github/issues/CCA3370/XFast-Manager" alt="Issues">
-  </a>
-  <a href="https://github.com/CCA3370/XFast-Manager/commits">
-    <img src="https://img.shields.io/github/last-commit/CCA3370/XFast-Manager" alt="Last Commit">
-  <a href="https://github.com/CCA3370/XFast-Manager/releases">
-    <img src="https://img.shields.io/github/v/release/CCA3370/XFast-Manager?display_name=tag" alt="Latest Release">
-  </a>
-  <a href="https://img.shields.io/github/downloads/CCA3370/XFast-Manager/total.svg">
-    <img src="https://img.shields.io/github/downloads/CCA3370/XFast-Manager/total.svg" alt="Downloads">
-  </a>
-  <a href="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue">
-    <img src="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue" alt="Platforms">
-  </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License">
-  </a>
+  <a href="https://github.com/CCA3370/XFast-Manager/stargazers"><img src="https://img.shields.io/github/stars/CCA3370/XFast-Manager?style=flat" alt="Stars"></a>&nbsp;
+  <a href="https://github.com/CCA3370/XFast-Manager/issues"><img src="https://img.shields.io/github/issues/CCA3370/XFast-Manager" alt="Issues"></a>&nbsp;
+  <a href="https://github.com/CCA3370/XFast-Manager/releases"><img src="https://img.shields.io/github/v/release/CCA3370/XFast-Manager?display_name=tag" alt="Latest Release"></a>&nbsp;
+  <a href="https://img.shields.io/github/downloads/CCA3370/XFast-Manager/total.svg"><img src="https://img.shields.io/github/downloads/CCA3370/XFast-Manager/total.svg" alt="Downloads"></a>&nbsp;
+  <a href="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue"><img src="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue" alt="Platforms"></a>&nbsp;
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/CCA3370/XFast-Manager/releases" class="download-button">Download Latest Release</a>
+  <a href="https://github.com/CCA3370/XFast-Manager/releases">
+    <img src="https://img.shields.io/badge/Download-Latest%20Release-2ea44f?style=for-the-badge" alt="Download Latest Release" height="56">
+  </a>
 </p>
-
-<style>
-  a {
-    text-decoration: none;
-  }
-  .download-button {
-    display: inline-block;
-    background-color: #2ea44f;
-    color: white !important;
-    padding: 10px 24px;
-    border-radius: 6px;
-    font-weight: bold;
-    font-size: 16px;
-    margin: 4px 0 10px 0;
-    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
-    transition: all 0.2s ease;
-  }
-  .download-button:hover {
-    background-color: #2c974b;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-  }
-</style>
 
 XFast Manager makes installing and managing X-Plane addons effortless. Drop in a file and get a ready-to-fly setup in minutes. Available for Windows, macOS, and Linux.
 

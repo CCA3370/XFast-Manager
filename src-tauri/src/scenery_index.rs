@@ -575,7 +575,7 @@ impl SceneryIndexManager {
                 }
 
                 // Check if this library name is in the library index
-                if !library_index.contains_key(lib_name) {
+                if !library_index.contains_key(&lib_name.to_lowercase()) {
                     missing.push(lib_name.clone());
                 }
             }
@@ -750,6 +750,13 @@ impl SceneryIndexManager {
 
                 // Check if package is new or modified
                 if let Some(existing) = index.packages.get(*name) {
+                    // Recovery path: if a package has library.txt but currently no exported
+                    // library names in index, force one re-classification so parser fixes
+                    // are applied during incremental scans (e.g., non-UTF8 library.txt).
+                    if existing.has_library_txt && existing.exported_library_names.is_empty() {
+                        return true;
+                    }
+
                     // Compare modification times
                     if let Ok(metadata) = fs::metadata(path) {
                         if let Ok(modified) = metadata.modified() {
@@ -1401,31 +1408,40 @@ pub fn parse_library_exports(library_txt_path: &Path) -> HashSet<String> {
     }
 
     // Read and parse library.txt
-    if let Ok(file) = fs::File::open(library_txt_path) {
-        let reader = BufReader::new(file);
+    // Use lossy UTF-8 decoding so ANSI / non-UTF8 comments don't abort parsing.
+    if let Ok(bytes) = fs::read(library_txt_path) {
+        let content = String::from_utf8_lossy(&bytes);
 
-        for line in reader.lines().map_while(Result::ok) {
+        for line in content.lines() {
             let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
 
-            // Look for EXPORT lines (may have space or tab after EXPORT)
-            if trimmed.starts_with("EXPORT") && trimmed.len() > 6 {
-                // Skip "EXPORT" and any whitespace
-                let after_export = &trimmed[6..].trim_start();
+            // Format: EXPORT <virtual_path> <actual_path>
+            //     or EXPORT_EXTEND <virtual_path> <actual_path>
+            let mut parts = trimmed.split_whitespace();
+            let directive = match parts.next() {
+                Some(value) => value,
+                None => continue,
+            };
 
-                // Format: <virtual_path> <actual_path>
-                // We want the first component of <virtual_path>
-                let parts: Vec<&str> = after_export.split_whitespace().collect();
-                if !parts.is_empty() {
-                    let virtual_path = parts[0];
-                    // Extract first path component (library name)
-                    // Support both forward slash and backslash
-                    let first_component = virtual_path.split(&['/', '\\'][..]).next();
+            if !directive.eq_ignore_ascii_case("EXPORT")
+                && !directive.eq_ignore_ascii_case("EXPORT_EXTEND")
+            {
+                continue;
+            }
 
-                    if let Some(component) = first_component {
-                        if !component.is_empty() {
-                            library_names.insert(component.to_string());
-                        }
-                    }
+            let virtual_path = match parts.next() {
+                Some(value) => value,
+                None => continue,
+            };
+
+            // Extract first path component (library name)
+            // Support both forward slash and backslash
+            if let Some(component) = virtual_path.split(&['/', '\\'][..]).next() {
+                if !component.is_empty() {
+                    library_names.insert(component.to_string());
                 }
             }
         }
@@ -1443,7 +1459,7 @@ pub fn build_library_index_from_scenery_index(index: &SceneryIndex) -> HashMap<S
         // Only process packages with exported library names
         if !package_info.exported_library_names.is_empty() {
             for lib_name in &package_info.exported_library_names {
-                library_index.insert(lib_name.clone(), folder_name.clone());
+                library_index.insert(lib_name.to_lowercase(), folder_name.clone());
             }
         }
     }
