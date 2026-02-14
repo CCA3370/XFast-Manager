@@ -946,6 +946,7 @@ async function handleShowMissingLibs(entry: SceneryManagerEntry) {
   // Phase 2: remote refresh, then replace current displayed links (add/remove)
   void invoke<Record<string, string | null>>('lookup_library_links_remote', {
     libraryNames: entry.missingLibraries,
+    forceRefresh: true,
   }).then((remoteLinks) => {
     if (!showMissingLibsModal.value) return
     if (!selectedModalEntry.value) return
