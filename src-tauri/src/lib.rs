@@ -681,8 +681,9 @@ async fn lookup_library_links(
 #[tauri::command]
 async fn lookup_library_links_remote(
     library_names: Vec<String>,
+    force_refresh: Option<bool>,
 ) -> Result<std::collections::HashMap<String, Option<String>>, String> {
-    library_links::lookup_library_links_remote(library_names).await
+    library_links::lookup_library_links_remote(library_names, force_refresh.unwrap_or(false)).await
 }
 
 // ========== Scenery Auto-Sorting Commands ==========

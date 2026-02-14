@@ -88,9 +88,9 @@ fn hardcoded_links() -> HashMap<String, String> {
 
 /// Fetch library links from the remote JSON, with in-memory caching.
 /// Returns an error on fetch/parse failure.
-async fn get_remote_links() -> Result<HashMap<String, String>, String> {
+async fn get_remote_links(force_refresh: bool) -> Result<HashMap<String, String>, String> {
     // Check cache first
-    {
+    if !force_refresh {
         let cache = CACHE.lock().unwrap();
         if let Some(ref cached) = *cache {
             if cached.fetched_at.elapsed().unwrap_or(CACHE_TTL) < CACHE_TTL {
@@ -175,8 +175,9 @@ pub async fn lookup_library_links_local(
 /// Uses in-memory cache and returns error when remote is unavailable.
 pub async fn lookup_library_links_remote(
     library_names: Vec<String>,
+    force_refresh: bool,
 ) -> Result<HashMap<String, Option<String>>, String> {
-    let links_db = get_remote_links().await?;
+    let links_db = get_remote_links(force_refresh).await?;
 
     Ok(library_names
         .into_iter()

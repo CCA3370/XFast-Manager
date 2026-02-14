@@ -168,3 +168,24 @@ jobs:
               issue_number,
               state: 'closed'
             });
+
+      - name: Comment and close on failure
+        if: failure() && !cancelled()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue_number = context.payload.issue.number;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body: '❌ Approval automation failed (for example: issue fields could not be parsed or URL validation failed). Please fix the issue content and re-apply the `approved-link` label. Issue closed automatically.'
+            });
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              state: 'closed'
+            });
