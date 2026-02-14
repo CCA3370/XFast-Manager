@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"updated": "2026-02-13",
+	"updated": "2026-02-14",
 	"libraries": {
 		"3d_people": "https://forums.x-plane.org/index.php?/files/file/26611-3d-people-library/",
 		"adsparks_library": "https://forums.x-plane.org/files/file/47600-parking-stands-signs/",
@@ -8,6 +8,7 @@
 		"bs2001_objects": "https://forums.x-plane.org/files/file/28045-bs2001-object-library/",
 		"cdb-library": "https://forums.x-plane.org/index.php?/files/file/27907-cdb-library/",
 		"cemetery": "https://forums.x-plane.org/files/file/24521-cemetery-library/",
+		"devinci_library": "https://forums.x-plane.org/files/file/63107-devinci-library/",
 		"european_vehicles_static": "https://forums.x-plane.org/files/file/24708-library-european-vehicles-static/",
 		"faib_aircraft": "https://forums.x-plane.org/files/file/29079-the-faib-aircraft-library/",
 		"fjs_scenery_library": "https://forums.x-plane.org/files/file/28594-fjs_scenery_library/",
@@ -21,8 +22,8 @@
 		"opensam": "https://github.com/hotbso/openSAM/releases/latest",
 		"opensceneryx": "https://www.opensceneryx.com/",
 		"people_lib": "http://www.x-plane.at/drupal/node/191",
+		"pm_library": "https://forums.x-plane.org/files/file/29185-pm_library-objects-for-scenery/",
 		"pplibrary": "https://forums.x-plane.org/index.php?/files/file/37088-pavement-paintings-library-pplibrary/",
-		"pm_library": "https://forums.x-plane.org/files/file/29185-pm_library-objects-for-scenery/", 
 		"prefab": "https://forums.x-plane.org/files/file/27582-prefab-scenery-for-25000-airports/",
 		"r2_library": "https://flyawaysimulation.com/downloads/files/24312/r2-scenery-library/",
 		"rd_library": "https://rdesignx.weebly.com/freeware.html",
