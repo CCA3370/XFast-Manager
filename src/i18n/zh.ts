@@ -547,6 +547,13 @@ export default {
     deleteSuccess: '脚本删除成功',
     deleteFailed: '删除脚本失败',
   },
+  sponsor: {
+    title: '赞助',
+    subtitle: '感谢您的支持',
+    wechat: '微信支付',
+    alipay: '支付宝',
+    scanTip: '请使用对应 App 扫码'
+  },
   contextMenu: {
     enable: '启用',
     disable: '禁用',

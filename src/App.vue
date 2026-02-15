@@ -92,6 +92,22 @@
         <div class="h-6 w-px bg-gray-200 dark:bg-white/10 transition-colors"></div>
 
         <div class="flex items-center space-x-1">
+          <!-- Sponsor button (Chinese locale only) -->
+          <button
+            v-if="locale === 'zh'"
+            @click="showSponsor = true"
+            class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300 text-gray-600 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400"
+            :title="$t('sponsor.title')"
+          >
+            <div
+              class="absolute inset-0 bg-pink-50 dark:bg-pink-500/10 rounded-lg transition-all duration-300 transform origin-center scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50"
+            ></div>
+            <span class="relative flex items-center z-10">
+              <svg class="w-4 h-4 sponsor-heartbeat" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+              </svg>
+            </span>
+          </button>
           <!-- Always on top button -->
           <button
             @click="toggleAlwaysOnTop"
@@ -134,6 +150,7 @@
     <ErrorModal />
     <ConfirmModal />
     <ContextMenu />
+    <SponsorModal :show="showSponsor" @close="showSponsor = false" />
   </div>
 </template>
 
@@ -157,8 +174,9 @@ import AnimatedText from '@/components/AnimatedText.vue'
 import ErrorModal from '@/components/ErrorModal.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import ContextMenu from '@/components/ContextMenu.vue'
+import SponsorModal from '@/components/SponsorModal.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const store = useAppStore()
 const updateStore = useUpdateStore()
 const sceneryStore = useSceneryStore()
@@ -169,6 +187,7 @@ const isOnboardingRoute = computed(() => route.path === '/onboarding')
 
 // Always on top state
 const isAlwaysOnTop = ref(false)
+const showSponsor = ref(false)
 
 async function toggleAlwaysOnTop() {
   try {
@@ -496,6 +515,19 @@ nav {
 
 .nav-link:hover::before {
   left: 100%;
+}
+
+/* Sponsor heart: intermittent red pulse every 4s */
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1); color: inherit; }
+  6% { transform: scale(1.25); color: #ef4444; }
+  12% { transform: scale(1); color: #ef4444; }
+  16% { transform: scale(1.2); color: #ef4444; }
+  22% { transform: scale(1); color: inherit; }
+}
+
+.sponsor-heartbeat {
+  animation: heartbeat 10s ease-in-out infinite;
 }
 
 </style>

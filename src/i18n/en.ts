@@ -534,6 +534,13 @@ export default {
     deleteSuccess: 'Script deleted successfully',
     deleteFailed: 'Failed to delete script',
   },
+  sponsor: {
+    title: 'Sponsor',
+    subtitle: 'Thank you for your support',
+    wechat: 'WeChat Pay',
+    alipay: 'Alipay',
+    scanTip: 'Scan with the corresponding app'
+  },
   contextMenu: {
     enable: 'Enable',
     disable: 'Disable',
