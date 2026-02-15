@@ -364,6 +364,12 @@ impl SceneryPacksManager {
             .filter(|(folder, _)| index.packages.contains_key(folder))
             .collect();
 
+        // If ini has entries not in the index (e.g., deleted scenery folders),
+        // it's out of sync and needs updating
+        if ini_entries_filtered.len() != ini_entries.len() {
+            return Ok(false);
+        }
+
         // Compare count of index entries
         if ini_entries_filtered.len() != packages.len() {
             return Ok(false);

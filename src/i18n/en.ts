@@ -452,7 +452,13 @@ export default {
     clickToViewDuplicates: 'Click to view duplicate tiles',
     filters: 'Filters',
     showOnlyEnabled: 'Enabled Only',
-    showOnlyDisabled: 'Disabled Only'
+    showOnlyDisabled: 'Disabled Only',
+    indexChangesTitle: 'Scenery Changes Detected',
+    indexChangesDesc: 'The following scenery folders have changed:',
+    indexChangesAdded: 'Added',
+    indexChangesRemoved: 'Removed',
+    indexChangesUpdated: 'Updated',
+    indexChangesSyncToIni: 'Sync to ini file'
   },
   geo: {
     continents: {

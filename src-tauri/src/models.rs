@@ -474,9 +474,9 @@ pub struct SceneryIndexStatus {
 #[serde(rename_all = "camelCase")]
 pub struct SceneryIndexScanResult {
     pub index_exists: bool,
-    pub added: usize,
-    pub removed: usize,
-    pub updated: usize,
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+    pub updated: Vec<String>,
 }
 
 /// Entry for scenery manager UI

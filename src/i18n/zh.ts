@@ -465,7 +465,13 @@ export default {
     clickToViewDuplicates: '点击查看重复地块',
     filters: '筛选',
     showOnlyEnabled: '仅显示已启用',
-    showOnlyDisabled: '仅显示未启用'
+    showOnlyDisabled: '仅显示未启用',
+    indexChangesTitle: '检测到地景变化',
+    indexChangesDesc: '以下地景文件夹发生了变化：',
+    indexChangesAdded: '新增',
+    indexChangesRemoved: '已移除',
+    indexChangesUpdated: '已更新',
+    indexChangesSyncToIni: '同步到 ini 文件'
   },
   geo: {
     continents: {

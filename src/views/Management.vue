@@ -114,6 +114,8 @@ const collapsedContinentCategories = ref<Record<string, boolean>>({})
 
 // Index update state
 const isUpdatingIndex = ref(false)
+const showIndexChangesModal = ref(false)
+const indexChangesResult = ref<SceneryIndexScanResult | null>(null)
 
 // Whether any filter is active (for button highlight)
 const hasActiveFilters = computed(() => {
@@ -284,16 +286,35 @@ async function runSceneryIndexScan() {
 
     if (!result.indexExists) return
 
-    const hasChanges = result.added + result.removed + result.updated > 0
+    const hasChanges = result.added.length + result.removed.length + result.updated.length > 0
     if (hasChanges && !sceneryStore.hasLocalChanges) {
       // Reload scenery data to reflect changes
       await sceneryStore.loadData()
       syncLocalEntries()
+      // Show changes modal
+      indexChangesResult.value = result
+      showIndexChangesModal.value = true
     }
   } catch (error) {
     logError(`Failed to quick scan scenery index: ${error}`, 'management')
   } finally {
     isUpdatingIndex.value = false
+  }
+}
+
+function dismissIndexChangesModal() {
+  showIndexChangesModal.value = false
+  indexChangesResult.value = null
+}
+
+async function handleIndexChangesSyncToIni() {
+  try {
+    await sceneryStore.applyChanges()
+    toastStore.success(t('sceneryManager.changesApplied'))
+    syncLocalEntries()
+    dismissIndexChangesModal()
+  } catch (e) {
+    modalStore.showError(t('sceneryManager.applyFailed'))
   }
 }
 
@@ -2695,6 +2716,113 @@ const isLoading = computed(() => {
               class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
             >
               {{ t('common.close') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Index Changes Modal -->
+    <Teleport to="body">
+      <div
+        v-if="showIndexChangesModal && indexChangesResult"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        @click="dismissIndexChangesModal"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full mx-4 flex flex-col"
+          style="max-width: 520px; max-height: 80vh;"
+          @click.stop
+        >
+          <!-- Modal Header -->
+          <div class="flex items-center justify-between px-5 pt-4 pb-3 flex-shrink-0">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
+                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white leading-tight">
+                  {{ t('sceneryManager.indexChangesTitle') }}
+                </h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {{ t('sceneryManager.indexChangesDesc') }}
+                </p>
+              </div>
+            </div>
+            <button
+              @click="dismissIndexChangesModal"
+              class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-md"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Badges summary (fixed, not scrollable) -->
+          <div class="flex items-center gap-2 px-5 pb-2.5 flex-wrap flex-shrink-0">
+            <span v-if="indexChangesResult.added.length > 0" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400">
+              + {{ t('sceneryManager.indexChangesAdded') }} {{ indexChangesResult.added.length }}
+            </span>
+            <span v-if="indexChangesResult.removed.length > 0" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400">
+              - {{ t('sceneryManager.indexChangesRemoved') }} {{ indexChangesResult.removed.length }}
+            </span>
+            <span v-if="indexChangesResult.updated.length > 0" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+              ~ {{ t('sceneryManager.indexChangesUpdated') }} {{ indexChangesResult.updated.length }}
+            </span>
+          </div>
+
+          <!-- Scrollable Content Area -->
+          <div class="flex-1 overflow-y-auto px-5 pb-3 min-h-0">
+            <!-- Combined list -->
+            <div class="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div
+                v-for="(item, index) in [
+                  ...indexChangesResult.added.map(n => ({ name: n, type: 'added' })),
+                  ...indexChangesResult.removed.map(n => ({ name: n, type: 'removed' })),
+                  ...indexChangesResult.updated.map(n => ({ name: n, type: 'updated' }))
+                ]"
+                :key="item.type + '-' + item.name"
+                class="px-3 py-1.5"
+                :class="[
+                  index > 0 ? 'border-t border-gray-200 dark:border-gray-700' : '',
+                  item.type === 'added' ? 'bg-green-50 dark:bg-green-900/20' : '',
+                  item.type === 'removed' ? 'bg-red-50 dark:bg-red-900/20' : '',
+                  item.type === 'updated' ? 'bg-amber-50 dark:bg-amber-900/20' : ''
+                ]"
+              >
+                <span
+                  class="text-[13px] font-mono"
+                  :class="[
+                    item.type === 'added' ? 'text-green-800 dark:text-green-300' : '',
+                    item.type === 'removed' ? 'text-red-800 dark:text-red-300' : '',
+                    item.type === 'updated' ? 'text-amber-800 dark:text-amber-300' : ''
+                  ]"
+                >{{ item.name }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div class="flex gap-2 px-5 py-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
+            <button
+              @click="dismissIndexChangesModal"
+              class="flex-1 px-4 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm rounded-lg transition-colors"
+            >
+              {{ t('common.close') }}
+            </button>
+            <button
+              @click="handleIndexChangesSyncToIni"
+              :disabled="sceneryStore.isSaving"
+              class="flex-1 px-4 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm rounded-lg transition-colors flex items-center justify-center gap-1.5"
+            >
+              <svg v-if="sceneryStore.isSaving" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              {{ t('sceneryManager.indexChangesSyncToIni') }}
             </button>
           </div>
         </div>

@@ -910,35 +910,50 @@ impl SceneryIndexManager {
         if !has_packages {
             return Ok(SceneryIndexScanResult {
                 index_exists: false,
-                added: 0,
-                removed: 0,
-                updated: 0,
+                added: Vec::new(),
+                removed: Vec::new(),
+                updated: Vec::new(),
             });
         }
 
         let before_index = self.load_index()?;
         let before_keys: HashSet<String> = before_index.packages.keys().cloned().collect();
-        let before_indexed_at: HashMap<String, SystemTime> = before_index
-            .packages
-            .iter()
-            .map(|(name, info)| (name.clone(), info.indexed_at))
-            .collect();
 
         let after_index = self.update_index()?;
         let after_keys: HashSet<String> = after_index.packages.keys().cloned().collect();
 
-        let added = after_keys.difference(&before_keys).count();
-        let removed = before_keys.difference(&after_keys).count();
-        let updated = after_index
+        let mut added: Vec<String> = after_keys.difference(&before_keys).cloned().collect();
+        added.sort();
+        let mut removed: Vec<String> = before_keys.difference(&after_keys).cloned().collect();
+        removed.sort();
+
+        // For "updated", compare actual content changes (not just indexed_at timestamp)
+        // Some folders get re-indexed every time due to mtime changes from antivirus/sync tools,
+        // but their actual classification hasn't changed - don't report those as updates.
+        let mut updated: Vec<String> = after_index
             .packages
             .iter()
             .filter(|(name, info)| {
-                before_indexed_at
-                    .get(*name)
-                    .map(|before_time| info.indexed_at > *before_time)
-                    .unwrap_or(false)
+                // Must exist in both before and after (not added/removed)
+                if let Some(before_info) = before_index.packages.get(*name) {
+                    // Only count as updated if indexed_at changed AND actual content differs
+                    info.indexed_at > before_info.indexed_at
+                        && (info.category != before_info.category
+                            || info.sub_priority != before_info.sub_priority
+                            || info.enabled != before_info.enabled
+                            || info.has_apt_dat != before_info.has_apt_dat
+                            || info.has_dsf != before_info.has_dsf
+                            || info.has_library_txt != before_info.has_library_txt
+                            || info.missing_libraries != before_info.missing_libraries
+                            || info.exported_library_names != before_info.exported_library_names
+                            || info.earth_nav_tile_count != before_info.earth_nav_tile_count)
+                } else {
+                    false
+                }
             })
-            .count();
+            .map(|(name, _)| name.clone())
+            .collect();
+        updated.sort();
 
         Ok(SceneryIndexScanResult {
             index_exists: true,

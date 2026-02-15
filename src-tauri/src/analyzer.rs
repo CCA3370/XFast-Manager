@@ -682,13 +682,22 @@ impl Analyzer {
                     }
                     AddonType::Plugin => xplane_root.join("Resources").join("plugins"),
                     AddonType::Navdata => {
-                        // For GNS430: target is Custom Data/GNS430
-                        // For regular navdata: target is Custom Data
-                        if item.display_name.contains("GNS430") {
-                            xplane_root.join("Custom Data").join("GNS430")
-                        } else {
-                            xplane_root.join("Custom Data")
-                        }
+                        // Navdata install path overrides.
+                        // Each entry: (keyword, sub-path components under "Custom Data").
+                        // Checked in order; first match wins. Default fallback is "Custom Data" root.
+                        const NAVDATA_INSTALL_PATHS: &[(&str, &[&str])] = &[
+                            ("GNS430", &["GNS430"]),
+                            ("FlightFactor Boeing 777v2", &["STSFF", "nav-data", "ndbl", "data"]),
+                        ];
+
+                        let custom_data = xplane_root.join("Custom Data");
+                        NAVDATA_INSTALL_PATHS
+                            .iter()
+                            .find(|(keyword, _)| item.display_name.contains(keyword))
+                            .map(|(_, components)| {
+                                components.iter().fold(custom_data.clone(), |p, c| p.join(c))
+                            })
+                            .unwrap_or(custom_data)
                     }
                     AddonType::Livery | AddonType::LuaScript => unreachable!(), // Already handled above
                 };

@@ -259,9 +259,9 @@ export interface SceneryIndexStatus {
 
 export interface SceneryIndexScanResult {
   indexExists: boolean;
-  added: number;
-  removed: number;
-  updated: number;
+  added: string[];
+  removed: string[];
+  updated: string[];
 }
 
 export interface SceneryManagerEntry {

@@ -3392,6 +3392,18 @@ impl Scanner {
     }
 
     // Type D: Navdata Detection
+
+    /// Known navdata format keywords.
+    /// A cycle.json `name` is accepted if it contains any of these strings.
+    const NAVDATA_KNOWN_FORMATS: &[&str] = &[
+        "X-Plane",
+        "FlightFactor Boeing 777v2",
+    ];
+
+    fn is_known_navdata_format(name: &str) -> bool {
+        Self::NAVDATA_KNOWN_FORMATS.iter().any(|fmt| name.contains(fmt))
+    }
+
     fn check_navdata(&self, file_path: &Path, _root: &Path) -> Result<Option<DetectedItem>> {
         if file_path.file_name().and_then(|s| s.to_str()) != Some("cycle.json") {
             return Ok(None);
@@ -3414,10 +3426,7 @@ impl Scanner {
         };
 
         // Validate navdata format
-        if !cycle.name.contains("X-Plane")
-            && !cycle.name.contains("X-Plane 11")
-            && !cycle.name.contains("X-Plane GNS430")
-        {
+        if !Self::is_known_navdata_format(&cycle.name) {
             return Err(anyhow::anyhow!("Unknown Navdata Format: {}", cycle.name));
         }
 
@@ -3457,10 +3466,7 @@ impl Scanner {
         };
 
         // Validate navdata format
-        if !cycle.name.contains("X-Plane")
-            && !cycle.name.contains("X-Plane 11")
-            && !cycle.name.contains("X-Plane GNS430")
-        {
+        if !Self::is_known_navdata_format(&cycle.name) {
             return Err(anyhow::anyhow!("Unknown Navdata Format: {}", cycle.name));
         }
 
