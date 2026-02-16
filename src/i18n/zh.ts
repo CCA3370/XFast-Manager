@@ -462,7 +462,12 @@ export default {
     duplicateTiles: '重复地块',
     duplicateTilesTitle: '重复的DSF地块',
     duplicateTilesDesc: '这些地景包含相同坐标的DSF地块。只有最高优先级的地景包的地块会被使用。',
-    clickToViewDuplicates: '点击查看重复地块',
+    clickToViewDuplicates: '点击查看重复',
+    duplicates: '重复',
+    duplicatesTitle: '重复',
+    duplicateTilesSection: '重复的DSF地块',
+    duplicateAirportsSection: '重复的机场',
+    duplicateAirportsDesc: '这些地景包定义了相同的机场（标识符：{id}）。X-Plane只会使用最高优先级的地景包。',
     filters: '筛选',
     showOnlyEnabled: '仅显示已启用',
     showOnlyDisabled: '仅显示未启用',
@@ -552,7 +557,9 @@ export default {
     subtitle: '感谢您的支持',
     wechat: '微信支付',
     alipay: '支付宝',
-    scanTip: '请使用对应 App 扫码'
+    scanTip: '请使用对应 App 扫码',
+    onboardingTitle: '支持开发者',
+    onboardingDesc: '如果这个工具对你有帮助，欢迎请作者喝杯咖啡'
   },
   contextMenu: {
     enable: '启用',

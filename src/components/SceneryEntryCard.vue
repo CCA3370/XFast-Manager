@@ -70,6 +70,18 @@ const categoryConfig = computed(() => {
 
 const hasMissingDeps = computed(() => props.entry.missingLibraries.length > 0)
 const hasDuplicateTiles = computed(() => props.entry.duplicateTiles && props.entry.duplicateTiles.length > 0)
+const hasDuplicateAirports = computed(() => props.entry.duplicateAirports && props.entry.duplicateAirports.length > 0)
+const hasDuplicates = computed(() => hasDuplicateTiles.value || hasDuplicateAirports.value)
+const duplicatesCount = computed(() => {
+  const all = new Set<string>()
+  if (props.entry.duplicateTiles) {
+    for (const p of props.entry.duplicateTiles) all.add(p)
+  }
+  if (props.entry.duplicateAirports) {
+    for (const p of props.entry.duplicateAirports) all.add(p)
+  }
+  return all.size
+})
 const isFirst = computed(() => props.index === 0)
 const isLast = computed(() => props.index === props.totalCount - 1)
 
@@ -107,8 +119,8 @@ function handleClick(event: Event) {
   if (hasMissingDeps.value) {
     event.stopPropagation()
     emit('show-missing-libs', props.entry)
-  } else if (hasDuplicateTiles.value) {
-    // If has duplicate tiles (but no missing deps), show that modal
+  } else if (hasDuplicates.value) {
+    // If has duplicates (but no missing deps), show that modal
     event.stopPropagation()
     emit('show-duplicate-tiles', props.entry)
   }
@@ -154,10 +166,10 @@ function handleContextMenu(event: MouseEvent) {
     })
   }
 
-  if (hasDuplicateTiles.value) {
+  if (hasDuplicates.value) {
     menuItems.push({
       id: 'show-duplicate-tiles',
-      label: t('sceneryManager.duplicateTiles'),
+      label: t('sceneryManager.duplicates'),
       icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"/></svg>'
     })
   }
@@ -225,7 +237,7 @@ function handleContextMenu(event: MouseEvent) {
         : (entry.enabled
           ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
           : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200/50 dark:border-gray-700/50 opacity-60'),
-      (hasMissingDeps || hasDuplicateTiles) ? 'cursor-pointer' : ''
+      (hasMissingDeps || hasDuplicates) ? 'cursor-pointer' : ''
     ]"
     @click="handleClick"
     @dblclick="handleDoubleClick"
@@ -270,9 +282,9 @@ function handleContextMenu(event: MouseEvent) {
       <span class="text-[10px] font-medium">{{ entry.missingLibraries.length }}</span>
     </div>
 
-    <!-- Duplicate tiles warning badge -->
+    <!-- Duplicate warning badge -->
     <div
-      v-if="hasDuplicateTiles"
+      v-if="hasDuplicates"
       class="flex-shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 cursor-pointer"
       :title="t('sceneryManager.clickToViewDuplicates')"
       @click.stop="emit('show-duplicate-tiles', entry)"
@@ -280,7 +292,7 @@ function handleContextMenu(event: MouseEvent) {
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
       </svg>
-      <span class="text-[10px] font-medium">{{ entry.duplicateTiles.length }}</span>
+      <span class="text-[10px] font-medium">{{ duplicatesCount }}</span>
     </div>
 
     <!-- Category badge -->

@@ -44,6 +44,13 @@ export const useSceneryStore = defineStore('scenery', () => {
   const enabledCount = computed(() => data.value?.enabledCount ?? 0)
   const missingDepsCount = computed(() => data.value?.missingDepsCount ?? 0)
   const duplicateTilesCount = computed(() => data.value?.duplicateTilesCount ?? 0)
+  const duplicateAirportsCount = computed(() => data.value?.duplicateAirportsCount ?? 0)
+  const duplicatesCount = computed(() => {
+    if (!data.value) return 0
+    return data.value.entries.filter(e =>
+      (e.duplicateTiles?.length > 0) || (e.duplicateAirports?.length > 0)
+    ).length
+  })
 
   // Sort entries by sortOrder
   const sortedEntries = computed(() => {
@@ -456,6 +463,8 @@ export const useSceneryStore = defineStore('scenery', () => {
     enabledCount,
     missingDepsCount,
     duplicateTilesCount,
+    duplicateAirportsCount,
+    duplicatesCount,
     hasChanges,
     hasLocalChanges,
     indexExists,

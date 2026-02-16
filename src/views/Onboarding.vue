@@ -2,12 +2,12 @@
   <div class="h-full flex flex-col px-8 py-5 relative overflow-x-hidden select-none">
     <div class="flex-1 flex items-center justify-center overflow-x-hidden">
       <div class="w-full max-w-2xl flex flex-col min-h-[440px]">
-        <div class="text-center mb-6">
+        <div v-if="currentStep.key !== 'sponsor'" class="text-center mb-6">
           <h2 class="text-xl font-bold text-gray-900 dark:text-white">{{ $t('onboarding.title') }}</h2>
           <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ $t('onboarding.subtitle') }}</p>
         </div>
 
-        <div class="h-[300px] overflow-y-auto overflow-x-hidden onboarding-step-shell">
+        <div :class="[currentStep.key === 'sponsor' ? 'overflow-y-auto overflow-x-hidden onboarding-step-shell' : 'h-[300px] overflow-y-auto overflow-x-hidden onboarding-step-shell']">
           <div class="overflow-x-hidden">
             <Transition :name="transitionName" mode="out-in">
               <div :key="currentStep.key" class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md p-5">
@@ -21,7 +21,7 @@
                   </p>
                 </div>
                 <button
-                  v-if="currentStep.key !== 'installPreferences' && currentStep.key !== 'xplanePath' && currentStep.key !== 'aircraftBackup'"
+                  v-if="currentStep.key !== 'installPreferences' && currentStep.key !== 'xplanePath' && currentStep.key !== 'aircraftBackup' && currentStep.key !== 'sponsor'"
                   @click="toggleCurrent"
                   :disabled="isSubmitting || currentStep.disabled"
                   class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
@@ -220,6 +220,50 @@
                 </div>
               </div>
 
+              <div v-if="currentStep.key === 'sponsor'" class="mt-4">
+                <div class="flex bg-gray-100 dark:bg-white/5 rounded-xl p-1 mb-4">
+                  <button
+                    @click="sponsorTab = 'wechat'"
+                    class="flex-1 flex items-center justify-center space-x-1.5 py-2 px-3 rounded-lg text-xs font-medium transition-all duration-200"
+                    :class="sponsorTab === 'wechat'
+                      ? 'bg-white dark:bg-white/10 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'"
+                  >
+                    <svg class="w-4 h-4 transition-colors duration-200" viewBox="0 0 24 24" :fill="sponsorTab === 'wechat' ? '#07C160' : 'currentColor'">
+                      <path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 01.213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 00.167-.054l1.903-1.114a.864.864 0 01.717-.098 10.16 10.16 0 002.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 01-1.162 1.178A1.17 1.17 0 014.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 01-1.162 1.178 1.17 1.17 0 01-1.162-1.178c0-.651.52-1.18 1.162-1.18zm5.34 2.867c-1.797-.052-3.746.512-5.28 1.786-1.72 1.428-2.687 3.72-1.78 6.22.942 2.453 3.666 4.229 6.884 4.229.826 0 1.622-.12 2.361-.336a.722.722 0 01.598.082l1.584.926a.272.272 0 00.14.047c.134 0 .24-.111.24-.247 0-.06-.023-.12-.038-.177l-.327-1.233a.582.582 0 01-.023-.156.49.49 0 01.201-.398C23.024 18.48 24 16.82 24 14.98c0-3.21-2.931-5.837-7.062-6.122zm-2.036 2.87c.535 0 .969.44.969.982a.976.976 0 01-.969.983.976.976 0 01-.969-.983c0-.542.434-.983.97-.983zm4.842 0c.535 0 .969.44.969.982a.976.976 0 01-.969.983.976.976 0 01-.969-.983c0-.542.434-.983.969-.983z"/>
+                    </svg>
+                    <span>{{ $t('sponsor.wechat') }}</span>
+                  </button>
+                  <button
+                    @click="sponsorTab = 'alipay'"
+                    class="flex-1 flex items-center justify-center space-x-1.5 py-2 px-3 rounded-lg text-xs font-medium transition-all duration-200"
+                    :class="sponsorTab === 'alipay'
+                      ? 'bg-white dark:bg-white/10 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'"
+                  >
+                    <svg class="w-4 h-4 transition-colors duration-200" viewBox="0 0 1024.051 1024" :fill="sponsorTab === 'alipay' ? '#009FE8' : 'currentColor'">
+                      <path d="m1024.051 701.03v-504.166a196.966 196.966 0 0 0 -196.915-196.864h-630.272a196.966 196.966 0 0 0 -196.864 196.864v630.272a196.915 196.915 0 0 0 196.864 196.864h630.272a197.12 197.12 0 0 0 193.843-162.1c-52.224-22.63-278.528-120.32-396.441-176.64-89.703 108.698-183.706 173.927-325.325 173.927s-236.186-87.245-224.82-194.047c7.476-70.041 55.553-184.576 264.295-164.966 110.08 10.342 160.41 30.873 250.163 60.518 23.194-42.598 42.496-89.446 57.14-139.264h-397.928v-39.424h196.915v-70.86h-240.178v-43.367h240.128v-102.145s2.15-15.974 19.814-15.974h98.458v118.118h256v43.418h-256v70.758h208.845a805.99 805.99 0 0 1 -84.839 212.685c60.672 22.016 336.794 106.393 336.794 106.393zm-740.505 90.573c-149.658 0-173.312-94.464-165.376-133.939 7.833-39.322 51.2-90.624 134.4-90.624 95.59 0 181.248 24.474 284.057 74.547-72.192 94.003-160.921 150.016-253.081 150.016z"/>
+                    </svg>
+                    <span>{{ $t('sponsor.alipay') }}</span>
+                  </button>
+                </div>
+                <div class="flex justify-center">
+                  <div class="w-56 h-56 bg-white rounded-xl p-2 shadow-inner border border-gray-100 dark:border-gray-600/30 overflow-hidden">
+                    <Transition name="onboarding-qr" mode="out-in">
+                      <img
+                        :key="sponsorTab"
+                        :src="sponsorTab === 'wechat' ? wechatQR : alipayQR"
+                        :alt="sponsorTab === 'wechat' ? 'WeChat Pay' : 'Alipay'"
+                        class="w-full h-full object-contain rounded-lg"
+                      />
+                    </Transition>
+                  </div>
+                </div>
+                <p class="mt-2 text-center text-xs text-gray-500 dark:text-gray-400">
+                  {{ $t('sponsor.scanTip') }}
+                </p>
+              </div>
+
               <p v-if="currentStep.noteKey && currentStep.key !== 'verificationPreferences'" class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20 mt-4">
                 {{ $t(currentStep.noteKey) }}
               </p>
@@ -265,7 +309,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
@@ -277,8 +321,10 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { AddonType, getErrorMessage } from '@/types'
 import { validateGlobPattern } from '@/utils/validation'
 import { setItem, STORAGE_KEYS } from '@/services/storage'
+import wechatQR from '@/assets/sponsor/wechat.png'
+import alipayQR from '@/assets/sponsor/alipay.png'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const router = useRouter()
 const store = useAppStore()
 const updateStore = useUpdateStore()
@@ -286,6 +332,7 @@ const modal = useModalStore()
 const toast = useToastStore()
 
 const isSubmitting = ref(false)
+const sponsorTab = ref<'wechat' | 'alipay'>('wechat')
 
 // Explicit boolean type to prevent TypeScript from inferring literal types
 // For onboarding (first-time use), default these features to enabled
@@ -445,6 +492,18 @@ const steps = computed(() => {
     toggle: () => { autoUpdateEnabled.value = !autoUpdateEnabled.value }
   })
 
+  if (locale.value === 'zh') {
+    items.push({
+      key: 'sponsor',
+      titleKey: 'sponsor.onboardingTitle',
+      descKey: 'sponsor.onboardingDesc',
+      onClass: 'bg-pink-500',
+      disabled: false,
+      isEnabled: () => true,
+      toggle: () => {}
+    })
+  }
+
   return items
 })
 
@@ -458,6 +517,15 @@ const currentStep = computed((): OnboardingStepItem & { enabled: boolean } => {
 })
 const canProceed = computed(() => (currentStep.value.key === 'xplanePath' ? xplanePathValid.value : true))
 const isLastStep = computed(() => currentIndex.value === steps.value.length - 1)
+
+// When switching away from Chinese, the sponsor step disappears.
+// If the user was on it, clamp the index back to the new last step.
+watch(() => steps.value.length, (newLen) => {
+  if (currentIndex.value >= newLen) {
+    transitionDirection.value = 'backward'
+    currentIndex.value = newLen - 1
+  }
+})
 
 function toggleCurrent() {
   if (currentStep.value.disabled) return
@@ -712,5 +780,20 @@ button {
   -moz-user-select: none;
   -ms-user-select: none;
   user-select: none;
+}
+
+.onboarding-qr-enter-active,
+.onboarding-qr-leave-active {
+  transition: all 0.2s ease;
+}
+
+.onboarding-qr-enter-from {
+  opacity: 0;
+  transform: scale(0.9);
+}
+
+.onboarding-qr-leave-to {
+  opacity: 0;
+  transform: scale(0.9);
 }
 </style>

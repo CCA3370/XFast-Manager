@@ -234,6 +234,7 @@ export interface SceneryPackageInfo {
   subPriority: number;
   lastModified: number;
   hasAptDat: boolean;
+  airportId?: string;
   hasDsf: boolean;
   hasLibraryTxt: boolean;
   hasTextures: boolean;
@@ -274,6 +275,8 @@ export interface SceneryManagerEntry {
   requiredLibraries: string[];
   continent?: string;
   duplicateTiles: string[];
+  duplicateAirports: string[];
+  airportId?: string;
   originalCategory?: SceneryCategory;
 }
 
@@ -283,6 +286,7 @@ export interface SceneryManagerData {
   enabledCount: number;
   missingDepsCount: number;
   duplicateTilesCount: number;
+  duplicateAirportsCount: number;
   needsSync: boolean;
   /** Raw tile overlap data (all overlaps, before XPME filtering) for real-time recalculation */
   tileOverlaps: Record<string, string[]>;

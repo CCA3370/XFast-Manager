@@ -108,6 +108,9 @@ fn apply_version_migrations(conn: &Connection, from_version: i32) -> Result<(), 
     if from_version < 4 {
         migrate_v3_to_v4(conn)?;
     }
+    if from_version < 5 {
+        migrate_v4_to_v5(conn)?;
+    }
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -276,6 +279,34 @@ fn migrate_v3_to_v4(conn: &Connection) -> Result<(), ApiError> {
     })?;
 
     logger::log_info("Database migration v3 to v4 completed", Some("database"));
+
+    Ok(())
+}
+
+/// Migrate from schema version 4 to version 5
+/// Adds airport_id column to store parsed airport identifier from apt.dat
+fn migrate_v4_to_v5(conn: &Connection) -> Result<(), ApiError> {
+    logger::log_info(
+        "Migrating database from v4 to v5 (adding airport_id column)",
+        Some("database"),
+    );
+
+    // Add airport_id column
+    // Ignore error if column already exists (idempotent migration)
+    if let Err(e) = conn.execute(
+        "ALTER TABLE scenery_packages ADD COLUMN airport_id TEXT",
+        [],
+    ) {
+        let err_str = e.to_string();
+        if !err_str.contains("duplicate column name") {
+            return Err(ApiError::migration_failed(format!(
+                "Failed to add airport_id column: {}",
+                e
+            )));
+        }
+    }
+
+    logger::log_info("Database migration v4 to v5 completed", Some("database"));
 
     Ok(())
 }

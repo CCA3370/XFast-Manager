@@ -454,6 +454,16 @@ async fn delete_scenery_folder(xplane_path: String, folder_name: String) -> erro
         );
     }
 
+    // Update scenery_packs.ini to remove the deleted entry
+    let xplane_root = std::path::Path::new(&xplane_path);
+    let packs_manager = scenery_packs_manager::SceneryPacksManager::new(xplane_root);
+    if let Err(e) = packs_manager.apply_from_index() {
+        logger::log_error(
+            &format!("Failed to update scenery_packs.ini after deletion: {}", e),
+            Some("scenery"),
+        );
+    }
+
     logger::log_info(
         &format!("Deleted scenery folder: {}", folder_name),
         Some("scenery"),

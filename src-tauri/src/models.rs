@@ -389,6 +389,9 @@ pub struct SceneryPackageInfo {
     #[serde(with = "systemtime_serde")]
     pub last_modified: SystemTime,
     pub has_apt_dat: bool,
+    /// Airport identifier parsed from apt.dat (e.g., "KJFK", "EGLL")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub airport_id: Option<String>,
     pub has_dsf: bool,
     pub has_library_txt: bool,
     pub has_textures: bool,
@@ -496,6 +499,12 @@ pub struct SceneryManagerEntry {
     /// Folder names of other packages with overlapping DSF tiles (within same category)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub duplicate_tiles: Vec<String>,
+    /// Folder names of other packages defining the same airport (by airport_id)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub duplicate_airports: Vec<String>,
+    /// Airport identifier parsed from apt.dat (for display in duplicate airports modal)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub airport_id: Option<String>,
     /// Original category assigned during initial classification
     /// Used to show original label when package is manually moved to FixedHighPriority
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -521,6 +530,8 @@ pub struct SceneryManagerData {
     pub missing_deps_count: usize,
     /// Count of packages with duplicate DSF tiles
     pub duplicate_tiles_count: usize,
+    /// Count of packages with duplicate airport identifiers
+    pub duplicate_airports_count: usize,
     /// Whether the index differs from the ini file and needs to be synced
     pub needs_sync: bool,
     /// Raw tile overlap data (all overlaps, before XPME filtering) for frontend real-time recalculation
@@ -836,6 +847,8 @@ mod tests {
             required_libraries: vec!["opensceneryx".to_string()],
             continent: Some("Asia".to_string()),
             duplicate_tiles: vec![],
+            duplicate_airports: vec![],
+            airport_id: None,
             original_category: Some(SceneryCategory::Airport),
         };
 

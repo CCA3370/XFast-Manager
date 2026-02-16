@@ -1,7 +1,7 @@
 //! Database schema definitions
 
 /// Current schema version for migration tracking
-pub const CURRENT_SCHEMA_VERSION: i32 = 4;
+pub const CURRENT_SCHEMA_VERSION: i32 = 5;
 
 /// SQL statements for creating the database schema
 pub const CREATE_SCHEMA: &str = r#"
@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS scenery_packages (
     last_modified INTEGER NOT NULL,
     indexed_at INTEGER NOT NULL,
     has_apt_dat INTEGER NOT NULL DEFAULT 0,
+    airport_id TEXT,
     has_dsf INTEGER NOT NULL DEFAULT 0,
     has_library_txt INTEGER NOT NULL DEFAULT 0,
     has_textures INTEGER NOT NULL DEFAULT 0,

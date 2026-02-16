@@ -449,7 +449,12 @@ export default {
     duplicateTiles: 'Duplicate tiles',
     duplicateTilesTitle: 'Duplicate DSF Tiles',
     duplicateTilesDesc: 'These packages contain DSF tiles at the same coordinates. Only the highest priority package\'s tiles will be used.',
-    clickToViewDuplicates: 'Click to view duplicate tiles',
+    clickToViewDuplicates: 'Click to view duplicates',
+    duplicates: 'Duplicates',
+    duplicatesTitle: 'Duplicates',
+    duplicateTilesSection: 'Duplicate DSF Tiles',
+    duplicateAirportsSection: 'Duplicate Airport',
+    duplicateAirportsDesc: 'These packages define the same airport (identifier: {id}). Only the highest priority package will be used by X-Plane.',
     filters: 'Filters',
     showOnlyEnabled: 'Enabled Only',
     showOnlyDisabled: 'Disabled Only',
@@ -539,7 +544,9 @@ export default {
     subtitle: 'Thank you for your support',
     wechat: 'WeChat Pay',
     alipay: 'Alipay',
-    scanTip: 'Scan with the corresponding app'
+    scanTip: 'Scan with the corresponding app',
+    onboardingTitle: 'Support the Developer',
+    onboardingDesc: 'If you find this tool helpful, consider buying the developer a coffee'
   },
   contextMenu: {
     enable: 'Enable',

@@ -1187,6 +1187,9 @@ impl SceneryIndexManager {
         let duplicate_tiles_map =
             filter_tile_overlaps_with_xpme_rules(&raw_tile_overlaps, &index.packages);
 
+        // Detect duplicate airports (same airport_id across multiple packages)
+        let duplicate_airports_map = detect_duplicate_airports(&index.packages);
+
         // Convert to manager entries and sort by sort_order
         let mut entries: Vec<SceneryManagerEntry> = index
             .packages
@@ -1204,6 +1207,11 @@ impl SceneryIndexManager {
                     .get(&info.folder_name)
                     .cloned()
                     .unwrap_or_default(),
+                duplicate_airports: duplicate_airports_map
+                    .get(&info.folder_name)
+                    .cloned()
+                    .unwrap_or_default(),
+                airport_id: info.airport_id.clone(),
                 original_category: info.original_category.clone(),
             })
             .collect();
@@ -1222,6 +1230,10 @@ impl SceneryIndexManager {
             .iter()
             .filter(|e| !e.duplicate_tiles.is_empty())
             .count();
+        let duplicate_airports_count = entries
+            .iter()
+            .filter(|e| !e.duplicate_airports.is_empty())
+            .count();
 
         Ok(SceneryManagerData {
             entries,
@@ -1229,6 +1241,7 @@ impl SceneryIndexManager {
             enabled_count,
             missing_deps_count,
             duplicate_tiles_count,
+            duplicate_airports_count,
             needs_sync,
             tile_overlaps: raw_tile_overlaps,
         })
@@ -1658,6 +1671,42 @@ fn parse_dsf_filename(dsf_path: &Path) -> Option<(i32, i32)> {
     let lon: i32 = lon_str.parse().ok()?;
 
     Some((lat, lon))
+}
+
+/// Detect duplicate airports: packages that define the same airport identifier.
+/// Returns a map of folder_name -> list of other folder names sharing the same airport_id.
+fn detect_duplicate_airports(
+    packages: &HashMap<String, SceneryPackageInfo>,
+) -> HashMap<String, Vec<String>> {
+    // Build map: airport_id -> Vec<folder_name>
+    let mut id_map: HashMap<String, Vec<String>> = HashMap::new();
+    for (folder_name, info) in packages {
+        if let Some(ref airport_id) = info.airport_id {
+            id_map
+                .entry(airport_id.clone())
+                .or_default()
+                .push(folder_name.clone());
+        }
+    }
+
+    // For each airport_id with >1 package, record overlaps
+    let mut result: HashMap<String, Vec<String>> = HashMap::new();
+    for (_id, folders) in &id_map {
+        if folders.len() > 1 {
+            for folder in folders {
+                let others: Vec<String> = folders.iter().filter(|f| *f != folder).cloned().collect();
+                result.entry(folder.clone()).or_default().extend(others);
+            }
+        }
+    }
+
+    // Deduplicate
+    for v in result.values_mut() {
+        v.sort();
+        v.dedup();
+    }
+
+    result
 }
 
 /// Detect all DSF tile overlaps within Mesh and AirportMesh categories separately.

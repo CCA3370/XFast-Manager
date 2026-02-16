@@ -267,6 +267,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
                 required_libraries,
                 missing_libraries: Vec::new(), // missing_libraries will be filled later
                 exported_library_names,
+                airport_id: parse_airport_id(scenery_path),
             },
         );
     }
@@ -313,6 +314,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
                         required_libraries: required,
                         missing_libraries: Vec::new(), // missing_libraries will be filled later
                         exported_library_names,
+                        ..Default::default()
                     },
                 );
             }
@@ -363,6 +365,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
                     required_libraries: required,
                     missing_libraries: Vec::new(), // missing_libraries will be filled later
                     exported_library_names,
+                    ..Default::default()
                 },
             );
         }
@@ -436,6 +439,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
                 required_libraries: Vec::new(),
                 missing_libraries: Vec::new(),
                 exported_library_names,
+                ..Default::default()
             },
         );
     }
@@ -501,6 +505,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
                 required_libraries,
                 missing_libraries,
                 exported_library_names,
+                ..Default::default()
             },
         );
     }
@@ -553,6 +558,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
                 required_libraries,
                 missing_libraries,
                 exported_library_names,
+                ..Default::default()
             },
         );
     }
@@ -596,6 +602,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
             required_libraries: Vec::new(),
             missing_libraries: Vec::new(),
             exported_library_names,
+            ..Default::default()
         },
     )
 }
@@ -627,6 +634,40 @@ fn check_apt_dat_recursive(scenery_path: &Path) -> Result<bool> {
         }
     }
     Ok(false)
+}
+
+/// Parse the airport identifier from apt.dat
+/// Reads "Earth nav data/apt.dat" and returns the airport code from the first airport header line.
+/// An airport header line has its first whitespace-delimited field equal to "1", "16", or "17",
+/// and the identifier is the 5th field (0-indexed field 4).
+fn parse_airport_id(scenery_path: &Path) -> Option<String> {
+    let apt_dat_path = scenery_path.join("Earth nav data").join("apt.dat");
+    let file = File::open(&apt_dat_path).ok()?;
+    let reader = std::io::BufReader::new(file);
+
+    use std::io::BufRead;
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.is_empty() {
+            continue;
+        }
+        match fields[0] {
+            "1" | "16" | "17" => {
+                // Airport header line: fields[4] is the airport identifier
+                if fields.len() >= 5 {
+                    return Some(fields[4].to_string());
+                }
+                // Found a header but no identifier field — stop searching
+                return None;
+            }
+            _ => continue,
+        }
+    }
+    None
 }
 
 /// Validate apt.dat file format (first line "I", second line starts with "1")
@@ -1319,6 +1360,7 @@ struct PackageInfoDetails {
     required_libraries: Vec<String>,
     missing_libraries: Vec<String>,
     exported_library_names: Vec<String>,
+    airport_id: Option<String>,
 }
 
 /// Build SceneryPackageInfo with geographic information
@@ -1337,6 +1379,7 @@ fn build_package_info(
         required_libraries,
         missing_libraries,
         exported_library_names,
+        airport_id,
     } = details;
     // Calculate sub-priority based on category and folder name
     let sub_priority = calculate_sub_priority(&category, &folder_name);
@@ -1389,6 +1432,7 @@ fn build_package_info(
         sub_priority,
         last_modified: get_dir_modified_time(scenery_path)?,
         has_apt_dat,
+        airport_id,
         has_dsf,
         has_library_txt,
         has_textures: texture_count > 0,

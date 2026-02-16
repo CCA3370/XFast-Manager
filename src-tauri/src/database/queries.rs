@@ -67,7 +67,7 @@ impl SceneryQueries {
         let mut stmt = conn
             .prepare(
                 "SELECT id, folder_name, category, sub_priority, last_modified, indexed_at,
-                        has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
+                        has_apt_dat, airport_id, has_dsf, has_library_txt, has_textures, has_objects,
                         texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
                         continent, original_category
                  FROM scenery_packages",
@@ -84,17 +84,18 @@ impl SceneryQueries {
                     row.get::<_, i64>(4)?,             // last_modified
                     row.get::<_, i64>(5)?,             // indexed_at
                     row.get::<_, bool>(6)?,            // has_apt_dat
-                    row.get::<_, bool>(7)?,            // has_dsf
-                    row.get::<_, bool>(8)?,            // has_library_txt
-                    row.get::<_, bool>(9)?,            // has_textures
-                    row.get::<_, bool>(10)?,           // has_objects
-                    row.get::<_, usize>(11)?,          // texture_count
-                    row.get::<_, u32>(12)?,            // earth_nav_tile_count
-                    row.get::<_, bool>(13)?,           // enabled
-                    row.get::<_, u32>(14)?,            // sort_order
-                    row.get::<_, Option<String>>(15)?, // actual_path
-                    row.get::<_, Option<String>>(16)?, // continent
-                    row.get::<_, Option<String>>(17)?, // original_category
+                    row.get::<_, Option<String>>(7)?,  // airport_id
+                    row.get::<_, bool>(8)?,            // has_dsf
+                    row.get::<_, bool>(9)?,            // has_library_txt
+                    row.get::<_, bool>(10)?,           // has_textures
+                    row.get::<_, bool>(11)?,           // has_objects
+                    row.get::<_, usize>(12)?,          // texture_count
+                    row.get::<_, u32>(13)?,            // earth_nav_tile_count
+                    row.get::<_, bool>(14)?,           // enabled
+                    row.get::<_, u32>(15)?,            // sort_order
+                    row.get::<_, Option<String>>(16)?, // actual_path
+                    row.get::<_, Option<String>>(17)?, // continent
+                    row.get::<_, Option<String>>(18)?, // original_category
                 ))
             })
             .map_err(|e| ApiError::database(format!("Failed to query packages: {}", e)))?;
@@ -114,6 +115,7 @@ impl SceneryQueries {
                 last_modified,
                 indexed_at,
                 has_apt_dat,
+                airport_id,
                 has_dsf,
                 has_library_txt,
                 has_textures,
@@ -134,6 +136,7 @@ impl SceneryQueries {
                 last_modified: unix_to_systemtime(last_modified),
                 indexed_at: unix_to_systemtime(indexed_at),
                 has_apt_dat,
+                airport_id,
                 has_dsf,
                 has_library_txt,
                 has_textures,
@@ -263,10 +266,10 @@ impl SceneryQueries {
             .prepare_cached(
                 "INSERT INTO scenery_packages (
                 folder_name, category, sub_priority, last_modified, indexed_at,
-                has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
+                has_apt_dat, airport_id, has_dsf, has_library_txt, has_textures, has_objects,
                 texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
                 continent, original_category
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             )
             .map_err(|e| {
                 ApiError::database(format!("Failed to prepare package statement: {}", e))
@@ -315,6 +318,7 @@ impl SceneryQueries {
                     systemtime_to_unix(&info.last_modified),
                     systemtime_to_unix(&info.indexed_at),
                     info.has_apt_dat,
+                    &info.airport_id,
                     info.has_dsf,
                     info.has_library_txt,
                     info.has_textures,
@@ -382,10 +386,10 @@ impl SceneryQueries {
         conn.execute(
             "INSERT INTO scenery_packages (
                 folder_name, category, sub_priority, last_modified, indexed_at,
-                has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
+                has_apt_dat, airport_id, has_dsf, has_library_txt, has_textures, has_objects,
                 texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
                 continent, original_category
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             params![
                 info.folder_name,
                 category_to_string(&info.category),
@@ -393,6 +397,7 @@ impl SceneryQueries {
                 systemtime_to_unix(&info.last_modified),
                 systemtime_to_unix(&info.indexed_at),
                 info.has_apt_dat,
+                &info.airport_id,
                 info.has_dsf,
                 info.has_library_txt,
                 info.has_textures,
@@ -476,9 +481,9 @@ impl SceneryQueries {
             tx.execute(
                 "UPDATE scenery_packages SET
                     category = ?2, sub_priority = ?3, last_modified = ?4, indexed_at = ?5,
-                    has_apt_dat = ?6, has_dsf = ?7, has_library_txt = ?8, has_textures = ?9,
-                    has_objects = ?10, texture_count = ?11, earth_nav_tile_count = ?12,
-                    enabled = ?13, sort_order = ?14, actual_path = ?15, continent = ?16
+                    has_apt_dat = ?6, airport_id = ?7, has_dsf = ?8, has_library_txt = ?9, has_textures = ?10,
+                    has_objects = ?11, texture_count = ?12, earth_nav_tile_count = ?13,
+                    enabled = ?14, sort_order = ?15, actual_path = ?16, continent = ?17
                  WHERE id = ?1",
                 params![
                     id,
@@ -487,6 +492,7 @@ impl SceneryQueries {
                     systemtime_to_unix(&info.last_modified),
                     systemtime_to_unix(&info.indexed_at),
                     info.has_apt_dat,
+                    &info.airport_id,
                     info.has_dsf,
                     info.has_library_txt,
                     info.has_textures,
@@ -593,6 +599,7 @@ impl SceneryQueries {
             i64,
             i64,
             bool,
+            Option<String>,
             bool,
             bool,
             bool,
@@ -607,7 +614,7 @@ impl SceneryQueries {
         )> = conn
             .query_row(
                 "SELECT id, folder_name, category, sub_priority, last_modified, indexed_at,
-                        has_apt_dat, has_dsf, has_library_txt, has_textures, has_objects,
+                        has_apt_dat, airport_id, has_dsf, has_library_txt, has_textures, has_objects,
                         texture_count, earth_nav_tile_count, enabled, sort_order, actual_path,
                         continent, original_category
                  FROM scenery_packages WHERE folder_name = ?1",
@@ -632,6 +639,7 @@ impl SceneryQueries {
                         row.get(15)?,
                         row.get(16)?,
                         row.get(17)?,
+                        row.get(18)?,
                     ))
                 },
             )
@@ -646,6 +654,7 @@ impl SceneryQueries {
                 last_modified,
                 indexed_at,
                 has_apt_dat,
+                airport_id,
                 has_dsf,
                 has_library_txt,
                 has_textures,
@@ -665,6 +674,7 @@ impl SceneryQueries {
                     last_modified: unix_to_systemtime(last_modified),
                     indexed_at: unix_to_systemtime(indexed_at),
                     has_apt_dat,
+                    airport_id,
                     has_dsf,
                     has_library_txt,
                     has_textures,
@@ -889,6 +899,7 @@ mod tests {
             last_modified: SystemTime::now(),
             indexed_at: SystemTime::now(),
             has_apt_dat: true,
+            airport_id: None,
             has_dsf: false,
             has_library_txt: false,
             has_textures: true,
@@ -928,6 +939,7 @@ mod tests {
             last_modified: SystemTime::now(),
             indexed_at: SystemTime::now(),
             has_apt_dat: false,
+            airport_id: None,
             has_dsf: false,
             has_library_txt: true,
             has_textures: false,
@@ -970,6 +982,7 @@ mod tests {
                 last_modified: SystemTime::now(),
                 indexed_at: SystemTime::now(),
                 has_apt_dat: false,
+                airport_id: None,
                 has_dsf: false,
                 has_library_txt: false,
                 has_textures: false,

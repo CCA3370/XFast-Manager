@@ -64,7 +64,7 @@ const searchExpandedGroups = ref<Record<string, boolean>>({})
 const searchExpandedContinents = ref<Record<string, boolean>>({})
 const searchExpandedContinentCategories = ref<Record<string, boolean>>({})
 const showOnlyMissingLibs = ref(false)
-const showOnlyDuplicateTiles = ref(false)
+const showOnlyDuplicates = ref(false)
 const showOnlyUpdates = ref(false)
 const showOnlyOutdated = ref(false)
 const showMoreMenu = ref(false)
@@ -119,12 +119,12 @@ const indexChangesResult = ref<SceneryIndexScanResult | null>(null)
 
 // Whether any filter is active (for button highlight)
 const hasActiveFilters = computed(() => {
-  return showOnlyMissingLibs.value || showOnlyDuplicateTiles.value || enabledFilter.value !== 'all' || viewMode.value === 'continent'
+  return showOnlyMissingLibs.value || showOnlyDuplicates.value || enabledFilter.value !== 'all' || viewMode.value === 'continent'
 })
 
 // Whether any data-level filter is active (excluding view mode)
 const hasDataFilters = computed(() => {
-  return showOnlyMissingLibs.value || showOnlyDuplicateTiles.value || enabledFilter.value !== 'all'
+  return showOnlyMissingLibs.value || showOnlyDuplicates.value || enabledFilter.value !== 'all'
 })
 
 // Local copy of grouped entries for drag-and-drop
@@ -210,10 +210,10 @@ watch(() => sceneryStore.missingDepsCount, (newCount) => {
   }
 })
 
-// Auto-reset filter when no duplicate tiles remain
-watch(() => sceneryStore.duplicateTilesCount, (newCount) => {
-  if (newCount === 0 && showOnlyDuplicateTiles.value) {
-    showOnlyDuplicateTiles.value = false
+// Auto-reset filter when no duplicates remain
+watch(() => sceneryStore.duplicatesCount, (newCount) => {
+  if (newCount === 0 && showOnlyDuplicates.value) {
+    showOnlyDuplicates.value = false
   }
 })
 
@@ -561,7 +561,9 @@ function getFilteredContinentStats(continent: string): { enabled: number; total:
 }
 
 // Check if continent is expanded (default: collapsed)
+// Auto-expand when search matches exist in this continent
 function isContinentExpanded(continent: string): boolean {
+  if (searchMatchedContinents.value.has(continent)) return true
   return collapsedContinents.value[continent] === false
 }
 
@@ -605,8 +607,10 @@ function applyFilterWithTransition(fn: () => void) {
 }
 
 // Check if category within continent is expanded (default: collapsed)
+// Auto-expand when search matches exist in this continent+category
 function isContinentCategoryExpanded(continent: string, category: string): boolean {
   const key = `${continent}:${category}`
+  if (searchMatchedContinentCategories.value.has(key)) return true
   return collapsedContinentCategories.value[key] === false
 }
 
@@ -693,9 +697,9 @@ const filteredSceneryEntries = computed(() => {
     entries = entries.filter(entry => entry.missingLibraries && entry.missingLibraries.length > 0)
   }
 
-  // Filter by duplicate tiles
-  if (showOnlyDuplicateTiles.value) {
-    entries = entries.filter(entry => entry.duplicateTiles && entry.duplicateTiles.length > 0)
+  // Filter by duplicates (tiles or airports)
+  if (showOnlyDuplicates.value) {
+    entries = entries.filter(entry => (entry.duplicateTiles && entry.duplicateTiles.length > 0) || (entry.duplicateAirports && entry.duplicateAirports.length > 0))
   }
 
   // Filter by continent
@@ -771,13 +775,55 @@ const globalIndexMap = computed(() => {
 })
 
 function isGroupExpanded(category: string): boolean {
-  // Default: collapsed (undefined or true = collapsed, false = expanded)
+  // Auto-expand when search matches exist in this category
+  if (searchMatchedCategories.value.has(category)) return true
   // searchExpandedGroups can override to expand for search
   if (searchExpandedGroups.value[category]) return true
   return sceneryStore.collapsedGroups[category as SceneryCategory] === false
 }
 
 const searchQueryLower = computed(() => searchQuery.value?.toLowerCase() ?? '')
+
+// Track which categories / continents / continent-categories have search matches
+const searchMatchedCategories = computed(() => {
+  const set = new Set<string>()
+  if (!searchQueryLower.value) return set
+  const query = searchQueryLower.value
+  for (const entry of filteredSceneryEntries.value) {
+    if (entry.folderName.toLowerCase().includes(query)) {
+      set.add(entry.category || 'Unrecognized')
+      // Also track continent info
+    }
+  }
+  return set
+})
+
+const searchMatchedContinents = computed(() => {
+  const set = new Set<string>()
+  if (!searchQueryLower.value) return set
+  const query = searchQueryLower.value
+  for (const entry of filteredSceneryEntries.value) {
+    if (entry.folderName.toLowerCase().includes(query)) {
+      const continent = entry.continent || 'Other'
+      set.add(knownContinents.includes(continent) ? continent : 'Other')
+    }
+  }
+  return set
+})
+
+const searchMatchedContinentCategories = computed(() => {
+  const set = new Set<string>()
+  if (!searchQueryLower.value) return set
+  const query = searchQueryLower.value
+  for (const entry of filteredSceneryEntries.value) {
+    if (entry.folderName.toLowerCase().includes(query)) {
+      const continent = entry.continent || 'Other'
+      const targetContinent = knownContinents.includes(continent) ? continent : 'Other'
+      set.add(`${targetContinent}:${entry.category}`)
+    }
+  }
+  return set
+})
 
 const matchedIndices = computed(() => {
   if (!searchQuery.value.trim() || activeTab.value !== 'scenery') return []
@@ -1314,7 +1360,7 @@ function collapseSearchExpandedGroups() {
 }
 
 function ensureGroupExpandedForIndex(index: number) {
-  if (showOnlyMissingLibs.value || showOnlyDuplicateTiles.value) return
+  if (showOnlyMissingLibs.value || showOnlyDuplicates.value) return
   const entry = allSceneryEntries.value[index]
   if (!entry) return
 
@@ -1322,25 +1368,21 @@ function ensureGroupExpandedForIndex(index: number) {
   collapseSearchExpandedGroups()
 
   if (viewMode.value === 'continent') {
-    // In continent view, expand both continent and category within continent
     const continent = entry.continent || 'Other'
     const targetContinent = knownContinents.includes(continent) ? continent : 'Other'
 
-    // Expand continent if collapsed (undefined or true means collapsed)
-    if (collapsedContinents.value[targetContinent] !== false) {
+    if (!isContinentExpanded(targetContinent)) {
       collapsedContinents.value[targetContinent] = false
       searchExpandedContinents.value[targetContinent] = true
     }
 
-    // Expand category within continent if collapsed (undefined or true means collapsed)
     const categoryKey = `${targetContinent}:${entry.category}`
-    if (collapsedContinentCategories.value[categoryKey] !== false) {
+    if (!isContinentCategoryExpanded(targetContinent, entry.category)) {
       collapsedContinentCategories.value[categoryKey] = false
       searchExpandedContinentCategories.value[categoryKey] = true
     }
   } else {
-    // In category view, expand category group
-    if (sceneryStore.collapsedGroups[entry.category]) {
+    if (!isGroupExpanded(entry.category)) {
       searchExpandedGroups.value[entry.category] = true
     }
   }
@@ -1480,7 +1522,6 @@ function handleSearchInput() {
   if (!searchQuery.value.trim()) {
     highlightedIndex.value = -1
     currentMatchIndex.value = 0
-    collapseSearchExpandedGroups()
     return
   }
 
@@ -1489,7 +1530,6 @@ function handleSearchInput() {
     scrollToMatch(matchedIndices.value[0])
   } else {
     highlightedIndex.value = -1
-    collapseSearchExpandedGroups()
   }
 }
 
@@ -1509,7 +1549,6 @@ function clearSearch() {
   searchQuery.value = ''
   highlightedIndex.value = -1
   currentMatchIndex.value = 0
-  collapseSearchExpandedGroups()
 }
 
 // Current loading state (suppressed during tab transitions)
@@ -1557,6 +1596,7 @@ const isLoading = computed(() => {
           v-model="searchQuery"
           @input="handleSearchInput"
           type="text"
+          name="scenery-search"
           :placeholder="t('management.searchPlaceholder')"
           class="w-full px-3 py-1.5 pl-9 pr-20 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
@@ -1825,11 +1865,11 @@ const isLoading = computed(() => {
           </Transition>
           <span class="font-semibold text-amber-600 dark:text-amber-400">{{ sceneryStore.missingDepsCount }}</span>
         </div>
-        <div v-if="sceneryStore.duplicateTilesCount > 0" class="flex items-center gap-2">
+        <div v-if="sceneryStore.duplicatesCount > 0" class="flex items-center gap-2">
           <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.duplicateTiles') }}:</span>
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.duplicates') }}:</span>
           </Transition>
-          <span class="font-semibold text-orange-600 dark:text-orange-400">{{ sceneryStore.duplicateTilesCount }}</span>
+          <span class="font-semibold text-orange-600 dark:text-orange-400">{{ sceneryStore.duplicatesCount }}</span>
         </div>
         <!-- Filter dropdown menu -->
         <div ref="filterDropdownRef" class="relative">
@@ -1857,7 +1897,7 @@ const isLoading = computed(() => {
               class="absolute right-0 top-full mt-1.5 w-60 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-black/8 dark:shadow-black/25 z-50 py-1.5 ring-1 ring-black/5 dark:ring-white/5"
             >
               <!-- Issues section -->
-              <template v-if="sceneryStore.missingDepsCount > 0 || sceneryStore.duplicateTilesCount > 0">
+              <template v-if="sceneryStore.missingDepsCount > 0 || sceneryStore.duplicatesCount > 0">
                 <!-- Missing deps -->
                 <div
                   v-if="sceneryStore.missingDepsCount > 0"
@@ -1870,17 +1910,17 @@ const isLoading = computed(() => {
                   <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.missingDeps') }}</span>
                   <span class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium">{{ sceneryStore.missingDepsCount }}</span>
                 </div>
-                <!-- Duplicate tiles -->
+                <!-- Duplicates -->
                 <div
-                  v-if="sceneryStore.duplicateTilesCount > 0"
-                  @click="applyFilterWithTransition(() => showOnlyDuplicateTiles = !showOnlyDuplicateTiles)"
+                  v-if="sceneryStore.duplicatesCount > 0"
+                  @click="applyFilterWithTransition(() => showOnlyDuplicates = !showOnlyDuplicates)"
                   class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
                 >
-                  <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-orange-400 dark:group-hover:border-orange-500" :class="showOnlyDuplicateTiles && 'filter-check-active bg-orange-500 !border-orange-500'">
+                  <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-orange-400 dark:group-hover:border-orange-500" :class="showOnlyDuplicates && 'filter-check-active bg-orange-500 !border-orange-500'">
                     <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </span>
-                  <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.duplicateTiles') }}</span>
-                  <span class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium">{{ sceneryStore.duplicateTilesCount }}</span>
+                  <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.duplicates') }}</span>
+                  <span class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium">{{ sceneryStore.duplicatesCount }}</span>
                 </div>
                 <!-- Separator -->
                 <div class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"></div>
@@ -2195,6 +2235,7 @@ const isLoading = computed(() => {
                               element.category,
                               element.missingLibraries?.length ?? 0,
                               element.duplicateTiles?.length ?? 0,
+                              element.duplicateAirports?.length ?? 0,
                               searchQueryLower,
                               highlightedIndex === getGlobalIndex(element.folderName)
                             ]"
@@ -2591,6 +2632,7 @@ const isLoading = computed(() => {
                 <input
                   :value="contributingLibName"
                   disabled
+                  name="library-name"
                   class="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 pl-3 pr-20 py-2 text-sm text-gray-700 dark:text-gray-200"
                 />
                 <div class="absolute inset-y-0 right-2 flex items-center gap-1">
@@ -2620,6 +2662,7 @@ const isLoading = computed(() => {
               <input
                 v-model="contributingLibUrl"
                 type="url"
+                name="library-url"
                 :placeholder="t('sceneryManager.downloadUrlPlaceholder')"
                 class="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
               />
@@ -2656,7 +2699,7 @@ const isLoading = computed(() => {
       </div>
     </Teleport>
 
-    <!-- Shared Duplicate Tiles Modal -->
+    <!-- Shared Duplicates Modal -->
     <Teleport to="body">
       <div
         v-if="showDuplicateTilesModal && selectedModalEntry"
@@ -2671,7 +2714,7 @@ const isLoading = computed(() => {
           <!-- Modal Header -->
           <div class="flex items-center justify-between p-5 pb-3 flex-shrink-0">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('sceneryManager.duplicateTilesTitle') }}
+              {{ t('sceneryManager.duplicatesTitle') }}
             </h3>
             <button
               @click="showDuplicateTilesModal = false"
@@ -2690,23 +2733,47 @@ const isLoading = computed(() => {
               {{ selectedModalEntry.folderName }}
             </div>
 
-            <!-- Description -->
-            <div class="mb-3 text-sm text-gray-600 dark:text-gray-400">
-              {{ t('sceneryManager.duplicateTilesDesc') }}
-            </div>
+            <!-- Duplicate DSF Tiles Section -->
+            <template v-if="selectedModalEntry.duplicateTiles?.length > 0">
+              <div class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('sceneryManager.duplicateTilesSection') }}
+              </div>
+              <div class="mb-3 text-sm text-gray-600 dark:text-gray-400">
+                {{ t('sceneryManager.duplicateTilesDesc') }}
+              </div>
+              <div class="bg-gray-50 dark:bg-gray-900 rounded p-3 mb-4">
+                <ul class="space-y-1">
+                  <li
+                    v-for="pkg in selectedModalEntry.duplicateTiles"
+                    :key="'tile-' + pkg"
+                    class="text-sm text-gray-800 dark:text-gray-200 font-mono"
+                  >
+                    • {{ pkg }}
+                  </li>
+                </ul>
+              </div>
+            </template>
 
-            <!-- Conflicting Packages List -->
-            <div class="bg-gray-50 dark:bg-gray-900 rounded p-3">
-              <ul class="space-y-1">
-                <li
-                  v-for="pkg in selectedModalEntry.duplicateTiles"
-                  :key="pkg"
-                  class="text-sm text-gray-800 dark:text-gray-200 font-mono"
-                >
-                  • {{ pkg }}
-                </li>
-              </ul>
-            </div>
+            <!-- Duplicate Airport Section -->
+            <template v-if="selectedModalEntry.duplicateAirports?.length > 0">
+              <div class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('sceneryManager.duplicateAirportsSection') }}
+              </div>
+              <div class="mb-3 text-sm text-gray-600 dark:text-gray-400">
+                {{ t('sceneryManager.duplicateAirportsDesc', { id: selectedModalEntry?.airportId ?? '' }) }}
+              </div>
+              <div class="bg-gray-50 dark:bg-gray-900 rounded p-3">
+                <ul class="space-y-1">
+                  <li
+                    v-for="pkg in selectedModalEntry.duplicateAirports"
+                    :key="'apt-' + pkg"
+                    class="text-sm text-gray-800 dark:text-gray-200 font-mono"
+                  >
+                    • {{ pkg }}
+                  </li>
+                </ul>
+              </div>
+            </template>
           </div>
 
           <!-- Close Button -->
