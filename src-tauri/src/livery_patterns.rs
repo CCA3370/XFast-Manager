@@ -34,7 +34,7 @@ pub struct LiveryPattern {
 /// All registered livery patterns
 pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
     LiveryPattern {
-        aircraft_type_id: "FF777",
+        aircraft_type_id: "FF_B777",
         aircraft_name: "FlightFactor 777v2",
         detection_rules: &[DetectionRule {
             pattern_type: "path",
@@ -76,7 +76,12 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
                 parent_levels: 0,
             },
         ],
-        acf_identifiers: &["a319", "a319_StdDef", "a319_XP11", "a319_XP11_StdDef"],
+        acf_identifiers: &[
+            "a319", 
+            "a319_StdDef", 
+            "a319_XP11", 
+            "a319_XP11_StdDef"
+        ],
     },
     LiveryPattern {
         aircraft_type_id: "TOLISS_A320",
@@ -108,7 +113,12 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
                 parent_levels: 0,
             },
         ],
-        acf_identifiers: &["a320", "a320_StdDef", "a320_XP11", "a320_XP11_StdDef"],
+        acf_identifiers: &[
+            "a320", 
+            "a320_StdDef", 
+            "a320_XP11", 
+            "a320_XP11_StdDef"
+        ],
     },
     LiveryPattern {
         aircraft_type_id: "TOLISS_A321",
@@ -130,7 +140,12 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
                 parent_levels: 0,
             },
         ],
-        acf_identifiers: &["a321", "a321_StdDef", "a321_XP11", "a321_XP11_StdDef"],
+        acf_identifiers: &[
+            "a321", 
+            "a321_StdDef", 
+            "a321_XP11", 
+            "a321_XP11_StdDef"
+        ],
     },
     LiveryPattern {
         aircraft_type_id: "TOLISS_A339",
@@ -160,15 +175,102 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
         ],
     },
     LiveryPattern {
-        aircraft_type_id: "IXEG_733",
-        aircraft_name: "IXEG 733 Classic",
-        detection_rules: &[DetectionRule {
-            pattern_type: "path",
-            pattern: "liveries",
-            parent_levels: 0,
-        }],
-        acf_identifiers: &["B733"],
+        aircraft_type_id: "TOLISS_A346",
+        aircraft_name: "ToLiss A346",
+        detection_rules: &[
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "A340-600_*icon11*.png",
+                parent_levels: 0,
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/EngineA346*.png",
+                parent_levels: 0,
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/EngineA346*.dds",
+                parent_levels: 0,
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/FuselageA346*.png",
+                parent_levels: 0,
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/FuselageA346*.dds",
+                parent_levels: 0,
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/StabilizersA346*.png",
+                parent_levels: 0,
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/StabilizersA346*.dds",
+                parent_levels: 0,
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/WING*A346.png",
+                parent_levels: 0,
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/WING*A346.dds",
+                parent_levels: 0,
+            },
+        ],
+        acf_identifiers: &[
+            "A340-600",
+            "A340-600_stdDef",
+            "A340-600_XP11",
+            "A340-600_XP11_stdDef",
+        ],
     },
+    LiveryPattern {
+        aircraft_type_id: "ZIBO_B738",
+        aircraft_name: "Zibo B738",
+        detection_rules: &[
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "b738_*icon11*.png",
+                parent_levels: 0,
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/738*.png",
+                parent_levels: 0,
+            },
+        ],
+        acf_identifiers: &[
+            "b738",
+            "b738_4k",
+        ],
+    },/*
+    LiveryPattern {
+        aircraft_type_id: "X-CRAFTS_E170",
+        aircraft_name: "X-Crafts E170",
+        detection_rules: &[
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "e170_*icon11*.png",
+                parent_levels: 0,
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/e170*.png",
+                parent_levels: 0,
+            },
+        ],
+        acf_identifiers: &[
+            "e170",
+            "e170_4k",
+        ],
+    },*/
 ];
 
 /// Check if a path matches a livery pattern
