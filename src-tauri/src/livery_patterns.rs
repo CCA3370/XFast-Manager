@@ -11,11 +11,8 @@ pub struct DetectionRule {
     /// Pattern type: "path" for folder path matching, "file" for filename matching
     pub pattern_type: &'static str,
     /// The pattern to match (folder path or filename glob)
+    /// Supports '*' (0+ chars) and '?' (0-1 chars) wildcards
     pub pattern: &'static str,
-    /// How many parent levels to go up from the match to find livery root
-    /// For "path" type: 0 means parent of matched path component
-    /// For "file" type: 0 means the file's parent folder, 1 means grandparent, etc.
-    pub parent_levels: usize,
 }
 
 /// Represents a livery pattern definition
@@ -27,7 +24,8 @@ pub struct LiveryPattern {
     pub aircraft_name: &'static str,
     /// Detection rules - any match identifies the livery
     pub detection_rules: &'static [DetectionRule],
-    /// ACF file names that identify this aircraft (without extension)
+    /// ACF file name patterns that identify this aircraft (without extension)
+    /// Supports '*' (0+ chars) and '?' (0-1 chars) wildcards, case-insensitive
     pub acf_identifiers: &'static [&'static str],
 }
 
@@ -40,21 +38,11 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
         detection_rules: &[DetectionRule {
             pattern_type: "path",
             pattern: "objects/777",
-            parent_levels: 0,
         }],
         acf_identifiers: &[
-            "777-200ER",
-            "777-200ER_xp12",
-            "777-200ER_xp12_lo",
-            "777-200LR",
-            "777-200LR_xp12",
-            "777-200LR_xp12_lo",
-            "777-300ER",
-            "777-300ER_xp12",
-            "777-300ER_xp12_lo",
-            "777-F",
-            "777-F_xp12",
-            "777-F_xp12_lo",
+            "777-200*",
+            "777-300*",
+            "777-F*",
         ],
     },
     //ToLiss
@@ -65,25 +53,17 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
             DetectionRule {
                 pattern_type: "file",
                 pattern: "a319_*icon11*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/fuselage319*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/fuselage319*.dds",
-                parent_levels: 0,
             },
         ],
-        acf_identifiers: &[
-            "a319", 
-            "a319_StdDef", 
-            "a319_XP11", 
-            "a319_XP11_StdDef"
-        ],
+        acf_identifiers: &["a319*"],
     },
     LiveryPattern {
         aircraft_type_id: "TOLISS_A320",
@@ -92,35 +72,25 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
             DetectionRule {
                 pattern_type: "file",
                 pattern: "a320_*icon11*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/fuselage320*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/fuselage320*.dds",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/LEAP1A.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/LEAP1A.dds",
-                parent_levels: 0,
             },
         ],
-        acf_identifiers: &[
-            "a320", 
-            "a320_StdDef", 
-            "a320_XP11", 
-            "a320_XP11_StdDef"
-        ],
+        acf_identifiers: &["a320*"],
     },
     LiveryPattern {
         aircraft_type_id: "TOLISS_A321",
@@ -129,25 +99,17 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
             DetectionRule {
                 pattern_type: "file",
                 pattern: "a321_*icon11*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/fuselage321*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/fuselage321*.dds",
-                parent_levels: 0,
             },
         ],
-        acf_identifiers: &[
-            "a321", 
-            "a321_StdDef", 
-            "a321_XP11", 
-            "a321_XP11_StdDef"
-        ],
+        acf_identifiers: &["a321*"],
     },
     LiveryPattern {
         aircraft_type_id: "TOLISS_A339",
@@ -156,25 +118,17 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
             DetectionRule {
                 pattern_type: "file",
                 pattern: "A330-900_*icon11*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/A339_Engines.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/A339_Engines.dds",
-                parent_levels: 0,
             },
         ],
-        acf_identifiers: &[
-            "A330-900",
-            "A330-900_stdDef",
-            "A330-900_XP11",
-            "A330-900_XP11_stdDef",
-        ],
+        acf_identifiers: &["A330-900*"],
     },
     LiveryPattern {
         aircraft_type_id: "TOLISS_A346",
@@ -183,55 +137,41 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
             DetectionRule {
                 pattern_type: "file",
                 pattern: "A340-600_*icon11*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/EngineA346*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/EngineA346*.dds",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/FuselageA346*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/FuselageA346*.dds",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/StabilizersA346*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/StabilizersA346*.dds",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
-                pattern: "objects/WING*A346.png",
-                parent_levels: 0,
+                pattern: "objects/WING?A346.png",
             },
             DetectionRule {
                 pattern_type: "file",
-                pattern: "objects/WING*A346.dds",
-                parent_levels: 0,
+                pattern: "objects/WING?A346.dds",
             },
         ],
-        acf_identifiers: &[
-            "A340-600",
-            "A340-600_stdDef",
-            "A340-600_XP11",
-            "A340-600_XP11_stdDef",
-        ],
+        acf_identifiers: &["A340-600*"],
     },
     //Free
     LiveryPattern {
@@ -241,18 +181,32 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
             DetectionRule {
                 pattern_type: "file",
                 pattern: "b738_*icon11*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "file",
                 pattern: "objects/738*.png",
-                parent_levels: 0,
             },
         ],
-        acf_identifiers: &[
-            "b738",
-            "b738_4k",
+        acf_identifiers: &["b738???"],
+    },
+    LiveryPattern {
+        aircraft_type_id: "LEVELUP_B737",
+        aircraft_name: "LevelUp B737",
+        detection_rules: &[
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "737_??NG_icon11*.png",
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/737_??NG/737_*NG*.png",
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/737_??NG/737_*NG*.dds",
+            },
         ],
+        acf_identifiers: &["737_??NG"],
     },
     //X-Crafts
     LiveryPattern {
@@ -262,18 +216,13 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
             DetectionRule {
                 pattern_type: "file",
                 pattern: "E170_*icon11*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "path",
                 pattern: "objects/E170",
-                parent_levels: 0,
             },
         ],
-        acf_identifiers: &[
-            "E170",
-            "E170_XP11",
-        ],
+        acf_identifiers: &["E170*"],
     },
     LiveryPattern {
         aircraft_type_id: "X-CRAFTS_E175",
@@ -282,18 +231,13 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
             DetectionRule {
                 pattern_type: "file",
                 pattern: "E175_*icon11*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "path",
                 pattern: "objects/E175",
-                parent_levels: 0,
             },
         ],
-        acf_identifiers: &[
-            "E175",
-            "E175_XP11",
-        ],
+        acf_identifiers: &["E175*"],
     },
     LiveryPattern {
         aircraft_type_id: "X-CRAFTS_E190",
@@ -302,18 +246,13 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
             DetectionRule {
                 pattern_type: "file",
                 pattern: "E190_*icon11*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "path",
                 pattern: "objects/E190",
-                parent_levels: 0,
             },
         ],
-        acf_identifiers: &[
-            "E190",
-            "E190_XP11",
-        ],
+        acf_identifiers: &["E190*"],
     },
     LiveryPattern {
         aircraft_type_id: "X-CRAFTS_E195",
@@ -322,18 +261,13 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
             DetectionRule {
                 pattern_type: "file",
                 pattern: "E195_*icon11*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "path",
                 pattern: "objects/E195",
-                parent_levels: 0,
             },
         ],
-        acf_identifiers: &[
-            "E195",
-            "E195_XP11",
-        ],
+        acf_identifiers: &["E195*"],
     },
     LiveryPattern {
         aircraft_type_id: "X-CRAFTS_LINEAGE",
@@ -342,20 +276,85 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
             DetectionRule {
                 pattern_type: "file",
                 pattern: "Lineage_*icon11*.png",
-                parent_levels: 0,
             },
             DetectionRule {
                 pattern_type: "path",
                 pattern: "objects/LINEAGE",
-                parent_levels: 0,
             },
         ],
-        acf_identifiers: &[
-            "Lineage",
-            "Lineage_XP11",
-        ],
+        acf_identifiers: &["Lineage*"],
     },
-
+    //Felis
+    LiveryPattern {
+        aircraft_type_id: "FELIS_B742",
+        aircraft_name: "Felis B742",
+        detection_rules: &[
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "B742_*Felis_*icon11*.png",
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/engine_cowls.png",
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/engine_cowls.dds",
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/fuselage_main.png",
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/fuselage_main.dds",
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/fuselage_main2.png",
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/fuselage_main2.dds",
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/metal_parts.png",
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/metal_parts.dds",
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/mings_main.png",
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/mings_main.dds",
+            },
+        ],
+        acf_identifiers: &["B742_PW_Felis*"],
+    },/*
+    LiveryPattern {
+        aircraft_type_id: "FELIS_B742F",
+        aircraft_name: "Felis B742F",
+        detection_rules: &[
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "B742_*Felis_*icon11*.png",
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/felis_b742_*.png",
+            },
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "objects/felis_b742_*.dds",
+            },
+        ],
+        acf_identifiers: &["B742_PW_Felis*"],
+    },*/
 ];
 
 /// Check if a path matches a livery pattern
@@ -415,10 +414,10 @@ fn match_file_pattern(
 
         // Find where the pattern path matches in the normalized path
         for i in 0..path_parts.len().saturating_sub(pattern_parts.len() - 1) {
-            // Check if the path components match
+            // Check if the path components match (supporting glob in directory names)
             let mut path_matches = true;
             for (j, pattern_part) in pattern_parts[..pattern_parts.len() - 1].iter().enumerate() {
-                if i + j >= path_parts.len() || path_parts[i + j] != *pattern_part {
+                if i + j >= path_parts.len() || !matches_glob(pattern_part, path_parts[i + j]) {
                     path_matches = false;
                     break;
                 }
@@ -430,23 +429,13 @@ fn match_file_pattern(
                 if filename_idx < path_parts.len()
                     && matches_glob(pattern_filename, path_parts[filename_idx])
                 {
-                    // Found a match! Calculate livery root
+                    // Found a match! Livery root is everything before the first matched component
                     let original_parts: Vec<&str> = normalized.split('/').collect();
-                    let mut livery_root = if i > 0 {
+                    let livery_root = if i > 0 {
                         original_parts[..i].join("/")
                     } else {
                         String::new()
                     };
-
-                    // Apply parent_levels
-                    for _ in 0..rule.parent_levels {
-                        if let Some(last_slash) = livery_root.rfind('/') {
-                            livery_root = livery_root[..last_slash].to_string();
-                        } else {
-                            livery_root = String::new();
-                            break;
-                        }
-                    }
 
                     return Some(livery_root);
                 }
@@ -458,16 +447,10 @@ fn match_file_pattern(
         let file_name = normalized_lower.rsplit('/').next()?;
 
         if matches_glob(&pattern_lower, file_name) {
-            // Find the parent folder(s) based on parent_levels
+            // Livery root is the file's parent folder
             let parts: Vec<&str> = normalized.split('/').collect();
             if parts.len() > 1 {
-                // parent_levels: 0 = file's parent folder, 1 = grandparent, etc.
-                let end_idx = parts.len().saturating_sub(1 + rule.parent_levels);
-                if end_idx > 0 {
-                    return Some(parts[..end_idx].join("/"));
-                } else if end_idx == 0 {
-                    return Some(String::new());
-                }
+                return Some(parts[..parts.len() - 1].join("/"));
             }
         }
     }
@@ -475,52 +458,44 @@ fn match_file_pattern(
     None
 }
 
-/// Simple glob matching supporting only '*' wildcard
+/// Glob matching supporting '*' (0+ chars) and '?' (0-1 chars) wildcards
 fn matches_glob(pattern: &str, text: &str) -> bool {
-    if !pattern.contains('*') {
-        return pattern == text;
-    }
+    let p: Vec<char> = pattern.chars().collect();
+    let t: Vec<char> = text.chars().collect();
+    let plen = p.len();
+    let tlen = t.len();
 
-    let parts: Vec<&str> = pattern.split('*').collect();
+    // dp[i][j] = pattern[0..i] matches text[0..j]
+    let mut dp = vec![vec![false; tlen + 1]; plen + 1];
+    dp[0][0] = true;
 
-    if parts.len() == 2 {
-        // Single wildcard: prefix*suffix
-        let prefix = parts[0];
-        let suffix = parts[1];
-        return text.starts_with(prefix)
-            && text.ends_with(suffix)
-            && text.len() >= prefix.len() + suffix.len();
-    }
-
-    // For more complex patterns, do a simple check
-    // This handles patterns like "a319_icon*.png"
-    let mut remaining = text;
-    for (i, part) in parts.iter().enumerate() {
-        if part.is_empty() {
-            continue;
+    // Handle leading wildcards matching empty text
+    for i in 1..=plen {
+        if p[i - 1] == '*' || p[i - 1] == '?' {
+            dp[i][0] = dp[i - 1][0];
         }
-        if i == 0 {
-            // First part must be at the start
-            if !remaining.starts_with(part) {
-                return false;
-            }
-            remaining = &remaining[part.len()..];
-        } else if i == parts.len() - 1 {
-            // Last part must be at the end
-            if !remaining.ends_with(part) {
-                return false;
-            }
-        } else {
-            // Middle parts must exist somewhere
-            if let Some(pos) = remaining.find(part) {
-                remaining = &remaining[pos + part.len()..];
-            } else {
-                return false;
+    }
+
+    for i in 1..=plen {
+        for j in 1..=tlen {
+            match p[i - 1] {
+                '*' => {
+                    // '*' matches zero or more characters
+                    dp[i][j] = dp[i - 1][j] || dp[i][j - 1];
+                }
+                '?' => {
+                    // '?' matches zero or one character
+                    dp[i][j] = dp[i - 1][j] || dp[i - 1][j - 1];
+                }
+                c => {
+                    // Literal character must match exactly
+                    dp[i][j] = dp[i - 1][j - 1] && c == t[j - 1];
+                }
             }
         }
     }
 
-    true
+    dp[plen][tlen]
 }
 
 /// Check if an ACF file name matches any known aircraft type
@@ -532,9 +507,11 @@ pub fn check_acf_identifier(acf_file_name: &str) -> Option<&'static str> {
         .and_then(|s| s.to_str())
         .unwrap_or(acf_file_name);
 
+    let name_lower = name.to_lowercase();
+
     for pattern in LIVERY_PATTERNS {
         for identifier in pattern.acf_identifiers {
-            if name.eq_ignore_ascii_case(identifier) {
+            if matches_glob(&identifier.to_lowercase(), &name_lower) {
                 return Some(pattern.aircraft_type_id);
             }
         }
@@ -561,14 +538,14 @@ mod tests {
         let result = check_livery_pattern("MyLivery/objects/777/texture.png");
         assert!(result.is_some());
         let (aircraft_type, root) = result.unwrap();
-        assert_eq!(aircraft_type, "FF777");
+        assert_eq!(aircraft_type, "FF_B777");
         assert_eq!(root, "MyLivery");
 
         // Test with backslashes
         let result = check_livery_pattern("MyLivery\\objects\\777\\texture.png");
         assert!(result.is_some());
         let (aircraft_type, root) = result.unwrap();
-        assert_eq!(aircraft_type, "FF777");
+        assert_eq!(aircraft_type, "FF_B777");
         assert_eq!(root, "MyLivery");
     }
 
@@ -667,14 +644,41 @@ mod tests {
         // Test exact match
         assert!(matches_glob("fuselage319.png", "fuselage319.png"));
         assert!(!matches_glob("fuselage319.png", "fuselage320.png"));
+        // Test '?' wildcard (matches 0 or 1 character)
+        assert!(matches_glob("test?.png", "test.png"));   // 0 chars
+        assert!(matches_glob("test?.png", "testA.png"));  // 1 char
+        assert!(!matches_glob("test?.png", "testAB.png")); // 2 chars - no match
+        assert!(matches_glob("a?b", "ab"));   // ? matches 0
+        assert!(matches_glob("a?b", "axb"));  // ? matches 1
+        assert!(!matches_glob("a?b", "axxb")); // ? can't match 2
+        // Test combined * and ?
+        assert!(matches_glob("737_*NG", "737_80NG"));
+        assert!(matches_glob("737_*NG", "737_9ENG"));
+    }
+
+    #[test]
+    fn test_check_livery_pattern_levelup_b737() {
+        // Test LevelUp B737 with glob directory matching
+        let result = check_livery_pattern("MyLivery/objects/737_80NG/737_80NG_fuselage.png");
+        assert!(result.is_some());
+        let (aircraft_type, root) = result.unwrap();
+        assert_eq!(aircraft_type, "LEVELUP_B737");
+        assert_eq!(root, "MyLivery");
+
+        // Test with dds
+        let result = check_livery_pattern("MyLivery/objects/737_90NG/737_90NG_wing.dds");
+        assert!(result.is_some());
+        let (aircraft_type, root) = result.unwrap();
+        assert_eq!(aircraft_type, "LEVELUP_B737");
+        assert_eq!(root, "MyLivery");
     }
 
     #[test]
     fn test_check_acf_identifier() {
-        // FF777
-        assert_eq!(check_acf_identifier("777-200ER.acf"), Some("FF777"));
-        assert_eq!(check_acf_identifier("777-200ER_xp12"), Some("FF777"));
-        assert_eq!(check_acf_identifier("777-F_xp12_lo.acf"), Some("FF777"));
+        // FF_B777
+        assert_eq!(check_acf_identifier("777-200ER.acf"), Some("FF_B777"));
+        assert_eq!(check_acf_identifier("777-200ER_xp12"), Some("FF_B777"));
+        assert_eq!(check_acf_identifier("777-F_xp12_lo.acf"), Some("FF_B777"));
         // Toliss
         assert_eq!(check_acf_identifier("a319.acf"), Some("TOLISS_A319"));
         assert_eq!(check_acf_identifier("a320_StdDef.acf"), Some("TOLISS_A320"));
