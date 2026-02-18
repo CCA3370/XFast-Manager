@@ -33,6 +33,7 @@ pub struct LiveryPattern {
 
 /// All registered livery patterns
 pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
+    //FlightFactor
     LiveryPattern {
         aircraft_type_id: "FF_B777",
         aircraft_name: "FlightFactor 777v2",
@@ -56,6 +57,7 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
             "777-F_xp12_lo",
         ],
     },
+    //ToLiss
     LiveryPattern {
         aircraft_type_id: "TOLISS_A319",
         aircraft_name: "ToLiss A319",
@@ -231,6 +233,7 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
             "A340-600_XP11_stdDef",
         ],
     },
+    //Free
     LiveryPattern {
         aircraft_type_id: "ZIBO_B738",
         aircraft_name: "Zibo B738",
@@ -250,27 +253,109 @@ pub static LIVERY_PATTERNS: &[LiveryPattern] = &[
             "b738",
             "b738_4k",
         ],
-    },/*
+    },
+    //X-Crafts
     LiveryPattern {
         aircraft_type_id: "X-CRAFTS_E170",
         aircraft_name: "X-Crafts E170",
         detection_rules: &[
             DetectionRule {
                 pattern_type: "file",
-                pattern: "e170_*icon11*.png",
+                pattern: "E170_*icon11*.png",
                 parent_levels: 0,
             },
             DetectionRule {
-                pattern_type: "file",
-                pattern: "objects/e170*.png",
+                pattern_type: "path",
+                pattern: "objects/E170",
                 parent_levels: 0,
             },
         ],
         acf_identifiers: &[
-            "e170",
-            "e170_4k",
+            "E170",
+            "E170_XP11",
         ],
-    },*/
+    },
+    LiveryPattern {
+        aircraft_type_id: "X-CRAFTS_E175",
+        aircraft_name: "X-Crafts E175",
+        detection_rules: &[
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "E175_*icon11*.png",
+                parent_levels: 0,
+            },
+            DetectionRule {
+                pattern_type: "path",
+                pattern: "objects/E175",
+                parent_levels: 0,
+            },
+        ],
+        acf_identifiers: &[
+            "E175",
+            "E175_XP11",
+        ],
+    },
+    LiveryPattern {
+        aircraft_type_id: "X-CRAFTS_E190",
+        aircraft_name: "X-Crafts E190",
+        detection_rules: &[
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "E190_*icon11*.png",
+                parent_levels: 0,
+            },
+            DetectionRule {
+                pattern_type: "path",
+                pattern: "objects/E190",
+                parent_levels: 0,
+            },
+        ],
+        acf_identifiers: &[
+            "E190",
+            "E190_XP11",
+        ],
+    },
+    LiveryPattern {
+        aircraft_type_id: "X-CRAFTS_E195",
+        aircraft_name: "X-Crafts E195",
+        detection_rules: &[
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "E195_*icon11*.png",
+                parent_levels: 0,
+            },
+            DetectionRule {
+                pattern_type: "path",
+                pattern: "objects/E195",
+                parent_levels: 0,
+            },
+        ],
+        acf_identifiers: &[
+            "E195",
+            "E195_XP11",
+        ],
+    },
+    LiveryPattern {
+        aircraft_type_id: "X-CRAFTS_LINEAGE",
+        aircraft_name: "X-Crafts Lineage",
+        detection_rules: &[
+            DetectionRule {
+                pattern_type: "file",
+                pattern: "Lineage_*icon11*.png",
+                parent_levels: 0,
+            },
+            DetectionRule {
+                pattern_type: "path",
+                pattern: "objects/LINEAGE",
+                parent_levels: 0,
+            },
+        ],
+        acf_identifiers: &[
+            "Lineage",
+            "Lineage_XP11",
+        ],
+    },
+
 ];
 
 /// Check if a path matches a livery pattern
