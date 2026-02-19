@@ -8,6 +8,7 @@ use crate::models::{SceneryCategory, SceneryPackEntry};
 use crate::scenery_index::SceneryIndexManager;
 use anyhow::{anyhow, Result};
 use chrono::Local;
+use sea_orm::DatabaseConnection;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -31,27 +32,28 @@ fn normalize_scenery_path(path: &str) -> String {
 pub struct SceneryPacksManager {
     xplane_path: PathBuf,
     ini_path: PathBuf,
+    db: DatabaseConnection,
 }
 
 impl SceneryPacksManager {
     /// Create a new manager
-    pub fn new(xplane_path: &Path) -> Self {
+    pub fn new(xplane_path: &Path, db: DatabaseConnection) -> Self {
         let ini_path = xplane_path.join("Custom Scenery").join("scenery_packs.ini");
         Self {
             xplane_path: xplane_path.to_path_buf(),
             ini_path,
+            db,
         }
     }
 
-    /// Write sorted entries back to scenery_packs.ini
-    pub fn write_ini(&self, entries: &[SceneryPackEntry]) -> Result<()> {
+    fn write_ini_at_path(ini_path: &Path, entries: &[SceneryPackEntry]) -> Result<()> {
         // Create parent directory if needed
-        if let Some(parent) = self.ini_path.parent() {
+        if let Some(parent) = ini_path.parent() {
             fs::create_dir_all(parent)?;
         }
 
         // Write to temp file first for atomic write
-        let temp_path = self.ini_path.with_extension("ini.tmp");
+        let temp_path = ini_path.with_extension("ini.tmp");
         let mut file = fs::File::create(&temp_path)?;
 
         // Write header
@@ -77,19 +79,22 @@ impl SceneryPacksManager {
         }
 
         // Atomic rename
-        fs::rename(&temp_path, &self.ini_path)?;
+        fs::rename(&temp_path, ini_path)?;
 
         Ok(())
     }
 
-    /// Create a backup of scenery_packs.ini
-    pub fn backup_ini(&self) -> Result<PathBuf> {
-        if !self.ini_path.exists() {
+    /// Write sorted entries back to scenery_packs.ini
+    pub fn write_ini(&self, entries: &[SceneryPackEntry]) -> Result<()> {
+        Self::write_ini_at_path(&self.ini_path, entries)
+    }
+
+    fn backup_ini_at_path(ini_path: &Path) -> Result<PathBuf> {
+        if !ini_path.exists() {
             return Err(anyhow!("scenery_packs.ini does not exist"));
         }
 
-        let parent_dir = self
-            .ini_path
+        let parent_dir = ini_path
             .parent()
             .ok_or_else(|| anyhow!("Invalid ini path: no parent directory"))?;
 
@@ -97,20 +102,25 @@ impl SceneryPacksManager {
         let backup_name = format!("scenery_packs.ini.backup.{}", timestamp);
         let backup_path = parent_dir.join(&backup_name);
 
-        fs::rename(&self.ini_path, &backup_path)?;
+        fs::rename(ini_path, &backup_path)?;
         logger::log_info(
             &format!("Created backup: {:?}", backup_path),
             Some("scenery_packs"),
         );
 
         // Clean up old backups, keeping only the 3 most recent
-        self.cleanup_old_backups(parent_dir, 3);
+        Self::cleanup_old_backups(parent_dir, 3);
 
         Ok(backup_path)
     }
 
+    /// Create a backup of scenery_packs.ini
+    pub fn backup_ini(&self) -> Result<PathBuf> {
+        Self::backup_ini_at_path(&self.ini_path)
+    }
+
     /// Remove old backup files, keeping only the specified number of most recent backups
-    fn cleanup_old_backups(&self, dir: &std::path::Path, keep_count: usize) {
+    fn cleanup_old_backups(dir: &std::path::Path, keep_count: usize) {
         let mut backups: Vec<_> = match fs::read_dir(dir) {
             Ok(entries) => entries
                 .filter_map(|e| e.ok())
@@ -151,12 +161,12 @@ impl SceneryPacksManager {
     }
 
     /// Add a new entry to scenery_packs.ini (used after installation)
-    pub fn add_entry(&self, folder_name: &str, category: &SceneryCategory) -> Result<()> {
-        let index_manager = SceneryIndexManager::new(&self.xplane_path);
+    pub async fn add_entry(&self, folder_name: &str, category: &SceneryCategory) -> Result<()> {
+        let index_manager = SceneryIndexManager::new(&self.xplane_path, self.db.clone());
 
         // If index hasn't been created yet, don't add to index or sort
         // User hasn't built the index, so we shouldn't automatically manage scenery order
-        if !index_manager.has_index()? {
+        if !index_manager.has_index().await? {
             logger::log_info(
                 &format!(
                     "Skipping scenery indexing for '{}': index not yet created",
@@ -169,28 +179,30 @@ impl SceneryPacksManager {
 
         let folder_path = self.xplane_path.join("Custom Scenery").join(folder_name);
 
-        let info = index_manager.get_or_classify(&folder_path)?;
+        let info = index_manager.get_or_classify(&folder_path).await?;
         if &info.category != category {
-            index_manager.update_entry(folder_name, None, None, Some(category.clone()))?;
+            index_manager
+                .update_entry(folder_name, None, None, Some(category.clone()))
+                .await?;
         }
 
-        let _ = index_manager.reset_sort_order()?;
-        self.auto_sort_from_index()
+        let _ = index_manager.reset_sort_order().await?;
+        self.auto_sort_from_index().await
     }
 
     /// Ensure all installed scenery is in scenery_packs.ini
     /// Only performs incremental indexing if the index has been created
-    pub fn sync_with_folder(&self) -> Result<usize> {
+    pub async fn sync_with_folder(&self) -> Result<usize> {
         let custom_scenery_path = self.xplane_path.join("Custom Scenery");
         if !custom_scenery_path.exists() {
             return Ok(0);
         }
 
-        let index_manager = SceneryIndexManager::new(&self.xplane_path);
+        let index_manager = SceneryIndexManager::new(&self.xplane_path, self.db.clone());
 
         // If index hasn't been created yet, don't perform incremental indexing
         // User hasn't built the index, so we shouldn't automatically update it
-        if !index_manager.has_index()? {
+        if !index_manager.has_index().await? {
             logger::log_info(
                 "Skipping sync_with_folder: index not yet created",
                 Some("scenery_packs"),
@@ -198,18 +210,18 @@ impl SceneryPacksManager {
             return Ok(0);
         }
 
-        let before_index = index_manager.load_index()?;
+        let before_index = index_manager.load_index().await?;
         let before_keys: std::collections::HashSet<String> =
             before_index.packages.keys().cloned().collect();
 
-        let updated_index = index_manager.update_index()?;
+        let updated_index = index_manager.update_index().await?;
         let after_keys: std::collections::HashSet<String> =
             updated_index.packages.keys().cloned().collect();
 
         let added_count = after_keys.difference(&before_keys).count();
 
         if before_keys != after_keys {
-            self.auto_sort_from_index()?;
+            self.auto_sort_from_index().await?;
         }
 
         Ok(added_count)
@@ -217,9 +229,9 @@ impl SceneryPacksManager {
 
     /// Sort scenery_packs.ini based entirely on index sort_order
     /// This is used by the scenery manager after manual reordering
-    pub fn auto_sort_from_index(&self) -> Result<()> {
-        let index_manager = SceneryIndexManager::new(&self.xplane_path);
-        let index = index_manager.load_index()?;
+    pub async fn auto_sort_from_index(&self) -> Result<()> {
+        let index_manager = SceneryIndexManager::new(&self.xplane_path, self.db.clone());
+        let index = index_manager.load_index().await?;
 
         if index.packages.is_empty() {
             logger::log_info(
@@ -231,7 +243,11 @@ impl SceneryPacksManager {
 
         // Create backup if ini exists
         if self.ini_path.exists() {
-            if let Err(e) = self.backup_ini() {
+            let ini_path = self.ini_path.clone();
+            if let Err(e) = tokio::task::spawn_blocking(move || Self::backup_ini_at_path(&ini_path))
+                .await
+                .map_err(|e| anyhow!("Blocking task failed: {}", e))?
+            {
                 logger::log_info(
                     &format!("Failed to create backup: {}", e),
                     Some("scenery_packs"),
@@ -291,7 +307,11 @@ impl SceneryPacksManager {
         }
 
         // Write sorted entries
-        self.write_ini(&entries)?;
+        let ini_path = self.ini_path.clone();
+        let entries = entries.clone();
+        tokio::task::spawn_blocking(move || Self::write_ini_at_path(&ini_path, &entries))
+            .await
+            .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
 
         logger::log_info(
             &format!("Sorted {} scenery entries from index", entries.len()),
@@ -303,30 +323,33 @@ impl SceneryPacksManager {
 
     /// Apply index state (enabled/sort_order) to scenery_packs.ini
     /// This preserves the order from the index and applies enabled states
-    pub fn apply_from_index(&self) -> Result<()> {
+    pub async fn apply_from_index(&self) -> Result<()> {
         // This is essentially the same as auto_sort_from_index
         // but we call it explicitly to make the intent clear
-        self.auto_sort_from_index()
+        self.auto_sort_from_index().await
     }
 
     /// Check if ini file is in sync with the index
     /// Returns true if ini order/enabled states match index for entries that exist in the index
     /// Note: Extra entries in the ini (manually added) are ignored
-    pub fn is_synced_with_index(&self) -> Result<bool> {
+    pub async fn is_synced_with_index(&self) -> Result<bool> {
         // If ini doesn't exist, it's not synced
         if !self.ini_path.exists() {
             return Ok(false);
         }
 
-        let index_manager = SceneryIndexManager::new(&self.xplane_path);
-        let index = index_manager.load_index()?;
+        let index_manager = SceneryIndexManager::new(&self.xplane_path, self.db.clone());
+        let index = index_manager.load_index().await?;
 
         if index.packages.is_empty() {
             return Ok(true);
         }
 
         // Read current ini file
-        let content = fs::read_to_string(&self.ini_path)?;
+        let ini_path = self.ini_path.clone();
+        let content = tokio::task::spawn_blocking(move || fs::read_to_string(&ini_path))
+            .await
+            .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
 
         // Parse ini entries (order matters)
         let mut ini_entries: Vec<(String, bool)> = Vec::new(); // (folder_name, enabled)

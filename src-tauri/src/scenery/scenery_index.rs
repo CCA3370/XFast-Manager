@@ -3,7 +3,7 @@
 //! This module manages a persistent SQLite database of scenery classifications
 //! with cache invalidation based on directory modification times.
 
-use crate::database::{apply_migrations, open_connection, SceneryQueries, CURRENT_SCHEMA_VERSION};
+use crate::database::{SceneryQueries, CURRENT_SCHEMA_VERSION};
 use crate::logger;
 use crate::models::{
     SceneryCategory, SceneryIndex, SceneryIndexScanResult, SceneryIndexStats, SceneryIndexStatus,
@@ -12,11 +12,11 @@ use crate::models::{
 use crate::scenery_classifier::classify_scenery;
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
+use sea_orm::DatabaseConnection;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::time::SystemTime;
 
 type AirportCoords = HashMap<(i32, i32), Vec<(String, Option<String>)>>;
@@ -302,237 +302,233 @@ fn compare_packages_for_sorting(
 /// Manager for scenery index operations
 pub struct SceneryIndexManager {
     xplane_path: PathBuf,
-    /// Lazy-initialized database connection
-    db_initialized: Mutex<bool>,
+    db: DatabaseConnection,
 }
 
 impl SceneryIndexManager {
     /// Create a new index manager
-    pub fn new(xplane_path: &Path) -> Self {
+    pub fn new(xplane_path: &Path, db: DatabaseConnection) -> Self {
         Self {
             xplane_path: xplane_path.to_path_buf(),
-            db_initialized: Mutex::new(false),
+            db,
         }
-    }
-
-    /// Ensure database is initialized (creates schema if needed)
-    fn ensure_initialized(&self) -> Result<()> {
-        let mut initialized = self.db_initialized.lock().unwrap();
-        if !*initialized {
-            let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
-            apply_migrations(&conn).map_err(|e| anyhow!("{}", e))?;
-            *initialized = true;
-        }
-        Ok(())
     }
 
     /// Check if the scenery index has been created (has any packages)
     /// Returns true if there are packages in the index, false otherwise
-    pub fn has_index(&self) -> Result<bool> {
-        self.ensure_initialized()?;
-        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
-        SceneryQueries::has_packages(&conn).map_err(|e| anyhow!("{}", e))
+    pub async fn has_index(&self) -> Result<bool> {
+        SceneryQueries::has_packages(&self.db)
+            .await
+            .map_err(|e| anyhow!("{}", e))
     }
 
     /// Load index from database or create new empty index
-    pub fn load_index(&self) -> Result<SceneryIndex> {
-        self.ensure_initialized()?;
-        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
-
+    pub async fn load_index(&self) -> Result<SceneryIndex> {
         // Check if database has any packages
-        let has_packages = SceneryQueries::has_packages(&conn).map_err(|e| anyhow!("{}", e))?;
+        let has_packages = SceneryQueries::has_packages(&self.db)
+            .await
+            .map_err(|e| anyhow!("{}", e))?;
 
         if has_packages {
-            SceneryQueries::load_all(&conn).map_err(|e| anyhow!("{}", e))
+            SceneryQueries::load_all(&self.db)
+                .await
+                .map_err(|e| anyhow!("{}", e))
         } else {
             Ok(self.create_empty_index())
         }
     }
 
     /// Save index to database
-    pub fn save_index(&self, index: &SceneryIndex) -> Result<()> {
-        self.ensure_initialized()?;
-        let mut conn = open_connection().map_err(|e| anyhow!("{}", e))?;
-        SceneryQueries::save_all(&mut conn, index).map_err(|e| anyhow!("{}", e))
+    pub async fn save_index(&self, index: &SceneryIndex) -> Result<()> {
+        SceneryQueries::save_all(&self.db, index)
+            .await
+            .map_err(|e| anyhow!("{}", e))
     }
 
     /// Update or add a single package in the index
-    pub fn update_package(&self, package_info: SceneryPackageInfo) -> Result<()> {
-        self.ensure_initialized()?;
-        let mut conn = open_connection().map_err(|e| anyhow!("{}", e))?;
-        SceneryQueries::update_package(&mut conn, &package_info).map_err(|e| anyhow!("{}", e))
+    pub async fn update_package(&self, package_info: SceneryPackageInfo) -> Result<()> {
+        SceneryQueries::update_package(&self.db, &package_info)
+            .await
+            .map_err(|e| anyhow!("{}", e))
     }
 
     /// Rebuild entire index by scanning all scenery packages
     /// This completely clears the existing index and rebuilds from scratch
-    pub fn rebuild_index(&self) -> Result<SceneryIndex> {
+    pub async fn rebuild_index(&self) -> Result<SceneryIndex> {
         let custom_scenery_path = self.xplane_path.join("Custom Scenery");
         if !custom_scenery_path.exists() {
             return Err(anyhow!("Custom Scenery folder not found"));
         }
 
         // Clear all existing index data for a fresh rebuild
-        self.ensure_initialized()?;
-        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
-        SceneryQueries::clear_all(&conn).map_err(|e| anyhow!("{}", e))?;
-        drop(conn);
+        SceneryQueries::clear_all(&self.db)
+            .await
+            .map_err(|e| anyhow!("{}", e))?;
 
         logger::log_info(
             "Cleared existing index, starting fresh rebuild",
             Some("scenery_index"),
         );
 
-        // Collect all scenery folders (including symlinks and .lnk shortcuts)
-        // Track shortcuts by their target path to correctly map shortcut names
-        // Key: canonical target path, Value: (shortcut_name without .lnk, normalized_target_path for ini)
-        let mut shortcut_target_map: HashMap<PathBuf, (String, String)> = HashMap::new();
+        let xplane_path = self.xplane_path.clone();
+        let custom_scenery_path = custom_scenery_path.clone();
 
-        let scenery_folders: Vec<PathBuf> = fs::read_dir(&custom_scenery_path)?
-            .filter_map(|e| e.ok())
-            .filter_map(|e| {
-                let path = e.path();
+        let index = tokio::task::spawn_blocking(move || -> Result<SceneryIndex> {
+            // Collect all scenery folders (including symlinks and .lnk shortcuts)
+            // Track shortcuts by their target path to correctly map shortcut names
+            // Key: canonical target path, Value: (shortcut_name without .lnk, normalized_target_path for ini)
+            let mut shortcut_target_map: HashMap<PathBuf, (String, String)> = HashMap::new();
 
-                // Check if it's a .lnk file (Windows shortcut)
-                if path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("lnk"))
-                {
-                    // Use shortcut file name (without .lnk extension) as the entry name
-                    // This prevents conflicts when multiple shortcuts point to folders with the same name
-                    let shortcut_name = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| "<unknown>".to_string());
+            let scenery_folders: Vec<PathBuf> = fs::read_dir(&custom_scenery_path)?
+                .filter_map(|e| e.ok())
+                .filter_map(|e| {
+                    let path = e.path();
+
+                    // Check if it's a .lnk file (Windows shortcut)
+                    if path
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("lnk"))
+                    {
+                        // Use shortcut file name (without .lnk extension) as the entry name
+                        // This prevents conflicts when multiple shortcuts point to folders with the same name
+                        let shortcut_name = path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "<unknown>".to_string());
+                        logger::log_info(
+                            &format!("Attempting to resolve shortcut: {}.lnk", shortcut_name),
+                            Some("scenery_index"),
+                        );
+
+                        // Try to resolve the shortcut
+                        if let Some(target) = resolve_shortcut(&path) {
+                            logger::log_info(
+                                &format!("✓ Resolved shortcut {}.lnk -> {:?}", shortcut_name, target),
+                                Some("scenery_index"),
+                            );
+
+                            // Store the mapping from target path to shortcut info
+                            let target_path_str = target.to_string_lossy().to_string();
+                            // Convert backslashes to forward slashes for scenery_packs.ini compatibility
+                            let normalized_path_str = target_path_str.replace('\\', "/");
+                            shortcut_target_map
+                                .insert(target.clone(), (shortcut_name, normalized_path_str));
+
+                            return Some(target);
+                        } else {
+                            logger::log_info(
+                                &format!("✗ Failed to resolve shortcut: {:?}", path),
+                                Some("scenery_index"),
+                            );
+                            return None;
+                        }
+                    }
+
+                    // Check if it's a directory (including symlinks)
+                    if path.metadata().map(|m| m.is_dir()).unwrap_or(false) {
+                        return Some(path);
+                    }
+
+                    None
+                })
+                .collect();
+
+            logger::log_info(
+                &format!(
+                    "Rebuilding scenery index for {} packages",
+                    scenery_folders.len()
+                ),
+                Some("scenery_index"),
+            );
+
+            // Classify all packages
+            // Track which path each package came from to correctly handle shortcuts
+            // Use sequential processing in debug log mode for ordered logs, parallel otherwise
+            let packages_with_paths: Vec<(PathBuf, SceneryPackageInfo)> =
+                if logger::is_debug_enabled() {
+                    // Sequential processing for ordered debug logs
+                    scenery_folders
+                        .iter()
+                        .filter_map(|folder| match classify_scenery(folder, &xplane_path) {
+                            Ok(info) => Some((folder.clone(), info)),
+                            Err(e) => {
+                                logger::log_info(
+                                    &format!("Failed to classify {:?}: {}", folder, e),
+                                    Some("scenery_index"),
+                                );
+                                None
+                            }
+                        })
+                        .collect()
+                } else {
+                    // Parallel processing for better performance when not in debug mode
+                    scenery_folders
+                        .par_iter()
+                        .filter_map(|folder| match classify_scenery(folder, &xplane_path) {
+                            Ok(info) => Some((folder.clone(), info)),
+                            Err(e) => {
+                                logger::log_info(
+                                    &format!("Failed to classify {:?}: {}", folder, e),
+                                    Some("scenery_index"),
+                                );
+                                None
+                            }
+                        })
+                        .collect()
+                };
+
+            // Post-process: Set folder_name and actual_path for shortcut entries
+            // For shortcuts, use the shortcut name (not target folder name) to avoid conflicts
+            let mut packages_vec: Vec<SceneryPackageInfo> =
+                Vec::with_capacity(packages_with_paths.len());
+            for (path, mut info) in packages_with_paths {
+                if let Some((shortcut_name, actual_path)) = shortcut_target_map.get(&path) {
+                    // This entry came from a shortcut - use shortcut name and set actual_path
                     logger::log_info(
-                        &format!("Attempting to resolve shortcut: {}.lnk", shortcut_name),
+                        &format!(
+                            "Shortcut entry: {} (target folder: {}) -> actual_path: {}",
+                            shortcut_name, info.folder_name, actual_path
+                        ),
                         Some("scenery_index"),
                     );
-
-                    // Try to resolve the shortcut
-                    if let Some(target) = resolve_shortcut(&path) {
-                        logger::log_info(
-                            &format!("✓ Resolved shortcut {}.lnk -> {:?}", shortcut_name, target),
-                            Some("scenery_index"),
-                        );
-
-                        // Store the mapping from target path to shortcut info
-                        let target_path_str = target.to_string_lossy().to_string();
-                        // Convert backslashes to forward slashes for scenery_packs.ini compatibility
-                        let normalized_path_str = target_path_str.replace('\\', "/");
-                        shortcut_target_map
-                            .insert(target.clone(), (shortcut_name, normalized_path_str));
-
-                        return Some(target);
-                    } else {
-                        logger::log_info(
-                            &format!("✗ Failed to resolve shortcut: {:?}", path),
-                            Some("scenery_index"),
-                        );
-                        return None;
-                    }
+                    info.folder_name = shortcut_name.clone();
+                    info.actual_path = Some(actual_path.clone());
                 }
-
-                // Check if it's a directory (including symlinks)
-                if path.metadata().map(|m| m.is_dir()).unwrap_or(false) {
-                    return Some(path);
-                }
-
-                None
-            })
-            .collect();
-
-        logger::log_info(
-            &format!(
-                "Rebuilding scenery index for {} packages",
-                scenery_folders.len()
-            ),
-            Some("scenery_index"),
-        );
-
-        // Classify all packages
-        // Track which path each package came from to correctly handle shortcuts
-        // Use sequential processing in debug log mode for ordered logs, parallel otherwise
-        let packages_with_paths: Vec<(PathBuf, SceneryPackageInfo)> = if logger::is_debug_enabled()
-        {
-            // Sequential processing for ordered debug logs
-            scenery_folders
-                .iter()
-                .filter_map(|folder| match classify_scenery(folder, &self.xplane_path) {
-                    Ok(info) => Some((folder.clone(), info)),
-                    Err(e) => {
-                        logger::log_info(
-                            &format!("Failed to classify {:?}: {}", folder, e),
-                            Some("scenery_index"),
-                        );
-                        None
-                    }
-                })
-                .collect()
-        } else {
-            // Parallel processing for better performance when not in debug mode
-            scenery_folders
-                .par_iter()
-                .filter_map(|folder| match classify_scenery(folder, &self.xplane_path) {
-                    Ok(info) => Some((folder.clone(), info)),
-                    Err(e) => {
-                        logger::log_info(
-                            &format!("Failed to classify {:?}: {}", folder, e),
-                            Some("scenery_index"),
-                        );
-                        None
-                    }
-                })
-                .collect()
-        };
-
-        // Post-process: Set folder_name and actual_path for shortcut entries
-        // For shortcuts, use the shortcut name (not target folder name) to avoid conflicts
-        let mut packages_vec: Vec<SceneryPackageInfo> =
-            Vec::with_capacity(packages_with_paths.len());
-        for (path, mut info) in packages_with_paths {
-            if let Some((shortcut_name, actual_path)) = shortcut_target_map.get(&path) {
-                // This entry came from a shortcut - use shortcut name and set actual_path
-                logger::log_info(
-                    &format!(
-                        "Shortcut entry: {} (target folder: {}) -> actual_path: {}",
-                        shortcut_name, info.folder_name, actual_path
-                    ),
-                    Some("scenery_index"),
-                );
-                info.folder_name = shortcut_name.clone();
-                info.actual_path = Some(actual_path.clone());
+                packages_vec.push(info);
             }
-            packages_vec.push(info);
-        }
 
-        // Post-process: Detect airport-associated mesh packages
-        self.detect_airport_mesh_packages(&mut packages_vec);
+            // Post-process: Detect airport-associated mesh packages
+            detect_airport_mesh_packages_with_path(&xplane_path, &mut packages_vec);
 
-        // Sort packages using the common sorting function
-        packages_vec
-            .sort_by(|a, b| compare_packages_for_sorting(&a.folder_name, a, &b.folder_name, b));
+            // Sort packages using the common sorting function
+            packages_vec.sort_by(|a, b| {
+                compare_packages_for_sorting(&a.folder_name, a, &b.folder_name, b)
+            });
 
-        // Assign sort_order and set default enabled state
-        // Fresh rebuild: Unrecognized packages default to disabled, others default to enabled
-        let packages: HashMap<String, SceneryPackageInfo> = packages_vec
-            .into_iter()
-            .enumerate()
-            .map(|(index, mut info)| {
-                info.sort_order = index as u32;
-                // Unrecognized packages default to disabled, others default to enabled
-                info.enabled = info.category != SceneryCategory::Unrecognized;
-                (info.folder_name.clone(), info)
+            // Assign sort_order and set default enabled state
+            // Fresh rebuild: Unrecognized packages default to disabled, others default to enabled
+            let packages: HashMap<String, SceneryPackageInfo> = packages_vec
+                .into_iter()
+                .enumerate()
+                .map(|(index, mut info)| {
+                    info.sort_order = index as u32;
+                    // Unrecognized packages default to disabled, others default to enabled
+                    info.enabled = info.category != SceneryCategory::Unrecognized;
+                    (info.folder_name.clone(), info)
+                })
+                .collect();
+
+            Ok(SceneryIndex {
+                version: CURRENT_SCHEMA_VERSION as u32,
+                packages,
+                last_updated: SystemTime::now(),
             })
-            .collect();
+        })
+        .await
+        .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
 
-        let index = SceneryIndex {
-            version: CURRENT_SCHEMA_VERSION as u32,
-            packages,
-            last_updated: SystemTime::now(),
-        };
-
-        self.save_index(&index)?;
+        self.save_index(&index).await?;
         logger::log_info(
             &format!(
                 "Scenery index rebuilt with {} packages",
@@ -542,13 +538,13 @@ impl SceneryIndexManager {
         );
 
         // Update missing libraries for all packages using the complete index
-        let index = self.update_missing_libraries(index)?;
+        let index = self.update_missing_libraries(index).await?;
 
         Ok(index)
     }
 
     /// Update missing libraries for all packages using the complete index
-    fn update_missing_libraries(&self, mut index: SceneryIndex) -> Result<SceneryIndex> {
+    async fn update_missing_libraries(&self, mut index: SceneryIndex) -> Result<SceneryIndex> {
         logger::log_info(
             "Updating missing libraries for all packages...",
             Some("scenery_index"),
@@ -584,7 +580,7 @@ impl SceneryIndexManager {
         }
 
         // Save the updated index
-        self.save_index(&index)?;
+        self.save_index(&index).await?;
         logger::log_info(
             "Missing libraries updated for all packages",
             Some("scenery_index"),
@@ -595,7 +591,7 @@ impl SceneryIndexManager {
 
     /// Recalculate sort_order for all packages using the same sorting logic as rebuild_index
     /// This ensures incremental updates produce consistent ordering with full rebuilds
-    fn recalculate_sort_order(&self, index: &mut SceneryIndex) {
+    fn recalculate_sort_order(index: &mut SceneryIndex) {
         if index.packages.is_empty() {
             return;
         }
@@ -667,233 +663,255 @@ impl SceneryIndexManager {
     }
 
     /// Update index incrementally - only re-classify modified packages
-    pub fn update_index(&self) -> Result<SceneryIndex> {
+    pub async fn update_index(&self) -> Result<SceneryIndex> {
         let custom_scenery_path = self.xplane_path.join("Custom Scenery");
         if !custom_scenery_path.exists() {
             return Err(anyhow!("Custom Scenery folder not found"));
         }
 
-        let mut index = self.load_index()?;
+        let index = self.load_index().await?;
+        let xplane_path = self.xplane_path.clone();
+        let custom_scenery_path = custom_scenery_path.clone();
 
-        // Track shortcuts by their target path
-        // Key: target path, Value: (shortcut_name without .lnk, normalized_target_path for ini)
-        let mut shortcut_target_map: HashMap<PathBuf, (String, String)> = HashMap::new();
+        let mut index = tokio::task::spawn_blocking(move || -> Result<SceneryIndex> {
+            let mut index = index;
 
-        // Get current scenery folders (including symlinks and .lnk shortcuts)
-        // Key: entry name (shortcut name for shortcuts, folder name for directories)
-        // Value: actual path to scan
-        let current_folders: HashMap<String, PathBuf> = fs::read_dir(&custom_scenery_path)?
-            .filter_map(|e| e.ok())
-            .filter_map(|e| {
-                let path = e.path();
+            // Track shortcuts by their target path
+            // Key: target path, Value: (shortcut_name without .lnk, normalized_target_path for ini)
+            let mut shortcut_target_map: HashMap<PathBuf, (String, String)> = HashMap::new();
 
-                // Check if it's a .lnk file (Windows shortcut)
-                if path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("lnk"))
-                {
-                    // Try to resolve the shortcut
-                    if let Some(target) = resolve_shortcut(&path) {
-                        // Use shortcut file name (without .lnk) as the entry name
-                        // This prevents conflicts when multiple shortcuts point to folders with the same name
-                        let shortcut_name = path
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .map(|s| s.to_string())
-                            .unwrap_or_else(|| "<unknown>".to_string());
-                        // Track the resolved target path for writing to scenery_packs.ini
-                        let target_path_str = target.to_string_lossy().to_string();
-                        // Convert backslashes to forward slashes for scenery_packs.ini compatibility
-                        let normalized_path_str = target_path_str.replace('\\', "/");
-                        shortcut_target_map
-                            .insert(target.clone(), (shortcut_name.clone(), normalized_path_str));
-                        return Some((shortcut_name, target));
-                    }
-                    return None;
-                }
+            // Get current scenery folders (including symlinks and .lnk shortcuts)
+            // Key: entry name (shortcut name for shortcuts, folder name for directories)
+            // Value: actual path to scan
+            let current_folders: HashMap<String, PathBuf> = fs::read_dir(&custom_scenery_path)?
+                .filter_map(|e| e.ok())
+                .filter_map(|e| {
+                    let path = e.path();
 
-                // Check if it's a directory (including symlinks)
-                if path.metadata().map(|m| m.is_dir()).unwrap_or(false) {
-                    if let Some(name) = e.file_name().to_str() {
-                        return Some((name.to_string(), path));
-                    }
-                }
-
-                None
-            })
-            .collect();
-
-        // Remove stale entries (deleted folders)
-        let stale_keys: Vec<String> = index
-            .packages
-            .keys()
-            .filter(|name| !current_folders.contains_key(*name))
-            .cloned()
-            .collect();
-
-        for key in stale_keys {
-            index.packages.remove(&key);
-            crate::log_debug!(&format!("Removed stale entry: {}", key), "scenery_index");
-        }
-
-        // Find packages that need updating
-        let packages_to_update: Vec<PathBuf> = current_folders
-            .iter()
-            .filter(|(name, path)| {
-                // Skip dynamic content packages (e.g., AutoOrtho XPME_* packages)
-                // These packages generate content on-the-fly and their modification time
-                // changes frequently, which would cause unnecessary re-indexing
-                if name.starts_with("XPME_") {
-                    // Only update if not in index (new package)
-                    return !index.packages.contains_key(*name);
-                }
-
-                // Check if package is new or modified
-                if let Some(existing) = index.packages.get(*name) {
-                    // Recovery path: if a package has library.txt but currently no exported
-                    // library names in index, force one re-classification so parser fixes
-                    // are applied during incremental scans (e.g., non-UTF8 library.txt).
-                    if existing.has_library_txt && existing.exported_library_names.is_empty() {
-                        return true;
+                    // Check if it's a .lnk file (Windows shortcut)
+                    if path
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("lnk"))
+                    {
+                        // Try to resolve the shortcut
+                        if let Some(target) = resolve_shortcut(&path) {
+                            // Use shortcut file name (without .lnk) as the entry name
+                            // This prevents conflicts when multiple shortcuts point to folders with the same name
+                            let shortcut_name = path
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| "<unknown>".to_string());
+                            // Track the resolved target path for writing to scenery_packs.ini
+                            let target_path_str = target.to_string_lossy().to_string();
+                            // Convert backslashes to forward slashes for scenery_packs.ini compatibility
+                            let normalized_path_str = target_path_str.replace('\\', "/");
+                            shortcut_target_map.insert(
+                                target.clone(),
+                                (shortcut_name.clone(), normalized_path_str),
+                            );
+                            return Some((shortcut_name, target));
+                        }
+                        return None;
                     }
 
-                    // Compare modification times
-                    if let Ok(metadata) = fs::metadata(path) {
-                        if let Ok(modified) = metadata.modified() {
-                            return modified > existing.indexed_at;
+                    // Check if it's a directory (including symlinks)
+                    if path.metadata().map(|m| m.is_dir()).unwrap_or(false) {
+                        if let Some(name) = e.file_name().to_str() {
+                            return Some((name.to_string(), path));
                         }
                     }
-                    false
-                } else {
-                    true // New package
-                }
-            })
-            .map(|(_, path)| path.clone())
-            .collect();
 
-        if !packages_to_update.is_empty() {
-            logger::log_info(
-                &format!("Updating {} scenery packages", packages_to_update.len()),
-                Some("scenery_index"),
-            );
-
-            // Classify updated packages
-            // Track which path each package came from to correctly handle shortcuts
-            // Use sequential processing in debug log mode for ordered logs, parallel otherwise
-            let packages_with_paths: Vec<(PathBuf, SceneryPackageInfo)> =
-                if logger::is_debug_enabled() {
-                    // Sequential processing for ordered debug logs
-                    packages_to_update
-                        .iter()
-                        .filter_map(|folder| {
-                            classify_scenery(folder, &self.xplane_path)
-                                .ok()
-                                .map(|info| (folder.clone(), info))
-                        })
-                        .collect()
-                } else {
-                    // Parallel processing for better performance when not in debug mode
-                    packages_to_update
-                        .par_iter()
-                        .filter_map(|folder| {
-                            classify_scenery(folder, &self.xplane_path)
-                                .ok()
-                                .map(|info| (folder.clone(), info))
-                        })
-                        .collect()
-                };
-
-            for (path, mut info) in packages_with_paths {
-                // Check if this entry came from a shortcut
-                if let Some((shortcut_name, actual_path)) = shortcut_target_map.get(&path) {
-                    // Use shortcut name and set actual_path
-                    info.folder_name = shortcut_name.clone();
-                    info.actual_path = Some(actual_path.clone());
-                }
-                index.packages.insert(info.folder_name.clone(), info);
-            }
-
-            // Before recalculate_sort_order, detect airport mesh packages (same as rebuild_index)
-            let mut packages_vec: Vec<SceneryPackageInfo> =
-                index.packages.drain().map(|(_, v)| v).collect();
-            self.detect_airport_mesh_packages(&mut packages_vec);
-            index.packages = packages_vec
-                .into_iter()
-                .map(|info| (info.folder_name.clone(), info))
+                    None
+                })
                 .collect();
 
-            // After adding new packages, recalculate sort_order using the same logic as rebuild_index
-            // This ensures incremental updates produce the same ordering as full rebuilds
-            self.recalculate_sort_order(&mut index);
-        }
+            // Remove stale entries (deleted folders)
+            let stale_keys: Vec<String> = index
+                .packages
+                .keys()
+                .filter(|name| !current_folders.contains_key(*name))
+                .cloned()
+                .collect();
 
-        // Also update actual_path for existing entries that are shortcuts
-        // (in case they weren't updated but the shortcut info needs to be preserved)
-        for (folder_name, info) in index.packages.iter_mut() {
-            // Look up by folder_name in shortcut_target_map values (shortcut names)
-            for (_, (shortcut_name, actual_path)) in shortcut_target_map.iter() {
-                if folder_name == shortcut_name {
-                    if info.actual_path.is_none() || info.actual_path.as_ref() != Some(actual_path)
-                    {
+            for key in stale_keys {
+                index.packages.remove(&key);
+                crate::log_debug!(&format!("Removed stale entry: {}", key), "scenery_index");
+            }
+
+            // Find packages that need updating
+            let packages_to_update: Vec<PathBuf> = current_folders
+                .iter()
+                .filter(|(name, path)| {
+                    // Skip dynamic content packages (e.g., AutoOrtho XPME_* packages)
+                    // These packages generate content on-the-fly and their modification time
+                    // changes frequently, which would cause unnecessary re-indexing
+                    if name.starts_with("XPME_") {
+                        // Only update if not in index (new package)
+                        return !index.packages.contains_key(*name);
+                    }
+
+                    // Check if package is new or modified
+                    if let Some(existing) = index.packages.get(*name) {
+                        // Recovery path: if a package has library.txt but currently no exported
+                        // library names in index, force one re-classification so parser fixes
+                        // are applied during incremental scans (e.g., non-UTF8 library.txt).
+                        if existing.has_library_txt && existing.exported_library_names.is_empty() {
+                            return true;
+                        }
+
+                        // Compare modification times
+                        if let Ok(metadata) = fs::metadata(path) {
+                            if let Ok(modified) = metadata.modified() {
+                                return modified > existing.indexed_at;
+                            }
+                        }
+                        false
+                    } else {
+                        true // New package
+                    }
+                })
+                .map(|(_, path)| path.clone())
+                .collect();
+
+            if !packages_to_update.is_empty() {
+                logger::log_info(
+                    &format!("Updating {} scenery packages", packages_to_update.len()),
+                    Some("scenery_index"),
+                );
+
+                // Classify updated packages
+                // Track which path each package came from to correctly handle shortcuts
+                // Use sequential processing in debug log mode for ordered logs, parallel otherwise
+                let packages_with_paths: Vec<(PathBuf, SceneryPackageInfo)> =
+                    if logger::is_debug_enabled() {
+                        // Sequential processing for ordered debug logs
+                        packages_to_update
+                            .iter()
+                            .filter_map(|folder| {
+                                classify_scenery(folder, &xplane_path)
+                                    .ok()
+                                    .map(|info| (folder.clone(), info))
+                            })
+                            .collect()
+                    } else {
+                        // Parallel processing for better performance when not in debug mode
+                        packages_to_update
+                            .par_iter()
+                            .filter_map(|folder| {
+                                classify_scenery(folder, &xplane_path)
+                                    .ok()
+                                    .map(|info| (folder.clone(), info))
+                            })
+                            .collect()
+                    };
+
+                for (path, mut info) in packages_with_paths {
+                    // Check if this entry came from a shortcut
+                    if let Some((shortcut_name, actual_path)) = shortcut_target_map.get(&path) {
+                        // Use shortcut name and set actual_path
+                        info.folder_name = shortcut_name.clone();
                         info.actual_path = Some(actual_path.clone());
                     }
-                    break;
+                    index.packages.insert(info.folder_name.clone(), info);
+                }
+
+                // Before recalculate_sort_order, detect airport mesh packages (same as rebuild_index)
+                let mut packages_vec: Vec<SceneryPackageInfo> =
+                    index.packages.drain().map(|(_, v)| v).collect();
+                detect_airport_mesh_packages_with_path(&xplane_path, &mut packages_vec);
+                index.packages = packages_vec
+                    .into_iter()
+                    .map(|info| (info.folder_name.clone(), info))
+                    .collect();
+
+                // After adding new packages, recalculate sort_order using the same logic as rebuild_index
+                // This ensures incremental updates produce the same ordering as full rebuilds
+                Self::recalculate_sort_order(&mut index);
+            }
+
+            // Also update actual_path for existing entries that are shortcuts
+            // (in case they weren't updated but the shortcut info needs to be preserved)
+            for (folder_name, info) in index.packages.iter_mut() {
+                // Look up by folder_name in shortcut_target_map values (shortcut names)
+                for (_, (shortcut_name, actual_path)) in shortcut_target_map.iter() {
+                    if folder_name == shortcut_name {
+                        if info.actual_path.is_none()
+                            || info.actual_path.as_ref() != Some(actual_path)
+                        {
+                            info.actual_path = Some(actual_path.clone());
+                        }
+                        break;
+                    }
                 }
             }
-        }
 
-        index.last_updated = SystemTime::now();
-        let index = self.update_missing_libraries(index)?;
+            index.last_updated = SystemTime::now();
+
+            Ok(index)
+        })
+        .await
+        .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
+        let index = self.update_missing_libraries(index).await?;
 
         Ok(index)
     }
 
     /// Check if a package needs re-classification
-    pub fn is_package_stale(&self, folder_name: &str, folder_path: &Path) -> Result<bool> {
-        let index = self.load_index()?;
+    pub async fn is_package_stale(&self, folder_name: &str, folder_path: &Path) -> Result<bool> {
+        let index = self.load_index().await?;
+        let folder_name = folder_name.to_string();
+        let folder_path = folder_path.to_path_buf();
 
-        if let Some(existing) = index.packages.get(folder_name) {
-            if let Ok(metadata) = fs::metadata(folder_path) {
-                if let Ok(modified) = metadata.modified() {
-                    return Ok(modified > existing.indexed_at);
+        tokio::task::spawn_blocking(move || {
+            if let Some(existing) = index.packages.get(&folder_name) {
+                if let Ok(metadata) = fs::metadata(&folder_path) {
+                    if let Ok(modified) = metadata.modified() {
+                        return Ok(modified > existing.indexed_at);
+                    }
                 }
             }
-        }
 
-        Ok(true) // Assume stale if we can't determine
+            Ok(true) // Assume stale if we can't determine
+        })
+        .await
+        .map_err(|e| anyhow!("Blocking task failed: {}", e))?
     }
 
     /// Get package info from index
-    pub fn get_package(&self, folder_name: &str) -> Result<Option<SceneryPackageInfo>> {
-        let index = self.load_index()?;
+    pub async fn get_package(&self, folder_name: &str) -> Result<Option<SceneryPackageInfo>> {
+        let index = self.load_index().await?;
         Ok(index.packages.get(folder_name).cloned())
     }
 
     /// Get or classify a package (uses cache if available and not stale)
-    pub fn get_or_classify(&self, folder_path: &Path) -> Result<SceneryPackageInfo> {
+    pub async fn get_or_classify(&self, folder_path: &Path) -> Result<SceneryPackageInfo> {
         let folder_name = folder_path
             .file_name()
             .and_then(|s| s.to_str())
             .ok_or_else(|| anyhow!("Invalid folder name"))?;
 
         // Check if we have a valid cached entry
-        if !self.is_package_stale(folder_name, folder_path)? {
-            if let Some(info) = self.get_package(folder_name)? {
+        if !self.is_package_stale(folder_name, folder_path).await? {
+            if let Some(info) = self.get_package(folder_name).await? {
                 return Ok(info);
             }
         }
 
         // Classify and update index
-        let info = classify_scenery(folder_path, &self.xplane_path)?;
-        self.update_package(info.clone())?;
+        let folder_path = folder_path.to_path_buf();
+        let xplane_path = self.xplane_path.clone();
+        let info = tokio::task::spawn_blocking(move || classify_scenery(&folder_path, &xplane_path))
+            .await
+            .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
+        self.update_package(info.clone()).await?;
         Ok(info)
     }
 
-    pub fn index_status(&self) -> Result<SceneryIndexStatus> {
-        self.ensure_initialized()?;
-        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
-        let total_packages =
-            SceneryQueries::get_package_count(&conn).map_err(|e| anyhow!("{}", e))?;
+    pub async fn index_status(&self) -> Result<SceneryIndexStatus> {
+        let total_packages = SceneryQueries::get_package_count(&self.db)
+            .await
+            .map_err(|e| anyhow!("{}", e))?;
         let index_exists = total_packages > 0;
 
         Ok(SceneryIndexStatus {
@@ -902,10 +920,10 @@ impl SceneryIndexManager {
         })
     }
 
-    pub fn quick_scan_and_update(&self) -> Result<SceneryIndexScanResult> {
-        self.ensure_initialized()?;
-        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
-        let has_packages = SceneryQueries::has_packages(&conn).map_err(|e| anyhow!("{}", e))?;
+    pub async fn quick_scan_and_update(&self) -> Result<SceneryIndexScanResult> {
+        let has_packages = SceneryQueries::has_packages(&self.db)
+            .await
+            .map_err(|e| anyhow!("{}", e))?;
 
         if !has_packages {
             return Ok(SceneryIndexScanResult {
@@ -916,10 +934,10 @@ impl SceneryIndexManager {
             });
         }
 
-        let before_index = self.load_index()?;
+        let before_index = self.load_index().await?;
         let before_keys: HashSet<String> = before_index.packages.keys().cloned().collect();
 
-        let after_index = self.update_index()?;
+        let after_index = self.update_index().await?;
         let after_keys: HashSet<String> = after_index.packages.keys().cloned().collect();
 
         let mut added: Vec<String> = after_keys.difference(&before_keys).cloned().collect();
@@ -964,8 +982,8 @@ impl SceneryIndexManager {
     }
 
     /// Get index statistics
-    pub fn get_stats(&self) -> Result<SceneryIndexStats> {
-        let index = self.load_index()?;
+    pub async fn get_stats(&self) -> Result<SceneryIndexStats> {
+        let index = self.load_index().await?;
 
         let mut by_category: HashMap<String, usize> = HashMap::new();
         for info in index.packages.values() {
@@ -981,7 +999,7 @@ impl SceneryIndexManager {
     }
 
     /// Batch update multiple entries' enabled state and sort_order from UI
-    pub fn batch_update_entries(
+    pub async fn batch_update_entries(
         &self,
         entries: &[crate::models::SceneryEntryUpdate],
     ) -> Result<()> {
@@ -989,9 +1007,9 @@ impl SceneryIndexManager {
             return Ok(());
         }
 
-        self.ensure_initialized()?;
-        let mut conn = open_connection().map_err(|e| anyhow!("{}", e))?;
-        SceneryQueries::batch_update_entries(&mut conn, entries).map_err(|e| anyhow!("{}", e))?;
+        SceneryQueries::batch_update_entries(&self.db, entries)
+            .await
+            .map_err(|e| anyhow!("{}", e))?;
 
         logger::log_info(
             &format!("Batch updated {} entries in scenery index", entries.len()),
@@ -1002,26 +1020,24 @@ impl SceneryIndexManager {
     }
 
     /// Update a single entry's enabled state, sort_order, and/or category
-    pub fn update_entry(
+    pub async fn update_entry(
         &self,
         folder_name: &str,
         enabled: Option<bool>,
         sort_order: Option<u32>,
         category: Option<SceneryCategory>,
     ) -> Result<()> {
-        self.ensure_initialized()?;
-        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
-        SceneryQueries::update_entry(&conn, folder_name, enabled, sort_order, category.as_ref())
+        SceneryQueries::update_entry(&self.db, folder_name, enabled, sort_order, category.as_ref())
+            .await
             .map_err(|e| anyhow!("{}", e))?;
         Ok(())
     }
 
     /// Remove an entry from the index
-    pub fn remove_entry(&self, folder_name: &str) -> Result<()> {
-        self.ensure_initialized()?;
-        let conn = open_connection().map_err(|e| anyhow!("{}", e))?;
-        let deleted =
-            SceneryQueries::delete_package(&conn, folder_name).map_err(|e| anyhow!("{}", e))?;
+    pub async fn remove_entry(&self, folder_name: &str) -> Result<()> {
+        let deleted = SceneryQueries::delete_package(&self.db, folder_name)
+            .await
+            .map_err(|e| anyhow!("{}", e))?;
 
         if deleted {
             logger::log_info(
@@ -1034,8 +1050,8 @@ impl SceneryIndexManager {
     }
 
     /// Move an entry from one position to another, auto-adjusting other entries
-    pub fn move_entry(&self, folder_name: &str, new_sort_order: u32) -> Result<()> {
-        let mut index = self.load_index()?;
+    pub async fn move_entry(&self, folder_name: &str, new_sort_order: u32) -> Result<()> {
+        let mut index = self.load_index().await?;
 
         // Get current sort_order
         let current_sort_order = match index.packages.get(folder_name) {
@@ -1074,7 +1090,7 @@ impl SceneryIndexManager {
         }
 
         index.last_updated = SystemTime::now();
-        self.save_index(&index)?;
+        self.save_index(&index).await?;
 
         Ok(())
     }
@@ -1083,8 +1099,8 @@ impl SceneryIndexManager {
     /// This recalculates the sort order using the classification algorithm
     /// without writing to the ini file
     /// Returns true if the sort order was changed, false if it was already correct
-    pub fn reset_sort_order(&self) -> Result<bool> {
-        let mut index = self.load_index()?;
+    pub async fn reset_sort_order(&self) -> Result<bool> {
+        let mut index = self.load_index().await?;
 
         if index.packages.is_empty() {
             return Ok(false);
@@ -1156,7 +1172,7 @@ impl SceneryIndexManager {
 
         if has_changes {
             index.last_updated = SystemTime::now();
-            self.save_index(&index)?;
+            self.save_index(&index).await?;
 
             logger::log_info(
                 &format!("Reset sort order for {} packages", sorted_names.len()),
@@ -1173,13 +1189,15 @@ impl SceneryIndexManager {
     }
 
     /// Get scenery manager data for UI
-    pub fn get_manager_data(&self) -> Result<SceneryManagerData> {
-        let index = self.load_index()?;
+    pub async fn get_manager_data(&self) -> Result<SceneryManagerData> {
+        let index = self.load_index().await?;
 
         // Check if ini is synced with index
-        let packs_manager =
-            crate::scenery_packs_manager::SceneryPacksManager::new(&self.xplane_path);
-        let needs_sync = !packs_manager.is_synced_with_index().unwrap_or(true);
+        let packs_manager = crate::scenery_packs_manager::SceneryPacksManager::new(
+            &self.xplane_path,
+            self.db.clone(),
+        );
+        let needs_sync = !packs_manager.is_synced_with_index().await.unwrap_or(true);
 
         // Detect duplicate tiles within Mesh and AirportMesh categories
         let custom_scenery_path = self.xplane_path.join("Custom Scenery");
@@ -1254,82 +1272,8 @@ impl SceneryIndexManager {
     /// 3. If multiple meshes match the same airport, prefer the one whose folder name contains the airport's ICAO code
     /// 4. Also check if mesh shares a common naming prefix with an airport package
     fn detect_airport_mesh_packages(&self, packages: &mut [SceneryPackageInfo]) {
-        logger::log_info(
-            "Detecting airport-associated mesh packages...",
-            Some("scenery_index"),
-        );
-
-        // Step 1: Collect all airports with their coordinates, ICAO codes, and folder names
-        let mut airport_coords: AirportCoords = HashMap::new();
-
-        // Also collect airport folder name prefixes for prefix matching
-        let mut airport_prefixes: HashSet<String> = HashSet::new();
-
-        for pkg in packages.iter() {
-            if pkg.category == SceneryCategory::Airport && pkg.has_apt_dat {
-                // Parse apt.dat to get coordinates and ICAO code
-                let scenery_path = self
-                    .xplane_path
-                    .join("Custom Scenery")
-                    .join(&pkg.folder_name);
-                if let Some((lat, lon, icao)) = parse_airport_coords(&scenery_path) {
-                    let coord_key = (lat, lon);
-                    airport_coords
-                        .entry(coord_key)
-                        .or_default()
-                        .push((pkg.folder_name.clone(), icao));
-
-                    // Extract common prefix (e.g., "ACS_Singapore" from "ACS_Singapore_0_Airport")
-                    if let Some(prefix) = extract_scenery_prefix(&pkg.folder_name) {
-                        airport_prefixes.insert(prefix);
-                    }
-                }
-            }
-        }
-
-        logger::log_info(
-            &format!("Found {} airport coordinate tiles", airport_coords.len()),
-            Some("scenery_index"),
-        );
-
-        // Step 2: Find mesh packages with small DSF count and matching coordinates
-        let custom_scenery_path = self.xplane_path.join("Custom Scenery");
-        let mut mesh_candidates: Vec<(usize, i32, i32)> = Vec::new(); // (package index, lat, lon)
-
-        for (idx, pkg) in packages.iter().enumerate() {
-            if pkg.category != SceneryCategory::Mesh {
-                continue;
-            }
-
-            // Skip Ortho4XP packages - they are regional orthophotos, not airport-specific
-            if pkg.folder_name.starts_with("zOrtho4XP") {
-                continue;
-            }
-
-            let scenery_path = custom_scenery_path.join(&pkg.folder_name);
-
-            // Count DSF files and get their coordinates
-            if let Some(dsf_coords) = get_mesh_dsf_coordinates(&scenery_path) {
-                // Only consider meshes with 4 or fewer DSF files
-                if dsf_coords.len() > 4 {
-                    continue;
-                }
-
-                // Check if any DSF coordinate matches an airport
-                for (lat, lon) in &dsf_coords {
-                    if airport_coords.contains_key(&(*lat, *lon)) {
-                        mesh_candidates.push((idx, *lat, *lon));
-                        crate::log_debug!(
-                            &format!(
-                                "  Mesh candidate: {} at ({}, {})",
-                                pkg.folder_name, lat, lon
-                            ),
-                            "scenery_index"
-                        );
-                    }
-                }
-            }
-        }
+        detect_airport_mesh_packages_with_path(&self.xplane_path, packages);
+    }
 
         // Step 3: Group candidates by coordinate and resolve conflicts
         let mut coord_to_meshes: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
@@ -1504,9 +1448,13 @@ pub fn build_library_index_from_scenery_index(index: &SceneryIndex) -> HashMap<S
 }
 
 /// Remove a scenery entry from the index (public helper function)
-pub fn remove_scenery_entry(xplane_path: &str, folder_name: &str) -> Result<()> {
-    let manager = SceneryIndexManager::new(Path::new(xplane_path));
-    manager.remove_entry(folder_name)
+pub async fn remove_scenery_entry(
+    db: &DatabaseConnection,
+    xplane_path: &str,
+    folder_name: &str,
+) -> Result<()> {
+    let manager = SceneryIndexManager::new(Path::new(xplane_path), db.clone());
+    manager.remove_entry(folder_name).await
 }
 
 /// Parse airport apt.dat to extract coordinates and ICAO code
@@ -1596,6 +1544,120 @@ fn parse_airport_coords(scenery_path: &Path) -> Option<(i32, i32, Option<String>
     let lat_floor = lat.floor() as i32;
     let lon_floor = lon.floor() as i32;
     Some((lat_floor, lon_floor, icao_code))
+}
+
+/// Detect and reclassify mesh packages that are associated with airports
+/// Uses an explicit X-Plane path to avoid borrowing &self in blocking contexts.
+fn detect_airport_mesh_packages_with_path(
+    xplane_path: &Path,
+    packages: &mut [SceneryPackageInfo],
+) {
+    logger::log_info(
+        "Detecting airport-associated mesh packages...",
+        Some("scenery_index"),
+    );
+
+    // Step 1: Collect all airports with their coordinates, ICAO codes, and folder names
+    let mut airport_coords: AirportCoords = HashMap::new();
+
+    // Also collect airport folder name prefixes for prefix matching
+    let mut airport_prefixes: HashSet<String> = HashSet::new();
+
+    for pkg in packages.iter() {
+        if pkg.category == SceneryCategory::Airport && pkg.has_apt_dat {
+            // Parse apt.dat to get coordinates and ICAO code
+            let scenery_path = xplane_path.join("Custom Scenery").join(&pkg.folder_name);
+            if let Some((lat, lon, icao)) = parse_airport_coords(&scenery_path) {
+                let coord_key = (lat, lon);
+                airport_coords
+                    .entry(coord_key)
+                    .or_default()
+                    .push((pkg.folder_name.clone(), icao));
+
+                // Extract common prefix (e.g., "ACS_Singapore" from "ACS_Singapore_0_Airport")
+                if let Some(prefix) = extract_scenery_prefix(&pkg.folder_name) {
+                    airport_prefixes.insert(prefix);
+                }
+            }
+        }
+    }
+
+    logger::log_info(
+        &format!("Found {} airport coordinate tiles", airport_coords.len()),
+        Some("scenery_index"),
+    );
+
+    // Step 2: Find mesh packages with small DSF count and matching coordinates
+    let custom_scenery_path = xplane_path.join("Custom Scenery");
+    let mut mesh_candidates: Vec<(usize, i32, i32)> = Vec::new(); // (package index, lat, lon)
+
+    for (idx, pkg) in packages.iter().enumerate() {
+        if pkg.category != SceneryCategory::Mesh {
+            continue;
+        }
+
+        // Skip Ortho4XP packages - they are regional orthophotos, not airport-specific
+        if pkg.folder_name.starts_with("zOrtho4XP") {
+            continue;
+        }
+
+        let scenery_path = custom_scenery_path.join(&pkg.folder_name);
+
+        // Count DSF files and get their coordinates
+        if let Some(dsf_coords) = get_mesh_dsf_coordinates(&scenery_path) {
+            // Only consider meshes with 4 or fewer DSF files
+            if dsf_coords.len() > 4 {
+                continue;
+            }
+
+            // Check if any DSF coordinate matches an airport
+            for (lat, lon) in &dsf_coords {
+                if airport_coords.contains_key(&(*lat, *lon)) {
+                    mesh_candidates.push((idx, *lat, *lon));
+                    crate::log_debug!(
+                        &format!(
+                            "  Mesh candidate: {} at ({}, {})",
+                            pkg.folder_name, lat, lon
+                        ),
+                        "scenery_index"
+                    );
+                }
+            }
+        }
+    }
+
+    // Step 3: Resolve candidates and apply classifications
+    for (idx, lat, lon) in mesh_candidates {
+        let pkg = &packages[idx];
+        if let Some(airports) = airport_coords.get(&(lat, lon)) {
+            let mut best_match: Option<(String, Option<String>)> = None;
+
+            // Prefer packages whose folder name contains the ICAO code
+            for (airport_folder, icao) in airports {
+                if let Some(ref code) = icao {
+                    if pkg.folder_name.to_uppercase().contains(code) {
+                        best_match = Some((airport_folder.clone(), icao.clone()));
+                        break;
+                    }
+                }
+            }
+
+            // If no ICAO match, try prefix matching
+            if best_match.is_none() {
+                if let Some(prefix) = extract_scenery_prefix(&pkg.folder_name) {
+                    if airport_prefixes.contains(&prefix) {
+                        best_match = airports.first().cloned();
+                    }
+                }
+            }
+
+            if best_match.is_some() {
+                if let Some(pkg) = packages.get_mut(idx) {
+                    pkg.category = SceneryCategory::AirportMesh;
+                }
+            }
+        }
+    }
 }
 
 /// Get DSF file coordinates from a mesh scenery package
@@ -1871,7 +1933,9 @@ mod tests {
     #[test]
     fn test_empty_index_creation() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let manager = SceneryIndexManager::new(temp_dir.path());
+        let db = crate::database::open_memory_connection().unwrap();
+        crate::database::apply_migrations(&db).unwrap();
+        let manager = SceneryIndexManager::new(temp_dir.path(), db);
         let index = manager.create_empty_index();
 
         assert_eq!(index.version, CURRENT_SCHEMA_VERSION as u32);

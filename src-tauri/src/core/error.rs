@@ -293,9 +293,9 @@ impl From<anyhow::Error> for ApiError {
     }
 }
 
-/// Convert from rusqlite::Error to ApiError
-impl From<rusqlite::Error> for ApiError {
-    fn from(err: rusqlite::Error) -> Self {
+/// Convert from sea_orm::DbErr to ApiError
+impl From<sea_orm::DbErr> for ApiError {
+    fn from(err: sea_orm::DbErr) -> Self {
         ApiError::new(ApiErrorCode::DatabaseError, err.to_string())
     }
 }

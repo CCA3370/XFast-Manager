@@ -1,26 +1,62 @@
-mod analyzer;
+// Core/shared
+#[path = "core/app_dirs.rs"]
 mod app_dirs;
-mod atomic_installer;
+#[path = "core/cache.rs"]
 mod cache;
-mod database;
+#[path = "core/error.rs"]
 mod error;
-mod geo_regions;
-mod hash_collector;
-mod installer;
-mod library_links;
-mod livery_patterns;
+#[path = "core/logger.rs"]
 mod logger;
-mod management_index;
-mod models;
+#[path = "core/performance.rs"]
 mod performance;
+#[path = "core/registry.rs"]
 mod registry;
-mod scanner;
-mod scenery_classifier;
-mod scenery_index;
-mod scenery_packs_manager;
+#[path = "core/task_control.rs"]
 mod task_control;
-mod updater;
+
+// Data
+#[path = "data/database/mod.rs"]
+mod database;
+#[path = "data/models.rs"]
+mod models;
+
+// Analysis & scanning
+#[path = "analysis/analyzer.rs"]
+mod analyzer;
+#[path = "analysis/hash_collector.rs"]
+mod hash_collector;
+#[path = "analysis/livery_patterns.rs"]
+mod livery_patterns;
+#[path = "analysis/scanner.rs"]
+mod scanner;
+
+// Installation
+#[path = "install/atomic_installer.rs"]
+mod atomic_installer;
+#[path = "install/installer.rs"]
+mod installer;
+#[path = "install/verifier.rs"]
 mod verifier;
+
+// Management
+#[path = "management/management_index.rs"]
+mod management_index;
+
+// Scenery
+#[path = "scenery/geo_regions.rs"]
+mod geo_regions;
+#[path = "scenery/scenery_classifier.rs"]
+mod scenery_classifier;
+#[path = "scenery/scenery_index.rs"]
+mod scenery_index;
+#[path = "scenery/scenery_packs_manager.rs"]
+mod scenery_packs_manager;
+
+// Services (remote/data)
+#[path = "services/library_links.rs"]
+mod library_links;
+#[path = "services/updater.rs"]
+mod updater;
 
 use std::collections::HashMap;
 use std::fs;
@@ -41,6 +77,7 @@ use scenery_index::SceneryIndexManager;
 use scenery_packs_manager::SceneryPacksManager;
 use task_control::TaskControl;
 
+use sea_orm::DatabaseConnection;
 use tauri::{Emitter, Manager, State};
 
 /// Cross-platform helper to open a path in the system file explorer
@@ -199,38 +236,31 @@ async fn install_addons(
     delete_source_after_install: Option<bool>,
     auto_sort_scenery: Option<bool>,
 ) -> Result<InstallResult, String> {
-    // Clone app_handle for the blocking task
-    let app_handle_clone = app_handle.clone();
+    log_debug!(
+        &format!(
+            "Installing {} tasks: {}",
+            tasks.len(),
+            tasks
+                .iter()
+                .map(|t| &t.display_name)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        "installation"
+    );
 
-    // Run the installation in a blocking thread pool to avoid blocking the async runtime
-    tokio::task::spawn_blocking(move || {
-        log_debug!(
-            &format!(
-                "Installing {} tasks: {}",
-                tasks.len(),
-                tasks
-                    .iter()
-                    .map(|t| &t.display_name)
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-            "installation"
-        );
-
-        let installer = Installer::new(app_handle_clone);
-        installer
-            .install(
-                tasks,
-                atomic_install_enabled.unwrap_or(false),
-                xplane_path,
-                delete_source_after_install.unwrap_or(false),
-                auto_sort_scenery.unwrap_or(false),
-            )
-            .map_err(|e| format!("Installation failed: {}", e))
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    let installer = Installer::new(app_handle);
+    installer
+        .install(
+            tasks,
+            atomic_install_enabled.unwrap_or(false),
+            xplane_path,
+            delete_source_after_install.unwrap_or(false),
+            auto_sort_scenery.unwrap_or(false),
+        )
+        .await
+        .map_err(|e| format!("Installation failed: {}", e))
 }
 
 // ============================================================================
@@ -384,7 +414,11 @@ fn open_scenery_folder(xplane_path: String, folder_name: String) -> error::ApiRe
 }
 
 #[tauri::command]
-async fn delete_scenery_folder(xplane_path: String, folder_name: String) -> error::ApiResult<()> {
+async fn delete_scenery_folder(
+    db: State<'_, DatabaseConnection>,
+    xplane_path: String,
+    folder_name: String,
+) -> error::ApiResult<()> {
     let (entry_path, base_path) = resolve_scenery_entry_path(&xplane_path, &folder_name)?;
     let metadata = fs::symlink_metadata(&entry_path)
         .map_err(|e| error::ApiError::validation(format!("Invalid path: {}", e)))?;
@@ -449,7 +483,9 @@ async fn delete_scenery_folder(xplane_path: String, folder_name: String) -> erro
     }
 
     // Remove from scenery index if it exists
-    if let Err(e) = scenery_index::remove_scenery_entry(&xplane_path, &folder_name) {
+    if let Err(e) =
+        scenery_index::remove_scenery_entry(db.inner(), &xplane_path, &folder_name).await
+    {
         logger::log_error(
             &format!("Failed to remove scenery from index: {}", e),
             Some("scenery"),
@@ -458,8 +494,9 @@ async fn delete_scenery_folder(xplane_path: String, folder_name: String) -> erro
 
     // Update scenery_packs.ini to remove the deleted entry
     let xplane_root = std::path::Path::new(&xplane_path);
-    let packs_manager = scenery_packs_manager::SceneryPacksManager::new(xplane_root);
-    if let Err(e) = packs_manager.apply_from_index() {
+    let packs_manager =
+        scenery_packs_manager::SceneryPacksManager::new(xplane_root, db.inner().clone());
+    if let Err(e) = packs_manager.apply_from_index().await {
         logger::log_error(
             &format!("Failed to update scenery_packs.ini after deletion: {}", e),
             Some("scenery"),
@@ -702,69 +739,71 @@ async fn lookup_library_links_remote(
 
 #[tauri::command]
 async fn get_scenery_classification(
+    db: State<'_, DatabaseConnection>,
     xplane_path: String,
     folder_name: String,
 ) -> error::ApiResult<SceneryPackageInfo> {
-    tokio::task::spawn_blocking(move || {
-        let xplane_path = std::path::Path::new(&xplane_path);
-        let scenery_path = xplane_path.join("Custom Scenery").join(&folder_name);
+    let db = db.inner().clone();
+    let xplane_path = std::path::Path::new(&xplane_path);
+    let scenery_path = xplane_path.join("Custom Scenery").join(&folder_name);
 
-        if !scenery_path.exists() {
-            return Err(error::ApiError::not_found(format!(
-                "Scenery folder not found: {}",
-                folder_name
-            )));
-        }
+    if !scenery_path.exists() {
+        return Err(error::ApiError::not_found(format!(
+            "Scenery folder not found: {}",
+            folder_name
+        )));
+    }
 
-        let index_manager = SceneryIndexManager::new(xplane_path);
-        index_manager
-            .get_or_classify(&scenery_path)
-            .map_err(|e| error::ApiError::internal(format!("Classification failed: {}", e)))
-    })
-    .await
-    .map_err(|e| error::ApiError::internal(format!("Task join error: {}", e)))?
+    let index_manager = SceneryIndexManager::new(xplane_path, db);
+    index_manager
+        .get_or_classify(&scenery_path)
+        .await
+        .map_err(|e| error::ApiError::internal(format!("Classification failed: {}", e)))
 }
 
 #[tauri::command]
-async fn sort_scenery_packs(xplane_path: String) -> Result<bool, String> {
-    tokio::task::spawn_blocking(move || {
-        let xplane_path = std::path::Path::new(&xplane_path);
-        let index_manager = SceneryIndexManager::new(xplane_path);
+async fn sort_scenery_packs(
+    db: State<'_, DatabaseConnection>,
+    xplane_path: String,
+) -> Result<bool, String> {
+    let db = db.inner().clone();
+    let xplane_path = std::path::Path::new(&xplane_path);
+    let index_manager = SceneryIndexManager::new(xplane_path, db);
 
-        logger::log_info("Resetting scenery index sort order", Some("scenery"));
+    logger::log_info("Resetting scenery index sort order", Some("scenery"));
 
-        let has_changes = index_manager
-            .reset_sort_order()
-            .map_err(|e| format!("Failed to reset sort order: {}", e))?;
+    let has_changes = index_manager
+        .reset_sort_order()
+        .await
+        .map_err(|e| format!("Failed to reset sort order: {}", e))?;
 
-        logger::log_info(
-            "Scenery index sort order reset successfully",
-            Some("scenery"),
-        );
-        Ok(has_changes)
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    logger::log_info(
+        "Scenery index sort order reset successfully",
+        Some("scenery"),
+    );
+    Ok(has_changes)
 }
 
 #[tauri::command]
-async fn rebuild_scenery_index(xplane_path: String) -> Result<SceneryIndexStats, String> {
-    tokio::task::spawn_blocking(move || {
-        let xplane_path = std::path::Path::new(&xplane_path);
-        let index_manager = SceneryIndexManager::new(xplane_path);
+async fn rebuild_scenery_index(
+    db: State<'_, DatabaseConnection>,
+    xplane_path: String,
+) -> Result<SceneryIndexStats, String> {
+    let db = db.inner().clone();
+    let xplane_path = std::path::Path::new(&xplane_path);
+    let index_manager = SceneryIndexManager::new(xplane_path, db);
 
-        logger::log_info("Rebuilding scenery index", Some("scenery"));
+    logger::log_info("Rebuilding scenery index", Some("scenery"));
 
-        index_manager
-            .rebuild_index()
-            .map_err(|e| format!("Failed to rebuild index: {}", e))?;
+    index_manager
+        .rebuild_index()
+        .await
+        .map_err(|e| format!("Failed to rebuild index: {}", e))?;
 
-        index_manager
-            .get_stats()
-            .map_err(|e| format!("Failed to get stats: {}", e))
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    index_manager
+        .get_stats()
+        .await
+        .map_err(|e| format!("Failed to get stats: {}", e))
 }
 
 /// Reset the scenery database by deleting it entirely
@@ -780,140 +819,143 @@ async fn reset_scenery_database() -> Result<bool, String> {
 }
 
 #[tauri::command]
-async fn get_scenery_index_stats(xplane_path: String) -> Result<SceneryIndexStats, String> {
-    tokio::task::spawn_blocking(move || {
-        let xplane_path = std::path::Path::new(&xplane_path);
-        let index_manager = SceneryIndexManager::new(xplane_path);
+async fn get_scenery_index_stats(
+    db: State<'_, DatabaseConnection>,
+    xplane_path: String,
+) -> Result<SceneryIndexStats, String> {
+    let db = db.inner().clone();
+    let xplane_path = std::path::Path::new(&xplane_path);
+    let index_manager = SceneryIndexManager::new(xplane_path, db);
 
-        index_manager
-            .get_stats()
-            .map_err(|e| format!("Failed to get stats: {}", e))
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    index_manager
+        .get_stats()
+        .await
+        .map_err(|e| format!("Failed to get stats: {}", e))
 }
 
 #[tauri::command]
-async fn get_scenery_index_status(xplane_path: String) -> Result<SceneryIndexStatus, String> {
-    tokio::task::spawn_blocking(move || {
-        let xplane_path = std::path::Path::new(&xplane_path);
-        let index_manager = SceneryIndexManager::new(xplane_path);
+async fn get_scenery_index_status(
+    db: State<'_, DatabaseConnection>,
+    xplane_path: String,
+) -> Result<SceneryIndexStatus, String> {
+    let db = db.inner().clone();
+    let xplane_path = std::path::Path::new(&xplane_path);
+    let index_manager = SceneryIndexManager::new(xplane_path, db);
 
-        index_manager
-            .index_status()
-            .map_err(|e| format!("Failed to get index status: {}", e))
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    index_manager
+        .index_status()
+        .await
+        .map_err(|e| format!("Failed to get index status: {}", e))
 }
 
 #[tauri::command]
-async fn quick_scan_scenery_index(xplane_path: String) -> Result<SceneryIndexScanResult, String> {
-    tokio::task::spawn_blocking(move || {
-        let xplane_path = std::path::Path::new(&xplane_path);
-        let index_manager = SceneryIndexManager::new(xplane_path);
+async fn quick_scan_scenery_index(
+    db: State<'_, DatabaseConnection>,
+    xplane_path: String,
+) -> Result<SceneryIndexScanResult, String> {
+    let db = db.inner().clone();
+    let xplane_path = std::path::Path::new(&xplane_path);
+    let index_manager = SceneryIndexManager::new(xplane_path, db);
 
-        index_manager
-            .quick_scan_and_update()
-            .map_err(|e| format!("Failed to quick scan scenery index: {}", e))
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    index_manager
+        .quick_scan_and_update()
+        .await
+        .map_err(|e| format!("Failed to quick scan scenery index: {}", e))
 }
 
 #[tauri::command]
-async fn sync_scenery_packs_with_folder(xplane_path: String) -> Result<usize, String> {
-    tokio::task::spawn_blocking(move || {
-        let xplane_path = std::path::Path::new(&xplane_path);
-        let manager = SceneryPacksManager::new(xplane_path);
+async fn sync_scenery_packs_with_folder(
+    db: State<'_, DatabaseConnection>,
+    xplane_path: String,
+) -> Result<usize, String> {
+    let db = db.inner().clone();
+    let xplane_path = std::path::Path::new(&xplane_path);
+    let manager = SceneryPacksManager::new(xplane_path, db);
 
-        manager
-            .sync_with_folder()
-            .map_err(|e| format!("Failed to sync scenery packs: {}", e))
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    manager
+        .sync_with_folder()
+        .await
+        .map_err(|e| format!("Failed to sync scenery packs: {}", e))
 }
 
 #[tauri::command]
-async fn get_scenery_manager_data(xplane_path: String) -> Result<SceneryManagerData, String> {
-    tokio::task::spawn_blocking(move || {
-        let xplane_path = std::path::Path::new(&xplane_path);
-        let index_manager = SceneryIndexManager::new(xplane_path);
+async fn get_scenery_manager_data(
+    db: State<'_, DatabaseConnection>,
+    xplane_path: String,
+) -> Result<SceneryManagerData, String> {
+    let db = db.inner().clone();
+    let xplane_path = std::path::Path::new(&xplane_path);
+    let index_manager = SceneryIndexManager::new(xplane_path, db);
 
-        index_manager
-            .get_manager_data()
-            .map_err(|e| format!("Failed to get scenery manager data: {}", e))
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    index_manager
+        .get_manager_data()
+        .await
+        .map_err(|e| format!("Failed to get scenery manager data: {}", e))
 }
 
 #[tauri::command]
 async fn update_scenery_entry(
+    db: State<'_, DatabaseConnection>,
     xplane_path: String,
     folder_name: String,
     enabled: Option<bool>,
     sort_order: Option<u32>,
     category: Option<models::SceneryCategory>,
 ) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        let xplane_path = std::path::Path::new(&xplane_path);
-        let index_manager = SceneryIndexManager::new(xplane_path);
+    let db = db.inner().clone();
+    let xplane_path = std::path::Path::new(&xplane_path);
+    let index_manager = SceneryIndexManager::new(xplane_path, db);
 
-        index_manager
-            .update_entry(&folder_name, enabled, sort_order, category)
-            .map_err(|e| format!("Failed to update scenery entry: {}", e))
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    index_manager
+        .update_entry(&folder_name, enabled, sort_order, category)
+        .await
+        .map_err(|e| format!("Failed to update scenery entry: {}", e))
 }
 
 #[tauri::command]
 async fn move_scenery_entry(
+    db: State<'_, DatabaseConnection>,
     xplane_path: String,
     folder_name: String,
     new_sort_order: u32,
 ) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        let xplane_path = std::path::Path::new(&xplane_path);
-        let index_manager = SceneryIndexManager::new(xplane_path);
+    let db = db.inner().clone();
+    let xplane_path = std::path::Path::new(&xplane_path);
+    let index_manager = SceneryIndexManager::new(xplane_path, db);
 
-        index_manager
-            .move_entry(&folder_name, new_sort_order)
-            .map_err(|e| format!("Failed to move scenery entry: {}", e))
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    index_manager
+        .move_entry(&folder_name, new_sort_order)
+        .await
+        .map_err(|e| format!("Failed to move scenery entry: {}", e))
 }
 
 #[tauri::command]
 async fn apply_scenery_changes(
+    db: State<'_, DatabaseConnection>,
     xplane_path: String,
     entries: Vec<models::SceneryEntryUpdate>,
 ) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        let xplane_path = std::path::Path::new(&xplane_path);
-        let index_manager = SceneryIndexManager::new(xplane_path);
+    let db = db.inner().clone();
+    let xplane_path = std::path::Path::new(&xplane_path);
+    let index_manager = SceneryIndexManager::new(xplane_path, db.clone());
 
-        logger::log_info("Applying scenery changes to index and ini", Some("scenery"));
+    logger::log_info("Applying scenery changes to index and ini", Some("scenery"));
 
-        // Update index with all entry changes
-        index_manager
-            .batch_update_entries(&entries)
-            .map_err(|e| format!("Failed to update index: {}", e))?;
+    // Update index with all entry changes
+    index_manager
+        .batch_update_entries(&entries)
+        .await
+        .map_err(|e| format!("Failed to update index: {}", e))?;
 
-        // Apply to ini file
-        let packs_manager = SceneryPacksManager::new(xplane_path);
-        packs_manager
-            .apply_from_index()
-            .map_err(|e| format!("Failed to apply scenery changes: {}", e))?;
+    // Apply to ini file
+    let packs_manager = SceneryPacksManager::new(xplane_path, db);
+    packs_manager
+        .apply_from_index()
+        .await
+        .map_err(|e| format!("Failed to apply scenery changes: {}", e))?;
 
-        logger::log_info("Scenery changes applied successfully", Some("scenery"));
-        Ok(())
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    logger::log_info("Scenery changes applied successfully", Some("scenery"));
+    Ok(())
 }
 
 // ========== Management Commands ==========
@@ -1240,6 +1282,16 @@ pub fn run() {
         .setup(|app| {
             // Initialize TaskControl state
             app.manage(TaskControl::new());
+
+            // Initialize database connection and run migrations once on startup
+            let db = tauri::async_runtime::block_on(async {
+                let conn = database::open_connection_async()?;
+                database::apply_migrations_async(&conn)?;
+                Ok::<DatabaseConnection, error::ApiError>(conn)
+            })
+            .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
+
+            app.manage(db);
 
             // Log application startup
             logger::log_info(&logger::tr(logger::LogMsg::AppStarted), Some("app"));

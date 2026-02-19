@@ -37,7 +37,8 @@ semver = "1.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls-vendored"] }
 futures = "0.3"
 opener = "0.8"
-rusqlite = { version = "0.32", features = ["bundled"] }
+sea-orm = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio-native-tls"] }
+sea-orm-migration = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio-native-tls"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

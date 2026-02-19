@@ -64,7 +64,7 @@ fn find_library_url(links_db: &HashMap<String, String>, name: &str) -> Option<St
 /// Returns the hardcoded fallback library links database.
 /// Used when the remote fetch fails (network unavailable, timeout, etc.).
 fn hardcoded_links() -> HashMap<String, String> {
-    let embedded_json = include_str!("../../data/library_links.json");
+    let embedded_json = include_str!("../../../data/library_links.json");
 
     match serde_json::from_str::<LibraryLinksData>(embedded_json) {
         Ok(data) => data

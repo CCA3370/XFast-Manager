@@ -2,40 +2,9 @@
 
 use crate::app_dirs;
 use crate::error::ApiError;
-use rusqlite::Connection;
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement};
 use std::path::PathBuf;
-
-/// Wrapper around rusqlite Connection with RAII cleanup
-pub struct DatabaseConnection {
-    conn: Connection,
-}
-
-impl DatabaseConnection {
-    /// Create a new database connection wrapper
-    pub fn new(conn: Connection) -> Self {
-        Self { conn }
-    }
-
-    /// Consume the wrapper and return the underlying connection
-    #[cfg(test)]
-    pub fn into_inner(self) -> Connection {
-        self.conn
-    }
-}
-
-impl std::ops::Deref for DatabaseConnection {
-    type Target = Connection;
-
-    fn deref(&self) -> &Self::Target {
-        &self.conn
-    }
-}
-
-impl std::ops::DerefMut for DatabaseConnection {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.conn
-    }
-}
+use std::time::Duration;
 
 /// Get the path to the scenery database file
 pub fn get_database_path() -> PathBuf {
@@ -65,8 +34,23 @@ pub fn delete_database() -> Result<bool, ApiError> {
     }
 }
 
+fn sqlite_url(db_path: &PathBuf) -> String {
+    let normalized = db_path.to_string_lossy().replace('\\', "/");
+    format!("sqlite://{}?mode=rwc", normalized)
+}
+
+async fn execute_pragma(db: &DatabaseConnection, sql: &str) -> Result<(), ApiError> {
+    db.execute(Statement::from_string(
+        DatabaseBackend::Sqlite,
+        sql.to_string(),
+    ))
+    .await
+    .map_err(ApiError::from)?;
+    Ok(())
+}
+
 /// Configure database pragmas for optimal performance
-fn configure_pragmas(conn: &Connection) -> Result<(), ApiError> {
+async fn configure_pragmas(db: &DatabaseConnection) -> Result<(), ApiError> {
     // Performance optimizations:
     // - WAL mode: Better concurrent read/write performance
     // - Foreign keys: Referential integrity
@@ -75,18 +59,13 @@ fn configure_pragmas(conn: &Connection) -> Result<(), ApiError> {
     // - Cache size: 64MB cache (negative value = KB)
     // - Temp store: Keep temp tables in memory
     // - Mmap size: 256MB memory-mapped I/O for faster reads
-    conn.execute_batch(
-        "
-        PRAGMA journal_mode=WAL;
-        PRAGMA foreign_keys=ON;
-        PRAGMA busy_timeout=5000;
-        PRAGMA synchronous=NORMAL;
-        PRAGMA cache_size=-65536;
-        PRAGMA temp_store=MEMORY;
-        PRAGMA mmap_size=268435456;
-        ",
-    )
-    .map_err(|e| ApiError::database(format!("Failed to configure database: {}", e)))?;
+    execute_pragma(db, "PRAGMA journal_mode=WAL;").await?;
+    execute_pragma(db, "PRAGMA foreign_keys=ON;").await?;
+    execute_pragma(db, "PRAGMA busy_timeout=5000;").await?;
+    execute_pragma(db, "PRAGMA synchronous=NORMAL;").await?;
+    execute_pragma(db, "PRAGMA cache_size=-65536;").await?;
+    execute_pragma(db, "PRAGMA temp_store=MEMORY;").await?;
+    execute_pragma(db, "PRAGMA mmap_size=268435456;").await?;
     Ok(())
 }
 
@@ -99,7 +78,7 @@ fn configure_pragmas(conn: &Connection) -> Result<(), ApiError> {
 /// - NORMAL synchronous mode for better performance
 /// - Large cache size for better read performance
 /// - Memory-mapped I/O for faster reads
-pub fn open_connection() -> Result<DatabaseConnection, ApiError> {
+pub async fn open_connection_async() -> Result<DatabaseConnection, ApiError> {
     let db_path = get_database_path();
 
     // Ensure parent directory exists
@@ -109,30 +88,38 @@ pub fn open_connection() -> Result<DatabaseConnection, ApiError> {
         })?;
     }
 
-    // Open the database connection
-    let conn = Connection::open(&db_path)
+    let mut options = ConnectOptions::new(sqlite_url(&db_path));
+    options
+        .max_connections(5)
+        .min_connections(1)
+        .connect_timeout(Duration::from_secs(10))
+        .sqlx_logging(false);
+
+    let db = Database::connect(options)
+        .await
         .map_err(|e| ApiError::database(format!("Failed to open database: {}", e)))?;
 
-    // Configure pragmas for optimal performance
-    configure_pragmas(&conn)?;
+    configure_pragmas(&db).await?;
 
-    Ok(DatabaseConnection::new(conn))
+    Ok(db)
+}
+
+pub fn open_connection() -> Result<DatabaseConnection, ApiError> {
+    tauri::async_runtime::block_on(open_connection_async())
 }
 
 /// Open an in-memory database for testing
+pub async fn open_memory_connection_async() -> Result<DatabaseConnection, ApiError> {
+    let db = Database::connect("sqlite::memory:")
+        .await
+        .map_err(|e| ApiError::database(format!("Failed to open in-memory database: {}", e)))?;
+    execute_pragma(&db, "PRAGMA foreign_keys=ON;").await?;
+    Ok(db)
+}
+
 #[cfg(test)]
 pub fn open_memory_connection() -> Result<DatabaseConnection, ApiError> {
-    let conn = Connection::open_in_memory()
-        .map_err(|e| ApiError::database(format!("Failed to open in-memory database: {}", e)))?;
-
-    conn.execute_batch(
-        "
-        PRAGMA foreign_keys=ON;
-        ",
-    )
-    .map_err(|e| ApiError::database(format!("Failed to configure database: {}", e)))?;
-
-    Ok(DatabaseConnection::new(conn))
+    tauri::async_runtime::block_on(open_memory_connection_async())
 }
 
 #[cfg(test)]
@@ -148,10 +135,16 @@ mod tests {
     #[test]
     fn test_open_memory_connection() {
         let conn = open_memory_connection().expect("Failed to open in-memory connection");
-        // Verify foreign keys are enabled
-        let fk_enabled: i32 = conn
-            .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
-            .unwrap();
+        let fk_enabled: i32 = tauri::async_runtime::block_on(async {
+            let row = conn
+                .query_one(Statement::from_string(
+                    DatabaseBackend::Sqlite,
+                    "PRAGMA foreign_keys".to_string(),
+                ))
+                .await
+                .expect("Failed to query PRAGMA");
+            row.unwrap().try_get_by_index(0).unwrap_or(0)
+        });
         assert_eq!(fk_enabled, 1);
     }
 }

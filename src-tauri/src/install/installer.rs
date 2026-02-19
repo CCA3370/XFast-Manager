@@ -6,6 +6,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use sea_orm::DatabaseConnection;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::logger;
@@ -426,20 +427,23 @@ impl ProgressContext {
 pub struct Installer {
     app_handle: AppHandle,
     task_control: TaskControl,
+    db: DatabaseConnection,
 }
 
 impl Installer {
     pub fn new(app_handle: AppHandle) -> Self {
         // Get TaskControl from app state
         let task_control = app_handle.state::<TaskControl>().inner().clone();
+        let db = app_handle.state::<DatabaseConnection>().inner().clone();
         Installer {
             app_handle,
             task_control,
+            db,
         }
     }
 
     /// Install a list of tasks with progress reporting
-    pub fn install(
+    pub async fn install(
         &self,
         tasks: Vec<InstallTask>,
         atomic_install_enabled: bool,
@@ -678,10 +682,13 @@ impl Installer {
                                     match classify_scenery(target_path, &xplane_path_buf) {
                                         Ok(scenery_info) => {
                                             // Add entry to scenery_packs.ini at correct position
-                                            let manager =
-                                                SceneryPacksManager::new(&xplane_path_buf);
+                                            let manager = SceneryPacksManager::new(
+                                                &xplane_path_buf,
+                                                self.db.clone(),
+                                            );
                                             if let Err(e) = manager
                                                 .add_entry(folder_name, &scenery_info.category)
+                                                .await
                                             {
                                                 logger::log_error(
                                                     &format!("Failed to add scenery to scenery_packs.ini: {}", e),

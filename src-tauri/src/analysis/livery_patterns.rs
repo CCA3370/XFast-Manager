@@ -80,7 +80,7 @@ fn prepare_patterns(mut patterns: Vec<LiveryPattern>) -> Vec<LiveryPattern> {
 }
 
 fn load_embedded_patterns() -> Vec<LiveryPattern> {
-    let embedded_json = include_str!("../../data/livery_patterns.json");
+    let embedded_json = include_str!("../../../data/livery_patterns.json");
 
     match serde_json::from_str::<LiveryPatternsData>(embedded_json) {
         Ok(data) => prepare_patterns(data.patterns),
