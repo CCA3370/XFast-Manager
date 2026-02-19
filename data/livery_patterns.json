@@ -278,20 +278,12 @@
       ]
     },
     {
-      "aircraft_type_id": "FELIS_B742",
-      "aircraft_name": "Felis B742",
+      "aircraft_type_id": "FELIS_B742-P",
+      "aircraft_name": "Felis B742 Classic",
       "detection_rules": [
         {
           "pattern_type": "file",
           "pattern": "B742_*Felis_*icon11*.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/engine_cowls.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/engine_cowls.dds"
         },
         {
           "pattern_type": "file",
@@ -328,6 +320,51 @@
       ],
       "acf_identifiers": [
         "B742_PW_Felis*"
+      ]
+    },
+    {
+      "aircraft_type_id": "FELIS_B742-F",
+      "aircraft_name": "Felis B742 Freighter",
+      "detection_rules": [
+        {
+          "pattern_type": "file",
+          "pattern": "B742_*Felis_*icon11*.png"
+        },
+        {
+          "pattern_type": "file",
+          "pattern": "objects/fuselage_main.png"
+        },
+        {
+          "pattern_type": "file",
+          "pattern": "objects/fuselage_main.dds"
+        },
+        {
+          "pattern_type": "file",
+          "pattern": "objects/fuselage_main2.png"
+        },
+        {
+          "pattern_type": "file",
+          "pattern": "objects/fuselage_main2.dds"
+        },
+        {
+          "pattern_type": "file",
+          "pattern": "objects/metal_parts.png"
+        },
+        {
+          "pattern_type": "file",
+          "pattern": "objects/metal_parts.dds"
+        },
+        {
+          "pattern_type": "file",
+          "pattern": "objects/mings_main.png"
+        },
+        {
+          "pattern_type": "file",
+          "pattern": "objects/mings_main.dds"
+        }
+      ],
+      "acf_identifiers": [
+        "B742_GE_Felis"
       ]
     }
   ]
