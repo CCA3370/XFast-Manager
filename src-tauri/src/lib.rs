@@ -173,6 +173,8 @@ async fn analyze_addons(
     passwords: Option<HashMap<String, String>>,
     verification_preferences: Option<HashMap<String, bool>>,
 ) -> Result<AnalysisResult, String> {
+    livery_patterns::ensure_patterns_loaded().await;
+
     // Run the analysis in a blocking thread pool to avoid blocking the async runtime
     tokio::task::spawn_blocking(move || {
         log_debug!(&format!("Analyzing paths: {:?}", paths), "analysis");
@@ -1256,6 +1258,11 @@ pub fn run() {
                 // Emit event to frontend
                 app.emit("cli-args", args.clone()).ok();
             }
+
+            // Fetch latest livery patterns on startup (non-blocking)
+            tauri::async_runtime::spawn(async {
+                livery_patterns::ensure_patterns_loaded().await;
+            });
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -3525,8 +3525,8 @@ impl Scanner {
                 .to_string();
 
             // Get the aircraft name for display
-            let aircraft_name =
-                livery_patterns::get_aircraft_name(aircraft_type_id).unwrap_or(aircraft_type_id);
+            let aircraft_name = livery_patterns::get_aircraft_name(&aircraft_type_id)
+                .unwrap_or_else(|| aircraft_type_id.clone());
 
             Ok(Some(DetectedItem {
                 original_input_path: String::new(),
@@ -3536,7 +3536,7 @@ impl Scanner {
                 archive_internal_root: None,
                 extraction_chain: None,
                 navdata_info: None,
-                livery_aircraft_type: Some(aircraft_type_id.to_string()),
+                livery_aircraft_type: Some(aircraft_type_id.clone()),
                 version_info: None,
             }))
         } else {
@@ -3574,8 +3574,8 @@ impl Scanner {
             };
 
             // Get the aircraft name for display
-            let aircraft_name =
-                livery_patterns::get_aircraft_name(aircraft_type_id).unwrap_or(aircraft_type_id);
+            let aircraft_name = livery_patterns::get_aircraft_name(&aircraft_type_id)
+                .unwrap_or_else(|| aircraft_type_id.clone());
 
             Ok(Some(DetectedItem {
                 original_input_path: String::new(),
@@ -3585,7 +3585,7 @@ impl Scanner {
                 archive_internal_root: internal_root,
                 extraction_chain: None,
                 navdata_info: None,
-                livery_aircraft_type: Some(aircraft_type_id.to_string()),
+                livery_aircraft_type: Some(aircraft_type_id.clone()),
                 version_info: None,
             }))
         } else {
