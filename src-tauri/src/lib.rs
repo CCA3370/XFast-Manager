@@ -64,9 +64,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
-
 use crate::error::ToTauriError;
 use analyzer::Analyzer;
 use installer::Installer;

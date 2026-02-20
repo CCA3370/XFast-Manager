@@ -14,10 +14,12 @@
       <div class="flex items-start gap-2">
         <!-- Checkbox with better styling -->
         <div class="flex-shrink-0 pt-0.5">
-          <div class="custom-checkbox" :class="{
-            'checked': store.getTaskEnabled(task.id),
-            'disabled': isTaskDisabled(task)
-          }">
+          <div
+            class="custom-checkbox" :class="{
+              'checked': store.getTaskEnabled(task.id),
+              'disabled': isTaskDisabled(task)
+            }"
+          >
             <svg v-if="store.getTaskEnabled(task.id)" class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
             </svg>
@@ -48,8 +50,10 @@
               </svg>
               <span><AnimatedText>{{ task.type === 'LuaScript' ? $t('modal.fileExists') : $t('modal.folderExists') }}</AnimatedText></span>
               <!-- Inline version comparison for Aircraft/Plugin -->
-              <template v-if="(task.type === 'Aircraft' || task.type === 'Plugin')
-                              && (task.existingVersionInfo?.version || task.newVersionInfo?.version)">
+              <template
+                v-if="(task.type === 'Aircraft' || task.type === 'Plugin')
+                  && (task.existingVersionInfo?.version || task.newVersionInfo?.version)"
+              >
                 <span class="text-gray-400 dark:text-gray-500">·</span>
                 <span class="text-blue-600 dark:text-blue-400">
                   {{ task.existingVersionInfo?.version || '?' }}
@@ -84,19 +88,21 @@
               </span>
 
               <!-- Backup options inline for Aircraft clean install -->
-              <div v-if="task.type === 'Aircraft' && !store.getTaskOverwrite(task.id)"
-                   class="flex items-center gap-2 ml-2 pl-2 border-l border-emerald-300 dark:border-emerald-500/30">
+              <div
+                v-if="task.type === 'Aircraft' && !store.getTaskOverwrite(task.id)"
+                class="flex items-center gap-2 ml-2 pl-2 border-l border-emerald-300 dark:border-emerald-500/30"
+              >
                 <label class="backup-checkbox-label" :class="{ 'disabled': !store.getTaskEnabled(task.id) }">
                   <input
                     type="checkbox"
                     :checked="getBackupLiveries(task.id)"
                     :disabled="!store.getTaskEnabled(task.id)"
-                    @change="setBackupLiveries(task.id, !getBackupLiveries(task.id))"
                     class="backup-checkbox-input"
+                    @change="setBackupLiveries(task.id, !getBackupLiveries(task.id))"
                   >
                   <span class="backup-checkbox-custom">
                     <svg class="backup-checkbox-icon" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6L5 9L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path d="M2 6L5 9L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                     </svg>
                   </span>
                   <span class="backup-checkbox-text">
@@ -108,12 +114,12 @@
                     type="checkbox"
                     :checked="getBackupConfigFiles(task.id)"
                     :disabled="!store.getTaskEnabled(task.id) || !hasConfigPatterns"
-                    @change="setBackupConfigFiles(task.id, !getBackupConfigFiles(task.id))"
                     class="backup-checkbox-input"
+                    @change="setBackupConfigFiles(task.id, !getBackupConfigFiles(task.id))"
                   >
                   <span class="backup-checkbox-custom">
                     <svg class="backup-checkbox-icon" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6L5 9L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path d="M2 6L5 9L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                     </svg>
                   </span>
                   <span class="backup-checkbox-text" :title="!hasConfigPatterns ? $t('modal.noConfigPatternsHint') : ''">
@@ -123,19 +129,21 @@
               </div>
 
               <!-- Backup option inline for Navdata clean install -->
-              <div v-if="task.type === 'Navdata' && !store.getTaskOverwrite(task.id)"
-                   class="flex items-center gap-2 ml-2 pl-2 border-l border-emerald-300 dark:border-emerald-500/30">
+              <div
+                v-if="task.type === 'Navdata' && !store.getTaskOverwrite(task.id)"
+                class="flex items-center gap-2 ml-2 pl-2 border-l border-emerald-300 dark:border-emerald-500/30"
+              >
                 <label class="backup-checkbox-label" :class="{ 'disabled': !store.getTaskEnabled(task.id) }">
                   <input
                     type="checkbox"
                     :checked="store.getBackupNavdata(task.id)"
                     :disabled="!store.getTaskEnabled(task.id)"
-                    @change="store.setBackupNavdata(task.id, !store.getBackupNavdata(task.id))"
                     class="backup-checkbox-input"
+                    @change="store.setBackupNavdata(task.id, !store.getBackupNavdata(task.id))"
                   >
                   <span class="backup-checkbox-custom">
                     <svg class="backup-checkbox-icon" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6L5 9L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path d="M2 6L5 9L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                     </svg>
                   </span>
                   <span class="backup-checkbox-text">
@@ -158,8 +166,8 @@
                   <input
                     type="checkbox"
                     :checked="store.getTaskSizeConfirmed(task.id)"
-                    @change="toggleTaskSizeConfirm(task.id)"
                     class="w-3 h-3 rounded border-red-300 dark:border-red-500/50 bg-white dark:bg-red-500/10 text-red-600 dark:text-red-500 focus:ring-red-500 dark:focus:ring-red-500/50"
+                    @change="toggleTaskSizeConfirm(task.id)"
                   >
                   <span class="text-xs text-red-700 dark:text-red-200"><AnimatedText>{{ $t('modal.confirmTrustArchive') }}</AnimatedText></span>
                 </label>
@@ -186,7 +194,7 @@
           <!-- Locked conflict warning -->
           <div v-if="isLockedConflict(task)" class="mt-1.5 flex items-center space-x-1.5 text-xs text-amber-600 dark:text-amber-400">
             <svg class="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+              <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" />
             </svg>
             <span class="font-medium"><AnimatedText>{{ $t('modal.targetLockedWarning') }}</AnimatedText></span>
           </div>
@@ -201,6 +209,7 @@ import { computed } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useLockStore } from '@/stores/lock'
 import { AddonType, NavdataInfo } from '@/types'
+import type { InstallTask } from '@/types'
 import AnimatedText from '@/components/AnimatedText.vue'
 import { useI18n } from 'vue-i18n'
 
@@ -281,23 +290,23 @@ function toggleTaskEnabled(taskId: string) {
 }
 
 // Check if task is a livery without installed aircraft
-function isLiveryWithoutAircraft(task: any): boolean {
+function isLiveryWithoutAircraft(task: InstallTask): boolean {
   return task.type === 'Livery' && task.liveryAircraftFound === false
 }
 
 // Check if task is a Lua script without FlyWithLua installed
-function isLuaWithoutFlyWithLua(task: any): boolean {
+function isLuaWithoutFlyWithLua(task: InstallTask): boolean {
   return task.type === 'LuaScript' && task.flyWithLuaInstalled === false
 }
 
 // Check if task has a locked conflict (target exists and is locked)
-function isLockedConflict(task: any): boolean {
+function isLockedConflict(task: InstallTask): boolean {
   if (!task.conflictExists) return false
   return lockStore.isPathLocked(task.targetPath, store.xplanePath)
 }
 
 // Check if task should be disabled (livery without aircraft OR locked conflict OR lua without FlyWithLua)
-function isTaskDisabled(task: any): boolean {
+function isTaskDisabled(task: InstallTask): boolean {
   return isLiveryWithoutAircraft(task) || isLockedConflict(task) || isLuaWithoutFlyWithLua(task)
 }
 

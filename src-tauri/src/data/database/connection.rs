@@ -106,11 +106,8 @@ pub async fn open_connection_async() -> Result<DatabaseConnection, ApiError> {
     Ok(db)
 }
 
-pub fn open_connection() -> Result<DatabaseConnection, ApiError> {
-    tauri::async_runtime::block_on(open_connection_async())
-}
-
 /// Open an in-memory database for testing
+#[cfg(test)]
 pub async fn open_memory_connection_async() -> Result<DatabaseConnection, ApiError> {
     let db = Database::connect("sqlite::memory:")
         .await

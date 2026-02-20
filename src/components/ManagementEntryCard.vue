@@ -268,10 +268,10 @@ function handleContextMenu(event: MouseEvent) {
     <!-- Enable/Disable toggle (not for navdata) -->
     <button
       v-if="!isNavdata(entry)"
-      @click="emit('toggle-enabled', entry.folderName)"
       :disabled="isToggling"
       class="flex-shrink-0 w-9 h-5 rounded-full relative transition-colors disabled:opacity-70"
       :class="entry.enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'"
+      @click="emit('toggle-enabled', entry.folderName)"
     >
       <span
         v-if="isToggling"
@@ -337,25 +337,25 @@ function handleContextMenu(event: MouseEvent) {
     <!-- Restore backup button (navdata only, when backup exists) -->
     <button
       v-if="isNavdata(entry) && backupInfo"
-      @click.stop="emit('restore-backup', backupInfo)"
       class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30 hover:bg-amber-200 dark:hover:bg-amber-800/40 transition-colors"
       :title="`${t('management.restoreBackup')}: ${backupInfo.verification.cycle || backupInfo.verification.airac || ''}`"
+      @click.stop="emit('restore-backup', backupInfo)"
     >
       {{ t('management.restoreBackup') }}
     </button>
 
     <!-- Lock button -->
     <button
-      @click.stop="handleToggleLock"
       class="flex-shrink-0 p-0.5 rounded transition-colors"
       :class="isItemLocked
         ? 'text-amber-500 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30'
         : 'text-gray-400 dark:text-gray-500 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30'"
       :title="isItemLocked ? t('management.unlock') : t('management.lock')"
+      @click.stop="handleToggleLock"
     >
       <!-- Locked icon (solid) -->
       <svg v-if="isItemLocked" class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+        <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" />
       </svg>
       <!-- Unlocked icon (outline) -->
       <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -365,9 +365,9 @@ function handleContextMenu(event: MouseEvent) {
 
     <!-- Delete button -->
     <button
-      @click.stop="showDeleteConfirmModal = true"
       class="flex-shrink-0 p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
       :title="t('common.delete')"
+      @click.stop="showDeleteConfirmModal = true"
     >
       <svg class="w-3.5 h-3.5 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

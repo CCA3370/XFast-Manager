@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <transition name="modal">
-      <div class="modal-overlay animate-fade-in" @click.self>
+      <div class="modal-overlay animate-fade-in" @click.self.stop>
         <div class="modal-content animate-scale-in" @click.stop>
           <!-- Header -->
           <div class="modal-header mb-2 flex-shrink-0">
@@ -47,8 +47,8 @@
           <!-- Actions -->
           <div class="flex justify-end gap-1.5 flex-shrink-0 pt-1.5">
             <button
-              @click="$emit('close')"
               class="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-white rounded-lg transition-all duration-200 hover:scale-105 text-xs font-medium flex items-center space-x-1"
+              @click="$emit('close')"
             >
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -56,7 +56,6 @@
               <span><AnimatedText>{{ $t('common.cancel') }}</AnimatedText></span>
             </button>
             <button
-              @click="$emit('confirm')"
               :disabled="installDisabled"
               :class="[
                 'px-3 py-1.5 rounded-lg transition-all duration-200 text-xs font-medium flex items-center space-x-1',
@@ -64,6 +63,7 @@
                   ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50 text-gray-500 dark:text-gray-400'
                   : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 hover:scale-105 text-white'
               ]"
+              @click="$emit('confirm')"
             >
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>

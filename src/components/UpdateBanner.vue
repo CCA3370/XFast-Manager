@@ -25,8 +25,8 @@
       <div class="flex items-center space-x-2">
         <!-- 查看详情按钮 -->
         <button
-          @click="handleViewDetails"
           class="flex-shrink-0 inline-flex items-center px-3 py-1.5 bg-green-200/50 dark:bg-green-500/20 hover:bg-green-200 dark:hover:bg-green-500/30 text-green-800 dark:text-green-200 text-xs font-medium rounded-lg transition-colors duration-200 border border-green-300 dark:border-green-500/30"
+          @click="handleViewDetails"
         >
           <AnimatedText>{{ $t('update.viewDetails') }}</AnimatedText>
           <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -36,9 +36,9 @@
 
         <!-- 关闭按钮 -->
         <button
-          @click="handleDismiss"
           class="p-1.5 hover:bg-green-200/50 dark:hover:bg-green-500/20 rounded-lg transition-colors duration-200 text-green-600 dark:text-green-400"
           :title="$t('update.dismiss')"
+          @click="handleDismiss"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>

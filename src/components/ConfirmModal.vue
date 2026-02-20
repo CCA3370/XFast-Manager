@@ -2,9 +2,9 @@
   <Teleport to="body">
     <Transition
       name="modal"
+      :css="false"
       @enter="onEnter"
       @leave="onLeave"
-      :css="false"
     >
       <div v-if="isVisible" class="fixed inset-0 z-[1100] flex items-center justify-center">
         <!-- Backdrop -->
@@ -44,7 +44,7 @@
                 <h3 class="text-lg font-semibold leading-tight">{{ currentTitle }}</h3>
               </div>
             </div>
-            <button @click="handleCancel" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1">
+            <button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1" @click="handleCancel">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -71,20 +71,20 @@
           <div class="mt-6 flex justify-end items-center space-x-3">
             <button
               ref="cancelBtn"
-              @click="handleCancel"
               :disabled="isLoading"
               class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg text-gray-700 dark:text-white font-medium transition disabled:opacity-50"
+              @click="handleCancel"
             >
               {{ currentCancelText }}
             </button>
             <button
-              @click="handleConfirm"
               :disabled="isLoading"
               class="px-4 py-2 rounded-lg text-white font-medium transition disabled:opacity-50 flex items-center gap-2"
               :class="{
                 'bg-amber-500 hover:bg-amber-600': currentType === 'warning',
                 'bg-red-600 hover:bg-red-700': currentType === 'danger'
               }"
+              @click="handleConfirm"
             >
               <svg v-if="isLoading" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>

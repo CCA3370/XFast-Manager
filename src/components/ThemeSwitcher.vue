@@ -1,9 +1,9 @@
 <template>
   <button
-    @click="themeStore.toggleTheme()"
     class="p-2 rounded-lg transition-all duration-300 focus:outline-none"
     :class="themeStore.isDark ? 'text-yellow-400 hover:bg-white/10' : 'text-blue-600 hover:bg-gray-200'"
     title="Toggle Theme"
+    @click="themeStore.toggleTheme()"
   >
     <!-- Sun Icon -->
     <svg v-if="!themeStore.isDark" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

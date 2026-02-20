@@ -148,9 +148,9 @@ onMounted(() => {
     <!-- Header -->
     <div class="mb-4 flex-shrink-0 flex items-center gap-3">
       <button
-        @click="goBack"
         class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
         :title="t('onboarding.back')"
+        @click="goBack"
       >
         <svg class="w-5 h-5 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
@@ -199,10 +199,10 @@ onMounted(() => {
         >
           <!-- Toggle switch -->
           <button
-            @click="handleToggle(script.fileName)"
             :disabled="togglingItems.has(script.fileName)"
             class="flex-shrink-0 w-9 h-5 rounded-full relative transition-colors disabled:opacity-70"
             :class="script.enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'"
+            @click="handleToggle(script.fileName)"
           >
             <span
               v-if="togglingItems.has(script.fileName)"
@@ -239,9 +239,9 @@ onMounted(() => {
 
           <!-- Delete button -->
           <button
-            @click.stop="confirmDelete(script)"
             class="flex-shrink-0 p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
             :title="t('common.delete')"
+            @click.stop="confirmDelete(script)"
           >
             <svg class="w-3.5 h-3.5 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

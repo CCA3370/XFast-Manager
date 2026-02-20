@@ -17,6 +17,7 @@ pub async fn apply_migrations_async(conn: &DatabaseConnection) -> Result<(), Api
 }
 
 /// Sync wrapper for applying migrations
+#[cfg(test)]
 pub fn apply_migrations(conn: &DatabaseConnection) -> Result<(), ApiError> {
     tauri::async_runtime::block_on(apply_migrations_async(conn))
 }

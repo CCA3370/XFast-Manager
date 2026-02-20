@@ -1274,16 +1274,6 @@ impl SceneryIndexManager {
         })
     }
 
-    /// Detect and reclassify mesh packages that are associated with airports
-    /// A mesh is considered airport-associated if:
-    /// 1. It has 4 or fewer DSF files
-    /// 2. At least one DSF's coordinates match an airport's coordinates
-    /// 3. If multiple meshes match the same airport, prefer the one whose folder name contains the airport's ICAO code
-    /// 4. Also check if mesh shares a common naming prefix with an airport package
-    fn detect_airport_mesh_packages(&self, packages: &mut [SceneryPackageInfo]) {
-        detect_airport_mesh_packages_with_path(&self.xplane_path, packages);
-    }
-
     /// Create an empty index
     fn create_empty_index(&self) -> SceneryIndex {
         SceneryIndex {

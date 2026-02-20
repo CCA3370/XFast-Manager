@@ -35,7 +35,7 @@
           </div>
 
           <!-- Close Button -->
-          <button @click="removeToast(toast.id)" class="toast-close" aria-label="Close">
+          <button class="toast-close" aria-label="Close" @click="removeToast(toast.id)">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
             </svg>

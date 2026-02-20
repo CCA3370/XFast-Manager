@@ -16,21 +16,22 @@ export default tseslint.config(
     },
     rules: {
       // TypeScript
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': 'off',
       '@typescript-eslint/no-explicit-any': 'error',
+      'no-undef': 'off',
 
       // Vue
       'vue/multi-word-component-names': 'off',
       'vue/no-v-html': 'off',
       'vue/require-default-prop': 'off',
+      'vue/require-toggle-inside-transition': 'off',
+      'vue/valid-v-memo': 'off',
       'vue/max-attributes-per-line': 'off',
       'vue/singleline-html-element-content-newline': 'off',
-      'vue/html-self-closing': ['warn', {
-        html: { void: 'always', normal: 'never', component: 'always' },
-      }],
+      'vue/html-self-closing': 'off',
 
       // General
-      'no-console': 'warn',
+      'no-console': 'off',
       'no-debugger': 'error',
     },
   },

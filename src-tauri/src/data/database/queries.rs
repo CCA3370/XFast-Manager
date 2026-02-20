@@ -508,6 +508,7 @@ impl SceneryQueries {
 
     /// Get a single package by folder name (test only)
     #[cfg(test)]
+    #[allow(dead_code)]
     pub async fn get_package(
         conn: &DatabaseConnection,
         folder_name: &str,
@@ -561,6 +562,7 @@ impl SceneryQueries {
     }
 
     #[cfg(test)]
+    #[allow(dead_code)]
     async fn load_package_libraries(
         conn: &DatabaseConnection,
         package_id: i64,

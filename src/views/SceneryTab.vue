@@ -1307,10 +1307,10 @@ onBeforeUnmount(() => {
       <div class="flex-1 relative">
         <input
           v-model="searchQuery"
-          @input="handleSearchInput"
           type="text"
           :placeholder="t('management.searchPlaceholder')"
           class="w-full px-3 py-1.5 pl-9 pr-20 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          @input="handleSearchInput"
         />
         <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1322,18 +1322,18 @@ onBeforeUnmount(() => {
             {{ currentMatchIndex + 1 }}/{{ matchedIndices.length }}
           </span>
           <button
-            @click="goToPrevMatch"
             class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
             title="Previous match"
+            @click="goToPrevMatch"
           >
             <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
             </svg>
           </button>
           <button
-            @click="goToNextMatch"
             class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
             title="Next match"
+            @click="goToNextMatch"
           >
             <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -1344,10 +1344,10 @@ onBeforeUnmount(() => {
         <!-- Clear button -->
         <button
           v-if="searchQuery"
-          @click="clearSearch"
           class="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
           :class="{ 'right-20': matchedIndices.length > 0 }"
           title="Clear search"
+          @click="clearSearch"
         >
           <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -1356,217 +1356,217 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Scenery-specific action buttons -->
-        <!-- Auto-sort button (shown for all locales, only when index exists) -->
-        <Transition v-if="sceneryStore.indexExists" name="button-fade" mode="out-in">
-          <button
-            key="auto-sort-button"
-            @click="handleSortSceneryNow"
-            :disabled="isSortingScenery || !appStore.xplanePath || !sceneryStore.indexExists"
-            class="px-3 py-1.5 rounded-lg bg-cyan-500 text-white hover:bg-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
-          >
-            <svg v-if="!isSortingScenery" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path>
-            </svg>
-            <svg v-else class="w-3.5 h-3.5 animate-spin [animation-direction:reverse]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-            </svg>
-            <span class="transition-opacity">{{ isSortingScenery ? t('settings.sorting') : t('sceneryManager.autoSort') }}</span>
-          </button>
-        </Transition>
-
+      <!-- Auto-sort button (shown for all locales, only when index exists) -->
+      <Transition v-if="sceneryStore.indexExists" name="button-fade" mode="out-in">
         <button
-          v-if="sceneryStore.hasLocalChanges && sceneryStore.indexExists"
-          @click="handleReset"
-          class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+          key="auto-sort-button"
+          :disabled="isSortingScenery || !appStore.xplanePath || !sceneryStore.indexExists"
+          class="px-3 py-1.5 rounded-lg bg-cyan-500 text-white hover:bg-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
+          @click="handleSortSceneryNow"
         >
-          <Transition name="text-fade" mode="out-in">
-            <span :key="locale">{{ t('sceneryManager.reset') }}</span>
-          </Transition>
+          <svg v-if="!isSortingScenery" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path>
+          </svg>
+          <svg v-else class="w-3.5 h-3.5 animate-spin [animation-direction:reverse]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+          </svg>
+          <span class="transition-opacity">{{ isSortingScenery ? t('settings.sorting') : t('sceneryManager.autoSort') }}</span>
         </button>
-        <!-- Apply button with tooltip popover (only when index exists) -->
-        <div v-if="sceneryStore.hasChanges && sceneryStore.indexExists" class="relative">
-          <button
-            @click="handleApplyChanges"
-            :disabled="!sceneryStore.indexExists || sceneryStore.isSaving"
-            class="px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
-            :class="{ 'ring-2 ring-amber-400 ring-offset-1': showSyncWarning }"
-          >
-            <svg v-if="sceneryStore.isSaving" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <!-- Warning icon when ini out of sync -->
-            <svg v-else-if="showSyncWarning" class="h-3.5 w-3.5 text-amber-200" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-            </svg>
-            <Transition name="text-fade" mode="out-in">
-              <span :key="locale">{{ t('sceneryManager.applyChanges') }}</span>
-            </Transition>
-          </button>
-          <!-- Tooltip popover pointing to button -->
-          <Transition name="fade">
-            <div
-              v-if="showSyncWarning"
-              class="absolute right-0 top-full mt-2 w-64 p-2.5 bg-amber-50 dark:bg-amber-900/90 border border-amber-300 dark:border-amber-600 rounded-lg shadow-lg z-50"
-            >
-              <!-- Arrow pointing up -->
-              <div class="absolute -top-2 right-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-amber-300 dark:border-b-amber-600"></div>
-              <div class="absolute -top-1.5 right-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-amber-50 dark:border-b-amber-900/90"></div>
-              <div class="flex items-start gap-2">
-                <svg class="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-                </svg>
-                <span class="text-xs text-amber-800 dark:text-amber-200 flex-1">{{ t('sceneryManager.iniOutOfSync') }}</span>
-                <!-- Close button -->
-                <button
-                  @click.stop="dismissSyncWarning"
-                  class="p-0.5 rounded hover:bg-amber-200 dark:hover:bg-amber-800 transition-colors flex-shrink-0"
-                  :title="t('common.close')"
-                >
-                  <svg class="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </Transition>
-        </div>
-    </div>
-    <!-- Statistics bar -->
-    <div class="flex items-center gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700 mb-3 text-sm">
-        <div class="flex items-center gap-2">
-          <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.total') }}:</span>
-          </Transition>
-          <span class="font-semibold text-gray-900 dark:text-gray-100">{{ sceneryStore.totalCount }}</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.enabled') }}:</span>
-          </Transition>
-          <span class="font-semibold text-green-600 dark:text-green-400">{{ sceneryStore.enabledCount }}</span>
-        </div>
-        <div v-if="sceneryStore.missingDepsCount > 0" class="flex items-center gap-2">
-          <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.missingDeps') }}:</span>
-          </Transition>
-          <span class="font-semibold text-amber-600 dark:text-amber-400">{{ sceneryStore.missingDepsCount }}</span>
-        </div>
-        <div v-if="sceneryStore.duplicatesCount > 0" class="flex items-center gap-2">
-          <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.duplicates') }}:</span>
-          </Transition>
-          <span class="font-semibold text-orange-600 dark:text-orange-400">{{ sceneryStore.duplicatesCount }}</span>
-        </div>
-        <!-- Filter dropdown menu -->
-        <div ref="filterDropdownRef" class="relative">
-          <button
-            @click="showFilterDropdown = !showFilterDropdown"
-            class="text-xs px-2.5 py-1 rounded-md transition-all duration-200 flex items-center gap-1.5 border"
-            :class="hasActiveFilters
-              ? 'bg-blue-500 text-white border-blue-500 hover:bg-blue-600 hover:border-blue-600 shadow-sm shadow-blue-500/25'
-              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700'"
-          >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
-            </svg>
-            <Transition name="text-fade" mode="out-in">
-              <span :key="locale">{{ t('sceneryManager.filters') }}</span>
-            </Transition>
-            <svg class="w-3 h-3 transition-transform duration-200" :class="showFilterDropdown ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-            </svg>
-          </button>
-          <!-- Dropdown panel -->
-          <Transition name="dropdown">
-            <div
-              v-if="showFilterDropdown"
-              class="absolute right-0 top-full mt-1.5 w-60 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-black/8 dark:shadow-black/25 z-50 py-1.5 ring-1 ring-black/5 dark:ring-white/5"
-            >
-              <!-- Issues section -->
-              <template v-if="sceneryStore.missingDepsCount > 0 || sceneryStore.duplicatesCount > 0">
-                <!-- Missing deps -->
-                <div
-                  v-if="sceneryStore.missingDepsCount > 0"
-                  @click="applyFilterWithTransition(() => showOnlyMissingLibs = !showOnlyMissingLibs)"
-                  class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-                >
-                  <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-amber-400 dark:group-hover:border-amber-500" :class="showOnlyMissingLibs && 'filter-check-active bg-amber-500 !border-amber-500'">
-                    <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                  </span>
-                  <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.missingDeps') }}</span>
-                  <span class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium">{{ sceneryStore.missingDepsCount }}</span>
-                </div>
-                <!-- Duplicates -->
-                <div
-                  v-if="sceneryStore.duplicatesCount > 0"
-                  @click="applyFilterWithTransition(() => showOnlyDuplicates = !showOnlyDuplicates)"
-                  class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-                >
-                  <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-orange-400 dark:group-hover:border-orange-500" :class="showOnlyDuplicates && 'filter-check-active bg-orange-500 !border-orange-500'">
-                    <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                  </span>
-                  <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.duplicates') }}</span>
-                  <span class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium">{{ sceneryStore.duplicatesCount }}</span>
-                </div>
-                <!-- Separator -->
-                <div class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"></div>
-              </template>
-              <!-- Enabled only -->
-              <div
-                @click="applyFilterWithTransition(() => enabledFilter = enabledFilter === 'enabled' ? 'all' : 'enabled')"
-                class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-              >
-                <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-green-400 dark:group-hover:border-green-500" :class="enabledFilter === 'enabled' && 'filter-check-active bg-green-500 !border-green-500'">
-                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </span>
-                <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.showOnlyEnabled') }}</span>
-              </div>
-              <!-- Disabled only -->
-              <div
-                @click="applyFilterWithTransition(() => enabledFilter = enabledFilter === 'disabled' ? 'all' : 'disabled')"
-                class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-              >
-                <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-red-400 dark:group-hover:border-red-500" :class="enabledFilter === 'disabled' && 'filter-check-active bg-red-500 !border-red-500'">
-                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </span>
-                <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.showOnlyDisabled') }}</span>
-              </div>
-              <!-- Separator -->
-              <div v-if="uniqueContinents.length > 0" class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"></div>
-              <!-- Group by continent -->
-              <div
-                v-if="uniqueContinents.length > 0"
-                @click="toggleViewMode"
-                class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-              >
-                <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-blue-400 dark:group-hover:border-blue-500" :class="viewMode === 'continent' && 'filter-check-active bg-blue-500 !border-blue-500'">
-                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </span>
-                <svg class="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
-                </svg>
-                <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.groupByContinent') }}</span>
-              </div>
-            </div>
-          </Transition>
-        </div>
-        <!-- Updating index indicator -->
-        <div v-if="isUpdatingIndex" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-          <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+      </Transition>
+
+      <button
+        v-if="sceneryStore.hasLocalChanges && sceneryStore.indexExists"
+        class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+        @click="handleReset"
+      >
+        <Transition name="text-fade" mode="out-in">
+          <span :key="locale">{{ t('sceneryManager.reset') }}</span>
+        </Transition>
+      </button>
+      <!-- Apply button with tooltip popover (only when index exists) -->
+      <div v-if="sceneryStore.hasChanges && sceneryStore.indexExists" class="relative">
+        <button
+          :disabled="!sceneryStore.indexExists || sceneryStore.isSaving"
+          class="px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
+          :class="{ 'ring-2 ring-amber-400 ring-offset-1': showSyncWarning }"
+          @click="handleApplyChanges"
+        >
+          <svg v-if="sceneryStore.isSaving" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
-          <span class="text-xs">{{ t('sceneryManager.updatingIndex') }}</span>
-        </div>
-        <div v-if="sceneryStore.hasChanges" class="ml-auto flex items-center gap-2 text-blue-600 dark:text-blue-400">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          <!-- Warning icon when ini out of sync -->
+          <svg v-else-if="showSyncWarning" class="h-3.5 w-3.5 text-amber-200" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
           </svg>
           <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs font-medium">{{ t('sceneryManager.unsavedChanges') }}</span>
+            <span :key="locale">{{ t('sceneryManager.applyChanges') }}</span>
           </Transition>
-        </div>
+        </button>
+        <!-- Tooltip popover pointing to button -->
+        <Transition name="fade">
+          <div
+            v-if="showSyncWarning"
+            class="absolute right-0 top-full mt-2 w-64 p-2.5 bg-amber-50 dark:bg-amber-900/90 border border-amber-300 dark:border-amber-600 rounded-lg shadow-lg z-50"
+          >
+            <!-- Arrow pointing up -->
+            <div class="absolute -top-2 right-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-amber-300 dark:border-b-amber-600"></div>
+            <div class="absolute -top-1.5 right-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-amber-50 dark:border-b-amber-900/90"></div>
+            <div class="flex items-start gap-2">
+              <svg class="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+              </svg>
+              <span class="text-xs text-amber-800 dark:text-amber-200 flex-1">{{ t('sceneryManager.iniOutOfSync') }}</span>
+              <!-- Close button -->
+              <button
+                class="p-0.5 rounded hover:bg-amber-200 dark:hover:bg-amber-800 transition-colors flex-shrink-0"
+                :title="t('common.close')"
+                @click.stop="dismissSyncWarning"
+              >
+                <svg class="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </Transition>
+      </div>
+    </div>
+    <!-- Statistics bar -->
+    <div class="flex items-center gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700 mb-3 text-sm">
+      <div class="flex items-center gap-2">
+        <Transition name="text-fade" mode="out-in">
+          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.total') }}:</span>
+        </Transition>
+        <span class="font-semibold text-gray-900 dark:text-gray-100">{{ sceneryStore.totalCount }}</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <Transition name="text-fade" mode="out-in">
+          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.enabled') }}:</span>
+        </Transition>
+        <span class="font-semibold text-green-600 dark:text-green-400">{{ sceneryStore.enabledCount }}</span>
+      </div>
+      <div v-if="sceneryStore.missingDepsCount > 0" class="flex items-center gap-2">
+        <Transition name="text-fade" mode="out-in">
+          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.missingDeps') }}:</span>
+        </Transition>
+        <span class="font-semibold text-amber-600 dark:text-amber-400">{{ sceneryStore.missingDepsCount }}</span>
+      </div>
+      <div v-if="sceneryStore.duplicatesCount > 0" class="flex items-center gap-2">
+        <Transition name="text-fade" mode="out-in">
+          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.duplicates') }}:</span>
+        </Transition>
+        <span class="font-semibold text-orange-600 dark:text-orange-400">{{ sceneryStore.duplicatesCount }}</span>
+      </div>
+      <!-- Filter dropdown menu -->
+      <div ref="filterDropdownRef" class="relative">
+        <button
+          class="text-xs px-2.5 py-1 rounded-md transition-all duration-200 flex items-center gap-1.5 border"
+          :class="hasActiveFilters
+            ? 'bg-blue-500 text-white border-blue-500 hover:bg-blue-600 hover:border-blue-600 shadow-sm shadow-blue-500/25'
+            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700'"
+          @click="showFilterDropdown = !showFilterDropdown"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+          </svg>
+          <Transition name="text-fade" mode="out-in">
+            <span :key="locale">{{ t('sceneryManager.filters') }}</span>
+          </Transition>
+          <svg class="w-3 h-3 transition-transform duration-200" :class="showFilterDropdown ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        </button>
+        <!-- Dropdown panel -->
+        <Transition name="dropdown">
+          <div
+            v-if="showFilterDropdown"
+            class="absolute right-0 top-full mt-1.5 w-60 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-black/8 dark:shadow-black/25 z-50 py-1.5 ring-1 ring-black/5 dark:ring-white/5"
+          >
+            <!-- Issues section -->
+            <template v-if="sceneryStore.missingDepsCount > 0 || sceneryStore.duplicatesCount > 0">
+              <!-- Missing deps -->
+              <div
+                v-if="sceneryStore.missingDepsCount > 0"
+                class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+                @click="applyFilterWithTransition(() => showOnlyMissingLibs = !showOnlyMissingLibs)"
+              >
+                <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-amber-400 dark:group-hover:border-amber-500" :class="showOnlyMissingLibs && 'filter-check-active bg-amber-500 !border-amber-500'">
+                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                </span>
+                <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.missingDeps') }}</span>
+                <span class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium">{{ sceneryStore.missingDepsCount }}</span>
+              </div>
+              <!-- Duplicates -->
+              <div
+                v-if="sceneryStore.duplicatesCount > 0"
+                class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+                @click="applyFilterWithTransition(() => showOnlyDuplicates = !showOnlyDuplicates)"
+              >
+                <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-orange-400 dark:group-hover:border-orange-500" :class="showOnlyDuplicates && 'filter-check-active bg-orange-500 !border-orange-500'">
+                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                </span>
+                <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.duplicates') }}</span>
+                <span class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium">{{ sceneryStore.duplicatesCount }}</span>
+              </div>
+              <!-- Separator -->
+              <div class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"></div>
+            </template>
+            <!-- Enabled only -->
+            <div
+              class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+              @click="applyFilterWithTransition(() => enabledFilter = enabledFilter === 'enabled' ? 'all' : 'enabled')"
+            >
+              <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-green-400 dark:group-hover:border-green-500" :class="enabledFilter === 'enabled' && 'filter-check-active bg-green-500 !border-green-500'">
+                <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              </span>
+              <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.showOnlyEnabled') }}</span>
+            </div>
+            <!-- Disabled only -->
+            <div
+              class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+              @click="applyFilterWithTransition(() => enabledFilter = enabledFilter === 'disabled' ? 'all' : 'disabled')"
+            >
+              <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-red-400 dark:group-hover:border-red-500" :class="enabledFilter === 'disabled' && 'filter-check-active bg-red-500 !border-red-500'">
+                <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              </span>
+              <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.showOnlyDisabled') }}</span>
+            </div>
+            <!-- Separator -->
+            <div v-if="uniqueContinents.length > 0" class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"></div>
+            <!-- Group by continent -->
+            <div
+              v-if="uniqueContinents.length > 0"
+              class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+              @click="toggleViewMode"
+            >
+              <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-blue-400 dark:group-hover:border-blue-500" :class="viewMode === 'continent' && 'filter-check-active bg-blue-500 !border-blue-500'">
+                <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              </span>
+              <svg class="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
+              </svg>
+              <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.groupByContinent') }}</span>
+            </div>
+          </div>
+        </Transition>
+      </div>
+      <!-- Updating index indicator -->
+      <div v-if="isUpdatingIndex" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+        <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span class="text-xs">{{ t('sceneryManager.updatingIndex') }}</span>
+      </div>
+      <div v-if="sceneryStore.hasChanges" class="ml-auto flex items-center gap-2 text-blue-600 dark:text-blue-400">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <Transition name="text-fade" mode="out-in">
+          <span :key="locale" class="text-xs font-medium">{{ t('sceneryManager.unsavedChanges') }}</span>
+        </Transition>
+      </div>
     </div>
 
     <!-- No X-Plane path set -->
@@ -1588,401 +1588,401 @@ onBeforeUnmount(() => {
 
     <!-- Scenery content (scrollable) -->
     <div v-else ref="scrollContainerRef" class="flex-1 overflow-y-auto">
-        <!-- Database version error - needs reset -->
-        <div v-if="sceneryStore.needsDatabaseReset" class="text-center py-12">
-          <div class="flex flex-col items-center gap-4">
-            <svg class="w-12 h-12 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      <!-- Database version error - needs reset -->
+      <div v-if="sceneryStore.needsDatabaseReset" class="text-center py-12">
+        <div class="flex flex-col items-center gap-4">
+          <svg class="w-12 h-12 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <Transition name="text-fade" mode="out-in">
+            <p :key="locale" class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ t('sceneryManager.databaseVersionError') }}</p>
+          </Transition>
+          <Transition name="text-fade" mode="out-in">
+            <p :key="locale" class="text-gray-600 dark:text-gray-400 max-w-md">{{ t('sceneryManager.databaseVersionErrorDesc') }}</p>
+          </Transition>
+          <button
+            :disabled="isResettingDatabase"
+            class="px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center justify-center space-x-2"
+            @click="handleResetDatabase"
+          >
+            <svg v-if="!isResettingDatabase" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             <Transition name="text-fade" mode="out-in">
-              <p :key="locale" class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ t('sceneryManager.databaseVersionError') }}</p>
+              <span :key="locale">{{ t('sceneryManager.resetDatabase') }}</span>
             </Transition>
+          </button>
+        </div>
+      </div>
+
+      <!-- No index created -->
+      <div v-else-if="!sceneryStore.indexExists" class="text-center py-12">
+        <Transition name="text-fade" mode="out-in">
+          <p :key="locale" class="text-gray-600 dark:text-gray-400 mb-4">{{ t('sceneryManager.noIndex') }}</p>
+        </Transition>
+        <div class="flex justify-center">
+          <button
+            :disabled="isCreatingIndex"
+            class="px-4 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center justify-center space-x-2"
+            @click="handleCreateIndex"
+          >
+            <svg v-if="!isCreatingIndex" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            <svg v-else class="w-4 h-4 animate-spin [animation-direction:reverse]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
             <Transition name="text-fade" mode="out-in">
-              <p :key="locale" class="text-gray-600 dark:text-gray-400 max-w-md">{{ t('sceneryManager.databaseVersionErrorDesc') }}</p>
+              <span :key="locale">{{ isCreatingIndex ? t('settings.creatingIndex') : t('settings.createIndex') }}</span>
             </Transition>
-            <button
-              @click="handleResetDatabase"
-              :disabled="isResettingDatabase"
-              class="px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center justify-center space-x-2"
+          </button>
+        </div>
+      </div>
+
+      <!-- No scenery found -->
+      <div v-else-if="sceneryStore.totalCount === 0" class="text-center py-12">
+        <Transition name="text-fade" mode="out-in">
+          <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('sceneryManager.noScenery') }}</p>
+        </Transition>
+      </div>
+
+      <!-- View mode transitioning loading -->
+      <div v-else-if="isViewModeTransitioning || isFilterTransitioning" class="flex items-center justify-center py-12">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+      </div>
+
+      <!-- Continent grouped view (no drag-and-drop, filter-aware) -->
+      <div v-else-if="viewMode === 'continent'" class="space-y-3 pb-2" style="overflow: visible;">
+        <template v-for="continent in (hasDataFilters ? filteredSortedContinentOrder : sortedContinentOrder)" :key="continent">
+          <div class="continent-group" style="overflow: visible;">
+            <!-- Continent Header -->
+            <div
+              class="continent-header flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-blue-100 to-blue-200 dark:from-blue-900/50 dark:to-blue-800/50 rounded-lg cursor-pointer hover:from-blue-200 hover:to-blue-300 dark:hover:from-blue-800/50 dark:hover:to-blue-700/50 transition-all duration-200 mb-2 border border-blue-300 dark:border-blue-600 shadow-md"
+              @click="toggleContinentCollapse(continent)"
             >
-              <svg v-if="!isResettingDatabase" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-              </svg>
-              <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <Transition name="text-fade" mode="out-in">
-                <span :key="locale">{{ t('sceneryManager.resetDatabase') }}</span>
-              </Transition>
-            </button>
-          </div>
-        </div>
-
-        <!-- No index created -->
-        <div v-else-if="!sceneryStore.indexExists" class="text-center py-12">
-          <Transition name="text-fade" mode="out-in">
-            <p :key="locale" class="text-gray-600 dark:text-gray-400 mb-4">{{ t('sceneryManager.noIndex') }}</p>
-          </Transition>
-          <div class="flex justify-center">
-            <button
-              @click="handleCreateIndex"
-              :disabled="isCreatingIndex"
-              class="px-4 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center justify-center space-x-2"
-            >
-              <svg v-if="!isCreatingIndex" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-              </svg>
-              <svg v-else class="w-4 h-4 animate-spin [animation-direction:reverse]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-              </svg>
-              <Transition name="text-fade" mode="out-in">
-                <span :key="locale">{{ isCreatingIndex ? t('settings.creatingIndex') : t('settings.createIndex') }}</span>
-              </Transition>
-            </button>
-          </div>
-        </div>
-
-        <!-- No scenery found -->
-        <div v-else-if="sceneryStore.totalCount === 0" class="text-center py-12">
-          <Transition name="text-fade" mode="out-in">
-            <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('sceneryManager.noScenery') }}</p>
-          </Transition>
-        </div>
-
-        <!-- View mode transitioning loading -->
-        <div v-else-if="isViewModeTransitioning || isFilterTransitioning" class="flex items-center justify-center py-12">
-          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-        </div>
-
-        <!-- Continent grouped view (no drag-and-drop, filter-aware) -->
-        <div v-else-if="viewMode === 'continent'" class="space-y-3 pb-2" style="overflow: visible;">
-          <template v-for="continent in (hasDataFilters ? filteredSortedContinentOrder : sortedContinentOrder)" :key="continent">
-            <div class="continent-group" style="overflow: visible;">
-              <!-- Continent Header -->
-              <div
-                @click="toggleContinentCollapse(continent)"
-                class="continent-header flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-blue-100 to-blue-200 dark:from-blue-900/50 dark:to-blue-800/50 rounded-lg cursor-pointer hover:from-blue-200 hover:to-blue-300 dark:hover:from-blue-800/50 dark:hover:to-blue-700/50 transition-all duration-200 mb-2 border border-blue-300 dark:border-blue-600 shadow-md"
-              >
-                <div class="flex-1 flex items-center gap-2">
-                  <svg
-                    class="w-4 h-4 text-blue-700 dark:text-blue-300 transition-transform duration-200"
-                    :class="{ 'rotate-90': isContinentExpanded(continent) }"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
-                  </svg>
-                  <!-- Globe icon -->
-                  <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span class="font-semibold text-sm text-blue-900 dark:text-blue-100">
-                    {{ t(`geo.continents.${continent}`, continent) }}
-                  </span>
-                  <span class="text-xs font-medium text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                    <span class="text-green-700 dark:text-green-300">{{ (hasDataFilters ? getFilteredContinentStats(continent) : getContinentStats(continent)).enabled }}</span>
-                    <span class="mx-1 text-gray-400">/</span>
-                    <span class="text-gray-600 dark:text-gray-400">{{ (hasDataFilters ? getFilteredContinentStats(continent) : getContinentStats(continent)).total }}</span>
-                  </span>
-                </div>
-                <!-- Continent toggle switch -->
-                <button
-                  v-if="!hasDataFilters"
-                  @click.stop="toggleContinentEnabled(continent)"
-                  class="flex-shrink-0 px-2 py-0.5 rounded text-xs font-medium transition-colors"
-                  :class="isContinentAllEnabled(continent)
-                    ? 'bg-green-500 text-white hover:bg-green-600'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'"
-                  :title="isContinentAllEnabled(continent) ? t('sceneryManager.disableAll') : t('sceneryManager.enableAll')"
+              <div class="flex-1 flex items-center gap-2">
+                <svg
+                  class="w-4 h-4 text-blue-700 dark:text-blue-300 transition-transform duration-200"
+                  :class="{ 'rotate-90': isContinentExpanded(continent) }"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  {{ isContinentAllEnabled(continent) ? t('sceneryManager.disableAll') : t('sceneryManager.enableAll') }}
-                </button>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+                </svg>
+                <!-- Globe icon -->
+                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span class="font-semibold text-sm text-blue-900 dark:text-blue-100">
+                  {{ t(`geo.continents.${continent}`, continent) }}
+                </span>
+                <span class="text-xs font-medium text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                  <span class="text-green-700 dark:text-green-300">{{ (hasDataFilters ? getFilteredContinentStats(continent) : getContinentStats(continent)).enabled }}</span>
+                  <span class="mx-1 text-gray-400">/</span>
+                  <span class="text-gray-600 dark:text-gray-400">{{ (hasDataFilters ? getFilteredContinentStats(continent) : getContinentStats(continent)).total }}</span>
+                </span>
               </div>
+              <!-- Continent toggle switch -->
+              <button
+                v-if="!hasDataFilters"
+                class="flex-shrink-0 px-2 py-0.5 rounded text-xs font-medium transition-colors"
+                :class="isContinentAllEnabled(continent)
+                  ? 'bg-green-500 text-white hover:bg-green-600'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'"
+                :title="isContinentAllEnabled(continent) ? t('sceneryManager.disableAll') : t('sceneryManager.enableAll')"
+                @click.stop="toggleContinentEnabled(continent)"
+              >
+                {{ isContinentAllEnabled(continent) ? t('sceneryManager.disableAll') : t('sceneryManager.enableAll') }}
+              </button>
+            </div>
 
-              <!-- Continent Content (Collapsible) -->
-              <Transition name="collapse">
-                <div v-if="isContinentExpanded(continent)" class="pl-4 space-y-2" style="overflow: visible;">
-                  <template v-for="category in categoryOrder" :key="category">
-                    <div v-if="(hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category]?.length > 0" class="category-in-continent">
-                      <!-- Category Header within Continent -->
-                      <div
-                        class="flex items-center gap-2 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded mb-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        @click="toggleContinentCategoryCollapse(continent, category)"
+            <!-- Continent Content (Collapsible) -->
+            <Transition name="collapse">
+              <div v-if="isContinentExpanded(continent)" class="pl-4 space-y-2" style="overflow: visible;">
+                <template v-for="category in categoryOrder" :key="category">
+                  <div v-if="(hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category]?.length > 0" class="category-in-continent">
+                    <!-- Category Header within Continent -->
+                    <div
+                      class="flex items-center gap-2 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded mb-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                      @click="toggleContinentCategoryCollapse(continent, category)"
+                    >
+                      <svg
+                        class="w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform duration-200"
+                        :class="{ 'rotate-90': isContinentCategoryExpanded(continent, category) }"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
                       >
-                        <svg
-                          class="w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform duration-200"
-                          :class="{ 'rotate-90': isContinentCategoryExpanded(continent, category) }"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                        </svg>
-                        <span class="flex-1 text-xs font-medium text-gray-700 dark:text-gray-300">
-                          {{ t(getCategoryTranslationKey(category)) }}
-                          <span class="ml-1 text-gray-500 dark:text-gray-400">
-                            ({{ (hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category].filter(e => e.enabled).length }}/{{ (hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category].length }})
-                          </span>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                      <span class="flex-1 text-xs font-medium text-gray-700 dark:text-gray-300">
+                        {{ t(getCategoryTranslationKey(category)) }}
+                        <span class="ml-1 text-gray-500 dark:text-gray-400">
+                          ({{ (hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category].filter(e => e.enabled).length }}/{{ (hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category].length }})
                         </span>
-                        <!-- Category toggle switch -->
-                        <button
-                          v-if="!hasDataFilters"
-                          @click.stop="toggleContinentCategoryEnabled(continent, category)"
-                          class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors"
-                          :class="isContinentCategoryAllEnabled(continent, category)
-                            ? 'bg-green-500 text-white hover:bg-green-600'
-                            : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'"
+                      </span>
+                      <!-- Category toggle switch -->
+                      <button
+                        v-if="!hasDataFilters"
+                        class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors"
+                        :class="isContinentCategoryAllEnabled(continent, category)
+                          ? 'bg-green-500 text-white hover:bg-green-600'
+                          : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'"
+                        @click.stop="toggleContinentCategoryEnabled(continent, category)"
+                      >
+                        {{ isContinentCategoryAllEnabled(continent, category) ? t('sceneryManager.disableAll') : t('sceneryManager.enableAll') }}
+                      </button>
+                    </div>
+                    <!-- Entries in this category (Collapsible) -->
+                    <Transition name="collapse">
+                      <div v-if="isContinentCategoryExpanded(continent, category)" class="space-y-1.5 px-1">
+                        <div
+                          v-for="element in (hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category]"
+                          :key="element.folderName"
+                          v-memo="[
+                            element.enabled,
+                            element.category,
+                            element.missingLibraries?.length ?? 0,
+                            element.duplicateTiles?.length ?? 0,
+                            element.duplicateAirports?.length ?? 0,
+                            searchQueryLower,
+                            highlightedIndex === getGlobalIndex(element.folderName)
+                          ]"
+                          :data-scenery-index="getGlobalIndex(element.folderName)"
+                          class="relative scenery-entry-item"
+                          style="scroll-margin-top: 100px"
                         >
-                          {{ isContinentCategoryAllEnabled(continent, category) ? t('sceneryManager.disableAll') : t('sceneryManager.enableAll') }}
-                        </button>
-                      </div>
-                      <!-- Entries in this category (Collapsible) -->
-                      <Transition name="collapse">
-                        <div v-if="isContinentCategoryExpanded(continent, category)" class="space-y-1.5 px-1">
                           <div
-                            v-for="element in (hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category]"
-                            :key="element.folderName"
-                            v-memo="[
-                              element.enabled,
-                              element.category,
-                              element.missingLibraries?.length ?? 0,
-                              element.duplicateTiles?.length ?? 0,
-                              element.duplicateAirports?.length ?? 0,
-                              searchQueryLower,
-                              highlightedIndex === getGlobalIndex(element.folderName)
-                            ]"
-                            :data-scenery-index="getGlobalIndex(element.folderName)"
-                            class="relative scenery-entry-item"
-                            style="scroll-margin-top: 100px"
+                            v-if="highlightedIndex === getGlobalIndex(element.folderName)"
+                            class="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none z-10"
+                          ></div>
+                          <div
+                            :class="{
+                              'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
+                            }"
                           >
-                            <div
-                              v-if="highlightedIndex === getGlobalIndex(element.folderName)"
-                              class="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none z-10"
-                            ></div>
-                            <div
-                              :class="{
-                                'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
-                              }"
-                            >
-                              <SceneryEntryCard
-                                :entry="element"
-                                :index="getGlobalIndex(element.folderName)"
-                                :total-count="sceneryStore.totalCount"
-                                :disable-reorder="true"
-                                @toggle-enabled="handleSceneryToggleEnabled"
-                                @move-up="handleMoveUp"
-                                @move-down="handleMoveDown"
-                                @show-missing-libs="handleShowMissingLibs"
-                                @show-duplicate-tiles="handleShowDuplicateTiles"
-                                @show-delete-confirm="handleShowDeleteConfirm"
-                              />
-                            </div>
+                            <SceneryEntryCard
+                              :entry="element"
+                              :index="getGlobalIndex(element.folderName)"
+                              :total-count="sceneryStore.totalCount"
+                              :disable-reorder="true"
+                              @toggle-enabled="handleSceneryToggleEnabled"
+                              @move-up="handleMoveUp"
+                              @move-down="handleMoveDown"
+                              @show-missing-libs="handleShowMissingLibs"
+                              @show-duplicate-tiles="handleShowDuplicateTiles"
+                              @show-delete-confirm="handleShowDeleteConfirm"
+                            />
                           </div>
                         </div>
-                      </Transition>
-                    </div>
-                  </template>
-                </div>
-              </Transition>
-            </div>
-          </template>
-          <div v-if="hasDataFilters && filteredSceneryEntries.length === 0" class="text-center py-12">
-            <Transition name="text-fade" mode="out-in">
-              <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('sceneryManager.noMissingLibs') }}</p>
+                      </div>
+                    </Transition>
+                  </div>
+                </template>
+              </div>
             </Transition>
           </div>
+        </template>
+        <div v-if="hasDataFilters && filteredSceneryEntries.length === 0" class="text-center py-12">
+          <Transition name="text-fade" mode="out-in">
+            <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('sceneryManager.noMissingLibs') }}</p>
+          </Transition>
         </div>
+      </div>
 
-        <!-- Filtered view with groups (no drag-and-drop) -->
-        <div v-else-if="hasDataFilters" class="space-y-3 pb-2" style="overflow: visible;">
-          <template
-            v-for="category in categoryOrder"
-            :key="category"
+      <!-- Filtered view with groups (no drag-and-drop) -->
+      <div v-else-if="hasDataFilters" class="space-y-3 pb-2" style="overflow: visible;">
+        <template
+          v-for="category in categoryOrder"
+          :key="category"
+        >
+          <div
+            v-if="filteredGroupedEntries[category] && filteredGroupedEntries[category].length > 0"
+            class="scenery-group"
+            style="overflow: visible;"
           >
+            <!-- Group Header -->
             <div
-              v-if="filteredGroupedEntries[category] && filteredGroupedEntries[category].length > 0"
-              class="scenery-group"
-              style="overflow: visible;"
+              class="group-header flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-lg cursor-pointer hover:from-gray-200 hover:to-gray-300 dark:hover:from-gray-600 dark:hover:to-gray-500 transition-all duration-200 mb-2 border border-gray-300 dark:border-gray-500 shadow-md"
+              @click="toggleGroupCollapse(category)"
             >
-              <!-- Group Header -->
-              <div
-                @click="toggleGroupCollapse(category)"
-                class="group-header flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-lg cursor-pointer hover:from-gray-200 hover:to-gray-300 dark:hover:from-gray-600 dark:hover:to-gray-500 transition-all duration-200 mb-2 border border-gray-300 dark:border-gray-500 shadow-md"
+              <svg
+                class="w-4 h-4 text-gray-700 dark:text-gray-200 transition-transform duration-200"
+                :class="{ 'rotate-90': isGroupExpanded(category) }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                <svg
-                  class="w-4 h-4 text-gray-700 dark:text-gray-200 transition-transform duration-200"
-                  :class="{ 'rotate-90': isGroupExpanded(category) }"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
-                </svg>
-                <span class="font-semibold text-sm text-gray-900 dark:text-gray-50">
-                  <Transition name="text-fade" mode="out-in">
-                    <span :key="locale">{{ t(getCategoryTranslationKey(category)) }}</span>
-                  </Transition>
-                </span>
-                <span class="text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                  <span class="text-green-700 dark:text-green-300">{{ filteredGroupedEntries[category].filter(e => e.enabled).length }}</span>
-                  <span class="mx-1 text-gray-400">/</span>
-                  <span class="text-gray-600 dark:text-gray-400">{{ filteredGroupedEntries[category].length }}</span>
-                </span>
-              </div>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+              </svg>
+              <span class="font-semibold text-sm text-gray-900 dark:text-gray-50">
+                <Transition name="text-fade" mode="out-in">
+                  <span :key="locale">{{ t(getCategoryTranslationKey(category)) }}</span>
+                </Transition>
+              </span>
+              <span class="text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                <span class="text-green-700 dark:text-green-300">{{ filteredGroupedEntries[category].filter(e => e.enabled).length }}</span>
+                <span class="mx-1 text-gray-400">/</span>
+                <span class="text-gray-600 dark:text-gray-400">{{ filteredGroupedEntries[category].length }}</span>
+              </span>
+            </div>
 
-              <!-- Group Content (Collapsible) -->
-              <Transition name="collapse">
-                <div v-if="isGroupExpanded(category)" class="space-y-1.5 px-1">
+            <!-- Group Content (Collapsible) -->
+            <Transition name="collapse">
+              <div v-if="isGroupExpanded(category)" class="space-y-1.5 px-1">
+                <div
+                  v-for="element in filteredGroupedEntries[category]"
+                  :key="element.folderName"
+                  v-memo="[
+                    element.enabled,
+                    element.category,
+                    element.missingLibraries?.length ?? 0,
+                    element.duplicateTiles?.length ?? 0,
+                    searchQueryLower,
+                    highlightedIndex === getGlobalIndex(element.folderName)
+                  ]"
+                  :data-scenery-index="getGlobalIndex(element.folderName)"
+                  class="relative scenery-entry-item"
+                  style="scroll-margin-top: 100px"
+                >
                   <div
-                    v-for="element in filteredGroupedEntries[category]"
-                    :key="element.folderName"
-                    v-memo="[
-                      element.enabled,
-                      element.category,
-                      element.missingLibraries?.length ?? 0,
-                      element.duplicateTiles?.length ?? 0,
-                      searchQueryLower,
-                      highlightedIndex === getGlobalIndex(element.folderName)
-                    ]"
-                    :data-scenery-index="getGlobalIndex(element.folderName)"
-                    class="relative scenery-entry-item"
-                    style="scroll-margin-top: 100px"
+                    v-if="highlightedIndex === getGlobalIndex(element.folderName)"
+                    class="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none z-10"
+                  ></div>
+                  <div
+                    :class="{
+                      'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
+                    }"
                   >
-                    <div
-                      v-if="highlightedIndex === getGlobalIndex(element.folderName)"
-                      class="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none z-10"
-                    ></div>
-                    <div
-                      :class="{
-                        'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
-                      }"
-                    >
-                      <SceneryEntryCard
-                        :entry="element"
-                        :index="getGlobalIndex(element.folderName)"
-                        :total-count="sceneryStore.totalCount"
-                        :disable-reorder="true"
-                        @toggle-enabled="handleSceneryToggleEnabled"
-                        @move-up="handleMoveUp"
-                        @move-down="handleMoveDown"
-                        @show-missing-libs="handleShowMissingLibs"
-                        @show-duplicate-tiles="handleShowDuplicateTiles"
-                        @show-delete-confirm="handleShowDeleteConfirm"
-                      />
-                    </div>
+                    <SceneryEntryCard
+                      :entry="element"
+                      :index="getGlobalIndex(element.folderName)"
+                      :total-count="sceneryStore.totalCount"
+                      :disable-reorder="true"
+                      @toggle-enabled="handleSceneryToggleEnabled"
+                      @move-up="handleMoveUp"
+                      @move-down="handleMoveDown"
+                      @show-missing-libs="handleShowMissingLibs"
+                      @show-duplicate-tiles="handleShowDuplicateTiles"
+                      @show-delete-confirm="handleShowDeleteConfirm"
+                    />
                   </div>
                 </div>
-              </Transition>
-            </div>
-          </template>
-          <div v-if="filteredSceneryEntries.length === 0" class="text-center py-12">
-            <Transition name="text-fade" mode="out-in">
-              <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('sceneryManager.noMissingLibs') }}</p>
+              </div>
             </Transition>
           </div>
+        </template>
+        <div v-if="filteredSceneryEntries.length === 0" class="text-center py-12">
+          <Transition name="text-fade" mode="out-in">
+            <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('sceneryManager.noMissingLibs') }}</p>
+          </Transition>
         </div>
+      </div>
 
-        <!-- Normal view with drag-and-drop groups -->
-        <div v-else class="space-y-3 pb-2" style="overflow: visible;">
-          <template
-            v-for="category in categoryOrder"
-            :key="category"
+      <!-- Normal view with drag-and-drop groups -->
+      <div v-else class="space-y-3 pb-2" style="overflow: visible;">
+        <template
+          v-for="category in categoryOrder"
+          :key="category"
+        >
+          <div
+            v-if="localGroupedEntries[category] && localGroupedEntries[category].length > 0"
+            class="scenery-group"
+            style="overflow: visible;"
           >
+            <!-- Group Header -->
             <div
-              v-if="localGroupedEntries[category] && localGroupedEntries[category].length > 0"
-              class="scenery-group"
-              style="overflow: visible;"
+              class="group-header flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-lg cursor-pointer hover:from-gray-200 hover:to-gray-300 dark:hover:from-gray-600 dark:hover:to-gray-500 transition-all duration-200 mb-2 border border-gray-300 dark:border-gray-500 shadow-md"
+              @click="toggleGroupCollapse(category)"
             >
-              <!-- Group Header -->
-              <div
-                @click="toggleGroupCollapse(category)"
-                class="group-header flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-lg cursor-pointer hover:from-gray-200 hover:to-gray-300 dark:hover:from-gray-600 dark:hover:to-gray-500 transition-all duration-200 mb-2 border border-gray-300 dark:border-gray-500 shadow-md"
+              <svg
+                class="w-4 h-4 text-gray-700 dark:text-gray-200 transition-transform duration-200"
+                :class="{ 'rotate-90': isGroupExpanded(category) }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                <svg
-                  class="w-4 h-4 text-gray-700 dark:text-gray-200 transition-transform duration-200"
-                  :class="{ 'rotate-90': isGroupExpanded(category) }"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
-                </svg>
-                <span class="font-semibold text-sm text-gray-900 dark:text-gray-50">
-                  <Transition name="text-fade" mode="out-in">
-                    <span :key="locale">{{ t(getCategoryTranslationKey(category)) }}</span>
-                  </Transition>
-                </span>
-                <span class="text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                  <span class="text-green-700 dark:text-green-300">{{ groupCounts[category]?.enabled ?? 0 }}</span>
-                  <span class="mx-1 text-gray-400">/</span>
-                  <span class="text-gray-600 dark:text-gray-400">{{ localGroupedEntries[category]?.length || 0 }}</span>
-                </span>
-              </div>
-
-              <!-- Group Content (Collapsible) -->
-              <Transition name="collapse">
-                <div v-if="isGroupExpanded(category)" style="overflow: visible;">
-                  <draggable
-                    v-model="localGroupedEntries[category]"
-                    :group="category === 'Unrecognized'
-                      ? { name: 'unrecognized', pull: false, put: false }
-                      : { name: 'scenery', pull: true, put: true }"
-                    item-key="folderName"
-                    handle=".drag-handle"
-                    :disabled="!sceneryStore.indexExists || category === 'Unrecognized'"
-                    :animation="180"
-                    :easing="'cubic-bezier(0.25, 0.8, 0.25, 1)'"
-                    :force-fallback="true"
-                    :fallback-on-body="true"
-                    :fallback-tolerance="5"
-                    :direction="'vertical'"
-                    ghost-class="drag-ghost"
-                    drag-class="sortable-drag"
-                    @start="handleDragStart"
-                    @end="handleDragEnd"
-                    @change="(evt: DraggableChangeEvent<SceneryManagerEntry>) => handleGroupChange(category, evt)"
-                    class="space-y-1.5"
-                    style="overflow: visible; padding: 0 0.5rem;"
-                  >
-                    <template #item="{ element }">
-                      <div
-                        :data-scenery-index="getGlobalIndex(element.folderName)"
-                        class="relative scenery-entry-item"
-                        style="scroll-margin-top: 100px"
-                      >
-                        <div
-                          v-if="highlightedIndex === getGlobalIndex(element.folderName)"
-                          class="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none z-10"
-                        ></div>
-                        <div
-                          :class="{
-                            'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
-                          }"
-                        >
-                          <SceneryEntryCard
-                            :entry="element"
-                            :index="getGlobalIndex(element.folderName)"
-                            :total-count="sceneryStore.totalCount"
-                            :disable-reorder="!sceneryStore.indexExists || category === 'Unrecognized'"
-                            :disable-move-down="element.folderName === lastEntryBeforeUnrecognized"
-                            @toggle-enabled="handleSceneryToggleEnabled"
-                            @move-up="handleMoveUp"
-                            @move-down="handleMoveDown"
-                            @show-missing-libs="handleShowMissingLibs"
-                            @show-duplicate-tiles="handleShowDuplicateTiles"
-                            @show-delete-confirm="handleShowDeleteConfirm"
-                          />
-                        </div>
-                      </div>
-                    </template>
-                  </draggable>
-                </div>
-              </Transition>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+              </svg>
+              <span class="font-semibold text-sm text-gray-900 dark:text-gray-50">
+                <Transition name="text-fade" mode="out-in">
+                  <span :key="locale">{{ t(getCategoryTranslationKey(category)) }}</span>
+                </Transition>
+              </span>
+              <span class="text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                <span class="text-green-700 dark:text-green-300">{{ groupCounts[category]?.enabled ?? 0 }}</span>
+                <span class="mx-1 text-gray-400">/</span>
+                <span class="text-gray-600 dark:text-gray-400">{{ localGroupedEntries[category]?.length || 0 }}</span>
+              </span>
             </div>
-          </template>
-        </div>
+
+            <!-- Group Content (Collapsible) -->
+            <Transition name="collapse">
+              <div v-if="isGroupExpanded(category)" style="overflow: visible;">
+                <draggable
+                  v-model="localGroupedEntries[category]"
+                  :group="category === 'Unrecognized'
+                    ? { name: 'unrecognized', pull: false, put: false }
+                    : { name: 'scenery', pull: true, put: true }"
+                  item-key="folderName"
+                  handle=".drag-handle"
+                  :disabled="!sceneryStore.indexExists || category === 'Unrecognized'"
+                  :animation="180"
+                  :easing="'cubic-bezier(0.25, 0.8, 0.25, 1)'"
+                  :force-fallback="true"
+                  :fallback-on-body="true"
+                  :fallback-tolerance="5"
+                  :direction="'vertical'"
+                  ghost-class="drag-ghost"
+                  drag-class="sortable-drag"
+                  class="space-y-1.5"
+                  style="overflow: visible; padding: 0 0.5rem;"
+                  @start="handleDragStart"
+                  @end="handleDragEnd"
+                  @change="(evt: DraggableChangeEvent<SceneryManagerEntry>) => handleGroupChange(category, evt)"
+                >
+                  <template #item="{ element }">
+                    <div
+                      :data-scenery-index="getGlobalIndex(element.folderName)"
+                      class="relative scenery-entry-item"
+                      style="scroll-margin-top: 100px"
+                    >
+                      <div
+                        v-if="highlightedIndex === getGlobalIndex(element.folderName)"
+                        class="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none z-10"
+                      ></div>
+                      <div
+                        :class="{
+                          'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
+                        }"
+                      >
+                        <SceneryEntryCard
+                          :entry="element"
+                          :index="getGlobalIndex(element.folderName)"
+                          :total-count="sceneryStore.totalCount"
+                          :disable-reorder="!sceneryStore.indexExists || category === 'Unrecognized'"
+                          :disable-move-down="element.folderName === lastEntryBeforeUnrecognized"
+                          @toggle-enabled="handleSceneryToggleEnabled"
+                          @move-up="handleMoveUp"
+                          @move-down="handleMoveDown"
+                          @show-missing-libs="handleShowMissingLibs"
+                          @show-duplicate-tiles="handleShowDuplicateTiles"
+                          @show-delete-confirm="handleShowDeleteConfirm"
+                        />
+                      </div>
+                    </div>
+                  </template>
+                </draggable>
+              </div>
+            </Transition>
+          </div>
+        </template>
+      </div>
     </div>
 
     <!-- Shared Missing Libraries Modal -->
@@ -2015,8 +2015,8 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <button
-              @click="showMissingLibsModal = false"
               class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-md"
+              @click="showMissingLibsModal = false"
             >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -2049,9 +2049,9 @@ onBeforeUnmount(() => {
                 <div class="flex items-center gap-0.5 flex-shrink-0">
                   <!-- Copy -->
                   <button
-                    @click="handleCopySingleLib(lib)"
                     class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                     :title="t('sceneryManager.copyAllLibNames')"
+                    @click="handleCopySingleLib(lib)"
                   >
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -2061,9 +2061,9 @@ onBeforeUnmount(() => {
                   <!-- Direct Download -->
                   <button
                     v-if="libraryLinksMap[lib]"
-                    @click="handleDirectDownload(libraryLinksMap[lib]!)"
                     class="px-2 py-1 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 rounded bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-800/40 transition-colors flex items-center gap-1.5 text-xs font-medium"
                     :title="t('sceneryManager.directDownload')"
+                    @click="handleDirectDownload(libraryLinksMap[lib]!)"
                   >
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -2074,9 +2074,9 @@ onBeforeUnmount(() => {
                   <!-- Bing Search (only when no direct link) -->
                   <button
                     v-else
-                    @click="handleSearchSingleLib(lib)"
                     class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                     :title="t('sceneryManager.searchOnBing')"
+                    @click="handleSearchSingleLib(lib)"
                   >
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -2085,9 +2085,9 @@ onBeforeUnmount(() => {
 
                   <button
                     v-if="!libraryLinksMap[lib]"
-                    @click="handleOpenContributeLink(lib)"
                     class="px-2 py-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 rounded bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-800/40 transition-colors text-xs font-medium"
                     :title="t('sceneryManager.contributeLink')"
+                    @click="handleOpenContributeLink(lib)"
                   >
                     {{ t('sceneryManager.contributeLink') }}
                   </button>
@@ -2099,8 +2099,8 @@ onBeforeUnmount(() => {
           <!-- Footer -->
           <div class="flex gap-2 px-5 py-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
             <button
-              @click="handleCopyMissingLibs"
               class="flex-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm rounded-lg transition-colors flex items-center justify-center gap-1.5"
+              @click="handleCopyMissingLibs"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -2108,8 +2108,8 @@ onBeforeUnmount(() => {
               {{ t('sceneryManager.copyAllLibNames') }}
             </button>
             <button
-              @click="showMissingLibsModal = false"
               class="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm rounded-lg transition-colors"
+              @click="showMissingLibsModal = false"
             >
               {{ t('common.close') }}
             </button>
@@ -2148,18 +2148,18 @@ onBeforeUnmount(() => {
                 />
                 <div class="absolute inset-y-0 right-2 flex items-center gap-1">
                   <button
-                    @click="handleCopySingleLib(contributingLibName)"
                     class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                     :title="t('sceneryManager.copyAllLibNames')"
+                    @click="handleCopySingleLib(contributingLibName)"
                   >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
                   </button>
                   <button
-                    @click="handleSearchSingleLib(contributingLibName)"
                     class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                     :title="t('sceneryManager.searchOnBing')"
+                    @click="handleSearchSingleLib(contributingLibName)"
                   >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -2182,16 +2182,16 @@ onBeforeUnmount(() => {
 
           <div class="mt-5 flex justify-end gap-2">
             <button
-              @click="closeContributeLinkModal"
               :disabled="isSubmittingContributeLink"
               class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-sm rounded-lg text-gray-700 dark:text-gray-200"
+              @click="closeContributeLinkModal"
             >
               {{ t('common.cancel') }}
             </button>
             <button
-              @click="handleSubmitContributeLink"
               :disabled="isSubmittingContributeLink"
               class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-70 disabled:cursor-not-allowed text-sm rounded-lg text-white inline-flex items-center gap-1.5"
+              @click="handleSubmitContributeLink"
             >
               <svg
                 v-if="isSubmittingContributeLink"
@@ -2228,8 +2228,8 @@ onBeforeUnmount(() => {
               {{ t('sceneryManager.duplicatesTitle') }}
             </h3>
             <button
-              @click="showDuplicateTilesModal = false"
               class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+              @click="showDuplicateTilesModal = false"
             >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -2290,8 +2290,8 @@ onBeforeUnmount(() => {
           <!-- Close Button -->
           <div class="flex flex-col gap-2 p-5 pt-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
             <button
-              @click="showDuplicateTilesModal = false"
               class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
+              @click="showDuplicateTilesModal = false"
             >
               {{ t('common.close') }}
             </button>
@@ -2330,8 +2330,8 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <button
-              @click="dismissIndexChangesModal"
               class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-md"
+              @click="dismissIndexChangesModal"
             >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -2386,15 +2386,15 @@ onBeforeUnmount(() => {
           <!-- Footer -->
           <div class="flex gap-2 px-5 py-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
             <button
-              @click="dismissIndexChangesModal"
               class="flex-1 px-4 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm rounded-lg transition-colors"
+              @click="dismissIndexChangesModal"
             >
               {{ t('common.close') }}
             </button>
             <button
-              @click="handleIndexChangesSyncToIni"
               :disabled="sceneryStore.isSaving"
               class="flex-1 px-4 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm rounded-lg transition-colors flex items-center justify-center gap-1.5"
+              @click="handleIndexChangesSyncToIni"
             >
               <svg v-if="sceneryStore.isSaving" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>

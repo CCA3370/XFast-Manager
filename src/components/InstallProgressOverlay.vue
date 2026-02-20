@@ -114,9 +114,11 @@
                 {{ task.displayName }}
               </span>
               <!-- Version number (if available) -->
-              <span v-if="task.newVersionInfo?.version"
-                    class="text-gray-400 dark:text-gray-500 flex-shrink-0"
-                    :class="sizeConfig.typeSize">
+              <span
+                v-if="task.newVersionInfo?.version"
+                class="text-gray-400 dark:text-gray-500 flex-shrink-0"
+                :class="sizeConfig.typeSize"
+              >
                 v{{ task.newVersionInfo.version }}
               </span>
               <!-- Click hint for failed tasks -->
@@ -188,8 +190,8 @@
       <template v-if="!isComplete">
         <!-- Skip Button -->
         <button
-          @click="$emit('skip')"
           class="px-4 py-2 bg-yellow-500/10 hover:bg-yellow-500/20 dark:bg-yellow-500/20 dark:hover:bg-yellow-500/30 text-yellow-700 dark:text-yellow-400 text-sm font-medium rounded-lg transition-all duration-200 border border-yellow-500/30 hover:border-yellow-500/50 flex items-center gap-2 shadow-sm hover:shadow-md"
+          @click="$emit('skip')"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path>
@@ -199,8 +201,8 @@
 
         <!-- Cancel Button -->
         <button
-          @click="$emit('cancel')"
           class="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 dark:bg-red-500/20 dark:hover:bg-red-500/30 text-red-700 dark:text-red-400 text-sm font-medium rounded-lg transition-all duration-200 border border-red-500/30 hover:border-red-500/50 flex items-center gap-2 shadow-sm hover:shadow-md"
+          @click="$emit('cancel')"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -212,9 +214,9 @@
       <!-- Confirm Button (after completion) -->
       <template v-else>
         <button
-          @click="$emit('confirm')"
           class="px-6 py-2 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-md"
           :class="getConfirmButtonClass()"
+          @click="$emit('confirm')"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
@@ -253,9 +255,9 @@
             <div class="flex justify-end gap-2">
               <!-- Copy Button -->
               <button
-                @click="copyErrorMessage"
                 class="px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
                 :class="copied ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200'"
+                @click="copyErrorMessage"
               >
                 <svg v-if="!copied" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
@@ -267,8 +269,8 @@
               </button>
               <!-- Close Button -->
               <button
-                @click="showErrorModal = false"
                 class="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg transition-colors"
+                @click="showErrorModal = false"
               >
                 {{ $t('common.close') }}
               </button>

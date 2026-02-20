@@ -33,8 +33,8 @@
             <label class="flex items-center space-x-2 cursor-pointer group">
               <div class="relative">
                 <input
-                  type="checkbox"
                   v-model="useUnifiedPassword"
+                  type="checkbox"
                   class="sr-only peer"
                 />
                 <div class="w-9 h-5 bg-gray-300 dark:bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
@@ -65,17 +65,17 @@
               </div>
               <div class="relative">
                 <input
-                  :type="showUnifiedPassword ? 'text' : 'password'"
                   v-model="unifiedPassword"
+                  :type="showUnifiedPassword ? 'text' : 'password'"
                   :placeholder="$t('password.unifiedPlaceholder')"
                   class="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-900/70 border border-blue-200 dark:border-blue-500/30 rounded-lg text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
-                  @keyup.enter="handleConfirm"
                   autofocus
+                  @keyup.enter="handleConfirm"
                 />
                 <button
                   type="button"
-                  @click="showUnifiedPassword = !showUnifiedPassword"
                   class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+                  @click="showUnifiedPassword = !showUnifiedPassword"
                 >
                   <svg v-if="showUnifiedPassword" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path>
@@ -106,17 +106,17 @@
               </div>
               <div class="relative">
                 <input
-                  :type="showPasswords[index] ? 'text' : 'password'"
                   v-model="passwords[index]"
+                  :type="showPasswords[index] ? 'text' : 'password'"
                   :placeholder="$t('password.placeholder')"
                   class="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-900/70 border border-gray-200 dark:border-gray-700/50 rounded-lg text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-400 dark:focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/30 transition-all"
-                  @keyup.enter="handleConfirm"
                   :autofocus="index === 0"
+                  @keyup.enter="handleConfirm"
                 />
                 <button
                   type="button"
-                  @click="togglePasswordVisibility(index)"
                   class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+                  @click="togglePasswordVisibility(index)"
                 >
                   <svg v-if="showPasswords[index]" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path>
@@ -133,8 +133,8 @@
           <!-- Actions -->
           <div class="flex justify-end gap-2 pt-2">
             <button
-              @click="handleCancel"
               class="px-3 py-2 bg-gray-200 dark:bg-gray-700/80 hover:bg-gray-300 dark:hover:bg-gray-600/80 rounded-lg transition-all duration-200 text-xs font-medium flex items-center space-x-1.5 border border-gray-300 dark:border-gray-600/50 text-gray-700 dark:text-white"
+              @click="handleCancel"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -142,7 +142,6 @@
               <span>{{ $t('common.cancel') }}</span>
             </button>
             <button
-              @click="handleConfirm"
               :disabled="!hasAllPasswords"
               :class="[
                 'px-3 py-2 rounded-lg transition-all duration-200 text-xs font-medium flex items-center space-x-1.5',
@@ -150,6 +149,7 @@
                   ? 'bg-blue-600 hover:bg-blue-700 text-white'
                   : 'bg-gray-300 dark:bg-gray-700/50 text-gray-500 cursor-not-allowed'
               ]"
+              @click="handleConfirm"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>

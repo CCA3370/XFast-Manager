@@ -181,9 +181,9 @@ onMounted(() => {
     <!-- Header -->
     <div class="mb-4 flex-shrink-0 flex items-center gap-3">
       <button
-        @click="goBack"
         class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
         :title="t('onboarding.back')"
+        @click="goBack"
       >
         <svg class="w-5 h-5 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />

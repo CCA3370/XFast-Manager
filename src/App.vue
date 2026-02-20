@@ -1,7 +1,6 @@
 <!-- Main App Component -->
 <template>
   <div class="app-container transition-colors duration-300 text-gray-900 dark:text-gray-100 font-sans selection:bg-blue-500/30">
-    
     <!-- Navbar -->
     <nav class="fixed top-0 left-0 w-full z-50 transition-all duration-300">
       <div class="absolute inset-0 bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl border-b border-gray-200/50 dark:border-white/5 shadow-sm dark:shadow-2xl transition-colors duration-300"></div>
@@ -17,120 +16,120 @@
         <!-- Navigation -->
         <div class="flex items-center space-x-2">
           <div v-if="!isOnboardingRoute" class="flex items-center space-x-1">
-          <router-link
-            to="/"
-            class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
-            :class="$route.path === '/' ? 'text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
-          >
-            <div
-              class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
-              :class="$route.path === '/' ? 'scale-x-100 opacity-100' : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'"
-            ></div>
-            <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-              </svg>
-              <AnimatedText>{{ $t('common.home') }}</AnimatedText>
-            </span>
-          </router-link>
-
-          <div class="relative flex items-center">
             <router-link
-              to="/management"
+              to="/"
               class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
-              :class="$route.path.startsWith('/management') ? 'text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
+              :class="$route.path === '/' ? 'text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
             >
               <div
                 class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
-                :class="$route.path.startsWith('/management') ? 'scale-x-100 opacity-100' : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'"
+                :class="$route.path === '/' ? 'scale-x-100 opacity-100' : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'"
               ></div>
               <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                 </svg>
-                <AnimatedText>{{ $t('management.navTitle') }}</AnimatedText>
+                <AnimatedText>{{ $t('common.home') }}</AnimatedText>
               </span>
             </router-link>
-            <div
-              v-if="store.sceneryManagerHintVisible && store.sceneryManagerHintMessageKey"
-              class="absolute left-1/2 top-full -translate-x-1/2 mt-2 z-50"
-            >
-              <div class="relative min-w-[240px] max-w-[340px] w-max bg-cyan-50 dark:bg-cyan-900/60 border border-cyan-200 dark:border-cyan-700 text-cyan-900 dark:text-cyan-100 text-xs px-3 py-2 rounded-lg shadow-lg flex items-start gap-2">
-                <div class="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-cyan-50 dark:bg-cyan-900/60 border-l border-t border-cyan-200 dark:border-cyan-700 rotate-45"></div>
-                <span class="leading-4">{{ $t(store.sceneryManagerHintMessageKey) }}</span>
-                <button
-                  class="ml-1 text-cyan-700/80 dark:text-cyan-200/80 hover:text-cyan-900 dark:hover:text-white"
-                  @click="store.dismissSceneryManagerHint()"
-                >
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+
+            <div class="relative flex items-center">
+              <router-link
+                to="/management"
+                class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
+                :class="$route.path.startsWith('/management') ? 'text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
+              >
+                <div
+                  class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                  :class="$route.path.startsWith('/management') ? 'scale-x-100 opacity-100' : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'"
+                ></div>
+                <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
                   </svg>
-                </button>
+                  <AnimatedText>{{ $t('management.navTitle') }}</AnimatedText>
+                </span>
+              </router-link>
+              <div
+                v-if="store.sceneryManagerHintVisible && store.sceneryManagerHintMessageKey"
+                class="absolute left-1/2 top-full -translate-x-1/2 mt-2 z-50"
+              >
+                <div class="relative min-w-[240px] max-w-[340px] w-max bg-cyan-50 dark:bg-cyan-900/60 border border-cyan-200 dark:border-cyan-700 text-cyan-900 dark:text-cyan-100 text-xs px-3 py-2 rounded-lg shadow-lg flex items-start gap-2">
+                  <div class="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-cyan-50 dark:bg-cyan-900/60 border-l border-t border-cyan-200 dark:border-cyan-700 rotate-45"></div>
+                  <span class="leading-4">{{ $t(store.sceneryManagerHintMessageKey) }}</span>
+                  <button
+                    class="ml-1 text-cyan-700/80 dark:text-cyan-200/80 hover:text-cyan-900 dark:hover:text-white"
+                    @click="store.dismissSceneryManagerHint()"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
+
+            <router-link
+              to="/settings"
+              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
+              :class="$route.path === '/settings' ? 'text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
+              :title="$t('common.settings')"
+            >
+              <div
+                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                :class="$route.path === '/settings' ? 'scale-x-100 opacity-100' : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'"
+              ></div>
+              <span class="relative flex items-center z-10">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+              </span>
+            </router-link>
           </div>
 
-          <router-link
-            to="/settings"
-            class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
-            :class="$route.path === '/settings' ? 'text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
-            :title="$t('common.settings')"
-          >
-            <div
-              class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
-              :class="$route.path === '/settings' ? 'scale-x-100 opacity-100' : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'"
-            ></div>
-            <span class="relative flex items-center z-10">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-              </svg>
-            </span>
-          </router-link>
-        </div>
+          <div class="h-6 w-px bg-gray-200 dark:bg-white/10 transition-colors"></div>
 
-        <div class="h-6 w-px bg-gray-200 dark:bg-white/10 transition-colors"></div>
-
-        <div class="flex items-center space-x-1">
-          <!-- Sponsor button (Chinese locale only) -->
-          <button
-            v-if="locale === 'zh'"
-            @click="showSponsor = true"
-            class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300 text-gray-600 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400"
-            :title="$t('sponsor.title')"
-          >
-            <div
-              class="absolute inset-0 bg-pink-50 dark:bg-pink-500/10 rounded-lg transition-all duration-300 transform origin-center scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50"
-            ></div>
-            <span class="relative flex items-center z-10">
-              <svg class="w-4 h-4 sponsor-heartbeat" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-              </svg>
-            </span>
-          </button>
-          <!-- Always on top button -->
-          <button
-            @click="toggleAlwaysOnTop"
-            class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
-            :class="isAlwaysOnTop ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
-            :title="isAlwaysOnTop ? 'Unpin window' : 'Pin window on top'"
-          >
-            <div
-              class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-center"
-              :class="isAlwaysOnTop ? 'scale-100 opacity-100' : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50'"
-            ></div>
-            <span class="relative flex items-center z-10">
-              <!-- Pin icon -->
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                <path v-if="isAlwaysOnTop" stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" fill="currentColor" />
-                <path v-else stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-              </svg>
-            </span>
-          </button>
-          <ThemeSwitcher />
-          <LanguageSwitcher />
+          <div class="flex items-center space-x-1">
+            <!-- Sponsor button (Chinese locale only) -->
+            <button
+              v-if="locale === 'zh'"
+              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300 text-gray-600 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400"
+              :title="$t('sponsor.title')"
+              @click="showSponsor = true"
+            >
+              <div
+                class="absolute inset-0 bg-pink-50 dark:bg-pink-500/10 rounded-lg transition-all duration-300 transform origin-center scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50"
+              ></div>
+              <span class="relative flex items-center z-10">
+                <svg class="w-4 h-4 sponsor-heartbeat" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                </svg>
+              </span>
+            </button>
+            <!-- Always on top button -->
+            <button
+              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
+              :class="isAlwaysOnTop ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'"
+              :title="isAlwaysOnTop ? 'Unpin window' : 'Pin window on top'"
+              @click="toggleAlwaysOnTop"
+            >
+              <div
+                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-center"
+                :class="isAlwaysOnTop ? 'scale-100 opacity-100' : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50'"
+              ></div>
+              <span class="relative flex items-center z-10">
+                <!-- Pin icon -->
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                  <path v-if="isAlwaysOnTop" stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" fill="currentColor" />
+                  <path v-else stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                </svg>
+              </span>
+            </button>
+            <ThemeSwitcher />
+            <LanguageSwitcher />
+          </div>
         </div>
-      </div>
       </div>
     </nav>
 

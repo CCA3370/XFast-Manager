@@ -252,9 +252,9 @@ function handleContextMenu(event: MouseEvent) {
 
     <!-- Enable/Disable toggle -->
     <button
-      @click="emit('toggle-enabled', entry.folderName)"
       class="flex-shrink-0 w-9 h-5 rounded-full relative transition-colors"
       :class="entry.enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'"
+      @click="emit('toggle-enabled', entry.folderName)"
     >
       <span
         class="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
@@ -315,20 +315,20 @@ function handleContextMenu(event: MouseEvent) {
     <!-- Move buttons -->
     <div v-if="!props.disableReorder" class="flex-shrink-0 flex gap-0.5">
       <button
-        @click="emit('move-up', entry.folderName)"
         :disabled="isFirst"
         class="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         :title="t('sceneryManager.moveUp')"
+        @click="emit('move-up', entry.folderName)"
       >
         <svg class="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
         </svg>
       </button>
       <button
-        @click="emit('move-down', entry.folderName)"
         :disabled="isLast || props.disableMoveDown"
         class="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         :title="t('sceneryManager.moveDown')"
+        @click="emit('move-down', entry.folderName)"
       >
         <svg class="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -338,16 +338,16 @@ function handleContextMenu(event: MouseEvent) {
 
     <!-- Lock button -->
     <button
-      @click.stop="handleToggleLock"
       class="flex-shrink-0 p-0.5 rounded transition-colors"
       :class="isItemLocked
         ? 'text-amber-500 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30'
         : 'text-gray-400 dark:text-gray-500 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30'"
       :title="isItemLocked ? t('management.unlock') : t('management.lock')"
+      @click.stop="handleToggleLock"
     >
       <!-- Locked icon (solid) -->
       <svg v-if="isItemLocked" class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+        <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" />
       </svg>
       <!-- Unlocked icon (outline) -->
       <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -357,9 +357,9 @@ function handleContextMenu(event: MouseEvent) {
 
     <!-- Delete button -->
     <button
-      @click.stop="emit('show-delete-confirm', entry)"
       class="flex-shrink-0 p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
       :title="t('sceneryManager.delete')"
+      @click.stop="emit('show-delete-confirm', entry)"
     >
       <svg class="w-3.5 h-3.5 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

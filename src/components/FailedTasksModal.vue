@@ -2,9 +2,9 @@
   <Teleport to="body">
     <Transition
       name="modal"
+      :css="false"
       @enter="onEnter"
       @leave="onLeave"
-      :css="false"
     >
       <div v-if="visible" class="fixed inset-0 z-[1100] flex items-center justify-center">
         <!-- Backdrop -->
@@ -35,7 +35,7 @@
                   <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ failedTasks.length }} {{ $t('completion.failed') }}</p>
                 </div>
               </div>
-              <button @click="$emit('close')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1">
+              <button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1" @click="$emit('close')">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -72,8 +72,8 @@
           <!-- Footer -->
           <div class="flex-shrink-0 p-4 pt-3 border-t border-gray-200 dark:border-gray-700/50 flex justify-end space-x-2">
             <button
-              @click="copyAllErrors"
               class="px-3 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg text-xs text-gray-700 dark:text-gray-200 transition flex items-center space-x-1.5"
+              @click="copyAllErrors"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></rect>
@@ -83,8 +83,8 @@
             </button>
             <button
               ref="closeBtn"
-              @click="$emit('close')"
               class="px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white text-xs font-medium transition"
+              @click="$emit('close')"
             >
               {{ $t('common.close') }}
             </button>
@@ -241,7 +241,7 @@ function onEnter(el: Element, done: () => void) {
   cardEl.style.opacity = '0'
   cardEl.style.transform = 'scale(0.85) translateY(-30px)'
 
-  element.offsetHeight
+  void element.offsetHeight
 
   element.style.transition = 'opacity 0.15s ease-out'
   backdropEl.style.transition = 'opacity 0.15s ease-out'

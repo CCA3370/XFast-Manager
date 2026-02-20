@@ -85,6 +85,7 @@ impl SceneryPacksManager {
     }
 
     /// Write sorted entries back to scenery_packs.ini
+    #[allow(dead_code)]
     pub fn write_ini(&self, entries: &[SceneryPackEntry]) -> Result<()> {
         Self::write_ini_at_path(&self.ini_path, entries)
     }
@@ -115,6 +116,7 @@ impl SceneryPacksManager {
     }
 
     /// Create a backup of scenery_packs.ini
+    #[allow(dead_code)]
     pub fn backup_ini(&self) -> Result<PathBuf> {
         Self::backup_ini_at_path(&self.ini_path)
     }
