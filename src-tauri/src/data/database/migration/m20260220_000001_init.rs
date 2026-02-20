@@ -24,7 +24,11 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .unique_key(),
                     )
-                    .col(ColumnDef::new(SceneryPackages::Category).string().not_null())
+                    .col(
+                        ColumnDef::new(SceneryPackages::Category)
+                            .string()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(SceneryPackages::SubPriority)
                             .integer()

@@ -404,7 +404,10 @@ impl SceneryIndexManager {
                         // Try to resolve the shortcut
                         if let Some(target) = resolve_shortcut(&path) {
                             logger::log_info(
-                                &format!("✓ Resolved shortcut {}.lnk -> {:?}", shortcut_name, target),
+                                &format!(
+                                    "✓ Resolved shortcut {}.lnk -> {:?}",
+                                    shortcut_name, target
+                                ),
                                 Some("scenery_index"),
                             );
 
@@ -502,9 +505,8 @@ impl SceneryIndexManager {
             detect_airport_mesh_packages_with_path(&xplane_path, &mut packages_vec);
 
             // Sort packages using the common sorting function
-            packages_vec.sort_by(|a, b| {
-                compare_packages_for_sorting(&a.folder_name, a, &b.folder_name, b)
-            });
+            packages_vec
+                .sort_by(|a, b| compare_packages_for_sorting(&a.folder_name, a, &b.folder_name, b));
 
             // Assign sort_order and set default enabled state
             // Fresh rebuild: Unrecognized packages default to disabled, others default to enabled
@@ -673,7 +675,7 @@ impl SceneryIndexManager {
         let xplane_path = self.xplane_path.clone();
         let custom_scenery_path = custom_scenery_path.clone();
 
-        let mut index = tokio::task::spawn_blocking(move || -> Result<SceneryIndex> {
+        let index = tokio::task::spawn_blocking(move || -> Result<SceneryIndex> {
             let mut index = index;
 
             // Track shortcuts by their target path
@@ -901,9 +903,10 @@ impl SceneryIndexManager {
         // Classify and update index
         let folder_path = folder_path.to_path_buf();
         let xplane_path = self.xplane_path.clone();
-        let info = tokio::task::spawn_blocking(move || classify_scenery(&folder_path, &xplane_path))
-            .await
-            .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
+        let info =
+            tokio::task::spawn_blocking(move || classify_scenery(&folder_path, &xplane_path))
+                .await
+                .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
         self.update_package(info.clone()).await?;
         Ok(info)
     }
@@ -1027,9 +1030,15 @@ impl SceneryIndexManager {
         sort_order: Option<u32>,
         category: Option<SceneryCategory>,
     ) -> Result<()> {
-        SceneryQueries::update_entry(&self.db, folder_name, enabled, sort_order, category.as_ref())
-            .await
-            .map_err(|e| anyhow!("{}", e))?;
+        SceneryQueries::update_entry(
+            &self.db,
+            folder_name,
+            enabled,
+            sort_order,
+            category.as_ref(),
+        )
+        .await
+        .map_err(|e| anyhow!("{}", e))?;
         Ok(())
     }
 
@@ -1464,10 +1473,7 @@ fn parse_airport_coords(scenery_path: &Path) -> Option<(i32, i32, Option<String>
 
 /// Detect and reclassify mesh packages that are associated with airports
 /// Uses an explicit X-Plane path to avoid borrowing &self in blocking contexts.
-fn detect_airport_mesh_packages_with_path(
-    xplane_path: &Path,
-    packages: &mut [SceneryPackageInfo],
-) {
+fn detect_airport_mesh_packages_with_path(xplane_path: &Path, packages: &mut [SceneryPackageInfo]) {
     logger::log_info(
         "Detecting airport-associated mesh packages...",
         Some("scenery_index"),
@@ -1669,10 +1675,11 @@ fn detect_duplicate_airports(
 
     // For each airport_id with >1 package, record overlaps
     let mut result: HashMap<String, Vec<String>> = HashMap::new();
-    for (_id, folders) in &id_map {
+    for folders in id_map.values() {
         if folders.len() > 1 {
             for folder in folders {
-                let others: Vec<String> = folders.iter().filter(|f| *f != folder).cloned().collect();
+                let others: Vec<String> =
+                    folders.iter().filter(|f| *f != folder).cloned().collect();
                 result.entry(folder.clone()).or_default().extend(others);
             }
         }
@@ -1734,10 +1741,7 @@ fn detect_raw_tile_overlaps(
                         .collect();
 
                     if !others.is_empty() {
-                        result
-                            .entry(folder.clone())
-                            .or_default()
-                            .extend(others);
+                        result.entry(folder.clone()).or_default().extend(others);
                     }
                 }
             }

@@ -8,8 +8,8 @@ impl Scanner {
         parent_path: &Path,
         ctx: &mut ScanContext,
     ) -> Result<Vec<DetectedItem>> {
-        use std::io::{Cursor, Read};
         use ::zip::ZipArchive;
+        use std::io::{Cursor, Read};
 
         // Check file size before loading into memory (limit: 200MB)
         let metadata = fs::metadata(zip_path)?;
@@ -46,8 +46,8 @@ impl Scanner {
         ctx: &mut ScanContext,
         password: Option<&str>,
     ) -> Result<Vec<DetectedItem>> {
-        use std::io::Read;
         use ::zip::ZipArchive;
+        use std::io::Read;
 
         let scan_start = std::time::Instant::now();
         crate::log_debug!(

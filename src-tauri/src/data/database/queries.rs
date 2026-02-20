@@ -228,10 +228,7 @@ impl SceneryQueries {
     }
 
     /// Save a complete SceneryIndex to the database (replaces all data)
-    pub async fn save_all(
-        conn: &DatabaseConnection,
-        index: &SceneryIndex,
-    ) -> Result<(), ApiError> {
+    pub async fn save_all(conn: &DatabaseConnection, index: &SceneryIndex) -> Result<(), ApiError> {
         let txn = conn.begin().await.map_err(ApiError::from)?;
 
         required_libraries::Entity::delete_many()
@@ -288,10 +285,7 @@ impl SceneryQueries {
         Ok(())
     }
 
-    async fn insert_package_async<C>(
-        conn: &C,
-        info: &SceneryPackageInfo,
-    ) -> Result<i64, ApiError>
+    async fn insert_package_async<C>(conn: &C, info: &SceneryPackageInfo) -> Result<i64, ApiError>
     where
         C: ConnectionTrait,
     {
@@ -314,7 +308,11 @@ impl SceneryQueries {
             sort_order: Set(info.sort_order as i32),
             actual_path: Set(info.actual_path.clone()),
             continent: Set(info.continent.clone()),
-            original_category: Set(info.original_category.as_ref().map(category_to_string).map(|s| s.to_string())),
+            original_category: Set(info
+                .original_category
+                .as_ref()
+                .map(category_to_string)
+                .map(|s| s.to_string())),
         };
 
         let result = scenery_packages::Entity::insert(active)
@@ -407,10 +405,7 @@ impl SceneryQueries {
             active.actual_path = Set(info.actual_path.clone());
             active.continent = Set(info.continent.clone());
 
-            active
-                .update(&txn)
-                .await
-                .map_err(ApiError::from)?;
+            active.update(&txn).await.map_err(ApiError::from)?;
 
             Self::update_package_libraries_async(&txn, id, info).await?;
         } else {
@@ -806,7 +801,10 @@ mod tests {
             assert_eq!(loaded_info.category, info.category);
             assert_eq!(loaded_info.required_libraries, info.required_libraries);
             assert_eq!(loaded_info.missing_libraries, info.missing_libraries);
-            assert_eq!(loaded_info.exported_library_names, info.exported_library_names);
+            assert_eq!(
+                loaded_info.exported_library_names,
+                info.exported_library_names
+            );
         });
     }
 }

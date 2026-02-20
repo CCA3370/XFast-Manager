@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 use glob::Pattern;
+use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use sea_orm::DatabaseConnection;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::logger;
@@ -904,7 +904,6 @@ impl Installer {
         }
         total
     }
-
 
     /// Get total size of files in a directory
     fn get_directory_size(&self, dir: &Path) -> Result<u64> {

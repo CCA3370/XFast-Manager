@@ -952,7 +952,10 @@ pub fn open_livery_folder(
     validate_folder_name(livery_folder)?;
 
     let aircraft_base = xplane_path.join("Aircraft");
-    let livery_path = aircraft_base.join(aircraft_folder).join("liveries").join(livery_folder);
+    let livery_path = aircraft_base
+        .join(aircraft_folder)
+        .join("liveries")
+        .join(livery_folder);
 
     if !livery_path.exists() {
         return Err(anyhow!("Livery folder not found: {}", livery_folder));
@@ -1451,10 +1454,7 @@ fn find_livery_icon(livery_path: &Path) -> Option<String> {
 }
 
 /// Get liveries for a specific aircraft
-pub fn get_aircraft_liveries(
-    xplane_path: &Path,
-    aircraft_folder: &str,
-) -> Result<Vec<LiveryInfo>> {
+pub fn get_aircraft_liveries(xplane_path: &Path, aircraft_folder: &str) -> Result<Vec<LiveryInfo>> {
     // Validate aircraft_folder: reject empty and ".."
     if aircraft_folder.is_empty() || aircraft_folder.contains("..") {
         return Err(anyhow!("Invalid aircraft folder name"));
@@ -1560,8 +1560,7 @@ pub fn delete_aircraft_livery(
     let canonical_livery = path_utils::validate_child_path(&liveries_path, &livery_path)
         .map_err(|e| anyhow!("Invalid livery path: {}", e))?;
 
-    fs::remove_dir_all(&canonical_livery)
-        .map_err(|e| anyhow!("Failed to delete livery: {}", e))?;
+    fs::remove_dir_all(&canonical_livery).map_err(|e| anyhow!("Failed to delete livery: {}", e))?;
 
     logger::log_info(
         &format!(
@@ -1590,8 +1589,8 @@ pub fn scan_lua_scripts(xplane_path: &Path) -> Result<Vec<LuaScriptInfo>> {
 
     let mut scripts: Vec<LuaScriptInfo> = Vec::new();
 
-    let read_dir = fs::read_dir(&scripts_path)
-        .map_err(|e| anyhow!("Failed to read Scripts folder: {}", e))?;
+    let read_dir =
+        fs::read_dir(&scripts_path).map_err(|e| anyhow!("Failed to read Scripts folder: {}", e))?;
 
     for entry in read_dir.flatten() {
         let ft = match entry.file_type() {
@@ -1754,8 +1753,7 @@ pub fn delete_lua_script(xplane_path: &Path, file_name: &str) -> Result<()> {
         return Err(anyhow!("Not a script file: {}", file_name));
     }
 
-    fs::remove_file(&canonical_file)
-        .map_err(|e| anyhow!("Failed to delete script: {}", e))?;
+    fs::remove_file(&canonical_file).map_err(|e| anyhow!("Failed to delete script: {}", e))?;
 
     logger::log_info(
         &format!("Deleted script: {}", file_name),

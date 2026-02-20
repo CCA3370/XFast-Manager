@@ -1702,7 +1702,11 @@ impl Installer {
     /// Delete source file after successful installation
     /// Checks if the source path is a parent directory of the original input path
     /// to avoid deleting directories that contain the detected addon
-    pub(super) fn delete_source_file(&self, original_input_path: &str, source_path: &str) -> Result<()> {
+    pub(super) fn delete_source_file(
+        &self,
+        original_input_path: &str,
+        source_path: &str,
+    ) -> Result<()> {
         let original_path = Path::new(original_input_path);
         let source_path_buf = Path::new(source_path);
 

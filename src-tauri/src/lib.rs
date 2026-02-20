@@ -150,8 +150,8 @@ async fn create_library_link_issue(
         return Err("Library name is empty".to_string());
     }
 
-    let parsed_url = reqwest::Url::parse(download_url)
-        .map_err(|_| "Download URL is invalid".to_string())?;
+    let parsed_url =
+        reqwest::Url::parse(download_url).map_err(|_| "Download URL is invalid".to_string())?;
     if parsed_url.scheme() != "http" && parsed_url.scheme() != "https" {
         return Err("Download URL must be http/https".to_string());
     }
@@ -1098,8 +1098,7 @@ async fn set_cfg_disabled(
 async fn get_lua_scripts(xplane_path: String) -> Result<Vec<LuaScriptInfo>, String> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
-        management_index::scan_lua_scripts(xplane_path)
-            .map_err(error::ApiError::from)
+        management_index::scan_lua_scripts(xplane_path).map_err(error::ApiError::from)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
@@ -1110,8 +1109,7 @@ async fn get_lua_scripts(xplane_path: String) -> Result<Vec<LuaScriptInfo>, Stri
 async fn toggle_lua_script(xplane_path: String, file_name: String) -> Result<bool, String> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
-        management_index::toggle_lua_script(xplane_path, &file_name)
-            .map_err(error::ApiError::from)
+        management_index::toggle_lua_script(xplane_path, &file_name).map_err(error::ApiError::from)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
@@ -1122,8 +1120,7 @@ async fn toggle_lua_script(xplane_path: String, file_name: String) -> Result<boo
 async fn delete_lua_script(xplane_path: String, file_name: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
-        management_index::delete_lua_script(xplane_path, &file_name)
-            .map_err(error::ApiError::from)
+        management_index::delete_lua_script(xplane_path, &file_name).map_err(error::ApiError::from)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?

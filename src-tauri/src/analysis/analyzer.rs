@@ -687,7 +687,10 @@ impl Analyzer {
                         // Checked in order; first match wins. Default fallback is "Custom Data" root.
                         const NAVDATA_INSTALL_PATHS: &[(&str, &[&str])] = &[
                             ("GNS430", &["GNS430"]),
-                            ("FlightFactor Boeing 777v2", &["STSFF", "nav-data", "ndbl", "data"]),
+                            (
+                                "FlightFactor Boeing 777v2",
+                                &["STSFF", "nav-data", "ndbl", "data"],
+                            ),
                         ];
 
                         let custom_data = xplane_root.join("Custom Data");
@@ -695,7 +698,9 @@ impl Analyzer {
                             .iter()
                             .find(|(keyword, _)| item.display_name.contains(keyword))
                             .map(|(_, components)| {
-                                components.iter().fold(custom_data.clone(), |p, c| p.join(c))
+                                components
+                                    .iter()
+                                    .fold(custom_data.clone(), |p, c| p.join(c))
                             })
                             .unwrap_or(custom_data)
                     }

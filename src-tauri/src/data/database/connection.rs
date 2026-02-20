@@ -2,7 +2,9 @@
 
 use crate::app_dirs;
 use crate::error::ApiError;
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
+};
 use std::path::PathBuf;
 use std::time::Duration;
 

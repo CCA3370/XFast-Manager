@@ -104,10 +104,7 @@ async fn get_remote_links(force_refresh: bool) -> Result<HashMap<String, String>
     match fetch_remote_links().await {
         Ok(links) => {
             logger::log_info(
-                &format!(
-                    "Fetched {} library download links from remote",
-                    links.len()
-                ),
+                &format!("Fetched {} library download links from remote", links.len()),
                 Some("library_links"),
             );
             let mut cache = CACHE.lock().unwrap();

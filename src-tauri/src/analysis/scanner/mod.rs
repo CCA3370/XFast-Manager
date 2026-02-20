@@ -9,12 +9,12 @@ use crate::models::{
     AddonType, DetectedItem, ExtractionChain, NavdataCycle, NavdataInfo, NestedArchiveInfo,
 };
 
-#[path = "zip.rs"]
-mod zip;
-#[path = "sevenz.rs"]
-mod sevenz;
 #[path = "rar.rs"]
 mod rar;
+#[path = "sevenz.rs"]
+mod sevenz;
+#[path = "zip.rs"]
+mod zip;
 
 /// Error indicating that password is required for an encrypted archive
 #[derive(Debug)]
@@ -1009,13 +1009,12 @@ impl Scanner {
 
     /// Known navdata format keywords.
     /// A cycle.json `name` is accepted if it contains any of these strings.
-    const NAVDATA_KNOWN_FORMATS: &[&str] = &[
-        "X-Plane",
-        "FlightFactor Boeing 777v2",
-    ];
+    const NAVDATA_KNOWN_FORMATS: &[&str] = &["X-Plane", "FlightFactor Boeing 777v2"];
 
     fn is_known_navdata_format(name: &str) -> bool {
-        Self::NAVDATA_KNOWN_FORMATS.iter().any(|fmt| name.contains(fmt))
+        Self::NAVDATA_KNOWN_FORMATS
+            .iter()
+            .any(|fmt| name.contains(fmt))
     }
 
     fn check_navdata(&self, file_path: &Path, _root: &Path) -> Result<Option<DetectedItem>> {

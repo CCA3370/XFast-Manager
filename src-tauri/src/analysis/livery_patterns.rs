@@ -444,13 +444,13 @@ mod tests {
         assert!(matches_glob("fuselage319.png", "fuselage319.png"));
         assert!(!matches_glob("fuselage319.png", "fuselage320.png"));
         // Test '?' wildcard (matches 0 or 1 character)
-        assert!(matches_glob("test?.png", "test.png"));   // 0 chars
-        assert!(matches_glob("test?.png", "testA.png"));  // 1 char
+        assert!(matches_glob("test?.png", "test.png")); // 0 chars
+        assert!(matches_glob("test?.png", "testA.png")); // 1 char
         assert!(!matches_glob("test?.png", "testAB.png")); // 2 chars - no match
-        assert!(matches_glob("a?b", "ab"));   // ? matches 0
-        assert!(matches_glob("a?b", "axb"));  // ? matches 1
+        assert!(matches_glob("a?b", "ab")); // ? matches 0
+        assert!(matches_glob("a?b", "axb")); // ? matches 1
         assert!(!matches_glob("a?b", "axxb")); // ? can't match 2
-        // Test combined * and ?
+                                               // Test combined * and ?
         assert!(matches_glob("737_*NG", "737_80NG"));
         assert!(matches_glob("737_*NG", "737_9ENG"));
     }
