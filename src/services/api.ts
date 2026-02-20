@@ -40,7 +40,7 @@ export class CommandError extends Error {
  */
 export async function invokeCommand<T>(
   command: string,
-  args?: Record<string, unknown>
+  args?: Record<string, unknown>,
 ): Promise<T> {
   try {
     const result = await invoke<T>(command, args)
@@ -81,7 +81,7 @@ export async function invokeCommand<T>(
  */
 export async function invokeVoidCommand(
   command: string,
-  args?: Record<string, unknown>
+  args?: Record<string, unknown>,
 ): Promise<void> {
   await invokeCommand<void>(command, args)
 }
@@ -96,7 +96,7 @@ export async function invokeVoidCommand(
  */
 export async function tryInvokeCommand<T>(
   command: string,
-  args?: Record<string, unknown>
+  args?: Record<string, unknown>,
 ): Promise<T | null> {
   try {
     return await invokeCommand<T>(command, args)

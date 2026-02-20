@@ -73,7 +73,7 @@ export const useAppStore = defineStore('app', () => {
   const verificationPreferences = ref<Record<string, boolean>>({
     zip: true,
     '7z': true,
-    rar: false,  // Disabled by default since RAR verification doesn't work
+    rar: false, // Disabled by default since RAR verification doesn't work
     directory: true,
   })
 
@@ -109,7 +109,7 @@ export const useAppStore = defineStore('app', () => {
       enabled,
       overwrite: false,
       sizeConfirmed: false,
-      backup: { liveries: true, configFiles: true, navdata: true }
+      backup: { liveries: true, configFiles: true, navdata: true },
     }
   }
 
@@ -126,24 +126,24 @@ export const useAppStore = defineStore('app', () => {
 
   // Check if any task has conflicts
   const hasConflicts = computed(() => {
-    return currentTasks.value.some(task => task.conflictExists === true)
+    return currentTasks.value.some((task) => task.conflictExists === true)
   })
 
   // Check if any task has size warnings
   const hasSizeWarnings = computed(() => {
-    return currentTasks.value.some(task => task.sizeWarning)
+    return currentTasks.value.some((task) => task.sizeWarning)
   })
 
   // Check if all size warnings have been confirmed
   const allSizeWarningsConfirmed = computed(() => {
-    const tasksWithWarnings = currentTasks.value.filter(task => task.sizeWarning)
+    const tasksWithWarnings = currentTasks.value.filter((task) => task.sizeWarning)
     if (tasksWithWarnings.length === 0) return true
-    return tasksWithWarnings.every(task => getTaskState(task.id).sizeConfirmed)
+    return tasksWithWarnings.every((task) => getTaskState(task.id).sizeConfirmed)
   })
 
   // Get count of enabled tasks
   const enabledTasksCount = computed(() => {
-    return currentTasks.value.filter(task => getTaskEnabled(task.id)).length
+    return currentTasks.value.filter((task) => getTaskEnabled(task.id)).length
   })
 
   /** Initialize store by loading saved settings from Tauri Store */
@@ -166,18 +166,24 @@ export const useAppStore = defineStore('app', () => {
       logLevel.value = savedLogLevel
     }
     // Sync log level to backend
-    const backendLevel = logLevel.value === 'basic' ? 'error' : logLevel.value === 'full' ? 'info' : 'debug'
+    const backendLevel =
+      logLevel.value === 'basic' ? 'error' : logLevel.value === 'full' ? 'info' : 'debug'
     await invokeVoidCommand('set_log_level', { level: backendLevel })
     // Load config file patterns
     const savedPatterns = await getItem<string[]>(STORAGE_KEYS.CONFIG_FILE_PATTERNS)
-    if (Array.isArray(savedPatterns) && savedPatterns.every(item => typeof item === 'string')) {
+    if (Array.isArray(savedPatterns) && savedPatterns.every((item) => typeof item === 'string')) {
       configFilePatterns.value = savedPatterns
     }
 
     // Load verification preferences
-    const savedVerificationPrefs = await getItem<Record<string, boolean>>(STORAGE_KEYS.VERIFICATION_PREFERENCES)
+    const savedVerificationPrefs = await getItem<Record<string, boolean>>(
+      STORAGE_KEYS.VERIFICATION_PREFERENCES,
+    )
     if (savedVerificationPrefs && typeof savedVerificationPrefs === 'object') {
-      verificationPreferences.value = { ...verificationPreferences.value, ...savedVerificationPrefs }
+      verificationPreferences.value = {
+        ...verificationPreferences.value,
+        ...savedVerificationPrefs,
+      }
     }
 
     // Load atomic install setting
@@ -271,7 +277,8 @@ export const useAppStore = defineStore('app', () => {
     await setItem(STORAGE_KEYS.LOG_LEVEL, level)
     // Also set the backend log level
     const backendLevel = level === 'basic' ? 'error' : level === 'full' ? 'info' : 'debug'
-    await invokeVoidCommand('set_log_level', { level: backendLevel })  }
+    await invokeVoidCommand('set_log_level', { level: backendLevel })
+  }
 
   function setCurrentTasks(tasks: InstallTask[]) {
     currentTasks.value = tasks
@@ -281,9 +288,11 @@ export const useAppStore = defineStore('app', () => {
     // Disable livery tasks where target aircraft is not found
     // Disable tasks where target is locked
     const lockStore = useLockStore()
-    tasks.forEach(task => {
-      const isLiveryWithoutAircraft = task.type === AddonType.Livery && task.liveryAircraftFound === false
-      const isLockedConflict = task.conflictExists && lockStore.isPathLocked(task.targetPath, xplanePath.value)
+    tasks.forEach((task) => {
+      const isLiveryWithoutAircraft =
+        task.type === AddonType.Livery && task.liveryAircraftFound === false
+      const isLockedConflict =
+        task.conflictExists && lockStore.isPathLocked(task.targetPath, xplanePath.value)
       const enabled = !isLiveryWithoutAircraft && !isLockedConflict
       taskStates.value[task.id] = getDefaultTaskState(enabled)
     })
@@ -292,8 +301,8 @@ export const useAppStore = defineStore('app', () => {
   /** Append new tasks to current list (for adding files while confirmation modal is open) */
   function appendTasks(newTasks: InstallTask[]): number {
     // Deduplicate by sourcePath to avoid adding the same file twice
-    const existingPaths = new Set(currentTasks.value.map(t => t.sourcePath))
-    const uniqueNewTasks = newTasks.filter(t => !existingPaths.has(t.sourcePath))
+    const existingPaths = new Set(currentTasks.value.map((t) => t.sourcePath))
+    const uniqueNewTasks = newTasks.filter((t) => !existingPaths.has(t.sourcePath))
 
     if (uniqueNewTasks.length === 0) return 0
 
@@ -302,9 +311,11 @@ export const useAppStore = defineStore('app', () => {
 
     // Initialize state only for new tasks (preserve existing task settings)
     const lockStore = useLockStore()
-    uniqueNewTasks.forEach(task => {
-      const isLiveryWithoutAircraft = task.type === AddonType.Livery && task.liveryAircraftFound === false
-      const isLockedConflict = task.conflictExists && lockStore.isPathLocked(task.targetPath, xplanePath.value)
+    uniqueNewTasks.forEach((task) => {
+      const isLiveryWithoutAircraft =
+        task.type === AddonType.Livery && task.liveryAircraftFound === false
+      const isLockedConflict =
+        task.conflictExists && lockStore.isPathLocked(task.targetPath, xplanePath.value)
       const enabled = !isLiveryWithoutAircraft && !isLockedConflict
       taskStates.value[task.id] = getDefaultTaskState(enabled)
     })
@@ -338,7 +349,7 @@ export const useAppStore = defineStore('app', () => {
 
   // Prepare tasks with overwrite, size confirmation, and backup settings for installation
   function getTasksWithOverwrite(): InstallTask[] {
-    return currentTasks.value.map(task => {
+    return currentTasks.value.map((task) => {
       const state = getTaskState(task.id)
       return {
         ...task,
@@ -346,7 +357,7 @@ export const useAppStore = defineStore('app', () => {
         sizeConfirmed: state.sizeConfirmed,
         backupLiveries: state.backup.liveries,
         // Only enable config file backup if patterns are configured
-        backupConfigFiles: (configFilePatterns.value.length > 0) && state.backup.configFiles,
+        backupConfigFiles: configFilePatterns.value.length > 0 && state.backup.configFiles,
         configFilePatterns: configFilePatterns.value,
         backupNavdata: state.backup.navdata,
       }
@@ -396,7 +407,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   // Get backup settings for a task (default both true)
-  function getTaskBackupSettings(taskId: string): { liveries: boolean, configFiles: boolean } {
+  function getTaskBackupSettings(taskId: string): { liveries: boolean; configFiles: boolean } {
     return getTaskState(taskId).backup
   }
 
@@ -430,7 +441,7 @@ export const useAppStore = defineStore('app', () => {
   // Thread-safe: Uses Set for deduplication and reactive timer for proper cleanup
   function addCliArgsToBatch(args: string[]) {
     // Add new args to batch using Set for automatic deduplication
-    args.forEach(arg => cliArgsBatch.value.add(arg))
+    args.forEach((arg) => cliArgsBatch.value.add(arg))
 
     // Clear existing timer if any
     if (cliArgsBatchTimerId.value !== null) {

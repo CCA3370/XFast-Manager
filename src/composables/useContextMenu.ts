@@ -24,7 +24,7 @@ export function useContextMenu() {
     event.stopPropagation()
     x.value = event.clientX
     y.value = event.clientY
-    items.value = menuItems.filter(item => !item.hidden)
+    items.value = menuItems.filter((item) => !item.hidden)
     actionCallback = onAction
     visible.value = true
   }
@@ -48,6 +48,6 @@ export function useContextMenu() {
     items,
     show,
     hide,
-    handleAction
+    handleAction,
   }
 }

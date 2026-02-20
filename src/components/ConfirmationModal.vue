@@ -7,36 +7,83 @@
           <div class="modal-header mb-2 flex-shrink-0">
             <div class="flex items-center justify-between">
               <div class="flex items-center space-x-2">
-                <div class="w-9 h-9 bg-blue-600 dark:bg-blue-500 rounded-lg flex items-center justify-center">
-                  <svg class="w-4.5 h-4.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                <div
+                  class="w-9 h-9 bg-blue-600 dark:bg-blue-500 rounded-lg flex items-center justify-center"
+                >
+                  <svg
+                    class="w-4.5 h-4.5 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                    ></path>
                   </svg>
                 </div>
                 <div>
-                  <h3 class="text-base font-bold text-gray-900 dark:text-white"><AnimatedText>{{ $t('modal.confirmInstallation') }}</AnimatedText></h3>
-                  <p class="text-gray-500 dark:text-gray-400 text-xs leading-tight"><AnimatedText>{{ $t('modal.installToXplane') }}</AnimatedText></p>
+                  <h3 class="text-base font-bold text-gray-900 dark:text-white">
+                    <AnimatedText>{{ $t('modal.confirmInstallation') }}</AnimatedText>
+                  </h3>
+                  <p class="text-gray-500 dark:text-gray-400 text-xs leading-tight">
+                    <AnimatedText>{{ $t('modal.installToXplane') }}</AnimatedText>
+                  </p>
                 </div>
               </div>
-              <div class="flex items-center space-x-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-lg">
-                <svg class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+              <div
+                class="flex items-center space-x-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-lg"
+              >
+                <svg
+                  class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                  ></path>
                 </svg>
                 <span class="text-xs font-semibold text-blue-700 dark:text-blue-300">
-                  <AnimatedText>{{ store.enabledTasksCount }}/{{ store.currentTasks.length }}</AnimatedText>
+                  <AnimatedText
+                    >{{ store.enabledTasksCount }}/{{ store.currentTasks.length }}</AnimatedText
+                  >
                 </span>
               </div>
             </div>
           </div>
 
           <!-- Size Warning Banner (only show if any size warnings exist) -->
-          <div v-if="store.hasSizeWarnings" class="mb-2 p-2 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg flex-shrink-0">
+          <div
+            v-if="store.hasSizeWarnings"
+            class="mb-2 p-2 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg flex-shrink-0"
+          >
             <div class="flex items-start space-x-1.5">
-              <svg class="w-3.5 h-3.5 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+              <svg
+                class="w-3.5 h-3.5 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                ></path>
               </svg>
               <div class="flex-1">
-                <span class="font-medium text-xs text-red-700 dark:text-red-100"><AnimatedText>{{ $t('modal.sizeWarningTitle') }}</AnimatedText></span>
-                <p class="text-xs text-red-600 dark:text-red-200/70 leading-tight"><AnimatedText>{{ $t('modal.sizeWarningDesc') }}</AnimatedText></p>
+                <span class="font-medium text-xs text-red-700 dark:text-red-100"
+                  ><AnimatedText>{{ $t('modal.sizeWarningTitle') }}</AnimatedText></span
+                >
+                <p class="text-xs text-red-600 dark:text-red-200/70 leading-tight">
+                  <AnimatedText>{{ $t('modal.sizeWarningDesc') }}</AnimatedText>
+                </p>
               </div>
             </div>
           </div>
@@ -51,9 +98,16 @@
               @click="$emit('close')"
             >
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                ></path>
               </svg>
-              <span><AnimatedText>{{ $t('common.cancel') }}</AnimatedText></span>
+              <span
+                ><AnimatedText>{{ $t('common.cancel') }}</AnimatedText></span
+              >
             </button>
             <button
               :disabled="installDisabled"
@@ -61,14 +115,21 @@
                 'px-3 py-1.5 rounded-lg transition-all duration-200 text-xs font-medium flex items-center space-x-1',
                 installDisabled
                   ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50 text-gray-500 dark:text-gray-400'
-                  : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 hover:scale-105 text-white'
+                  : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 hover:scale-105 text-white',
               ]"
               @click="$emit('confirm')"
             >
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M5 13l4 4L19 7"
+                ></path>
               </svg>
-              <span><AnimatedText>{{ $t('modal.startInstallation') }}</AnimatedText></span>
+              <span
+                ><AnimatedText>{{ $t('modal.startInstallation') }}</AnimatedText></span
+              >
             </button>
           </div>
         </div>
@@ -177,6 +238,4 @@ const installDisabled = computed(() => {
   border: 1px solid rgba(59, 130, 246, 0.3);
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
 }
-
-
 </style>

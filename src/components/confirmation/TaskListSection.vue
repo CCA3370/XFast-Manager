@@ -7,7 +7,7 @@
       :class="{
         'opacity-50': !store.getTaskEnabled(task.id),
         'cursor-pointer': !isTaskDisabled(task),
-        'cursor-not-allowed': isTaskDisabled(task)
+        'cursor-not-allowed': isTaskDisabled(task),
       }"
       @click="!isTaskDisabled(task) && toggleTaskEnabled(task.id)"
     >
@@ -15,13 +15,25 @@
         <!-- Checkbox with better styling -->
         <div class="flex-shrink-0 pt-0.5">
           <div
-            class="custom-checkbox" :class="{
-              'checked': store.getTaskEnabled(task.id),
-              'disabled': isTaskDisabled(task)
+            class="custom-checkbox"
+            :class="{
+              checked: store.getTaskEnabled(task.id),
+              disabled: isTaskDisabled(task),
             }"
           >
-            <svg v-if="store.getTaskEnabled(task.id)" class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+            <svg
+              v-if="store.getTaskEnabled(task.id)"
+              class="w-2.5 h-2.5 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="3"
+                d="M5 13l4 4L19 7"
+              ></path>
             </svg>
           </div>
         </div>
@@ -32,27 +44,68 @@
             <span class="type-badge flex-shrink-0" :class="getTypeBadgeClass(task.type)">
               {{ task.type }}
             </span>
-            <span class="font-medium text-gray-900 dark:text-white text-xs truncate min-w-0">{{ task.displayName }}</span>
+            <span class="font-medium text-gray-900 dark:text-white text-xs truncate min-w-0">{{
+              task.displayName
+            }}</span>
           </div>
-          <div v-if="!isTaskDisabled(task)" class="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400">
-            <svg class="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"></path>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5a2 2 0 012-2h4a2 2 0 012 2v2H8V5z"></path>
+          <div
+            v-if="!isTaskDisabled(task)"
+            class="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400"
+          >
+            <svg
+              class="w-2.5 h-2.5 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"
+              ></path>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M8 5a2 2 0 012-2h4a2 2 0 012 2v2H8V5z"
+              ></path>
             </svg>
-            <span class="truncate text-xs"><AnimatedText>{{ $t('modal.targetPath') }}</AnimatedText>: {{ getRelativePath(task.targetPath) }}</span>
+            <span class="truncate text-xs"
+              ><AnimatedText>{{ $t('modal.targetPath') }}</AnimatedText
+              >: {{ getRelativePath(task.targetPath) }}</span
+            >
           </div>
 
           <!-- Conflict warning with install mode toggle switch (only for non-locked conflicts) -->
           <div v-if="task.conflictExists && !isLockedConflict(task)" class="mt-1.5">
-            <div class="flex items-center space-x-1.5 text-xs text-yellow-600 dark:text-yellow-400 mb-1.5">
-              <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+            <div
+              class="flex items-center space-x-1.5 text-xs text-yellow-600 dark:text-yellow-400 mb-1.5"
+            >
+              <svg
+                class="w-3 h-3 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                ></path>
               </svg>
-              <span><AnimatedText>{{ task.type === 'LuaScript' ? $t('modal.fileExists') : $t('modal.folderExists') }}</AnimatedText></span>
+              <span
+                ><AnimatedText>{{
+                  task.type === 'LuaScript' ? $t('modal.fileExists') : $t('modal.folderExists')
+                }}</AnimatedText></span
+              >
               <!-- Inline version comparison for Aircraft/Plugin -->
               <template
-                v-if="(task.type === 'Aircraft' || task.type === 'Plugin')
-                  && (task.existingVersionInfo?.version || task.newVersionInfo?.version)"
+                v-if="
+                  (task.type === 'Aircraft' || task.type === 'Plugin') &&
+                  (task.existingVersionInfo?.version || task.newVersionInfo?.version)
+                "
               >
                 <span class="text-gray-400 dark:text-gray-500">·</span>
                 <span class="text-blue-600 dark:text-blue-400">
@@ -74,17 +127,31 @@
 
             <!-- Install mode toggle switch with mode name on the right -->
             <div class="flex items-center gap-2 text-xs" @click.stop>
-              <label class="install-mode-switch flex-shrink-0" :class="{ 'disabled': !store.getTaskEnabled(task.id) }">
+              <label
+                class="install-mode-switch flex-shrink-0"
+                :class="{ disabled: !store.getTaskEnabled(task.id) }"
+              >
                 <input
                   type="checkbox"
                   :checked="!store.getTaskOverwrite(task.id)"
                   :disabled="!store.getTaskEnabled(task.id)"
                   @change="setTaskInstallMode(task.id, !store.getTaskOverwrite(task.id))"
-                >
+                />
                 <span class="switch-slider"></span>
               </label>
-              <span class="font-medium flex-shrink-0" :class="store.getTaskOverwrite(task.id) ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'">
-                <AnimatedText>{{ store.getTaskOverwrite(task.id) ? $t('modal.directOverwrite') : $t('modal.cleanInstall') }}</AnimatedText>
+              <span
+                class="font-medium flex-shrink-0"
+                :class="
+                  store.getTaskOverwrite(task.id)
+                    ? 'text-blue-600 dark:text-blue-400'
+                    : 'text-emerald-600 dark:text-emerald-400'
+                "
+              >
+                <AnimatedText>{{
+                  store.getTaskOverwrite(task.id)
+                    ? $t('modal.directOverwrite')
+                    : $t('modal.cleanInstall')
+                }}</AnimatedText>
               </span>
 
               <!-- Backup options inline for Aircraft clean install -->
@@ -92,37 +159,58 @@
                 v-if="task.type === 'Aircraft' && !store.getTaskOverwrite(task.id)"
                 class="flex items-center gap-2 ml-2 pl-2 border-l border-emerald-300 dark:border-emerald-500/30"
               >
-                <label class="backup-checkbox-label" :class="{ 'disabled': !store.getTaskEnabled(task.id) }">
+                <label
+                  class="backup-checkbox-label"
+                  :class="{ disabled: !store.getTaskEnabled(task.id) }"
+                >
                   <input
                     type="checkbox"
                     :checked="getBackupLiveries(task.id)"
                     :disabled="!store.getTaskEnabled(task.id)"
                     class="backup-checkbox-input"
                     @change="setBackupLiveries(task.id, !getBackupLiveries(task.id))"
-                  >
+                  />
                   <span class="backup-checkbox-custom">
                     <svg class="backup-checkbox-icon" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6L5 9L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                      <path
+                        d="M2 6L5 9L10 3"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
                     </svg>
                   </span>
                   <span class="backup-checkbox-text">
                     <AnimatedText>{{ $t('modal.backupLiveries') }}</AnimatedText>
                   </span>
                 </label>
-                <label class="backup-checkbox-label" :class="{ 'disabled': !store.getTaskEnabled(task.id) || !hasConfigPatterns }">
+                <label
+                  class="backup-checkbox-label"
+                  :class="{ disabled: !store.getTaskEnabled(task.id) || !hasConfigPatterns }"
+                >
                   <input
                     type="checkbox"
                     :checked="getBackupConfigFiles(task.id)"
                     :disabled="!store.getTaskEnabled(task.id) || !hasConfigPatterns"
                     class="backup-checkbox-input"
                     @change="setBackupConfigFiles(task.id, !getBackupConfigFiles(task.id))"
-                  >
+                  />
                   <span class="backup-checkbox-custom">
                     <svg class="backup-checkbox-icon" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6L5 9L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                      <path
+                        d="M2 6L5 9L10 3"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
                     </svg>
                   </span>
-                  <span class="backup-checkbox-text" :title="!hasConfigPatterns ? $t('modal.noConfigPatternsHint') : ''">
+                  <span
+                    class="backup-checkbox-text"
+                    :title="!hasConfigPatterns ? $t('modal.noConfigPatternsHint') : ''"
+                  >
                     <AnimatedText>{{ $t('modal.backupConfigFiles') }}</AnimatedText>
                   </span>
                 </label>
@@ -133,17 +221,26 @@
                 v-if="task.type === 'Navdata' && !store.getTaskOverwrite(task.id)"
                 class="flex items-center gap-2 ml-2 pl-2 border-l border-emerald-300 dark:border-emerald-500/30"
               >
-                <label class="backup-checkbox-label" :class="{ 'disabled': !store.getTaskEnabled(task.id) }">
+                <label
+                  class="backup-checkbox-label"
+                  :class="{ disabled: !store.getTaskEnabled(task.id) }"
+                >
                   <input
                     type="checkbox"
                     :checked="store.getBackupNavdata(task.id)"
                     :disabled="!store.getTaskEnabled(task.id)"
                     class="backup-checkbox-input"
                     @change="store.setBackupNavdata(task.id, !store.getBackupNavdata(task.id))"
-                  >
+                  />
                   <span class="backup-checkbox-custom">
                     <svg class="backup-checkbox-icon" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6L5 9L10 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                      <path
+                        d="M2 6L5 9L10 3"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
                     </svg>
                   </span>
                   <span class="backup-checkbox-text">
@@ -155,48 +252,102 @@
           </div>
 
           <!-- Size warning with confirmation checkbox -->
-          <div v-if="task.sizeWarning" class="mt-1.5 p-2 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded">
+          <div
+            v-if="task.sizeWarning"
+            class="mt-1.5 p-2 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded"
+          >
             <div class="flex items-start space-x-2">
-              <svg class="w-3.5 h-3.5 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+              <svg
+                class="w-3.5 h-3.5 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                ></path>
               </svg>
               <div class="flex-1 min-w-0">
-                <p class="text-xs text-red-700 dark:text-red-300">{{ parseSizeWarning(task.sizeWarning).message }}</p>
+                <p class="text-xs text-red-700 dark:text-red-300">
+                  {{ parseSizeWarning(task.sizeWarning).message }}
+                </p>
                 <label class="flex items-center space-x-1.5 mt-1.5 cursor-pointer" @click.stop>
                   <input
                     type="checkbox"
                     :checked="store.getTaskSizeConfirmed(task.id)"
                     class="w-3 h-3 rounded border-red-300 dark:border-red-500/50 bg-white dark:bg-red-500/10 text-red-600 dark:text-red-500 focus:ring-red-500 dark:focus:ring-red-500/50"
                     @change="toggleTaskSizeConfirm(task.id)"
+                  />
+                  <span class="text-xs text-red-700 dark:text-red-200"
+                    ><AnimatedText>{{ $t('modal.confirmTrustArchive') }}</AnimatedText></span
                   >
-                  <span class="text-xs text-red-700 dark:text-red-200"><AnimatedText>{{ $t('modal.confirmTrustArchive') }}</AnimatedText></span>
                 </label>
               </div>
             </div>
           </div>
 
           <!-- Livery aircraft not found warning -->
-          <div v-if="task.type === 'Livery' && task.liveryAircraftFound === false" class="mt-1.5 flex items-center space-x-1.5 text-xs text-red-600 dark:text-red-400">
-            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path>
+          <div
+            v-if="task.type === 'Livery' && task.liveryAircraftFound === false"
+            class="mt-1.5 flex items-center space-x-1.5 text-xs text-red-600 dark:text-red-400"
+          >
+            <svg
+              class="w-3.5 h-3.5 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+              ></path>
             </svg>
-            <span class="font-medium"><AnimatedText>{{ $t('modal.liveryAircraftNotFound') }}</AnimatedText></span>
+            <span class="font-medium"
+              ><AnimatedText>{{ $t('modal.liveryAircraftNotFound') }}</AnimatedText></span
+            >
           </div>
 
           <!-- FlyWithLua not installed warning -->
-          <div v-if="task.type === 'LuaScript' && task.flyWithLuaInstalled === false" class="mt-1.5 flex items-center space-x-1.5 text-xs text-red-600 dark:text-red-400">
-            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path>
+          <div
+            v-if="task.type === 'LuaScript' && task.flyWithLuaInstalled === false"
+            class="mt-1.5 flex items-center space-x-1.5 text-xs text-red-600 dark:text-red-400"
+          >
+            <svg
+              class="w-3.5 h-3.5 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+              ></path>
             </svg>
-            <span class="font-medium"><AnimatedText>{{ $t('modal.flyWithLuaRequired') }}</AnimatedText></span>
+            <span class="font-medium"
+              ><AnimatedText>{{ $t('modal.flyWithLuaRequired') }}</AnimatedText></span
+            >
           </div>
 
           <!-- Locked conflict warning -->
-          <div v-if="isLockedConflict(task)" class="mt-1.5 flex items-center space-x-1.5 text-xs text-amber-600 dark:text-amber-400">
+          <div
+            v-if="isLockedConflict(task)"
+            class="mt-1.5 flex items-center space-x-1.5 text-xs text-amber-600 dark:text-amber-400"
+          >
             <svg class="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" />
+              <path
+                d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"
+              />
             </svg>
-            <span class="font-medium"><AnimatedText>{{ $t('modal.targetLockedWarning') }}</AnimatedText></span>
+            <span class="font-medium"
+              ><AnimatedText>{{ $t('modal.targetLockedWarning') }}</AnimatedText></span
+            >
           </div>
         </div>
       </div>
@@ -247,20 +398,20 @@ function formatNavdataCycle(info: NavdataInfo | undefined): string {
 }
 
 // Parse size warning message to get human-readable text
-function parseSizeWarning(warning: string): { type: 'ratio' | 'size', message: string } {
+function parseSizeWarning(warning: string): { type: 'ratio' | 'size'; message: string } {
   if (warning.startsWith('SUSPICIOUS_RATIO:')) {
     const parts = warning.split(':')
     const ratio = parts[1]
     const size = parseFloat(parts[2]) / 1024 / 1024 / 1024
     return {
       type: 'ratio',
-      message: t('modal.suspiciousRatio', { ratio, size: size.toFixed(2) })
+      message: t('modal.suspiciousRatio', { ratio, size: size.toFixed(2) }),
     }
   } else if (warning.startsWith('LARGE_SIZE:')) {
     const size = warning.split(':')[1]
     return {
       type: 'size',
-      message: t('modal.largeSize', { size })
+      message: t('modal.largeSize', { size }),
     }
   }
   return { type: 'size', message: warning }
@@ -381,7 +532,9 @@ function getTypeBadgeClass(type: AddonType) {
 
 /* Task items */
 .task-item {
-  transition: border-color 0.2s ease, opacity 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    opacity 0.2s ease;
 }
 
 /* Custom checkbox */
@@ -478,7 +631,7 @@ function getTypeBadgeClass(type: AddonType) {
 
 /* Switch knob */
 .switch-slider:before {
-  content: "";
+  content: '';
   position: absolute;
   height: 14px;
   width: 14px;

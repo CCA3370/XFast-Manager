@@ -62,7 +62,7 @@ export const useUpdateStore = defineStore('update', () => {
     try {
       const result = await invoke<UpdateInfo>('check_for_updates', {
         manual,
-        includePreRelease: includePreRelease.value
+        includePreRelease: includePreRelease.value,
       })
 
       // Show update banner if an update is available
@@ -71,10 +71,7 @@ export const useUpdateStore = defineStore('update', () => {
         showUpdateBanner.value = true
 
         // Log update found
-        logBasic(
-          `Update available: ${result.currentVersion} -> ${result.latestVersion}`,
-          'update'
-        )
+        logBasic(`Update available: ${result.currentVersion} -> ${result.latestVersion}`, 'update')
 
         // Show notification on manual check
         if (manual) {
@@ -94,7 +91,7 @@ export const useUpdateStore = defineStore('update', () => {
       await setItem(STORAGE_KEYS.LAST_CHECK_TIME, lastCheckTime.value.toString())
     } catch (error) {
       const errorMessage =
-        typeof error === 'string' ? error : (error as Error)?.message ?? String(error)
+        typeof error === 'string' ? error : ((error as Error)?.message ?? String(error))
 
       if (errorMessage.includes('Cache not expired')) {
         logDebug('Update check skipped (cache not expired)', 'update')
@@ -161,6 +158,6 @@ export const useUpdateStore = defineStore('update', () => {
     dismissUpdate,
     openReleaseUrl,
     toggleAutoCheck,
-    toggleIncludePreRelease
+    toggleIncludePreRelease,
   }
 })

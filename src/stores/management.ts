@@ -9,7 +9,7 @@ import type {
   NavdataBackupInfo,
   ManagementData,
   ManagementTab,
-  ManagementItemType
+  ManagementItemType,
 } from '@/types'
 import { useAppStore } from './app'
 import { useToastStore } from './toast'
@@ -113,34 +113,34 @@ export const useManagementStore = defineStore('management', () => {
   // Computed properties
   const sortedAircraft = computed(() => {
     return [...aircraft.value].sort((a, b) =>
-      a.displayName.toLowerCase().localeCompare(b.displayName.toLowerCase())
+      a.displayName.toLowerCase().localeCompare(b.displayName.toLowerCase()),
     )
   })
 
   const sortedPlugins = computed(() => {
     return [...plugins.value].sort((a, b) =>
-      a.displayName.toLowerCase().localeCompare(b.displayName.toLowerCase())
+      a.displayName.toLowerCase().localeCompare(b.displayName.toLowerCase()),
     )
   })
 
   const sortedNavdata = computed(() => {
     return [...navdata.value].sort((a, b) =>
-      a.providerName.toLowerCase().localeCompare(b.providerName.toLowerCase())
+      a.providerName.toLowerCase().localeCompare(b.providerName.toLowerCase()),
     )
   })
 
   // Update counts
   const aircraftUpdateCount = computed(() => {
-    return aircraft.value.filter(a => a.hasUpdate).length
+    return aircraft.value.filter((a) => a.hasUpdate).length
   })
 
   const pluginsUpdateCount = computed(() => {
-    return plugins.value.filter(p => p.hasUpdate).length
+    return plugins.value.filter((p) => p.hasUpdate).length
   })
 
   // Navdata outdated count
   const navdataOutdatedCount = computed(() => {
-    return navdata.value.filter(n => {
+    return navdata.value.filter((n) => {
       const cycleText = n.cycle || n.airac
       return getNavdataCycleStatus(cycleText) === 'outdated'
     }).length
@@ -154,7 +154,7 @@ export const useManagementStore = defineStore('management', () => {
   // Items that are disabled in cfg file should be marked as locked
   function syncCfgDisabledToLockStore(
     type: 'aircraft' | 'plugin',
-    items: Array<{ folderName: string; enabled: boolean }>
+    items: Array<{ folderName: string; enabled: boolean }>,
   ) {
     for (const item of items) {
       // If item is disabled in cfg, mark it as locked
@@ -174,7 +174,7 @@ export const useManagementStore = defineStore('management', () => {
   // Apply cached update info to items
   // hasUpdate is recalculated based on current local version vs cached remote version
   function applyCachedUpdates<T extends UpdatableItem>(items: T[]): T[] {
-    return items.map(item => {
+    return items.map((item) => {
       if (item.updateUrl && isCacheValid(item.updateUrl)) {
         const cached = updateCache.get(item.updateUrl)!
         const latestVersion = cached.latestVersion ?? undefined
@@ -183,7 +183,7 @@ export const useManagementStore = defineStore('management', () => {
         return {
           ...item,
           latestVersion,
-          hasUpdate
+          hasUpdate,
         }
       }
       return item
@@ -193,10 +193,10 @@ export const useManagementStore = defineStore('management', () => {
   // Get items that need update check (no valid cache, and not locked)
   function getItemsNeedingUpdateCheck<T extends { updateUrl?: string; folderName: string }>(
     items: T[],
-    itemType: 'aircraft' | 'plugin'
+    itemType: 'aircraft' | 'plugin',
   ): T[] {
     const lockStore = useLockStore()
-    return items.filter(item => {
+    return items.filter((item) => {
       if (!item.updateUrl) return false
       if (isCacheValid(item.updateUrl)) return false
       // Skip locked items - they shouldn't be checked for updates
@@ -227,12 +227,14 @@ export const useManagementStore = defineStore('management', () => {
 
     try {
       const result = await invoke<ManagementData<T>>(config.scanCommand, {
-        xplanePath: appStore.xplanePath
+        xplanePath: appStore.xplanePath,
       })
 
       // Apply cached update info if applicable (only for UpdatableItem types)
       if (config.applyCache) {
-        config.itemsRef.value = applyCachedUpdates(result.entries as unknown as UpdatableItem[]) as unknown as T[]
+        config.itemsRef.value = applyCachedUpdates(
+          result.entries as unknown as UpdatableItem[],
+        ) as unknown as T[]
       } else {
         config.itemsRef.value = result.entries
       }
@@ -268,7 +270,9 @@ export const useManagementStore = defineStore('management', () => {
     updateCount: number
   }
 
-  async function checkItemUpdates<T extends UpdatableItem>(config: UpdateCheckConfig<T>): Promise<UpdateCheckResult> {
+  async function checkItemUpdates<T extends UpdatableItem>(
+    config: UpdateCheckConfig<T>,
+  ): Promise<UpdateCheckResult> {
     if (config.itemsRef.value.length === 0) {
       return { checked: false, updateCount: 0 }
     }
@@ -277,7 +281,7 @@ export const useManagementStore = defineStore('management', () => {
     const itemsToCheck = getItemsNeedingUpdateCheck(config.itemsRef.value, config.itemType)
     if (itemsToCheck.length === 0) {
       // All items have valid cache, count current updates
-      const updateCount = config.itemsRef.value.filter(item => item.hasUpdate).length
+      const updateCount = config.itemsRef.value.filter((item) => item.hasUpdate).length
       return { checked: false, updateCount }
     }
 
@@ -286,7 +290,7 @@ export const useManagementStore = defineStore('management', () => {
     try {
       // Send only items needing check to backend
       const updated = await invoke<T[]>(config.checkCommand, {
-        [config.checkParamName]: itemsToCheck
+        [config.checkParamName]: itemsToCheck,
       })
 
       // Update cache with results (only store latestVersion, not hasUpdate)
@@ -294,23 +298,27 @@ export const useManagementStore = defineStore('management', () => {
         if (item.updateUrl) {
           setCacheEntry(item.updateUrl, {
             latestVersion: item.latestVersion ?? null,
-            timestamp: Date.now()
+            timestamp: Date.now(),
           })
         }
       }
 
       // Merge updated items back into list
-      const updatedMap = new Map(updated.map(item => [item.folderName, item]))
-      config.itemsRef.value = config.itemsRef.value.map(item => {
+      const updatedMap = new Map(updated.map((item) => [item.folderName, item]))
+      config.itemsRef.value = config.itemsRef.value.map((item) => {
         const updatedItem = updatedMap.get(item.folderName)
         if (updatedItem) {
-          return { ...item, latestVersion: updatedItem.latestVersion, hasUpdate: updatedItem.hasUpdate }
+          return {
+            ...item,
+            latestVersion: updatedItem.latestVersion,
+            hasUpdate: updatedItem.hasUpdate,
+          }
         }
         return item
       })
 
       // Count items with updates after merge
-      const updateCount = config.itemsRef.value.filter(item => item.hasUpdate).length
+      const updateCount = config.itemsRef.value.filter((item) => item.hasUpdate).length
       return { checked: true, updateCount }
     } catch (e) {
       logError(`Failed to check ${config.logName} updates: ${e}`, 'management')
@@ -337,7 +345,7 @@ export const useManagementStore = defineStore('management', () => {
         syncCfgDisabledToLockStore('aircraft', aircraft.value)
         checkAircraftUpdates()
       },
-      logName: 'aircraft'
+      logName: 'aircraft',
     })
   }
 
@@ -355,7 +363,7 @@ export const useManagementStore = defineStore('management', () => {
       if (appStore.xplanePath) {
         try {
           const result = await invoke<ManagementData<AircraftInfo>>('scan_aircraft', {
-            xplanePath: appStore.xplanePath
+            xplanePath: appStore.xplanePath,
           })
           aircraft.value = applyCachedUpdates(result.entries)
           aircraftTotalCount.value = result.totalCount
@@ -372,7 +380,7 @@ export const useManagementStore = defineStore('management', () => {
       checkCommand: 'check_aircraft_updates',
       checkParamName: 'aircraft',
       logName: 'aircraft',
-      itemType: 'aircraft'
+      itemType: 'aircraft',
     })
     // Show toast when check was actually performed and no updates found
     if (result.checked && result.updateCount === 0) {
@@ -392,7 +400,7 @@ export const useManagementStore = defineStore('management', () => {
         syncCfgDisabledToLockStore('plugin', plugins.value)
         checkPluginsUpdates()
       },
-      logName: 'plugins'
+      logName: 'plugins',
     })
   }
 
@@ -410,7 +418,7 @@ export const useManagementStore = defineStore('management', () => {
       if (appStore.xplanePath) {
         try {
           const result = await invoke<ManagementData<PluginInfo>>('scan_plugins', {
-            xplanePath: appStore.xplanePath
+            xplanePath: appStore.xplanePath,
           })
           plugins.value = applyCachedUpdates(result.entries)
           pluginsTotalCount.value = result.totalCount
@@ -427,7 +435,7 @@ export const useManagementStore = defineStore('management', () => {
       checkCommand: 'check_plugins_updates',
       checkParamName: 'plugins',
       logName: 'plugins',
-      itemType: 'plugin'
+      itemType: 'plugin',
     })
     // Show toast when check was actually performed and no updates found
     if (result.checked && result.updateCount === 0) {
@@ -443,7 +451,7 @@ export const useManagementStore = defineStore('management', () => {
       totalCountRef: navdataTotalCount,
       enabledCountRef: navdataEnabledCount,
       applyCache: false,
-      logName: 'navdata'
+      logName: 'navdata',
     })
     // Also load backups when loading navdata
     await loadNavdataBackups()
@@ -455,7 +463,7 @@ export const useManagementStore = defineStore('management', () => {
 
     try {
       navdataBackups.value = await invoke<NavdataBackupInfo[]>('scan_navdata_backups', {
-        xplanePath: appStore.xplanePath
+        xplanePath: appStore.xplanePath,
       })
     } catch (e) {
       logError(`Failed to load navdata backups: ${e}`, 'management')
@@ -473,7 +481,7 @@ export const useManagementStore = defineStore('management', () => {
     try {
       await invoke('restore_navdata_backup', {
         xplanePath: appStore.xplanePath,
-        backupFolderName
+        backupFolderName,
       })
       toast.info(t('management.restoreBackupSuccess'))
       await loadNavdata()
@@ -513,35 +521,35 @@ export const useManagementStore = defineStore('management', () => {
       const newEnabled = await invoke<boolean>('toggle_management_item', {
         xplanePath: appStore.xplanePath,
         itemType,
-        folderName
+        folderName,
       })
 
       // Update local state
       switch (itemType) {
         case 'aircraft': {
           // Aircraft: folder name stays the same, only enabled state changes
-          const item = aircraft.value.find(a => a.folderName === folderName)
+          const item = aircraft.value.find((a) => a.folderName === folderName)
           if (item) {
             item.enabled = newEnabled
-            aircraftEnabledCount.value = aircraft.value.filter(a => a.enabled).length
+            aircraftEnabledCount.value = aircraft.value.filter((a) => a.enabled).length
           }
           break
         }
         case 'plugin': {
           // Plugin: folder name stays the same, only enabled state changes
-          const item = plugins.value.find(p => p.folderName === folderName)
+          const item = plugins.value.find((p) => p.folderName === folderName)
           if (item) {
             item.enabled = newEnabled
-            pluginsEnabledCount.value = plugins.value.filter(p => p.enabled).length
+            pluginsEnabledCount.value = plugins.value.filter((p) => p.enabled).length
           }
           break
         }
         case 'navdata': {
           // Navdata: folder name stays the same, only enabled state changes
-          const item = navdata.value.find(n => n.folderName === folderName)
+          const item = navdata.value.find((n) => n.folderName === folderName)
           if (item) {
             item.enabled = newEnabled
-            navdataEnabledCount.value = navdata.value.filter(n => n.enabled).length
+            navdataEnabledCount.value = navdata.value.filter((n) => n.enabled).length
           }
           break
         }
@@ -564,25 +572,25 @@ export const useManagementStore = defineStore('management', () => {
       await invoke('delete_management_item', {
         xplanePath: appStore.xplanePath,
         itemType,
-        folderName
+        folderName,
       })
 
       // Remove from local state
       switch (itemType) {
         case 'aircraft':
-          aircraft.value = aircraft.value.filter(a => a.folderName !== folderName)
+          aircraft.value = aircraft.value.filter((a) => a.folderName !== folderName)
           aircraftTotalCount.value = aircraft.value.length
-          aircraftEnabledCount.value = aircraft.value.filter(a => a.enabled).length
+          aircraftEnabledCount.value = aircraft.value.filter((a) => a.enabled).length
           break
         case 'plugin':
-          plugins.value = plugins.value.filter(p => p.folderName !== folderName)
+          plugins.value = plugins.value.filter((p) => p.folderName !== folderName)
           pluginsTotalCount.value = plugins.value.length
-          pluginsEnabledCount.value = plugins.value.filter(p => p.enabled).length
+          pluginsEnabledCount.value = plugins.value.filter((p) => p.enabled).length
           break
         case 'navdata':
-          navdata.value = navdata.value.filter(n => n.folderName !== folderName)
+          navdata.value = navdata.value.filter((n) => n.folderName !== folderName)
           navdataTotalCount.value = navdata.value.length
-          navdataEnabledCount.value = navdata.value.filter(n => n.enabled).length
+          navdataEnabledCount.value = navdata.value.filter((n) => n.enabled).length
           break
       }
     } catch (e) {
@@ -603,7 +611,7 @@ export const useManagementStore = defineStore('management', () => {
       await invoke('open_management_folder', {
         xplanePath: appStore.xplanePath,
         itemType,
-        folderName
+        folderName,
       })
     } catch (e) {
       error.value = String(e)
@@ -667,6 +675,6 @@ export const useManagementStore = defineStore('management', () => {
     deleteItem,
     openFolder,
     setActiveTab,
-    clear
+    clear,
   }
 })

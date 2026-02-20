@@ -1,13 +1,13 @@
-import { Store } from '@tauri-apps/plugin-store';
+import { Store } from '@tauri-apps/plugin-store'
 
-let store: Store | null = null;
+let store: Store | null = null
 
 /**
  * Initialize the Tauri store. Must be called before using other storage functions.
  */
 export async function initStorage(): Promise<void> {
-  if (store) return;
-  store = await Store.load('settings.json');
+  if (store) return
+  store = await Store.load('settings.json')
 }
 
 /**
@@ -15,10 +15,10 @@ export async function initStorage(): Promise<void> {
  */
 export async function getItem<T>(key: string): Promise<T | null> {
   if (!store) {
-    await initStorage();
+    await initStorage()
   }
-  const value = await store!.get<T>(key);
-  return value ?? null;
+  const value = await store!.get<T>(key)
+  return value ?? null
 }
 
 /**
@@ -26,9 +26,9 @@ export async function getItem<T>(key: string): Promise<T | null> {
  */
 export async function setItem<T>(key: string, value: T): Promise<void> {
   if (!store) {
-    await initStorage();
+    await initStorage()
   }
-  await store!.set(key, value);
+  await store!.set(key, value)
 }
 
 /**
@@ -36,9 +36,9 @@ export async function setItem<T>(key: string, value: T): Promise<void> {
  */
 export async function removeItem(key: string): Promise<void> {
   if (!store) {
-    await initStorage();
+    await initStorage()
   }
-  await store!.delete(key);
+  await store!.delete(key)
 }
 
 /**
@@ -46,9 +46,9 @@ export async function removeItem(key: string): Promise<void> {
  */
 export async function clearStorage(): Promise<void> {
   if (!store) {
-    await initStorage();
+    await initStorage()
   }
-  await store!.clear();
+  await store!.clear()
 }
 
 /**
@@ -56,9 +56,9 @@ export async function clearStorage(): Promise<void> {
  */
 export async function getAllKeys(): Promise<string[]> {
   if (!store) {
-    await initStorage();
+    await initStorage()
   }
-  return await store!.keys();
+  return await store!.keys()
 }
 
 /**
@@ -66,9 +66,9 @@ export async function getAllKeys(): Promise<string[]> {
  */
 export async function hasKey(key: string): Promise<boolean> {
   if (!store) {
-    await initStorage();
+    await initStorage()
   }
-  return await store!.has(key);
+  return await store!.has(key)
 }
 
 // Storage keys constants
@@ -90,4 +90,4 @@ export const STORAGE_KEYS = {
   INCLUDE_PRE_RELEASE: 'includePreRelease',
   LAST_CHECK_TIME: 'lastCheckTime',
   XPLANE_LAUNCH_ARGS: 'xplaneLaunchArgs',
-} as const;
+} as const

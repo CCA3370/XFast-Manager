@@ -91,127 +91,127 @@ export enum AddonType {
 /** Represents a nested archive within another archive */
 export interface NestedArchiveInfo {
   /** Path within parent archive (e.g., "aircraft/A330.zip") */
-  internalPath: string;
+  internalPath: string
   /** Password for this specific nested archive (if different from parent) */
-  password?: string;
+  password?: string
   /** Archive format: "zip", "7z", or "rar" */
-  format: string;
+  format: string
 }
 
 /** Extraction chain for nested archives (outer to inner order) */
 export interface ExtractionChain {
   /** Ordered list of archives to extract (outer to inner) */
-  archives: NestedArchiveInfo[];
+  archives: NestedArchiveInfo[]
   /** Final internal root after all extractions */
-  finalInternalRoot?: string;
+  finalInternalRoot?: string
 }
 
 export interface NavdataInfo {
-  name: string;
-  cycle?: string;
-  airac?: string;
+  name: string
+  cycle?: string
+  airac?: string
 }
 
 export interface VersionInfo {
-  version?: string;
+  version?: string
 }
 
 export interface InstallTask {
-  id: string;
-  type: AddonType;
-  sourcePath: string;
-  targetPath: string;
-  displayName: string;
-  conflictExists?: boolean;
+  id: string
+  type: AddonType
+  sourcePath: string
+  targetPath: string
+  displayName: string
+  conflictExists?: boolean
   /** For archives: the root folder path inside the archive to extract from */
-  archiveInternalRoot?: string;
+  archiveInternalRoot?: string
   /** For nested archives: extraction chain (takes precedence over archiveInternalRoot) */
-  extractionChain?: ExtractionChain;
+  extractionChain?: ExtractionChain
   /** Whether to overwrite existing folder (delete before install) */
-  shouldOverwrite?: boolean;
+  shouldOverwrite?: boolean
   /** Password for encrypted archives */
-  password?: string;
+  password?: string
   /** Estimated uncompressed size in bytes (for archives) */
-  estimatedSize?: number;
+  estimatedSize?: number
   /** Size warning message if archive is suspiciously large or has high compression ratio */
-  sizeWarning?: string;
+  sizeWarning?: string
   /** Whether user has confirmed they trust this archive (for large/suspicious archives) */
-  sizeConfirmed?: boolean;
+  sizeConfirmed?: boolean
   /** For Navdata: existing cycle info (if conflict exists) */
-  existingNavdataInfo?: NavdataInfo;
+  existingNavdataInfo?: NavdataInfo
   /** For Navdata: new cycle info to be installed */
-  newNavdataInfo?: NavdataInfo;
+  newNavdataInfo?: NavdataInfo
   /** For Aircraft/Plugin: existing version info (if conflict exists) */
-  existingVersionInfo?: VersionInfo;
+  existingVersionInfo?: VersionInfo
   /** For Aircraft/Plugin: new version info to be installed */
-  newVersionInfo?: VersionInfo;
+  newVersionInfo?: VersionInfo
   /** Whether to backup liveries during clean install (Aircraft only) */
-  backupLiveries?: boolean;
+  backupLiveries?: boolean
   /** Whether to backup configuration files during clean install (Aircraft only) */
-  backupConfigFiles?: boolean;
+  backupConfigFiles?: boolean
   /** Glob patterns for config files to backup (Aircraft only) */
-  configFilePatterns?: string[];
+  configFilePatterns?: string[]
   /** Whether to backup navdata during clean install (Navdata only) */
-  backupNavdata?: boolean;
+  backupNavdata?: boolean
   /** For Livery: the aircraft type this livery belongs to (e.g., "FF777") */
-  liveryAircraftType?: string;
+  liveryAircraftType?: string
   /** For Livery: whether the target aircraft is installed */
-  liveryAircraftFound?: boolean;
+  liveryAircraftFound?: boolean
   /** For LuaScript: whether FlyWithLua plugin is installed */
-  flyWithLuaInstalled?: boolean;
+  flyWithLuaInstalled?: boolean
 }
 
 export interface AnalysisResult {
-  tasks: InstallTask[];
-  errors: string[];
+  tasks: InstallTask[]
+  errors: string[]
   /** List of archive paths that require a password */
-  passwordRequired: string[];
+  passwordRequired: string[]
   /** Map of nested archive paths to their parent archive */
-  nestedPasswordRequired?: Record<string, string>;
+  nestedPasswordRequired?: Record<string, string>
 }
 
 export interface ConflictInfo {
-  task: InstallTask;
-  existingVersion?: string;
-  newVersion?: string;
+  task: InstallTask
+  existingVersion?: string
+  newVersion?: string
 }
 
-export type InstallPhase = 'calculating' | 'installing' | 'verifying' | 'finalizing';
+export type InstallPhase = 'calculating' | 'installing' | 'verifying' | 'finalizing'
 
 export interface InstallProgress {
-  percentage: number;
-  totalBytes: number;
-  processedBytes: number;
-  currentTaskIndex: number;
-  totalTasks: number;
-  currentTaskName: string;
-  currentFile?: string | null;
-  phase: InstallPhase;
+  percentage: number
+  totalBytes: number
+  processedBytes: number
+  currentTaskIndex: number
+  totalTasks: number
+  currentTaskName: string
+  currentFile?: string | null
+  phase: InstallPhase
   /** Verification progress (0-100), only present during verifying phase */
-  verificationProgress?: number;
+  verificationProgress?: number
 }
 
 export interface TaskResult {
-  taskId: string;
-  taskName: string;
-  success: boolean;
-  errorMessage?: string;
+  taskId: string
+  taskName: string
+  success: boolean
+  errorMessage?: string
 }
 
 export interface InstallResult {
-  totalTasks: number;
-  successfulTasks: number;
-  failedTasks: number;
-  taskResults: TaskResult[];
+  totalTasks: number
+  successfulTasks: number
+  failedTasks: number
+  taskResults: TaskResult[]
 }
 
 export interface UpdateInfo {
-  currentVersion: string;
-  latestVersion: string;
-  isUpdateAvailable: boolean;
-  releaseNotes: string;
-  releaseUrl: string;
-  publishedAt: string;
+  currentVersion: string
+  latestVersion: string
+  isUpdateAvailable: boolean
+  releaseNotes: string
+  releaseUrl: string
+  publishedAt: string
 }
 
 // ========== Scenery Auto-Sorting Types ==========
@@ -229,83 +229,83 @@ export enum SceneryCategory {
 }
 
 export interface SceneryPackageInfo {
-  folderName: string;
-  category: SceneryCategory;
-  subPriority: number;
-  lastModified: number;
-  hasAptDat: boolean;
-  airportId?: string;
-  hasDsf: boolean;
-  hasLibraryTxt: boolean;
-  hasTextures: boolean;
-  hasObjects: boolean;
-  textureCount: number;
-  indexedAt: number;
-  requiredLibraries: string[];
-  missingLibraries: string[];
-  enabled: boolean;
-  sortOrder: number;
+  folderName: string
+  category: SceneryCategory
+  subPriority: number
+  lastModified: number
+  hasAptDat: boolean
+  airportId?: string
+  hasDsf: boolean
+  hasLibraryTxt: boolean
+  hasTextures: boolean
+  hasObjects: boolean
+  textureCount: number
+  indexedAt: number
+  requiredLibraries: string[]
+  missingLibraries: string[]
+  enabled: boolean
+  sortOrder: number
 }
 
 export interface SceneryIndexStats {
-  totalPackages: number;
-  byCategory: Record<string, number>;
-  lastUpdated: number;
+  totalPackages: number
+  byCategory: Record<string, number>
+  lastUpdated: number
 }
 
 export interface SceneryIndexStatus {
-  indexExists: boolean;
-  totalPackages: number;
+  indexExists: boolean
+  totalPackages: number
 }
 
 export interface SceneryIndexScanResult {
-  indexExists: boolean;
-  added: string[];
-  removed: string[];
-  updated: string[];
+  indexExists: boolean
+  added: string[]
+  removed: string[]
+  updated: string[]
 }
 
 export interface SceneryManagerEntry {
-  folderName: string;
-  category: SceneryCategory;
-  subPriority: number;
-  enabled: boolean;
-  sortOrder: number;
-  missingLibraries: string[];
-  requiredLibraries: string[];
-  continent?: string;
-  duplicateTiles: string[];
-  duplicateAirports: string[];
-  airportId?: string;
-  originalCategory?: SceneryCategory;
+  folderName: string
+  category: SceneryCategory
+  subPriority: number
+  enabled: boolean
+  sortOrder: number
+  missingLibraries: string[]
+  requiredLibraries: string[]
+  continent?: string
+  duplicateTiles: string[]
+  duplicateAirports: string[]
+  airportId?: string
+  originalCategory?: SceneryCategory
 }
 
 export interface SceneryManagerData {
-  entries: SceneryManagerEntry[];
-  totalCount: number;
-  enabledCount: number;
-  missingDepsCount: number;
-  duplicateTilesCount: number;
-  duplicateAirportsCount: number;
-  needsSync: boolean;
+  entries: SceneryManagerEntry[]
+  totalCount: number
+  enabledCount: number
+  missingDepsCount: number
+  duplicateTilesCount: number
+  duplicateAirportsCount: number
+  needsSync: boolean
   /** Raw tile overlap data (all overlaps, before XPME filtering) for real-time recalculation */
-  tileOverlaps: Record<string, string[]>;
+  tileOverlaps: Record<string, string[]>
 }
 
 // ========== Management Types ==========
 
 export interface AircraftInfo {
-  folderName: string;
-  displayName: string;
-  acfFile: string;
-  enabled: boolean;
-  hasLiveries: boolean;
-  liveryCount: number;
-  version?: string;
-  updateUrl?: string;
-  latestVersion?: string;
-  hasUpdate: boolean;
-  cfgDisabled?: boolean;
+  folderName: string
+  displayName: string
+  acfFile: string
+  enabled: boolean
+  hasLiveries: boolean
+  liveryCount: number
+  version?: string
+  updateUrl?: string
+  latestVersion?: string
+  hasUpdate: boolean
+  cfgDisabled?: boolean
 }
 
 export interface LiveryInfo {
@@ -315,60 +315,60 @@ export interface LiveryInfo {
 }
 
 export interface PluginInfo {
-  folderName: string;
-  displayName: string;
-  xplFiles: string[];
-  enabled: boolean;
-  platform: string;
-  version?: string;
-  updateUrl?: string;
-  latestVersion?: string;
-  hasUpdate: boolean;
-  cfgDisabled?: boolean;
-  hasScripts: boolean;
-  scriptCount: number;
+  folderName: string
+  displayName: string
+  xplFiles: string[]
+  enabled: boolean
+  platform: string
+  version?: string
+  updateUrl?: string
+  latestVersion?: string
+  hasUpdate: boolean
+  cfgDisabled?: boolean
+  hasScripts: boolean
+  scriptCount: number
 }
 
 export interface LuaScriptInfo {
-  fileName: string;
-  displayName: string;
-  enabled: boolean;
+  fileName: string
+  displayName: string
+  enabled: boolean
 }
 
 export interface NavdataManagerInfo {
-  folderName: string;
-  providerName: string;
-  cycle?: string;
-  airac?: string;
-  enabled: boolean;
+  folderName: string
+  providerName: string
+  cycle?: string
+  airac?: string
+  enabled: boolean
 }
 
 export interface BackupFileEntry {
-  relativePath: string;
-  checksum: string;
-  size: number;
+  relativePath: string
+  checksum: string
+  size: number
 }
 
 export interface NavdataBackupVerification {
-  providerName: string;
-  cycle?: string;
-  airac?: string;
-  backupTime: string;
-  files: BackupFileEntry[];
-  fileCount: number;
+  providerName: string
+  cycle?: string
+  airac?: string
+  backupTime: string
+  files: BackupFileEntry[]
+  fileCount: number
 }
 
 export interface NavdataBackupInfo {
-  folderName: string;
-  verification: NavdataBackupVerification;
+  folderName: string
+  verification: NavdataBackupVerification
 }
 
 export interface ManagementData<T> {
-  entries: T[];
-  totalCount: number;
-  enabledCount: number;
+  entries: T[]
+  totalCount: number
+  enabledCount: number
 }
 
-export type ManagementTab = 'aircraft' | 'plugin' | 'navdata' | 'scenery';
+export type ManagementTab = 'aircraft' | 'plugin' | 'navdata' | 'scenery'
 
-export type ManagementItemType = 'aircraft' | 'plugin' | 'navdata';
+export type ManagementItemType = 'aircraft' | 'plugin' | 'navdata'

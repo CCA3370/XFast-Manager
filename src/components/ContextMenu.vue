@@ -63,10 +63,7 @@ watch(visible, (val) => {
       >
         <div
           ref="menuRef"
-          class="fixed min-w-[160px] py-1 rounded-lg shadow-xl border
-            bg-white dark:bg-gray-800
-            border-gray-200 dark:border-gray-600
-            text-sm select-none"
+          class="fixed min-w-[160px] py-1 rounded-lg shadow-xl border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-sm select-none"
           :style="{ left: x + 'px', top: y + 'px' }"
         >
           <template v-for="item in items" :key="item.id">
@@ -77,7 +74,7 @@ watch(visible, (val) => {
                   ? 'opacity-40 cursor-not-allowed'
                   : item.danger
                     ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700',
               ]"
               :disabled="item.disabled"
               @click="!item.disabled && handleAction(item.id)"
@@ -102,10 +99,14 @@ watch(visible, (val) => {
 
 <style scoped>
 .ctx-menu-enter-active {
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
 }
 .ctx-menu-leave-active {
-  transition: opacity 0.08s ease, transform 0.08s ease;
+  transition:
+    opacity 0.08s ease,
+    transform 0.08s ease;
 }
 .ctx-menu-enter-from {
   opacity: 0;

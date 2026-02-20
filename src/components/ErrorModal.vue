@@ -1,12 +1,10 @@
 <template>
   <Teleport to="body">
-    <Transition
-      name="modal"
-      :css="false"
-      @enter="onEnter"
-      @leave="onLeave"
-    >
-      <div v-if="modal.errorModal.visible" class="fixed inset-0 z-[1100] flex items-center justify-center">
+    <Transition name="modal" :css="false" @enter="onEnter" @leave="onLeave">
+      <div
+        v-if="modal.errorModal.visible"
+        class="fixed inset-0 z-[1100] flex items-center justify-center"
+      >
         <!-- Backdrop -->
         <div
           ref="backdrop"
@@ -24,26 +22,47 @@
           <div class="flex items-start justify-between">
             <div class="flex items-center space-x-3">
               <!-- Improved error icon -->
-              <div class="w-11 h-11 flex items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-red-700">
-                <svg class="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <div
+                class="w-11 h-11 flex items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-red-700"
+              >
+                <svg
+                  class="w-7 h-7 text-white"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                >
                   <circle cx="12" cy="12" r="11" stroke-width="2" />
                   <path stroke-linecap="round" stroke-width="2.5" d="M12 6v7" />
                   <circle cx="12" cy="17" r="1.5" fill="currentColor" stroke="none" />
                 </svg>
               </div>
               <div>
-                <h3 class="text-lg font-semibold leading-tight">{{ modal.errorModal.title || t('common.error') }}</h3>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ t('modal.errorInfo') }}</p>
+                <h3 class="text-lg font-semibold leading-tight">
+                  {{ modal.errorModal.title || t('common.error') }}
+                </h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {{ t('modal.errorInfo') }}
+                </p>
               </div>
             </div>
-            <button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1" @click="close">
+            <button
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1"
+              @click="close"
+            >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
 
-          <div class="mt-4 text-sm allow-select max-h-48 overflow-auto whitespace-pre-wrap leading-relaxed text-gray-700 dark:text-gray-100">
+          <div
+            class="mt-4 text-sm allow-select max-h-48 overflow-auto whitespace-pre-wrap leading-relaxed text-gray-700 dark:text-gray-100"
+          >
             {{ modal.errorModal.message }}
           </div>
 
@@ -54,12 +73,33 @@
               @click="copyAll"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                <rect
+                  x="9"
+                  y="9"
+                  width="13"
+                  height="13"
+                  rx="2"
+                  ry="2"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                ></rect>
+                <path
+                  d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                ></path>
               </svg>
               <span class="text-sm">{{ $t('copy.copy') }}</span>
             </button>
-            <button ref="okBtn" class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white font-medium transition" @click="close">{{ t('common.close') }}</button>
+            <button
+              ref="okBtn"
+              class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white font-medium transition"
+              @click="close"
+            >
+              {{ t('common.close') }}
+            </button>
           </div>
         </div>
       </div>
@@ -194,25 +234,32 @@ function onKey(e: KeyboardEvent) {
 
 // Dynamically manage keydown listener based on visibility
 // This prevents memory leaks when multiple modal instances exist
-watch(() => modal.errorModal.visible, (visible) => {
-  if (visible) {
-    window.addEventListener('keydown', onKey)
-  } else {
-    window.removeEventListener('keydown', onKey)
-  }
-}, { immediate: true })
+watch(
+  () => modal.errorModal.visible,
+  (visible) => {
+    if (visible) {
+      window.addEventListener('keydown', onKey)
+    } else {
+      window.removeEventListener('keydown', onKey)
+    }
+  },
+  { immediate: true },
+)
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
 })
 
 // When modal becomes visible, autofocus OK button
-watch(() => modal.errorModal.visible, async (v) => {
-  if (v) {
-    await nextTick()
-    okBtn.value?.focus()
-  }
-})
+watch(
+  () => modal.errorModal.visible,
+  async (v) => {
+    if (v) {
+      await nextTick()
+      okBtn.value?.focus()
+    }
+  },
+)
 </script>
 
 <style scoped>
@@ -227,7 +274,7 @@ watch(() => modal.errorModal.visible, async (v) => {
 }
 
 .allow-select::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.08);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 6px;
 }
 </style>

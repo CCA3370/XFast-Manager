@@ -48,10 +48,16 @@ export const useThemeStore = defineStore('theme', () => {
     } catch (e) {
       // Retry on failure (up to MAX_SYNC_RETRIES times)
       if (retryCount < MAX_SYNC_RETRIES) {
-        console.debug(`Failed to sync window theme (attempt ${retryCount + 1}/${MAX_SYNC_RETRIES}), retrying...`, e)
-        setTimeout(() => {
-          syncWindowTheme(retryCount + 1)
-        }, 100 * (retryCount + 1)) // Exponential backoff: 100ms, 200ms, 300ms
+        console.debug(
+          `Failed to sync window theme (attempt ${retryCount + 1}/${MAX_SYNC_RETRIES}), retrying...`,
+          e,
+        )
+        setTimeout(
+          () => {
+            syncWindowTheme(retryCount + 1)
+          },
+          100 * (retryCount + 1),
+        ) // Exponential backoff: 100ms, 200ms, 300ms
       } else {
         console.debug('Failed to set window theme after retries:', e)
       }
@@ -97,7 +103,10 @@ export const useThemeStore = defineStore('theme', () => {
 
   async function applyThemeInstantly(transitionDurationMs: number) {
     document.documentElement.classList.add('theme-transitioning')
-    document.documentElement.style.setProperty('--theme-transition-duration', `${transitionDurationMs}ms`)
+    document.documentElement.style.setProperty(
+      '--theme-transition-duration',
+      `${transitionDurationMs}ms`,
+    )
 
     if (isDark.value) {
       document.documentElement.classList.add('dark')
@@ -164,6 +173,6 @@ export const useThemeStore = defineStore('theme', () => {
     initStore,
     toggleTheme,
     forceSync,
-    cleanup
+    cleanup,
   }
 })

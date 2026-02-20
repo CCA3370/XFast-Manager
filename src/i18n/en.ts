@@ -14,12 +14,12 @@ export default {
     success: 'Success',
     warning: 'Warning',
     info: 'Info',
-    language: 'Language'
+    language: 'Language',
   },
   copy: {
     copy: 'Copy',
     copied: 'Copied',
-    copyFailed: 'Copy failed'
+    copyFailed: 'Copy failed',
   },
   home: {
     title: 'X-Plane Addon Auto Manager',
@@ -37,13 +37,15 @@ export default {
     copyingToXplane: 'Copying files to X-Plane directory',
     installationCompleted: 'Installation completed successfully!',
     noValidAddons: 'No valid add-ons detected',
-    sourceDeletionSkipped: 'Detected addon root is a parent of input path, skipped source deletion: {path}',
+    sourceDeletionSkipped:
+      'Detected addon root is a parent of input path, skipped source deletion: {path}',
     failedToAnalyze: 'Failed to analyze add-ons',
     installationFailed: 'Installation failed',
     pathNotSet: 'Please set X-Plane path in Settings first',
     pathNotSetDesc: 'X-Plane path is used for automatic location detection',
     cannotInstallFromXPlane: 'Cannot install from X-Plane directory',
-    cannotInstallFromXPlaneDesc: 'Please drag files or archives from outside X-Plane folder. Cannot drag existing folders from within X-Plane.',
+    cannotInstallFromXPlaneDesc:
+      'Please drag files or archives from outside X-Plane folder. Cannot drag existing folders from within X-Plane.',
     ignoredTasks: '{count} add-ons ignored due to settings',
     allIgnored: 'All detected add-ons were ignored due to settings',
     taskProgress: 'Task {current}',
@@ -63,7 +65,7 @@ export default {
     launchFailed: 'Failed to launch X-Plane',
     launchTimeout: 'X-Plane launch timed out. Please check if X-Plane is running properly.',
     xplaneRunning: 'X-Plane Running',
-    xplaneAlreadyRunning: 'X-Plane is already running'
+    xplaneAlreadyRunning: 'X-Plane is already running',
   },
   addonType: {
     Aircraft: 'Aircraft',
@@ -72,7 +74,7 @@ export default {
     Plugin: 'Plugin',
     Navdata: 'Navdata',
     Livery: 'Livery',
-    LuaScript: 'Lua Script'
+    LuaScript: 'Lua Script',
   },
   settings: {
     title: 'Settings',
@@ -129,12 +131,14 @@ export default {
     aircraftBackupDesc: 'Configure what to backup during aircraft clean install',
     configFilePatterns: 'Configuration File Match Rules',
     addPattern: 'Add Rule',
-    patternHelpText: 'Use * as wildcard (e.g., *_prefs.txt, *.cfg, *settings*). Rules match filenames in aircraft root folder.',
+    patternHelpText:
+      'Use * as wildcard (e.g., *_prefs.txt, *.cfg, *settings*). Rules match filenames in aircraft root folder.',
     patternUnbalancedBracket: 'Unbalanced brackets []',
     patternUnbalancedBrace: 'Unbalanced braces {}',
     patternInvalidSlash: 'Invalid pattern: contains //',
     verificationPreferences: 'File Verification',
-    verificationPreferencesDesc: 'Choose which installation types to enable file integrity verification',
+    verificationPreferencesDesc:
+      'Choose which installation types to enable file integrity verification',
     verifyZip: 'ZIP Archives',
     verify7z: '7z Archives',
     verifyRar: 'RAR Archives',
@@ -147,8 +151,10 @@ export default {
     atomicInstallBenefit1: 'Extract/copy files to temporary directory first',
     atomicInstallBenefit2: 'Use atomic operations to move files, ensuring operation integrity',
     atomicInstallBenefit3: 'If installation fails, original files will not be corrupted',
-    atomicInstallBenefit4: 'For overwrite installations, old files are kept until new files are fully ready',
-    atomicInstallNote: 'Note: Worry-Free installation requires more disk space (temporary directory) and may slightly impact installation speed',
+    atomicInstallBenefit4:
+      'For overwrite installations, old files are kept until new files are fully ready',
+    atomicInstallNote:
+      'Note: Worry-Free installation requires more disk space (temporary directory) and may slightly impact installation speed',
     deleteSourceTitle: 'Delete Source After Install',
     deleteSourceDesc: 'Automatically delete source files after successful installation',
     deleteSourceExplain: 'Feature Explanation',
@@ -156,19 +162,25 @@ export default {
     deleteSourceBenefit2: 'Files/folders with no detected addons will not be deleted',
     deleteSourceBenefit3: 'Source files of failed installation tasks will not be deleted',
     deleteSourceBenefit4: 'Helps automatically clean up installed archives and folders',
-    deleteSourceNote: 'Warning: Deletion is irreversible. Please ensure proper installation before enabling this feature',
+    deleteSourceNote:
+      'Warning: Deletion is irreversible. Please ensure proper installation before enabling this feature',
     windowsIntegrationExplain: 'Feature Explanation',
     windowsIntegrationBenefit1: 'Adds "Install to X-Plane" option to file and folder context menus',
-    windowsIntegrationBenefit2: 'Supports selecting multiple files or folders for batch installation',
-    windowsIntegrationBenefit3: 'Quick installation directly from File Explorer without opening the app',
-    windowsIntegrationBenefit4: 'Registration saved in current user configuration, no admin rights required',
+    windowsIntegrationBenefit2:
+      'Supports selecting multiple files or folders for batch installation',
+    windowsIntegrationBenefit3:
+      'Quick installation directly from File Explorer without opening the app',
+    windowsIntegrationBenefit4:
+      'Registration saved in current user configuration, no admin rights required',
     windowsIntegrationNote: 'Note: Only available on Windows systems',
     // Scenery Auto-Sorting
     sceneryAutoSort: 'Scenery Auto-Sorting',
     sceneryAutoSortDesc: 'Automatically sort scenery_packs.ini after scenery installation',
     sceneryAutoSortExplain: 'Feature Explanation',
-    sceneryAutoSortBenefit1: 'Automatically classifies scenery by type (Airport, Overlay, Mesh, Library, etc.)',
-    sceneryAutoSortBenefit2: 'Sorts scenery_packs.ini in correct loading order for best rendering results',
+    sceneryAutoSortBenefit1:
+      'Automatically classifies scenery by type (Airport, Overlay, Mesh, Library, etc.)',
+    sceneryAutoSortBenefit2:
+      'Sorts scenery_packs.ini in correct loading order for best rendering results',
     sceneryAutoSortBenefit3: 'Creates backup before modification, safe and reversible',
     sceneryAutoSortNeedPath: 'Please set X-Plane path first to use this feature',
     sortNow: 'Sort All Scenery Now',
@@ -186,7 +198,7 @@ export default {
     experimental: 'Experimental',
     // About section
     development: 'Development',
-    testing: 'Testing'
+    testing: 'Testing',
   },
   modal: {
     confirmInstallation: 'Confirm Installation',
@@ -209,8 +221,10 @@ export default {
     backupConfigFiles: 'Backup configuration files',
     backupNavdata: 'Backup existing data',
     sizeWarningTitle: 'Security Warning',
-    sizeWarningDesc: 'Some archives have unusual size characteristics. Please review and confirm before installing.',
-    suspiciousRatio: 'Suspicious compression ratio ({ratio}:1). Estimated size: {size} GB. This may be a zip bomb.',
+    sizeWarningDesc:
+      'Some archives have unusual size characteristics. Please review and confirm before installing.',
+    suspiciousRatio:
+      'Suspicious compression ratio ({ratio}:1). Estimated size: {size} GB. This may be a zip bomb.',
     largeSize: 'Very large archive (estimated {size} GB). Ensure you have enough disk space.',
     confirmTrustArchive: 'I trust this archive and want to proceed',
     existingCycle: 'Existing',
@@ -224,17 +238,20 @@ export default {
     flyWithLuaRequired: 'Please install FlyWithLua plugin first',
     // Close confirmation
     unsavedSceneryChangesTitle: 'Unsaved Scenery Changes',
-    unsavedSceneryChangesMessage: 'You have unsaved scenery sorting changes. Are you sure you want to close?',
+    unsavedSceneryChangesMessage:
+      'You have unsaved scenery sorting changes. Are you sure you want to close?',
     unsavedSceneryChangesWarning: 'Unsaved changes will be lost',
     closeAnyway: 'Close Anyway',
     goBack: 'Go Back',
     // Installation in progress
     installInProgressTitle: 'Installation In Progress',
-    installInProgressMessage: 'An installation is currently in progress. Are you sure you want to close?',
+    installInProgressMessage:
+      'An installation is currently in progress. Are you sure you want to close?',
     installInProgressWarning: 'Closing now may corrupt installed files',
     // Pending installation confirmation
     confirmationOpenTitle: 'Pending Installation',
-    confirmationOpenMessage: 'You have a pending installation that has not been confirmed. Are you sure you want to close?',
+    confirmationOpenMessage:
+      'You have a pending installation that has not been confirmed. Are you sure you want to close?',
   },
   password: {
     title: 'Password Required',
@@ -247,10 +264,10 @@ export default {
     unifiedHint: 'All archives will use the same password',
     unifiedPasswordLabel: 'Unified Password',
     unifiedPlaceholder: 'Enter unified password (applies to all archives)',
-    archives: 'archives'
+    archives: 'archives',
   },
   toast: {
-    pathRequired: 'Please set X-Plane path in Settings first'
+    pathRequired: 'Please set X-Plane path in Settings first',
   },
   log: {
     appStarted: 'XFast Manager started',
@@ -273,7 +290,7 @@ export default {
     passwordRequired: 'Password required',
     passwordEntered: 'Password entered',
     passwordCanceled: 'User canceled password input',
-    passwordMaxRetries: 'Maximum password attempts exceeded'
+    passwordMaxRetries: 'Maximum password attempts exceeded',
   },
   taskControl: {
     skipTask: 'Skip Current Task',
@@ -294,7 +311,8 @@ export default {
     taskSkipped: 'Task Skipped',
     tasksCancelled: 'Tasks Cancelled',
     filesWillBeDeleted: 'Processed files will be deleted',
-    originalFilesWarning: 'If this is a clean install or overwrite, original files may have been deleted'
+    originalFilesWarning:
+      'If this is a clean install or overwrite, original files may have been deleted',
   },
   completion: {
     allSuccess: 'Installation Complete',
@@ -325,7 +343,7 @@ export default {
     extractionFailed: 'Extract Failed',
     cancelledByUser: 'Cancelled',
     skippedByUser: 'Skipped',
-    networkError: 'Network Error'
+    networkError: 'Network Error',
   },
   update: {
     // Banner
@@ -339,7 +357,8 @@ export default {
     checking: 'Checking...',
     upToDate: 'You are up to date',
     checkFailed: 'Failed to check for updates',
-    updateAvailableNotification: 'New version v{version} available, check the home page for details',
+    updateAvailableNotification:
+      'New version v{version} available, check the home page for details',
     lastChecked: 'Last checked',
     justNow: 'Just now',
     minutesAgo: '{minutes} minutes ago',
@@ -351,16 +370,18 @@ export default {
     autoUpdateCheckExplain: 'Automatic Update Check Explanation',
     autoUpdateCheckBenefit1: 'Automatically check for new versions on startup (once per 24 hours)',
     autoUpdateCheckBenefit2: 'No user data collected, only sends requests to GitHub API',
-    autoUpdateCheckBenefit3: 'Shows a banner notification on the home page when a new version is found',
+    autoUpdateCheckBenefit3:
+      'Shows a banner notification on the home page when a new version is found',
     includePreRelease: 'Include Pre-releases',
-    includePreReleaseDesc: 'Include Beta/RC and other pre-release versions when checking for updates'
+    includePreReleaseDesc:
+      'Include Beta/RC and other pre-release versions when checking for updates',
   },
   onboarding: {
     title: 'First-Run Setup',
     subtitle: 'Choose which features you want to enable',
     next: 'Next',
     back: 'Back',
-    finish: 'Finish'
+    finish: 'Finish',
   },
   sceneryManager: {
     title: 'Scenery Manager',
@@ -384,7 +405,8 @@ export default {
     moveDown: 'Move down',
     delete: 'Delete',
     deleteConfirmTitle: 'Confirm Delete',
-    deleteConfirmMessage: 'Are you sure you want to delete the following scenery folder? This action cannot be undone.',
+    deleteConfirmMessage:
+      'Are you sure you want to delete the following scenery folder? This action cannot be undone.',
     deleteSuccess: 'Scenery deleted',
     deleteFailed: 'Failed to delete',
     missingLibraries: 'Missing libraries',
@@ -398,7 +420,8 @@ export default {
     directDownload: 'Download',
     contributeLink: 'Contribute Link',
     contributeLinkTitle: 'Submit Library Download Link',
-    contributeLinkDesc: 'After you enter a valid download URL, the app first submits it for review automatically; if that fails, it opens the GitHub submission page automatically.',
+    contributeLinkDesc:
+      'After you enter a valid download URL, the app first submits it for review automatically; if that fails, it opens the GitHub submission page automatically.',
     libraryNameLabel: 'Library Name',
     downloadUrlLabel: 'Download URL',
     downloadUrlPlaceholder: 'https://example.com/library-download',
@@ -406,7 +429,8 @@ export default {
     submittingContribution: 'Submitting...',
     contributionCreated: 'Your contribution has been submitted for review',
     contributionOpened: 'Automatically redirected to the GitHub submission page',
-    submissionInProgressCloseBlocked: 'Library link submission is in progress. Please wait for success or timeout fallback.',
+    submissionInProgressCloseBlocked:
+      'Library link submission is in progress. Please wait for success or timeout fallback.',
     invalidContributionUrl: 'Please enter a valid http/https URL',
     libNameCopied: 'Library name copied',
     reset: 'Reset',
@@ -427,7 +451,8 @@ export default {
     categoryOther: 'Other',
     categoryUnrecognized: 'Unrecognized',
     autoSort: 'Auto Sort',
-    autoSortConfirm: 'Auto sort will overwrite all manual sorting. Are you sure you want to continue?',
+    autoSortConfirm:
+      'Auto sort will overwrite all manual sorting. Are you sure you want to continue?',
     autoSortDone: 'Sort order reset. Click "Apply Changes" to save.',
     autoSortNoChange: 'Sort order is already optimal, no changes needed',
     autoSortFailed: 'Auto sort failed',
@@ -441,20 +466,24 @@ export default {
     enableAll: 'Enable All',
     disableAll: 'Disable All',
     databaseVersionError: 'Database version is incompatible',
-    databaseVersionErrorDesc: 'The scenery database was created by a newer version of the application. Click the button below to reset and rebuild the index.',
+    databaseVersionErrorDesc:
+      'The scenery database was created by a newer version of the application. Click the button below to reset and rebuild the index.',
     resetDatabase: 'Reset Database',
-    resetDatabaseConfirm: 'This will delete the existing database and require rebuilding the index. Continue?',
+    resetDatabaseConfirm:
+      'This will delete the existing database and require rebuilding the index. Continue?',
     resetDatabaseSuccess: 'Database reset successfully. Please rebuild the index.',
     resetDatabaseFailed: 'Failed to reset database',
     duplicateTiles: 'Duplicate tiles',
     duplicateTilesTitle: 'Duplicate DSF Tiles',
-    duplicateTilesDesc: 'These packages contain DSF tiles at the same coordinates. Only the highest priority package\'s tiles will be used.',
+    duplicateTilesDesc:
+      "These packages contain DSF tiles at the same coordinates. Only the highest priority package's tiles will be used.",
     clickToViewDuplicates: 'Click to view duplicates',
     duplicates: 'Duplicates',
     duplicatesTitle: 'Duplicates',
     duplicateTilesSection: 'Duplicate DSF Tiles',
     duplicateAirportsSection: 'Duplicate Airport',
-    duplicateAirportsDesc: 'These packages define the same airport (identifier: {id}). Only the highest priority package will be used by X-Plane.',
+    duplicateAirportsDesc:
+      'These packages define the same airport (identifier: {id}). Only the highest priority package will be used by X-Plane.',
     filters: 'Filters',
     showOnlyEnabled: 'Enabled Only',
     showOnlyDisabled: 'Disabled Only',
@@ -463,7 +492,7 @@ export default {
     indexChangesAdded: 'Added',
     indexChangesRemoved: 'Removed',
     indexChangesUpdated: 'Updated',
-    indexChangesSyncToIni: 'Sync to ini file'
+    indexChangesSyncToIni: 'Sync to ini file',
   },
   geo: {
     continents: {
@@ -475,8 +504,8 @@ export default {
       Oceania: 'Oceania',
       Antarctica: 'Antarctica',
       Unknown: 'Unknown',
-      Other: 'Other / Global'
-    }
+      Other: 'Other / Global',
+    },
   },
   management: {
     navTitle: 'Manage',
@@ -502,7 +531,8 @@ export default {
     currentCycle: 'Current',
     outdatedCycle: 'Outdated',
     deleteConfirmTitle: 'Confirm Delete',
-    deleteConfirmMessage: 'Are you sure you want to delete the following item? This action cannot be undone.',
+    deleteConfirmMessage:
+      'Are you sure you want to delete the following item? This action cannot be undone.',
     deleteSuccess: 'Deleted successfully',
     deleteFailed: 'Failed to delete',
     toggleFailed: 'Failed to toggle state',
@@ -516,15 +546,16 @@ export default {
     restoreBackupSuccess: 'Navdata backup restored successfully',
     restoringBackup: 'Restoring backup...',
     backupVersion: 'Backup Version',
-    backupTime: 'Backup Time'
+    backupTime: 'Backup Time',
   },
   livery: {
     noLiveries: 'No liveries found',
     loadFailed: 'Failed to load liveries',
     deleteConfirmTitle: 'Confirm Delete',
-    deleteConfirmMessage: 'Are you sure you want to delete this livery? This action cannot be undone.',
+    deleteConfirmMessage:
+      'Are you sure you want to delete this livery? This action cannot be undone.',
     deleteSuccess: 'Livery deleted successfully',
-    deleteFailed: 'Failed to delete livery'
+    deleteFailed: 'Failed to delete livery',
   },
   scripts: {
     title: 'FlyWithLua Scripts',
@@ -535,7 +566,8 @@ export default {
     toggleFailed: 'Failed to toggle script',
     scriptCount: 'scripts',
     deleteConfirmTitle: 'Confirm Delete',
-    deleteConfirmMessage: 'Are you sure you want to delete this script? This action cannot be undone.',
+    deleteConfirmMessage:
+      'Are you sure you want to delete this script? This action cannot be undone.',
     deleteSuccess: 'Script deleted successfully',
     deleteFailed: 'Failed to delete script',
   },
@@ -546,7 +578,7 @@ export default {
     alipay: 'Alipay',
     scanTip: 'Scan with the corresponding app',
     onboardingTitle: 'Support the Developer',
-    onboardingDesc: 'If you find this tool helpful, consider buying the developer a coffee'
+    onboardingDesc: 'If you find this tool helpful, consider buying the developer a coffee',
   },
   contextMenu: {
     enable: 'Enable',
@@ -554,7 +586,7 @@ export default {
     openFolder: 'Open Folder',
     viewLiveries: 'View Liveries',
     viewScripts: 'View Scripts',
-    previewImage: 'Preview Image'
+    previewImage: 'Preview Image',
   },
   errors: {
     validation_failed: 'Invalid input data',
@@ -570,6 +602,6 @@ export default {
     insufficient_space: 'Insufficient disk space',
     security_violation: 'Security violation detected',
     timeout: 'Operation timed out',
-    internal: 'Internal error'
-  }
+    internal: 'Internal error',
+  },
 }

@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, watch, defineAsyncComponent, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import {
+  ref,
+  computed,
+  watch,
+  defineAsyncComponent,
+  nextTick,
+  onMounted,
+  onBeforeUnmount,
+} from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSceneryStore } from '@/stores/scenery'
 import { useToastStore } from '@/stores/toast'
@@ -84,7 +92,12 @@ const showIndexChangesModal = ref(false)
 const indexChangesResult = ref<SceneryIndexScanResult | null>(null)
 
 const hasActiveFilters = computed(() => {
-  return showOnlyMissingLibs.value || showOnlyDuplicates.value || enabledFilter.value !== 'all' || viewMode.value === 'continent'
+  return (
+    showOnlyMissingLibs.value ||
+    showOnlyDuplicates.value ||
+    enabledFilter.value !== 'all' ||
+    viewMode.value === 'continent'
+  )
 })
 
 // Whether any data-level filter is active (excluding view mode)
@@ -102,11 +115,21 @@ const localGroupedEntries = ref<Record<string, SceneryManagerEntry[]>>({
   Overlay: [],
   AirportMesh: [],
   Mesh: [],
-  Unrecognized: []
+  Unrecognized: [],
 })
 
 // Category order for display
-const categoryOrder = ['FixedHighPriority', 'Airport', 'DefaultAirport', 'Library', 'Other', 'Overlay', 'AirportMesh', 'Mesh', 'Unrecognized']
+const categoryOrder = [
+  'FixedHighPriority',
+  'Airport',
+  'DefaultAirport',
+  'Library',
+  'Other',
+  'Overlay',
+  'AirportMesh',
+  'Mesh',
+  'Unrecognized',
+]
 
 // Scroll container ref (self-contained)
 const scrollContainerRef = ref<HTMLElement | null>(null)
@@ -117,7 +140,7 @@ const scrollContainerRef = ref<HTMLElement | null>(null)
 const sceneryDataTrigger = computed(() => ({
   hasData: !!sceneryStore.data,
   entriesCount: sceneryStore.entries.length,
-  needsSync: sceneryStore.data?.needsSync ?? false
+  needsSync: sceneryStore.data?.needsSync ?? false,
 }))
 
 watch(sceneryDataTrigger, () => {
@@ -125,18 +148,24 @@ watch(sceneryDataTrigger, () => {
 })
 
 // Auto-reset filter when no missing dependencies remain
-watch(() => sceneryStore.missingDepsCount, (newCount) => {
-  if (newCount === 0 && showOnlyMissingLibs.value) {
-    showOnlyMissingLibs.value = false
-  }
-})
+watch(
+  () => sceneryStore.missingDepsCount,
+  (newCount) => {
+    if (newCount === 0 && showOnlyMissingLibs.value) {
+      showOnlyMissingLibs.value = false
+    }
+  },
+)
 
 // Auto-reset filter when no duplicates remain
-watch(() => sceneryStore.duplicatesCount, (newCount) => {
-  if (newCount === 0 && showOnlyDuplicates.value) {
-    showOnlyDuplicates.value = false
-  }
-})
+watch(
+  () => sceneryStore.duplicatesCount,
+  (newCount) => {
+    if (newCount === 0 && showOnlyDuplicates.value) {
+      showOnlyDuplicates.value = false
+    }
+  },
+)
 
 // Run scenery index scan asynchronously without blocking UI
 async function runSceneryIndexScan() {
@@ -145,7 +174,7 @@ async function runSceneryIndexScan() {
   isUpdatingIndex.value = true
   try {
     const result = await invoke<SceneryIndexScanResult>('quick_scan_scenery_index', {
-      xplanePath: appStore.xplanePath
+      xplanePath: appStore.xplanePath,
     })
 
     if (!result.indexExists) return
@@ -198,7 +227,7 @@ const groupCounts = computed(() => {
   const counts: Record<string, { enabled: number; disabled: number }> = {}
   for (const category of categoryOrder) {
     const entries = localGroupedEntries.value[category] || []
-    const enabled = entries.filter(entry => entry.enabled).length
+    const enabled = entries.filter((entry) => entry.enabled).length
     counts[category] = { enabled, disabled: entries.length - enabled }
   }
   return counts
@@ -206,7 +235,7 @@ const groupCounts = computed(() => {
 
 // Base computed for all entries flattened - used by multiple computeds below
 const allSceneryEntries = computed(() => {
-  return categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
+  return categoryOrder.flatMap((category) => localGroupedEntries.value[category] || [])
 })
 
 // Unique continents from all entries
@@ -221,7 +250,15 @@ const uniqueContinents = computed(() => {
 })
 
 // Known continents list (for validation)
-const knownContinents = ['Asia', 'Europe', 'North America', 'South America', 'Africa', 'Oceania', 'Antarctica']
+const knownContinents = [
+  'Asia',
+  'Europe',
+  'North America',
+  'South America',
+  'Africa',
+  'Oceania',
+  'Antarctica',
+]
 
 // Entries grouped by continent, then by category within each continent
 const continentGroupedEntries = computed(() => {
@@ -245,11 +282,10 @@ const continentGroupedEntries = computed(() => {
 
 // Sorted continent order for display (alphabetically, with 'Other' always at the end)
 const sortedContinentOrder = computed(() => {
-  const continentsWithEntries = Object.keys(continentGroupedEntries.value)
-    .filter(continent => {
-      const data = continentGroupedEntries.value[continent]
-      return categoryOrder.some(cat => (data[cat]?.length || 0) > 0)
-    })
+  const continentsWithEntries = Object.keys(continentGroupedEntries.value).filter((continent) => {
+    const data = continentGroupedEntries.value[continent]
+    return categoryOrder.some((cat) => (data[cat]?.length || 0) > 0)
+  })
 
   // Sort alphabetically, but keep 'Other' at the end
   return continentsWithEntries.sort((a, b) => {
@@ -269,7 +305,7 @@ function getContinentStats(continent: string): { enabled: number; total: number 
   for (const cat of categoryOrder) {
     const entries = continentData[cat] || []
     total += entries.length
-    enabled += entries.filter(e => e.enabled).length
+    enabled += entries.filter((e) => e.enabled).length
   }
   return { enabled, total }
 }
@@ -283,7 +319,7 @@ function getFilteredContinentStats(continent: string): { enabled: number; total:
   for (const cat of categoryOrder) {
     const entries = continentData[cat] || []
     total += entries.length
-    enabled += entries.filter(e => e.enabled).length
+    enabled += entries.filter((e) => e.enabled).length
   }
   return { enabled, total }
 }
@@ -360,8 +396,8 @@ function toggleContinentEnabled(continent: string) {
   const continentData = continentGroupedEntries.value[continent]
   if (!continentData) return
 
-  const entries = categoryOrder.flatMap(cat => continentData[cat] || [])
-  const allEnabled = entries.every(e => e.enabled)
+  const entries = categoryOrder.flatMap((cat) => continentData[cat] || [])
+  const allEnabled = entries.every((e) => e.enabled)
   const newState = !allEnabled
 
   for (const entry of entries) {
@@ -377,7 +413,7 @@ function toggleContinentCategoryEnabled(continent: string, category: string) {
   const entries = continentGroupedEntries.value[continent]?.[category] || []
   if (entries.length === 0) return
 
-  const allEnabled = entries.every(e => e.enabled)
+  const allEnabled = entries.every((e) => e.enabled)
   const newState = !allEnabled
 
   for (const entry of entries) {
@@ -393,14 +429,14 @@ function isContinentAllEnabled(continent: string): boolean {
   const continentData = continentGroupedEntries.value[continent]
   if (!continentData) return false
 
-  const entries = categoryOrder.flatMap(cat => continentData[cat] || [])
-  return entries.length > 0 && entries.every(e => e.enabled)
+  const entries = categoryOrder.flatMap((cat) => continentData[cat] || [])
+  return entries.length > 0 && entries.every((e) => e.enabled)
 }
 
 // Check if all entries in a continent's category are enabled
 function isContinentCategoryAllEnabled(continent: string, category: string): boolean {
   const entries = continentGroupedEntries.value[continent]?.[category] || []
-  return entries.length > 0 && entries.every(e => e.enabled)
+  return entries.length > 0 && entries.every((e) => e.enabled)
 }
 
 // The last entry before Unrecognized category should have move-down disabled
@@ -422,24 +458,28 @@ const filteredSceneryEntries = computed(() => {
 
   // Filter by missing libraries
   if (showOnlyMissingLibs.value) {
-    entries = entries.filter(entry => entry.missingLibraries && entry.missingLibraries.length > 0)
+    entries = entries.filter((entry) => entry.missingLibraries && entry.missingLibraries.length > 0)
   }
 
   // Filter by duplicates (tiles or airports)
   if (showOnlyDuplicates.value) {
-    entries = entries.filter(entry => (entry.duplicateTiles && entry.duplicateTiles.length > 0) || (entry.duplicateAirports && entry.duplicateAirports.length > 0))
+    entries = entries.filter(
+      (entry) =>
+        (entry.duplicateTiles && entry.duplicateTiles.length > 0) ||
+        (entry.duplicateAirports && entry.duplicateAirports.length > 0),
+    )
   }
 
   // Filter by continent
   if (selectedContinent.value) {
-    entries = entries.filter(entry => entry.continent === selectedContinent.value)
+    entries = entries.filter((entry) => entry.continent === selectedContinent.value)
   }
 
   // Filter by enabled/disabled state
   if (enabledFilter.value === 'enabled') {
-    entries = entries.filter(entry => entry.enabled)
+    entries = entries.filter((entry) => entry.enabled)
   } else if (enabledFilter.value === 'disabled') {
-    entries = entries.filter(entry => !entry.enabled)
+    entries = entries.filter((entry) => !entry.enabled)
   }
 
   return entries
@@ -481,11 +521,12 @@ const filteredContinentGroupedEntries = computed(() => {
 
 // Sorted continent order based on filtered entries
 const filteredSortedContinentOrder = computed(() => {
-  const continentsWithEntries = Object.keys(filteredContinentGroupedEntries.value)
-    .filter(continent => {
+  const continentsWithEntries = Object.keys(filteredContinentGroupedEntries.value).filter(
+    (continent) => {
       const data = filteredContinentGroupedEntries.value[continent]
-      return categoryOrder.some(cat => (data[cat]?.length || 0) > 0)
-    })
+      return categoryOrder.some((cat) => (data[cat]?.length || 0) > 0)
+    },
+  )
   return continentsWithEntries.sort((a, b) => {
     if (a === 'Other') return 1
     if (b === 'Other') return -1
@@ -559,7 +600,7 @@ const matchedIndices = computed(() => {
   return filteredSceneryEntries.value
     .map((entry) => ({
       entry,
-      index: getGlobalIndex(entry.folderName)
+      index: getGlobalIndex(entry.folderName),
     }))
     .filter(({ index }) => index >= 0)
     .filter(({ entry }) => entry.folderName.toLowerCase().includes(query))
@@ -605,9 +646,9 @@ function dragAutoScrollLoop() {
   }
 
   const rect = container.getBoundingClientRect()
-  const edgeZone = 60        // 容器内边缘触发区域 (px)
-  const maxSpeed = 18        // 到达边缘时的最大速度 (px/frame)
-  const outsideAccel = 0.4   // 超出边界后每像素额外加速 (px/frame/px)
+  const edgeZone = 60 // 容器内边缘触发区域 (px)
+  const maxSpeed = 18 // 到达边缘时的最大速度 (px/frame)
+  const outsideAccel = 0.4 // 超出边界后每像素额外加速 (px/frame/px)
 
   let scrollDelta = 0
 
@@ -617,7 +658,7 @@ function dragAutoScrollLoop() {
       const dist = rect.top - dragPointerY
       scrollDelta = -(maxSpeed + dist * outsideAccel)
     } else {
-      const ratio = ((rect.top + edgeZone) - dragPointerY) / edgeZone
+      const ratio = (rect.top + edgeZone - dragPointerY) / edgeZone
       scrollDelta = -ratio * maxSpeed
     }
   } else if (dragPointerY > rect.bottom - edgeZone) {
@@ -664,7 +705,7 @@ async function handleSceneryToggleEnabled(folderName: string) {
 
 async function handleMoveUp(folderName: string) {
   const entries = sceneryStore.sortedEntries
-  const index = entries.findIndex(e => e.folderName === folderName)
+  const index = entries.findIndex((e) => e.folderName === folderName)
 
   if (index > 0) {
     const currentEntry = entries[index]
@@ -685,7 +726,7 @@ async function handleMoveUp(folderName: string) {
 
 async function handleMoveDown(folderName: string) {
   const entries = sceneryStore.sortedEntries
-  const index = entries.findIndex(e => e.folderName === folderName)
+  const index = entries.findIndex((e) => e.folderName === folderName)
   if (index < entries.length - 1) {
     const currentEntry = entries[index]
     const targetEntry = entries[index + 1]
@@ -707,7 +748,7 @@ async function handleDragEnd() {
   drag.value = false
   stopDragAutoScroll()
   syncWarningDismissed.value = true
-  const allEntries = categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
+  const allEntries = categoryOrder.flatMap((category) => localGroupedEntries.value[category] || [])
   await sceneryStore.reorderEntries(allEntries)
   syncLocalEntries()
 }
@@ -742,15 +783,17 @@ async function handleShowMissingLibs(entry: SceneryManagerEntry) {
   void invoke<Record<string, string | null>>('lookup_library_links_remote', {
     libraryNames: entry.missingLibraries,
     forceRefresh: true,
-  }).then((remoteLinks) => {
-    if (!showMissingLibsModal.value) return
-    if (!selectedModalEntry.value) return
-    if (selectedModalEntry.value.folderName !== entry.folderName) return
-    if (libraryLinksRequestSeq.value !== requestSeq) return
-    libraryLinksMap.value = remoteLinks
-  }).catch(() => {
-    // Keep local links if remote refresh fails
   })
+    .then((remoteLinks) => {
+      if (!showMissingLibsModal.value) return
+      if (!selectedModalEntry.value) return
+      if (selectedModalEntry.value.folderName !== entry.folderName) return
+      if (libraryLinksRequestSeq.value !== requestSeq) return
+      libraryLinksMap.value = remoteLinks
+    })
+    .catch(() => {
+      // Keep local links if remote refresh fails
+    })
 }
 
 function handleShowDuplicateTiles(entry: SceneryManagerEntry) {
@@ -766,19 +809,25 @@ function handleShowDeleteConfirm(entry: SceneryManagerEntry) {
 function handleCopyMissingLibs() {
   if (!selectedModalEntry.value) return
   const libNames = selectedModalEntry.value.missingLibraries.join('\n')
-  navigator.clipboard.writeText(libNames).then(() => {
-    toastStore.success(t('sceneryManager.missingLibsCopied'))
-  }).catch(() => {
-    modalStore.showError(t('copy.copyFailed'))
-  })
+  navigator.clipboard
+    .writeText(libNames)
+    .then(() => {
+      toastStore.success(t('sceneryManager.missingLibsCopied'))
+    })
+    .catch(() => {
+      modalStore.showError(t('copy.copyFailed'))
+    })
 }
 
 function handleCopySingleLib(libName: string) {
-  navigator.clipboard.writeText(libName).then(() => {
-    toastStore.success(t('sceneryManager.libNameCopied'))
-  }).catch(() => {
-    modalStore.showError(t('copy.copyFailed'))
-  })
+  navigator.clipboard
+    .writeText(libName)
+    .then(() => {
+      toastStore.success(t('sceneryManager.libNameCopied'))
+    })
+    .catch(() => {
+      modalStore.showError(t('copy.copyFailed'))
+    })
 }
 
 async function handleDirectDownload(url: string) {
@@ -841,7 +890,7 @@ async function handleSubmitContributeLink() {
     `- Download URL: ${inputUrl}`,
     `- Referenced By Scenery: \`${selectedModalEntry.value.folderName}\``,
     '',
-    'Please review this link. If valid, add the `approved-link` label to trigger auto-update for `data/library_links.json` on `dev`.'
+    'Please review this link. If valid, add the `approved-link` label to trigger auto-update for `data/library_links.json` on `dev`.',
   ].join('\n')
 
   const issueUrl = `https://github.com/CCA3370/XFast-Manager/issues/new?template=library_link_submission.yml&labels=${encodeURIComponent('library-link')}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
@@ -860,7 +909,7 @@ async function handleSubmitContributeLink() {
         submitTimeoutId = setTimeout(() => {
           reject(new Error('CONTRIBUTION_SUBMIT_TIMEOUT'))
         }, CONTRIBUTION_SUBMIT_TIMEOUT_MS)
-      })
+      }),
     ])
 
     toastStore.success(t('sceneryManager.contributionCreated'))
@@ -898,9 +947,7 @@ async function handleDeleteEntryConfirm() {
     const apiError = parseApiError(error)
     if (apiError) {
       const errorKey = `errors.${apiError.code}`
-      const localizedMessage = t(errorKey) !== errorKey
-        ? t(errorKey)
-        : apiError.message
+      const localizedMessage = t(errorKey) !== errorKey ? t(errorKey) : apiError.message
       modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + localizedMessage)
     } else {
       modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + getErrorMessage(error))
@@ -959,7 +1006,7 @@ function handleReset() {
       // Restore sync warning if data still needs sync
       syncWarningDismissed.value = false
     },
-    onCancel: () => {}
+    onCancel: () => {},
   })
 }
 
@@ -967,7 +1014,9 @@ async function performAutoSort() {
   if (!sceneryStore.indexExists) return
   isSortingScenery.value = true
   try {
-    const hasChanges = await invoke<boolean>('sort_scenery_packs', { xplanePath: appStore.xplanePath })
+    const hasChanges = await invoke<boolean>('sort_scenery_packs', {
+      xplanePath: appStore.xplanePath,
+    })
     await sceneryStore.loadData()
     syncLocalEntries()
 
@@ -1001,7 +1050,7 @@ function handleSortSceneryNow() {
         performAutoSort()
       }, 0)
     },
-    onCancel: () => {}
+    onCancel: () => {},
   })
 }
 
@@ -1046,7 +1095,7 @@ async function handleResetDatabase() {
         isResettingDatabase.value = false
       }
     },
-    onCancel: () => {}
+    onCancel: () => {},
   })
 }
 
@@ -1153,7 +1202,9 @@ function estimatePostCollapseDelta(container: HTMLElement, targetElement: HTMLEl
   const targetRect = targetElement.getBoundingClientRect()
   let delta = 0
 
-  const transitioning = container.querySelectorAll('.collapse-enter-active, .collapse-leave-active') as NodeListOf<HTMLElement>
+  const transitioning = container.querySelectorAll(
+    '.collapse-enter-active, .collapse-leave-active',
+  ) as NodeListOf<HTMLElement>
   transitioning.forEach((element) => {
     const rect = element.getBoundingClientRect()
     if (rect.bottom <= targetRect.top) {
@@ -1170,11 +1221,17 @@ function estimatePostCollapseDelta(container: HTMLElement, targetElement: HTMLEl
   return delta
 }
 
-function isSafelyInsideContainerViewport(container: HTMLElement, element: HTMLElement, padding: number): boolean {
+function isSafelyInsideContainerViewport(
+  container: HTMLElement,
+  element: HTMLElement,
+  padding: number,
+): boolean {
   const containerRect = container.getBoundingClientRect()
   const elementRect = element.getBoundingClientRect()
-  return elementRect.top >= containerRect.top + padding
-    && elementRect.bottom <= containerRect.bottom - padding
+  return (
+    elementRect.top >= containerRect.top + padding &&
+    elementRect.bottom <= containerRect.bottom - padding
+  )
 }
 
 function scrollToMatch(index: number) {
@@ -1182,7 +1239,11 @@ function scrollToMatch(index: number) {
   highlightedIndex.value = index
   const requestId = ++activeScrollRequestId
 
-  const attemptScroll = (attempt: number, behavior: ScrollBehavior, predictPostCollapse = false) => {
+  const attemptScroll = (
+    attempt: number,
+    behavior: ScrollBehavior,
+    predictPostCollapse = false,
+  ) => {
     if (highlightedIndex.value !== index || requestId !== activeScrollRequestId) return
     const container = scrollContainerRef.value
     if (!container) return
@@ -1192,25 +1253,24 @@ function scrollToMatch(index: number) {
       const containerRect = container.getBoundingClientRect()
       const elementRect = element.getBoundingClientRect()
       const currentScrollTop = container.scrollTop
-      const targetScrollTop = currentScrollTop
-        + (elementRect.top - containerRect.top)
-        - (container.clientHeight / 2)
-        + (elementRect.height / 2)
+      const targetScrollTop =
+        currentScrollTop +
+        (elementRect.top - containerRect.top) -
+        container.clientHeight / 2 +
+        elementRect.height / 2
 
-      const predictedDelta = predictPostCollapse
-        ? estimatePostCollapseDelta(container, element)
-        : 0
+      const predictedDelta = predictPostCollapse ? estimatePostCollapseDelta(container, element) : 0
 
       const predictedTargetScrollTop = targetScrollTop + predictedDelta
 
-      const clampedScrollTop = Math.max(0, Math.min(
-        predictedTargetScrollTop,
-        container.scrollHeight - container.clientHeight
-      ))
+      const clampedScrollTop = Math.max(
+        0,
+        Math.min(predictedTargetScrollTop, container.scrollHeight - container.clientHeight),
+      )
 
       container.scrollTo({
         top: clampedScrollTop,
-        behavior
+        behavior,
       })
       return
     }
@@ -1232,8 +1292,14 @@ function scrollToMatch(index: number) {
     if (requestId !== activeScrollRequestId || highlightedIndex.value !== index) return
 
     const container = scrollContainerRef.value
-    const element = container?.querySelector(`[data-scenery-index="${index}"]`) as HTMLElement | null
-    if (container && element && isSafelyInsideContainerViewport(container, element, FINAL_CALIBRATION_VIEWPORT_PADDING_PX)) {
+    const element = container?.querySelector(
+      `[data-scenery-index="${index}"]`,
+    ) as HTMLElement | null
+    if (
+      container &&
+      element &&
+      isSafelyInsideContainerViewport(container, element, FINAL_CALIBRATION_VIEWPORT_PADDING_PX)
+    ) {
       return
     }
 
@@ -1264,7 +1330,8 @@ function goToNextMatch() {
 
 function goToPrevMatch() {
   if (matchedIndices.value.length === 0) return
-  currentMatchIndex.value = (currentMatchIndex.value - 1 + matchedIndices.value.length) % matchedIndices.value.length
+  currentMatchIndex.value =
+    (currentMatchIndex.value - 1 + matchedIndices.value.length) % matchedIndices.value.length
   scrollToMatch(matchedIndices.value[currentMatchIndex.value])
 }
 
@@ -1312,12 +1379,25 @@ onBeforeUnmount(() => {
           class="w-full px-3 py-1.5 pl-9 pr-20 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           @input="handleSearchInput"
         />
-        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        <svg
+          class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+          />
         </svg>
 
         <!-- Search navigation buttons (scenery only) -->
-        <div v-if="searchQuery && matchedIndices.length > 0" class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+        <div
+          v-if="searchQuery && matchedIndices.length > 0"
+          class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1"
+        >
           <span class="text-xs text-gray-500 dark:text-gray-400 mr-1">
             {{ currentMatchIndex + 1 }}/{{ matchedIndices.length }}
           </span>
@@ -1326,8 +1406,18 @@ onBeforeUnmount(() => {
             title="Previous match"
             @click="goToPrevMatch"
           >
-            <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+            <svg
+              class="w-3 h-3 text-gray-600 dark:text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 15l7-7 7 7"
+              />
             </svg>
           </button>
           <button
@@ -1335,8 +1425,18 @@ onBeforeUnmount(() => {
             title="Next match"
             @click="goToNextMatch"
           >
-            <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            <svg
+              class="w-3 h-3 text-gray-600 dark:text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              />
             </svg>
           </button>
         </div>
@@ -1349,8 +1449,18 @@ onBeforeUnmount(() => {
           title="Clear search"
           @click="clearSearch"
         >
-          <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          <svg
+            class="w-3 h-3 text-gray-600 dark:text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
           </svg>
         </button>
       </div>
@@ -1364,13 +1474,37 @@ onBeforeUnmount(() => {
           class="px-3 py-1.5 rounded-lg bg-cyan-500 text-white hover:bg-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
           @click="handleSortSceneryNow"
         >
-          <svg v-if="!isSortingScenery" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path>
+          <svg
+            v-if="!isSortingScenery"
+            class="w-3.5 h-3.5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
+            ></path>
           </svg>
-          <svg v-else class="w-3.5 h-3.5 animate-spin [animation-direction:reverse]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+          <svg
+            v-else
+            class="w-3.5 h-3.5 animate-spin [animation-direction:reverse]"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            ></path>
           </svg>
-          <span class="transition-opacity">{{ isSortingScenery ? t('settings.sorting') : t('sceneryManager.autoSort') }}</span>
+          <span class="transition-opacity">{{
+            isSortingScenery ? t('settings.sorting') : t('sceneryManager.autoSort')
+          }}</span>
         </button>
       </Transition>
 
@@ -1391,13 +1525,38 @@ onBeforeUnmount(() => {
           :class="{ 'ring-2 ring-amber-400 ring-offset-1': showSyncWarning }"
           @click="handleApplyChanges"
         >
-          <svg v-if="sceneryStore.isSaving" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          <svg
+            v-if="sceneryStore.isSaving"
+            class="animate-spin h-3.5 w-3.5"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
           </svg>
           <!-- Warning icon when ini out of sync -->
-          <svg v-else-if="showSyncWarning" class="h-3.5 w-3.5 text-amber-200" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+          <svg
+            v-else-if="showSyncWarning"
+            class="h-3.5 w-3.5 text-amber-200"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+              clip-rule="evenodd"
+            />
           </svg>
           <Transition name="text-fade" mode="out-in">
             <span :key="locale">{{ t('sceneryManager.applyChanges') }}</span>
@@ -1410,21 +1569,45 @@ onBeforeUnmount(() => {
             class="absolute right-0 top-full mt-2 w-64 p-2.5 bg-amber-50 dark:bg-amber-900/90 border border-amber-300 dark:border-amber-600 rounded-lg shadow-lg z-50"
           >
             <!-- Arrow pointing up -->
-            <div class="absolute -top-2 right-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-amber-300 dark:border-b-amber-600"></div>
-            <div class="absolute -top-1.5 right-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-amber-50 dark:border-b-amber-900/90"></div>
+            <div
+              class="absolute -top-2 right-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-amber-300 dark:border-b-amber-600"
+            ></div>
+            <div
+              class="absolute -top-1.5 right-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-amber-50 dark:border-b-amber-900/90"
+            ></div>
             <div class="flex items-start gap-2">
-              <svg class="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+              <svg
+                class="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                  clip-rule="evenodd"
+                />
               </svg>
-              <span class="text-xs text-amber-800 dark:text-amber-200 flex-1">{{ t('sceneryManager.iniOutOfSync') }}</span>
+              <span class="text-xs text-amber-800 dark:text-amber-200 flex-1">{{
+                t('sceneryManager.iniOutOfSync')
+              }}</span>
               <!-- Close button -->
               <button
                 class="p-0.5 rounded hover:bg-amber-200 dark:hover:bg-amber-800 transition-colors flex-shrink-0"
                 :title="t('common.close')"
                 @click.stop="dismissSyncWarning"
               >
-                <svg class="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  class="h-3.5 w-3.5 text-amber-600 dark:text-amber-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -1433,47 +1616,84 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <!-- Statistics bar -->
-    <div class="flex items-center gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700 mb-3 text-sm">
+    <div
+      class="flex items-center gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700 mb-3 text-sm"
+    >
       <div class="flex items-center gap-2">
         <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.total') }}:</span>
+          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+            >{{ t('sceneryManager.total') }}:</span
+          >
         </Transition>
-        <span class="font-semibold text-gray-900 dark:text-gray-100">{{ sceneryStore.totalCount }}</span>
+        <span class="font-semibold text-gray-900 dark:text-gray-100">{{
+          sceneryStore.totalCount
+        }}</span>
       </div>
       <div class="flex items-center gap-2">
         <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.enabled') }}:</span>
+          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+            >{{ t('sceneryManager.enabled') }}:</span
+          >
         </Transition>
-        <span class="font-semibold text-green-600 dark:text-green-400">{{ sceneryStore.enabledCount }}</span>
+        <span class="font-semibold text-green-600 dark:text-green-400">{{
+          sceneryStore.enabledCount
+        }}</span>
       </div>
       <div v-if="sceneryStore.missingDepsCount > 0" class="flex items-center gap-2">
         <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.missingDeps') }}:</span>
+          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+            >{{ t('sceneryManager.missingDeps') }}:</span
+          >
         </Transition>
-        <span class="font-semibold text-amber-600 dark:text-amber-400">{{ sceneryStore.missingDepsCount }}</span>
+        <span class="font-semibold text-amber-600 dark:text-amber-400">{{
+          sceneryStore.missingDepsCount
+        }}</span>
       </div>
       <div v-if="sceneryStore.duplicatesCount > 0" class="flex items-center gap-2">
         <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.duplicates') }}:</span>
+          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+            >{{ t('sceneryManager.duplicates') }}:</span
+          >
         </Transition>
-        <span class="font-semibold text-orange-600 dark:text-orange-400">{{ sceneryStore.duplicatesCount }}</span>
+        <span class="font-semibold text-orange-600 dark:text-orange-400">{{
+          sceneryStore.duplicatesCount
+        }}</span>
       </div>
       <!-- Filter dropdown menu -->
       <div ref="filterDropdownRef" class="relative">
         <button
           class="text-xs px-2.5 py-1 rounded-md transition-all duration-200 flex items-center gap-1.5 border"
-          :class="hasActiveFilters
-            ? 'bg-blue-500 text-white border-blue-500 hover:bg-blue-600 hover:border-blue-600 shadow-sm shadow-blue-500/25'
-            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700'"
+          :class="
+            hasActiveFilters
+              ? 'bg-blue-500 text-white border-blue-500 hover:bg-blue-600 hover:border-blue-600 shadow-sm shadow-blue-500/25'
+              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700'
+          "
           @click="showFilterDropdown = !showFilterDropdown"
         >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+          <svg
+            class="w-3.5 h-3.5"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z"
+            />
           </svg>
           <Transition name="text-fade" mode="out-in">
             <span :key="locale">{{ t('sceneryManager.filters') }}</span>
           </Transition>
-          <svg class="w-3 h-3 transition-transform duration-200" :class="showFilterDropdown ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <svg
+            class="w-3 h-3 transition-transform duration-200"
+            :class="showFilterDropdown ? 'rotate-180' : ''"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+          >
             <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
           </svg>
         </button>
@@ -1489,25 +1709,63 @@ onBeforeUnmount(() => {
               <div
                 v-if="sceneryStore.missingDepsCount > 0"
                 class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-                @click="applyFilterWithTransition(() => showOnlyMissingLibs = !showOnlyMissingLibs)"
+                @click="
+                  applyFilterWithTransition(() => (showOnlyMissingLibs = !showOnlyMissingLibs))
+                "
               >
-                <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-amber-400 dark:group-hover:border-amber-500" :class="showOnlyMissingLibs && 'filter-check-active bg-amber-500 !border-amber-500'">
-                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                <span
+                  class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-amber-400 dark:group-hover:border-amber-500"
+                  :class="
+                    showOnlyMissingLibs && 'filter-check-active bg-amber-500 !border-amber-500'
+                  "
+                >
+                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
+                    <path
+                      d="M3.5 6L5.5 8L8.5 4"
+                      stroke="currentColor"
+                      stroke-width="1.75"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
                 </span>
-                <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.missingDeps') }}</span>
-                <span class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium">{{ sceneryStore.missingDepsCount }}</span>
+                <span class="flex-1 text-gray-700 dark:text-gray-200">{{
+                  t('sceneryManager.missingDeps')
+                }}</span>
+                <span
+                  class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium"
+                  >{{ sceneryStore.missingDepsCount }}</span
+                >
               </div>
               <!-- Duplicates -->
               <div
                 v-if="sceneryStore.duplicatesCount > 0"
                 class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-                @click="applyFilterWithTransition(() => showOnlyDuplicates = !showOnlyDuplicates)"
+                @click="applyFilterWithTransition(() => (showOnlyDuplicates = !showOnlyDuplicates))"
               >
-                <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-orange-400 dark:group-hover:border-orange-500" :class="showOnlyDuplicates && 'filter-check-active bg-orange-500 !border-orange-500'">
-                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                <span
+                  class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-orange-400 dark:group-hover:border-orange-500"
+                  :class="
+                    showOnlyDuplicates && 'filter-check-active bg-orange-500 !border-orange-500'
+                  "
+                >
+                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
+                    <path
+                      d="M3.5 6L5.5 8L8.5 4"
+                      stroke="currentColor"
+                      stroke-width="1.75"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
                 </span>
-                <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.duplicates') }}</span>
-                <span class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium">{{ sceneryStore.duplicatesCount }}</span>
+                <span class="flex-1 text-gray-700 dark:text-gray-200">{{
+                  t('sceneryManager.duplicates')
+                }}</span>
+                <span
+                  class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium"
+                  >{{ sceneryStore.duplicatesCount }}</span
+                >
               </div>
               <!-- Separator -->
               <div class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"></div>
@@ -1515,38 +1773,105 @@ onBeforeUnmount(() => {
             <!-- Enabled only -->
             <div
               class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-              @click="applyFilterWithTransition(() => enabledFilter = enabledFilter === 'enabled' ? 'all' : 'enabled')"
+              @click="
+                applyFilterWithTransition(
+                  () => (enabledFilter = enabledFilter === 'enabled' ? 'all' : 'enabled'),
+                )
+              "
             >
-              <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-green-400 dark:group-hover:border-green-500" :class="enabledFilter === 'enabled' && 'filter-check-active bg-green-500 !border-green-500'">
-                <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              <span
+                class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-green-400 dark:group-hover:border-green-500"
+                :class="
+                  enabledFilter === 'enabled' &&
+                  'filter-check-active bg-green-500 !border-green-500'
+                "
+              >
+                <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
+                  <path
+                    d="M3.5 6L5.5 8L8.5 4"
+                    stroke="currentColor"
+                    stroke-width="1.75"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
               </span>
-              <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.showOnlyEnabled') }}</span>
+              <span class="flex-1 text-gray-700 dark:text-gray-200">{{
+                t('sceneryManager.showOnlyEnabled')
+              }}</span>
             </div>
             <!-- Disabled only -->
             <div
               class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-              @click="applyFilterWithTransition(() => enabledFilter = enabledFilter === 'disabled' ? 'all' : 'disabled')"
+              @click="
+                applyFilterWithTransition(
+                  () => (enabledFilter = enabledFilter === 'disabled' ? 'all' : 'disabled'),
+                )
+              "
             >
-              <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-red-400 dark:group-hover:border-red-500" :class="enabledFilter === 'disabled' && 'filter-check-active bg-red-500 !border-red-500'">
-                <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              <span
+                class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-red-400 dark:group-hover:border-red-500"
+                :class="
+                  enabledFilter === 'disabled' && 'filter-check-active bg-red-500 !border-red-500'
+                "
+              >
+                <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
+                  <path
+                    d="M3.5 6L5.5 8L8.5 4"
+                    stroke="currentColor"
+                    stroke-width="1.75"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
               </span>
-              <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.showOnlyDisabled') }}</span>
+              <span class="flex-1 text-gray-700 dark:text-gray-200">{{
+                t('sceneryManager.showOnlyDisabled')
+              }}</span>
             </div>
             <!-- Separator -->
-            <div v-if="uniqueContinents.length > 0" class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"></div>
+            <div
+              v-if="uniqueContinents.length > 0"
+              class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"
+            ></div>
             <!-- Group by continent -->
             <div
               v-if="uniqueContinents.length > 0"
               class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
               @click="toggleViewMode"
             >
-              <span class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-blue-400 dark:group-hover:border-blue-500" :class="viewMode === 'continent' && 'filter-check-active bg-blue-500 !border-blue-500'">
-                <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none"><path d="M3.5 6L5.5 8L8.5 4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              <span
+                class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-blue-400 dark:group-hover:border-blue-500"
+                :class="
+                  viewMode === 'continent' && 'filter-check-active bg-blue-500 !border-blue-500'
+                "
+              >
+                <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
+                  <path
+                    d="M3.5 6L5.5 8L8.5 4"
+                    stroke="currentColor"
+                    stroke-width="1.75"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
               </span>
-              <svg class="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
+              <svg
+                class="w-3.5 h-3.5 text-blue-500 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"
+                />
               </svg>
-              <span class="flex-1 text-gray-700 dark:text-gray-200">{{ t('sceneryManager.groupByContinent') }}</span>
+              <span class="flex-1 text-gray-700 dark:text-gray-200">{{
+                t('sceneryManager.groupByContinent')
+              }}</span>
             </div>
           </div>
         </Transition>
@@ -1554,17 +1879,38 @@ onBeforeUnmount(() => {
       <!-- Updating index indicator -->
       <div v-if="isUpdatingIndex" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
         <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          <circle
+            class="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            stroke-width="4"
+          ></circle>
+          <path
+            class="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          ></path>
         </svg>
         <span class="text-xs">{{ t('sceneryManager.updatingIndex') }}</span>
       </div>
-      <div v-if="sceneryStore.hasChanges" class="ml-auto flex items-center gap-2 text-blue-600 dark:text-blue-400">
+      <div
+        v-if="sceneryStore.hasChanges"
+        class="ml-auto flex items-center gap-2 text-blue-600 dark:text-blue-400"
+      >
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+          />
         </svg>
         <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs font-medium">{{ t('sceneryManager.unsavedChanges') }}</span>
+          <span :key="locale" class="text-xs font-medium">{{
+            t('sceneryManager.unsavedChanges')
+          }}</span>
         </Transition>
       </div>
     </div>
@@ -1572,11 +1918,23 @@ onBeforeUnmount(() => {
     <!-- No X-Plane path set -->
     <div v-if="!appStore.xplanePath" class="flex-1 flex items-center justify-center">
       <div class="text-center">
-        <svg class="w-16 h-16 mx-auto text-gray-400 dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        <svg
+          class="w-16 h-16 mx-auto text-gray-400 dark:text-gray-600 mb-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+          />
         </svg>
         <Transition name="text-fade" mode="out-in">
-          <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('settings.sceneryAutoSortNeedPath') }}</p>
+          <p :key="locale" class="text-gray-600 dark:text-gray-400">
+            {{ t('settings.sceneryAutoSortNeedPath') }}
+          </p>
         </Transition>
       </div>
     </div>
@@ -1591,26 +1949,62 @@ onBeforeUnmount(() => {
       <!-- Database version error - needs reset -->
       <div v-if="sceneryStore.needsDatabaseReset" class="text-center py-12">
         <div class="flex flex-col items-center gap-4">
-          <svg class="w-12 h-12 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          <svg
+            class="w-12 h-12 text-amber-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
           </svg>
           <Transition name="text-fade" mode="out-in">
-            <p :key="locale" class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ t('sceneryManager.databaseVersionError') }}</p>
+            <p :key="locale" class="text-lg font-medium text-gray-900 dark:text-gray-100">
+              {{ t('sceneryManager.databaseVersionError') }}
+            </p>
           </Transition>
           <Transition name="text-fade" mode="out-in">
-            <p :key="locale" class="text-gray-600 dark:text-gray-400 max-w-md">{{ t('sceneryManager.databaseVersionErrorDesc') }}</p>
+            <p :key="locale" class="text-gray-600 dark:text-gray-400 max-w-md">
+              {{ t('sceneryManager.databaseVersionErrorDesc') }}
+            </p>
           </Transition>
           <button
             :disabled="isResettingDatabase"
             class="px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center justify-center space-x-2"
             @click="handleResetDatabase"
           >
-            <svg v-if="!isResettingDatabase" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            <svg
+              v-if="!isResettingDatabase"
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              ></path>
             </svg>
             <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
             </svg>
             <Transition name="text-fade" mode="out-in">
               <span :key="locale">{{ t('sceneryManager.resetDatabase') }}</span>
@@ -1622,7 +2016,9 @@ onBeforeUnmount(() => {
       <!-- No index created -->
       <div v-else-if="!sceneryStore.indexExists" class="text-center py-12">
         <Transition name="text-fade" mode="out-in">
-          <p :key="locale" class="text-gray-600 dark:text-gray-400 mb-4">{{ t('sceneryManager.noIndex') }}</p>
+          <p :key="locale" class="text-gray-600 dark:text-gray-400 mb-4">
+            {{ t('sceneryManager.noIndex') }}
+          </p>
         </Transition>
         <div class="flex justify-center">
           <button
@@ -1630,14 +2026,38 @@ onBeforeUnmount(() => {
             class="px-4 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center justify-center space-x-2"
             @click="handleCreateIndex"
           >
-            <svg v-if="!isCreatingIndex" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            <svg
+              v-if="!isCreatingIndex"
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              ></path>
             </svg>
-            <svg v-else class="w-4 h-4 animate-spin [animation-direction:reverse]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            <svg
+              v-else
+              class="w-4 h-4 animate-spin [animation-direction:reverse]"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              ></path>
             </svg>
             <Transition name="text-fade" mode="out-in">
-              <span :key="locale">{{ isCreatingIndex ? t('settings.creatingIndex') : t('settings.createIndex') }}</span>
+              <span :key="locale">{{
+                isCreatingIndex ? t('settings.creatingIndex') : t('settings.createIndex')
+              }}</span>
             </Transition>
           </button>
         </div>
@@ -1646,19 +2066,27 @@ onBeforeUnmount(() => {
       <!-- No scenery found -->
       <div v-else-if="sceneryStore.totalCount === 0" class="text-center py-12">
         <Transition name="text-fade" mode="out-in">
-          <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('sceneryManager.noScenery') }}</p>
+          <p :key="locale" class="text-gray-600 dark:text-gray-400">
+            {{ t('sceneryManager.noScenery') }}
+          </p>
         </Transition>
       </div>
 
       <!-- View mode transitioning loading -->
-      <div v-else-if="isViewModeTransitioning || isFilterTransitioning" class="flex items-center justify-center py-12">
+      <div
+        v-else-if="isViewModeTransitioning || isFilterTransitioning"
+        class="flex items-center justify-center py-12"
+      >
         <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
       </div>
 
       <!-- Continent grouped view (no drag-and-drop, filter-aware) -->
-      <div v-else-if="viewMode === 'continent'" class="space-y-3 pb-2" style="overflow: visible;">
-        <template v-for="continent in (hasDataFilters ? filteredSortedContinentOrder : sortedContinentOrder)" :key="continent">
-          <div class="continent-group" style="overflow: visible;">
+      <div v-else-if="viewMode === 'continent'" class="space-y-3 pb-2" style="overflow: visible">
+        <template
+          v-for="continent in hasDataFilters ? filteredSortedContinentOrder : sortedContinentOrder"
+          :key="continent"
+        >
+          <div class="continent-group" style="overflow: visible">
             <!-- Continent Header -->
             <div
               class="continent-header flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-blue-100 to-blue-200 dark:from-blue-900/50 dark:to-blue-800/50 rounded-lg cursor-pointer hover:from-blue-200 hover:to-blue-300 dark:hover:from-blue-800/50 dark:hover:to-blue-700/50 transition-all duration-200 mb-2 border border-blue-300 dark:border-blue-600 shadow-md"
@@ -1672,40 +2100,88 @@ onBeforeUnmount(() => {
                   stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2.5"
+                    d="M9 5l7 7-7 7"
+                  />
                 </svg>
                 <!-- Globe icon -->
-                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <svg
+                  class="w-4 h-4 text-blue-600 dark:text-blue-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
                 <span class="font-semibold text-sm text-blue-900 dark:text-blue-100">
                   {{ t(`geo.continents.${continent}`, continent) }}
                 </span>
-                <span class="text-xs font-medium text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                  <span class="text-green-700 dark:text-green-300">{{ (hasDataFilters ? getFilteredContinentStats(continent) : getContinentStats(continent)).enabled }}</span>
+                <span
+                  class="text-xs font-medium text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full"
+                >
+                  <span class="text-green-700 dark:text-green-300">{{
+                    (hasDataFilters
+                      ? getFilteredContinentStats(continent)
+                      : getContinentStats(continent)
+                    ).enabled
+                  }}</span>
                   <span class="mx-1 text-gray-400">/</span>
-                  <span class="text-gray-600 dark:text-gray-400">{{ (hasDataFilters ? getFilteredContinentStats(continent) : getContinentStats(continent)).total }}</span>
+                  <span class="text-gray-600 dark:text-gray-400">{{
+                    (hasDataFilters
+                      ? getFilteredContinentStats(continent)
+                      : getContinentStats(continent)
+                    ).total
+                  }}</span>
                 </span>
               </div>
               <!-- Continent toggle switch -->
               <button
                 v-if="!hasDataFilters"
                 class="flex-shrink-0 px-2 py-0.5 rounded text-xs font-medium transition-colors"
-                :class="isContinentAllEnabled(continent)
-                  ? 'bg-green-500 text-white hover:bg-green-600'
-                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'"
-                :title="isContinentAllEnabled(continent) ? t('sceneryManager.disableAll') : t('sceneryManager.enableAll')"
+                :class="
+                  isContinentAllEnabled(continent)
+                    ? 'bg-green-500 text-white hover:bg-green-600'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                "
+                :title="
+                  isContinentAllEnabled(continent)
+                    ? t('sceneryManager.disableAll')
+                    : t('sceneryManager.enableAll')
+                "
                 @click.stop="toggleContinentEnabled(continent)"
               >
-                {{ isContinentAllEnabled(continent) ? t('sceneryManager.disableAll') : t('sceneryManager.enableAll') }}
+                {{
+                  isContinentAllEnabled(continent)
+                    ? t('sceneryManager.disableAll')
+                    : t('sceneryManager.enableAll')
+                }}
               </button>
             </div>
 
             <!-- Continent Content (Collapsible) -->
             <Transition name="collapse">
-              <div v-if="isContinentExpanded(continent)" class="pl-4 space-y-2" style="overflow: visible;">
+              <div
+                v-if="isContinentExpanded(continent)"
+                class="pl-4 space-y-2"
+                style="overflow: visible"
+              >
                 <template v-for="category in categoryOrder" :key="category">
-                  <div v-if="(hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category]?.length > 0" class="category-in-continent">
+                  <div
+                    v-if="
+                      (hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[
+                        continent
+                      ][category]?.length > 0
+                    "
+                    class="category-in-continent"
+                  >
                     <!-- Category Header within Continent -->
                     <div
                       class="flex items-center gap-2 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded mb-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -1718,31 +2194,57 @@ onBeforeUnmount(() => {
                         stroke="currentColor"
                         viewBox="0 0 24 24"
                       >
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M9 5l7 7-7 7"
+                        />
                       </svg>
                       <span class="flex-1 text-xs font-medium text-gray-700 dark:text-gray-300">
                         {{ t(getCategoryTranslationKey(category)) }}
                         <span class="ml-1 text-gray-500 dark:text-gray-400">
-                          ({{ (hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category].filter(e => e.enabled).length }}/{{ (hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category].length }})
+                          ({{
+                            (hasDataFilters
+                              ? filteredContinentGroupedEntries
+                              : continentGroupedEntries)[continent][category].filter(
+                              (e) => e.enabled,
+                            ).length
+                          }}/{{
+                            (hasDataFilters
+                              ? filteredContinentGroupedEntries
+                              : continentGroupedEntries)[continent][category].length
+                          }})
                         </span>
                       </span>
                       <!-- Category toggle switch -->
                       <button
                         v-if="!hasDataFilters"
                         class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors"
-                        :class="isContinentCategoryAllEnabled(continent, category)
-                          ? 'bg-green-500 text-white hover:bg-green-600'
-                          : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'"
+                        :class="
+                          isContinentCategoryAllEnabled(continent, category)
+                            ? 'bg-green-500 text-white hover:bg-green-600'
+                            : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+                        "
                         @click.stop="toggleContinentCategoryEnabled(continent, category)"
                       >
-                        {{ isContinentCategoryAllEnabled(continent, category) ? t('sceneryManager.disableAll') : t('sceneryManager.enableAll') }}
+                        {{
+                          isContinentCategoryAllEnabled(continent, category)
+                            ? t('sceneryManager.disableAll')
+                            : t('sceneryManager.enableAll')
+                        }}
                       </button>
                     </div>
                     <!-- Entries in this category (Collapsible) -->
                     <Transition name="collapse">
-                      <div v-if="isContinentCategoryExpanded(continent, category)" class="space-y-1.5 px-1">
+                      <div
+                        v-if="isContinentCategoryExpanded(continent, category)"
+                        class="space-y-1.5 px-1"
+                      >
                         <div
-                          v-for="element in (hasDataFilters ? filteredContinentGroupedEntries : continentGroupedEntries)[continent][category]"
+                          v-for="element in (hasDataFilters
+                            ? filteredContinentGroupedEntries
+                            : continentGroupedEntries)[continent][category]"
                           :key="element.folderName"
                           v-memo="[
                             element.enabled,
@@ -1751,7 +2253,7 @@ onBeforeUnmount(() => {
                             element.duplicateTiles?.length ?? 0,
                             element.duplicateAirports?.length ?? 0,
                             searchQueryLower,
-                            highlightedIndex === getGlobalIndex(element.folderName)
+                            highlightedIndex === getGlobalIndex(element.folderName),
                           ]"
                           :data-scenery-index="getGlobalIndex(element.folderName)"
                           class="relative scenery-entry-item"
@@ -1763,7 +2265,9 @@ onBeforeUnmount(() => {
                           ></div>
                           <div
                             :class="{
-                              'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
+                              'opacity-30 transition-opacity':
+                                searchQueryLower &&
+                                !element.folderName.toLowerCase().includes(searchQueryLower),
                             }"
                           >
                             <SceneryEntryCard
@@ -1790,21 +2294,20 @@ onBeforeUnmount(() => {
         </template>
         <div v-if="hasDataFilters && filteredSceneryEntries.length === 0" class="text-center py-12">
           <Transition name="text-fade" mode="out-in">
-            <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('sceneryManager.noMissingLibs') }}</p>
+            <p :key="locale" class="text-gray-600 dark:text-gray-400">
+              {{ t('sceneryManager.noMissingLibs') }}
+            </p>
           </Transition>
         </div>
       </div>
 
       <!-- Filtered view with groups (no drag-and-drop) -->
-      <div v-else-if="hasDataFilters" class="space-y-3 pb-2" style="overflow: visible;">
-        <template
-          v-for="category in categoryOrder"
-          :key="category"
-        >
+      <div v-else-if="hasDataFilters" class="space-y-3 pb-2" style="overflow: visible">
+        <template v-for="category in categoryOrder" :key="category">
           <div
             v-if="filteredGroupedEntries[category] && filteredGroupedEntries[category].length > 0"
             class="scenery-group"
-            style="overflow: visible;"
+            style="overflow: visible"
           >
             <!-- Group Header -->
             <div
@@ -1818,17 +2321,28 @@ onBeforeUnmount(() => {
                 stroke="currentColor"
                 viewBox="0 0 24 24"
               >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2.5"
+                  d="M9 5l7 7-7 7"
+                />
               </svg>
               <span class="font-semibold text-sm text-gray-900 dark:text-gray-50">
                 <Transition name="text-fade" mode="out-in">
                   <span :key="locale">{{ t(getCategoryTranslationKey(category)) }}</span>
                 </Transition>
               </span>
-              <span class="text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                <span class="text-green-700 dark:text-green-300">{{ filteredGroupedEntries[category].filter(e => e.enabled).length }}</span>
+              <span
+                class="text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full"
+              >
+                <span class="text-green-700 dark:text-green-300">{{
+                  filteredGroupedEntries[category].filter((e) => e.enabled).length
+                }}</span>
                 <span class="mx-1 text-gray-400">/</span>
-                <span class="text-gray-600 dark:text-gray-400">{{ filteredGroupedEntries[category].length }}</span>
+                <span class="text-gray-600 dark:text-gray-400">{{
+                  filteredGroupedEntries[category].length
+                }}</span>
               </span>
             </div>
 
@@ -1844,7 +2358,7 @@ onBeforeUnmount(() => {
                     element.missingLibraries?.length ?? 0,
                     element.duplicateTiles?.length ?? 0,
                     searchQueryLower,
-                    highlightedIndex === getGlobalIndex(element.folderName)
+                    highlightedIndex === getGlobalIndex(element.folderName),
                   ]"
                   :data-scenery-index="getGlobalIndex(element.folderName)"
                   class="relative scenery-entry-item"
@@ -1856,7 +2370,9 @@ onBeforeUnmount(() => {
                   ></div>
                   <div
                     :class="{
-                      'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
+                      'opacity-30 transition-opacity':
+                        searchQueryLower &&
+                        !element.folderName.toLowerCase().includes(searchQueryLower),
                     }"
                   >
                     <SceneryEntryCard
@@ -1879,21 +2395,20 @@ onBeforeUnmount(() => {
         </template>
         <div v-if="filteredSceneryEntries.length === 0" class="text-center py-12">
           <Transition name="text-fade" mode="out-in">
-            <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('sceneryManager.noMissingLibs') }}</p>
+            <p :key="locale" class="text-gray-600 dark:text-gray-400">
+              {{ t('sceneryManager.noMissingLibs') }}
+            </p>
           </Transition>
         </div>
       </div>
 
       <!-- Normal view with drag-and-drop groups -->
-      <div v-else class="space-y-3 pb-2" style="overflow: visible;">
-        <template
-          v-for="category in categoryOrder"
-          :key="category"
-        >
+      <div v-else class="space-y-3 pb-2" style="overflow: visible">
+        <template v-for="category in categoryOrder" :key="category">
           <div
             v-if="localGroupedEntries[category] && localGroupedEntries[category].length > 0"
             class="scenery-group"
-            style="overflow: visible;"
+            style="overflow: visible"
           >
             <!-- Group Header -->
             <div
@@ -1907,28 +2422,41 @@ onBeforeUnmount(() => {
                 stroke="currentColor"
                 viewBox="0 0 24 24"
               >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2.5"
+                  d="M9 5l7 7-7 7"
+                />
               </svg>
               <span class="font-semibold text-sm text-gray-900 dark:text-gray-50">
                 <Transition name="text-fade" mode="out-in">
                   <span :key="locale">{{ t(getCategoryTranslationKey(category)) }}</span>
                 </Transition>
               </span>
-              <span class="text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full">
-                <span class="text-green-700 dark:text-green-300">{{ groupCounts[category]?.enabled ?? 0 }}</span>
+              <span
+                class="text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-full"
+              >
+                <span class="text-green-700 dark:text-green-300">{{
+                  groupCounts[category]?.enabled ?? 0
+                }}</span>
                 <span class="mx-1 text-gray-400">/</span>
-                <span class="text-gray-600 dark:text-gray-400">{{ localGroupedEntries[category]?.length || 0 }}</span>
+                <span class="text-gray-600 dark:text-gray-400">{{
+                  localGroupedEntries[category]?.length || 0
+                }}</span>
               </span>
             </div>
 
             <!-- Group Content (Collapsible) -->
             <Transition name="collapse">
-              <div v-if="isGroupExpanded(category)" style="overflow: visible;">
+              <div v-if="isGroupExpanded(category)" style="overflow: visible">
                 <draggable
                   v-model="localGroupedEntries[category]"
-                  :group="category === 'Unrecognized'
-                    ? { name: 'unrecognized', pull: false, put: false }
-                    : { name: 'scenery', pull: true, put: true }"
+                  :group="
+                    category === 'Unrecognized'
+                      ? { name: 'unrecognized', pull: false, put: false }
+                      : { name: 'scenery', pull: true, put: true }
+                  "
                   item-key="folderName"
                   handle=".drag-handle"
                   :disabled="!sceneryStore.indexExists || category === 'Unrecognized'"
@@ -1941,10 +2469,13 @@ onBeforeUnmount(() => {
                   ghost-class="drag-ghost"
                   drag-class="sortable-drag"
                   class="space-y-1.5"
-                  style="overflow: visible; padding: 0 0.5rem;"
+                  style="overflow: visible; padding: 0 0.5rem"
                   @start="handleDragStart"
                   @end="handleDragEnd"
-                  @change="(evt: DraggableChangeEvent<SceneryManagerEntry>) => handleGroupChange(category, evt)"
+                  @change="
+                    (evt: DraggableChangeEvent<SceneryManagerEntry>) =>
+                      handleGroupChange(category, evt)
+                  "
                 >
                   <template #item="{ element }">
                     <div
@@ -1958,14 +2489,18 @@ onBeforeUnmount(() => {
                       ></div>
                       <div
                         :class="{
-                          'opacity-30 transition-opacity': searchQueryLower && !element.folderName.toLowerCase().includes(searchQueryLower)
+                          'opacity-30 transition-opacity':
+                            searchQueryLower &&
+                            !element.folderName.toLowerCase().includes(searchQueryLower),
                         }"
                       >
                         <SceneryEntryCard
                           :entry="element"
                           :index="getGlobalIndex(element.folderName)"
                           :total-count="sceneryStore.totalCount"
-                          :disable-reorder="!sceneryStore.indexExists || category === 'Unrecognized'"
+                          :disable-reorder="
+                            !sceneryStore.indexExists || category === 'Unrecognized'
+                          "
                           :disable-move-down="element.folderName === lastEntryBeforeUnrecognized"
                           @toggle-enabled="handleSceneryToggleEnabled"
                           @move-up="handleMoveUp"
@@ -1994,15 +2529,27 @@ onBeforeUnmount(() => {
       >
         <div
           class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full mx-4 flex flex-col"
-          style="max-width: 520px; max-height: 80vh;"
+          style="max-width: 520px; max-height: 80vh"
           @click.stop
         >
           <!-- Modal Header -->
           <div class="flex items-center justify-between px-5 pt-4 pb-3 flex-shrink-0">
             <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
-                <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              <div
+                class="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0"
+              >
+                <svg
+                  class="w-4 h-4 text-amber-600 dark:text-amber-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"
+                  />
                 </svg>
               </div>
               <div>
@@ -2019,7 +2566,12 @@ onBeforeUnmount(() => {
               @click="showMissingLibsModal = false"
             >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
@@ -2054,7 +2606,12 @@ onBeforeUnmount(() => {
                     @click="handleCopySingleLib(lib)"
                   >
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                      />
                     </svg>
                   </button>
 
@@ -2066,7 +2623,12 @@ onBeforeUnmount(() => {
                     @click="handleDirectDownload(libraryLinksMap[lib]!)"
                   >
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                      />
                     </svg>
                     {{ t('sceneryManager.directDownload') }}
                   </button>
@@ -2079,7 +2641,12 @@ onBeforeUnmount(() => {
                     @click="handleSearchSingleLib(lib)"
                   >
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
                     </svg>
                   </button>
 
@@ -2097,13 +2664,20 @@ onBeforeUnmount(() => {
           </div>
 
           <!-- Footer -->
-          <div class="flex gap-2 px-5 py-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
+          <div
+            class="flex gap-2 px-5 py-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700"
+          >
             <button
               class="flex-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm rounded-lg transition-colors flex items-center justify-center gap-1.5"
               @click="handleCopyMissingLibs"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                />
               </svg>
               {{ t('sceneryManager.copyAllLibNames') }}
             </button>
@@ -2125,10 +2699,7 @@ onBeforeUnmount(() => {
         class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
         @click="!isSubmittingContributeLink && closeContributeLinkModal()"
       >
-        <div
-          class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-5"
-          @click.stop
-        >
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-5" @click.stop>
           <h3 class="text-base font-semibold text-gray-900 dark:text-white">
             {{ t('sceneryManager.contributeLinkTitle') }}
           </h3>
@@ -2138,7 +2709,9 @@ onBeforeUnmount(() => {
 
           <div class="mt-4 space-y-3">
             <div>
-              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('sceneryManager.libraryNameLabel') }}</label>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{
+                t('sceneryManager.libraryNameLabel')
+              }}</label>
               <div class="relative">
                 <input
                   :value="contributingLibName"
@@ -2153,7 +2726,12 @@ onBeforeUnmount(() => {
                     @click="handleCopySingleLib(contributingLibName)"
                   >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                      />
                     </svg>
                   </button>
                   <button
@@ -2162,14 +2740,21 @@ onBeforeUnmount(() => {
                     @click="handleSearchSingleLib(contributingLibName)"
                   >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
                     </svg>
                   </button>
                 </div>
               </div>
             </div>
             <div>
-              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{ t('sceneryManager.downloadUrlLabel') }}</label>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">{{
+                t('sceneryManager.downloadUrlLabel')
+              }}</label>
               <input
                 v-model="contributingLibUrl"
                 type="url"
@@ -2200,10 +2785,25 @@ onBeforeUnmount(() => {
                 viewBox="0 0 24 24"
                 aria-hidden="true"
               >
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                />
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
               </svg>
-              {{ isSubmittingContributeLink ? t('sceneryManager.submittingContribution') : t('sceneryManager.submitContribution') }}
+              {{
+                isSubmittingContributeLink
+                  ? t('sceneryManager.submittingContribution')
+                  : t('sceneryManager.submitContribution')
+              }}
             </button>
           </div>
         </div>
@@ -2219,7 +2819,7 @@ onBeforeUnmount(() => {
       >
         <div
           class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full mx-4 flex flex-col"
-          style="max-width: 500px; max-height: 80vh;"
+          style="max-width: 500px; max-height: 80vh"
           @click.stop
         >
           <!-- Modal Header -->
@@ -2232,7 +2832,12 @@ onBeforeUnmount(() => {
               @click="showDuplicateTilesModal = false"
             >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
@@ -2271,7 +2876,11 @@ onBeforeUnmount(() => {
                 {{ t('sceneryManager.duplicateAirportsSection') }}
               </div>
               <div class="mb-3 text-sm text-gray-600 dark:text-gray-400">
-                {{ t('sceneryManager.duplicateAirportsDesc', { id: selectedModalEntry?.airportId ?? '' }) }}
+                {{
+                  t('sceneryManager.duplicateAirportsDesc', {
+                    id: selectedModalEntry?.airportId ?? '',
+                  })
+                }}
               </div>
               <div class="bg-gray-50 dark:bg-gray-900 rounded p-3">
                 <ul class="space-y-1">
@@ -2288,7 +2897,9 @@ onBeforeUnmount(() => {
           </div>
 
           <!-- Close Button -->
-          <div class="flex flex-col gap-2 p-5 pt-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
+          <div
+            class="flex flex-col gap-2 p-5 pt-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700"
+          >
             <button
               class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
               @click="showDuplicateTilesModal = false"
@@ -2309,15 +2920,27 @@ onBeforeUnmount(() => {
       >
         <div
           class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full mx-4 flex flex-col"
-          style="max-width: 520px; max-height: 80vh;"
+          style="max-width: 520px; max-height: 80vh"
           @click.stop
         >
           <!-- Modal Header -->
           <div class="flex items-center justify-between px-5 pt-4 pb-3 flex-shrink-0">
             <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
-                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <div
+                class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0"
+              >
+                <svg
+                  class="w-4 h-4 text-blue-600 dark:text-blue-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
               </div>
               <div>
@@ -2334,21 +2957,37 @@ onBeforeUnmount(() => {
               @click="dismissIndexChangesModal"
             >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
 
           <!-- Badges summary (fixed, not scrollable) -->
           <div class="flex items-center gap-2 px-5 pb-2.5 flex-wrap flex-shrink-0">
-            <span v-if="indexChangesResult.added.length > 0" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400">
+            <span
+              v-if="indexChangesResult.added.length > 0"
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
+            >
               + {{ t('sceneryManager.indexChangesAdded') }} {{ indexChangesResult.added.length }}
             </span>
-            <span v-if="indexChangesResult.removed.length > 0" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400">
-              - {{ t('sceneryManager.indexChangesRemoved') }} {{ indexChangesResult.removed.length }}
+            <span
+              v-if="indexChangesResult.removed.length > 0"
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400"
+            >
+              - {{ t('sceneryManager.indexChangesRemoved') }}
+              {{ indexChangesResult.removed.length }}
             </span>
-            <span v-if="indexChangesResult.updated.length > 0" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
-              ~ {{ t('sceneryManager.indexChangesUpdated') }} {{ indexChangesResult.updated.length }}
+            <span
+              v-if="indexChangesResult.updated.length > 0"
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+            >
+              ~ {{ t('sceneryManager.indexChangesUpdated') }}
+              {{ indexChangesResult.updated.length }}
             </span>
           </div>
 
@@ -2358,9 +2997,9 @@ onBeforeUnmount(() => {
             <div class="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
               <div
                 v-for="(item, index) in [
-                  ...indexChangesResult.added.map(n => ({ name: n, type: 'added' })),
-                  ...indexChangesResult.removed.map(n => ({ name: n, type: 'removed' })),
-                  ...indexChangesResult.updated.map(n => ({ name: n, type: 'updated' }))
+                  ...indexChangesResult.added.map((n) => ({ name: n, type: 'added' })),
+                  ...indexChangesResult.removed.map((n) => ({ name: n, type: 'removed' })),
+                  ...indexChangesResult.updated.map((n) => ({ name: n, type: 'updated' })),
                 ]"
                 :key="item.type + '-' + item.name"
                 class="px-3 py-1.5"
@@ -2368,7 +3007,7 @@ onBeforeUnmount(() => {
                   index > 0 ? 'border-t border-gray-200 dark:border-gray-700' : '',
                   item.type === 'added' ? 'bg-green-50 dark:bg-green-900/20' : '',
                   item.type === 'removed' ? 'bg-red-50 dark:bg-red-900/20' : '',
-                  item.type === 'updated' ? 'bg-amber-50 dark:bg-amber-900/20' : ''
+                  item.type === 'updated' ? 'bg-amber-50 dark:bg-amber-900/20' : '',
                 ]"
               >
                 <span
@@ -2376,15 +3015,18 @@ onBeforeUnmount(() => {
                   :class="[
                     item.type === 'added' ? 'text-green-800 dark:text-green-300' : '',
                     item.type === 'removed' ? 'text-red-800 dark:text-red-300' : '',
-                    item.type === 'updated' ? 'text-amber-800 dark:text-amber-300' : ''
+                    item.type === 'updated' ? 'text-amber-800 dark:text-amber-300' : '',
                   ]"
-                >{{ item.name }}</span>
+                  >{{ item.name }}</span
+                >
               </div>
             </div>
           </div>
 
           <!-- Footer -->
-          <div class="flex gap-2 px-5 py-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700">
+          <div
+            class="flex gap-2 px-5 py-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700"
+          >
             <button
               class="flex-1 px-4 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm rounded-lg transition-colors"
               @click="dismissIndexChangesModal"
@@ -2396,9 +3038,25 @@ onBeforeUnmount(() => {
               class="flex-1 px-4 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm rounded-lg transition-colors flex items-center justify-center gap-1.5"
               @click="handleIndexChangesSyncToIni"
             >
-              <svg v-if="sceneryStore.isSaving" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <svg
+                v-if="sceneryStore.isSaving"
+                class="animate-spin h-3.5 w-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
               </svg>
               {{ t('sceneryManager.indexChangesSyncToIni') }}
             </button>
@@ -2453,10 +3111,14 @@ onBeforeUnmount(() => {
 
 /* Dropdown enter/leave transition */
 .dropdown-enter-active {
-  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.15s ease-out;
 }
 .dropdown-leave-active {
-  transition: opacity 0.1s ease-in, transform 0.1s ease-in;
+  transition:
+    opacity 0.1s ease-in,
+    transform 0.1s ease-in;
 }
 .dropdown-enter-from,
 .dropdown-leave-to {
@@ -2476,14 +3138,19 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   color: white;
-  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 .filter-check-icon {
   width: 12px;
   height: 12px;
   opacity: 0;
   transform: scale(0.5);
-  transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.2, 0, 0.13, 2);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s cubic-bezier(0.2, 0, 0.13, 2);
 }
 .filter-check-active .filter-check-icon {
   opacity: 1;
@@ -2516,7 +3183,9 @@ onBeforeUnmount(() => {
 
 :global(.drag-ghost) {
   opacity: 0.35;
-  transition: transform 0.22s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.22s ease;
+  transition:
+    transform 0.22s cubic-bezier(0.25, 0.8, 0.25, 1),
+    opacity 0.22s ease;
 }
 
 :global(.dragging-scale) {
@@ -2525,7 +3194,9 @@ onBeforeUnmount(() => {
 
 :global(.sortable-fallback) {
   opacity: 1 !important;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2), 0 0 0 2px rgb(59, 130, 246) !important;
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.2),
+    0 0 0 2px rgb(59, 130, 246) !important;
   border-radius: 0.5rem !important;
   transition: none !important;
   position: fixed !important;
@@ -2536,7 +3207,9 @@ onBeforeUnmount(() => {
 
 :global(.dark .sortable-fallback) {
   background-color: rgb(31, 41, 55) !important;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4), 0 0 0 2px rgb(96, 165, 250) !important;
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.4),
+    0 0 0 2px rgb(96, 165, 250) !important;
 }
 
 :global(.sortable-chosen) {

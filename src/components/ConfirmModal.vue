@@ -1,11 +1,6 @@
 <template>
   <Teleport to="body">
-    <Transition
-      name="modal"
-      :css="false"
-      @enter="onEnter"
-      @leave="onLeave"
-    >
+    <Transition name="modal" :css="false" @enter="onEnter" @leave="onLeave">
       <div v-if="isVisible" class="fixed inset-0 z-[1100] flex items-center justify-center">
         <!-- Backdrop -->
         <div
@@ -28,13 +23,30 @@
                 class="w-11 h-11 flex items-center justify-center rounded-full"
                 :class="{
                   'bg-gradient-to-br from-amber-500 to-yellow-600': currentType === 'warning',
-                  'bg-gradient-to-br from-red-500 to-red-700': currentType === 'danger'
+                  'bg-gradient-to-br from-red-500 to-red-700': currentType === 'danger',
                 }"
               >
-                <svg v-if="currentType === 'warning'" class="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                <svg
+                  v-if="currentType === 'warning'"
+                  class="w-7 h-7 text-white"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                  ></path>
                 </svg>
-                <svg v-else class="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <svg
+                  v-else
+                  class="w-7 h-7 text-white"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                >
                   <circle cx="12" cy="12" r="11" stroke-width="2" />
                   <path stroke-linecap="round" stroke-width="2.5" d="M12 6v7" />
                   <circle cx="12" cy="17" r="1.5" fill="currentColor" stroke="none" />
@@ -44,9 +56,17 @@
                 <h3 class="text-lg font-semibold leading-tight">{{ currentTitle }}</h3>
               </div>
             </div>
-            <button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1" @click="handleCancel">
+            <button
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1"
+              @click="handleCancel"
+            >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
@@ -58,10 +78,15 @@
 
             <!-- Item name highlight -->
             <div v-if="currentItemName" class="p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg">
-              <p class="text-sm font-mono text-gray-900 dark:text-gray-100 break-all">{{ currentItemName }}</p>
+              <p class="text-sm font-mono text-gray-900 dark:text-gray-100 break-all">
+                {{ currentItemName }}
+              </p>
             </div>
 
-            <div v-if="currentWarning" class="p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg">
+            <div
+              v-if="currentWarning"
+              class="p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg"
+            >
               <p class="text-sm text-amber-700 dark:text-amber-200 leading-relaxed">
                 {{ currentWarning }}
               </p>
@@ -82,13 +107,30 @@
               class="px-4 py-2 rounded-lg text-white font-medium transition disabled:opacity-50 flex items-center gap-2"
               :class="{
                 'bg-amber-500 hover:bg-amber-600': currentType === 'warning',
-                'bg-red-600 hover:bg-red-700': currentType === 'danger'
+                'bg-red-600 hover:bg-red-700': currentType === 'danger',
               }"
               @click="handleConfirm"
             >
-              <svg v-if="isLoading" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <svg
+                v-if="isLoading"
+                class="animate-spin h-4 w-4"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
               </svg>
               {{ isLoading ? currentLoadingText : currentConfirmText }}
             </button>
@@ -108,22 +150,25 @@ import gsap from 'gsap'
 const { t } = useI18n()
 
 // Props for local mode (when used as a reusable component)
-const props = withDefaults(defineProps<{
-  show?: boolean
-  title?: string
-  message?: string
-  itemName?: string
-  warning?: string
-  confirmText?: string
-  cancelText?: string
-  loadingText?: string
-  isLoading?: boolean
-  variant?: 'warning' | 'danger'
-}>(), {
-  show: false,
-  isLoading: false,
-  variant: 'danger'
-})
+const props = withDefaults(
+  defineProps<{
+    show?: boolean
+    title?: string
+    message?: string
+    itemName?: string
+    warning?: string
+    confirmText?: string
+    cancelText?: string
+    loadingText?: string
+    isLoading?: boolean
+    variant?: 'warning' | 'danger'
+  }>(),
+  {
+    show: false,
+    isLoading: false,
+    variant: 'danger',
+  },
+)
 
 const emit = defineEmits<{
   (e: 'update:show', value: boolean): void
@@ -137,7 +182,9 @@ const backdrop = ref<HTMLElement | null>(null)
 const card = ref<HTMLElement | null>(null)
 
 // Determine if using local mode (props) or global mode (modalStore)
-const isLocalMode = computed(() => props.show !== undefined && props.show !== false || props.title !== undefined)
+const isLocalMode = computed(
+  () => (props.show !== undefined && props.show !== false) || props.title !== undefined,
+)
 
 // Computed visibility
 const isVisible = computed(() => {
@@ -209,17 +256,13 @@ function handleCancel() {
 function onEnter(_el: Element, done: () => void) {
   const tl = gsap.timeline({ onComplete: done })
 
-  tl.fromTo(
-    backdrop.value,
-    { opacity: 0 },
-    { opacity: 1, duration: 0.2, ease: 'power2.out' }
-  )
+  tl.fromTo(backdrop.value, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'power2.out' })
 
   tl.fromTo(
     card.value,
     { opacity: 0, scale: 0.9, y: 20 },
     { opacity: 1, scale: 1, y: 0, duration: 0.3, ease: 'back.out(1.7)' },
-    '-=0.1'
+    '-=0.1',
   )
 }
 
@@ -289,13 +332,17 @@ function handleKeydown(e: KeyboardEvent) {
 
 // Dynamically manage keydown listener based on visibility
 // This prevents memory leaks when multiple modal instances exist
-watch(isVisible, (visible) => {
-  if (visible) {
-    document.addEventListener('keydown', handleKeydown)
-  } else {
-    document.removeEventListener('keydown', handleKeydown)
-  }
-}, { immediate: true })
+watch(
+  isVisible,
+  (visible) => {
+    if (visible) {
+      document.addEventListener('keydown', handleKeydown)
+    } else {
+      document.removeEventListener('keydown', handleKeydown)
+    }
+  },
+  { immediate: true },
+)
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleKeydown)

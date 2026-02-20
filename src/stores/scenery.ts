@@ -1,7 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import type { SceneryIndexStatus, SceneryManagerData, SceneryManagerEntry, SceneryCategory } from '@/types'
+import type {
+  SceneryIndexStatus,
+  SceneryManagerData,
+  SceneryManagerEntry,
+  SceneryCategory,
+} from '@/types'
 import { parseApiError, getErrorMessage } from '@/types'
 import { useAppStore } from './app'
 import { logError } from '@/services/logger'
@@ -23,20 +28,28 @@ export const useSceneryStore = defineStore('scenery', () => {
 
   // Collapsed groups state (persisted to Tauri Store)
   // Default: all groups are expanded (false = expanded, true = collapsed)
-  const collapsedGroups = ref<Record<SceneryCategory, boolean>>({} as Record<SceneryCategory, boolean>)
+  const collapsedGroups = ref<Record<SceneryCategory, boolean>>(
+    {} as Record<SceneryCategory, boolean>,
+  )
 
   // Load collapsed groups from storage
   async function initStore(): Promise<void> {
-    const saved = await getItem<Record<SceneryCategory, boolean>>(STORAGE_KEYS.SCENERY_GROUPS_COLLAPSED)
+    const saved = await getItem<Record<SceneryCategory, boolean>>(
+      STORAGE_KEYS.SCENERY_GROUPS_COLLAPSED,
+    )
     if (saved && typeof saved === 'object') {
       collapsedGroups.value = saved
     }
   }
 
   // Watch for changes and persist to Tauri Store
-  watch(collapsedGroups, (newVal) => {
-    setItem(STORAGE_KEYS.SCENERY_GROUPS_COLLAPSED, newVal)
-  }, { deep: true })
+  watch(
+    collapsedGroups,
+    (newVal) => {
+      setItem(STORAGE_KEYS.SCENERY_GROUPS_COLLAPSED, newVal)
+    },
+    { deep: true },
+  )
 
   // Computed properties
   const entries = computed(() => data.value?.entries ?? [])
@@ -47,8 +60,8 @@ export const useSceneryStore = defineStore('scenery', () => {
   const duplicateAirportsCount = computed(() => data.value?.duplicateAirportsCount ?? 0)
   const duplicatesCount = computed(() => {
     if (!data.value) return 0
-    return data.value.entries.filter(e =>
-      (e.duplicateTiles?.length > 0) || (e.duplicateAirports?.length > 0)
+    return data.value.entries.filter(
+      (e) => e.duplicateTiles?.length > 0 || e.duplicateAirports?.length > 0,
     ).length
   })
 
@@ -68,7 +81,7 @@ export const useSceneryStore = defineStore('scenery', () => {
       Overlay: [],
       AirportMesh: [],
       Mesh: [],
-      Unrecognized: []
+      Unrecognized: [],
     }
 
     for (const entry of sortedEntries.value) {
@@ -95,9 +108,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     if (current.length !== originalEntries.value.length) return true
 
     // Build a Map from original entries for O(1) lookup
-    const originalMap = new Map(
-      originalEntries.value.map(e => [e.folderName, e])
-    )
+    const originalMap = new Map(originalEntries.value.map((e) => [e.folderName, e]))
 
     for (const curr of current) {
       const orig = originalMap.get(curr.folderName)
@@ -127,7 +138,7 @@ export const useSceneryStore = defineStore('scenery', () => {
       await loadIndexStatus()
 
       const result = await invoke<SceneryManagerData>('get_scenery_manager_data', {
-        xplanePath: appStore.xplanePath
+        xplanePath: appStore.xplanePath,
       })
       data.value = result
       // Store original state for change detection
@@ -157,7 +168,7 @@ export const useSceneryStore = defineStore('scenery', () => {
 
     try {
       const status = await invoke<SceneryIndexStatus>('get_scenery_index_status', {
-        xplanePath: appStore.xplanePath
+        xplanePath: appStore.xplanePath,
       })
       indexExists.value = status.indexExists
     } catch (e) {
@@ -188,21 +199,21 @@ export const useSceneryStore = defineStore('scenery', () => {
   function toggleEnabled(folderName: string) {
     if (!data.value) return
 
-    const entry = data.value.entries.find(e => e.folderName === folderName)
+    const entry = data.value.entries.find((e) => e.folderName === folderName)
     if (!entry) return
 
     // Update locally only - will be persisted when user clicks Apply
     entry.enabled = !entry.enabled
 
     // Update enabled count
-    data.value.enabledCount = data.value.entries.filter(e => e.enabled).length
+    data.value.enabledCount = data.value.entries.filter((e) => e.enabled).length
   }
 
   // Update category for an entry
   async function updateCategory(folderName: string, newCategory: SceneryCategory) {
     if (!data.value) return
 
-    const entry = data.value.entries.find(e => e.folderName === folderName)
+    const entry = data.value.entries.find((e) => e.folderName === folderName)
     if (!entry) return
 
     const oldCategory = entry.category
@@ -217,7 +228,7 @@ export const useSceneryStore = defineStore('scenery', () => {
         folderName,
         enabled: null,
         sortOrder: null,
-        category: newCategory
+        category: newCategory,
       })
     } catch (e) {
       // Revert on error
@@ -239,10 +250,10 @@ export const useSceneryStore = defineStore('scenery', () => {
     const overlaps = data.value.tileOverlaps
     if (!overlaps || Object.keys(overlaps).length === 0) return
 
-    const entryMap = new Map(data.value.entries.map(e => [e.folderName, e]))
+    const entryMap = new Map(data.value.entries.map((e) => [e.folderName, e]))
     let anyChanged = false
 
-    const newEntries = data.value.entries.map(entry => {
+    const newEntries = data.value.entries.map((entry) => {
       let newTiles: string[]
 
       if (entry.folderName.startsWith('XPME_')) {
@@ -252,7 +263,7 @@ export const useSceneryStore = defineStore('scenery', () => {
         if (!rawOverlaps || rawOverlaps.length === 0) {
           newTiles = []
         } else {
-          newTiles = rawOverlaps.filter(other => {
+          newTiles = rawOverlaps.filter((other) => {
             const otherEntry = entryMap.get(other)
             if (!otherEntry) return false
             if (other.startsWith('XPME_')) {
@@ -275,7 +286,9 @@ export const useSceneryStore = defineStore('scenery', () => {
 
     if (anyChanged) {
       data.value.entries = newEntries
-      data.value.duplicateTilesCount = newEntries.filter(e => (e.duplicateTiles ?? []).length > 0).length
+      data.value.duplicateTilesCount = newEntries.filter(
+        (e) => (e.duplicateTiles ?? []).length > 0,
+      ).length
     }
   }
 
@@ -309,7 +322,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     if (!data.value) return
 
     const ordered = [...sortedEntries.value]
-    const currentIndex = ordered.findIndex(e => e.folderName === folderName)
+    const currentIndex = ordered.findIndex((e) => e.folderName === folderName)
     if (currentIndex === -1) return
 
     const targetIndex = Math.min(Math.max(newSortOrder, 0), ordered.length - 1)
@@ -342,22 +355,22 @@ export const useSceneryStore = defineStore('scenery', () => {
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((entry, index) => ({
           ...entry,
-          sortOrder: index
+          sortOrder: index,
         }))
 
       // Update local data with normalized sortOrder
       data.value.entries = normalizedEntries
 
       // Send only necessary fields to backend for batch update
-      const updates = normalizedEntries.map(entry => ({
+      const updates = normalizedEntries.map((entry) => ({
         folderName: entry.folderName,
         enabled: entry.enabled,
-        sortOrder: entry.sortOrder
+        sortOrder: entry.sortOrder,
       }))
 
       await invoke('apply_scenery_changes', {
         xplanePath: appStore.xplanePath,
-        entries: updates
+        entries: updates,
       })
 
       // Update original state after successful save
@@ -377,7 +390,7 @@ export const useSceneryStore = defineStore('scenery', () => {
   function resetChanges() {
     if (originalEntries.value.length > 0 && data.value) {
       data.value.entries = JSON.parse(JSON.stringify(originalEntries.value))
-      data.value.enabledCount = data.value.entries.filter(e => e.enabled).length
+      data.value.enabledCount = data.value.entries.filter((e) => e.enabled).length
     }
   }
 
@@ -391,12 +404,12 @@ export const useSceneryStore = defineStore('scenery', () => {
     try {
       await invoke('delete_scenery_folder', {
         xplanePath: appStore.xplanePath,
-        folderName
+        folderName,
       })
 
       // Remove from local data
       if (data.value) {
-        data.value.entries = data.value.entries.filter(e => e.folderName !== folderName)
+        data.value.entries = data.value.entries.filter((e) => e.folderName !== folderName)
 
         // Recalculate sortOrder to eliminate gaps
         // Sort by current sortOrder first, then reassign consecutive values
@@ -404,29 +417,34 @@ export const useSceneryStore = defineStore('scenery', () => {
           .sort((a, b) => a.sortOrder - b.sortOrder)
           .map((entry, index) => ({
             ...entry,
-            sortOrder: index
+            sortOrder: index,
           }))
 
         data.value.totalCount = data.value.entries.length
-        data.value.enabledCount = data.value.entries.filter(e => e.enabled).length
-        data.value.missingDepsCount = data.value.entries.filter(e => e.missingLibraries.length > 0).length
+        data.value.enabledCount = data.value.entries.filter((e) => e.enabled).length
+        data.value.missingDepsCount = data.value.entries.filter(
+          (e) => e.missingLibraries.length > 0,
+        ).length
         scheduleRecalcDuplicateTiles()
       }
 
       // Also remove from original entries and recalculate their sortOrder
       originalEntries.value = originalEntries.value
-        .filter(e => e.folderName !== folderName)
+        .filter((e) => e.folderName !== folderName)
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((entry, index) => ({
           ...entry,
-          sortOrder: index
+          sortOrder: index,
         }))
     } catch (e) {
       // Parse structured error if available
       const apiError = parseApiError(e)
       if (apiError) {
         error.value = apiError.message
-        logError(`Failed to delete scenery entry [${apiError.code}]: ${apiError.message}`, 'scenery')
+        logError(
+          `Failed to delete scenery entry [${apiError.code}]: ${apiError.message}`,
+          'scenery',
+        )
 
         // Rethrow with structured error info for UI handling
         throw { ...apiError, isApiError: true }
@@ -481,6 +499,6 @@ export const useSceneryStore = defineStore('scenery', () => {
     applyChanges,
     resetChanges,
     deleteEntry,
-    clear
+    clear,
   }
 })

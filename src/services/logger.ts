@@ -21,16 +21,18 @@ class Logger {
     // Info messages default to 'full' level
     if (!this.shouldLog('full')) return
 
-    invoke('log_from_frontend', { level: 'info', message, context })
-      .catch((e) => console.debug('Failed to log info:', e))
+    invoke('log_from_frontend', { level: 'info', message, context }).catch((e) =>
+      console.debug('Failed to log info:', e),
+    )
   }
 
   /**
    * Log an error message (always logged, even in basic mode) (fire-and-forget)
    */
   error(message: string, context?: string): void {
-    invoke('log_from_frontend', { level: 'error', message, context })
-      .catch((e) => console.debug('Failed to log error:', e))
+    invoke('log_from_frontend', { level: 'error', message, context }).catch((e) =>
+      console.debug('Failed to log error:', e),
+    )
     console.error(`[${context ?? 'error'}]`, message)
   }
 
@@ -51,8 +53,9 @@ class Logger {
   basic(message: string, context?: string): void {
     if (!this.shouldLog('basic')) return
 
-    invoke('log_from_frontend', { level: 'info', message, context })
-      .catch((e) => console.debug('Failed to log basic:', e))
+    invoke('log_from_frontend', { level: 'info', message, context }).catch((e) =>
+      console.debug('Failed to log basic:', e),
+    )
   }
 
   /**
@@ -61,8 +64,9 @@ class Logger {
   debug(message: string, context?: string): void {
     if (!this.shouldLog('debug')) return
 
-    invoke('log_from_frontend', { level: 'debug', message, context })
-      .catch((e) => console.debug('Failed to log debug:', e))
+    invoke('log_from_frontend', { level: 'debug', message, context }).catch((e) =>
+      console.debug('Failed to log debug:', e),
+    )
   }
 
   /**

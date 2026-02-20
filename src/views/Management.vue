@@ -89,18 +89,24 @@ watch(activeTab, async (newTab, oldTab) => {
 })
 
 // Auto-reset filter when no updates available
-watch(() => managementStore.aircraftUpdateCount + managementStore.pluginsUpdateCount, (newCount) => {
-  if (newCount === 0 && showOnlyUpdates.value) {
-    showOnlyUpdates.value = false
-  }
-})
+watch(
+  () => managementStore.aircraftUpdateCount + managementStore.pluginsUpdateCount,
+  (newCount) => {
+    if (newCount === 0 && showOnlyUpdates.value) {
+      showOnlyUpdates.value = false
+    }
+  },
+)
 
 // Auto-reset filter when no outdated navdata
-watch(() => managementStore.navdataOutdatedCount, (newCount) => {
-  if (newCount === 0 && showOnlyOutdated.value) {
-    showOnlyOutdated.value = false
-  }
-})
+watch(
+  () => managementStore.navdataOutdatedCount,
+  (newCount) => {
+    if (newCount === 0 && showOnlyOutdated.value) {
+      showOnlyOutdated.value = false
+    }
+  },
+)
 
 async function loadTabData(tab: ManagementTab) {
   if (!appStore.xplanePath) return
@@ -138,42 +144,42 @@ async function loadTabData(tab: ManagementTab) {
 const filteredAircraft = computed(() => {
   let items = managementStore.sortedAircraft
   if (showOnlyUpdates.value) {
-    items = items.filter(a => a.hasUpdate)
+    items = items.filter((a) => a.hasUpdate)
   }
   if (!searchQuery.value.trim()) return items
   const query = searchQuery.value.toLowerCase()
-  return items.filter(a =>
-    a.displayName.toLowerCase().includes(query) ||
-    a.folderName.toLowerCase().includes(query)
+  return items.filter(
+    (a) =>
+      a.displayName.toLowerCase().includes(query) || a.folderName.toLowerCase().includes(query),
   )
 })
 
 const filteredPlugins = computed(() => {
   let items = managementStore.sortedPlugins
   if (showOnlyUpdates.value) {
-    items = items.filter(p => p.hasUpdate)
+    items = items.filter((p) => p.hasUpdate)
   }
   if (!searchQuery.value.trim()) return items
   const query = searchQuery.value.toLowerCase()
-  return items.filter(p =>
-    p.displayName.toLowerCase().includes(query) ||
-    p.folderName.toLowerCase().includes(query)
+  return items.filter(
+    (p) =>
+      p.displayName.toLowerCase().includes(query) || p.folderName.toLowerCase().includes(query),
   )
 })
 
 const filteredNavdata = computed(() => {
   let items = managementStore.sortedNavdata
   if (showOnlyOutdated.value) {
-    items = items.filter(n => {
+    items = items.filter((n) => {
       const cycleText = n.cycle || n.airac
       return getNavdataCycleStatus(cycleText) === 'outdated'
     })
   }
   if (!searchQuery.value.trim()) return items
   const query = searchQuery.value.toLowerCase()
-  return items.filter(n =>
-    n.providerName.toLowerCase().includes(query) ||
-    n.folderName.toLowerCase().includes(query)
+  return items.filter(
+    (n) =>
+      n.providerName.toLowerCase().includes(query) || n.folderName.toLowerCase().includes(query),
   )
 })
 
@@ -239,9 +245,9 @@ async function handleCheckUpdates() {
 
 // Find backup for a navdata entry by matching provider name
 function getNavdataBackup(providerName: string): NavdataBackupInfo | null {
-  return managementStore.navdataBackups.find(
-    b => b.verification.providerName === providerName
-  ) || null
+  return (
+    managementStore.navdataBackups.find((b) => b.verification.providerName === providerName) || null
+  )
 }
 
 // Handle restore navdata backup
@@ -249,9 +255,10 @@ function handleRestoreBackup(backupInfo: NavdataBackupInfo) {
   const cycle = backupInfo.verification.cycle || backupInfo.verification.airac || ''
   const backupTime = new Date(backupInfo.verification.backupTime).toLocaleString()
   // Truncate long provider names
-  const providerName = backupInfo.verification.providerName.length > 30
-    ? backupInfo.verification.providerName.substring(0, 30) + '...'
-    : backupInfo.verification.providerName
+  const providerName =
+    backupInfo.verification.providerName.length > 30
+      ? backupInfo.verification.providerName.substring(0, 30) + '...'
+      : backupInfo.verification.providerName
 
   modalStore.showConfirm({
     title: t('management.restoreBackup'),
@@ -266,7 +273,7 @@ function handleRestoreBackup(backupInfo: NavdataBackupInfo) {
         modalStore.showError(String(e))
       }
     },
-    onCancel: () => {}
+    onCancel: () => {},
   })
 }
 
@@ -275,28 +282,31 @@ const isLoading = computed(() => {
   if (suppressLoading.value) return false
   return managementStore.isLoading
 })
-
 </script>
 
 <template>
   <div class="management-view h-full flex flex-col p-4 overflow-hidden">
     <!-- Tab Bar -->
-    <div class="mb-3 flex-shrink-0 relative flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg">
+    <div
+      class="mb-3 flex-shrink-0 relative flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg"
+    >
       <!-- Sliding indicator background -->
       <div
         class="tab-indicator absolute top-1 bottom-1 rounded-md bg-white dark:bg-gray-700 shadow-sm transition-all duration-300 ease-out"
         :style="{
           width: `calc((100% - 0.5rem - ${(availableTabs.length - 1) * 0.25}rem) / ${availableTabs.length})`,
-          left: `calc(0.25rem + ${activeTabIndex} * (100% - 0.5rem) / ${availableTabs.length})`
+          left: `calc(0.25rem + ${activeTabIndex} * (100% - 0.5rem) / ${availableTabs.length})`,
         }"
       />
       <button
         v-for="tab in availableTabs"
         :key="tab"
         class="relative z-10 flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors duration-200"
-        :class="activeTab === tab
-          ? 'text-blue-600 dark:text-blue-400'
-          : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'"
+        :class="
+          activeTab === tab
+            ? 'text-blue-600 dark:text-blue-400'
+            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+        "
         @click="activeTab = tab"
       >
         <Transition name="text-fade" mode="out-in">
@@ -320,8 +330,18 @@ const isLoading = computed(() => {
             :placeholder="t('management.searchPlaceholder')"
             class="w-full px-3 py-1.5 pl-9 pr-8 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          <svg
+            class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
           </svg>
 
           <!-- Clear button -->
@@ -331,8 +351,18 @@ const isLoading = computed(() => {
             title="Clear search"
             @click="searchQuery = ''"
           >
-            <svg class="w-3 h-3 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            <svg
+              class="w-3 h-3 text-gray-600 dark:text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -344,11 +374,33 @@ const isLoading = computed(() => {
           class="px-3 py-1.5 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
           @click="handleCheckUpdates"
         >
-          <svg v-if="!managementStore.isCheckingUpdates" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+          <svg
+            v-if="!managementStore.isCheckingUpdates"
+            class="w-3.5 h-3.5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            ></path>
           </svg>
-          <svg v-else class="w-3.5 h-3.5 animate-spin [animation-direction:reverse]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+          <svg
+            v-else
+            class="w-3.5 h-3.5 animate-spin [animation-direction:reverse]"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            ></path>
           </svg>
           <Transition name="text-fade" mode="out-in">
             <span :key="locale">{{ t('management.checkUpdates') }}</span>
@@ -357,102 +409,173 @@ const isLoading = computed(() => {
       </div>
 
       <!-- Statistics bar -->
-      <div class="flex items-center gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700 mb-3 text-sm">
+      <div
+        class="flex items-center gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700 mb-3 text-sm"
+      >
         <div class="flex items-center gap-2">
           <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('management.total') }}:</span>
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('management.total') }}:</span
+            >
           </Transition>
           <span class="font-semibold text-gray-900 dark:text-gray-100">
-            {{ activeTab === 'aircraft' ? managementStore.aircraftTotalCount :
-              activeTab === 'plugin' ? managementStore.pluginsTotalCount :
-              managementStore.navdataTotalCount }}
+            {{
+              activeTab === 'aircraft'
+                ? managementStore.aircraftTotalCount
+                : activeTab === 'plugin'
+                  ? managementStore.pluginsTotalCount
+                  : managementStore.navdataTotalCount
+            }}
           </span>
         </div>
         <div v-if="activeTab !== 'navdata'" class="flex items-center gap-2">
           <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('management.enabled') }}:</span>
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('management.enabled') }}:</span
+            >
           </Transition>
           <span class="font-semibold text-green-600 dark:text-green-400">
-            {{ activeTab === 'aircraft' ? managementStore.aircraftEnabledCount :
-              managementStore.pluginsEnabledCount }}
+            {{
+              activeTab === 'aircraft'
+                ? managementStore.aircraftEnabledCount
+                : managementStore.pluginsEnabledCount
+            }}
           </span>
         </div>
         <!-- Update available count for aircraft -->
-        <div v-if="activeTab === 'aircraft' && managementStore.aircraftUpdateCount > 0" class="flex items-center gap-2">
+        <div
+          v-if="activeTab === 'aircraft' && managementStore.aircraftUpdateCount > 0"
+          class="flex items-center gap-2"
+        >
           <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('management.hasUpdate') }}:</span>
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('management.hasUpdate') }}:</span
+            >
           </Transition>
           <span class="font-semibold text-emerald-600 dark:text-emerald-400">
             {{ managementStore.aircraftUpdateCount }}
           </span>
           <button
             class="ml-1 px-2 py-0.5 rounded text-xs transition-colors"
-            :class="showOnlyUpdates
-              ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-              : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50'"
+            :class="
+              showOnlyUpdates
+                ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50'
+            "
             :title="t('management.filterUpdatesOnly')"
             @click="showOnlyUpdates = !showOnlyUpdates"
           >
             <Transition name="text-fade" mode="out-in">
-              <span :key="locale">{{ showOnlyUpdates ? t('management.showAll') : t('management.filterUpdatesOnly') }}</span>
+              <span :key="locale">{{
+                showOnlyUpdates ? t('management.showAll') : t('management.filterUpdatesOnly')
+              }}</span>
             </Transition>
           </button>
         </div>
         <!-- Update available count for plugins -->
-        <div v-if="activeTab === 'plugin' && managementStore.pluginsUpdateCount > 0" class="flex items-center gap-2">
+        <div
+          v-if="activeTab === 'plugin' && managementStore.pluginsUpdateCount > 0"
+          class="flex items-center gap-2"
+        >
           <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('management.hasUpdate') }}:</span>
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('management.hasUpdate') }}:</span
+            >
           </Transition>
           <span class="font-semibold text-emerald-600 dark:text-emerald-400">
             {{ managementStore.pluginsUpdateCount }}
           </span>
           <button
             class="ml-1 px-2 py-0.5 rounded text-xs transition-colors"
-            :class="showOnlyUpdates
-              ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-              : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50'"
+            :class="
+              showOnlyUpdates
+                ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50'
+            "
             :title="t('management.filterUpdatesOnly')"
             @click="showOnlyUpdates = !showOnlyUpdates"
           >
             <Transition name="text-fade" mode="out-in">
-              <span :key="locale">{{ showOnlyUpdates ? t('management.showAll') : t('management.filterUpdatesOnly') }}</span>
+              <span :key="locale">{{
+                showOnlyUpdates ? t('management.showAll') : t('management.filterUpdatesOnly')
+              }}</span>
             </Transition>
           </button>
         </div>
         <!-- Checking updates indicator -->
-        <div v-if="(activeTab === 'aircraft' || activeTab === 'plugin') && managementStore.isCheckingUpdates" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+        <div
+          v-if="
+            (activeTab === 'aircraft' || activeTab === 'plugin') &&
+            managementStore.isCheckingUpdates
+          "
+          class="flex items-center gap-2 text-gray-500 dark:text-gray-400"
+        >
           <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
           </svg>
           <span class="text-xs">{{ t('management.checkingUpdates') }}</span>
         </div>
         <!-- Outdated count for navdata -->
-        <div v-if="activeTab === 'navdata' && managementStore.navdataOutdatedCount > 0" class="flex items-center gap-2">
+        <div
+          v-if="activeTab === 'navdata' && managementStore.navdataOutdatedCount > 0"
+          class="flex items-center gap-2"
+        >
           <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('management.outdated') }}:</span>
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('management.outdated') }}:</span
+            >
           </Transition>
           <span class="font-semibold text-red-600 dark:text-red-400">
             {{ managementStore.navdataOutdatedCount }}
           </span>
           <button
             class="ml-1 px-2 py-0.5 rounded text-xs transition-colors"
-            :class="showOnlyOutdated
-              ? 'bg-red-500 text-white hover:bg-red-600'
-              : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50'"
+            :class="
+              showOnlyOutdated
+                ? 'bg-red-500 text-white hover:bg-red-600'
+                : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50'
+            "
             :title="t('management.filterOutdatedOnly')"
             @click="showOnlyOutdated = !showOnlyOutdated"
           >
             <Transition name="text-fade" mode="out-in">
-              <span :key="locale">{{ showOnlyOutdated ? t('management.showAll') : t('management.filterOutdatedOnly') }}</span>
+              <span :key="locale">{{
+                showOnlyOutdated ? t('management.showAll') : t('management.filterOutdatedOnly')
+              }}</span>
             </Transition>
           </button>
         </div>
         <!-- Restoring backup indicator -->
-        <div v-if="activeTab === 'navdata' && managementStore.isRestoringBackup" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+        <div
+          v-if="activeTab === 'navdata' && managementStore.isRestoringBackup"
+          class="flex items-center gap-2 text-gray-500 dark:text-gray-400"
+        >
           <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
           </svg>
           <span class="text-xs">{{ t('management.restoringBackup') }}</span>
         </div>
@@ -463,11 +586,23 @@ const isLoading = computed(() => {
         <!-- No X-Plane path set -->
         <div v-if="!appStore.xplanePath" class="flex items-center justify-center h-full">
           <div class="text-center">
-            <svg class="w-16 h-16 mx-auto text-gray-400 dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <svg
+              class="w-16 h-16 mx-auto text-gray-400 dark:text-gray-600 mb-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
             </svg>
             <Transition name="text-fade" mode="out-in">
-              <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('settings.sceneryAutoSortNeedPath') }}</p>
+              <p :key="locale" class="text-gray-600 dark:text-gray-400">
+                {{ t('settings.sceneryAutoSortNeedPath') }}
+              </p>
             </Transition>
           </div>
         </div>
@@ -485,7 +620,9 @@ const isLoading = computed(() => {
               <div class="space-y-1.5 px-1">
                 <div v-if="filteredAircraft.length === 0" class="text-center py-12">
                   <Transition name="text-fade" mode="out-in">
-                    <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('management.noItems') }}</p>
+                    <p :key="locale" class="text-gray-600 dark:text-gray-400">
+                      {{ t('management.noItems') }}
+                    </p>
                   </Transition>
                 </div>
                 <ManagementEntryCard
@@ -507,7 +644,9 @@ const isLoading = computed(() => {
               <div class="space-y-1.5 px-1">
                 <div v-if="filteredPlugins.length === 0" class="text-center py-12">
                   <Transition name="text-fade" mode="out-in">
-                    <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('management.noItems') }}</p>
+                    <p :key="locale" class="text-gray-600 dark:text-gray-400">
+                      {{ t('management.noItems') }}
+                    </p>
                   </Transition>
                 </div>
                 <ManagementEntryCard
@@ -529,7 +668,9 @@ const isLoading = computed(() => {
               <div class="space-y-1.5 px-1">
                 <div v-if="filteredNavdata.length === 0" class="text-center py-12">
                   <Transition name="text-fade" mode="out-in">
-                    <p :key="locale" class="text-gray-600 dark:text-gray-400">{{ t('management.noItems') }}</p>
+                    <p :key="locale" class="text-gray-600 dark:text-gray-400">
+                      {{ t('management.noItems') }}
+                    </p>
                   </Transition>
                 </div>
                 <ManagementEntryCard

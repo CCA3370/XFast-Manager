@@ -1,28 +1,67 @@
 <template>
-  <div class="absolute inset-0 z-20 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md rounded-2xl flex flex-col p-4 transition-colors duration-300 overflow-hidden">
+  <div
+    class="absolute inset-0 z-20 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md rounded-2xl flex flex-col p-4 transition-colors duration-300 overflow-hidden"
+  >
     <!-- Header: Title + Total Progress -->
     <div class="flex-shrink-0 space-y-3 mb-4">
       <div class="flex items-center justify-between">
         <h3 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
           <!-- Installing spinner -->
-          <svg v-if="!isComplete" class="w-5 h-5 text-emerald-500 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          <svg
+            v-if="!isComplete"
+            class="w-5 h-5 text-emerald-500 animate-spin"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
           </svg>
           <!-- Completion icon -->
-          <div v-else-if="completionStatus === 'success'" class="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
+          <div
+            v-else-if="completionStatus === 'success'"
+            class="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center"
+          >
             <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="3"
+                d="M5 13l4 4L19 7"
+              ></path>
             </svg>
           </div>
-          <div v-else-if="completionStatus === 'partial'" class="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center">
+          <div
+            v-else-if="completionStatus === 'partial'"
+            class="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center"
+          >
             <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 9v2m0 4h.01"></path>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="3"
+                d="M12 9v2m0 4h.01"
+              ></path>
             </svg>
           </div>
           <div v-else class="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
             <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="3"
+                d="M6 18L18 6M6 6l12 12"
+              ></path>
             </svg>
           </div>
           <AnimatedText>{{ headerTitle }}</AnimatedText>
@@ -41,10 +80,20 @@
         <!-- Animated switch between percentage and completion count -->
         <div class="absolute right-0 -top-6 h-4 overflow-hidden">
           <transition name="slide-up" mode="out-in">
-            <span v-if="!isComplete" key="percentage" class="block text-xs font-medium tabular-nums" :class="getProgressTextClass()">
+            <span
+              v-if="!isComplete"
+              key="percentage"
+              class="block text-xs font-medium tabular-nums"
+              :class="getProgressTextClass()"
+            >
               {{ displayPercentage }}%
             </span>
-            <span v-else key="completed" class="block text-xs font-medium tabular-nums" :class="getCompletionCountClass()">
+            <span
+              v-else
+              key="completed"
+              class="block text-xs font-medium tabular-nums"
+              :class="getCompletionCountClass()"
+            >
               {{ completedCount }}/{{ tasks.length }} {{ $t('home.completed') || 'completed' }}
             </span>
           </transition>
@@ -58,7 +107,11 @@
         v-for="(task, index) in tasks"
         :key="task.id"
         class="task-item rounded-lg transition-all duration-300"
-        :class="[sizeConfig.padding, getTaskItemClass(index), { 'cursor-pointer': isTaskClickable(index) }]"
+        :class="[
+          sizeConfig.padding,
+          getTaskItemClass(index),
+          { 'cursor-pointer': isTaskClickable(index) },
+        ]"
         @click="handleTaskClick(index)"
       >
         <div class="flex items-center gap-2.5">
@@ -68,41 +121,121 @@
             :class="[sizeConfig.iconSize, getIconBgClass(task.type)]"
           >
             <!-- Aircraft - Plane icon from Lucide -->
-            <svg v-if="task.type === AddonType.Aircraft" class="text-white" :class="sizeConfig.svgSize" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" />
+            <svg
+              v-if="task.type === AddonType.Aircraft"
+              class="text-white"
+              :class="sizeConfig.svgSize"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"
+              />
             </svg>
             <!-- Scenery - Globe icon from Lucide -->
-            <svg v-else-if="task.type === AddonType.Scenery" class="text-white" :class="sizeConfig.svgSize" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg
+              v-else-if="task.type === AddonType.Scenery"
+              class="text-white"
+              :class="sizeConfig.svgSize"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
               <circle cx="12" cy="12" r="10" />
               <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
               <path d="M2 12h20" />
             </svg>
             <!-- Scenery Library - Layers icon from Lucide -->
-            <svg v-else-if="task.type === AddonType.SceneryLibrary" class="text-white" :class="sizeConfig.svgSize" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z" />
+            <svg
+              v-else-if="task.type === AddonType.SceneryLibrary"
+              class="text-white"
+              :class="sizeConfig.svgSize"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"
+              />
               <path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12" />
               <path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17" />
             </svg>
             <!-- Plugin - Zap icon from Lucide -->
-            <svg v-else-if="task.type === AddonType.Plugin" class="text-white" :class="sizeConfig.svgSize" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" />
+            <svg
+              v-else-if="task.type === AddonType.Plugin"
+              class="text-white"
+              :class="sizeConfig.svgSize"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"
+              />
             </svg>
             <!-- Navdata - Map icon from Lucide -->
-            <svg v-else-if="task.type === AddonType.Navdata" class="text-white" :class="sizeConfig.svgSize" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z" />
+            <svg
+              v-else-if="task.type === AddonType.Navdata"
+              class="text-white"
+              :class="sizeConfig.svgSize"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"
+              />
               <path d="M15 5.764v15" />
               <path d="M9 3.236v15" />
             </svg>
             <!-- Livery - Palette icon from Lucide -->
-            <svg v-else-if="task.type === AddonType.Livery" class="text-white" :class="sizeConfig.svgSize" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" />
+            <svg
+              v-else-if="task.type === AddonType.Livery"
+              class="text-white"
+              :class="sizeConfig.svgSize"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z"
+              />
               <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
               <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
               <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
               <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
             </svg>
             <!-- Default - Box icon -->
-            <svg v-else class="text-white" :class="sizeConfig.svgSize" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg
+              v-else
+              class="text-white"
+              :class="sizeConfig.svgSize"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
               <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
             </svg>
           </div>
@@ -110,7 +243,10 @@
           <!-- Task Info -->
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-1.5 min-w-0">
-              <span class="font-semibold text-gray-900 dark:text-white truncate leading-tight min-w-0" :class="sizeConfig.nameSize">
+              <span
+                class="font-semibold text-gray-900 dark:text-white truncate leading-tight min-w-0"
+                :class="sizeConfig.nameSize"
+              >
                 {{ task.displayName }}
               </span>
               <!-- Version number (if available) -->
@@ -122,7 +258,10 @@
                 v{{ task.newVersionInfo.version }}
               </span>
               <!-- Click hint for failed tasks -->
-              <span v-if="isTaskFailed(index) && isComplete" class="text-xs text-red-400 dark:text-red-500 flex-shrink-0">
+              <span
+                v-if="isTaskFailed(index) && isComplete"
+                class="text-xs text-red-400 dark:text-red-500 flex-shrink-0"
+              >
                 ({{ $t('completion.viewFailedTasks') || 'View Details' }})
               </span>
             </div>
@@ -158,27 +297,84 @@
           <!-- Status Icon -->
           <div class="flex-shrink-0">
             <!-- Completed: Green Checkmark -->
-            <div v-if="isTaskCompleted(index)" class="rounded-full bg-emerald-500 flex items-center justify-center shadow-sm" :class="sizeConfig.statusIconSize">
-              <svg class="text-white" :class="sizeConfig.statusInnerSize" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+            <div
+              v-if="isTaskCompleted(index)"
+              class="rounded-full bg-emerald-500 flex items-center justify-center shadow-sm"
+              :class="sizeConfig.statusIconSize"
+            >
+              <svg
+                class="text-white"
+                :class="sizeConfig.statusInnerSize"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="3"
+                  d="M5 13l4 4L19 7"
+                ></path>
               </svg>
             </div>
             <!-- Failed: Red X -->
-            <div v-else-if="isTaskFailed(index)" class="rounded-full bg-red-500 flex items-center justify-center shadow-sm" :class="sizeConfig.statusIconSize">
-              <svg class="text-white" :class="sizeConfig.statusInnerSize" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path>
+            <div
+              v-else-if="isTaskFailed(index)"
+              class="rounded-full bg-red-500 flex items-center justify-center shadow-sm"
+              :class="sizeConfig.statusIconSize"
+            >
+              <svg
+                class="text-white"
+                :class="sizeConfig.statusInnerSize"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="3"
+                  d="M6 18L18 6M6 6l12 12"
+                ></path>
               </svg>
             </div>
             <!-- Current: Spinning (only during installation) -->
-            <div v-else-if="!isComplete && index === currentTaskIndex" class="rounded-full bg-blue-500 flex items-center justify-center shadow-sm" :class="sizeConfig.statusIconSize">
-              <svg class="text-white animate-spin" :class="sizeConfig.statusInnerSize" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <div
+              v-else-if="!isComplete && index === currentTaskIndex"
+              class="rounded-full bg-blue-500 flex items-center justify-center shadow-sm"
+              :class="sizeConfig.statusIconSize"
+            >
+              <svg
+                class="text-white animate-spin"
+                :class="sizeConfig.statusInnerSize"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
               </svg>
             </div>
             <!-- Waiting: Empty Circle -->
-            <div v-else class="rounded-full border-2 border-gray-300 dark:border-gray-600 flex items-center justify-center" :class="sizeConfig.statusIconSize">
-              <div class="rounded-full bg-gray-300 dark:bg-gray-600" :class="sizeConfig.waitingDotSize"></div>
+            <div
+              v-else
+              class="rounded-full border-2 border-gray-300 dark:border-gray-600 flex items-center justify-center"
+              :class="sizeConfig.statusIconSize"
+            >
+              <div
+                class="rounded-full bg-gray-300 dark:bg-gray-600"
+                :class="sizeConfig.waitingDotSize"
+              ></div>
             </div>
           </div>
         </div>
@@ -186,7 +382,9 @@
     </div>
 
     <!-- Footer: Action Buttons -->
-    <div class="flex-shrink-0 flex justify-center gap-3 pt-4 border-t border-gray-200 dark:border-gray-700/50 mt-4">
+    <div
+      class="flex-shrink-0 flex justify-center gap-3 pt-4 border-t border-gray-200 dark:border-gray-700/50 mt-4"
+    >
       <template v-if="!isComplete">
         <!-- Skip Button -->
         <button
@@ -194,7 +392,12 @@
           @click="$emit('skip')"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path>
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M13 5l7 7-7 7M5 5l7 7-7 7"
+            ></path>
           </svg>
           <AnimatedText>{{ $t('taskControl.skipTask') }}</AnimatedText>
         </button>
@@ -205,7 +408,12 @@
           @click="$emit('cancel')"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            ></path>
           </svg>
           <AnimatedText>{{ $t('taskControl.cancelAll') }}</AnimatedText>
         </button>
@@ -219,7 +427,12 @@
           @click="$emit('confirm')"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M5 13l4 4L19 7"
+            ></path>
           </svg>
           <AnimatedText>{{ $t('completion.confirm') }}</AnimatedText>
         </button>
@@ -229,23 +442,47 @@
     <!-- Error Detail Modal -->
     <Teleport to="body">
       <transition name="fade">
-        <div v-if="showErrorModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" @click.self="showErrorModal = false">
-          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 animate-scale-in">
+        <div
+          v-if="showErrorModal"
+          class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          @click.self="showErrorModal = false"
+        >
+          <div
+            class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 animate-scale-in"
+          >
             <!-- Header -->
             <div class="flex items-center gap-3 min-w-0">
-              <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-500/20 flex items-center justify-center flex-shrink-0">
-                <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+              <div
+                class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-500/20 flex items-center justify-center flex-shrink-0"
+              >
+                <svg
+                  class="w-5 h-5 text-red-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                  ></path>
                 </svg>
               </div>
               <div class="min-w-0">
-                <h4 class="font-semibold text-gray-900 dark:text-white truncate">{{ errorModalTask?.displayName }}</h4>
-                <p class="text-sm text-gray-500 dark:text-gray-400">{{ $t('home.failed') || 'Failed' }}</p>
+                <h4 class="font-semibold text-gray-900 dark:text-white truncate">
+                  {{ errorModalTask?.displayName }}
+                </h4>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ $t('home.failed') || 'Failed' }}
+                </p>
               </div>
             </div>
 
             <!-- Error Message -->
-            <div class="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg p-3">
+            <div
+              class="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg p-3"
+            >
               <p class="text-sm text-red-700 dark:text-red-300 break-words select-text">
                 {{ errorModalMessage }}
               </p>
@@ -256,14 +493,34 @@
               <!-- Copy Button -->
               <button
                 class="px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
-                :class="copied ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200'"
+                :class="
+                  copied
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
+                    : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200'
+                "
                 @click="copyErrorMessage"
               >
-                <svg v-if="!copied" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                <svg
+                  v-if="!copied"
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  ></path>
                 </svg>
                 <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 13l4 4L19 7"
+                  ></path>
                 </svg>
                 {{ copied ? $t('copy.copied') : $t('copy.copy') }}
               </button>
@@ -338,38 +595,38 @@ const sizeLevel = computed<SizeLevel>(() => {
 const sizeConfig = computed<SizeConfig>(() => {
   const configs: Record<SizeLevel, SizeConfig> = {
     large: {
-      iconSize: 'w-12 h-12',       // 48px
-      svgSize: 'w-7 h-7',          // 28px
-      statusIconSize: 'w-8 h-8',   // 32px
+      iconSize: 'w-12 h-12', // 48px
+      svgSize: 'w-7 h-7', // 28px
+      statusIconSize: 'w-8 h-8', // 32px
       statusInnerSize: 'w-4 h-4',
       padding: 'p-3',
       gap: 'space-y-2',
       nameSize: 'text-sm',
       typeSize: 'text-xs',
-      waitingDotSize: 'w-3 h-3'
+      waitingDotSize: 'w-3 h-3',
     },
     medium: {
-      iconSize: 'w-9 h-9',         // 36px (current)
-      svgSize: 'w-5 h-5',          // 20px
-      statusIconSize: 'w-6 h-6',   // 24px
+      iconSize: 'w-9 h-9', // 36px (current)
+      svgSize: 'w-5 h-5', // 20px
+      statusIconSize: 'w-6 h-6', // 24px
       statusInnerSize: 'w-3.5 h-3.5',
       padding: 'p-2',
       gap: 'space-y-1.5',
       nameSize: 'text-sm',
       typeSize: 'text-xs',
-      waitingDotSize: 'w-2 h-2'
+      waitingDotSize: 'w-2 h-2',
     },
     compact: {
-      iconSize: 'w-7 h-7',         // 28px
-      svgSize: 'w-4 h-4',          // 16px
-      statusIconSize: 'w-5 h-5',   // 20px
+      iconSize: 'w-7 h-7', // 28px
+      svgSize: 'w-4 h-4', // 16px
+      statusIconSize: 'w-5 h-5', // 20px
       statusInnerSize: 'w-3 h-3',
       padding: 'p-1.5',
       gap: 'space-y-1',
       nameSize: 'text-sm',
       typeSize: 'text-xs',
-      waitingDotSize: 'w-1.5 h-1.5'
-    }
+      waitingDotSize: 'w-1.5 h-1.5',
+    },
   }
   return configs[sizeLevel.value]
 })
@@ -413,10 +670,10 @@ const progressBarStyle = computed(() => {
   const percent = parseFloat(displayPercentage.value) || 0.1
   // Scale background size so the gradient spans the full container width
   // When progress is 50%, background-size should be 200% to make gradient appear full width
-  const bgSize = Math.min(10000, 100 / percent * 100)
+  const bgSize = Math.min(10000, (100 / percent) * 100)
   return {
     width: displayPercentage.value + '%',
-    backgroundSize: bgSize + '% 100%'
+    backgroundSize: bgSize + '% 100%',
   }
 })
 
@@ -454,7 +711,7 @@ const completedCount = computed(() => {
 // Get task result from installResult
 function getTaskResult(taskId: string) {
   if (!props.installResult) return null
-  return props.installResult.taskResults.find(r => r.taskId === taskId)
+  return props.installResult.taskResults.find((r) => r.taskId === taskId)
 }
 
 // Check if a task is completed successfully
@@ -501,7 +758,7 @@ function handleTaskClick(index: number) {
 
   errorModalTask.value = task
   errorModalMessage.value = result.errorMessage || t('completion.unknownError')
-  copied.value = false  // Reset copied state for new modal
+  copied.value = false // Reset copied state for new modal
   showErrorModal.value = true
 }
 
@@ -636,7 +893,9 @@ function getTaskTypeLabel(type: AddonType): string {
 }
 
 .progress-bar-glow {
-  box-shadow: 0 0 12px rgba(59, 130, 246, 0.5), 0 0 20px rgba(16, 185, 129, 0.3);
+  box-shadow:
+    0 0 12px rgba(59, 130, 246, 0.5),
+    0 0 20px rgba(16, 185, 129, 0.3);
 }
 
 .tabular-nums {
@@ -671,7 +930,9 @@ function getTaskTypeLabel(type: AddonType): string {
 
 /* Task item hover effect */
 .task-item {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .task-item:not(.opacity-60):hover {

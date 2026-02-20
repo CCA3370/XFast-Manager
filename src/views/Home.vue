@@ -1,9 +1,15 @@
 <template>
-  <div class="home-view h-full flex flex-col p-6 animate-fade-in relative overflow-hidden select-none">
+  <div
+    class="home-view h-full flex flex-col p-6 animate-fade-in relative overflow-hidden select-none"
+  >
     <!-- Background Decor (Dark Mode Only for deep glow) -->
-    <div class="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0 opacity-0 dark:opacity-100 transition-opacity duration-500">
+    <div
+      class="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0 opacity-0 dark:opacity-100 transition-opacity duration-500"
+    >
       <div class="absolute top-1/4 left-1/4 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl"></div>
-      <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl"></div>
+      <div
+        class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl"
+      ></div>
     </div>
 
     <div class="w-full z-10 flex flex-col flex-1 min-h-0 gap-3">
@@ -22,13 +28,27 @@
           class="flex-shrink-0 bg-yellow-50/90 dark:bg-yellow-500/10 backdrop-blur-md border border-yellow-200 dark:border-yellow-500/20 rounded-xl p-3 flex items-center space-x-3 shadow-lg shadow-yellow-500/5 transition-colors duration-300"
         >
           <div class="p-2 bg-yellow-100 dark:bg-yellow-500/20 rounded-lg flex-shrink-0">
-            <svg class="w-5 h-5 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+            <svg
+              class="w-5 h-5 text-yellow-600 dark:text-yellow-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+              ></path>
             </svg>
           </div>
           <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium text-yellow-800 dark:text-yellow-100 truncate"><AnimatedText>{{ $t('home.setPathFirst') }}</AnimatedText></p>
-            <p class="text-xs text-yellow-700 dark:text-yellow-200/70 truncate"><AnimatedText>{{ $t('home.pathNotSetDesc') }}</AnimatedText></p>
+            <p class="text-sm font-medium text-yellow-800 dark:text-yellow-100 truncate">
+              <AnimatedText>{{ $t('home.setPathFirst') }}</AnimatedText>
+            </p>
+            <p class="text-xs text-yellow-700 dark:text-yellow-200/70 truncate">
+              <AnimatedText>{{ $t('home.pathNotSetDesc') }}</AnimatedText>
+            </p>
           </div>
           <router-link
             to="/settings"
@@ -36,7 +56,12 @@
           >
             <AnimatedText>{{ $t('home.goToSettings') }}</AnimatedText>
             <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 5l7 7-7 7"
+              ></path>
             </svg>
           </router-link>
         </div>
@@ -48,16 +73,25 @@
         :class="{
           'drag-over ring-4 ring-4-blue-500/20 border-blue-500 scale-[1.02]': isDragging,
           'animate-pulse border-blue-400': store.isAnalyzing,
-          'debug-drop': debugDropFlash
+          'debug-drop': debugDropFlash,
         }"
       >
         <!-- Hover Gradient -->
-        <div class="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-purple-50/50 dark:from-blue-600/5 dark:to-purple-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+        <div
+          class="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-purple-50/50 dark:from-blue-600/5 dark:to-purple-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
+        ></div>
 
-        <div v-if="!store.isAnalyzing && !store.isInstalling && !store.showCompletion" class="relative z-10 flex flex-col items-center justify-center space-y-4">
+        <div
+          v-if="!store.isAnalyzing && !store.isInstalling && !store.showCompletion"
+          class="relative z-10 flex flex-col items-center justify-center space-y-4"
+        >
           <!-- Icon -->
-          <div class="w-16 h-16 rounded-full bg-blue-50 dark:bg-gray-700/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-500 relative">
-            <div class="absolute inset-0 bg-blue-500/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+          <div
+            class="w-16 h-16 rounded-full bg-blue-50 dark:bg-gray-700/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-500 relative"
+          >
+            <div
+              class="absolute inset-0 bg-blue-500/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+            ></div>
             <svg
               class="w-8 h-8 text-gray-400 dark:text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors duration-300"
               :class="{ 'text-blue-500 dark:text-blue-400 animate-bounce': isDragging }"
@@ -65,13 +99,20 @@
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+              ></path>
             </svg>
           </div>
 
           <!-- Text -->
           <div class="space-y-1 text-center">
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-white tracking-tight group-hover:text-blue-600 dark:group-hover:text-blue-100 transition-colors">
+            <h2
+              class="text-2xl font-bold text-gray-900 dark:text-white tracking-tight group-hover:text-blue-600 dark:group-hover:text-blue-100 transition-colors"
+            >
               <AnimatedText>{{ $t('home.dropFilesHere') }}</AnimatedText>
             </h2>
             <p class="text-gray-500 dark:text-gray-400 max-w-md mx-auto text-sm">
@@ -81,23 +122,65 @@
 
           <!-- Features Badges -->
           <div class="flex flex-wrap justify-center gap-2 pt-2">
-            <span class="px-2.5 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium flex items-center space-x-1.5 shadow-sm dark:shadow-none">
-              <svg class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            <span
+              class="px-2.5 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium flex items-center space-x-1.5 shadow-sm dark:shadow-none"
+            >
+              <svg
+                class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                ></path>
               </svg>
-              <span><AnimatedText>{{ $t('home.autoDetect') }}</AnimatedText></span>
+              <span
+                ><AnimatedText>{{ $t('home.autoDetect') }}</AnimatedText></span
+              >
             </span>
-            <span class="px-2.5 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium flex items-center space-x-1.5 shadow-sm dark:shadow-none">
-              <svg class="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+            <span
+              class="px-2.5 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium flex items-center space-x-1.5 shadow-sm dark:shadow-none"
+            >
+              <svg
+                class="w-3.5 h-3.5 text-purple-500 dark:text-purple-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                ></path>
               </svg>
-              <span><AnimatedText>{{ $t('home.fastInstall') }}</AnimatedText></span>
+              <span
+                ><AnimatedText>{{ $t('home.fastInstall') }}</AnimatedText></span
+              >
             </span>
-            <span class="px-2.5 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium flex items-center space-x-1.5 shadow-sm dark:shadow-none">
-              <svg class="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+            <span
+              class="px-2.5 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium flex items-center space-x-1.5 shadow-sm dark:shadow-none"
+            >
+              <svg
+                class="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                ></path>
               </svg>
-              <span><AnimatedText>{{ $t('home.batchProcess') }}</AnimatedText></span>
+              <span
+                ><AnimatedText>{{ $t('home.batchProcess') }}</AnimatedText></span
+              >
             </span>
           </div>
 
@@ -106,27 +189,38 @@
             v-if="store.xplanePath"
             :disabled="isLaunchingXPlane || isXPlaneRunning"
             :title="isXPlaneRunning ? $t('home.xplaneAlreadyRunning') : ''"
-            class="mt-4 px-4 py-2 bg-white/70 dark:bg-gray-700/50
-                     hover:bg-blue-50 dark:hover:bg-blue-900/30
-                     text-gray-700 dark:text-gray-200
-                     hover:text-blue-600 dark:hover:text-blue-400
-                     font-medium rounded-xl
-                     transition-all duration-300 hover:scale-105
-                     flex items-center gap-2
-                     border-2 border-gray-300 dark:border-gray-500/50
-                     hover:border-blue-400 dark:hover:border-blue-500/70
-                     shadow-sm hover:shadow-md
-                     disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
+            class="mt-4 px-4 py-2 bg-white/70 dark:bg-gray-700/50 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium rounded-xl transition-all duration-300 hover:scale-105 flex items-center gap-2 border-2 border-gray-300 dark:border-gray-500/50 hover:border-blue-400 dark:hover:border-blue-500/70 shadow-sm hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
             @click.stop="handleLaunchXPlane"
           >
             <!-- Loading spinner -->
-            <svg v-if="isLaunchingXPlane" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <svg
+              v-if="isLaunchingXPlane"
+              class="w-4 h-4 animate-spin"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
             </svg>
             <!-- Play icon -->
             <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3l14 9-14 9V3z"></path>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 3l14 9-14 9V3z"
+              ></path>
             </svg>
             <span>{{ isXPlaneRunning ? $t('home.xplaneRunning') : $t('home.launchXPlane') }}</span>
           </button>
@@ -155,7 +249,11 @@
         </transition>
       </div>
 
-      <ConfirmationModal v-if="showConfirmation" @close="showConfirmation = false" @confirm="handleInstall" />
+      <ConfirmationModal
+        v-if="showConfirmation"
+        @close="showConfirmation = false"
+        @confirm="handleInstall"
+      />
       <PasswordModal
         v-if="showPasswordModal"
         :archive-paths="passwordRequiredPaths"
@@ -171,12 +269,26 @@
           class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
           @click.self="cancelLaunchDialog"
         >
-          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-bounce-in">
+          <div
+            class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-bounce-in"
+          >
             <!-- Header -->
-            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
+            <div
+              class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3"
+            >
               <div class="p-2 bg-amber-100 dark:bg-amber-500/20 rounded-lg">
-                <svg class="w-5 h-5 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                <svg
+                  class="w-5 h-5 text-amber-600 dark:text-amber-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                  ></path>
                 </svg>
               </div>
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -192,7 +304,9 @@
             </div>
 
             <!-- Actions -->
-            <div class="px-6 py-4 bg-gray-50 dark:bg-gray-800/50 flex flex-col sm:flex-row gap-3 sm:justify-end">
+            <div
+              class="px-6 py-4 bg-gray-50 dark:bg-gray-800/50 flex flex-col sm:flex-row gap-3 sm:justify-end"
+            >
               <button
                 :disabled="isLaunchingXPlane"
                 class="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -205,9 +319,25 @@
                 class="px-4 py-2 text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-500/20 hover:bg-blue-200 dark:hover:bg-blue-500/30 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 @click="launchXPlane"
               >
-                <svg v-if="isLaunchingXPlane" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg
+                  v-if="isLaunchingXPlane"
+                  class="w-4 h-4 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"
+                  ></circle>
+                  <path
+                    class="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
                 </svg>
                 {{ $t('home.launchDirectly') }}
               </button>
@@ -216,9 +346,25 @@
                 class="px-4 py-2 text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg font-medium transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 @click="applyAndLaunch"
               >
-                <svg v-if="isLaunchingXPlane" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg
+                  v-if="isLaunchingXPlane"
+                  class="w-4 h-4 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"
+                  ></circle>
+                  <path
+                    class="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
                 </svg>
                 {{ $t('home.applyAndLaunch') }}
               </button>
@@ -312,34 +458,37 @@ function setTrackedTimeout(callback: () => void, delay: number): ReturnType<type
 }
 
 // Watch for pending CLI args changes
-watch(() => store.pendingCliArgs, async (args) => {
-  if (args && args.length > 0) {
-    // Use store mutex flag for TOCTOU-safe concurrency control
-    // This prevents race conditions when multiple watch events fire quickly
-    if (store.isAnalyzeInProgress || store.isAnalyzing || store.isInstalling) {
-      logDebug('Analysis in progress, re-queueing args for later', 'app')
-      store.addCliArgsToBatch(args)
+watch(
+  () => store.pendingCliArgs,
+  async (args) => {
+    if (args && args.length > 0) {
+      // Use store mutex flag for TOCTOU-safe concurrency control
+      // This prevents race conditions when multiple watch events fire quickly
+      if (store.isAnalyzeInProgress || store.isAnalyzing || store.isInstalling) {
+        logDebug('Analysis in progress, re-queueing args for later', 'app')
+        store.addCliArgsToBatch(args)
+        store.clearPendingCliArgs()
+        return
+      }
+
+      // Set mutex immediately before any async operation
+      store.isAnalyzeInProgress = true
+
+      logDebug(`Processing pending CLI args from watcher: ${args.join(', ')}`, 'app')
+      const argsCopy = [...args]
       store.clearPendingCliArgs()
-      return
+      try {
+        await analyzeFiles(argsCopy)
+      } catch (error) {
+        logError(`Failed to process CLI args: ${error}`, 'app')
+        modal.showError(getErrorMessage(error))
+      } finally {
+        // Always release mutex
+        store.isAnalyzeInProgress = false
+      }
     }
-
-    // Set mutex immediately before any async operation
-    store.isAnalyzeInProgress = true
-
-    logDebug(`Processing pending CLI args from watcher: ${args.join(', ')}`, 'app')
-    const argsCopy = [...args]
-    store.clearPendingCliArgs()
-    try {
-      await analyzeFiles(argsCopy)
-    } catch (error) {
-      logError(`Failed to process CLI args: ${error}`, 'app')
-      modal.showError(getErrorMessage(error))
-    } finally {
-      // Always release mutex
-      store.isAnalyzeInProgress = false
-    }
-  }
-})
+  },
+)
 
 // Global listeners for drag/drop visual feedback
 function onWindowDragOver(e: DragEvent) {
@@ -465,7 +614,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('drop', onWindowDrop)
 
   // Cleanup all tracked timeouts to prevent memory leaks
-  activeTimeoutIds.forEach(id => clearTimeout(id))
+  activeTimeoutIds.forEach((id) => clearTimeout(id))
   activeTimeoutIds.clear()
 
   // Cleanup Tauri listeners
@@ -512,15 +661,21 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
       paths,
       xplanePath: store.xplanePath,
       passwords: passwords || null,
-      verificationPreferences: store.verificationPreferences
+      verificationPreferences: store.verificationPreferences,
     })
 
-    logDebug(`Analysis result: ${result.tasks.length} tasks, ${result.errors.length} errors`, 'analysis')
+    logDebug(
+      `Analysis result: ${result.tasks.length} tasks, ${result.errors.length} errors`,
+      'analysis',
+    )
 
     // Check if any archives require passwords
     if (result.passwordRequired && result.passwordRequired.length > 0) {
       // Log password requirement
-      logOperation(t('log.passwordRequired'), t('log.fileCount', { count: result.passwordRequired.length }))
+      logOperation(
+        t('log.passwordRequired'),
+        t('log.fileCount', { count: result.passwordRequired.length }),
+      )
       logDebug(`Password required for: ${result.passwordRequired.join(', ')}`, 'analysis')
       // Store the original paths for re-analysis after password input
       pendingAnalysisPaths.value = paths
@@ -537,17 +692,23 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
     if (result.errors.length > 0) {
       logDebug(`Errors during analysis: ${result.errors.join('; ')}`, 'analysis')
       // Check if errors indicate wrong password
-      const passwordErrors = result.errors.filter(err =>
-        err.includes('Wrong password') || err.toLowerCase().includes('wrong password')
+      const passwordErrors = result.errors.filter(
+        (err) => err.includes('Wrong password') || err.toLowerCase().includes('wrong password'),
       )
 
-      logDebug(`Password errors found: ${passwordErrors.length}, passwords param: ${passwords ? 'provided' : 'null'}`, 'analysis')
+      logDebug(
+        `Password errors found: ${passwordErrors.length}, passwords param: ${passwords ? 'provided' : 'null'}`,
+        'analysis',
+      )
 
       if (passwordErrors.length > 0 && passwords && Object.keys(passwords).length > 0) {
         // Increment retry counter BEFORE checking limit to prevent race condition
         passwordRetryCount.value++
 
-        logDebug(`Password retry count: ${passwordRetryCount.value}/${MAX_PASSWORD_RETRIES}`, 'analysis')
+        logDebug(
+          `Password retry count: ${passwordRetryCount.value}/${MAX_PASSWORD_RETRIES}`,
+          'analysis',
+        )
 
         // Check if we've exceeded retry limit (use >= to prevent off-by-one error)
         if (passwordRetryCount.value >= MAX_PASSWORD_RETRIES) {
@@ -578,14 +739,17 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
 
     if (result.tasks.length > 0) {
       // Filter tasks based on preferences
-      const allowedTasks = result.tasks.filter(task => {
+      const allowedTasks = result.tasks.filter((task) => {
         // LuaScript follows Plugin preference
         const effectiveType = task.type === AddonType.LuaScript ? AddonType.Plugin : task.type
         return store.installPreferences[effectiveType]
       })
       const ignoredCount = result.tasks.length - allowedTasks.length
 
-      logDebug(`Filtered tasks: ${allowedTasks.length} allowed, ${ignoredCount} ignored`, 'analysis')
+      logDebug(
+        `Filtered tasks: ${allowedTasks.length} allowed, ${ignoredCount} ignored`,
+        'analysis',
+      )
 
       if (ignoredCount > 0) {
         toast.info(t('home.ignoredTasks', { count: ignoredCount }))
@@ -610,7 +774,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
         // Non-blocking log call
         logBasic(t('log.analysisCompleted'), 'analysis')
         logOperation(t('log.analysisCompleted'), t('log.taskCount', { count: allowedTasks.length }))
-        logDebug(`Task types: ${allowedTasks.map(t => t.type).join(', ')}`, 'analysis')
+        logDebug(`Task types: ${allowedTasks.map((t) => t.type).join(', ')}`, 'analysis')
       } else if (ignoredCount > 0) {
         toast.warning(t('home.allIgnored'))
       } else {
@@ -634,7 +798,7 @@ async function handlePasswordSubmit(passwords: Record<string, string>) {
   // Rate limiting: check if attempts are too frequent
   const now = Date.now()
   const recentAttempts = passwordAttemptTimestamps.value.filter(
-    t => now - t < PASSWORD_RATE_LIMIT_WINDOW_MS // Within rate limit window
+    (t) => now - t < PASSWORD_RATE_LIMIT_WINDOW_MS, // Within rate limit window
   )
 
   if (recentAttempts.length > 0) {
@@ -651,12 +815,15 @@ async function handlePasswordSubmit(passwords: Record<string, string>) {
   passwordAttemptTimestamps.value.push(now)
   // Keep only recent attempts (last 10 seconds)
   passwordAttemptTimestamps.value = passwordAttemptTimestamps.value.filter(
-    t => now - t < PASSWORD_RATE_LIMIT_WINDOW_MS
+    (t) => now - t < PASSWORD_RATE_LIMIT_WINDOW_MS,
   )
 
   showPasswordModal.value = false
-  passwordErrorMessage.value = ''  // Clear error message
-  logOperation(t('log.passwordEntered'), t('log.fileCount', { count: Object.keys(passwords).length }))
+  passwordErrorMessage.value = '' // Clear error message
+  logOperation(
+    t('log.passwordEntered'),
+    t('log.fileCount', { count: Object.keys(passwords).length }),
+  )
   // Merge new passwords with previously collected ones
   const allPasswords = { ...collectedPasswords.value, ...passwords }
 
@@ -672,7 +839,7 @@ async function handlePasswordCancel() {
 
   // After cancel, continue analyzing files that don't require password
   const nonPasswordPaths = pendingAnalysisPaths.value.filter(
-    p => !passwordRequiredPaths.value.includes(p)
+    (p) => !passwordRequiredPaths.value.includes(p),
   )
 
   resetPasswordState()
@@ -710,7 +877,7 @@ async function handleInstall() {
   showConfirmation.value = false
 
   // Filter only enabled tasks
-  const enabledTasks = store.currentTasks.filter(task => store.getTaskEnabled(task.id))
+  const enabledTasks = store.currentTasks.filter((task) => store.getTaskEnabled(task.id))
 
   if (enabledTasks.length === 0) {
     toast.warning(t('home.noTasksEnabled'))
@@ -724,14 +891,17 @@ async function handleInstall() {
   // Non-blocking log call
   logBasic(t('log.installationStarted'), 'installation')
   logOperation(t('log.installationStarted'), t('log.taskCount', { count: enabledTasks.length }))
-  logDebug(`Installing ${enabledTasks.length} tasks: ${enabledTasks.map(t => t.displayName).join(', ')}`, 'installation')
+  logDebug(
+    `Installing ${enabledTasks.length} tasks: ${enabledTasks.map((t) => t.displayName).join(', ')}`,
+    'installation',
+  )
 
   try {
     // Prepare enabled tasks with overwrite and backup settings
     const allTasksWithSettings = store.getTasksWithOverwrite()
-    const tasksWithOverwrite = allTasksWithSettings.filter(task => store.getTaskEnabled(task.id))
+    const tasksWithOverwrite = allTasksWithSettings.filter((task) => store.getTaskEnabled(task.id))
 
-    const overwriteCount = tasksWithOverwrite.filter(t => t.shouldOverwrite).length
+    const overwriteCount = tasksWithOverwrite.filter((t) => t.shouldOverwrite).length
     if (overwriteCount > 0) {
       logDebug(`${overwriteCount} tasks will overwrite existing files`, 'installation')
     }
@@ -741,7 +911,7 @@ async function handleInstall() {
       atomicInstallEnabled: store.atomicInstallEnabled,
       xplanePath: store.xplanePath,
       deleteSourceAfterInstall: store.deleteSourceAfterInstall,
-      autoSortScenery: store.autoSortScenery
+      autoSortScenery: store.autoSortScenery,
     })
 
     // Log results
@@ -751,8 +921,8 @@ async function handleInstall() {
     // Log failed tasks if any
     if (result.failedTasks > 0) {
       result.taskResults
-        .filter(r => !r.success)
-        .forEach(r => {
+        .filter((r) => !r.success)
+        .forEach((r) => {
           logError(`${r.taskName}: ${r.errorMessage}`, 'installation')
         })
     }
@@ -769,7 +939,6 @@ async function handleInstall() {
       store.isInstalling = false
       progressStore.reset()
     }, COMPLETION_ANIMATION_DELAY_MS)
-
   } catch (error) {
     // Non-blocking log call (also prints to console.error internally)
     logError(`${t('log.installationFailed')}: ${error}`, 'installation')
@@ -787,7 +956,7 @@ async function handleSkipTask() {
     warning: t('taskControl.skipWarningClean'),
     confirmText: t('taskControl.confirmSkip'),
     cancelText: t('common.cancel'),
-    type: 'warning'
+    type: 'warning',
   })
 
   if (confirmed) {
@@ -809,7 +978,7 @@ async function handleCancelInstallation() {
     warning: t('taskControl.cancelWarningClean'),
     confirmText: t('taskControl.confirmCancel'),
     cancelText: t('common.cancel'),
-    type: 'danger'
+    type: 'danger',
   })
 
   if (confirmed) {
@@ -841,7 +1010,7 @@ function showConfirmDialog(options: {
       cancelText: options.cancelText,
       type: options.type,
       onConfirm: () => resolve(true),
-      onCancel: () => resolve(false)
+      onCancel: () => resolve(false),
     })
   })
 }
@@ -870,20 +1039,21 @@ async function launchXPlane() {
 
   try {
     // Parse launch args from store (split by whitespace, filter empty)
-    const args = store.xplaneLaunchArgs
-      ? store.xplaneLaunchArgs.split(/\s+/).filter(Boolean)
-      : []
+    const args = store.xplaneLaunchArgs ? store.xplaneLaunchArgs.split(/\s+/).filter(Boolean) : []
 
     // Race between launch and timeout
-    const launchPromise = invoke('launch_xplane', { xplanePath: store.xplanePath, args: args.length > 0 ? args : null })
+    const launchPromise = invoke('launch_xplane', {
+      xplanePath: store.xplanePath,
+      args: args.length > 0 ? args : null,
+    })
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('timeout')), LAUNCH_TIMEOUT)
+      setTimeout(() => reject(new Error('timeout')), LAUNCH_TIMEOUT),
     )
 
     await Promise.race([launchPromise, timeoutPromise])
 
     // Keep loading state for 5 more seconds after success
-    await new Promise(resolve => setTimeout(resolve, SUCCESS_DELAY))
+    await new Promise((resolve) => setTimeout(resolve, SUCCESS_DELAY))
 
     showLaunchConfirmDialog.value = false
   } catch (error) {
@@ -931,7 +1101,7 @@ function handleCompletionConfirm() {
 /* debug drop visual */
 .debug-drop {
   border-color: #10b981 !important; /* emerald */
-  box-shadow: 0 0 30px rgba(16,185,129,0.15) !important;
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.15) !important;
 }
 
 /* Animations */
@@ -1047,7 +1217,8 @@ function handleCompletionConfirm() {
 
 /* Optimized pulse animation - uses opacity instead of drop-shadow to avoid overflow clipping */
 @keyframes progress-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
