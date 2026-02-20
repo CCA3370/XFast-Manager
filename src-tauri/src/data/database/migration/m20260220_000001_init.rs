@@ -221,6 +221,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_packages_category")
                     .table(SceneryPackages::Table)
                     .col(SceneryPackages::Category)
@@ -231,6 +232,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_packages_sort_order")
                     .table(SceneryPackages::Table)
                     .col(SceneryPackages::SortOrder)
@@ -241,6 +243,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_packages_category_order")
                     .table(SceneryPackages::Table)
                     .col(SceneryPackages::Category)
@@ -252,6 +255,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_packages_enabled")
                     .table(SceneryPackages::Table)
                     .col(SceneryPackages::Enabled)
@@ -262,6 +266,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_packages_continent")
                     .table(SceneryPackages::Table)
                     .col(SceneryPackages::Continent)
@@ -272,6 +277,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_required_libraries_name")
                     .table(RequiredLibraries::Table)
                     .col(RequiredLibraries::LibraryName)
@@ -282,6 +288,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("idx_exported_libraries_name")
                     .table(ExportedLibraries::Table)
                     .col(ExportedLibraries::LibraryName)
@@ -292,6 +299,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("uniq_required_library")
                     .table(RequiredLibraries::Table)
                     .col(RequiredLibraries::PackageId)
@@ -304,6 +312,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("uniq_missing_library")
                     .table(MissingLibraries::Table)
                     .col(MissingLibraries::PackageId)
@@ -316,6 +325,7 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .if_not_exists()
                     .name("uniq_exported_library")
                     .table(ExportedLibraries::Table)
                     .col(ExportedLibraries::PackageId)

@@ -125,9 +125,9 @@ function onEnter(el: Element, done: () => void) {
   container.offsetHeight
 
   // Set transitions
-  container.style.transition = 'opacity 0.15s ease-out'
-  backdrop.style.transition = 'opacity 0.15s ease-out'
-  card.style.transition = 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)'
+  container.style.transition = 'opacity 0.12s ease-out'
+  backdrop.style.transition = 'opacity 0.12s ease-out'
+  card.style.transition = 'all 0.32s cubic-bezier(0.34, 1.56, 0.64, 1)'
 
   requestAnimationFrame(() => {
     container.style.opacity = '1'
@@ -135,10 +135,10 @@ function onEnter(el: Element, done: () => void) {
     setTimeout(() => {
       card.style.opacity = '1'
       card.style.transform = 'scale(1) translateY(0)'
-    }, 50)
+    }, 40)
   })
 
-  setTimeout(done, 450)
+  setTimeout(done, 360)
 }
 
 function onLeave(el: Element, done: () => void) {
@@ -147,9 +147,9 @@ function onLeave(el: Element, done: () => void) {
   const card = container.querySelector('.rounded-2xl') as HTMLElement
   if (!backdrop || !card) { done(); return }
 
-  container.style.transition = 'opacity 0.3s ease-in'
-  backdrop.style.transition = 'opacity 0.3s ease-in'
-  card.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.6, 1)'
+  container.style.transition = 'opacity 0.24s ease-in'
+  backdrop.style.transition = 'opacity 0.24s ease-in'
+  card.style.transition = 'all 0.24s cubic-bezier(0.4, 0, 0.6, 1)'
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -160,14 +160,14 @@ function onLeave(el: Element, done: () => void) {
     })
   })
 
-  setTimeout(done, 350)
+  setTimeout(done, 280)
 }
 </script>
 
 <style scoped>
 .qr-switch-enter-active,
 .qr-switch-leave-active {
-  transition: all 0.2s ease;
+  transition: all 0.16s ease;
 }
 
 .qr-switch-enter-from {

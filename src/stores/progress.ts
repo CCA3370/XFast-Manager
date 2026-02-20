@@ -8,7 +8,7 @@ export const useProgressStore = defineStore('progress', () => {
   let animationFrameId: number | null = null
 
   // Animation parameters for smooth interpolation
-  const LERP_FACTOR = 0.08  // Interpolation factor (smaller = smoother)
+  const LERP_FACTOR = 0.1   // Interpolation factor (slightly faster)
   const MIN_SPEED = 0.1     // Minimum movement speed (prevents stalling)
   const EPSILON = 0.01      // Precision threshold
 

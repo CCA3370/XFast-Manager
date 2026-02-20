@@ -51,6 +51,16 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Slightly faster global motion tuning (~20% faster) */
+.duration-75 { transition-duration: 60ms !important; }
+.duration-100 { transition-duration: 80ms !important; }
+.duration-150 { transition-duration: 120ms !important; }
+.duration-200 { transition-duration: 160ms !important; }
+.duration-300 { transition-duration: 240ms !important; }
+.duration-500 { transition-duration: 400ms !important; }
+.duration-700 { transition-duration: 560ms !important; }
+.duration-1000 { transition-duration: 800ms !important; }
+
 /* Smooth color transition during theme change */
 /* Theme transition: only target structural containers and navbar children.
    Content inside main switches instantly to avoid performance issues on large DOMs. */
@@ -82,7 +92,7 @@ body {
 ::-webkit-scrollbar-thumb {
   background: rgba(156, 163, 175, 0.5); /* Gray-400 equivalent for light mode */
   border-radius: 3px;
-  transition: background 0.2s;
+  transition: background 0.16s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -101,7 +111,7 @@ body {
 /* Transitions */
 .page-enter-active,
 .page-leave-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.24s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .page-enter-from {
@@ -116,7 +126,7 @@ body {
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.3s ease;
+  transition: opacity 0.24s ease;
 }
 
 .fade-enter-from,
@@ -126,7 +136,7 @@ body {
 
 .slide-down-enter-active,
 .slide-down-leave-active {
-  transition: all 0.3s ease-out;
+  transition: all 0.24s ease-out;
   max-height: 200px;
   opacity: 1;
 }
@@ -141,7 +151,7 @@ body {
 
 .slide-up-enter-active,
 .slide-up-leave-active {
-  transition: all 0.3s ease-out;
+  transition: all 0.24s ease-out;
   max-height: 200px;
   opacity: 1;
 }
@@ -166,7 +176,7 @@ body {
 .animate-shimmer {
   background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
   background-size: 200% 100%;
-  animation: shimmer 2s infinite;
+  animation: shimmer 1.6s infinite;
 }
 
 /* User Select Control */

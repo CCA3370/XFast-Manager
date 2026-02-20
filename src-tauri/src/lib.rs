@@ -1253,8 +1253,8 @@ pub fn run() {
 
             // Initialize database connection and run migrations once on startup
             let db = tauri::async_runtime::block_on(async {
-                let conn = database::open_connection_async()?;
-                database::apply_migrations_async(&conn)?;
+                let conn = database::open_connection_async().await?;
+                database::apply_migrations_async(&conn).await?;
                 Ok::<DatabaseConnection, error::ApiError>(conn)
             })
             .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;

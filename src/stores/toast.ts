@@ -11,7 +11,7 @@ export interface Toast {
 // Maximum number of toasts to display at once
 const MAX_TOASTS = 3
 // Toast display duration (matches CSS animation duration) + buffer
-const TOAST_DURATION = 3500
+const TOAST_DURATION = 2900
 
 export const useToastStore = defineStore('toast', () => {
   const toasts = ref<Toast[]>([])

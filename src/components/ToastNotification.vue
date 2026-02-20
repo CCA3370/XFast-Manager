@@ -176,7 +176,7 @@ function removeToast(id: string) {
   border: none;
   cursor: pointer;
   opacity: 0.6;
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
   margin-top: 0.125rem;
 }
 
@@ -191,7 +191,7 @@ function removeToast(id: string) {
   height: 3px;
   width: 100%;
   transform-origin: left;
-  animation: progress-shrink 3s linear forwards;
+  animation: progress-shrink 2.4s linear forwards;
 }
 
 @keyframes progress-shrink {
@@ -425,11 +425,11 @@ function removeToast(id: string) {
 
 /* Animations */
 .toast-enter-active {
-  animation: toast-in 0.35s cubic-bezier(0.21, 1.02, 0.73, 1);
+  animation: toast-in 0.28s cubic-bezier(0.21, 1.02, 0.73, 1);
 }
 
 .toast-leave-active {
-  animation: toast-out 0.25s cubic-bezier(0.06, 0.71, 0.55, 1) forwards;
+  animation: toast-out 0.2s cubic-bezier(0.06, 0.71, 0.55, 1) forwards;
 }
 
 @keyframes toast-in {

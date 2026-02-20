@@ -308,13 +308,13 @@ impl SceneryPacksManager {
 
         // Write sorted entries
         let ini_path = self.ini_path.clone();
-        let entries = entries.clone();
+        let entries_len = entries.len();
         tokio::task::spawn_blocking(move || Self::write_ini_at_path(&ini_path, &entries))
             .await
             .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
 
         logger::log_info(
-            &format!("Sorted {} scenery entries from index", entries.len()),
+            &format!("Sorted {} scenery entries from index", entries_len),
             Some("scenery_packs"),
         );
 

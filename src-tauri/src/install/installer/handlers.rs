@@ -2,7 +2,7 @@ use super::*;
 
 impl Installer {
     /// Install a single task with progress tracking
-    fn install_task_with_progress(
+    pub(super) fn install_task_with_progress(
         &self,
         task: &InstallTask,
         ctx: &ProgressContext,
@@ -1599,7 +1599,7 @@ impl Installer {
 
     /// Cleanup a task by removing its target directory
     /// Used when a task is cancelled or skipped
-    fn cleanup_task(&self, task: &InstallTask) -> Result<()> {
+    pub(super) fn cleanup_task(&self, task: &InstallTask) -> Result<()> {
         let target = Path::new(&task.target_path);
 
         if !target.exists() {
@@ -1702,7 +1702,7 @@ impl Installer {
     /// Delete source file after successful installation
     /// Checks if the source path is a parent directory of the original input path
     /// to avoid deleting directories that contain the detected addon
-    fn delete_source_file(&self, original_input_path: &str, source_path: &str) -> Result<()> {
+    pub(super) fn delete_source_file(&self, original_input_path: &str, source_path: &str) -> Result<()> {
         let original_path = Path::new(original_input_path);
         let source_path_buf = Path::new(source_path);
 

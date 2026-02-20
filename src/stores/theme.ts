@@ -11,7 +11,7 @@ export const useThemeStore = defineStore('theme', () => {
   const isInitialized = ref(false)
 
   const MAX_SYNC_RETRIES = 3
-  const THEME_TRANSITION_DURATION_MS = 500
+  const THEME_TRANSITION_DURATION_MS = 400
   let themeTransitionTimer: number | undefined
   let windowThemeTimer: number | undefined
 

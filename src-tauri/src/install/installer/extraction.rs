@@ -3,7 +3,7 @@ use super::*;
 impl Installer {
     /// Copy a directory recursively with progress tracking
     /// Uses parallel processing for better performance on multi-core systems
-    fn copy_directory_with_progress(
+    pub(super) fn copy_directory_with_progress(
         &self,
         source: &Path,
         target: &Path,
@@ -70,7 +70,7 @@ impl Installer {
     }
 
     /// Extract an archive with progress tracking
-    fn extract_archive_with_progress(
+    pub(super) fn extract_archive_with_progress(
         &self,
         archive: &Path,
         target: &Path,

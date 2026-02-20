@@ -4,7 +4,7 @@ impl Installer {
     /// Verify installation by checking marker files, verifying file hashes,
     /// and optionally verifying file hashes with retry logic
     /// Returns verification statistics if hash verification was performed
-    fn verify_installation(
+    pub(super) fn verify_installation(
         &self,
         task: &InstallTask,
         ctx: &ProgressContext,
