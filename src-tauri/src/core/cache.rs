@@ -1,12 +1,13 @@
 use dashmap::DashMap;
-use once_cell::sync::Lazy;
 use std::path::Path;
+use std::sync::LazyLock;
 use std::time::{Duration, SystemTime};
 
 /// Cached metadata for an archive file
 #[derive(Clone, Debug)]
 pub struct ArchiveMetadata {
     pub uncompressed_size: u64,
+    // Retained for potential future cache inspection / diagnostics
     #[allow(dead_code)]
     pub file_count: usize,
     pub cached_at: SystemTime,
@@ -16,6 +17,7 @@ pub struct ArchiveMetadata {
 #[derive(Clone, Debug)]
 pub struct DirectoryMetadata {
     pub total_size: u64,
+    // Retained for potential future cache inspection / diagnostics
     #[allow(dead_code)]
     pub file_count: usize,
     pub cached_at: SystemTime,
@@ -24,10 +26,10 @@ pub struct DirectoryMetadata {
 
 /// Global cache for archive metadata
 /// Uses DashMap for thread-safe concurrent access without locks
-static ARCHIVE_CACHE: Lazy<DashMap<String, ArchiveMetadata>> = Lazy::new(DashMap::new);
+static ARCHIVE_CACHE: LazyLock<DashMap<String, ArchiveMetadata>> = LazyLock::new(DashMap::new);
 
 /// Global cache for directory size metadata
-static DIRECTORY_CACHE: Lazy<DashMap<String, DirectoryMetadata>> = Lazy::new(DashMap::new);
+static DIRECTORY_CACHE: LazyLock<DashMap<String, DirectoryMetadata>> = LazyLock::new(DashMap::new);
 
 /// Cache TTL (Time To Live) - 5 minutes
 const CACHE_TTL: Duration = Duration::from_secs(300);
@@ -220,6 +222,7 @@ pub fn cache_directory_metadata(path: &Path, total_size: u64, file_count: usize)
 }
 
 /// Clear all caches (useful for testing or manual cache invalidation)
+// Exposed for integration tests and potential future admin commands
 #[allow(dead_code)]
 pub fn clear_all_caches() {
     ARCHIVE_CACHE.clear();

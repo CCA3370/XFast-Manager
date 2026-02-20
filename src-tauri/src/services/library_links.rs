@@ -1,7 +1,6 @@
-use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, SystemTime};
 
 use crate::logger;
@@ -9,8 +8,10 @@ use crate::logger;
 /// Remote JSON schema for library download links
 #[derive(Debug, Deserialize)]
 struct LibraryLinksData {
+    // Retained for schema version compatibility checks (future use)
     #[allow(dead_code)]
     version: u32,
+    // Retained for cache freshness validation (future use)
     #[allow(dead_code)]
     updated: String,
     libraries: HashMap<String, String>,
@@ -23,7 +24,7 @@ struct CachedLinks {
 }
 
 /// Global in-memory cache for library download links
-static CACHE: Lazy<Mutex<Option<CachedLinks>>> = Lazy::new(|| Mutex::new(None));
+static CACHE: LazyLock<Mutex<Option<CachedLinks>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Cache TTL: 24 hours (matching updater pattern)
 const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);

@@ -12,6 +12,7 @@ use crate::models::{
     AircraftInfo, LiveryInfo, LuaScriptInfo, ManagementData, NavdataBackupInfo,
     NavdataBackupVerification, NavdataManagerInfo, PluginInfo,
 };
+use crate::path_utils;
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
 use std::fs;
@@ -55,18 +56,8 @@ fn resolve_management_path(
         return Err(anyhow!("Folder not found: {}", folder_name));
     }
 
-    let canonical_base = base_path
-        .canonicalize()
-        .map_err(|e| anyhow!("Invalid base path: {}", e))?;
-    let canonical_target = target_path
-        .canonicalize()
-        .map_err(|e| anyhow!("Invalid path: {}", e))?;
-
-    if !canonical_target.starts_with(&canonical_base) {
-        return Err(anyhow!("Invalid path"));
-    }
-
-    Ok(canonical_target)
+    path_utils::validate_child_path(&base_path, &target_path)
+        .map_err(|e| anyhow!("Invalid path: {}", e))
 }
 
 /// Scan aircraft in the X-Plane Aircraft folder
@@ -967,16 +958,8 @@ pub fn open_livery_folder(
         return Err(anyhow!("Livery folder not found: {}", livery_folder));
     }
 
-    let canonical_base = aircraft_base
-        .canonicalize()
-        .map_err(|e| anyhow!("Invalid base path: {}", e))?;
-    let canonical_target = livery_path
-        .canonicalize()
+    let canonical_target = path_utils::validate_child_path(&aircraft_base, &livery_path)
         .map_err(|e| anyhow!("Invalid path: {}", e))?;
-
-    if !canonical_target.starts_with(&canonical_base) {
-        return Err(anyhow!("Invalid path"));
-    }
 
     #[cfg(target_os = "windows")]
     {
@@ -1485,16 +1468,8 @@ pub fn get_aircraft_liveries(
     }
 
     // Canonical path check to prevent traversal
-    let canonical_base = aircraft_base
-        .canonicalize()
-        .map_err(|e| anyhow!("Invalid base path: {}", e))?;
-    let canonical_aircraft = aircraft_path
-        .canonicalize()
+    let canonical_aircraft = path_utils::validate_child_path(&aircraft_base, &aircraft_path)
         .map_err(|e| anyhow!("Invalid aircraft path: {}", e))?;
-
-    if !canonical_aircraft.starts_with(&canonical_base) {
-        return Err(anyhow!("Invalid path"));
-    }
 
     let liveries_path = canonical_aircraft.join("liveries");
     if !liveries_path.exists() {
@@ -1582,16 +1557,8 @@ pub fn delete_aircraft_livery(
     }
 
     // Canonical path check to ensure livery is under the liveries directory
-    let canonical_liveries = liveries_path
-        .canonicalize()
-        .map_err(|e| anyhow!("Invalid liveries path: {}", e))?;
-    let canonical_livery = livery_path
-        .canonicalize()
+    let canonical_livery = path_utils::validate_child_path(&liveries_path, &livery_path)
         .map_err(|e| anyhow!("Invalid livery path: {}", e))?;
-
-    if !canonical_livery.starts_with(&canonical_liveries) {
-        return Err(anyhow!("Invalid path"));
-    }
 
     fs::remove_dir_all(&canonical_livery)
         .map_err(|e| anyhow!("Failed to delete livery: {}", e))?;
@@ -1708,16 +1675,8 @@ pub fn toggle_lua_script(xplane_path: &Path, file_name: &str) -> Result<bool> {
     }
 
     // Canonical path check to ensure file is within Scripts dir
-    let canonical_scripts = scripts_path
-        .canonicalize()
-        .map_err(|e| anyhow!("Invalid Scripts path: {}", e))?;
-    let canonical_file = file_path
-        .canonicalize()
+    let canonical_file = path_utils::validate_child_path(&scripts_path, &file_path)
         .map_err(|e| anyhow!("Invalid file path: {}", e))?;
-
-    if !canonical_file.starts_with(&canonical_scripts) {
-        return Err(anyhow!("Invalid path"));
-    }
 
     let ext = file_path
         .extension()
@@ -1781,16 +1740,8 @@ pub fn delete_lua_script(xplane_path: &Path, file_name: &str) -> Result<()> {
     }
 
     // Canonical path check to ensure file is within Scripts dir
-    let canonical_scripts = scripts_path
-        .canonicalize()
-        .map_err(|e| anyhow!("Invalid Scripts path: {}", e))?;
-    let canonical_file = file_path
-        .canonicalize()
+    let canonical_file = path_utils::validate_child_path(&scripts_path, &file_path)
         .map_err(|e| anyhow!("Invalid file path: {}", e))?;
-
-    if !canonical_file.starts_with(&canonical_scripts) {
-        return Err(anyhow!("Invalid path"));
-    }
 
     // Verify it's a script file (.lua or .xfml)
     let ext = file_path

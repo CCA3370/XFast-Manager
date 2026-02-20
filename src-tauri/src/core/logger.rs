@@ -1,9 +1,8 @@
 use chrono::Local;
-use once_cell::sync::Lazy;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 use crate::app_dirs;
 
@@ -257,7 +256,7 @@ impl LoggerInner {
     }
 }
 
-static LOGGER: Lazy<Mutex<LoggerInner>> = Lazy::new(|| Mutex::new(LoggerInner::new()));
+static LOGGER: LazyLock<Mutex<LoggerInner>> = LazyLock::new(|| Mutex::new(LoggerInner::new()));
 
 // Public API
 

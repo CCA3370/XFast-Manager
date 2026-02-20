@@ -3,11 +3,10 @@
 //! This module defines patterns to detect aircraft liveries and map them
 //! to their corresponding aircraft types.
 
-use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::RwLock;
+use std::sync::{LazyLock, RwLock};
 use std::time::Duration;
 
 use crate::logger;
@@ -57,8 +56,8 @@ const REMOTE_URL: &str =
     "https://raw.githubusercontent.com/CCA3370/XFast-Manager/dev/data/livery_patterns.json";
 
 /// Loaded livery patterns (embedded by default, remote override when available)
-static LIVERY_PATTERNS: Lazy<RwLock<Vec<LiveryPattern>>> =
-    Lazy::new(|| RwLock::new(load_embedded_patterns()));
+static LIVERY_PATTERNS: LazyLock<RwLock<Vec<LiveryPattern>>> =
+    LazyLock::new(|| RwLock::new(load_embedded_patterns()));
 
 /// Ensure we only attempt remote fetch once per startup
 static REMOTE_FETCHED: AtomicBool = AtomicBool::new(false);

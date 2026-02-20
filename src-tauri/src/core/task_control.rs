@@ -64,6 +64,7 @@ impl TaskControl {
     }
 
     /// Get all processed paths
+    // Exposed for future atomic rollback: collect installed paths for cleanup on failure
     #[allow(dead_code)]
     pub fn get_processed_paths(&self) -> Vec<PathBuf> {
         self.processed_paths
@@ -73,6 +74,7 @@ impl TaskControl {
     }
 
     /// Clear processed paths
+    // Exposed for future atomic rollback: reset path list between installation phases
     #[allow(dead_code)]
     pub fn clear_processed_paths(&self) {
         if let Ok(mut paths) = self.processed_paths.lock() {

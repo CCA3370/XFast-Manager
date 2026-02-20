@@ -7,6 +7,8 @@ mod cache;
 mod error;
 #[path = "core/logger.rs"]
 mod logger;
+#[path = "core/path_utils.rs"]
+mod path_utils;
 #[path = "core/performance.rs"]
 mod performance;
 #[path = "core/registry.rs"]
@@ -27,7 +29,7 @@ mod analyzer;
 mod hash_collector;
 #[path = "analysis/livery_patterns.rs"]
 mod livery_patterns;
-#[path = "analysis/scanner.rs"]
+#[path = "analysis/scanner/mod.rs"]
 mod scanner;
 
 // Installation
@@ -397,18 +399,8 @@ fn open_scenery_folder(xplane_path: String, folder_name: String) -> error::ApiRe
     }
 
     // For regular directories/files, enforce canonical base containment
-    let canonical_path = entry_path
-        .canonicalize()
+    let canonical_path = path_utils::validate_child_path(&base_path, &entry_path)
         .map_err(|e| error::ApiError::validation(format!("Invalid path: {}", e)))?;
-    let canonical_base = base_path
-        .canonicalize()
-        .map_err(|e| error::ApiError::validation(format!("Invalid base path: {}", e)))?;
-
-    if !canonical_path.starts_with(&canonical_base) {
-        return Err(error::ApiError::security_violation(
-            "Path traversal attempt detected",
-        ));
-    }
 
     open_in_explorer(&canonical_path).map_err(error::ApiError::internal)
 }
@@ -455,19 +447,9 @@ async fn delete_scenery_folder(
             }
         })?;
     } else {
-        // Security: Use canonicalize for strict path validation to prevent path traversal attacks
-        let canonical_path = entry_path
-            .canonicalize()
+        // Security: Use validate_child_path for strict path validation to prevent path traversal attacks
+        let canonical_path = path_utils::validate_child_path(&base_path, &entry_path)
             .map_err(|e| error::ApiError::validation(format!("Invalid path: {}", e)))?;
-        let canonical_base = base_path
-            .canonicalize()
-            .map_err(|e| error::ApiError::validation(format!("Invalid base path: {}", e)))?;
-
-        if !canonical_path.starts_with(&canonical_base) {
-            return Err(error::ApiError::security_violation(
-                "Path traversal attempt detected",
-            ));
-        }
 
         // Delete the folder using the canonical path for safety
         fs::remove_dir_all(&canonical_path).map_err(|e| {
@@ -493,9 +475,9 @@ async fn delete_scenery_folder(
     }
 
     // Update scenery_packs.ini to remove the deleted entry
-    let xplane_root = std::path::Path::new(&xplane_path);
+    let xplane_path = std::path::Path::new(&xplane_path);
     let packs_manager =
-        scenery_packs_manager::SceneryPacksManager::new(xplane_root, db.inner().clone());
+        scenery_packs_manager::SceneryPacksManager::new(xplane_path, db.inner().clone());
     if let Err(e) = packs_manager.apply_from_index().await {
         logger::log_error(
             &format!("Failed to update scenery_packs.ini after deletion: {}", e),
