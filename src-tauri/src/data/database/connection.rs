@@ -5,7 +5,7 @@ use crate::error::ApiError;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// Get the path to the scenery database file
@@ -36,7 +36,7 @@ pub fn delete_database() -> Result<bool, ApiError> {
     }
 }
 
-fn sqlite_url(db_path: &PathBuf) -> String {
+fn sqlite_url(db_path: &Path) -> String {
     let normalized = db_path.to_string_lossy().replace('\\', "/");
     format!("sqlite://{}?mode=rwc", normalized)
 }

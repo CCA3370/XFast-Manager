@@ -27,36 +27,36 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter)]
 pub enum Relation {
-    RequiredLibraries,
-    MissingLibraries,
-    ExportedLibraries,
+    Required,
+    Missing,
+    Exported,
 }
 
 impl RelationTrait for Relation {
     fn def(&self) -> RelationDef {
         match self {
-            Self::RequiredLibraries => Entity::has_many(super::required_libraries::Entity).into(),
-            Self::MissingLibraries => Entity::has_many(super::missing_libraries::Entity).into(),
-            Self::ExportedLibraries => Entity::has_many(super::exported_libraries::Entity).into(),
+            Self::Required => Entity::has_many(super::required_libraries::Entity).into(),
+            Self::Missing => Entity::has_many(super::missing_libraries::Entity).into(),
+            Self::Exported => Entity::has_many(super::exported_libraries::Entity).into(),
         }
     }
 }
 
 impl Related<super::required_libraries::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::RequiredLibraries.def()
+        Relation::Required.def()
     }
 }
 
 impl Related<super::missing_libraries::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::MissingLibraries.def()
+        Relation::Missing.def()
     }
 }
 
 impl Related<super::exported_libraries::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::ExportedLibraries.def()
+        Relation::Exported.def()
     }
 }
 
