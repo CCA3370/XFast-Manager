@@ -200,6 +200,66 @@ async fn create_library_link_issue(
     Ok(issue_url)
 }
 
+#[tauri::command]
+async fn create_bug_report_issue(
+    error_title: String,
+    error_message: String,
+    logs: Option<String>,
+    category: Option<String>,
+) -> Result<String, String> {
+    let app_version = env!("CARGO_PKG_VERSION").to_string();
+    let os = std::env::consts::OS.to_string();
+    let arch = std::env::consts::ARCH.to_string();
+
+    let api_url = std::env::var("XFAST_BUG_REPORT_API_URL")
+        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/bug-report".to_string());
+
+    let client = reqwest::Client::builder()
+        .user_agent("XFast Manager")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client
+        .post(&api_url)
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "appVersion": app_version,
+            "os": os,
+            "arch": arch,
+            "errorTitle": error_title.trim(),
+            "errorMessage": error_message.trim(),
+            "logs": logs.as_deref().unwrap_or(""),
+            "category": category.as_deref().unwrap_or("Other")
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to submit bug report: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("Bug report API error {}: {}", status, error_text));
+    }
+
+    let response_json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse API response: {}", e))?;
+
+    let issue_url = response_json
+        .get("issueUrl")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if issue_url.is_empty() {
+        return Err("Bug report created but response URL missing".to_string());
+    }
+
+    Ok(issue_url)
+}
+
 // ============================================================================
 // Installation Commands
 // ============================================================================
@@ -1202,6 +1262,7 @@ pub fn run() {
             get_app_version,
             open_url,
             create_library_link_issue,
+            create_bug_report_issue,
             analyze_addons,
             install_addons,
             cancel_installation,

@@ -67,6 +67,39 @@
           </div>
 
           <div class="mt-6 flex justify-end items-center space-x-3">
+            <!-- Upload Bug Report -->
+            <button
+              class="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md text-sm text-white transition flex items-center space-x-2"
+              :disabled="isSubmitting"
+              :title="t('modal.submitBugReport')"
+              @click="submitBugReport"
+            >
+              <svg v-if="isSubmitting" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                />
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+              <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                />
+              </svg>
+              <span class="text-sm">{{ t('modal.submitBugReport') }}</span>
+            </button>
+            <!-- Copy -->
             <button
               class="px-3 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md text-sm text-gray-700 dark:text-gray-200 transition flex items-center space-x-2"
               :aria-label="t('copy.copy')"
@@ -109,10 +142,12 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch, nextTick } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import { useI18n } from 'vue-i18n'
 import { logError } from '@/services/logger'
+import { logger } from '@/services/logger'
 
 const modal = useModalStore()
 const okBtn = ref<HTMLElement | null>(null)
@@ -120,6 +155,7 @@ const backdrop = ref<HTMLElement | null>(null)
 const card = ref<HTMLElement | null>(null)
 const toast = useToastStore()
 const { t } = useI18n()
+const isSubmitting = ref(false)
 
 // Animation timing constants
 const CARD_SHOW_DELAY_MS = 50 // Delay before showing card after backdrop
@@ -138,6 +174,87 @@ async function copyAll() {
   } catch (e) {
     logError(`Copy failed: ${e}`, 'clipboard')
     toast.error(t('copy.copyFailed') as string)
+  }
+}
+
+const BUG_REPORT_TIMEOUT_MS = 20000
+
+async function submitBugReport() {
+  if (isSubmitting.value) return
+  isSubmitting.value = true
+
+  try {
+    // Collect logs
+    let logs = ''
+    try {
+      logs = await invoke<string>('get_all_logs')
+    } catch {
+      logs = '(failed to retrieve logs)'
+    }
+
+    const errorTitle = modal.errorModal.title || ''
+    const errorMessage = modal.errorModal.message || ''
+
+    // Build fallback GitHub issue URL
+    const fallbackTitle = `[Bug]: ${(errorTitle || errorMessage).slice(0, 80)}`
+    const fallbackBody = [
+      '### Bug Report (Auto-submitted)',
+      '',
+      '**Error Message**',
+      '```',
+      errorMessage,
+      '```',
+      '',
+      '**Logs**',
+      '<details>',
+      '<summary>Click to expand logs</summary>',
+      '',
+      '```',
+      logs.slice(0, 5000),
+      '```',
+      '</details>',
+    ].join('\n')
+    const fallbackUrl = `https://github.com/CCA3370/XFast-Manager/issues/new?template=bug_report.yml&labels=${encodeURIComponent('bug')}&title=${encodeURIComponent(fallbackTitle)}&body=${encodeURIComponent(fallbackBody)}`
+
+    // Try API submission with timeout
+    let submitTimeoutId: ReturnType<typeof setTimeout> | null = null
+    try {
+      const issueUrl = await Promise.race<string>([
+        invoke<string>('create_bug_report_issue', {
+          errorTitle,
+          errorMessage,
+          logs,
+          category: 'Other',
+        }),
+        new Promise<string>((_, reject) => {
+          submitTimeoutId = setTimeout(() => {
+            reject(new Error('BUG_REPORT_SUBMIT_TIMEOUT'))
+          }, BUG_REPORT_TIMEOUT_MS)
+        }),
+      ])
+
+      toast.success(t('modal.bugReportSubmitted'))
+      // Open the created issue
+      await invoke('open_url', { url: issueUrl })
+    } catch {
+      // Fallback: open prefilled GitHub issue page
+      try {
+        await invoke('open_url', { url: fallbackUrl })
+        toast.success(t('modal.bugReportOpened'))
+      } catch (e2) {
+        logError(`Failed to open bug report URL: ${e2}`, 'bug-report')
+        toast.error(t('modal.bugReportFailed'))
+      }
+    } finally {
+      if (submitTimeoutId !== null) {
+        clearTimeout(submitTimeoutId)
+      }
+    }
+  } catch (e) {
+    logError(`Bug report submission failed: ${e}`, 'bug-report')
+    toast.error(t('modal.bugReportFailed'))
+  } finally {
+    isSubmitting.value = false
   }
 }
 

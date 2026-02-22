@@ -236,6 +236,11 @@ export default {
     liveryAircraftNotFound: 'Target aircraft not found',
     targetLockedWarning: 'Target exists and is locked',
     flyWithLuaRequired: 'Please install FlyWithLua plugin first',
+    // Bug report
+    submitBugReport: 'Report',
+    bugReportSubmitted: 'Bug report submitted successfully',
+    bugReportOpened: 'Bug report page opened in browser',
+    bugReportFailed: 'Failed to submit bug report',
     // Close confirmation
     unsavedSceneryChangesTitle: 'Unsaved Scenery Changes',
     unsavedSceneryChangesMessage:

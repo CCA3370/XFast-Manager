@@ -237,6 +237,11 @@ export default {
     liveryAircraftNotFound: '未找到目标机模',
     targetLockedWarning: '目标已存在且被锁定',
     flyWithLuaRequired: '请先安装 FlyWithLua 插件',
+    // Bug report
+    submitBugReport: '上报错误',
+    bugReportSubmitted: '错误报告已成功提交',
+    bugReportOpened: '已在浏览器中打开错误报告页面',
+    bugReportFailed: '提交错误报告失败',
     // Close confirmation
     unsavedSceneryChangesTitle: '地景排序未保存',
     unsavedSceneryChangesMessage: '您有未保存的地景排序更改，确定要关闭吗？',
