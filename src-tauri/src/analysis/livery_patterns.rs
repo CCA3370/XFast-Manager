@@ -129,7 +129,7 @@ pub async fn ensure_patterns_loaded() {
 
     match fetch_remote_patterns().await {
         Ok(patterns) if !patterns.is_empty() => {
-            let mut guard = LIVERY_PATTERNS.write().unwrap();
+            let mut guard = LIVERY_PATTERNS.write().expect("livery patterns lock poisoned during remote fetch");
             *guard = patterns;
             logger::log_info(
                 "Fetched livery patterns from remote",
@@ -160,7 +160,7 @@ pub fn check_livery_pattern(file_path: &str) -> Option<(String, String)> {
     let normalized = file_path.replace('\\', "/");
     let normalized_lower = normalized.to_lowercase();
 
-    let patterns = LIVERY_PATTERNS.read().unwrap();
+    let patterns = LIVERY_PATTERNS.read().expect("livery patterns lock poisoned during pattern check");
     for pattern in patterns.iter() {
         for rule in pattern.detection_rules.iter() {
             match rule.pattern_type.as_str() {
@@ -306,7 +306,7 @@ pub fn check_acf_identifier(acf_file_name: &str) -> Option<String> {
 
     let name_lower = name.to_lowercase();
 
-    let patterns = LIVERY_PATTERNS.read().unwrap();
+    let patterns = LIVERY_PATTERNS.read().expect("livery patterns lock poisoned during ACF identifier check");
     for pattern in patterns.iter() {
         for identifier in pattern.acf_identifiers_lower.iter() {
             if matches_glob(identifier, &name_lower) {
@@ -320,7 +320,7 @@ pub fn check_acf_identifier(acf_file_name: &str) -> Option<String> {
 
 /// Get the human-readable name for an aircraft type
 pub fn get_aircraft_name(aircraft_type_id: &str) -> Option<String> {
-    let patterns = LIVERY_PATTERNS.read().unwrap();
+    let patterns = LIVERY_PATTERNS.read().expect("livery patterns lock poisoned during aircraft name lookup");
     patterns
         .iter()
         .find(|p| p.aircraft_type_id == aircraft_type_id)

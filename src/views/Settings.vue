@@ -1773,6 +1773,7 @@ import AnimatedText from '@/components/AnimatedText.vue'
 import { AddonType, getErrorMessage } from '@/types'
 import { logger, logError, logDebug } from '@/services/logger'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
+import { setTrackedTimeout } from '@/utils/timeout'
 
 const { t } = useI18n()
 const store = useAppStore()
@@ -1797,17 +1798,6 @@ const activeTimeoutIds = new Set<ReturnType<typeof setTimeout>>()
 let pathValidationDebounceTimer: ReturnType<typeof setTimeout> | null = null
 const PATH_VALIDATION_DEBOUNCE_MS = 300
 const SAVE_STATUS_DISPLAY_DURATION_MS = 2000 // Duration to show "Saved" status
-
-// Helper to create tracked timeouts that will be cleaned up on unmount
-function setTrackedTimeout(callback: () => void, delay: number): ReturnType<typeof setTimeout> {
-  const id = setTimeout(() => {
-    callback()
-    // Remove the timeout ID from the tracking set after it fires
-    activeTimeoutIds.delete(id)
-  }, delay)
-  activeTimeoutIds.add(id)
-  return id
-}
 
 // Logs state
 const recentLogs = ref<string[]>([])
@@ -1857,7 +1847,7 @@ function scrollLogsToBottom() {
     if (logContainer.value) {
       logContainer.value.scrollTop = logContainer.value.scrollHeight
     }
-  }, 100) // Wait 100ms for transition
+  }, 100, activeTimeoutIds) // Wait 100ms for transition
 }
 
 // Master toggle computed
@@ -2014,7 +2004,7 @@ async function validateAndSavePath() {
     saveStatus.value = 'saved'
     setTrackedTimeout(() => {
       saveStatus.value = null
-    }, SAVE_STATUS_DISPLAY_DURATION_MS)
+    }, SAVE_STATUS_DISPLAY_DURATION_MS, activeTimeoutIds)
   }
 }
 
@@ -2050,7 +2040,7 @@ function handlePatternBlur() {
     // Hide saved status after 2 seconds
     setTrackedTimeout(() => {
       patternSaveStatus.value = null
-    }, SAVE_STATUS_DISPLAY_DURATION_MS)
+    }, SAVE_STATUS_DISPLAY_DURATION_MS, activeTimeoutIds)
   }
 }
 
@@ -2076,7 +2066,7 @@ function removePattern(index: number) {
 
   setTrackedTimeout(() => {
     patternSaveStatus.value = null
-  }, SAVE_STATUS_DISPLAY_DURATION_MS)
+  }, SAVE_STATUS_DISPLAY_DURATION_MS, activeTimeoutIds)
 }
 
 async function selectFolder() {
@@ -2119,7 +2109,7 @@ async function selectFolder() {
       saveStatus.value = 'saved'
       setTrackedTimeout(() => {
         saveStatus.value = null
-      }, SAVE_STATUS_DISPLAY_DURATION_MS)
+      }, SAVE_STATUS_DISPLAY_DURATION_MS, activeTimeoutIds)
     }
   } catch (error) {
     logError(`Failed to open folder dialog: ${error}`, 'settings')

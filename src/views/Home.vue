@@ -393,6 +393,7 @@ import type { AnalysisResult, InstallProgress, InstallResult } from '@/types'
 import { AddonType } from '@/types'
 import { getErrorMessage } from '@/types'
 import { logOperation, logError, logDebug, logBasic } from '@/services/logger'
+import { setTrackedTimeout } from '@/utils/timeout'
 
 const { t } = useI18n()
 
@@ -439,17 +440,6 @@ const activeTimeoutIds = new Set<ReturnType<typeof setTimeout>>()
 let unlistenDragDrop: UnlistenFn | null = null
 let unlistenProgress: UnlistenFn | null = null
 let unlistenDeletionSkipped: UnlistenFn | null = null
-
-// Helper to create tracked timeouts that will be cleaned up on unmount
-function setTrackedTimeout(callback: () => void, delay: number): ReturnType<typeof setTimeout> {
-  const id = setTimeout(() => {
-    callback()
-    // Remove the timeout ID from the tracking set after it fires
-    activeTimeoutIds.delete(id)
-  }, delay)
-  activeTimeoutIds.add(id)
-  return id
-}
 
 // Watch for pending CLI args changes
 watch(
@@ -514,7 +504,7 @@ function onWindowDrop(e: DragEvent) {
   }
   isDragging.value = false
   debugDropFlash.value = true
-  setTrackedTimeout(() => (debugDropFlash.value = false), DEBUG_DROP_FLASH_DURATION_MS)
+  setTrackedTimeout(() => (debugDropFlash.value = false), DEBUG_DROP_FLASH_DURATION_MS, activeTimeoutIds)
 }
 
 onMounted(async () => {
@@ -541,7 +531,7 @@ onMounted(async () => {
       } else if (event.payload.type === 'drop') {
         isDragging.value = false
         debugDropFlash.value = true
-        setTrackedTimeout(() => (debugDropFlash.value = false), DEBUG_DROP_FLASH_DURATION_MS)
+        setTrackedTimeout(() => (debugDropFlash.value = false), DEBUG_DROP_FLASH_DURATION_MS, activeTimeoutIds)
 
         // If showing completion, close it and start new analysis
         if (store.showCompletion) {
@@ -932,7 +922,7 @@ async function handleInstall() {
     setTrackedTimeout(() => {
       store.isInstalling = false
       progressStore.reset()
-    }, COMPLETION_ANIMATION_DELAY_MS)
+    }, COMPLETION_ANIMATION_DELAY_MS, activeTimeoutIds)
   } catch (error) {
     // Non-blocking log call (also prints to console.error internally)
     logError(`${t('log.installationFailed')}: ${error}`, 'installation')

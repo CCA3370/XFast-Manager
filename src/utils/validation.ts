@@ -2,6 +2,8 @@
  * Shared validation utilities
  */
 
+import { useAppStore } from '@/stores/app'
+
 export interface GlobValidationResult {
   isValid: boolean
   errorKey: string | null
@@ -78,3 +80,35 @@ export function validateGlobPatterns(patterns: string[]): {
 
   return { errors, validPatterns }
 }
+
+/**
+ * Validate that X-Plane path is set in the app store.
+ * This is a common check used across multiple stores and components.
+ *
+ * @param errorRef - Optional ref to set error message if validation fails
+ * @param errorMessage - Error message to set if validation fails (default: 'X-Plane path not set')
+ * @returns true if X-Plane path is set, false otherwise
+ *
+ * @example
+ * ```typescript
+ * const error = ref('')
+ * if (!validateXPlanePath(error)) {
+ *   return // X-Plane path not set, error message is set
+ * }
+ * // Continue with operation...
+ * ```
+ */
+export function validateXPlanePath(
+  errorRef?: { value: string },
+  errorMessage: string = 'X-Plane path not set',
+): boolean {
+  const appStore = useAppStore()
+  if (!appStore.xplanePath) {
+    if (errorRef) {
+      errorRef.value = errorMessage
+    }
+    return false
+  }
+  return true
+}
+

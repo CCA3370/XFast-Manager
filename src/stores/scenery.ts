@@ -11,6 +11,7 @@ import { parseApiError, getErrorMessage } from '@/types'
 import { useAppStore } from './app'
 import { logError } from '@/services/logger'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
+import { validateXPlanePath } from '@/utils/validation'
 
 export const useSceneryStore = defineStore('scenery', () => {
   const appStore = useAppStore()
@@ -123,9 +124,8 @@ export const useSceneryStore = defineStore('scenery', () => {
 
   // Load scenery data from backend
   async function loadData() {
-    if (!appStore.xplanePath) {
+    if (!validateXPlanePath(error)) {
       indexExists.value = false
-      error.value = 'X-Plane path not set'
       return
     }
 
@@ -165,7 +165,7 @@ export const useSceneryStore = defineStore('scenery', () => {
   }
 
   async function loadIndexStatus() {
-    if (!appStore.xplanePath) {
+    if (!validateXPlanePath()) {
       indexExists.value = false
       return
     }
@@ -399,8 +399,7 @@ export const useSceneryStore = defineStore('scenery', () => {
 
   // Delete a scenery entry (folder)
   async function deleteEntry(folderName: string) {
-    if (!appStore.xplanePath) {
-      error.value = 'X-Plane path not set'
+    if (!validateXPlanePath(error)) {
       throw new Error(error.value)
     }
 

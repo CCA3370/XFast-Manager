@@ -16,6 +16,7 @@ import { useToastStore } from './toast'
 import { useLockStore } from './lock'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import { logError } from '@/services/logger'
+import { validateXPlanePath } from '@/utils/validation'
 
 // Cache duration: 1 hour in milliseconds
 const UPDATE_CACHE_DURATION = 60 * 60 * 1000
@@ -217,8 +218,7 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   async function loadItems<T extends LoadableItem>(config: LoadConfig<T>) {
-    if (!appStore.xplanePath) {
-      error.value = 'X-Plane path not set'
+    if (!validateXPlanePath(error)) {
       return
     }
 
@@ -459,7 +459,7 @@ export const useManagementStore = defineStore('management', () => {
 
   // Load navdata backups
   async function loadNavdataBackups() {
-    if (!appStore.xplanePath) return
+    if (!validateXPlanePath()) return
 
     try {
       navdataBackups.value = await invoke<NavdataBackupInfo[]>('scan_navdata_backups', {
@@ -472,8 +472,7 @@ export const useManagementStore = defineStore('management', () => {
 
   // Restore navdata backup
   async function restoreNavdataBackup(backupFolderName: string) {
-    if (!appStore.xplanePath) {
-      error.value = 'X-Plane path not set'
+    if (!validateXPlanePath(error)) {
       throw new Error(error.value)
     }
 
@@ -512,8 +511,7 @@ export const useManagementStore = defineStore('management', () => {
 
   // Toggle enabled state
   async function toggleEnabled(itemType: ManagementItemType, folderName: string) {
-    if (!appStore.xplanePath) {
-      error.value = 'X-Plane path not set'
+    if (!validateXPlanePath(error)) {
       return
     }
 
@@ -563,8 +561,7 @@ export const useManagementStore = defineStore('management', () => {
 
   // Delete item
   async function deleteItem(itemType: ManagementItemType, folderName: string) {
-    if (!appStore.xplanePath) {
-      error.value = 'X-Plane path not set'
+    if (!validateXPlanePath(error)) {
       throw new Error(error.value)
     }
 
@@ -602,8 +599,7 @@ export const useManagementStore = defineStore('management', () => {
 
   // Open folder
   async function openFolder(itemType: ManagementItemType, folderName: string) {
-    if (!appStore.xplanePath) {
-      error.value = 'X-Plane path not set'
+    if (!validateXPlanePath(error)) {
       throw new Error(error.value)
     }
 

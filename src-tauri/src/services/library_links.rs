@@ -92,7 +92,7 @@ fn hardcoded_links() -> HashMap<String, String> {
 async fn get_remote_links(force_refresh: bool) -> Result<HashMap<String, String>, String> {
     // Check cache first
     if !force_refresh {
-        let cache = CACHE.lock().unwrap();
+        let cache = CACHE.lock().expect("library links cache lock poisoned during read");
         if let Some(ref cached) = *cache {
             if cached.fetched_at.elapsed().unwrap_or(CACHE_TTL) < CACHE_TTL {
                 return Ok(cached.links.clone());
@@ -107,7 +107,7 @@ async fn get_remote_links(force_refresh: bool) -> Result<HashMap<String, String>
                 &format!("Fetched {} library download links from remote", links.len()),
                 Some("library_links"),
             );
-            let mut cache = CACHE.lock().unwrap();
+            let mut cache = CACHE.lock().expect("library links cache lock poisoned during write");
             *cache = Some(CachedLinks {
                 links: links.clone(),
                 fetched_at: SystemTime::now(),
