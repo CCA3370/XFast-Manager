@@ -1284,7 +1284,7 @@ fn check_disk_space(path: &Path) -> Result<()> {
     // Calculate available space: f_bavail * f_frsize
     // f_bavail is the number of free blocks available to non-privileged process
     // f_frsize is the fragment size (preferred block size)
-    let available_bytes = stat.f_bavail * stat.f_frsize;
+    let available_bytes = (stat.f_bavail as u64) * stat.f_frsize;
     let available_gb = available_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
 
     logger::log_info(
