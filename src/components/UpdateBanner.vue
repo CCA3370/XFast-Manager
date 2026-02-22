@@ -24,15 +24,15 @@
       <!-- 中间：文本内容 -->
       <div class="flex-1 min-w-0">
         <p class="text-sm font-medium text-green-800 dark:text-green-100 truncate">
-          <AnimatedText
-            >{{ $t('update.newVersionAvailable') }} v{{ updateInfo?.latestVersion }}</AnimatedText
-          >
+          <AnimatedText>
+            {{ $t('update.newVersionAvailable') }} v{{ updateInfo?.latestVersion }}
+          </AnimatedText>
         </p>
         <p class="text-xs text-green-700 dark:text-green-200/70 truncate">
-          <AnimatedText
-            >{{ $t('update.lastChecked') }}:
-            {{ formatPublishedDate(updateInfo?.publishedAt) }}</AnimatedText
-          >
+          <AnimatedText>
+            {{ $t('update.lastChecked') }}:
+            {{ formatPublishedDate(updateInfo?.publishedAt) }}
+          </AnimatedText>
         </p>
       </div>
 

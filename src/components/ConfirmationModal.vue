@@ -50,9 +50,7 @@
                   ></path>
                 </svg>
                 <span class="text-xs font-semibold text-blue-700 dark:text-blue-300">
-                  <AnimatedText
-                    >{{ store.enabledTasksCount }}/{{ store.currentTasks.length }}</AnimatedText
-                  >
+                  <AnimatedText>{{ store.enabledTasksCount }}/{{ store.currentTasks.length }}</AnimatedText>
                 </span>
               </div>
             </div>
@@ -78,9 +76,7 @@
                 ></path>
               </svg>
               <div class="flex-1">
-                <span class="font-medium text-xs text-red-700 dark:text-red-100"
-                  ><AnimatedText>{{ $t('modal.sizeWarningTitle') }}</AnimatedText></span
-                >
+                <span class="font-medium text-xs text-red-700 dark:text-red-100"><AnimatedText>{{ $t('modal.sizeWarningTitle') }}</AnimatedText></span>
                 <p class="text-xs text-red-600 dark:text-red-200/70 leading-tight">
                   <AnimatedText>{{ $t('modal.sizeWarningDesc') }}</AnimatedText>
                 </p>
@@ -105,9 +101,7 @@
                   d="M6 18L18 6M6 6l12 12"
                 ></path>
               </svg>
-              <span
-                ><AnimatedText>{{ $t('common.cancel') }}</AnimatedText></span
-              >
+              <span><AnimatedText>{{ $t('common.cancel') }}</AnimatedText></span>
             </button>
             <button
               :disabled="installDisabled"
@@ -127,9 +121,7 @@
                   d="M5 13l4 4L19 7"
                 ></path>
               </svg>
-              <span
-                ><AnimatedText>{{ $t('modal.startInstallation') }}</AnimatedText></span
-              >
+              <span><AnimatedText>{{ $t('modal.startInstallation') }}</AnimatedText></span>
             </button>
           </div>
         </div>

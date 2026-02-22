@@ -71,10 +71,7 @@
                 d="M8 5a2 2 0 012-2h4a2 2 0 012 2v2H8V5z"
               ></path>
             </svg>
-            <span class="truncate text-xs"
-              ><AnimatedText>{{ $t('modal.targetPath') }}</AnimatedText
-              >: {{ getRelativePath(task.targetPath) }}</span
-            >
+            <span class="truncate text-xs"><AnimatedText>{{ $t('modal.targetPath') }}</AnimatedText>: {{ getRelativePath(task.targetPath) }}</span>
           </div>
 
           <!-- Conflict warning with install mode toggle switch (only for non-locked conflicts) -->
@@ -95,16 +92,14 @@
                   d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
                 ></path>
               </svg>
-              <span
-                ><AnimatedText>{{
-                  task.type === 'LuaScript' ? $t('modal.fileExists') : $t('modal.folderExists')
-                }}</AnimatedText></span
-              >
+              <span><AnimatedText>{{
+                task.type === 'LuaScript' ? $t('modal.fileExists') : $t('modal.folderExists')
+              }}</AnimatedText></span>
               <!-- Inline version comparison for Aircraft/Plugin -->
               <template
                 v-if="
                   (task.type === 'Aircraft' || task.type === 'Plugin') &&
-                  (task.existingVersionInfo?.version || task.newVersionInfo?.version)
+                    (task.existingVersionInfo?.version || task.newVersionInfo?.version)
                 "
               >
                 <span class="text-gray-400 dark:text-gray-500">·</span>
@@ -281,9 +276,7 @@
                     class="w-3 h-3 rounded border-red-300 dark:border-red-500/50 bg-white dark:bg-red-500/10 text-red-600 dark:text-red-500 focus:ring-red-500 dark:focus:ring-red-500/50"
                     @change="toggleTaskSizeConfirm(task.id)"
                   />
-                  <span class="text-xs text-red-700 dark:text-red-200"
-                    ><AnimatedText>{{ $t('modal.confirmTrustArchive') }}</AnimatedText></span
-                  >
+                  <span class="text-xs text-red-700 dark:text-red-200"><AnimatedText>{{ $t('modal.confirmTrustArchive') }}</AnimatedText></span>
                 </label>
               </div>
             </div>
@@ -307,9 +300,7 @@
                 d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
               ></path>
             </svg>
-            <span class="font-medium"
-              ><AnimatedText>{{ $t('modal.liveryAircraftNotFound') }}</AnimatedText></span
-            >
+            <span class="font-medium"><AnimatedText>{{ $t('modal.liveryAircraftNotFound') }}</AnimatedText></span>
           </div>
 
           <!-- FlyWithLua not installed warning -->
@@ -330,9 +321,7 @@
                 d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
               ></path>
             </svg>
-            <span class="font-medium"
-              ><AnimatedText>{{ $t('modal.flyWithLuaRequired') }}</AnimatedText></span
-            >
+            <span class="font-medium"><AnimatedText>{{ $t('modal.flyWithLuaRequired') }}</AnimatedText></span>
           </div>
 
           <!-- Locked conflict warning -->
@@ -345,9 +334,7 @@
                 d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"
               />
             </svg>
-            <span class="font-medium"
-              ><AnimatedText>{{ $t('modal.targetLockedWarning') }}</AnimatedText></span
-            >
+            <span class="font-medium"><AnimatedText>{{ $t('modal.targetLockedWarning') }}</AnimatedText></span>
           </div>
         </div>
       </div>
