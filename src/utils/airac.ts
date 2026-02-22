@@ -92,7 +92,9 @@ export function compareAiracCycles(a: string, b: string): number {
  * @param cycleStr The cycle string from navdata (e.g., "2601")
  * @returns 'current' if matches current cycle, 'outdated' if older, 'future' if newer, null if invalid
  */
-export function getNavdataCycleStatus(cycleStr: string | null | undefined): 'current' | 'outdated' | 'future' | null {
+export function getNavdataCycleStatus(
+  cycleStr: string | null | undefined,
+): 'current' | 'outdated' | 'future' | null {
   if (!cycleStr) return null
 
   // Normalize the cycle string - extract 4-digit cycle if present

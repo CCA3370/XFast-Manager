@@ -1,8 +1,8 @@
 <template>
   <button
-    @click="toggleLanguage"
     class="flex items-center justify-center w-9 h-9 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-all duration-300 hover:scale-105 backdrop-blur-sm border border-white/20"
     :title="$t('common.language')"
+    @click="toggleLanguage"
   >
     <transition name="language-fade" mode="out-in">
       <span :key="currentLanguage" class="font-medium text-center">

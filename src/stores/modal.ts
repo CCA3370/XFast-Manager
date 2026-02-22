@@ -33,7 +33,7 @@ export const useModalStore = defineStore('modal', () => {
 
   function showError(message: string, title = '') {
     // Deduplicate error messages by splitting on newlines and removing duplicates
-    const lines = message.split('\n').filter(line => line.trim() !== '')
+    const lines = message.split('\n').filter((line) => line.trim() !== '')
     const uniqueLines = Array.from(new Set(lines))
     const deduplicatedMessage = uniqueLines.join('\n')
 
@@ -77,6 +77,6 @@ export const useModalStore = defineStore('modal', () => {
     showConfirm,
     closeConfirm,
     confirmAction,
-    cancelAction
+    cancelAction,
   }
 })

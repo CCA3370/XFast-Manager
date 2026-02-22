@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-02-22
+
+### Added
+
+- **Bug Report Submission** - New integrated bug reporting feature
+  - Submit bug reports directly from the app with system information automatically included
+  - Accessible from Settings page
+  - Streamlined issue creation workflow
+- **Sponsor Modal** - New donation support interface
+  - WeChat and Alipay QR codes for supporting development
+  - Accessible from the app menu
+- **Enhanced Livery Pattern Detection** - Improved aircraft livery recognition
+  - Added support for X-Crafts aircraft (E-Jets family, ERJ family)
+  - Added Felis B742 variants (Classic and Freighter)
+  - Remote livery pattern loading with automatic updates on startup
+  - Wildcard pattern support for more flexible matching
+- **Airport Duplicate Detection** - Identifies scenery packages with overlapping airports
+  - Automatically detects duplicate airport IDs across packages
+  - Helps identify potential conflicts in scenery library
+- **Task List Component** - Enhanced installation confirmation interface
+  - Dedicated TaskListSection component for better task visualization
+  - Improved layout and user experience during installation confirmation
+
+### Changed
+
+- **Performance Optimizations** - Enhanced UI responsiveness
+  - Optimized transitions across multiple components
+  - Improved component loading and rendering performance
+- **Code Architecture** - Major backend refactoring for maintainability
+  - Reorganized Rust modules into logical groups (analysis, core, data, install, management, scenery, services)
+  - Split large files into focused modules (scanner split into zip/rar/sevenz handlers)
+  - Enhanced database structure with new entity models
+  - Improved separation of concerns across the codebase
+- **Scenery Packs Manager** - Enhanced scenery_packs.ini management
+  - Better change tracking with detailed modification logs
+  - Improved UI feedback for scenery index operations
+- **Library Link Management** - Improved missing library workflow
+  - Force refresh option for library link lookup
+  - Enhanced error handling in approval workflow
+  - Updated library links database
+
+### Fixed
+
+- **Context Menu Display** - Fixed context menus appearing outside viewport boundaries
+- **Log Rotation** - Fixed unnecessary log rotation on first log entry
+- **Disk Space Calculation** - Fixed type casting issues on macOS for available disk space checks
+- **Error Handling** - Improved lock error handling and X-Plane path validation
+
+### Technical
+
+- Added ESLint configuration for better code quality
+- Added Prettier configuration for consistent code formatting
+- Enhanced database schema with new migration system
+- Improved geo-region detection with binary continent map
+- Added build workflow for automated CI/CD
+
 ## [0.8.11] - 2026-02-13
 
 ### Fixed

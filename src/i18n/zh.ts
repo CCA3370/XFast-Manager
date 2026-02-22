@@ -14,12 +14,12 @@ export default {
     success: '成功',
     warning: '警告',
     info: '信息',
-    language: '语言'
+    language: '语言',
   },
   copy: {
     copy: '复制',
     copied: '已复制',
-    copyFailed: '复制失败'
+    copyFailed: '复制失败',
   },
   home: {
     title: 'X-Plane 插件安装器',
@@ -43,7 +43,8 @@ export default {
     pathNotSet: '请先在设置中配置X-Plane路径',
     pathNotSetDesc: 'X-Plane 路径用于自动识别安装位置',
     cannotInstallFromXPlane: '无法从 X-Plane 目录内安装',
-    cannotInstallFromXPlaneDesc: '请拖入 X-Plane 目录外的文件或压缩包。不能直接拖入 X-Plane 内已存在的文件夹。',
+    cannotInstallFromXPlaneDesc:
+      '请拖入 X-Plane 目录外的文件或压缩包。不能直接拖入 X-Plane 内已存在的文件夹。',
     ignoredTasks: '根据设置忽略了 {count} 个插件',
     allIgnored: '根据设置，所有检测到的插件均被忽略',
     taskProgress: '任务 {current}',
@@ -63,7 +64,7 @@ export default {
     launchFailed: '启动 X-Plane 失败',
     launchTimeout: '启动 X-Plane 超时，请检查 X-Plane 是否正常运行',
     xplaneRunning: 'X-Plane 运行中',
-    xplaneAlreadyRunning: 'X-Plane 已在运行'
+    xplaneAlreadyRunning: 'X-Plane 已在运行',
   },
   addonType: {
     Aircraft: '机模',
@@ -72,7 +73,7 @@ export default {
     Plugin: '插件',
     Navdata: '导航数据',
     Livery: '涂装',
-    LuaScript: 'Lua 脚本'
+    LuaScript: 'Lua 脚本',
   },
   settings: {
     title: '设置',
@@ -129,7 +130,8 @@ export default {
     aircraftBackupDesc: '配置机模全新安装时的备份内容',
     configFilePatterns: '配置文件匹配规则',
     addPattern: '添加规则',
-    patternHelpText: '使用 * 作为通配符（例如：*_prefs.txt、*.cfg、*settings*）。规则匹配机模根目录下的文件名。',
+    patternHelpText:
+      '使用 * 作为通配符（例如：*_prefs.txt、*.cfg、*settings*）。规则匹配机模根目录下的文件名。',
     patternUnbalancedBracket: '方括号 [] 不匹配',
     patternUnbalancedBrace: '花括号 {} 不匹配',
     patternInvalidSlash: '无效的模式：包含 //',
@@ -199,7 +201,7 @@ export default {
     experimental: '实验性',
     // 关于页面
     development: '开发',
-    testing: '测试'
+    testing: '测试',
   },
   modal: {
     confirmInstallation: '确认安装',
@@ -235,12 +237,22 @@ export default {
     liveryAircraftNotFound: '未找到目标机模',
     targetLockedWarning: '目标已存在且被锁定',
     flyWithLuaRequired: '请先安装 FlyWithLua 插件',
+    // Bug report
+    submitBugReport: '上报错误',
+    bugReportSubmitted: '错误报告已成功提交',
+    bugReportOpened: '已在浏览器中打开错误报告页面',
+    bugReportFailed: '提交错误报告失败',
     // Close confirmation
     unsavedSceneryChangesTitle: '地景排序未保存',
     unsavedSceneryChangesMessage: '您有未保存的地景排序更改，确定要关闭吗？',
     unsavedSceneryChangesWarning: '未保存的更改将会丢失',
     closeAnyway: '仍然关闭',
     goBack: '返回',
+    // Database schema incompatibility
+    dbIncompatibleTitle: '需要重置数据库',
+    dbIncompatibleMessage:
+      '本地地景数据库与当前版本不兼容，需要重置后才能继续使用。地景排序和启用/禁用状态将会丢失。',
+    dbIncompatibleConfirm: '重置数据库',
     // Installation in progress
     installInProgressTitle: '正在安装',
     installInProgressMessage: '当前有安装任务正在进行中，确定要关闭吗？',
@@ -260,10 +272,10 @@ export default {
     unifiedHint: '所有压缩包将使用相同的密码',
     unifiedPasswordLabel: '统一密码',
     unifiedPlaceholder: '输入统一密码（应用于所有压缩包）',
-    archives: '个压缩包'
+    archives: '个压缩包',
   },
   toast: {
-    pathRequired: '请先在设置中配置X-Plane路径'
+    pathRequired: '请先在设置中配置X-Plane路径',
   },
   log: {
     appStarted: 'XFast Manager 已启动',
@@ -286,7 +298,7 @@ export default {
     passwordRequired: '需要输入密码',
     passwordEntered: '密码已输入',
     passwordCanceled: '用户取消密码输入',
-    passwordMaxRetries: '密码尝试次数已达上限'
+    passwordMaxRetries: '密码尝试次数已达上限',
   },
   taskControl: {
     skipTask: '跳过当前任务',
@@ -307,7 +319,7 @@ export default {
     taskSkipped: '任务已跳过',
     tasksCancelled: '任务已取消',
     filesWillBeDeleted: '已处理的文件将被删除',
-    originalFilesWarning: '如果是干净安装或覆盖安装，原有文件可能已被删除'
+    originalFilesWarning: '如果是干净安装或覆盖安装，原有文件可能已被删除',
   },
   completion: {
     allSuccess: '安装完成',
@@ -338,7 +350,7 @@ export default {
     extractionFailed: '解压失败',
     cancelledByUser: '用户取消',
     skippedByUser: '用户跳过',
-    networkError: '网络错误'
+    networkError: '网络错误',
   },
   update: {
     // 横幅
@@ -366,14 +378,14 @@ export default {
     autoUpdateCheckBenefit2: '不收集任何用户数据，仅向 GitHub API 发送请求',
     autoUpdateCheckBenefit3: '发现新版本时在首页显示横幅通知',
     includePreRelease: '包含预发布版本',
-    includePreReleaseDesc: '检查更新时包含 Beta/RC 等预发布版本'
+    includePreReleaseDesc: '检查更新时包含 Beta/RC 等预发布版本',
   },
   onboarding: {
     title: '首次使用引导',
     subtitle: '按步骤选择需要启用的功能',
     next: '下一步',
     back: '上一步',
-    finish: '完成'
+    finish: '完成',
   },
   sceneryManager: {
     title: '地景管理器',
@@ -454,7 +466,8 @@ export default {
     enableAll: '全部启用',
     disableAll: '全部禁用',
     databaseVersionError: '数据库版本不兼容',
-    databaseVersionErrorDesc: '地景数据库由较新版本的应用程序创建。点击下方按钮重置并重建索引。',
+    databaseVersionErrorDesc:
+      '本地地景数据库版本与当前应用程序版本不兼容。点击下方按钮重置并重建索引。',
     resetDatabase: '重置数据库',
     resetDatabaseConfirm: '此操作将删除现有数据库并需要重建索引。是否继续？',
     resetDatabaseSuccess: '数据库重置成功，请重建索引。',
@@ -462,10 +475,22 @@ export default {
     duplicateTiles: '重复地块',
     duplicateTilesTitle: '重复的DSF地块',
     duplicateTilesDesc: '这些地景包含相同坐标的DSF地块。只有最高优先级的地景包的地块会被使用。',
-    clickToViewDuplicates: '点击查看重复地块',
+    clickToViewDuplicates: '点击查看重复',
+    duplicates: '重复',
+    duplicatesTitle: '重复',
+    duplicateTilesSection: '重复的DSF地块',
+    duplicateAirportsSection: '重复的机场',
+    duplicateAirportsDesc:
+      '这些地景包定义了相同的机场（标识符：{id}）。X-Plane只会使用最高优先级的地景包。',
     filters: '筛选',
     showOnlyEnabled: '仅显示已启用',
-    showOnlyDisabled: '仅显示未启用'
+    showOnlyDisabled: '仅显示未启用',
+    indexChangesTitle: '检测到地景变化',
+    indexChangesDesc: '以下地景文件夹发生了变化：',
+    indexChangesAdded: '新增',
+    indexChangesRemoved: '已移除',
+    indexChangesUpdated: '已更新',
+    indexChangesSyncToIni: '同步到 ini 文件',
   },
   geo: {
     continents: {
@@ -477,8 +502,8 @@ export default {
       Oceania: '大洋洲',
       Antarctica: '南极洲',
       Unknown: '未知',
-      Other: '其他 / 全局'
-    }
+      Other: '其他 / 全局',
+    },
   },
   management: {
     navTitle: '管理',
@@ -518,7 +543,7 @@ export default {
     restoreBackupSuccess: '导航数据备份恢复成功',
     restoringBackup: '正在恢复备份...',
     backupVersion: '备份版本',
-    backupTime: '备份时间'
+    backupTime: '备份时间',
   },
   livery: {
     noLiveries: '未找到涂装',
@@ -526,7 +551,7 @@ export default {
     deleteConfirmTitle: '确认删除',
     deleteConfirmMessage: '确定要删除此涂装吗？此操作不可撤销。',
     deleteSuccess: '涂装删除成功',
-    deleteFailed: '删除涂装失败'
+    deleteFailed: '删除涂装失败',
   },
   scripts: {
     title: 'FlyWithLua 脚本',
@@ -541,13 +566,22 @@ export default {
     deleteSuccess: '脚本删除成功',
     deleteFailed: '删除脚本失败',
   },
+  sponsor: {
+    title: '赞助',
+    subtitle: '感谢您的支持',
+    wechat: '微信支付',
+    alipay: '支付宝',
+    scanTip: '请使用对应 App 扫码',
+    onboardingTitle: '支持开发者',
+    onboardingDesc: '如果这个工具对你有帮助，欢迎请作者喝杯咖啡',
+  },
   contextMenu: {
     enable: '启用',
     disable: '禁用',
     openFolder: '打开文件夹',
     viewLiveries: '查看涂装',
     viewScripts: '查看脚本',
-    previewImage: '预览图片'
+    previewImage: '预览图片',
   },
   errors: {
     validation_failed: '输入数据无效',
@@ -563,6 +597,6 @@ export default {
     insufficient_space: '磁盘空间不足',
     security_violation: '检测到安全违规',
     timeout: '操作超时',
-    internal: '内部错误'
-  }
+    internal: '内部错误',
+  },
 }

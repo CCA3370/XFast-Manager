@@ -52,7 +52,7 @@ export const useUpdateStore = defineStore('update', () => {
 
     checkInProgress.value = true
 
-    // 记录检查开始
+    // Log check start
     if (manual) {
       logBasic('User manually checking for updates', 'update')
     } else {
@@ -62,30 +62,27 @@ export const useUpdateStore = defineStore('update', () => {
     try {
       const result = await invoke<UpdateInfo>('check_for_updates', {
         manual,
-        includePreRelease: includePreRelease.value
+        includePreRelease: includePreRelease.value,
       })
 
-      // 如果有更新就显示横幅
+      // Show update banner if an update is available
       if (result.isUpdateAvailable) {
         updateInfo.value = result
         showUpdateBanner.value = true
 
-        // 记录发现更新
-        logBasic(
-          `Update available: ${result.currentVersion} -> ${result.latestVersion}`,
-          'update'
-        )
+        // Log update found
+        logBasic(`Update available: ${result.currentVersion} -> ${result.latestVersion}`, 'update')
 
-        // 手动检查时显示通知
+        // Show notification on manual check
         if (manual) {
           toast.success(t('update.updateAvailableNotification', { version: result.latestVersion }))
         }
       } else {
-        // 记录无更新
+        // No update available
         logDebug('No update available', 'update')
 
         if (manual) {
-          // 手动检查且已是最新版本时显示提示
+          // Show notification when manually checked and already up to date
           toast.success(t('update.upToDate'))
         }
       }
@@ -94,29 +91,29 @@ export const useUpdateStore = defineStore('update', () => {
       await setItem(STORAGE_KEYS.LAST_CHECK_TIME, lastCheckTime.value.toString())
     } catch (error) {
       const errorMessage =
-        typeof error === 'string' ? error : (error as Error)?.message ?? String(error)
+        typeof error === 'string' ? error : ((error as Error)?.message ?? String(error))
 
       if (errorMessage.includes('Cache not expired')) {
         logDebug('Update check skipped (cache not expired)', 'update')
         return
       }
 
-      // 记录错误到日志
+      // Log the error
       logError(`Update check failed: ${errorMessage}`, 'update')
 
       if (manual) {
-        // 手动检查时显示错误
+        // Show error on manual check
         modal.showError(t('update.checkFailed'))
       }
-      // 自动检查时静默失败（已记录到日志）
+      // Silently fail on auto-check (already logged)
     } finally {
       checkInProgress.value = false
     }
   }
 
   function dismissUpdate() {
-    // 只是暂时关闭横幅，不记录已关闭的版本
-    // 下次检查时如果还有新版本会继续提示
+    // Temporarily dismiss the banner without recording the dismissed version
+    // Will show again on next check if a new version is still available
     logDebug('User dismissed update banner', 'update')
     showUpdateBanner.value = false
   }
@@ -161,6 +158,6 @@ export const useUpdateStore = defineStore('update', () => {
     dismissUpdate,
     openReleaseUrl,
     toggleAutoCheck,
-    toggleIncludePreRelease
+    toggleIncludePreRelease,
   }
 })

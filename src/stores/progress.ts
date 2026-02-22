@@ -8,9 +8,9 @@ export const useProgressStore = defineStore('progress', () => {
   let animationFrameId: number | null = null
 
   // Animation parameters for smooth interpolation
-  const LERP_FACTOR = 0.08  // Interpolation factor (smaller = smoother)
-  const MIN_SPEED = 0.1     // Minimum movement speed (prevents stalling)
-  const EPSILON = 0.01      // Precision threshold
+  const LERP_FACTOR = 0.1 // Interpolation factor (slightly faster)
+  const MIN_SPEED = 0.1 // Minimum movement speed (prevents stalling)
+  const EPSILON = 0.01 // Precision threshold
 
   function animate() {
     if (!progress.value) {
@@ -92,7 +92,7 @@ export const useProgressStore = defineStore('progress', () => {
     if (progress.value) {
       progress.value = {
         ...progress.value,
-        percentage
+        percentage,
       }
     } else {
       // Create a minimal progress object if none exists
@@ -104,7 +104,7 @@ export const useProgressStore = defineStore('progress', () => {
         totalTasks: 1,
         currentTaskName: '',
         currentFile: null,
-        phase: 'finalizing'
+        phase: 'finalizing',
       }
     }
     // Also update display percentage immediately for direct sets

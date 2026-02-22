@@ -274,7 +274,7 @@ jobs:
             target/release/bundle/deb/XFast-Manager-*-linux-x64.deb
             target/release/bundle/rpm/XFast-Manager-*-linux-x64.rpm
           if-no-files-found: ignore
-          retention-days: 1
+          retention-days: 7
 
   release:
     name: Create Release

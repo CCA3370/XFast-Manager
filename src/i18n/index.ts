@@ -8,7 +8,7 @@ const getSystemLanguage = (): string => {
   const lang = navigator.language || 'en'
   // 只匹配简体中文(zh-CN)和繁体中文(zh-TW, zh-HK)
   const chineseLocales = ['zh-CN', 'zh-TW', 'zh-HK', 'zh-SG']
-  return chineseLocales.some(locale => lang.startsWith(locale)) ? 'zh' : 'en'
+  return chineseLocales.some((locale) => lang.startsWith(locale)) ? 'zh' : 'en'
 }
 
 const initialLocale = getSystemLanguage()
@@ -22,8 +22,8 @@ export const i18n = createI18n({
   fallbackLocale: 'en',
   messages: {
     zh,
-    en
-  }
+    en,
+  },
 })
 
 // Non-blocking function to sync initial locale with backend (call in App.vue)

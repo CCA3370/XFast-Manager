@@ -1,0 +1,418 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(SceneryPackages::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SceneryPackages::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(SceneryPackages::FolderName)
+                            .string()
+                            .not_null()
+                            .unique_key(),
+                    )
+                    .col(
+                        ColumnDef::new(SceneryPackages::Category)
+                            .string()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SceneryPackages::SubPriority)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(SceneryPackages::LastModified)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SceneryPackages::IndexedAt)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SceneryPackages::HasAptDat)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(ColumnDef::new(SceneryPackages::AirportId).string())
+                    .col(
+                        ColumnDef::new(SceneryPackages::HasDsf)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(SceneryPackages::HasLibraryTxt)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(SceneryPackages::HasTextures)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(SceneryPackages::HasObjects)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(SceneryPackages::TextureCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(SceneryPackages::EarthNavTileCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(SceneryPackages::Enabled)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .col(
+                        ColumnDef::new(SceneryPackages::SortOrder)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(ColumnDef::new(SceneryPackages::ActualPath).string())
+                    .col(ColumnDef::new(SceneryPackages::Continent).string())
+                    .col(ColumnDef::new(SceneryPackages::OriginalCategory).string())
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(RequiredLibraries::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(RequiredLibraries::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(RequiredLibraries::PackageId)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(RequiredLibraries::LibraryName)
+                            .string()
+                            .not_null(),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_required_libraries_package")
+                            .from(RequiredLibraries::Table, RequiredLibraries::PackageId)
+                            .to(SceneryPackages::Table, SceneryPackages::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(MissingLibraries::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(MissingLibraries::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(MissingLibraries::PackageId)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MissingLibraries::LibraryName)
+                            .string()
+                            .not_null(),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_missing_libraries_package")
+                            .from(MissingLibraries::Table, MissingLibraries::PackageId)
+                            .to(SceneryPackages::Table, SceneryPackages::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ExportedLibraries::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ExportedLibraries::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(ExportedLibraries::PackageId)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ExportedLibraries::LibraryName)
+                            .string()
+                            .not_null(),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_exported_libraries_package")
+                            .from(ExportedLibraries::Table, ExportedLibraries::PackageId)
+                            .to(SceneryPackages::Table, SceneryPackages::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(IndexMetadata::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(IndexMetadata::Key)
+                            .string()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(IndexMetadata::Value).string().not_null())
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_packages_category")
+                    .table(SceneryPackages::Table)
+                    .col(SceneryPackages::Category)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_packages_sort_order")
+                    .table(SceneryPackages::Table)
+                    .col(SceneryPackages::SortOrder)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_packages_category_order")
+                    .table(SceneryPackages::Table)
+                    .col(SceneryPackages::Category)
+                    .col(SceneryPackages::SortOrder)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_packages_enabled")
+                    .table(SceneryPackages::Table)
+                    .col(SceneryPackages::Enabled)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_packages_continent")
+                    .table(SceneryPackages::Table)
+                    .col(SceneryPackages::Continent)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_required_libraries_name")
+                    .table(RequiredLibraries::Table)
+                    .col(RequiredLibraries::LibraryName)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_exported_libraries_name")
+                    .table(ExportedLibraries::Table)
+                    .col(ExportedLibraries::LibraryName)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("uniq_required_library")
+                    .table(RequiredLibraries::Table)
+                    .col(RequiredLibraries::PackageId)
+                    .col(RequiredLibraries::LibraryName)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("uniq_missing_library")
+                    .table(MissingLibraries::Table)
+                    .col(MissingLibraries::PackageId)
+                    .col(MissingLibraries::LibraryName)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("uniq_exported_library")
+                    .table(ExportedLibraries::Table)
+                    .col(ExportedLibraries::PackageId)
+                    .col(ExportedLibraries::LibraryName)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(IndexMetadata::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(ExportedLibraries::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(MissingLibraries::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(RequiredLibraries::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(SceneryPackages::Table).to_owned())
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(Iden)]
+enum SceneryPackages {
+    Table,
+    Id,
+    FolderName,
+    Category,
+    SubPriority,
+    LastModified,
+    IndexedAt,
+    HasAptDat,
+    AirportId,
+    HasDsf,
+    HasLibraryTxt,
+    HasTextures,
+    HasObjects,
+    TextureCount,
+    EarthNavTileCount,
+    Enabled,
+    SortOrder,
+    ActualPath,
+    Continent,
+    OriginalCategory,
+}
+
+#[derive(Iden)]
+enum RequiredLibraries {
+    Table,
+    Id,
+    PackageId,
+    LibraryName,
+}
+
+#[derive(Iden)]
+enum MissingLibraries {
+    Table,
+    Id,
+    PackageId,
+    LibraryName,
+}
+
+#[derive(Iden)]
+enum ExportedLibraries {
+    Table,
+    Id,
+    PackageId,
+    LibraryName,
+}
+
+#[derive(Iden)]
+enum IndexMetadata {
+    Table,
+    Key,
+    Value,
+}

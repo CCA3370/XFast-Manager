@@ -37,7 +37,7 @@ async function loadScripts() {
   loadError.value = false
   try {
     scripts.value = await invoke<LuaScriptInfo[]>('get_lua_scripts', {
-      xplanePath: appStore.xplanePath
+      xplanePath: appStore.xplanePath,
     })
   } catch (e) {
     loadError.value = true
@@ -54,11 +54,11 @@ async function handleToggle(fileName: string) {
   try {
     const newEnabled = await invoke<boolean>('toggle_lua_script', {
       xplanePath: appStore.xplanePath,
-      fileName
+      fileName,
     })
 
     // Update local state
-    const script = scripts.value.find(s => s.fileName === fileName)
+    const script = scripts.value.find((s) => s.fileName === fileName)
     if (script) {
       const oldExt = script.enabled ? '.lua' : '.xfml'
       const newExt = newEnabled ? '.lua' : '.xfml'
@@ -84,11 +84,11 @@ async function handleDeleteConfirm() {
   try {
     await invoke('delete_lua_script', {
       xplanePath: appStore.xplanePath,
-      fileName: deleteTarget.value.fileName
+      fileName: deleteTarget.value.fileName,
     })
 
     // Remove from local array
-    scripts.value = scripts.value.filter(s => s.fileName !== deleteTarget.value!.fileName)
+    scripts.value = scripts.value.filter((s) => s.fileName !== deleteTarget.value!.fileName)
     toastStore.success(t('scripts.deleteSuccess'))
 
     // Navigate back if no scripts remaining
@@ -116,14 +116,14 @@ function handleScriptContextMenu(event: MouseEvent, script: LuaScriptInfo) {
       icon: script.enabled
         ? '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>'
         : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>',
-      dividerAfter: true
+      dividerAfter: true,
     },
     {
       id: 'delete',
       label: t('common.delete'),
       icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>',
-      danger: true
-    }
+      danger: true,
+    },
   ]
 
   contextMenu.show(event, menuItems, (id: string) => {
@@ -148,12 +148,22 @@ onMounted(() => {
     <!-- Header -->
     <div class="mb-4 flex-shrink-0 flex items-center gap-3">
       <button
-        @click="goBack"
         class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
         :title="t('onboarding.back')"
+        @click="goBack"
       >
-        <svg class="w-5 h-5 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        <svg
+          class="w-5 h-5 text-gray-600 dark:text-gray-300"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M15 19l-7-7 7-7"
+          />
         </svg>
       </button>
       <div class="flex-1 min-w-0">
@@ -192,25 +202,38 @@ onMounted(() => {
           v-for="script in scripts"
           :key="script.fileName"
           class="flex items-center gap-3 p-2 rounded-lg border transition-all hover:bg-gray-50 dark:hover:bg-gray-700/30"
-          :class="script.enabled
-            ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
-            : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200/50 dark:border-gray-700/50 opacity-60'"
+          :class="
+            script.enabled
+              ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+              : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200/50 dark:border-gray-700/50 opacity-60'
+          "
           @contextmenu.prevent="handleScriptContextMenu($event, script)"
         >
           <!-- Toggle switch -->
           <button
-            @click="handleToggle(script.fileName)"
             :disabled="togglingItems.has(script.fileName)"
             class="flex-shrink-0 w-9 h-5 rounded-full relative transition-colors disabled:opacity-70"
             :class="script.enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'"
+            @click="handleToggle(script.fileName)"
           >
             <span
               v-if="togglingItems.has(script.fileName)"
               class="absolute inset-0 flex items-center justify-center"
             >
               <svg class="w-3 h-3 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
               </svg>
             </span>
             <span
@@ -222,7 +245,10 @@ onMounted(() => {
 
           <!-- Script display name -->
           <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate" :title="script.fileName">
+            <div
+              class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate"
+              :title="script.fileName"
+            >
               {{ script.displayName }}
             </div>
           </div>
@@ -230,21 +256,33 @@ onMounted(() => {
           <!-- Status text -->
           <span
             class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium"
-            :class="script.enabled
-              ? 'text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/30'
-              : 'text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800/50'"
+            :class="
+              script.enabled
+                ? 'text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/30'
+                : 'text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800/50'
+            "
           >
             {{ script.enabled ? t('scripts.enabled') : t('scripts.disabled') }}
           </span>
 
           <!-- Delete button -->
           <button
-            @click.stop="confirmDelete(script)"
             class="flex-shrink-0 p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
             :title="t('common.delete')"
+            @click.stop="confirmDelete(script)"
           >
-            <svg class="w-3.5 h-3.5 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            <svg
+              class="w-3.5 h-3.5 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+              />
             </svg>
           </button>
         </div>

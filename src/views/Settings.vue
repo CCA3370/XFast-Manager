@@ -2,20 +2,30 @@
   <div class="settings-view h-full flex flex-col p-5 overflow-hidden">
     <!-- Scrollable Content Area -->
     <div class="flex-1 overflow-y-auto space-y-4 pr-1 pb-4">
-      
       <!-- 1. X-Plane Path (Compact) -->
-      <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
+      <section
+        class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+      >
         <div class="p-4 space-y-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center space-x-3">
-              <div class="w-8 h-8 bg-blue-100 dark:bg-blue-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-blue-600 dark:text-blue-400">
+              <div
+                class="w-8 h-8 bg-blue-100 dark:bg-blue-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-blue-600 dark:text-blue-400"
+              >
                 <!-- Folder icon -->
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                  ></path>
                 </svg>
               </div>
               <div class="flex-1">
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white"><AnimatedText>{{ $t('settings.xplanePath') }}</AnimatedText></h3>
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  <AnimatedText>{{ $t('settings.xplanePath') }}</AnimatedText>
+                </h3>
               </div>
             </div>
 
@@ -23,9 +33,17 @@
             <div class="flex items-center space-x-2">
               <!-- Error indicator -->
               <transition name="fade">
-                <div v-if="pathError" class="flex items-center text-[10px] font-medium space-x-1 text-red-500 dark:text-red-400">
+                <div
+                  v-if="pathError"
+                  class="flex items-center text-[10px] font-medium space-x-1 text-red-500 dark:text-red-400"
+                >
                   <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    ></path>
                   </svg>
                   <span>{{ pathError }}</span>
                 </div>
@@ -33,22 +51,55 @@
 
               <!-- Save status -->
               <transition name="fade">
-                <div v-if="saveStatus" class="flex items-center text-[10px] font-medium space-x-1" :class="saveStatus === 'saved' ? 'text-emerald-500' : 'text-gray-400'">
-                  <svg v-if="saveStatus === 'saved'" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                <div
+                  v-if="saveStatus"
+                  class="flex items-center text-[10px] font-medium space-x-1"
+                  :class="saveStatus === 'saved' ? 'text-emerald-500' : 'text-gray-400'"
+                >
+                  <svg
+                    v-if="saveStatus === 'saved'"
+                    class="w-3 h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M5 13l4 4L19 7"
+                    ></path>
                   </svg>
-                  <svg v-else class="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                  <svg
+                    v-else
+                    class="w-3 h-3 animate-spin"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    ></path>
                   </svg>
-                  <span>{{ saveStatus === 'saved' ? $t('settings.saved') : $t('settings.saving') }}</span>
+                  <span>{{
+                    saveStatus === 'saved' ? $t('settings.saved') : $t('settings.saving')
+                  }}</span>
                 </div>
               </transition>
             </div>
           </div>
 
           <div class="relative">
-            <div class="flex items-center bg-gray-50 dark:bg-gray-900/50 border rounded-lg overflow-hidden focus-within:border-blue-500 dark:focus-within:border-blue-500 transition-colors duration-200"
-              :class="pathError ? 'border-red-500 dark:border-red-500' : 'border-gray-200 dark:border-gray-700/50'"
+            <div
+              class="flex items-center bg-gray-50 dark:bg-gray-900/50 border rounded-lg overflow-hidden focus-within:border-blue-500 dark:focus-within:border-blue-500 transition-colors duration-200"
+              :class="
+                pathError
+                  ? 'border-red-500 dark:border-red-500'
+                  : 'border-gray-200 dark:border-gray-700/50'
+              "
             >
               <input
                 v-model="xplanePathInput"
@@ -59,22 +110,36 @@
               />
               <button
                 type="button"
-                @click.stop.prevent="selectFolder"
                 class="px-4 py-1.5 m-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-xs font-medium rounded-md transition-colors duration-200 flex items-center space-x-1.5 flex-shrink-0 border border-gray-300 dark:border-gray-600"
+                @click.stop.prevent="selectFolder"
               >
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"></path>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"
+                  ></path>
                 </svg>
-                <span><AnimatedText>{{ $t('common.browse') }}</AnimatedText></span>
+                <span
+                  ><AnimatedText>{{ $t('common.browse') }}</AnimatedText></span
+                >
               </button>
             </div>
           </div>
 
           <!-- Launch Arguments -->
           <div class="space-y-1.5">
-            <label class="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+            <label
+              class="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5"
+            >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                ></path>
               </svg>
               <AnimatedText>{{ $t('settings.xplaneLaunchArgs') }}</AnimatedText>
             </label>
@@ -94,33 +159,48 @@
 
       <!-- 2. Grid for Windows Integration & Preferences -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-
         <!-- Windows Integration (Left Column, Windows only) -->
         <transition name="slide-up">
-          <section v-if="store.isWindows" class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
+          <section
+            v-if="store.isWindows"
+            class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+          >
             <div
               class="p-4 cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
               @click="windowsIntegrationExpanded = !windowsIntegrationExpanded"
             >
               <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-3 flex-1">
-                  <div class="w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center flex-shrink-0 text-gray-600 dark:text-gray-300">
+                  <div
+                    class="w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center flex-shrink-0 text-gray-600 dark:text-gray-300"
+                  >
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path>
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+                      ></path>
                     </svg>
                   </div>
                   <div class="flex-1">
-                    <h3 class="text-sm font-semibold text-gray-900 dark:text-white"><AnimatedText>{{ $t('settings.windowsIntegration') }}</AnimatedText></h3>
-                    <p class="text-xs text-gray-500 dark:text-gray-400"><AnimatedText>{{ $t('settings.windowsIntegrationDesc') }}</AnimatedText></p>
+                    <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                      <AnimatedText>{{ $t('settings.windowsIntegration') }}</AnimatedText>
+                    </h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      <AnimatedText>{{ $t('settings.windowsIntegrationDesc') }}</AnimatedText>
+                    </p>
                   </div>
                 </div>
 
                 <div class="flex items-center space-x-3">
                   <button
-                    @click.stop="toggleContextMenu"
                     :disabled="isProcessing"
                     class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-gray-900"
-                    :class="store.isContextMenuRegistered ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'"
+                    :class="
+                      store.isContextMenuRegistered ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'
+                    "
+                    @click.stop="toggleContextMenu"
                   >
                     <span
                       class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-300 shadow-sm"
@@ -136,7 +216,12 @@
                     stroke="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 9l-7 7-7-7"
+                    ></path>
                   </svg>
                 </div>
               </div>
@@ -145,34 +230,92 @@
             <!-- Expanded content -->
             <transition name="expand">
               <div v-if="windowsIntegrationExpanded" class="px-4 pb-4 space-y-3">
-                <div class="bg-blue-50/50 dark:bg-blue-500/5 border border-blue-200 dark:border-blue-500/20 rounded-lg p-3 space-y-2">
+                <div
+                  class="bg-blue-50/50 dark:bg-blue-500/5 border border-blue-200 dark:border-blue-500/20 rounded-lg p-3 space-y-2"
+                >
                   <h4 class="text-xs font-semibold text-blue-900 dark:text-blue-300">
                     <AnimatedText>{{ $t('settings.windowsIntegrationExplain') }}</AnimatedText>
                   </h4>
                   <ul class="text-xs text-blue-800 dark:text-blue-200 space-y-1.5">
                     <li class="flex items-start space-x-2">
-                      <svg class="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      <svg
+                        class="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M5 13l4 4L19 7"
+                        ></path>
                       </svg>
-                      <span><AnimatedText>{{ $t('settings.windowsIntegrationBenefit1') }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.windowsIntegrationBenefit1')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
-                      <svg class="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      <svg
+                        class="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M5 13l4 4L19 7"
+                        ></path>
                       </svg>
-                      <span><AnimatedText>{{ $t('settings.windowsIntegrationBenefit2') }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.windowsIntegrationBenefit2')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
-                      <svg class="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      <svg
+                        class="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M5 13l4 4L19 7"
+                        ></path>
                       </svg>
-                      <span><AnimatedText>{{ $t('settings.windowsIntegrationBenefit3') }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.windowsIntegrationBenefit3')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
-                      <svg class="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      <svg
+                        class="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M5 13l4 4L19 7"
+                        ></path>
                       </svg>
-                      <span><AnimatedText>{{ $t('settings.windowsIntegrationBenefit4') }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.windowsIntegrationBenefit4')
+                        }}</AnimatedText></span
+                      >
                     </li>
                   </ul>
                 </div>
@@ -183,15 +326,25 @@
 
         <!-- Atomic Installation Mode (Windows only) -->
         <transition name="slide-up">
-          <section v-if="store.isWindows" class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
+          <section
+            v-if="store.isWindows"
+            class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+          >
             <div
               class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
               @click="atomicExpanded = !atomicExpanded"
             >
               <div class="flex items-center space-x-3 flex-1">
-                <div class="w-8 h-8 bg-indigo-100 dark:bg-indigo-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-indigo-600 dark:text-indigo-400">
+                <div
+                  class="w-8 h-8 bg-indigo-100 dark:bg-indigo-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-indigo-600 dark:text-indigo-400"
+                >
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                    ></path>
                   </svg>
                 </div>
                 <div class="flex-1">
@@ -207,9 +360,11 @@
               <!-- Toggle Switch -->
               <div class="flex items-center space-x-3">
                 <button
-                  @click.stop="store.toggleAtomicInstall()"
                   class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-                  :class="store.atomicInstallEnabled ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'"
+                  :class="
+                    store.atomicInstallEnabled ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'
+                  "
+                  @click.stop="store.toggleAtomicInstall()"
                 >
                   <span
                     class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
@@ -225,7 +380,12 @@
                   stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  ></path>
                 </svg>
               </div>
             </div>
@@ -233,39 +393,99 @@
             <!-- Expanded content -->
             <transition name="expand">
               <div v-if="atomicExpanded" class="px-4 pb-4 space-y-3">
-                <div class="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-200 dark:border-indigo-500/20 rounded-lg p-3 space-y-2">
+                <div
+                  class="bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-200 dark:border-indigo-500/20 rounded-lg p-3 space-y-2"
+                >
                   <h4 class="text-xs font-semibold text-indigo-900 dark:text-indigo-300">
                     <AnimatedText>{{ $t('settings.atomicInstallExplain') }}</AnimatedText>
                   </h4>
                   <ul class="text-xs text-indigo-800 dark:text-indigo-200 space-y-1.5">
                     <li class="flex items-start space-x-2">
-                      <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      <svg
+                        class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M5 13l4 4L19 7"
+                        ></path>
                       </svg>
-                      <span><AnimatedText>{{ $t('settings.atomicInstallBenefit1') }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.atomicInstallBenefit1')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
-                      <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      <svg
+                        class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M5 13l4 4L19 7"
+                        ></path>
                       </svg>
-                      <span><AnimatedText>{{ $t('settings.atomicInstallBenefit2') }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.atomicInstallBenefit2')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
-                      <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      <svg
+                        class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M5 13l4 4L19 7"
+                        ></path>
                       </svg>
-                      <span><AnimatedText>{{ $t('settings.atomicInstallBenefit3') }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.atomicInstallBenefit3')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
-                      <svg class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      <svg
+                        class="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M5 13l4 4L19 7"
+                        ></path>
                       </svg>
-                      <span><AnimatedText>{{ $t('settings.atomicInstallBenefit4') }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.atomicInstallBenefit4')
+                        }}</AnimatedText></span
+                      >
                     </li>
                   </ul>
                 </div>
 
-                <p class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20">
+                <p
+                  class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20"
+                >
                   <AnimatedText>{{ $t('settings.atomicInstallNote') }}</AnimatedText>
                 </p>
               </div>
@@ -275,15 +495,25 @@
 
         <!-- Delete Source After Install (Windows only) -->
         <transition name="slide-up">
-          <section v-if="store.isWindows" class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
+          <section
+            v-if="store.isWindows"
+            class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+          >
             <div
               class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
               @click="deleteSourceExpanded = !deleteSourceExpanded"
             >
               <div class="flex items-center space-x-3 flex-1">
-                <div class="w-8 h-8 bg-red-100 dark:bg-red-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-red-600 dark:text-red-400">
+                <div
+                  class="w-8 h-8 bg-red-100 dark:bg-red-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-red-600 dark:text-red-400"
+                >
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    ></path>
                   </svg>
                 </div>
                 <div class="flex-1">
@@ -299,9 +529,11 @@
               <!-- Toggle Switch -->
               <div class="flex items-center space-x-3">
                 <button
-                  @click.stop="store.toggleDeleteSourceAfterInstall()"
                   class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-                  :class="store.deleteSourceAfterInstall ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'"
+                  :class="
+                    store.deleteSourceAfterInstall ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'
+                  "
+                  @click.stop="store.toggleDeleteSourceAfterInstall()"
                 >
                   <span
                     class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
@@ -317,7 +549,12 @@
                   stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  ></path>
                 </svg>
               </div>
             </div>
@@ -325,34 +562,92 @@
             <!-- Expanded content -->
             <transition name="expand">
               <div v-if="deleteSourceExpanded" class="px-4 pb-4 space-y-3">
-                <div class="bg-red-50/50 dark:bg-red-500/5 border border-red-200 dark:border-red-500/20 rounded-lg p-3 space-y-2">
+                <div
+                  class="bg-red-50/50 dark:bg-red-500/5 border border-red-200 dark:border-red-500/20 rounded-lg p-3 space-y-2"
+                >
                   <h4 class="text-xs font-semibold text-red-900 dark:text-red-300">
                     <AnimatedText>{{ $t('settings.deleteSourceExplain') }}</AnimatedText>
                   </h4>
                   <ul class="text-xs text-red-800 dark:text-red-200 space-y-1.5">
                     <li class="flex items-start space-x-2">
-                      <svg class="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      <svg
+                        class="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M5 13l4 4L19 7"
+                        ></path>
                       </svg>
-                      <span><AnimatedText>{{ $t('settings.deleteSourceBenefit1') }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.deleteSourceBenefit1')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
-                      <svg class="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      <svg
+                        class="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M5 13l4 4L19 7"
+                        ></path>
                       </svg>
-                      <span><AnimatedText>{{ $t('settings.deleteSourceBenefit2') }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.deleteSourceBenefit2')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
-                      <svg class="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      <svg
+                        class="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M5 13l4 4L19 7"
+                        ></path>
                       </svg>
-                      <span><AnimatedText>{{ $t('settings.deleteSourceBenefit3') }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.deleteSourceBenefit3')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
-                      <svg class="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      <svg
+                        class="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M5 13l4 4L19 7"
+                        ></path>
                       </svg>
-                      <span><AnimatedText>{{ $t('settings.deleteSourceBenefit4') }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.deleteSourceBenefit4')
+                        }}</AnimatedText></span
+                      >
                     </li>
                   </ul>
                 </div>
@@ -365,19 +660,30 @@
         <div v-if="!store.isWindows"></div>
 
         <!-- Scenery Auto-Sorting -->
-        <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2">
+        <section
+          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2"
+        >
           <div
             class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
             @click="sceneryAutoSortExpanded = !sceneryAutoSortExpanded"
           >
             <div class="flex items-center space-x-3 flex-1">
-              <div class="w-8 h-8 bg-cyan-100 dark:bg-cyan-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-cyan-600 dark:text-cyan-400">
+              <div
+                class="w-8 h-8 bg-cyan-100 dark:bg-cyan-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-cyan-600 dark:text-cyan-400"
+              >
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
+                  ></path>
                 </svg>
               </div>
               <div class="flex-1">
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <h3
+                  class="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2"
+                >
                   <AnimatedText>{{ $t('settings.sceneryAutoSort') }}</AnimatedText>
                 </h3>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
@@ -389,9 +695,9 @@
             <!-- Toggle Switch -->
             <div class="flex items-center space-x-3">
               <button
-                @click.stop="handleToggleAutoSortScenery"
                 class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
                 :class="store.autoSortScenery ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-600'"
+                @click.stop="handleToggleAutoSortScenery"
               >
                 <span
                   class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
@@ -407,7 +713,12 @@
                 stroke="currentColor"
                 viewBox="0 0 24 24"
               >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 9l-7 7-7-7"
+                ></path>
               </svg>
             </div>
           </div>
@@ -416,54 +727,133 @@
           <transition name="expand">
             <div v-if="sceneryAutoSortExpanded" class="px-4 pb-4 space-y-3">
               <!-- Explanation -->
-              <div class="bg-cyan-50/50 dark:bg-cyan-500/5 border border-cyan-200 dark:border-cyan-500/20 rounded-lg p-3 space-y-2">
+              <div
+                class="bg-cyan-50/50 dark:bg-cyan-500/5 border border-cyan-200 dark:border-cyan-500/20 rounded-lg p-3 space-y-2"
+              >
                 <h4 class="text-xs font-semibold text-cyan-900 dark:text-cyan-300">
                   <AnimatedText>{{ $t('settings.sceneryAutoSortExplain') }}</AnimatedText>
                 </h4>
                 <ul class="text-xs text-cyan-800 dark:text-cyan-200 space-y-1.5">
                   <li class="flex items-start space-x-2">
-                    <svg class="w-4 h-4 text-cyan-500 dark:text-cyan-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    <svg
+                      class="w-4 h-4 text-cyan-500 dark:text-cyan-400 flex-shrink-0 mt-0.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M5 13l4 4L19 7"
+                      ></path>
                     </svg>
-                    <span><AnimatedText>{{ $t('settings.sceneryAutoSortBenefit1') }}</AnimatedText></span>
+                    <span
+                      ><AnimatedText>{{
+                        $t('settings.sceneryAutoSortBenefit1')
+                      }}</AnimatedText></span
+                    >
                   </li>
                   <li class="flex items-start space-x-2">
-                    <svg class="w-4 h-4 text-cyan-500 dark:text-cyan-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    <svg
+                      class="w-4 h-4 text-cyan-500 dark:text-cyan-400 flex-shrink-0 mt-0.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M5 13l4 4L19 7"
+                      ></path>
                     </svg>
-                    <span><AnimatedText>{{ $t('settings.sceneryAutoSortBenefit2') }}</AnimatedText></span>
+                    <span
+                      ><AnimatedText>{{
+                        $t('settings.sceneryAutoSortBenefit2')
+                      }}</AnimatedText></span
+                    >
                   </li>
                   <li class="flex items-start space-x-2">
-                    <svg class="w-4 h-4 text-cyan-500 dark:text-cyan-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    <svg
+                      class="w-4 h-4 text-cyan-500 dark:text-cyan-400 flex-shrink-0 mt-0.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M5 13l4 4L19 7"
+                      ></path>
                     </svg>
-                    <span><AnimatedText>{{ $t('settings.sceneryAutoSortBenefit3') }}</AnimatedText></span>
+                    <span
+                      ><AnimatedText>{{
+                        $t('settings.sceneryAutoSortBenefit3')
+                      }}</AnimatedText></span
+                    >
                   </li>
                 </ul>
               </div>
 
               <!-- Rebuild Index Button -->
               <button
-                @click="handleRebuildIndex"
                 :disabled="isRebuildingIndex || !store.xplanePath"
                 class="w-full px-4 py-2 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
-                :title="indexExists ? $t('settings.rebuildIndexTooltip') : $t('settings.createIndexTooltip')"
+                :title="
+                  indexExists
+                    ? $t('settings.rebuildIndexTooltip')
+                    : $t('settings.createIndexTooltip')
+                "
+                @click="handleRebuildIndex"
               >
-                <svg v-if="!isRebuildingIndex" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                <svg
+                  v-if="!isRebuildingIndex"
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  ></path>
                 </svg>
-                <svg v-else class="w-4 h-4 animate-spin [animation-direction:reverse]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                <svg
+                  v-else
+                  class="w-4 h-4 animate-spin [animation-direction:reverse]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  ></path>
                 </svg>
                 <span>
                   <AnimatedText>
-                    {{ isRebuildingIndex ? $t('settings.rebuilding') : (indexExists ? $t('settings.rebuildIndex') : $t('settings.createIndex')) }}
+                    {{
+                      isRebuildingIndex
+                        ? $t('settings.rebuilding')
+                        : indexExists
+                          ? $t('settings.rebuildIndex')
+                          : $t('settings.createIndex')
+                    }}
                   </AnimatedText>
                 </span>
               </button>
 
               <!-- Note about X-Plane path -->
-              <p v-if="!store.xplanePath" class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20">
+              <p
+                v-if="!store.xplanePath"
+                class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20"
+              >
                 <AnimatedText>{{ $t('settings.sceneryAutoSortNeedPath') }}</AnimatedText>
               </p>
             </div>
@@ -471,20 +861,34 @@
         </section>
 
         <!-- Installation Preferences (Right Column or Full Width on non-Windows) -->
-        <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300" :class="{ 'md:col-span-2': !store.isWindows }">
+        <section
+          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+          :class="{ 'md:col-span-2': !store.isWindows }"
+        >
           <div
             class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
             @click="preferencesExpanded = !preferencesExpanded"
           >
             <div class="flex items-center space-x-3">
-              <div class="w-8 h-8 bg-green-100 dark:bg-green-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-green-600 dark:text-green-400">
+              <div
+                class="w-8 h-8 bg-green-100 dark:bg-green-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-green-600 dark:text-green-400"
+              >
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                  ></path>
                 </svg>
               </div>
               <div>
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white"><AnimatedText>{{ $t('settings.installPreferences') }}</AnimatedText></h3>
-                <p class="text-xs text-gray-500 dark:text-gray-400"><AnimatedText>{{ $t('settings.installPreferencesDesc') }}</AnimatedText></p>
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  <AnimatedText>{{ $t('settings.installPreferences') }}</AnimatedText>
+                </h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  <AnimatedText>{{ $t('settings.installPreferencesDesc') }}</AnimatedText>
+                </p>
               </div>
             </div>
 
@@ -492,9 +896,16 @@
             <svg
               class="w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform duration-200"
               :class="{ 'rotate-180': preferencesExpanded }"
-              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              ></path>
             </svg>
           </div>
 
@@ -502,12 +913,16 @@
           <transition name="collapse">
             <div v-if="preferencesExpanded" class="px-4 pb-4 space-y-3">
               <!-- Master Toggle -->
-              <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5">
-                <span class="text-xs font-medium text-gray-700 dark:text-gray-300"><AnimatedText>{{ $t('settings.toggleAll') }}</AnimatedText></span>
+              <div
+                class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5"
+              >
+                <span class="text-xs font-medium text-gray-700 dark:text-gray-300"
+                  ><AnimatedText>{{ $t('settings.toggleAll') }}</AnimatedText></span
+                >
                 <button
-                  @click="toggleAllPreferences"
                   class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
                   :class="allPreferencesEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+                  @click="toggleAllPreferences"
                 >
                   <span
                     class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
@@ -517,18 +932,31 @@
               </div>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div v-for="type in addonTypes" :key="type" class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-900/30 border border-gray-100 dark:border-white/5">
-                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2" :title="getTypeName(type)">
+                <div
+                  v-for="type in addonTypes"
+                  :key="type"
+                  class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-900/30 border border-gray-100 dark:border-white/5"
+                >
+                  <span
+                    class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2"
+                    :title="getTypeName(type)"
+                  >
                     <AnimatedText>{{ getTypeName(type) }}</AnimatedText>
                   </span>
                   <button
-                    @click="store.togglePreference(type)"
                     class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="store.installPreferences[type] ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+                    :class="
+                      store.installPreferences[type]
+                        ? 'bg-green-500'
+                        : 'bg-gray-300 dark:bg-gray-600'
+                    "
+                    @click="store.togglePreference(type)"
                   >
                     <span
                       class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="store.installPreferences[type] ? 'translate-x-3.5' : 'translate-x-0.5'"
+                      :class="
+                        store.installPreferences[type] ? 'translate-x-3.5' : 'translate-x-0.5'
+                      "
                     />
                   </button>
                 </div>
@@ -538,20 +966,34 @@
         </section>
 
         <!-- 2.5. Verification Preferences -->
-        <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300" :class="{ 'md:col-span-2': !store.isWindows }">
+        <section
+          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+          :class="{ 'md:col-span-2': !store.isWindows }"
+        >
           <div
             class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
             @click="verificationExpanded = !verificationExpanded"
           >
             <div class="flex items-center space-x-3">
-              <div class="w-8 h-8 bg-purple-100 dark:bg-purple-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-purple-600 dark:text-purple-400">
+              <div
+                class="w-8 h-8 bg-purple-100 dark:bg-purple-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-purple-600 dark:text-purple-400"
+              >
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                  ></path>
                 </svg>
               </div>
               <div>
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white"><AnimatedText>{{ $t('settings.verificationPreferences') }}</AnimatedText></h3>
-                <p class="text-xs text-gray-500 dark:text-gray-400"><AnimatedText>{{ $t('settings.verificationPreferencesDesc') }}</AnimatedText></p>
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  <AnimatedText>{{ $t('settings.verificationPreferences') }}</AnimatedText>
+                </h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  <AnimatedText>{{ $t('settings.verificationPreferencesDesc') }}</AnimatedText>
+                </p>
               </div>
             </div>
 
@@ -559,9 +1001,16 @@
             <svg
               class="w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform duration-200"
               :class="{ 'rotate-180': verificationExpanded }"
-              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              ></path>
             </svg>
           </div>
 
@@ -570,77 +1019,113 @@
             <div v-if="verificationExpanded" class="px-4 pb-4 space-y-3">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <!-- ZIP -->
-                <div class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-900/30 border border-gray-100 dark:border-white/5">
+                <div
+                  class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-900/30 border border-gray-100 dark:border-white/5"
+                >
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2">
                     <AnimatedText>{{ $t('settings.verifyZip') }}</AnimatedText>
                   </span>
                   <button
-                    @click="store.toggleVerificationPreference('zip')"
                     class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="store.verificationPreferences['zip'] ? 'bg-purple-500' : 'bg-gray-300 dark:bg-gray-600'"
+                    :class="
+                      store.verificationPreferences['zip']
+                        ? 'bg-purple-500'
+                        : 'bg-gray-300 dark:bg-gray-600'
+                    "
+                    @click="store.toggleVerificationPreference('zip')"
                   >
                     <span
                       class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="store.verificationPreferences['zip'] ? 'translate-x-3.5' : 'translate-x-0.5'"
+                      :class="
+                        store.verificationPreferences['zip'] ? 'translate-x-3.5' : 'translate-x-0.5'
+                      "
                     />
                   </button>
                 </div>
 
                 <!-- 7z -->
-                <div class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-900/30 border border-gray-100 dark:border-white/5">
+                <div
+                  class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-900/30 border border-gray-100 dark:border-white/5"
+                >
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2">
                     <AnimatedText>{{ $t('settings.verify7z') }}</AnimatedText>
                   </span>
                   <button
-                    @click="store.toggleVerificationPreference('7z')"
                     class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="store.verificationPreferences['7z'] ? 'bg-purple-500' : 'bg-gray-300 dark:bg-gray-600'"
+                    :class="
+                      store.verificationPreferences['7z']
+                        ? 'bg-purple-500'
+                        : 'bg-gray-300 dark:bg-gray-600'
+                    "
+                    @click="store.toggleVerificationPreference('7z')"
                   >
                     <span
                       class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="store.verificationPreferences['7z'] ? 'translate-x-3.5' : 'translate-x-0.5'"
+                      :class="
+                        store.verificationPreferences['7z'] ? 'translate-x-3.5' : 'translate-x-0.5'
+                      "
                     />
                   </button>
                 </div>
 
                 <!-- RAR (with note) -->
-                <div class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-900/30 border border-gray-100 dark:border-white/5 opacity-60">
+                <div
+                  class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-900/30 border border-gray-100 dark:border-white/5 opacity-60"
+                >
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2">
                     <AnimatedText>{{ $t('settings.verifyRar') }}</AnimatedText>
                   </span>
                   <button
-                    @click="store.toggleVerificationPreference('rar')"
                     class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="store.verificationPreferences['rar'] ? 'bg-purple-500' : 'bg-gray-300 dark:bg-gray-600'"
+                    :class="
+                      store.verificationPreferences['rar']
+                        ? 'bg-purple-500'
+                        : 'bg-gray-300 dark:bg-gray-600'
+                    "
                     disabled
+                    @click="store.toggleVerificationPreference('rar')"
                   >
                     <span
                       class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="store.verificationPreferences['rar'] ? 'translate-x-3.5' : 'translate-x-0.5'"
+                      :class="
+                        store.verificationPreferences['rar'] ? 'translate-x-3.5' : 'translate-x-0.5'
+                      "
                     />
                   </button>
                 </div>
 
                 <!-- Directory -->
-                <div class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-900/30 border border-gray-100 dark:border-white/5">
+                <div
+                  class="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-900/30 border border-gray-100 dark:border-white/5"
+                >
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2">
                     <AnimatedText>{{ $t('settings.verifyDirectory') }}</AnimatedText>
                   </span>
                   <button
-                    @click="store.toggleVerificationPreference('directory')"
                     class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="store.verificationPreferences['directory'] ? 'bg-purple-500' : 'bg-gray-300 dark:bg-gray-600'"
+                    :class="
+                      store.verificationPreferences['directory']
+                        ? 'bg-purple-500'
+                        : 'bg-gray-300 dark:bg-gray-600'
+                    "
+                    @click="store.toggleVerificationPreference('directory')"
                   >
                     <span
                       class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="store.verificationPreferences['directory'] ? 'translate-x-3.5' : 'translate-x-0.5'"
+                      :class="
+                        store.verificationPreferences['directory']
+                          ? 'translate-x-3.5'
+                          : 'translate-x-0.5'
+                      "
                     />
                   </button>
                 </div>
               </div>
 
               <!-- RAR note -->
-              <p class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20">
+              <p
+                class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 p-2 rounded-lg border border-amber-200 dark:border-amber-500/20"
+              >
                 <AnimatedText>{{ $t('settings.rarVerificationNote') }}</AnimatedText>
               </p>
             </div>
@@ -649,119 +1134,195 @@
       </div>
 
       <!-- 3. Aircraft Backup Configuration -->
-      <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
-          <div
-            class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
-            @click="backupExpanded = !backupExpanded"
-          >
-            <div class="flex items-center space-x-3">
-              <div class="w-8 h-8 bg-blue-100 dark:bg-blue-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-blue-600 dark:text-blue-400">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
-                </svg>
-              </div>
-              <div>
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-                  <AnimatedText>{{ $t('settings.aircraftBackup') }}</AnimatedText>
-                </h3>
-                <p class="text-xs text-gray-500 dark:text-gray-400">
-                  <AnimatedText>{{ $t('settings.aircraftBackupDesc') }}</AnimatedText>
-                </p>
-              </div>
-            </div>
-
-            <!-- Status indicators and expand/collapse -->
-            <div class="flex items-center space-x-2">
-              <!-- Save status -->
-              <transition name="fade">
-                <div v-if="patternSaveStatus" class="flex items-center text-[10px] font-medium space-x-1" :class="patternSaveStatus === 'saved' ? 'text-emerald-500' : 'text-gray-400'">
-                  <svg v-if="patternSaveStatus === 'saved'" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                  </svg>
-                  <svg v-else class="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                  </svg>
-                  <span>{{ patternSaveStatus === 'saved' ? $t('settings.saved') : $t('settings.saving') }}</span>
-                </div>
-              </transition>
-
-              <!-- Expand/Collapse indicator -->
-              <svg
-                class="w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform duration-200"
-                :class="{ 'rotate-180': backupExpanded }"
-                fill="none" stroke="currentColor" viewBox="0 0 24 24"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+      <section
+        class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+      >
+        <div
+          class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
+          @click="backupExpanded = !backupExpanded"
+        >
+          <div class="flex items-center space-x-3">
+            <div
+              class="w-8 h-8 bg-blue-100 dark:bg-blue-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-blue-600 dark:text-blue-400"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
+                ></path>
               </svg>
+            </div>
+            <div>
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                <AnimatedText>{{ $t('settings.aircraftBackup') }}</AnimatedText>
+              </h3>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                <AnimatedText>{{ $t('settings.aircraftBackupDesc') }}</AnimatedText>
+              </p>
             </div>
           </div>
 
-          <!-- Collapsible content -->
-          <transition name="collapse">
-            <div v-if="backupExpanded" class="px-4 pb-4 space-y-3">
-              <!-- Config file patterns list -->
-              <div class="space-y-2">
-                <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
-                  <AnimatedText>{{ $t('settings.configFilePatterns') }}</AnimatedText>
-                </label>
-
-                <div class="space-y-1.5">
-                  <div v-for="(_pattern, index) in configPatterns" :key="index">
-                    <div class="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg border transition-colors"
-                         :class="patternErrors[index] ? 'border-red-300 dark:border-red-500/50' : 'border-gray-100 dark:border-white/5'">
-                      <input
-                        v-model="configPatterns[index]"
-                        type="text"
-                        class="flex-1 px-2 py-1 text-xs bg-white dark:bg-gray-800 border rounded text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
-                        :class="patternErrors[index] ? 'border-red-300 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'"
-                        placeholder="*_prefs.txt"
-                        @blur="handlePatternBlur"
-                      >
-                      <button
-                        @click="removePattern(index)"
-                        class="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors"
-                        :title="$t('common.delete')"
-                      >
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                        </svg>
-                      </button>
-                    </div>
-                    <p v-if="patternErrors[index]" class="mt-0.5 ml-2 text-xs text-red-500 dark:text-red-400">
-                      {{ patternErrors[index] }}
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  @click="addPattern"
-                  class="w-full px-3 py-1.5 text-xs bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg transition-colors border border-blue-200 dark:border-blue-500/20 flex items-center justify-center gap-1"
+          <!-- Status indicators and expand/collapse -->
+          <div class="flex items-center space-x-2">
+            <!-- Save status -->
+            <transition name="fade">
+              <div
+                v-if="patternSaveStatus"
+                class="flex items-center text-[10px] font-medium space-x-1"
+                :class="patternSaveStatus === 'saved' ? 'text-emerald-500' : 'text-gray-400'"
+              >
+                <svg
+                  v-if="patternSaveStatus === 'saved'"
+                  class="w-3 h-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                  </svg>
-                  <AnimatedText>{{ $t('settings.addPattern') }}</AnimatedText>
-                </button>
-
-                <!-- Help text -->
-                <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                  <AnimatedText>{{ $t('settings.patternHelpText') }}</AnimatedText>
-                </p>
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 13l4 4L19 7"
+                  ></path>
+                </svg>
+                <svg
+                  v-else
+                  class="w-3 h-3 animate-spin"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  ></path>
+                </svg>
+                <span>{{
+                  patternSaveStatus === 'saved' ? $t('settings.saved') : $t('settings.saving')
+                }}</span>
               </div>
+            </transition>
+
+            <!-- Expand/Collapse indicator -->
+            <svg
+              class="w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform duration-200"
+              :class="{ 'rotate-180': backupExpanded }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              ></path>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Collapsible content -->
+        <transition name="collapse">
+          <div v-if="backupExpanded" class="px-4 pb-4 space-y-3">
+            <!-- Config file patterns list -->
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                <AnimatedText>{{ $t('settings.configFilePatterns') }}</AnimatedText>
+              </label>
+
+              <div class="space-y-1.5">
+                <div v-for="(_pattern, index) in configPatterns" :key="index">
+                  <div
+                    class="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-900/30 rounded-lg border transition-colors"
+                    :class="
+                      patternErrors[index]
+                        ? 'border-red-300 dark:border-red-500/50'
+                        : 'border-gray-100 dark:border-white/5'
+                    "
+                  >
+                    <input
+                      v-model="configPatterns[index]"
+                      type="text"
+                      class="flex-1 px-2 py-1 text-xs bg-white dark:bg-gray-800 border rounded text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                      :class="
+                        patternErrors[index]
+                          ? 'border-red-300 dark:border-red-500'
+                          : 'border-gray-200 dark:border-gray-700'
+                      "
+                      placeholder="*_prefs.txt"
+                      @blur="handlePatternBlur"
+                    />
+                    <button
+                      class="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors"
+                      :title="$t('common.delete')"
+                      @click="removePattern(index)"
+                    >
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M6 18L18 6M6 6l12 12"
+                        ></path>
+                      </svg>
+                    </button>
+                  </div>
+                  <p
+                    v-if="patternErrors[index]"
+                    class="mt-0.5 ml-2 text-xs text-red-500 dark:text-red-400"
+                  >
+                    {{ patternErrors[index] }}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                class="w-full px-3 py-1.5 text-xs bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg transition-colors border border-blue-200 dark:border-blue-500/20 flex items-center justify-center gap-1"
+                @click="addPattern"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 4v16m8-8H4"
+                  ></path>
+                </svg>
+                <AnimatedText>{{ $t('settings.addPattern') }}</AnimatedText>
+              </button>
+
+              <!-- Help text -->
+              <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                <AnimatedText>{{ $t('settings.patternHelpText') }}</AnimatedText>
+              </p>
             </div>
-          </transition>
-        </section>
+          </div>
+        </transition>
+      </section>
 
       <!--  4. Auto Update Check -->
-      <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
+      <section
+        class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+      >
         <div
           class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
           @click="updateCheckExpanded = !updateCheckExpanded"
         >
           <div class="flex items-center space-x-3 flex-1">
-            <div class="w-8 h-8 bg-green-100 dark:bg-green-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-green-600 dark:text-green-400">
+            <div
+              class="w-8 h-8 bg-green-100 dark:bg-green-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-green-600 dark:text-green-400"
+            >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                ></path>
               </svg>
             </div>
             <div class="flex-1">
@@ -777,9 +1338,11 @@
           <!-- Toggle Switch -->
           <div class="flex items-center space-x-3">
             <button
-              @click.stop="updateStore.toggleAutoCheck()"
               class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-              :class="updateStore.autoCheckEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+              :class="
+                updateStore.autoCheckEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
+              "
+              @click.stop="updateStore.toggleAutoCheck()"
             >
               <span
                 class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
@@ -795,7 +1358,12 @@
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              ></path>
             </svg>
           </div>
         </div>
@@ -804,34 +1372,74 @@
         <transition name="expand">
           <div v-if="updateCheckExpanded" class="px-4 pb-4 space-y-3">
             <!-- 说明 -->
-            <div class="bg-green-50/50 dark:bg-green-500/5 border border-green-200 dark:border-green-500/20 rounded-lg p-3 space-y-2">
+            <div
+              class="bg-green-50/50 dark:bg-green-500/5 border border-green-200 dark:border-green-500/20 rounded-lg p-3 space-y-2"
+            >
               <h4 class="text-xs font-semibold text-green-900 dark:text-green-300">
                 <AnimatedText>{{ $t('update.autoUpdateCheckExplain') }}</AnimatedText>
               </h4>
               <ul class="text-xs text-green-800 dark:text-green-200 space-y-1.5">
                 <li class="flex items-start space-x-2">
-                  <svg class="w-4 h-4 text-green-500 dark:text-green-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  <svg
+                    class="w-4 h-4 text-green-500 dark:text-green-400 flex-shrink-0 mt-0.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M5 13l4 4L19 7"
+                    ></path>
                   </svg>
-                  <span><AnimatedText>{{ $t('update.autoUpdateCheckBenefit1') }}</AnimatedText></span>
+                  <span
+                    ><AnimatedText>{{ $t('update.autoUpdateCheckBenefit1') }}</AnimatedText></span
+                  >
                 </li>
                 <li class="flex items-start space-x-2">
-                  <svg class="w-4 h-4 text-green-500 dark:text-green-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  <svg
+                    class="w-4 h-4 text-green-500 dark:text-green-400 flex-shrink-0 mt-0.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M5 13l4 4L19 7"
+                    ></path>
                   </svg>
-                  <span><AnimatedText>{{ $t('update.autoUpdateCheckBenefit2') }}</AnimatedText></span>
+                  <span
+                    ><AnimatedText>{{ $t('update.autoUpdateCheckBenefit2') }}</AnimatedText></span
+                  >
                 </li>
                 <li class="flex items-start space-x-2">
-                  <svg class="w-4 h-4 text-green-500 dark:text-green-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  <svg
+                    class="w-4 h-4 text-green-500 dark:text-green-400 flex-shrink-0 mt-0.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M5 13l4 4L19 7"
+                    ></path>
                   </svg>
-                  <span><AnimatedText>{{ $t('update.autoUpdateCheckBenefit3') }}</AnimatedText></span>
+                  <span
+                    ><AnimatedText>{{ $t('update.autoUpdateCheckBenefit3') }}</AnimatedText></span
+                  >
                 </li>
               </ul>
             </div>
 
             <!-- Pre-Release 选项 -->
-            <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5">
+            <div
+              class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5"
+            >
               <div class="flex-1">
                 <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
                   <AnimatedText>{{ $t('update.includePreRelease') }}</AnimatedText>
@@ -841,9 +1449,11 @@
                 </p>
               </div>
               <button
-                @click="updateStore.toggleIncludePreRelease()"
                 class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0 ml-3"
-                :class="updateStore.includePreRelease ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+                :class="
+                  updateStore.includePreRelease ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
+                "
+                @click="updateStore.toggleIncludePreRelease()"
               >
                 <span
                   class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
@@ -854,18 +1464,42 @@
 
             <!-- 手动检查按钮 -->
             <button
-              @click="handleCheckUpdate"
               :disabled="updateStore.checkInProgress"
               class="w-full px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+              @click="handleCheckUpdate"
             >
-              <svg v-if="!updateStore.checkInProgress" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              <svg
+                v-if="!updateStore.checkInProgress"
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                ></path>
               </svg>
-              <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              <svg
+                v-else
+                class="w-4 h-4 animate-spin"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                ></path>
               </svg>
               <span>
-                <AnimatedText>{{ updateStore.checkInProgress ? $t('update.checking') : $t('update.checkForUpdates') }}</AnimatedText>
+                <AnimatedText>{{
+                  updateStore.checkInProgress ? $t('update.checking') : $t('update.checkForUpdates')
+                }}</AnimatedText>
               </span>
             </button>
 
@@ -878,21 +1512,34 @@
       </section>
 
       <!-- 5. Logs Section (Collapsible) -->
-      <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
+      <section
+        class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+      >
         <!-- Header (clickable to expand/collapse) -->
         <div
           class="p-4 flex items-center justify-between cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-gray-700/30 rounded-xl transition-colors"
           @click="toggleLogsExpanded"
         >
           <div class="flex items-center space-x-3">
-            <div class="w-8 h-8 bg-amber-100 dark:bg-amber-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-amber-600 dark:text-amber-400">
+            <div
+              class="w-8 h-8 bg-amber-100 dark:bg-amber-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-amber-600 dark:text-amber-400"
+            >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                ></path>
               </svg>
             </div>
             <div>
-              <h3 class="text-sm font-semibold text-gray-900 dark:text-white"><AnimatedText>{{ $t('settings.logs') }}</AnimatedText></h3>
-              <p class="text-xs text-gray-500 dark:text-gray-400"><AnimatedText>{{ $t('settings.logLevelDesc') }}</AnimatedText></p>
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                <AnimatedText>{{ $t('settings.logs') }}</AnimatedText>
+              </h3>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                <AnimatedText>{{ $t('settings.logLevelDesc') }}</AnimatedText>
+              </p>
             </div>
           </div>
 
@@ -900,9 +1547,16 @@
           <svg
             class="w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform duration-200"
             :class="{ 'rotate-180': logsExpanded }"
-            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 9l-7 7-7-7"
+            ></path>
           </svg>
         </div>
 
@@ -910,21 +1564,29 @@
         <transition name="collapse">
           <div v-if="logsExpanded" class="px-4 pb-4 space-y-3">
             <!-- Log Level Selector -->
-            <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5">
+            <div
+              class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5"
+            >
               <div class="flex-1">
-                <label class="text-xs font-medium text-gray-700 dark:text-gray-300"><AnimatedText>{{ $t('settings.logLevel') }}</AnimatedText></label>
+                <label class="text-xs font-medium text-gray-700 dark:text-gray-300"
+                  ><AnimatedText>{{ $t('settings.logLevel') }}</AnimatedText></label
+                >
               </div>
               <div class="flex items-center space-x-2">
                 <button
-                  v-for="level in (['basic', 'full', 'debug'] as const)"
+                  v-for="level in ['basic', 'full', 'debug'] as const"
                   :key="level"
-                  @click.stop="store.setLogLevel(level)"
                   class="px-3 py-1 text-xs rounded-md transition-all duration-200 border"
-                  :class="store.logLevel === level
-                    ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
-                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'"
+                  :class="
+                    store.logLevel === level
+                      ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  "
+                  @click.stop="store.setLogLevel(level)"
                 >
-                  <AnimatedText>{{ $t(`settings.logLevel${level.charAt(0).toUpperCase() + level.slice(1)}`) }}</AnimatedText>
+                  <AnimatedText>
+                    {{ $t(`settings.logLevel${level.charAt(0).toUpperCase() + level.slice(1)}`) }}
+                  </AnimatedText>
                 </button>
               </div>
             </div>
@@ -932,20 +1594,20 @@
             <!-- Action buttons -->
             <div class="flex items-center justify-end space-x-2">
               <button
-                @click.stop="refreshLogs"
                 class="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
+                @click.stop="refreshLogs"
               >
                 <AnimatedText>{{ $t('settings.refreshLogs') }}</AnimatedText>
               </button>
               <button
-                @click.stop="handleOpenLogFolder"
                 class="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
+                @click.stop="handleOpenLogFolder"
               >
                 <AnimatedText>{{ $t('settings.openLogFolder') }}</AnimatedText>
               </button>
               <button
-                @click.stop="handleCopyLogs"
                 class="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
+                @click.stop="handleCopyLogs"
               >
                 <AnimatedText>{{ $t('settings.copyLogs') }}</AnimatedText>
               </button>
@@ -964,7 +1626,9 @@
                 :key="index"
                 class="leading-relaxed whitespace-pre-wrap break-all"
                 :class="getLogColorClass(log)"
-              >{{ log }}</div>
+              >
+                {{ log }}
+              </div>
             </div>
 
             <!-- Log path -->
@@ -975,16 +1639,19 @@
         </transition>
       </section>
 
-
       <!-- 6. About -->
-      <section class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300">
+      <section
+        class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+      >
         <div
           class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors"
           :class="aboutExpanded ? 'rounded-t-xl' : 'rounded-xl'"
           @click="aboutExpanded = !aboutExpanded"
         >
           <div class="flex items-center space-x-4">
-            <div class="w-12 h-12 rounded-xl shadow-lg transform rotate-3 flex-shrink-0 overflow-hidden">
+            <div
+              class="w-12 h-12 rounded-xl shadow-lg transform rotate-3 flex-shrink-0 overflow-hidden"
+            >
               <img src="/icon.png" alt="XFast Manager" class="w-full h-full object-cover" />
             </div>
             <div>
@@ -1001,26 +1668,40 @@
             stroke="currentColor"
             viewBox="0 0 24 24"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 9l-7 7-7-7"
+            ></path>
           </svg>
         </div>
 
         <!-- Contributors section -->
         <transition name="collapse">
-          <div v-if="aboutExpanded" class="px-4 pb-4 border-t border-gray-100 dark:border-gray-700/50">
+          <div
+            v-if="aboutExpanded"
+            class="px-4 pb-4 border-t border-gray-100 dark:border-gray-700/50"
+          >
             <div class="pt-4 space-y-3">
               <!-- Development -->
               <div>
-                <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                <h4
+                  class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2"
+                >
                   {{ $t('settings.development') }}
                 </h4>
                 <div class="flex flex-wrap gap-2">
                   <button
-                    @click="openDeveloperProfile"
                     class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-500/30 transition-colors cursor-pointer"
+                    @click="openDeveloperProfile"
                   >
                     <svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" />
+                      <path
+                        fill-rule="evenodd"
+                        d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z"
+                        clip-rule="evenodd"
+                      />
                     </svg>
                     CCA3370
                   </button>
@@ -1029,43 +1710,81 @@
 
               <!-- Testing -->
               <div>
-                <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                <h4
+                  class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2"
+                >
                   {{ $t('settings.testing') }}
                 </h4>
                 <div class="flex flex-wrap gap-2">
-                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400">
+                  <span
+                    class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400"
+                  >
                     <svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                      <path
+                        fill-rule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clip-rule="evenodd"
+                      />
                     </svg>
                     SINO1660
                   </span>
-                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400">
+                  <span
+                    class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400"
+                  >
                     <svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                      <path
+                        fill-rule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clip-rule="evenodd"
+                      />
                     </svg>
                     enenY
                   </span>
-                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400">
+                  <span
+                    class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400"
+                  >
                     <svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                      <path
+                        fill-rule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clip-rule="evenodd"
+                      />
                     </svg>
                     🍊
                   </span>
-                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400">
+                  <span
+                    class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400"
+                  >
                     <svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                      <path
+                        fill-rule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clip-rule="evenodd"
+                      />
                     </svg>
                     Tong Wu
                   </span>
-                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400">
+                  <span
+                    class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400"
+                  >
                     <svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                      <path
+                        fill-rule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clip-rule="evenodd"
+                      />
                     </svg>
                     HTony03
                   </span>
-                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400">
+                  <span
+                    class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400"
+                  >
                     <svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                      <path
+                        fill-rule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clip-rule="evenodd"
+                      />
                     </svg>
                     CHN131
                   </span>
@@ -1094,6 +1813,7 @@ import AnimatedText from '@/components/AnimatedText.vue'
 import { AddonType, getErrorMessage } from '@/types'
 import { logger, logError, logDebug } from '@/services/logger'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
+import { setTrackedTimeout } from '@/utils/timeout'
 
 const { t } = useI18n()
 const store = useAppStore()
@@ -1119,17 +1839,6 @@ let pathValidationDebounceTimer: ReturnType<typeof setTimeout> | null = null
 const PATH_VALIDATION_DEBOUNCE_MS = 300
 const SAVE_STATUS_DISPLAY_DURATION_MS = 2000 // Duration to show "Saved" status
 
-// Helper to create tracked timeouts that will be cleaned up on unmount
-function setTrackedTimeout(callback: () => void, delay: number): ReturnType<typeof setTimeout> {
-  const id = setTimeout(() => {
-    callback()
-    // Remove the timeout ID from the tracking set after it fires
-    activeTimeoutIds.delete(id)
-  }, delay)
-  activeTimeoutIds.add(id)
-  return id
-}
-
 // Logs state
 const recentLogs = ref<string[]>([])
 const logPath = ref('')
@@ -1151,34 +1860,48 @@ const aboutExpanded = ref(false) // Default collapsed
 const isRebuildingIndex = ref(false)
 const indexExists = computed(() => sceneryStore.indexExists)
 
-const addonTypes = [AddonType.Aircraft, AddonType.Scenery, AddonType.SceneryLibrary, AddonType.Plugin, AddonType.Navdata, AddonType.Livery]
+const addonTypes = [
+  AddonType.Aircraft,
+  AddonType.Scenery,
+  AddonType.SceneryLibrary,
+  AddonType.Plugin,
+  AddonType.Navdata,
+  AddonType.Livery,
+]
 
 onMounted(() => {
   sceneryStore.loadIndexStatus()
 })
 
-watch(() => store.xplanePath, () => {
-  sceneryStore.loadIndexStatus()
-})
+watch(
+  () => store.xplanePath,
+  () => {
+    sceneryStore.loadIndexStatus()
+  },
+)
 
 // Scroll log container to bottom
 function scrollLogsToBottom() {
   // Use setTimeout to ensure DOM is fully rendered and transition is complete
-  setTrackedTimeout(() => {
-    if (logContainer.value) {
-      logContainer.value.scrollTop = logContainer.value.scrollHeight
-    }
-  }, 100) // Wait 100ms for transition
+  setTrackedTimeout(
+    () => {
+      if (logContainer.value) {
+        logContainer.value.scrollTop = logContainer.value.scrollHeight
+      }
+    },
+    100,
+    activeTimeoutIds,
+  ) // Wait 100ms for transition
 }
 
 // Master toggle computed
 const allPreferencesEnabled = computed(() => {
-  return addonTypes.every(type => store.installPreferences[type])
+  return addonTypes.every((type) => store.installPreferences[type])
 })
 
 function toggleAllPreferences() {
   const newValue = !allPreferencesEnabled.value
-  addonTypes.forEach(type => {
+  addonTypes.forEach((type) => {
     if (store.installPreferences[type] !== newValue) {
       store.togglePreference(type)
     }
@@ -1200,14 +1923,22 @@ async function handleToggleAutoSortScenery() {
 
 function getTypeName(type: AddonType): string {
   switch (type) {
-    case AddonType.Aircraft: return t('settings.typeAircraft')
-    case AddonType.Scenery: return t('settings.typeScenery')
-    case AddonType.SceneryLibrary: return t('settings.typeSceneryLibrary')
-    case AddonType.Plugin: return t('settings.typePlugin')
-    case AddonType.Navdata: return t('settings.typeNavdata')
-    case AddonType.Livery: return t('settings.typeLivery')
-    case AddonType.LuaScript: return t('settings.typeLuaScript')
-    default: return type
+    case AddonType.Aircraft:
+      return t('settings.typeAircraft')
+    case AddonType.Scenery:
+      return t('settings.typeScenery')
+    case AddonType.SceneryLibrary:
+      return t('settings.typeSceneryLibrary')
+    case AddonType.Plugin:
+      return t('settings.typePlugin')
+    case AddonType.Navdata:
+      return t('settings.typeNavdata')
+    case AddonType.Livery:
+      return t('settings.typeLivery')
+    case AddonType.LuaScript:
+      return t('settings.typeLuaScript')
+    default:
+      return type
   }
 }
 
@@ -1228,7 +1959,10 @@ onMounted(async () => {
       const actualStatus = await invoke<boolean>('is_context_menu_registered')
       // If stored status doesn't match actual status, update it
       if (store.isContextMenuRegistered !== actualStatus) {
-        logDebug(`Context menu status mismatch: stored=${store.isContextMenuRegistered}, actual=${actualStatus}. Syncing...`, 'settings')
+        logDebug(
+          `Context menu status mismatch: stored=${store.isContextMenuRegistered}, actual=${actualStatus}. Syncing...`,
+          'settings',
+        )
         store.isContextMenuRegistered = actualStatus
       }
     } catch (error) {
@@ -1247,7 +1981,7 @@ onMounted(async () => {
 // Cleanup timers on component unmount to prevent memory leaks
 onBeforeUnmount(() => {
   // Clear all tracked timeouts
-  activeTimeoutIds.forEach(id => clearTimeout(id))
+  activeTimeoutIds.forEach((id) => clearTimeout(id))
   activeTimeoutIds.clear()
   // Clear path validation debounce timer
   if (pathValidationDebounceTimer) {
@@ -1312,9 +2046,13 @@ async function validateAndSavePath() {
     // Save the path
     store.setXplanePath(newValue)
     saveStatus.value = 'saved'
-    setTrackedTimeout(() => {
-      saveStatus.value = null
-    }, SAVE_STATUS_DISPLAY_DURATION_MS)
+    setTrackedTimeout(
+      () => {
+        saveStatus.value = null
+      },
+      SAVE_STATUS_DISPLAY_DURATION_MS,
+      activeTimeoutIds,
+    )
   }
 }
 
@@ -1348,9 +2086,13 @@ function handlePatternBlur() {
     patternSaveStatus.value = 'saved'
 
     // Hide saved status after 2 seconds
-    setTrackedTimeout(() => {
-      patternSaveStatus.value = null
-    }, SAVE_STATUS_DISPLAY_DURATION_MS)
+    setTrackedTimeout(
+      () => {
+        patternSaveStatus.value = null
+      },
+      SAVE_STATUS_DISPLAY_DURATION_MS,
+      activeTimeoutIds,
+    )
   }
 }
 
@@ -1368,15 +2110,19 @@ function removePattern(index: number) {
 
   // Validate and filter remaining patterns
   const validPatterns = configPatterns.value
-    .map(p => p.trim())
-    .filter(p => p !== '' && !validateGlobPattern(p))
+    .map((p) => p.trim())
+    .filter((p) => p !== '' && !validateGlobPattern(p))
 
   store.setConfigFilePatterns(validPatterns)
   patternSaveStatus.value = 'saved'
 
-  setTrackedTimeout(() => {
-    patternSaveStatus.value = null
-  }, SAVE_STATUS_DISPLAY_DURATION_MS)
+  setTrackedTimeout(
+    () => {
+      patternSaveStatus.value = null
+    },
+    SAVE_STATUS_DISPLAY_DURATION_MS,
+    activeTimeoutIds,
+  )
 }
 
 async function selectFolder() {
@@ -1384,7 +2130,7 @@ async function selectFolder() {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: t('settings.selectXplaneFolder')
+      title: t('settings.selectXplaneFolder'),
     })
 
     // Type guard: with multiple: false, selected is string | null (not array)
@@ -1417,7 +2163,13 @@ async function selectFolder() {
       xplanePathInput.value = selectedPath
       store.setXplanePath(selectedPath)
       saveStatus.value = 'saved'
-      setTrackedTimeout(() => { saveStatus.value = null }, SAVE_STATUS_DISPLAY_DURATION_MS)
+      setTrackedTimeout(
+        () => {
+          saveStatus.value = null
+        },
+        SAVE_STATUS_DISPLAY_DURATION_MS,
+        activeTimeoutIds,
+      )
     }
   } catch (error) {
     logError(`Failed to open folder dialog: ${error}`, 'settings')
@@ -1455,7 +2207,11 @@ async function toggleContextMenu() {
       } catch (error) {
         // If already unregistered, just update the state
         const errorMsg = getErrorMessage(error).toLowerCase()
-        if (errorMsg.includes('not found') || errorMsg.includes('not exist') || errorMsg.includes('not registered')) {
+        if (
+          errorMsg.includes('not found') ||
+          errorMsg.includes('not exist') ||
+          errorMsg.includes('not registered')
+        ) {
           logDebug('Context menu already unregistered, updating state', 'settings')
           store.isContextMenuRegistered = false
           toast.info(t('settings.contextMenuUnregistered'))

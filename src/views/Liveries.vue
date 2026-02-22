@@ -35,7 +35,7 @@ let dragStartPanY = 0
 
 // Look up aircraft display name from management store
 const aircraftDisplayName = computed(() => {
-  const aircraft = managementStore.aircraft.find(a => a.folderName === aircraftFolder.value)
+  const aircraft = managementStore.aircraft.find((a) => a.folderName === aircraftFolder.value)
   return aircraft?.displayName || aircraftFolder.value
 })
 
@@ -49,7 +49,7 @@ async function loadLiveries() {
   try {
     liveries.value = await invoke<LiveryInfo[]>('get_aircraft_liveries', {
       xplanePath: appStore.xplanePath,
-      aircraftFolder: aircraftFolder.value
+      aircraftFolder: aircraftFolder.value,
     })
   } catch (e) {
     loadError.value = true
@@ -66,14 +66,14 @@ async function handleDeleteLivery(folderName: string) {
     await invoke('delete_aircraft_livery', {
       xplanePath: appStore.xplanePath,
       aircraftFolder: aircraftFolder.value,
-      liveryFolder: folderName
+      liveryFolder: folderName,
     })
 
     // Remove from local array
-    liveries.value = liveries.value.filter(l => l.folderName !== folderName)
+    liveries.value = liveries.value.filter((l) => l.folderName !== folderName)
 
     // Update livery count in management store
-    const aircraft = managementStore.aircraft.find(a => a.folderName === aircraftFolder.value)
+    const aircraft = managementStore.aircraft.find((a) => a.folderName === aircraftFolder.value)
     if (aircraft) {
       aircraft.liveryCount = liveries.value.length
       aircraft.hasLiveries = liveries.value.length > 0
@@ -164,7 +164,7 @@ async function handleOpenLiveryFolder(folderName: string) {
     await invoke('open_livery_folder', {
       xplanePath: appStore.xplanePath,
       aircraftFolder: aircraftFolder.value,
-      liveryFolder: folderName
+      liveryFolder: folderName,
     })
   } catch (e) {
     modalStore.showError(t('management.openFolderFailed') + ': ' + String(e))
@@ -181,12 +181,22 @@ onMounted(() => {
     <!-- Header -->
     <div class="mb-4 flex-shrink-0 flex items-center gap-3">
       <button
-        @click="goBack"
         class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
         :title="t('onboarding.back')"
+        @click="goBack"
       >
-        <svg class="w-5 h-5 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        <svg
+          class="w-5 h-5 text-gray-600 dark:text-gray-300"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M15 19l-7-7 7-7"
+          />
         </svg>
       </button>
       <div class="flex-1 min-w-0">
@@ -258,13 +268,18 @@ onMounted(() => {
             :alt="previewName"
             class="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl select-none"
             :class="previewScale > 1 ? 'cursor-grab' : ''"
-            :style="{ transform: `translate(${previewX}px, ${previewY}px) scale(${previewScale})`, transition: isDragging ? 'none' : 'transform 0.1s' }"
+            :style="{
+              transform: `translate(${previewX}px, ${previewY}px) scale(${previewScale})`,
+              transition: isDragging ? 'none' : 'transform 0.1s',
+            }"
             draggable="false"
             @pointerdown="handlePointerDown"
             @pointermove="handlePointerMove"
             @pointerup="handlePointerUp"
           />
-          <p class="mt-3 text-sm text-white/80 text-center truncate max-w-[90vw]">{{ previewName }}</p>
+          <p class="mt-3 text-sm text-white/80 text-center truncate max-w-[90vw]">
+            {{ previewName }}
+          </p>
         </div>
       </Transition>
     </Teleport>

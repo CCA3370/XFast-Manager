@@ -11,7 +11,7 @@ export interface Toast {
 // Maximum number of toasts to display at once
 const MAX_TOASTS = 3
 // Toast display duration (matches CSS animation duration) + buffer
-const TOAST_DURATION = 3500
+const TOAST_DURATION = 2900
 
 export const useToastStore = defineStore('toast', () => {
   const toasts = ref<Toast[]>([])
@@ -40,7 +40,7 @@ export const useToastStore = defineStore('toast', () => {
   }
 
   function remove(id: string) {
-    const index = toasts.value.findIndex(t => t.id === id)
+    const index = toasts.value.findIndex((t) => t.id === id)
     if (index !== -1) {
       toasts.value.splice(index, 1)
     }

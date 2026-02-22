@@ -26,7 +26,7 @@ const props = withDefaults(defineProps<Props>(), {
   roundedTop: false,
   roundedBottom: false,
   badge: undefined,
-  badgeColor: 'gray'
+  badgeColor: 'gray',
 })
 
 const emit = defineEmits<{
@@ -44,7 +44,7 @@ const iconColorClasses = computed(() => {
     gray: 'bg-gray-100 dark:bg-gray-500/10 text-gray-600 dark:text-gray-400',
     indigo: 'bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400',
     rose: 'bg-rose-100 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400',
-    cyan: 'bg-cyan-100 dark:bg-cyan-500/10 text-cyan-600 dark:text-cyan-400'
+    cyan: 'bg-cyan-100 dark:bg-cyan-500/10 text-cyan-600 dark:text-cyan-400',
   }
   return colors[props.iconColor] || colors.gray
 })
@@ -56,7 +56,7 @@ const badgeColorClasses = computed(() => {
     blue: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300',
     amber: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300',
     red: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300',
-    gray: 'bg-gray-100 dark:bg-gray-500/20 text-gray-700 dark:text-gray-300'
+    gray: 'bg-gray-100 dark:bg-gray-500/20 text-gray-700 dark:text-gray-300',
   }
   return colors[props.badgeColor] || colors.gray
 })
@@ -87,9 +87,18 @@ const roundedClass = computed(() => {
           <slot name="icon">
             <!-- Default icon (cog/settings) -->
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
             </svg>
           </slot>
         </div>
@@ -118,9 +127,16 @@ const roundedClass = computed(() => {
       <svg
         class="w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform duration-200"
         :class="{ 'rotate-180': expanded }"
-        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
       >
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M19 9l-7 7-7-7"
+        ></path>
       </svg>
     </div>
 

@@ -6,7 +6,7 @@ import {
   bootstrapDebug,
   formatError,
   markTauriReady,
-  setupGlobalErrorHandlers
+  setupGlobalErrorHandlers,
 } from './services/bootstrap-logger'
 
 // Setup global error handlers as early as possible
@@ -228,7 +228,7 @@ interface StoreInitResult {
 async function initStoreWithTimeout(
   name: string,
   initFn: () => Promise<void>,
-  timeoutMs = 10000
+  timeoutMs = 10000,
 ): Promise<StoreInitResult> {
   const startTime = Date.now()
 
@@ -236,8 +236,11 @@ async function initStoreWithTimeout(
     await Promise.race([
       initFn(),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Store initialization timed out after ${timeoutMs}ms`)), timeoutMs)
-      )
+        setTimeout(
+          () => reject(new Error(`Store initialization timed out after ${timeoutMs}ms`)),
+          timeoutMs,
+        ),
+      ),
     ])
 
     const duration = Date.now() - startTime
@@ -330,17 +333,14 @@ async function initApp(): Promise<void> {
     ])
 
     // Check for store initialization failures
-    const failedStores = storeResults.filter(r => !r.success)
+    const failedStores = storeResults.filter((r) => !r.success)
     if (failedStores.length > 0) {
-      const failedNames = failedStores.map(r => r.name).join(', ')
-      const errorDetails = failedStores.map(r => `${r.name}: ${r.error}`).join('\n')
+      const failedNames = failedStores.map((r) => r.name).join(', ')
+      const errorDetails = failedStores.map((r) => `${r.name}: ${r.error}`).join('\n')
       bootstrapError(`Some stores failed to initialize: ${failedNames}`, 'init')
 
       // Show error but continue - app might still work partially
-      showLoadingError(
-        `Failed to initialize: ${failedNames}`,
-        errorDetails
-      )
+      showLoadingError(`Failed to initialize: ${failedNames}`, errorDetails)
       // Don't return - try to mount the app anyway
     }
 
@@ -371,7 +371,6 @@ async function initApp(): Promise<void> {
         }
       }
     }, 100)
-
   } catch (error) {
     const errorMsg = formatError(error)
     bootstrapError(`Critical initialization error: ${errorMsg}`, 'init')

@@ -29,10 +29,14 @@ export const useLockStore = defineStore('lock', () => {
     try {
       const data = await getItem<LockedItemsData>(STORAGE_KEYS.LOCKED_ITEMS)
       if (data) {
-        if (Array.isArray(data.aircraft)) aircraft.value = new Set(data.aircraft.map(s => s.toLowerCase()))
-        if (Array.isArray(data.plugin)) plugin.value = new Set(data.plugin.map(s => s.toLowerCase()))
-        if (Array.isArray(data.navdata)) navdata.value = new Set(data.navdata.map(s => s.toLowerCase()))
-        if (Array.isArray(data.scenery)) scenery.value = new Set(data.scenery.map(s => s.toLowerCase()))
+        if (Array.isArray(data.aircraft))
+          aircraft.value = new Set(data.aircraft.map((s) => s.toLowerCase()))
+        if (Array.isArray(data.plugin))
+          plugin.value = new Set(data.plugin.map((s) => s.toLowerCase()))
+        if (Array.isArray(data.navdata))
+          navdata.value = new Set(data.navdata.map((s) => s.toLowerCase()))
+        if (Array.isArray(data.scenery))
+          scenery.value = new Set(data.scenery.map((s) => s.toLowerCase()))
       }
     } catch (e) {
       console.error('Failed to load locked items from storage:', e)
@@ -47,7 +51,7 @@ export const useLockStore = defineStore('lock', () => {
       aircraft: Array.from(aircraft.value),
       plugin: Array.from(plugin.value),
       navdata: Array.from(navdata.value),
-      scenery: Array.from(scenery.value)
+      scenery: Array.from(scenery.value),
     }
     await setItem(STORAGE_KEYS.LOCKED_ITEMS, data)
   }
@@ -55,11 +59,16 @@ export const useLockStore = defineStore('lock', () => {
   // Get the set for a specific type
   function getSetForType(type: ManagementItemType | 'scenery'): Set<string> {
     switch (type) {
-      case 'aircraft': return aircraft.value
-      case 'plugin': return plugin.value
-      case 'navdata': return navdata.value
-      case 'scenery': return scenery.value
-      default: return new Set()
+      case 'aircraft':
+        return aircraft.value
+      case 'plugin':
+        return plugin.value
+      case 'navdata':
+        return navdata.value
+      case 'scenery':
+        return scenery.value
+      default:
+        return new Set()
     }
   }
 
@@ -69,7 +78,10 @@ export const useLockStore = defineStore('lock', () => {
   }
 
   // Toggle lock state
-  async function toggleLock(type: ManagementItemType | 'scenery', folderName: string): Promise<boolean> {
+  async function toggleLock(
+    type: ManagementItemType | 'scenery',
+    folderName: string,
+  ): Promise<boolean> {
     const set = getSetForType(type)
     const key = folderName.toLowerCase()
     const wasLocked = set.has(key)
@@ -92,7 +104,7 @@ export const useLockStore = defineStore('lock', () => {
             xplanePath: appStore.xplanePath,
             itemType: type,
             folderName,
-            disabled: newLocked
+            disabled: newLocked,
           })
         } catch (e) {
           // Log but don't fail - the app lock state is the source of truth
@@ -105,7 +117,11 @@ export const useLockStore = defineStore('lock', () => {
   }
 
   // Set lock state explicitly
-  async function setLocked(type: ManagementItemType | 'scenery', folderName: string, locked: boolean) {
+  async function setLocked(
+    type: ManagementItemType | 'scenery',
+    folderName: string,
+    locked: boolean,
+  ) {
     const set = getSetForType(type)
     const key = folderName.toLowerCase()
 
@@ -164,8 +180,8 @@ export const useLockStore = defineStore('lock', () => {
   const lockedPluginCount = computed(() => plugin.value.size)
   const lockedNavdataCount = computed(() => navdata.value.size)
   const lockedSceneryCount = computed(() => scenery.value.size)
-  const totalLockedCount = computed(() =>
-    aircraft.value.size + plugin.value.size + navdata.value.size + scenery.value.size
+  const totalLockedCount = computed(
+    () => aircraft.value.size + plugin.value.size + navdata.value.size + scenery.value.size,
   )
 
   return {
@@ -182,6 +198,6 @@ export const useLockStore = defineStore('lock', () => {
     isLocked,
     toggleLock,
     setLocked,
-    isPathLocked
+    isPathLocked,
   }
 })

@@ -31,17 +31,34 @@
     <!-- Failed Tasks Summary with View Details Button -->
     <div v-if="failedTasks.length > 0" class="mt-4 mb-3">
       <button
-        @click="showFailedTasksModal = true"
         class="w-full py-3 px-4 bg-gradient-to-r from-red-500/20 to-red-600/20 hover:from-red-500/30 hover:to-red-600/30 border border-red-500/30 hover:border-red-500/50 text-red-600 dark:text-red-400 font-medium rounded-lg transition-all duration-200 flex items-center justify-between group"
+        @click="showFailedTasksModal = true"
       >
         <div class="flex items-center space-x-2">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+            ></path>
           </svg>
-          <span><AnimatedText>{{ $t('completion.viewFailedTasks') }}</AnimatedText></span>
+          <span
+            ><AnimatedText>{{ $t('completion.viewFailedTasks') }}</AnimatedText></span
+          >
         </div>
-        <svg class="w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+        <svg
+          class="w-5 h-5 transform group-hover:translate-x-1 transition-transform"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 5l7 7-7 7"
+          ></path>
         </svg>
       </button>
     </div>
@@ -55,8 +72,8 @@
 
     <!-- Confirm Button -->
     <button
-      @click="$emit('confirm')"
       class="confirm-button w-full py-2.5 px-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-medium rounded-lg transition-all duration-200 shadow-md hover:shadow-lg mt-2"
+      @click="$emit('confirm')"
     >
       <AnimatedText>{{ $t('completion.confirm') }}</AnimatedText>
     </button>
@@ -95,9 +112,7 @@ const statusTitle = computed(() => {
   }
 })
 
-const failedTasks = computed(() =>
-  props.result.taskResults.filter(task => !task.success)
-)
+const failedTasks = computed(() => props.result.taskResults.filter((task) => !task.success))
 </script>
 
 <style scoped>

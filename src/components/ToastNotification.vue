@@ -11,20 +11,58 @@
           <!-- Icon -->
           <div class="toast-icon">
             <!-- Info Icon -->
-            <svg v-if="toast.type === 'info'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            <svg
+              v-if="toast.type === 'info'"
+              class="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
             </svg>
             <!-- Success Icon -->
-            <svg v-else-if="toast.type === 'success'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            <svg
+              v-else-if="toast.type === 'success'"
+              class="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
             </svg>
             <!-- Warning Icon -->
-            <svg v-else-if="toast.type === 'warning'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            <svg
+              v-else-if="toast.type === 'warning'"
+              class="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              ></path>
             </svg>
             <!-- Error Icon -->
             <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
             </svg>
           </div>
 
@@ -35,9 +73,14 @@
           </div>
 
           <!-- Close Button -->
-          <button @click="removeToast(toast.id)" class="toast-close" aria-label="Close">
+          <button class="toast-close" aria-label="Close" @click="removeToast(toast.id)">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              ></path>
             </svg>
           </button>
 
@@ -176,7 +219,7 @@ function removeToast(id: string) {
   border: none;
   cursor: pointer;
   opacity: 0.6;
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
   margin-top: 0.125rem;
 }
 
@@ -191,7 +234,7 @@ function removeToast(id: string) {
   height: 3px;
   width: 100%;
   transform-origin: left;
-  animation: progress-shrink 3s linear forwards;
+  animation: progress-shrink 2.4s linear forwards;
 }
 
 @keyframes progress-shrink {
@@ -425,11 +468,11 @@ function removeToast(id: string) {
 
 /* Animations */
 .toast-enter-active {
-  animation: toast-in 0.35s cubic-bezier(0.21, 1.02, 0.73, 1);
+  animation: toast-in 0.28s cubic-bezier(0.21, 1.02, 0.73, 1);
 }
 
 .toast-leave-active {
-  animation: toast-out 0.25s cubic-bezier(0.06, 0.71, 0.55, 1) forwards;
+  animation: toast-out 0.2s cubic-bezier(0.06, 0.71, 0.55, 1) forwards;
 }
 
 @keyframes toast-in {

@@ -24,8 +24,10 @@ const MAX_FLUSH_ATTEMPTS = 5
 function checkTauriReady(): boolean {
   try {
     // Check if window.__TAURI_INTERNALS__ exists (Tauri v2)
-    return typeof window !== 'undefined' &&
-           (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== undefined
+    return (
+      typeof window !== 'undefined' &&
+      (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== undefined
+    )
   } catch {
     return false
   }
@@ -45,7 +47,7 @@ async function flushBuffer(): Promise<void> {
       await invoke('log_from_frontend', {
         level: log.level,
         message: log.message,
-        context: log.context
+        context: log.context,
       })
     } catch (e) {
       // If invoke fails, put back in buffer and stop
@@ -97,8 +99,9 @@ function log(level: string, message: string, context?: string): void {
   // Try to send to Tauri backend
   if (isTauriReady || checkTauriReady()) {
     isTauriReady = true
-    invoke('log_from_frontend', { level, message, context })
-      .catch((e) => console.debug('[bootstrap-logger] Invoke failed:', e))
+    invoke('log_from_frontend', { level, message, context }).catch((e) =>
+      console.debug('[bootstrap-logger] Invoke failed:', e),
+    )
   } else {
     // Buffer for later
     logBuffer.push({ level, message, context })
@@ -154,9 +157,7 @@ export function formatError(error: unknown): string {
 export function setupGlobalErrorHandlers(): void {
   // Handle uncaught errors
   window.onerror = (message, source, lineno, colno, error) => {
-    const errorMsg = error
-      ? formatError(error)
-      : `${message} at ${source}:${lineno}:${colno}`
+    const errorMsg = error ? formatError(error) : `${message} at ${source}:${lineno}:${colno}`
     bootstrapError(`Uncaught error: ${errorMsg}`, 'global-error')
     return false // Don't prevent default handling
   }
