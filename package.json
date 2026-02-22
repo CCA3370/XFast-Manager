@@ -1,6 +1,6 @@
 {
   "name": "xfast-manager",
-  "version": "0.8.11",
+  "version": "0.9.0",
   "description": "XFast Manager - X-Plane Addon Auto Manager",
   "type": "module",
   "scripts": {
@@ -37,7 +37,7 @@
     "prettier": "^3.8.1",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.56.0",
+    "typescript-eslint": "^7.3.1",
     "vite": "^7.2.7",
     "vue": "^3.5.25"
   },
