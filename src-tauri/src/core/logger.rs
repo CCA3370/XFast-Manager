@@ -130,8 +130,10 @@ impl LoggerInner {
             return;
         }
 
-        // Rotate if needed before writing
-        self.rotate_if_needed();
+        // Rotate if needed before writing (skip for first log as we're truncating anyway)
+        if !self.is_first_log {
+            self.rotate_if_needed();
+        }
 
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
         let level_str = level.as_str();
@@ -149,15 +151,18 @@ impl LoggerInner {
             timestamp, level_str, ctx, loc, message
         );
 
-        match OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.log_path)
-        {
+        // On first log, truncate the file to start fresh; otherwise append
+        let mut options = OpenOptions::new();
+        options.create(true);
+        if self.is_first_log {
+            options.write(true).truncate(true);
+        } else {
+            options.append(true);
+        }
+
+        match options.open(&self.log_path) {
             Ok(mut file) => {
-                // Add newline before first log entry of this session
                 if self.is_first_log {
-                    let _ = file.write_all(b"\n");
                     self.is_first_log = false;
                 }
 
