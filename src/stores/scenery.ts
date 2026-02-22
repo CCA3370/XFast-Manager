@@ -150,9 +150,13 @@ export const useSceneryStore = defineStore('scenery', () => {
       error.value = errorStr
       logError(`Failed to load scenery data: ${e}`, 'scenery')
 
-      // Check if this is a migration error (newer database version)
-      if (errorStr.includes('migration_failed') && errorStr.includes('newer than supported')) {
-        // Mark that we need a database reset
+      // Check if this is a schema incompatibility error (old database missing columns,
+      // or a newer database version than what the current code supports).
+      if (
+        (errorStr.includes('migration_failed') && errorStr.includes('newer than supported')) ||
+        errorStr.includes('no column found for name') ||
+        errorStr.includes('no column for name')
+      ) {
         needsDatabaseReset.value = true
       }
     } finally {
@@ -177,13 +181,12 @@ export const useSceneryStore = defineStore('scenery', () => {
     }
   }
 
-  // Reset the database (delete it) and reload
+  // Reset the database schema in-place and clear local state.
   async function resetDatabase() {
     try {
-      await invoke<boolean>('reset_scenery_database')
+      await invoke('reset_and_reinitialize')
       needsDatabaseReset.value = false
       error.value = null
-      // After reset, the user needs to rebuild the index
       indexExists.value = false
       data.value = null
       originalEntries.value = []

@@ -6,7 +6,7 @@ use crate::models::{SceneryCategory, SceneryIndex, SceneryPackageInfo};
 use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
     ActiveModelTrait, ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -698,17 +698,13 @@ impl SceneryQueries {
         Ok(count as usize)
     }
 
-    /// Check if database has any packages (uses EXISTS for optimal performance)
+    /// Check if database has any packages
     pub async fn has_packages(conn: &DatabaseConnection) -> Result<bool, ApiError> {
-        let exists = scenery_packages::Entity::find()
-            .select_only()
-            .column(scenery_packages::Column::Id)
-            .limit(1)
-            .one(conn)
+        let count = scenery_packages::Entity::find()
+            .count(conn)
             .await
-            .map_err(ApiError::from)?
-            .is_some();
-        Ok(exists)
+            .map_err(ApiError::from)?;
+        Ok(count > 0)
     }
 
     /// Clear all scenery data from the database

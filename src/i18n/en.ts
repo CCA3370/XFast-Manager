@@ -243,6 +243,11 @@ export default {
     unsavedSceneryChangesWarning: 'Unsaved changes will be lost',
     closeAnyway: 'Close Anyway',
     goBack: 'Go Back',
+    // Database schema incompatibility
+    dbIncompatibleTitle: 'Database Reset Required',
+    dbIncompatibleMessage:
+      'The local scenery database is incompatible with this version of XFast Manager. It needs to be reset before the app can continue. Your scenery sort order and enabled/disabled settings will be lost.',
+    dbIncompatibleConfirm: 'Reset Database',
     // Installation in progress
     installInProgressTitle: 'Installation In Progress',
     installInProgressMessage:
@@ -467,7 +472,7 @@ export default {
     disableAll: 'Disable All',
     databaseVersionError: 'Database version is incompatible',
     databaseVersionErrorDesc:
-      'The scenery database was created by a newer version of the application. Click the button below to reset and rebuild the index.',
+      'The local scenery database version is incompatible with the current application version. Click the button below to reset and rebuild the index.',
     resetDatabase: 'Reset Database',
     resetDatabaseConfirm:
       'This will delete the existing database and require rebuilding the index. Continue?',

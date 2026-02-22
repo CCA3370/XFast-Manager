@@ -1351,7 +1351,7 @@ onMounted(async () => {
   if (appStore.xplanePath) {
     if (!sceneryStore.hasLocalChanges) {
       await sceneryStore.loadData()
-      if (sceneryStore.error) {
+      if (sceneryStore.error && !sceneryStore.needsDatabaseReset) {
         modalStore.showError(t('management.scanFailed') + ': ' + sceneryStore.error)
       }
     }

@@ -79,6 +79,8 @@ use task_control::TaskControl;
 use sea_orm::DatabaseConnection;
 use tauri::{Emitter, Manager, State};
 
+use database::DatabaseState;
+
 /// Cross-platform helper to open a path in the system file explorer
 fn open_in_explorer<P: AsRef<std::path::Path>>(path: P) -> Result<(), String> {
     let path = path.as_ref();
@@ -404,7 +406,7 @@ fn open_scenery_folder(xplane_path: String, folder_name: String) -> error::ApiRe
 
 #[tauri::command]
 async fn delete_scenery_folder(
-    db: State<'_, DatabaseConnection>,
+    db: State<'_, DatabaseState>,
     xplane_path: String,
     folder_name: String,
 ) -> error::ApiResult<()> {
@@ -463,7 +465,7 @@ async fn delete_scenery_folder(
 
     // Remove from scenery index if it exists
     if let Err(e) =
-        scenery_index::remove_scenery_entry(db.inner(), &xplane_path, &folder_name).await
+        scenery_index::remove_scenery_entry(&db.get(), &xplane_path, &folder_name).await
     {
         logger::log_error(
             &format!("Failed to remove scenery from index: {}", e),
@@ -474,7 +476,7 @@ async fn delete_scenery_folder(
     // Update scenery_packs.ini to remove the deleted entry
     let xplane_path = std::path::Path::new(&xplane_path);
     let packs_manager =
-        scenery_packs_manager::SceneryPacksManager::new(xplane_path, db.inner().clone());
+        scenery_packs_manager::SceneryPacksManager::new(xplane_path, db.get());
     if let Err(e) = packs_manager.apply_from_index().await {
         logger::log_error(
             &format!("Failed to update scenery_packs.ini after deletion: {}", e),
@@ -686,11 +688,11 @@ async fn lookup_library_links_remote(
 
 #[tauri::command]
 async fn get_scenery_classification(
-    db: State<'_, DatabaseConnection>,
+    db: State<'_, DatabaseState>,
     xplane_path: String,
     folder_name: String,
 ) -> error::ApiResult<SceneryPackageInfo> {
-    let db = db.inner().clone();
+    let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
     let scenery_path = xplane_path.join("Custom Scenery").join(&folder_name);
 
@@ -710,10 +712,10 @@ async fn get_scenery_classification(
 
 #[tauri::command]
 async fn sort_scenery_packs(
-    db: State<'_, DatabaseConnection>,
+    db: State<'_, DatabaseState>,
     xplane_path: String,
 ) -> Result<bool, String> {
-    let db = db.inner().clone();
+    let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
@@ -733,24 +735,47 @@ async fn sort_scenery_packs(
 
 #[tauri::command]
 async fn rebuild_scenery_index(
-    db: State<'_, DatabaseConnection>,
+    db: State<'_, DatabaseState>,
     xplane_path: String,
 ) -> Result<SceneryIndexStats, String> {
-    let db = db.inner().clone();
+    // Rebuild replaces all data, so an incompatible schema can be silently fixed first.
+    // Use db.reset() (not reset_schema) so the pool is replaced with a fresh one,
+    // clearing any stale sqlx prepared-statement caches.
+    if !database::is_schema_compatible(&db.get())
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        logger::log_info(
+            "Incompatible schema detected before rebuild — resetting",
+            Some("database"),
+        );
+        db.reset().await.map_err(|e| e.to_string())?;
+    }
+
+    let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
     logger::log_info("Rebuilding scenery index", Some("scenery"));
 
-    index_manager
+    let index = index_manager
         .rebuild_index()
         .await
         .map_err(|e| format!("Failed to rebuild index: {}", e))?;
 
-    index_manager
-        .get_stats()
-        .await
-        .map_err(|e| format!("Failed to get stats: {}", e))
+    // Compute stats from the in-memory index directly to avoid a second DB read.
+    // A SELECT on all columns can fail due to sqlx prepared-statement cache staleness
+    // after a DROP + CREATE TABLE schema reset on the same connection pool.
+    let mut by_category: HashMap<String, usize> = HashMap::new();
+    for info in index.packages.values() {
+        let category_name = format!("{:?}", info.category);
+        *by_category.entry(category_name).or_insert(0) += 1;
+    }
+    Ok(SceneryIndexStats {
+        total_packages: index.packages.len(),
+        by_category,
+        last_updated: index.last_updated,
+    })
 }
 
 /// Reset the scenery database by deleting it entirely
@@ -765,12 +790,29 @@ async fn reset_scenery_database() -> Result<bool, String> {
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// Check whether the current database schema is compatible with the entity model.
+/// Returns `false` if columns added after the initial release are missing (old database).
+#[tauri::command]
+async fn check_database_compatibility(
+    db: tauri::State<'_, DatabaseState>,
+) -> Result<bool, String> {
+    database::is_schema_compatible(&db.get())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Delete the scenery database and exit the process so the user can relaunch with a clean slate.
+#[tauri::command]
+async fn reset_and_reinitialize(db: tauri::State<'_, DatabaseState>) -> Result<(), String> {
+    db.reset().await.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn get_scenery_index_stats(
-    db: State<'_, DatabaseConnection>,
+    db: State<'_, DatabaseState>,
     xplane_path: String,
 ) -> Result<SceneryIndexStats, String> {
-    let db = db.inner().clone();
+    let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
@@ -782,10 +824,10 @@ async fn get_scenery_index_stats(
 
 #[tauri::command]
 async fn get_scenery_index_status(
-    db: State<'_, DatabaseConnection>,
+    db: State<'_, DatabaseState>,
     xplane_path: String,
 ) -> Result<SceneryIndexStatus, String> {
-    let db = db.inner().clone();
+    let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
@@ -797,10 +839,10 @@ async fn get_scenery_index_status(
 
 #[tauri::command]
 async fn quick_scan_scenery_index(
-    db: State<'_, DatabaseConnection>,
+    db: State<'_, DatabaseState>,
     xplane_path: String,
 ) -> Result<SceneryIndexScanResult, String> {
-    let db = db.inner().clone();
+    let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
@@ -812,10 +854,10 @@ async fn quick_scan_scenery_index(
 
 #[tauri::command]
 async fn sync_scenery_packs_with_folder(
-    db: State<'_, DatabaseConnection>,
+    db: State<'_, DatabaseState>,
     xplane_path: String,
 ) -> Result<usize, String> {
-    let db = db.inner().clone();
+    let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
     let manager = SceneryPacksManager::new(xplane_path, db);
 
@@ -827,10 +869,10 @@ async fn sync_scenery_packs_with_folder(
 
 #[tauri::command]
 async fn get_scenery_manager_data(
-    db: State<'_, DatabaseConnection>,
+    db: State<'_, DatabaseState>,
     xplane_path: String,
 ) -> Result<SceneryManagerData, String> {
-    let db = db.inner().clone();
+    let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
@@ -842,14 +884,14 @@ async fn get_scenery_manager_data(
 
 #[tauri::command]
 async fn update_scenery_entry(
-    db: State<'_, DatabaseConnection>,
+    db: State<'_, DatabaseState>,
     xplane_path: String,
     folder_name: String,
     enabled: Option<bool>,
     sort_order: Option<u32>,
     category: Option<models::SceneryCategory>,
 ) -> Result<(), String> {
-    let db = db.inner().clone();
+    let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
@@ -861,12 +903,12 @@ async fn update_scenery_entry(
 
 #[tauri::command]
 async fn move_scenery_entry(
-    db: State<'_, DatabaseConnection>,
+    db: State<'_, DatabaseState>,
     xplane_path: String,
     folder_name: String,
     new_sort_order: u32,
 ) -> Result<(), String> {
-    let db = db.inner().clone();
+    let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
@@ -878,11 +920,11 @@ async fn move_scenery_entry(
 
 #[tauri::command]
 async fn apply_scenery_changes(
-    db: State<'_, DatabaseConnection>,
+    db: State<'_, DatabaseState>,
     xplane_path: String,
     entries: Vec<models::SceneryEntryUpdate>,
 ) -> Result<(), String> {
-    let db = db.inner().clone();
+    let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db.clone());
 
@@ -1195,6 +1237,8 @@ pub fn run() {
             sort_scenery_packs,
             rebuild_scenery_index,
             reset_scenery_database,
+            check_database_compatibility,
+            reset_and_reinitialize,
             get_scenery_index_stats,
             get_scenery_index_status,
             quick_scan_scenery_index,
@@ -1235,7 +1279,7 @@ pub fn run() {
             })
             .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
 
-            app.manage(db);
+            app.manage(DatabaseState::new(db));
 
             // Log application startup
             logger::log_info(&logger::tr(logger::LogMsg::AppStarted), Some("app"));

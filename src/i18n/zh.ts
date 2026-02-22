@@ -243,6 +243,11 @@ export default {
     unsavedSceneryChangesWarning: '未保存的更改将会丢失',
     closeAnyway: '仍然关闭',
     goBack: '返回',
+    // Database schema incompatibility
+    dbIncompatibleTitle: '需要重置数据库',
+    dbIncompatibleMessage:
+      '本地地景数据库与当前版本不兼容，需要重置后才能继续使用。地景排序和启用/禁用状态将会丢失。',
+    dbIncompatibleConfirm: '重置数据库',
     // Installation in progress
     installInProgressTitle: '正在安装',
     installInProgressMessage: '当前有安装任务正在进行中，确定要关闭吗？',
@@ -456,7 +461,7 @@ export default {
     enableAll: '全部启用',
     disableAll: '全部禁用',
     databaseVersionError: '数据库版本不兼容',
-    databaseVersionErrorDesc: '地景数据库由较新版本的应用程序创建。点击下方按钮重置并重建索引。',
+    databaseVersionErrorDesc: '本地地景数据库版本与当前应用程序版本不兼容。点击下方按钮重置并重建索引。',
     resetDatabase: '重置数据库',
     resetDatabaseConfirm: '此操作将删除现有数据库并需要重建索引。是否继续？',
     resetDatabaseSuccess: '数据库重置成功，请重建索引。',
