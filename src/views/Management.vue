@@ -282,7 +282,7 @@ const groupCounts = computed(() => {
   const counts: Record<string, { enabled: number; disabled: number }> = {}
   for (const category of categoryOrder) {
     const entries = localGroupedEntries.value[category] || []
-    const enabled = entries.filter(entry => entry.enabled).length
+    const enabled = entries.filter((entry) => entry.enabled).length
     counts[category] = { enabled, disabled: entries.length - enabled }
   }
   return counts
@@ -290,7 +290,7 @@ const groupCounts = computed(() => {
 
 // Base computed for all entries flattened - used by multiple computeds below
 const allSceneryEntries = computed(() => {
-  return categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
+  return categoryOrder.flatMap((category) => localGroupedEntries.value[category] || [])
 })
 
 // Unique continents from all entries
@@ -305,7 +305,15 @@ const uniqueContinents = computed(() => {
 })
 
 // Known continents list (for validation)
-const knownContinents = ['Asia', 'Europe', 'North America', 'South America', 'Africa', 'Oceania', 'Antarctica']
+const knownContinents = [
+  'Asia',
+  'Europe',
+  'North America',
+  'South America',
+  'Africa',
+  'Oceania',
+  'Antarctica',
+]
 
 // Entries grouped by continent, then by category within each continent
 const continentGroupedEntries = computed(() => {
@@ -329,11 +337,10 @@ const continentGroupedEntries = computed(() => {
 
 // Sorted continent order for display (alphabetically, with 'Other' always at the end)
 const sortedContinentOrder = computed(() => {
-  const continentsWithEntries = Object.keys(continentGroupedEntries.value)
-    .filter(continent => {
-      const data = continentGroupedEntries.value[continent]
-      return categoryOrder.some(cat => (data[cat]?.length || 0) > 0)
-    })
+  const continentsWithEntries = Object.keys(continentGroupedEntries.value).filter((continent) => {
+    const data = continentGroupedEntries.value[continent]
+    return categoryOrder.some((cat) => (data[cat]?.length || 0) > 0)
+  })
 
   // Sort alphabetically, but keep 'Other' at the end
   return continentsWithEntries.sort((a, b) => {
@@ -353,7 +360,7 @@ function getContinentStats(continent: string): { enabled: number; total: number 
   for (const cat of categoryOrder) {
     const entries = continentData[cat] || []
     total += entries.length
-    enabled += entries.filter(e => e.enabled).length
+    enabled += entries.filter((e) => e.enabled).length
   }
   return { enabled, total }
 }
@@ -367,7 +374,7 @@ function getFilteredContinentStats(continent: string): { enabled: number; total:
   for (const cat of categoryOrder) {
     const entries = continentData[cat] || []
     total += entries.length
-    enabled += entries.filter(e => e.enabled).length
+    enabled += entries.filter((e) => e.enabled).length
   }
   return { enabled, total }
 }
@@ -440,8 +447,8 @@ function toggleContinentEnabled(continent: string) {
   const continentData = continentGroupedEntries.value[continent]
   if (!continentData) return
 
-  const entries = categoryOrder.flatMap(cat => continentData[cat] || [])
-  const allEnabled = entries.every(e => e.enabled)
+  const entries = categoryOrder.flatMap((cat) => continentData[cat] || [])
+  const allEnabled = entries.every((e) => e.enabled)
   const newState = !allEnabled
 
   for (const entry of entries) {
@@ -457,7 +464,7 @@ function toggleContinentCategoryEnabled(continent: string, category: string) {
   const entries = continentGroupedEntries.value[continent]?.[category] || []
   if (entries.length === 0) return
 
-  const allEnabled = entries.every(e => e.enabled)
+  const allEnabled = entries.every((e) => e.enabled)
   const newState = !allEnabled
 
   for (const entry of entries) {
@@ -473,14 +480,14 @@ function isContinentAllEnabled(continent: string): boolean {
   const continentData = continentGroupedEntries.value[continent]
   if (!continentData) return false
 
-  const entries = categoryOrder.flatMap(cat => continentData[cat] || [])
-  return entries.length > 0 && entries.every(e => e.enabled)
+  const entries = categoryOrder.flatMap((cat) => continentData[cat] || [])
+  return entries.length > 0 && entries.every((e) => e.enabled)
 }
 
 // Check if all entries in a continent's category are enabled
 function isContinentCategoryAllEnabled(continent: string, category: string): boolean {
   const entries = continentGroupedEntries.value[continent]?.[category] || []
-  return entries.length > 0 && entries.every(e => e.enabled)
+  return entries.length > 0 && entries.every((e) => e.enabled)
 }
 
 // The last entry before Unrecognized category should have move-down disabled
@@ -502,24 +509,24 @@ const filteredSceneryEntries = computed(() => {
 
   // Filter by missing libraries
   if (showOnlyMissingLibs.value) {
-    entries = entries.filter(entry => entry.missingLibraries && entry.missingLibraries.length > 0)
+    entries = entries.filter((entry) => entry.missingLibraries && entry.missingLibraries.length > 0)
   }
 
   // Filter by duplicate tiles
   if (showOnlyDuplicateTiles.value) {
-    entries = entries.filter(entry => entry.duplicateTiles && entry.duplicateTiles.length > 0)
+    entries = entries.filter((entry) => entry.duplicateTiles && entry.duplicateTiles.length > 0)
   }
 
   // Filter by continent
   if (selectedContinent.value) {
-    entries = entries.filter(entry => entry.continent === selectedContinent.value)
+    entries = entries.filter((entry) => entry.continent === selectedContinent.value)
   }
 
   // Filter by enabled/disabled state
   if (enabledFilter.value === 'enabled') {
-    entries = entries.filter(entry => entry.enabled)
+    entries = entries.filter((entry) => entry.enabled)
   } else if (enabledFilter.value === 'disabled') {
-    entries = entries.filter(entry => !entry.enabled)
+    entries = entries.filter((entry) => !entry.enabled)
   }
 
   return entries
@@ -561,11 +568,12 @@ const filteredContinentGroupedEntries = computed(() => {
 
 // Sorted continent order based on filtered entries
 const filteredSortedContinentOrder = computed(() => {
-  const continentsWithEntries = Object.keys(filteredContinentGroupedEntries.value)
-    .filter(continent => {
+  const continentsWithEntries = Object.keys(filteredContinentGroupedEntries.value).filter(
+    (continent) => {
       const data = filteredContinentGroupedEntries.value[continent]
-      return categoryOrder.some(cat => (data[cat]?.length || 0) > 0)
-    })
+      return categoryOrder.some((cat) => (data[cat]?.length || 0) > 0)
+    },
+  )
   return continentsWithEntries.sort((a, b) => {
     if (a === 'Other') return 1
     if (b === 'Other') return -1
@@ -597,7 +605,7 @@ const matchedIndices = computed(() => {
   return filteredSceneryEntries.value
     .map((entry) => ({
       entry,
-      index: getGlobalIndex(entry.folderName)
+      index: getGlobalIndex(entry.folderName),
     }))
     .filter(({ index }) => index >= 0)
     .filter(({ entry }) => entry.folderName.toLowerCase().includes(query))
@@ -643,9 +651,9 @@ function dragAutoScrollLoop() {
   }
 
   const rect = container.getBoundingClientRect()
-  const edgeZone = 60        // 容器内边缘触发区域 (px)
-  const maxSpeed = 18        // 到达边缘时的最大速度 (px/frame)
-  const outsideAccel = 0.4   // 超出边界后每像素额外加速 (px/frame/px)
+  const edgeZone = 60 // 容器内边缘触发区域 (px)
+  const maxSpeed = 18 // 到达边缘时的最大速度 (px/frame)
+  const outsideAccel = 0.4 // 超出边界后每像素额外加速 (px/frame/px)
 
   let scrollDelta = 0
 
@@ -655,7 +663,7 @@ function dragAutoScrollLoop() {
       const dist = rect.top - dragPointerY
       scrollDelta = -(maxSpeed + dist * outsideAccel)
     } else {
-      const ratio = ((rect.top + edgeZone) - dragPointerY) / edgeZone
+      const ratio = (rect.top + edgeZone - dragPointerY) / edgeZone
       scrollDelta = -ratio * maxSpeed
     }
   } else if (dragPointerY > rect.bottom - edgeZone) {
@@ -702,7 +710,7 @@ async function handleSceneryToggleEnabled(folderName: string) {
 
 async function handleMoveUp(folderName: string) {
   const entries = sceneryStore.sortedEntries
-  const index = entries.findIndex(e => e.folderName === folderName)
+  const index = entries.findIndex((e) => e.folderName === folderName)
 
   if (index > 0) {
     const currentEntry = entries[index]
@@ -723,7 +731,7 @@ async function handleMoveUp(folderName: string) {
 
 async function handleMoveDown(folderName: string) {
   const entries = sceneryStore.sortedEntries
-  const index = entries.findIndex(e => e.folderName === folderName)
+  const index = entries.findIndex((e) => e.folderName === folderName)
   if (index < entries.length - 1) {
     const currentEntry = entries[index]
     const targetEntry = entries[index + 1]
@@ -745,7 +753,7 @@ async function handleDragEnd() {
   drag.value = false
   stopDragAutoScroll()
   syncWarningDismissed.value = true
-  const allEntries = categoryOrder.flatMap(category => localGroupedEntries.value[category] || [])
+  const allEntries = categoryOrder.flatMap((category) => localGroupedEntries.value[category] || [])
   await sceneryStore.reorderEntries(allEntries)
   syncLocalEntries()
 }
@@ -779,15 +787,17 @@ async function handleShowMissingLibs(entry: SceneryManagerEntry) {
   // Phase 2: remote refresh, then replace current displayed links (add/remove)
   void invoke<Record<string, string | null>>('lookup_library_links_remote', {
     libraryNames: entry.missingLibraries,
-  }).then((remoteLinks) => {
-    if (!showMissingLibsModal.value) return
-    if (!selectedModalEntry.value) return
-    if (selectedModalEntry.value.folderName !== entry.folderName) return
-    if (libraryLinksRequestSeq.value !== requestSeq) return
-    libraryLinksMap.value = remoteLinks
-  }).catch(() => {
-    // Keep local links if remote refresh fails
   })
+    .then((remoteLinks) => {
+      if (!showMissingLibsModal.value) return
+      if (!selectedModalEntry.value) return
+      if (selectedModalEntry.value.folderName !== entry.folderName) return
+      if (libraryLinksRequestSeq.value !== requestSeq) return
+      libraryLinksMap.value = remoteLinks
+    })
+    .catch(() => {
+      // Keep local links if remote refresh fails
+    })
 }
 
 function handleShowDuplicateTiles(entry: SceneryManagerEntry) {
@@ -803,19 +813,25 @@ function handleShowDeleteConfirm(entry: SceneryManagerEntry) {
 function handleCopyMissingLibs() {
   if (!selectedModalEntry.value) return
   const libNames = selectedModalEntry.value.missingLibraries.join('\n')
-  navigator.clipboard.writeText(libNames).then(() => {
-    toastStore.success(t('sceneryManager.missingLibsCopied'))
-  }).catch(() => {
-    modalStore.showError(t('copy.copyFailed'))
-  })
+  navigator.clipboard
+    .writeText(libNames)
+    .then(() => {
+      toastStore.success(t('sceneryManager.missingLibsCopied'))
+    })
+    .catch(() => {
+      modalStore.showError(t('copy.copyFailed'))
+    })
 }
 
 function handleCopySingleLib(libName: string) {
-  navigator.clipboard.writeText(libName).then(() => {
-    toastStore.success(t('sceneryManager.libNameCopied'))
-  }).catch(() => {
-    modalStore.showError(t('copy.copyFailed'))
-  })
+  navigator.clipboard
+    .writeText(libName)
+    .then(() => {
+      toastStore.success(t('sceneryManager.libNameCopied'))
+    })
+    .catch(() => {
+      modalStore.showError(t('copy.copyFailed'))
+    })
 }
 
 async function handleDirectDownload(url: string) {
@@ -878,7 +894,7 @@ async function handleSubmitContributeLink() {
     `- Download URL: ${inputUrl}`,
     `- Referenced By Scenery: \`${selectedModalEntry.value.folderName}\``,
     '',
-    'Please review this link. If valid, add the `approved-link` label to trigger auto-update for `data/library_links.json` on `dev`.'
+    'Please review this link. If valid, add the `approved-link` label to trigger auto-update for `data/library_links.json` on `dev`.',
   ].join('\n')
 
   const issueUrl = `https://github.com/CCA3370/XFast-Manager/issues/new?template=library_link_submission.yml&labels=${encodeURIComponent('library-link')}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
@@ -897,7 +913,7 @@ async function handleSubmitContributeLink() {
         submitTimeoutId = setTimeout(() => {
           reject(new Error('CONTRIBUTION_SUBMIT_TIMEOUT'))
         }, CONTRIBUTION_SUBMIT_TIMEOUT_MS)
-      })
+      }),
     ])
 
     toastStore.success(t('sceneryManager.contributionCreated'))
@@ -935,9 +951,7 @@ async function handleDeleteEntryConfirm() {
     const apiError = parseApiError(error)
     if (apiError) {
       const errorKey = `errors.${apiError.code}`
-      const localizedMessage = t(errorKey) !== errorKey
-        ? t(errorKey)
-        : apiError.message
+      const localizedMessage = t(errorKey) !== errorKey ? t(errorKey) : apiError.message
       modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + localizedMessage)
     } else {
       modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + getErrorMessage(error))
@@ -999,7 +1013,7 @@ function handleReset() {
       // Restore sync warning if data still needs sync
       syncWarningDismissed.value = false
     },
-    onCancel: () => {}
+    onCancel: () => {},
   })
 }
 
@@ -1007,7 +1021,9 @@ async function performAutoSort() {
   if (!sceneryStore.indexExists) return
   isSortingScenery.value = true
   try {
-    const hasChanges = await invoke<boolean>('sort_scenery_packs', { xplanePath: appStore.xplanePath })
+    const hasChanges = await invoke<boolean>('sort_scenery_packs', {
+      xplanePath: appStore.xplanePath,
+    })
     await sceneryStore.loadData()
     syncLocalEntries()
 
@@ -1041,7 +1057,7 @@ function handleSortSceneryNow() {
         performAutoSort()
       }, 0)
     },
-    onCancel: () => {}
+    onCancel: () => {},
   })
 }
 
@@ -1086,7 +1102,7 @@ async function handleResetDatabase() {
         isResettingDatabase.value = false
       }
     },
-    onCancel: () => {}
+    onCancel: () => {},
   })
 }
 
@@ -1197,7 +1213,9 @@ function estimatePostCollapseDelta(container: HTMLElement, targetElement: HTMLEl
   const targetRect = targetElement.getBoundingClientRect()
   let delta = 0
 
-  const transitioning = container.querySelectorAll('.collapse-enter-active, .collapse-leave-active') as NodeListOf<HTMLElement>
+  const transitioning = container.querySelectorAll(
+    '.collapse-enter-active, .collapse-leave-active',
+  ) as NodeListOf<HTMLElement>
   transitioning.forEach((element) => {
     const rect = element.getBoundingClientRect()
     if (rect.bottom <= targetRect.top) {
@@ -1214,11 +1232,17 @@ function estimatePostCollapseDelta(container: HTMLElement, targetElement: HTMLEl
   return delta
 }
 
-function isSafelyInsideContainerViewport(container: HTMLElement, element: HTMLElement, padding: number): boolean {
+function isSafelyInsideContainerViewport(
+  container: HTMLElement,
+  element: HTMLElement,
+  padding: number,
+): boolean {
   const containerRect = container.getBoundingClientRect()
   const elementRect = element.getBoundingClientRect()
-  return elementRect.top >= containerRect.top + padding
-    && elementRect.bottom <= containerRect.bottom - padding
+  return (
+    elementRect.top >= containerRect.top + padding &&
+    elementRect.bottom <= containerRect.bottom - padding
+  )
 }
 
 function scrollToMatch(index: number) {
@@ -1226,7 +1250,11 @@ function scrollToMatch(index: number) {
   highlightedIndex.value = index
   const requestId = ++activeScrollRequestId
 
-  const attemptScroll = (attempt: number, behavior: ScrollBehavior, predictPostCollapse = false) => {
+  const attemptScroll = (
+    attempt: number,
+    behavior: ScrollBehavior,
+    predictPostCollapse = false,
+  ) => {
     if (highlightedIndex.value !== index || requestId !== activeScrollRequestId) return
     const container = scrollContainerRef.value
     if (!container) return
@@ -1236,25 +1264,24 @@ function scrollToMatch(index: number) {
       const containerRect = container.getBoundingClientRect()
       const elementRect = element.getBoundingClientRect()
       const currentScrollTop = container.scrollTop
-      const targetScrollTop = currentScrollTop
-        + (elementRect.top - containerRect.top)
-        - (container.clientHeight / 2)
-        + (elementRect.height / 2)
+      const targetScrollTop =
+        currentScrollTop +
+        (elementRect.top - containerRect.top) -
+        container.clientHeight / 2 +
+        elementRect.height / 2
 
-      const predictedDelta = predictPostCollapse
-        ? estimatePostCollapseDelta(container, element)
-        : 0
+      const predictedDelta = predictPostCollapse ? estimatePostCollapseDelta(container, element) : 0
 
       const predictedTargetScrollTop = targetScrollTop + predictedDelta
 
-      const clampedScrollTop = Math.max(0, Math.min(
-        predictedTargetScrollTop,
-        container.scrollHeight - container.clientHeight
-      ))
+      const clampedScrollTop = Math.max(
+        0,
+        Math.min(predictedTargetScrollTop, container.scrollHeight - container.clientHeight),
+      )
 
       container.scrollTo({
         top: clampedScrollTop,
-        behavior
+        behavior,
       })
       return
     }
@@ -1276,8 +1303,14 @@ function scrollToMatch(index: number) {
     if (requestId !== activeScrollRequestId || highlightedIndex.value !== index) return
 
     const container = scrollContainerRef.value
-    const element = container?.querySelector(`[data-scenery-index="${index}"]`) as HTMLElement | null
-    if (container && element && isSafelyInsideContainerViewport(container, element, FINAL_CALIBRATION_VIEWPORT_PADDING_PX)) {
+    const element = container?.querySelector(
+      `[data-scenery-index="${index}"]`,
+    ) as HTMLElement | null
+    if (
+      container &&
+      element &&
+      isSafelyInsideContainerViewport(container, element, FINAL_CALIBRATION_VIEWPORT_PADDING_PX)
+    ) {
       return
     }
 
@@ -1312,7 +1345,8 @@ function goToNextMatch() {
 
 function goToPrevMatch() {
   if (matchedIndices.value.length === 0) return
-  currentMatchIndex.value = (currentMatchIndex.value - 1 + matchedIndices.value.length) % matchedIndices.value.length
+  currentMatchIndex.value =
+    (currentMatchIndex.value - 1 + matchedIndices.value.length) % matchedIndices.value.length
   scrollToMatch(matchedIndices.value[currentMatchIndex.value])
 }
 
