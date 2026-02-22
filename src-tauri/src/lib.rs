@@ -464,8 +464,7 @@ async fn delete_scenery_folder(
     }
 
     // Remove from scenery index if it exists
-    if let Err(e) =
-        scenery_index::remove_scenery_entry(&db.get(), &xplane_path, &folder_name).await
+    if let Err(e) = scenery_index::remove_scenery_entry(&db.get(), &xplane_path, &folder_name).await
     {
         logger::log_error(
             &format!("Failed to remove scenery from index: {}", e),
@@ -475,8 +474,7 @@ async fn delete_scenery_folder(
 
     // Update scenery_packs.ini to remove the deleted entry
     let xplane_path = std::path::Path::new(&xplane_path);
-    let packs_manager =
-        scenery_packs_manager::SceneryPacksManager::new(xplane_path, db.get());
+    let packs_manager = scenery_packs_manager::SceneryPacksManager::new(xplane_path, db.get());
     if let Err(e) = packs_manager.apply_from_index().await {
         logger::log_error(
             &format!("Failed to update scenery_packs.ini after deletion: {}", e),
@@ -793,9 +791,7 @@ async fn reset_scenery_database() -> Result<bool, String> {
 /// Check whether the current database schema is compatible with the entity model.
 /// Returns `false` if columns added after the initial release are missing (old database).
 #[tauri::command]
-async fn check_database_compatibility(
-    db: tauri::State<'_, DatabaseState>,
-) -> Result<bool, String> {
+async fn check_database_compatibility(db: tauri::State<'_, DatabaseState>) -> Result<bool, String> {
     database::is_schema_compatible(&db.get())
         .await
         .map_err(|e| e.to_string())
