@@ -50,7 +50,6 @@ const showOnlyUpdates = ref(false)
 const showOnlyOutdated = ref(false)
 const suppressLoading = ref(false)
 
-
 // Initialize tab from route query
 onMounted(() => {
   const tabParam = route.query.tab as ManagementTab | undefined
@@ -414,7 +413,9 @@ const isLoading = computed(() => {
       >
         <div class="flex items-center gap-2">
           <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('management.total') }}:</span>
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('management.total') }}:</span
+            >
           </Transition>
           <span class="font-semibold text-gray-900 dark:text-gray-100">
             {{
@@ -428,7 +429,9 @@ const isLoading = computed(() => {
         </div>
         <div v-if="activeTab !== 'navdata'" class="flex items-center gap-2">
           <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('management.enabled') }}:</span>
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('management.enabled') }}:</span
+            >
           </Transition>
           <span class="font-semibold text-green-600 dark:text-green-400">
             {{
@@ -444,7 +447,9 @@ const isLoading = computed(() => {
           class="flex items-center gap-2"
         >
           <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('management.hasUpdate') }}:</span>
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('management.hasUpdate') }}:</span
+            >
           </Transition>
           <span class="font-semibold text-emerald-600 dark:text-emerald-400">
             {{ managementStore.aircraftUpdateCount }}
@@ -472,7 +477,9 @@ const isLoading = computed(() => {
           class="flex items-center gap-2"
         >
           <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('management.hasUpdate') }}:</span>
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('management.hasUpdate') }}:</span
+            >
           </Transition>
           <span class="font-semibold text-emerald-600 dark:text-emerald-400">
             {{ managementStore.pluginsUpdateCount }}
@@ -498,7 +505,7 @@ const isLoading = computed(() => {
         <div
           v-if="
             (activeTab === 'aircraft' || activeTab === 'plugin') &&
-              managementStore.isCheckingUpdates
+            managementStore.isCheckingUpdates
           "
           class="flex items-center gap-2 text-gray-500 dark:text-gray-400"
         >
@@ -525,7 +532,9 @@ const isLoading = computed(() => {
           class="flex items-center gap-2"
         >
           <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('management.outdated') }}:</span>
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('management.outdated') }}:</span
+            >
           </Transition>
           <span class="font-semibold text-red-600 dark:text-red-400">
             {{ managementStore.navdataOutdatedCount }}

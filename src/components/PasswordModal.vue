@@ -112,7 +112,9 @@
                 <span class="text-xs font-semibold text-blue-700 dark:text-blue-300">{{
                   $t('password.unifiedPasswordLabel')
                 }}</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">({{ archivePaths.length }} {{ $t('password.archives') }})</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400"
+                  >({{ archivePaths.length }} {{ $t('password.archives') }})</span
+                >
               </div>
               <div class="relative">
                 <input

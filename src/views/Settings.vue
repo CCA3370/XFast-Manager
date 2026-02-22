@@ -121,7 +121,9 @@
                     d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"
                   ></path>
                 </svg>
-                <span><AnimatedText>{{ $t('common.browse') }}</AnimatedText></span>
+                <span
+                  ><AnimatedText>{{ $t('common.browse') }}</AnimatedText></span
+                >
               </button>
             </div>
           </div>
@@ -249,9 +251,11 @@
                           d="M5 13l4 4L19 7"
                         ></path>
                       </svg>
-                      <span><AnimatedText>{{
-                        $t('settings.windowsIntegrationBenefit1')
-                      }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.windowsIntegrationBenefit1')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
                       <svg
@@ -267,9 +271,11 @@
                           d="M5 13l4 4L19 7"
                         ></path>
                       </svg>
-                      <span><AnimatedText>{{
-                        $t('settings.windowsIntegrationBenefit2')
-                      }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.windowsIntegrationBenefit2')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
                       <svg
@@ -285,9 +291,11 @@
                           d="M5 13l4 4L19 7"
                         ></path>
                       </svg>
-                      <span><AnimatedText>{{
-                        $t('settings.windowsIntegrationBenefit3')
-                      }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.windowsIntegrationBenefit3')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
                       <svg
@@ -303,9 +311,11 @@
                           d="M5 13l4 4L19 7"
                         ></path>
                       </svg>
-                      <span><AnimatedText>{{
-                        $t('settings.windowsIntegrationBenefit4')
-                      }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.windowsIntegrationBenefit4')
+                        }}</AnimatedText></span
+                      >
                     </li>
                   </ul>
                 </div>
@@ -404,9 +414,11 @@
                           d="M5 13l4 4L19 7"
                         ></path>
                       </svg>
-                      <span><AnimatedText>{{
-                        $t('settings.atomicInstallBenefit1')
-                      }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.atomicInstallBenefit1')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
                       <svg
@@ -422,9 +434,11 @@
                           d="M5 13l4 4L19 7"
                         ></path>
                       </svg>
-                      <span><AnimatedText>{{
-                        $t('settings.atomicInstallBenefit2')
-                      }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.atomicInstallBenefit2')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
                       <svg
@@ -440,9 +454,11 @@
                           d="M5 13l4 4L19 7"
                         ></path>
                       </svg>
-                      <span><AnimatedText>{{
-                        $t('settings.atomicInstallBenefit3')
-                      }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.atomicInstallBenefit3')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
                       <svg
@@ -458,9 +474,11 @@
                           d="M5 13l4 4L19 7"
                         ></path>
                       </svg>
-                      <span><AnimatedText>{{
-                        $t('settings.atomicInstallBenefit4')
-                      }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.atomicInstallBenefit4')
+                        }}</AnimatedText></span
+                      >
                     </li>
                   </ul>
                 </div>
@@ -565,9 +583,11 @@
                           d="M5 13l4 4L19 7"
                         ></path>
                       </svg>
-                      <span><AnimatedText>{{
-                        $t('settings.deleteSourceBenefit1')
-                      }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.deleteSourceBenefit1')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
                       <svg
@@ -583,9 +603,11 @@
                           d="M5 13l4 4L19 7"
                         ></path>
                       </svg>
-                      <span><AnimatedText>{{
-                        $t('settings.deleteSourceBenefit2')
-                      }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.deleteSourceBenefit2')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
                       <svg
@@ -601,9 +623,11 @@
                           d="M5 13l4 4L19 7"
                         ></path>
                       </svg>
-                      <span><AnimatedText>{{
-                        $t('settings.deleteSourceBenefit3')
-                      }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.deleteSourceBenefit3')
+                        }}</AnimatedText></span
+                      >
                     </li>
                     <li class="flex items-start space-x-2">
                       <svg
@@ -619,9 +643,11 @@
                           d="M5 13l4 4L19 7"
                         ></path>
                       </svg>
-                      <span><AnimatedText>{{
-                        $t('settings.deleteSourceBenefit4')
-                      }}</AnimatedText></span>
+                      <span
+                        ><AnimatedText>{{
+                          $t('settings.deleteSourceBenefit4')
+                        }}</AnimatedText></span
+                      >
                     </li>
                   </ul>
                 </div>
@@ -722,9 +748,11 @@
                         d="M5 13l4 4L19 7"
                       ></path>
                     </svg>
-                    <span><AnimatedText>{{
-                      $t('settings.sceneryAutoSortBenefit1')
-                    }}</AnimatedText></span>
+                    <span
+                      ><AnimatedText>{{
+                        $t('settings.sceneryAutoSortBenefit1')
+                      }}</AnimatedText></span
+                    >
                   </li>
                   <li class="flex items-start space-x-2">
                     <svg
@@ -740,9 +768,11 @@
                         d="M5 13l4 4L19 7"
                       ></path>
                     </svg>
-                    <span><AnimatedText>{{
-                      $t('settings.sceneryAutoSortBenefit2')
-                    }}</AnimatedText></span>
+                    <span
+                      ><AnimatedText>{{
+                        $t('settings.sceneryAutoSortBenefit2')
+                      }}</AnimatedText></span
+                    >
                   </li>
                   <li class="flex items-start space-x-2">
                     <svg
@@ -758,9 +788,11 @@
                         d="M5 13l4 4L19 7"
                       ></path>
                     </svg>
-                    <span><AnimatedText>{{
-                      $t('settings.sceneryAutoSortBenefit3')
-                    }}</AnimatedText></span>
+                    <span
+                      ><AnimatedText>{{
+                        $t('settings.sceneryAutoSortBenefit3')
+                      }}</AnimatedText></span
+                    >
                   </li>
                 </ul>
               </div>
@@ -884,7 +916,9 @@
               <div
                 class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5"
               >
-                <span class="text-xs font-medium text-gray-700 dark:text-gray-300"><AnimatedText>{{ $t('settings.toggleAll') }}</AnimatedText></span>
+                <span class="text-xs font-medium text-gray-700 dark:text-gray-300"
+                  ><AnimatedText>{{ $t('settings.toggleAll') }}</AnimatedText></span
+                >
                 <button
                   class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
                   :class="allPreferencesEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
@@ -1359,7 +1393,9 @@
                       d="M5 13l4 4L19 7"
                     ></path>
                   </svg>
-                  <span><AnimatedText>{{ $t('update.autoUpdateCheckBenefit1') }}</AnimatedText></span>
+                  <span
+                    ><AnimatedText>{{ $t('update.autoUpdateCheckBenefit1') }}</AnimatedText></span
+                  >
                 </li>
                 <li class="flex items-start space-x-2">
                   <svg
@@ -1375,7 +1411,9 @@
                       d="M5 13l4 4L19 7"
                     ></path>
                   </svg>
-                  <span><AnimatedText>{{ $t('update.autoUpdateCheckBenefit2') }}</AnimatedText></span>
+                  <span
+                    ><AnimatedText>{{ $t('update.autoUpdateCheckBenefit2') }}</AnimatedText></span
+                  >
                 </li>
                 <li class="flex items-start space-x-2">
                   <svg
@@ -1391,7 +1429,9 @@
                       d="M5 13l4 4L19 7"
                     ></path>
                   </svg>
-                  <span><AnimatedText>{{ $t('update.autoUpdateCheckBenefit3') }}</AnimatedText></span>
+                  <span
+                    ><AnimatedText>{{ $t('update.autoUpdateCheckBenefit3') }}</AnimatedText></span
+                  >
                 </li>
               </ul>
             </div>
@@ -1528,7 +1568,9 @@
               class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5"
             >
               <div class="flex-1">
-                <label class="text-xs font-medium text-gray-700 dark:text-gray-300"><AnimatedText>{{ $t('settings.logLevel') }}</AnimatedText></label>
+                <label class="text-xs font-medium text-gray-700 dark:text-gray-300"
+                  ><AnimatedText>{{ $t('settings.logLevel') }}</AnimatedText></label
+                >
               </div>
               <div class="flex items-center space-x-2">
                 <button
@@ -1543,9 +1585,7 @@
                   @click.stop="store.setLogLevel(level)"
                 >
                   <AnimatedText>
-                    {{
-                      $t(`settings.logLevel${level.charAt(0).toUpperCase() + level.slice(1)}`)
-                    }}
+                    {{ $t(`settings.logLevel${level.charAt(0).toUpperCase() + level.slice(1)}`) }}
                   </AnimatedText>
                 </button>
               </div>
@@ -1843,11 +1883,15 @@ watch(
 // Scroll log container to bottom
 function scrollLogsToBottom() {
   // Use setTimeout to ensure DOM is fully rendered and transition is complete
-  setTrackedTimeout(() => {
-    if (logContainer.value) {
-      logContainer.value.scrollTop = logContainer.value.scrollHeight
-    }
-  }, 100, activeTimeoutIds) // Wait 100ms for transition
+  setTrackedTimeout(
+    () => {
+      if (logContainer.value) {
+        logContainer.value.scrollTop = logContainer.value.scrollHeight
+      }
+    },
+    100,
+    activeTimeoutIds,
+  ) // Wait 100ms for transition
 }
 
 // Master toggle computed
@@ -2002,9 +2046,13 @@ async function validateAndSavePath() {
     // Save the path
     store.setXplanePath(newValue)
     saveStatus.value = 'saved'
-    setTrackedTimeout(() => {
-      saveStatus.value = null
-    }, SAVE_STATUS_DISPLAY_DURATION_MS, activeTimeoutIds)
+    setTrackedTimeout(
+      () => {
+        saveStatus.value = null
+      },
+      SAVE_STATUS_DISPLAY_DURATION_MS,
+      activeTimeoutIds,
+    )
   }
 }
 
@@ -2038,9 +2086,13 @@ function handlePatternBlur() {
     patternSaveStatus.value = 'saved'
 
     // Hide saved status after 2 seconds
-    setTrackedTimeout(() => {
-      patternSaveStatus.value = null
-    }, SAVE_STATUS_DISPLAY_DURATION_MS, activeTimeoutIds)
+    setTrackedTimeout(
+      () => {
+        patternSaveStatus.value = null
+      },
+      SAVE_STATUS_DISPLAY_DURATION_MS,
+      activeTimeoutIds,
+    )
   }
 }
 
@@ -2064,9 +2116,13 @@ function removePattern(index: number) {
   store.setConfigFilePatterns(validPatterns)
   patternSaveStatus.value = 'saved'
 
-  setTrackedTimeout(() => {
-    patternSaveStatus.value = null
-  }, SAVE_STATUS_DISPLAY_DURATION_MS, activeTimeoutIds)
+  setTrackedTimeout(
+    () => {
+      patternSaveStatus.value = null
+    },
+    SAVE_STATUS_DISPLAY_DURATION_MS,
+    activeTimeoutIds,
+  )
 }
 
 async function selectFolder() {
@@ -2107,9 +2163,13 @@ async function selectFolder() {
       xplanePathInput.value = selectedPath
       store.setXplanePath(selectedPath)
       saveStatus.value = 'saved'
-      setTrackedTimeout(() => {
-        saveStatus.value = null
-      }, SAVE_STATUS_DISPLAY_DURATION_MS, activeTimeoutIds)
+      setTrackedTimeout(
+        () => {
+          saveStatus.value = null
+        },
+        SAVE_STATUS_DISPLAY_DURATION_MS,
+        activeTimeoutIds,
+      )
     }
   } catch (error) {
     logError(`Failed to open folder dialog: ${error}`, 'settings')

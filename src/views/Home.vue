@@ -138,7 +138,9 @@
                   d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                 ></path>
               </svg>
-              <span><AnimatedText>{{ $t('home.autoDetect') }}</AnimatedText></span>
+              <span
+                ><AnimatedText>{{ $t('home.autoDetect') }}</AnimatedText></span
+              >
             </span>
             <span
               class="px-2.5 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium flex items-center space-x-1.5 shadow-sm dark:shadow-none"
@@ -156,7 +158,9 @@
                   d="M13 10V3L4 14h7v7l9-11h-7z"
                 ></path>
               </svg>
-              <span><AnimatedText>{{ $t('home.fastInstall') }}</AnimatedText></span>
+              <span
+                ><AnimatedText>{{ $t('home.fastInstall') }}</AnimatedText></span
+              >
             </span>
             <span
               class="px-2.5 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium flex items-center space-x-1.5 shadow-sm dark:shadow-none"
@@ -174,7 +178,9 @@
                   d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
                 ></path>
               </svg>
-              <span><AnimatedText>{{ $t('home.batchProcess') }}</AnimatedText></span>
+              <span
+                ><AnimatedText>{{ $t('home.batchProcess') }}</AnimatedText></span
+              >
             </span>
           </div>
 
@@ -504,7 +510,11 @@ function onWindowDrop(e: DragEvent) {
   }
   isDragging.value = false
   debugDropFlash.value = true
-  setTrackedTimeout(() => (debugDropFlash.value = false), DEBUG_DROP_FLASH_DURATION_MS, activeTimeoutIds)
+  setTrackedTimeout(
+    () => (debugDropFlash.value = false),
+    DEBUG_DROP_FLASH_DURATION_MS,
+    activeTimeoutIds,
+  )
 }
 
 onMounted(async () => {
@@ -531,7 +541,11 @@ onMounted(async () => {
       } else if (event.payload.type === 'drop') {
         isDragging.value = false
         debugDropFlash.value = true
-        setTrackedTimeout(() => (debugDropFlash.value = false), DEBUG_DROP_FLASH_DURATION_MS, activeTimeoutIds)
+        setTrackedTimeout(
+          () => (debugDropFlash.value = false),
+          DEBUG_DROP_FLASH_DURATION_MS,
+          activeTimeoutIds,
+        )
 
         // If showing completion, close it and start new analysis
         if (store.showCompletion) {
@@ -919,10 +933,14 @@ async function handleInstall() {
 
     // Keep isInstalling true for a brief moment to show the animation
     // Then set it to false after animation starts
-    setTrackedTimeout(() => {
-      store.isInstalling = false
-      progressStore.reset()
-    }, COMPLETION_ANIMATION_DELAY_MS, activeTimeoutIds)
+    setTrackedTimeout(
+      () => {
+        store.isInstalling = false
+        progressStore.reset()
+      },
+      COMPLETION_ANIMATION_DELAY_MS,
+      activeTimeoutIds,
+    )
   } catch (error) {
     // Non-blocking log call (also prints to console.error internally)
     logError(`${t('log.installationFailed')}: ${error}`, 'installation')

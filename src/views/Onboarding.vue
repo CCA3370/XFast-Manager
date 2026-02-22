@@ -38,9 +38,9 @@
                   <button
                     v-if="
                       currentStep.key !== 'installPreferences' &&
-                        currentStep.key !== 'xplanePath' &&
-                        currentStep.key !== 'aircraftBackup' &&
-                        currentStep.key !== 'sponsor'
+                      currentStep.key !== 'xplanePath' &&
+                      currentStep.key !== 'aircraftBackup' &&
+                      currentStep.key !== 'sponsor'
                     "
                     :disabled="isSubmitting || currentStep.disabled"
                     class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
@@ -225,7 +225,8 @@
                     >
                       <span
                         class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2"
-                      >{{ $t('settings.verifyZip') }}</span>
+                        >{{ $t('settings.verifyZip') }}</span
+                      >
                       <button
                         :disabled="!verificationEnabled"
                         class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -249,7 +250,8 @@
                     >
                       <span
                         class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2"
-                      >{{ $t('settings.verify7z') }}</span>
+                        >{{ $t('settings.verify7z') }}</span
+                      >
                       <button
                         :disabled="!verificationEnabled"
                         class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -273,7 +275,8 @@
                     >
                       <span
                         class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2"
-                      >{{ $t('settings.verifyRar') }}</span>
+                        >{{ $t('settings.verifyRar') }}</span
+                      >
                       <button
                         disabled
                         class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0 opacity-40 cursor-not-allowed bg-gray-300 dark:bg-gray-600"
@@ -288,7 +291,8 @@
                     >
                       <span
                         class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2"
-                      >{{ $t('settings.verifyDirectory') }}</span>
+                        >{{ $t('settings.verifyDirectory') }}</span
+                      >
                       <button
                         :disabled="!verificationEnabled"
                         class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"

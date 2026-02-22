@@ -13,7 +13,8 @@
         <!-- Logo -->
         <div class="flex items-center space-x-3 group cursor-default">
           <h1 class="text-lg font-bold tracking-wide">
-            <span class="text-gray-900 dark:text-white transition-colors">XFast</span><span class="text-blue-600 dark:text-blue-400 transition-colors">Manager</span>
+            <span class="text-gray-900 dark:text-white transition-colors">XFast</span
+            ><span class="text-blue-600 dark:text-blue-400 transition-colors">Manager</span>
           </h1>
         </div>
 

@@ -1621,7 +1621,9 @@ onBeforeUnmount(() => {
     >
       <div class="flex items-center gap-2">
         <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.total') }}:</span>
+          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+            >{{ t('sceneryManager.total') }}:</span
+          >
         </Transition>
         <span class="font-semibold text-gray-900 dark:text-gray-100">{{
           sceneryStore.totalCount
@@ -1629,7 +1631,9 @@ onBeforeUnmount(() => {
       </div>
       <div class="flex items-center gap-2">
         <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.enabled') }}:</span>
+          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+            >{{ t('sceneryManager.enabled') }}:</span
+          >
         </Transition>
         <span class="font-semibold text-green-600 dark:text-green-400">{{
           sceneryStore.enabledCount
@@ -1637,7 +1641,9 @@ onBeforeUnmount(() => {
       </div>
       <div v-if="sceneryStore.missingDepsCount > 0" class="flex items-center gap-2">
         <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.missingDeps') }}:</span>
+          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+            >{{ t('sceneryManager.missingDeps') }}:</span
+          >
         </Transition>
         <span class="font-semibold text-amber-600 dark:text-amber-400">{{
           sceneryStore.missingDepsCount
@@ -1645,7 +1651,9 @@ onBeforeUnmount(() => {
       </div>
       <div v-if="sceneryStore.duplicatesCount > 0" class="flex items-center gap-2">
         <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400">{{ t('sceneryManager.duplicates') }}:</span>
+          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+            >{{ t('sceneryManager.duplicates') }}:</span
+          >
         </Transition>
         <span class="font-semibold text-orange-600 dark:text-orange-400">{{
           sceneryStore.duplicatesCount
@@ -1726,7 +1734,8 @@ onBeforeUnmount(() => {
                 }}</span>
                 <span
                   class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium"
-                >{{ sceneryStore.missingDepsCount }}</span>
+                  >{{ sceneryStore.missingDepsCount }}</span
+                >
               </div>
               <!-- Duplicates -->
               <div
@@ -1755,7 +1764,8 @@ onBeforeUnmount(() => {
                 }}</span>
                 <span
                   class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium"
-                >{{ sceneryStore.duplicatesCount }}</span>
+                  >{{ sceneryStore.duplicatesCount }}</span
+                >
               </div>
               <!-- Separator -->
               <div class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"></div>
@@ -1773,7 +1783,7 @@ onBeforeUnmount(() => {
                 class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-green-400 dark:group-hover:border-green-500"
                 :class="
                   enabledFilter === 'enabled' &&
-                    'filter-check-active bg-green-500 !border-green-500'
+                  'filter-check-active bg-green-500 !border-green-500'
                 "
               >
                 <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
@@ -3007,7 +3017,8 @@ onBeforeUnmount(() => {
                     item.type === 'removed' ? 'text-red-800 dark:text-red-300' : '',
                     item.type === 'updated' ? 'text-amber-800 dark:text-amber-300' : '',
                   ]"
-                >{{ item.name }}</span>
+                  >{{ item.name }}</span
+                >
               </div>
             </div>
           </div>
