@@ -114,7 +114,7 @@ fn continent_map() -> &'static [u8] {
 /// Returns a continent name (`"Africa"`, `"Asia"`, …) or `"Unknown"` for
 /// deep-ocean tiles and out-of-range inputs.
 pub fn lookup_region(lat: i32, lon: i32) -> &'static str {
-    if lat < -90 || lat >= 90 || lon < -180 || lon >= 180 {
+    if !(-90..90).contains(&lat) || !(-180..180).contains(&lon) {
         return "Unknown";
     }
     let idx = (lat + 90) as usize * 360 + (lon + 180) as usize;
