@@ -31,6 +31,8 @@ onUnmounted(() => {
 })
 
 // Viewport boundary clamping
+const EDGE_MARGIN = 16
+
 watch(visible, (val) => {
   if (val) {
     nextTick(() => {
@@ -38,15 +40,23 @@ watch(visible, (val) => {
       const rect = menuRef.value.getBoundingClientRect()
       const vw = window.innerWidth
       const vh = window.innerHeight
+      const maxH = vh - EDGE_MARGIN * 2
 
       if (x.value + rect.width > vw) {
-        x.value = vw - rect.width - 4
+        x.value = vw - rect.width - EDGE_MARGIN
       }
-      if (y.value + rect.height > vh) {
-        y.value = vh - rect.height - 4
+      if (x.value < EDGE_MARGIN) x.value = EDGE_MARGIN
+
+      // Clamp height and enable scrolling if menu is taller than viewport
+      if (rect.height > maxH) {
+        menuRef.value.style.maxHeight = `${maxH}px`
+        menuRef.value.style.overflowY = 'auto'
       }
-      if (x.value < 0) x.value = 4
-      if (y.value < 0) y.value = 4
+
+      if (y.value + rect.height > vh - EDGE_MARGIN) {
+        y.value = vh - rect.height - EDGE_MARGIN
+      }
+      if (y.value < EDGE_MARGIN) y.value = EDGE_MARGIN
     })
   }
 })
