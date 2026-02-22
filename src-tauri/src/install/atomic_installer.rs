@@ -1284,7 +1284,9 @@ fn check_disk_space(path: &Path) -> Result<()> {
     // Calculate available space: f_bavail * f_frsize
     // f_bavail is the number of free blocks available to non-privileged process
     // f_frsize is the fragment size (preferred block size)
-    let available_bytes = (stat.f_bavail as u64) * stat.f_frsize;
+    // Cast needed for macOS where f_bavail is u32, but on Linux it's already u64
+    #[allow(clippy::unnecessary_cast)]
+    let available_bytes = (stat.f_bavail as u64) * (stat.f_frsize as u64);
     let available_gb = available_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
 
     logger::log_info(
