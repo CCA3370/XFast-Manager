@@ -49,7 +49,7 @@ const togglingItems = ref<Set<string>>(new Set())
 const showOnlyUpdates = ref(false)
 const showOnlyOutdated = ref(false)
 const suppressLoading = ref(false)
-const scrollContainerRef = ref<HTMLElement | null>(null)
+
 
 // Initialize tab from route query
 onMounted(() => {
