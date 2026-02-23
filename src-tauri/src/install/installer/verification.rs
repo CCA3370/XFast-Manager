@@ -21,6 +21,33 @@ impl Installer {
         ctx.set_verification_progress(10.0);
         ctx.emit_progress(Some("Marker files OK".to_string()), InstallPhase::Verifying);
 
+        // Check if inline verification already passed during extraction
+        if ctx
+            .inline_verified
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            let count = ctx.inline_verified_count.load(Ordering::SeqCst) as usize;
+            logger::log_info(
+                &format!(
+                    "Skipping verification re-read: {} files verified inline during extraction",
+                    count
+                ),
+                Some("installer"),
+            );
+            ctx.set_verification_progress(100.0);
+            ctx.emit_progress(
+                Some("Inline verification passed".to_string()),
+                InstallPhase::Verifying,
+            );
+            return Ok(Some(crate::models::VerificationStats {
+                total_files: count,
+                verified_files: count,
+                failed_files: 0,
+                retried_files: 0,
+                skipped_files: 0,
+            }));
+        }
+
         // Phase 2: Hash verification (if enabled and hashes available)
         // IMPORTANT: When verification is disabled, skip ALL hash operations to save time
         if !task.enable_verification {

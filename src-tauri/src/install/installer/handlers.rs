@@ -74,12 +74,13 @@ impl Installer {
                     "installer_timing"
                 );
                 // Direct overwrite mode: just install/extract files directly
-                self.install_content_with_progress(
+                self.install_content_with_progress_and_hashes(
                     source,
                     target,
                     task.archive_internal_root.as_deref(),
                     ctx,
                     password,
+                    task.file_hashes.as_ref(),
                 )?;
             }
         }
@@ -96,10 +97,23 @@ impl Installer {
         ctx: &ProgressContext,
         password: Option<&str>,
     ) -> Result<()> {
+        self.install_content_with_progress_and_hashes(source, target, internal_root, ctx, password, None)
+    }
+
+    /// Install content with progress tracking and optional expected hashes for inline verification
+    fn install_content_with_progress_and_hashes(
+        &self,
+        source: &Path,
+        target: &Path,
+        internal_root: Option<&str>,
+        ctx: &ProgressContext,
+        password: Option<&str>,
+        expected_hashes: Option<&HashMap<String, crate::models::FileHash>>,
+    ) -> Result<()> {
         if source.is_dir() {
             self.copy_directory_with_progress(source, target, ctx)?;
         } else if source.is_file() {
-            self.extract_archive_with_progress(source, target, internal_root, ctx, password)?;
+            self.extract_archive_with_progress(source, target, internal_root, ctx, password, expected_hashes)?;
         } else {
             return Err(anyhow::anyhow!("Source path is neither file nor directory"));
         }
@@ -451,6 +465,7 @@ impl Installer {
                 },
                 ctx,
                 current_password,
+                None,
             )?;
 
             // For non-last layers, find the nested archive in the extracted content
@@ -863,12 +878,13 @@ impl Installer {
                     remove_dir_all_robust(target)
                         .context(format!("Failed to delete existing folder: {:?}", target))?;
                 }
-                self.install_content_with_progress(
+                self.install_content_with_progress_and_hashes(
                     source,
                     target,
                     task.archive_internal_root.as_deref(),
                     ctx,
                     password,
+                    task.file_hashes.as_ref(),
                 )?;
             }
         }

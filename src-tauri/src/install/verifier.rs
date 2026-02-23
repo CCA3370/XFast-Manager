@@ -177,7 +177,7 @@ impl FileVerifier {
 
         let mut file = fs::File::open(path)?;
         let mut hasher = Hasher::new();
-        let mut buffer = vec![0u8; 4 * 1024 * 1024]; // 4MB buffer
+        let mut buffer = vec![0u8; 8 * 1024 * 1024]; // 8MB buffer
 
         loop {
             let bytes_read = file.read(&mut buffer)?;
@@ -194,7 +194,7 @@ impl FileVerifier {
     pub fn compute_sha256(&self, path: &Path) -> Result<String> {
         let mut file = fs::File::open(path)?;
         let mut hasher = Sha256::new();
-        let mut buffer = vec![0u8; 4 * 1024 * 1024]; // 4MB buffer
+        let mut buffer = vec![0u8; 8 * 1024 * 1024]; // 8MB buffer
 
         loop {
             let bytes_read = file.read(&mut buffer)?;

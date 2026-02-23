@@ -31,9 +31,9 @@ pub const MAX_COMPRESSION_RATIO: u64 = 100;
 /// Larger files are extracted via temp directory to avoid memory pressure
 pub const MAX_MEMORY_ZIP_SIZE: u64 = 200 * 1024 * 1024;
 
-/// Buffer size for file I/O operations (4 MB)
+/// Buffer size for file I/O operations (8 MB)
 /// Optimized for modern SSDs and network storage
-const IO_BUFFER_SIZE: usize = 4 * 1024 * 1024;
+const IO_BUFFER_SIZE: usize = 8 * 1024 * 1024;
 
 /// Pre-compiled glob patterns for efficient matching
 struct CompiledPatterns {
@@ -86,7 +86,7 @@ pub fn sanitize_path(path: &Path) -> Option<PathBuf> {
 }
 
 /// Optimized file copy with buffering for better performance
-/// Uses a larger buffer (4MB) for faster I/O operations
+/// Uses a larger buffer (8MB) for faster I/O operations
 fn copy_file_optimized<R: std::io::Read + ?Sized, W: std::io::Write>(
     reader: &mut R,
     writer: &mut W,
@@ -104,6 +104,28 @@ fn copy_file_optimized<R: std::io::Read + ?Sized, W: std::io::Write>(
     }
 
     Ok(total_bytes)
+}
+
+/// Copy file while computing CRC32 hash inline
+/// Returns (bytes_written, crc32_hash) for inline verification
+fn copy_file_with_crc32<R: std::io::Read + ?Sized, W: std::io::Write>(
+    reader: &mut R,
+    writer: &mut W,
+) -> std::io::Result<(u64, u32)> {
+    use crc32fast::Hasher;
+    let mut buffer = vec![0u8; IO_BUFFER_SIZE];
+    let mut total_bytes = 0u64;
+    let mut hasher = Hasher::new();
+    loop {
+        let bytes_read = reader.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+        writer.write_all(&buffer[..bytes_read])?;
+        total_bytes += bytes_read as u64;
+    }
+    Ok((total_bytes, hasher.finalize()))
 }
 
 /// Remove read-only attribute from a file (Windows only)
@@ -244,6 +266,12 @@ struct ProgressContext {
     /// Maximum percentage reached, stored as percentage * 100 for atomic ops
     /// Used to ensure progress never goes backward during task transitions
     max_percentage: Arc<AtomicU64>,
+    /// Whether all files were verified inline during extraction (skip post-extraction verification)
+    inline_verified: Arc<std::sync::atomic::AtomicBool>,
+    /// Inline verification stats: total files verified inline
+    inline_verified_count: Arc<AtomicU64>,
+    /// Hashes computed inline during extraction (for 7z SHA256)
+    inline_hashes: Arc<Mutex<HashMap<String, crate::models::FileHash>>>,
 }
 
 impl ProgressContext {
@@ -260,6 +288,9 @@ impl ProgressContext {
             task_sizes: Arc::new(Vec::new()),
             task_cumulative: Arc::new(Vec::new()),
             max_percentage: Arc::new(AtomicU64::new(0)),
+            inline_verified: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            inline_verified_count: Arc::new(AtomicU64::new(0)),
+            inline_hashes: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -486,7 +517,7 @@ impl Installer {
     /// Install a list of tasks with progress reporting
     pub async fn install(
         &self,
-        tasks: Vec<InstallTask>,
+        mut tasks: Vec<InstallTask>,
         atomic_install_enabled: bool,
         xplane_path: String,
         delete_source_after_install: bool,
@@ -543,7 +574,7 @@ impl Installer {
         let install_phase_start = Instant::now();
         crate::log_debug!("[TIMING] Installation phase started", "installer_timing");
 
-        for (index, task) in tasks.iter().enumerate() {
+        for (index, task) in tasks.iter_mut().enumerate() {
             // Check for cancellation before starting each task
             if self.task_control.is_cancelled() {
                 logger::log_info("Installation cancelled by user", Some("installer"));
@@ -583,6 +614,12 @@ impl Installer {
             ctx.processed_bytes
                 .store(cumulative_start, Ordering::SeqCst);
 
+            // Reset inline verification state for this task
+            ctx.inline_verified
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            ctx.inline_verified_count.store(0, Ordering::SeqCst);
+            ctx.inline_hashes.lock().unwrap().clear();
+
             ctx.emit_progress(None, InstallPhase::Installing);
 
             logger::log_info(
@@ -602,6 +639,18 @@ impl Installer {
             match self.install_task_with_progress(task, &ctx, atomic_install_enabled, &xplane_path)
             {
                 Ok(_) => {
+                    // Transfer inline-computed hashes to the task (for 7z SHA256)
+                    {
+                        let inline = ctx.inline_hashes.lock().unwrap();
+                        if !inline.is_empty() {
+                            task.file_hashes = Some(inline.clone());
+                            ctx.inline_verified
+                                .store(true, std::sync::atomic::Ordering::SeqCst);
+                            ctx.inline_verified_count
+                                .store(inline.len() as u64, Ordering::SeqCst);
+                        }
+                    }
+
                     // Check for skip request after installation but before verification
                     if self.task_control.is_skip_requested() {
                         logger::log_info(
