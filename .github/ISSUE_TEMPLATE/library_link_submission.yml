@@ -1,0 +1,42 @@
+name: Library Link Submission
+description: Submit a missing library download link for review and inclusion
+labels:
+  - library-link
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Submit a reliable download URL for a missing X-Plane library.
+
+  - type: input
+    id: library_name
+    attributes:
+      label: Library Name
+      description: Use the exact missing library name shown in XFast Manager
+    validations:
+      required: true
+
+  - type: input
+    id: download_url
+    attributes:
+      label: Download URL
+      description: Direct source page or release page for the library
+      placeholder: https://example.com/library
+    validations:
+      required: true
+
+  - type: input
+    id: referenced_by
+    attributes:
+      label: Referenced By Scenery (optional)
+      description: Scenery package that reported this missing library
+    validations:
+      required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional Notes (optional)
+      placeholder: Any context for maintainer review
+    validations:
+      required: false

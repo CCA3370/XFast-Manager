@@ -1,0 +1,2 @@
+This is a placeholder. A real icon.png should be created.
+For now, create a simple 128x128 PNG icon.

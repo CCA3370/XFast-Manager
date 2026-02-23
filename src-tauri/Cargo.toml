@@ -1,0 +1,52 @@
+[package]
+name = "xfastmanager"
+version = "0.9.1"
+description = "X-Plane Addon Auto Manager"
+authors = ["3370Tech"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-http = "2"
+tauri-plugin-store = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+walkdir = "2"
+zip = "2"
+sevenz-rust2 = "0.20"
+anyhow = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+dirs = "5"
+rayon = "1.10"
+unrar = "0.5.8"
+tempfile = "3"
+dashmap = "6"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+glob = "0.3"
+crc32fast = "1.4"
+sha2 = "0.10"
+semver = "1.0"
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls-vendored"] }
+futures = "0.3"
+opener = "0.8"
+sea-orm = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio-native-tls"] }
+sea-orm-migration = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio-native-tls"] }
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+winapi = { version = "0.3", features = ["fileapi", "minwindef", "combaseapi", "objbase", "objidl", "shlobj", "shobjidl_core", "shtypes", "wtypesbase", "unknwnbase", "wtypes", "ole2", "winerror"] }
+lnk = "0.5"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[lib]
+name = "xfastmanager_lib"
+crate-type = ["lib"]

@@ -1,0 +1,62 @@
+# Node/Vite
+node_modules/
+dist/
+dist-*/
+.vite/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Rust / Tauri
+target/
+src-tauri/target/
+src-tauri/target-check/
+**/*.rs.bk
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+desktop.ini
+
+# IDEs
+.idea/
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Temporary / cache
+.cache/
+.tmp/
+tmp/
+
+# AI assistants
+.claude/
+.codex/
+.cursor/
+.aider/
+.windsurf/
+.gemini/
+GEMINI.md
+CLAUDE.md
+CHATGPT.md
+AI.md
+.copilot/
+.github/copilot-instructions.md

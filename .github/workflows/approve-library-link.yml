@@ -1,0 +1,191 @@
+name: Approve Library Link
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  apply-approved-link:
+    if: github.event.label.name == 'approved-link' && contains(github.event.issue.labels.*.name, 'library-link')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout dev branch
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Extract library link fields from issue body
+        id: extract
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+
+            const fieldInline = (name) => {
+              const re = new RegExp(`^\\s*${name}\\s*:\\s*(.+)$`, 'im');
+              const m = body.match(re);
+              return m ? m[1].trim() : null;
+            };
+
+            const fieldBySection = (name) => {
+              const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const re = new RegExp(`^###\\s*${escaped}\\s*$([\\s\\S]*?)(?=^###\\s|$)`, 'im');
+              const m = body.match(re);
+              if (!m) {
+                return null;
+              }
+
+              const lines = m[1]
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter((line) => line && line !== '_No response_' && line !== 'No response');
+
+              return lines.length ? lines[0] : null;
+            };
+
+            let libraryName = fieldInline('Library Name') || fieldBySection('Library Name');
+            let downloadUrl = fieldInline('Download URL') || fieldBySection('Download URL');
+
+            // Fallback to bullet style from app prefill
+            if (!libraryName) {
+              const m = body.match(/-\s*Library Name\s*:\s*`?([^`\n]+)`?/i);
+              libraryName = m ? m[1].trim() : null;
+            }
+            if (!downloadUrl) {
+              const m = body.match(/-\s*Download URL\s*:\s*([^\s\n]+)/i);
+              downloadUrl = m ? m[1].trim() : null;
+            }
+
+            if (!libraryName || !downloadUrl) {
+              core.setFailed('Could not parse Library Name / Download URL from issue body.');
+              return;
+            }
+
+            try {
+              const parsed = new URL(downloadUrl);
+              if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+                core.setFailed('Download URL must be http/https.');
+                return;
+              }
+            } catch {
+              core.setFailed('Invalid Download URL.');
+              return;
+            }
+
+            core.setOutput('library_name_raw', libraryName);
+            core.setOutput('library_name', libraryName.toLowerCase());
+            core.setOutput('download_url', downloadUrl);
+
+      - name: Update data/library_links.json
+        env:
+          LIBRARY_NAME: ${{ steps.extract.outputs.library_name }}
+          DOWNLOAD_URL: ${{ steps.extract.outputs.download_url }}
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = 'data/library_links.json';
+          const lib = process.env.LIBRARY_NAME;
+          const url = process.env.DOWNLOAD_URL;
+
+          const raw = fs.readFileSync(path, 'utf8');
+          const data = JSON.parse(raw);
+
+          if (!data.libraries || typeof data.libraries !== 'object') {
+            throw new Error('Invalid data/library_links.json: missing libraries object');
+          }
+
+          data.libraries[lib] = url;
+          data.updated = new Date().toISOString().slice(0, 10);
+
+          const sorted = Object.fromEntries(
+            Object.entries(data.libraries).sort(([a], [b]) => a.localeCompare(b))
+          );
+          data.libraries = sorted;
+
+          fs.writeFileSync(path, JSON.stringify(data, null, '\t') + '\n');
+          NODE
+
+      - name: Commit and push changes
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- data/library_links.json; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          git add data/library_links.json
+          git commit -m "chore(data): add library link from #${{ github.event.issue.number }}"
+          git push origin dev
+          echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Comment and close issue
+        if: steps.commit.outputs.changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue_number = context.payload.issue.number;
+            const libraryName = `${{ steps.extract.outputs.library_name_raw }}`;
+            const downloadUrl = `${{ steps.extract.outputs.download_url }}`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body: `✅ Approved and merged into dev branch.\n\n- Library: ${libraryName}\n- URL: ${downloadUrl}\n- File: data/library_links.json`
+            });
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              state: 'closed'
+            });
+
+      - name: Comment and close if no file changes
+        if: steps.commit.outputs.changed == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue_number = context.payload.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body: 'ℹ️ No changes were applied to data/library_links.json (possibly already up to date). Issue closed automatically.'
+            });
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              state: 'closed'
+            });
+
+      - name: Comment and close on failure
+        if: failure() && !cancelled()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue_number = context.payload.issue.number;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body: '❌ Approval automation failed (for example: issue fields could not be parsed or URL validation failed). Please fix the issue content and re-apply the `approved-link` label. Issue closed automatically.'
+            });
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              state: 'closed'
+            });

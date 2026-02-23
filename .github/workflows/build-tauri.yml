@@ -1,0 +1,234 @@
+name: Build Tauri (All Platforms)
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: 3
+
+jobs:
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v2-rust-lint"
+          cache-all-crates: true
+
+      - name: Frontend lint
+        run: npm run lint
+
+      - name: Frontend format check
+        run: npm run format:check
+
+      - name: Rust format check
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Rust clippy
+        working-directory: src-tauri
+        run: cargo clippy -- -D warnings
+
+  build:
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            args: ''
+            suffix: linux-x64
+            artifact_name: XFast-Manager-linux-x64
+          - platform: macos-latest
+            args: '--target universal-apple-darwin'
+            suffix: macos-universal
+            artifact_name: XFast-Manager-macos-universal
+          - platform: windows-latest
+            args: ''
+            suffix: windows-x64
+            artifact_name: XFast-Manager-windows-portable
+
+    name: Build (${{ matrix.suffix }})
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check if fast build
+        id: check_fast
+        shell: bash
+        run: |
+          if [[ "${{ github.event.head_commit.message }}" == *"dbuild"* ]]; then
+            echo "is_fast=true" >> $GITHUB_OUTPUT
+            echo "🚀 Fast build mode enabled (optimized for speed)"
+          else
+            echo "is_fast=false" >> $GITHUB_OUTPUT
+            echo "📦 Standard build mode (optimized for size)"
+          fi
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Add macOS targets
+        if: matrix.platform == 'macos-latest'
+        run: |
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies (Fast mode)
+        if: steps.check_fast.outputs.is_fast == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v2-rust-fast"
+          key: "fast-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}"
+          cache-on-failure: true
+          save-if: true
+          cache-all-crates: true
+          cache-directories: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+
+      - name: Cache Rust dependencies (Standard mode)
+        if: steps.check_fast.outputs.is_fast == 'false'
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v2-rust-standard"
+          key: "standard-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}"
+          cache-on-failure: false
+          cache-all-crates: true
+          cache-directories: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+
+      - name: Set fast build environment
+        if: steps.check_fast.outputs.is_fast == 'true'
+        shell: bash
+        run: |
+          echo "CARGO_INCREMENTAL=1" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_LTO=off" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=1" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_DEBUG=0" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_STRIP=symbols" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
+          echo "RUSTFLAGS=-C embed-bitcode=no" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=unpacked" >> $GITHUB_ENV
+          echo "BUILD_MODE=fast" >> $GITHUB_ENV
+          echo "✅ Fast build environment configured"
+
+      - name: Set standard build environment
+        if: steps.check_fast.outputs.is_fast == 'false'
+        shell: bash
+        run: |
+          echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_LTO=fat" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=3" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_STRIP=symbols" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
+          echo "BUILD_MODE=standard" >> $GITHUB_ENV
+
+      - name: Build Tauri
+        shell: bash
+        run: |
+          echo "🔨 Building for ${{ matrix.suffix }}..."
+          if [ -n "${{ matrix.args }}" ]; then
+            npm run tauri:build -- ${{ matrix.args }}
+          else
+            npm run tauri:build
+          fi
+
+      - name: Prepare Windows artifact
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          Rename-Item -Path "target/release/xfastmanager.exe" -NewName "XFast-Manager.exe" -Force
+
+      - name: Upload Windows portable artifact
+        if: matrix.platform == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: 'target/release/XFast-Manager.exe'
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 9
+
+      - name: Upload Windows MSI artifact
+        if: matrix.platform == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: XFast-Manager-windows-msi
+          path: 'target/release/bundle/msi/*.msi'
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 9
+
+      - name: Upload macOS artifact
+        if: matrix.platform == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: 'target/universal-apple-darwin/release/bundle/dmg/*.dmg'
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 9
+
+      - name: Upload Linux artifact
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: 'target/release/bundle/appimage/*.AppImage'
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 9

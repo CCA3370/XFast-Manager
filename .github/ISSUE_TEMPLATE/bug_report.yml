@@ -1,0 +1,192 @@
+name: Bug Report
+description: Report a problem or unexpected behavior in XFast Manager
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve XFast Manager! 
+        
+        Please fill out the form below with as much detail as possible. The more information you provide, the faster we can help!
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Problem Category
+      description: What type of issue are you experiencing?
+      options:
+        - Installation (addon won't install)
+        - Analysis (addon not recognized or wrong type detected)
+        - Management (aircraft/livery/plugin/navdata)
+        - Scenery (Custom Scenery indexing or ordering)
+        - UI/Display (interface problems, crashes)
+        - Performance (app is slow or freezing)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: summary
+    attributes:
+      label: Brief Description
+      description: Describe the problem in one sentence.
+      placeholder: "e.g., App crashes when dragging a large ZIP file"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Tell us exactly what you did. Be specific!
+      placeholder: |
+        1. Open XFast Manager
+        2. Go to the Liveries tab
+        3. Drag in a 500MB ZIP file
+        4. Click "Install"
+        5. App freezes and crashes
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Result
+      description: What should have happened?
+      placeholder: "The addon should install successfully"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What Actually Happened
+      description: What went wrong?
+      placeholder: "The app froze for 30 seconds then displayed an error message"
+    validations:
+      required: true
+
+  - type: input
+    id: app_version
+    attributes:
+      label: XFast Manager Version
+      description: Found in Settings → About section
+      placeholder: "e.g., 1.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: Select your OS
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS 15 (Sequoia)
+        - macOS 14 (Sonoma)
+        - macOS 13 (Ventura)
+        - Ubuntu 24.04
+        - Ubuntu 22.04
+        - Ubuntu 20.04
+        - Other Linux
+        - Other (please specify in Additional Context)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: arch
+    attributes:
+      label: CPU Architecture
+      options:
+        - x64 (Intel/AMD 64-bit)
+        - arm64 (Apple Silicon M1/M2...)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: xplane_version
+    attributes:
+      label: X-Plane Version
+      options:
+        - X-Plane 12 (latest)
+        - X-Plane 12.1.x or earlier
+        - X-Plane 11
+        - Not applicable
+    validations:
+      required: false
+
+  - type: dropdown
+    id: addon_type
+    attributes:
+      label: Addon Type (if applicable)
+      description: What type of addon is causing the issue?
+      options:
+        - Aircraft
+        - Livery
+        - Plugin
+        - Scenery
+        - Other/Mixed
+        - Not applicable
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log File
+      description: |
+        **How to get logs:**
+        1. In XFast Manager, go to **Settings** → **Logs** tab
+        2. Click **"Copy Logs to Clipboard"** button
+        3. Paste here (Ctrl+V / Cmd+V)
+        
+        **Or manually find logs at:**
+        - Windows: `%LOCALAPPDATA%\com.xfastmanager.tool\logs`
+        - macOS: `~/Library/Application Support/com.xfastmanager.tool/logs`
+        - Linux: `~/.local/share/com.xfastmanager.tool/logs`
+        
+        ⚠️ Logs help us identify the root cause! Even partial logs are useful.
+      render: text
+      placeholder: Paste your logs here...
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or Screen Recording
+      description: |
+        Visual evidence helps a lot! You can:
+        - Drag and drop images/videos directly here
+        - Paste screenshots with Ctrl+V / Cmd+V
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional Information
+      description: |
+        Any other details that might be helpful:
+        - Did this work before? When did it break?
+        - File size or name of problematic addon?
+        - Error messages you saw?
+        - Anything unusual about your setup?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please confirm before submitting
+      options:
+        - label: I have searched existing issues to make sure this isn't a duplicate
+          required: true
+        - label: I have provided steps to reproduce the issue
+          required: true
+        - label: I am using the latest version of XFast Manager (or specified my version above)
+          required: true

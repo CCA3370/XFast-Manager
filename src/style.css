@@ -1,0 +1,285 @@
+@import 'tailwindcss';
+@variant dark (&:where(.dark, .dark *));
+
+@property --app-bg-from {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #f8fafc;
+}
+
+@property --app-bg-via {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #f8fafc;
+}
+
+@property --app-bg-to {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #f8fafc;
+}
+
+.app-container {
+  --app-bg-from: #f8fafc;
+  --app-bg-via: #f8fafc;
+  --app-bg-to: #f8fafc;
+}
+
+.dark .app-container {
+  --app-bg-from: #111827;
+  --app-bg-via: #0f172a;
+  --app-bg-to: #111827;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell',
+    'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Slightly faster global motion tuning (~20% faster) */
+.duration-75 {
+  transition-duration: 60ms !important;
+}
+.duration-100 {
+  transition-duration: 80ms !important;
+}
+.duration-150 {
+  transition-duration: 120ms !important;
+}
+.duration-200 {
+  transition-duration: 160ms !important;
+}
+.duration-300 {
+  transition-duration: 240ms !important;
+}
+.duration-500 {
+  transition-duration: 400ms !important;
+}
+.duration-700 {
+  transition-duration: 560ms !important;
+}
+.duration-1000 {
+  transition-duration: 800ms !important;
+}
+
+/* Smooth color transition during theme change */
+/* Theme transition: only target structural containers and navbar.
+   List content switches instantly to avoid performance issues on large DOMs. */
+.theme-transitioning,
+.theme-transitioning .app-container,
+.theme-transitioning nav,
+.theme-transitioning nav > div,
+.theme-transitioning nav a,
+.theme-transitioning nav button,
+.theme-transitioning nav span,
+.theme-transitioning nav svg {
+  transition-property:
+    background-color, color, border-color, fill, stroke, box-shadow, outline-color, --app-bg-from,
+    --app-bg-via, --app-bg-to !important;
+  transition-duration: var(--theme-transition-duration, 500ms) !important;
+  transition-timing-function: ease !important;
+  backface-visibility: hidden;
+}
+
+/* Exclude list containers and their children from theme transitions for better performance */
+.theme-transitioning .management-view,
+.theme-transitioning .management-view *,
+.theme-transitioning [class*='entry-card'],
+.theme-transitioning [class*='entry-card'] *,
+.theme-transitioning .scenery-group,
+.theme-transitioning .scenery-group * {
+  transition: none !important;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.5); /* Gray-400 equivalent for light mode */
+  border-radius: 3px;
+  transition: background 0.16s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.8); /* Gray-500 */
+}
+
+/* Dark mode scrollbar overrides */
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Transitions */
+.page-enter-active,
+.page-leave-active {
+  transition: all 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: scale(0.98) translateY(10px);
+}
+
+.page-leave-to {
+  opacity: 0;
+  transform: scale(1.02) translateY(-10px);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.24s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all 0.24s ease-out;
+  max-height: 200px;
+  opacity: 1;
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-10px);
+  margin-bottom: 0;
+}
+
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.24s ease-out;
+  max-height: 200px;
+  opacity: 1;
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+/* Animations */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite;
+}
+
+/* User Select Control */
+html,
+body,
+#app,
+.app-container,
+.container,
+.navbar,
+.nav-links,
+.main-content,
+* {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+select,
+option,
+button {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+.allow-select,
+.allow-select * {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+.toast,
+.toast *,
+.toast-error,
+.toast-error * {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+/* GPU Acceleration Utilities */
+.gpu-accelerated {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.gpu-layer {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Performance optimization for large lists */
+/* Use CSS containment to isolate list items and improve rendering performance */
+.management-view {
+  contain: layout style;
+}
+
+/* Optimize list item rendering */
+[class*='entry-card'],
+.scenery-entry-card {
+  contain: layout style paint;
+  content-visibility: auto;
+}
+
+/* Optimize scenery groups */
+.scenery-group {
+  contain: layout style;
+}

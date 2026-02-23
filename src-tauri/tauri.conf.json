@@ -1,0 +1,73 @@
+{
+  "productName": "XFast Manager",
+  "version": "0.9.1",
+  "identifier": "com.xfastmanager.tool",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "XFast Manager - X-Plane Addon Auto Manager",
+        "width": 700,
+        "height": 600,
+        "minWidth": 650,
+        "minHeight": 500,
+        "resizable": true,
+        "fullscreen": false,
+        "dragDropEnabled": true,
+        "devtools": true
+      }
+    ],
+    "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      },
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost https://asset.localhost; connect-src 'self' https://api.github.com"
+    },
+    "withGlobalTauri": false
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg", "deb", "rpm", "appimage", "msi"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      },
+      "deb": {
+        "depends": [
+          "libgtk-3-0",
+          "libwebkit2gtk-4.0-37 | libwebkit2gtk-4.1-0"
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "http": {
+      "scope": ["https://api.github.com/repos/CCA3370/*"]
+    }
+  }
+}
