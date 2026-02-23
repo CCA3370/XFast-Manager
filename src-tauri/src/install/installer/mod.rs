@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::database::DatabaseState;
 use crate::logger;
 use crate::logger::{tr, LogMsg};
 use crate::models::{
@@ -318,11 +319,25 @@ impl ProgressContext {
         let total = self.total_bytes.load(Ordering::SeqCst);
         let processed = self.processed_bytes.load(Ordering::SeqCst);
 
+        // Get current task's size and cumulative bytes
+        let task_size = self
+            .task_sizes
+            .get(self.current_task_index)
+            .copied()
+            .unwrap_or(0);
+        let cumulative = self
+            .task_cumulative
+            .get(self.current_task_index)
+            .copied()
+            .unwrap_or(0);
+
+        // Calculate current task's processed bytes
+        let current_task_processed = processed.saturating_sub(cumulative).min(task_size);
+
         // Calculate percentage based on phase
         // Each task gets a proportional share of 0-100% based on its size
-        // Within each task: 90% for installation, 10% for verification
-        let (raw_percentage, verification_progress) = match phase {
-            InstallPhase::Finalizing => (100.0, None),
+        let (raw_percentage, verification_progress, current_task_percentage) = match phase {
+            InstallPhase::Finalizing => (100.0, None, 100.0),
             InstallPhase::Verifying => {
                 let verify_progress = self.get_verification_progress();
                 let total_f = total as f64;
@@ -330,27 +345,29 @@ impl ProgressContext {
                     return;
                 }
 
-                // Get cumulative bytes at start of current task
-                let cumulative = self
+                // Use task-proportional percentage (same formula as installing phase at 100%)
+                // This prevents the total percentage from exceeding the current task's
+                // proportional share when actual extracted bytes exceed estimated bytes
+                let cumulative_v = self
                     .task_cumulative
                     .get(self.current_task_index)
                     .copied()
                     .unwrap_or(0) as f64;
-                let base_pct = (cumulative / total_f) * 100.0;
-
-                // Get current task's size and its contribution to total progress
-                let task_size = self
+                let base_pct = (cumulative_v / total_f) * 100.0;
+                let task_size_v = self
                     .task_sizes
                     .get(self.current_task_index)
                     .copied()
-                    .unwrap_or(0) as f64;
-                let task_pct = (task_size / total_f) * 100.0;
+                    .unwrap_or(1) as f64;
+                let task_pct = (task_size_v / total_f) * 100.0;
 
-                // Installation part is complete (90% of task's share), verification in progress (10%)
-                let install_pct = task_pct * 0.9;
-                let verify_pct = (verify_progress / 100.0) * (task_pct * 0.1);
+                // Task extraction is complete during verification, so use full task proportion
+                let total_pct = base_pct + task_pct;
 
-                (base_pct + install_pct + verify_pct, Some(verify_progress))
+                // Current task percentage: 100% (verification doesn't affect task progress display)
+                let task_progress = 100.0;
+
+                (total_pct, Some(verify_progress), task_progress)
             }
             _ => {
                 // Calculating/Installing phase
@@ -375,14 +392,21 @@ impl ProgressContext {
                     .unwrap_or(1) as f64;
                 let task_pct = (task_size / total_f) * 100.0;
 
-                // Calculate progress within current task (only 90% for installation phase)
+                // Calculate progress within current task
                 let current_processed = ((processed as f64) - cumulative).max(0.0);
                 let task_progress = (current_processed / task_size).min(1.0);
-                let install_pct = task_progress * (task_pct * 0.9);
+                let install_pct = task_progress * task_pct;
 
-                (base_pct + install_pct, None)
+                // Current task percentage
+                let task_progress_pct = task_progress * 100.0;
+
+                (base_pct + install_pct, None, task_progress_pct)
             }
         };
+
+        // Cap percentage at 99.9% - only emit_final should set 100%
+        // This prevents premature 100% display when actual bytes exceed estimates
+        let raw_percentage = raw_percentage.min(99.9);
 
         // Ensure progress never goes backward by tracking max percentage
         // This prevents jumps when transitioning between tasks
@@ -402,6 +426,9 @@ impl ProgressContext {
             current_file,
             phase,
             verification_progress,
+            current_task_percentage,
+            current_task_total_bytes: task_size,
+            current_task_processed_bytes: current_task_processed,
         };
 
         let _ = self.app_handle.emit("install-progress", &progress);
@@ -410,6 +437,13 @@ impl ProgressContext {
     fn emit_final(&self, phase: InstallPhase) {
         let total = self.total_bytes.load(Ordering::SeqCst);
         let processed = self.processed_bytes.load(Ordering::SeqCst);
+
+        // Get current task's size for final emission
+        let task_size = self
+            .task_sizes
+            .get(self.current_task_index)
+            .copied()
+            .unwrap_or(0);
 
         // Final progress is always 100%
         let progress = InstallProgress {
@@ -422,6 +456,9 @@ impl ProgressContext {
             current_file: None,
             phase,
             verification_progress: None,
+            current_task_percentage: 100.0,
+            current_task_total_bytes: task_size,
+            current_task_processed_bytes: task_size,
         };
 
         let _ = self.app_handle.emit("install-progress", &progress);
@@ -438,7 +475,7 @@ impl Installer {
     pub fn new(app_handle: AppHandle) -> Self {
         // Get TaskControl from app state
         let task_control = app_handle.state::<TaskControl>().inner().clone();
-        let db = app_handle.state::<DatabaseConnection>().inner().clone();
+        let db = app_handle.state::<DatabaseState>().get();
         Installer {
             app_handle,
             task_control,
@@ -533,6 +570,19 @@ impl Installer {
 
             ctx.current_task_index = index;
             ctx.current_task_name = task.display_name.clone();
+
+            // Reset processed bytes to the cumulative baseline for this task.
+            // This prevents over/under-extraction from a previous task (especially
+            // 7z archives where estimated size = compressed_size * 3 may be inaccurate)
+            // from bleeding into the current task's progress calculation.
+            let cumulative_start = ctx
+                .task_cumulative
+                .get(index)
+                .copied()
+                .unwrap_or(0);
+            ctx.processed_bytes
+                .store(cumulative_start, Ordering::SeqCst);
+
             ctx.emit_progress(None, InstallPhase::Installing);
 
             logger::log_info(
@@ -848,26 +898,26 @@ impl Installer {
                     self.get_archive_size(source, task.archive_internal_root.as_deref())?;
             }
 
-            // For clean install with existing target, add backup/restore overhead
-            // This accounts for: backup liveries + backup configs + restore liveries + restore configs
+            // For clean install with existing target, add restore overhead
+            // Note: Backup operations don't update progress, so we only count restore operations
             if !task.should_overwrite && target.exists() {
                 match task.addon_type {
                     AddonType::Aircraft => {
-                        // Backup and restore liveries (2x: backup + restore)
+                        // Restore liveries (only count restore, not backup)
                         if task.backup_liveries {
                             let liveries_path = target.join("liveries");
                             if liveries_path.exists() && liveries_path.is_dir() {
                                 let liveries_size =
                                     self.get_directory_size(&liveries_path).unwrap_or(0);
-                                task_size += liveries_size * 2; // backup + restore
+                                task_size += liveries_size; // only restore
                             }
                         }
 
-                        // Backup and restore config files (2x: backup + restore)
+                        // Restore config files (only count restore, not backup)
                         if task.backup_config_files {
                             let config_size =
                                 self.get_config_files_size(target, &task.config_file_patterns);
-                            task_size += config_size * 2; // backup + restore
+                            task_size += config_size; // only restore
                         }
                     }
                     _ => {

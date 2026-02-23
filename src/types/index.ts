@@ -189,6 +189,12 @@ export interface InstallProgress {
   phase: InstallPhase
   /** Verification progress (0-100), only present during verifying phase */
   verificationProgress?: number
+  /** Current task progress percentage (0-100), represents progress of current task only */
+  currentTaskPercentage: number
+  /** Current task total bytes */
+  currentTaskTotalBytes: number
+  /** Current task processed bytes */
+  currentTaskProcessedBytes: number
 }
 
 export interface TaskResult {

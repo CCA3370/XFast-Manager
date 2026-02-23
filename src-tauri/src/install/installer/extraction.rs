@@ -9,6 +9,27 @@ impl Installer {
         target: &Path,
         ctx: &ProgressContext,
     ) -> Result<()> {
+        self.copy_directory_internal(source, target, Some(ctx))
+    }
+
+    /// Copy a directory recursively without progress tracking
+    /// Used for backup operations that shouldn't affect installation progress
+    pub(super) fn copy_directory_without_progress(
+        &self,
+        source: &Path,
+        target: &Path,
+    ) -> Result<()> {
+        self.copy_directory_internal(source, target, None)
+    }
+
+    /// Internal implementation for directory copying
+    /// Uses parallel processing for better performance on multi-core systems
+    fn copy_directory_internal(
+        &self,
+        source: &Path,
+        target: &Path,
+        ctx: Option<&ProgressContext>,
+    ) -> Result<()> {
         if !target.exists() {
             fs::create_dir_all(target)?;
         }
@@ -60,8 +81,11 @@ impl Installer {
                 // Remove read-only attribute from copied file to avoid future deletion issues
                 let _ = remove_readonly_attribute(&target_path);
 
-                ctx.add_bytes(file_size);
-                ctx.emit_progress(Some(file_name), InstallPhase::Installing);
+                // Only update progress if context is provided
+                if let Some(ctx) = ctx {
+                    ctx.add_bytes(file_size);
+                    ctx.emit_progress(Some(file_name), InstallPhase::Installing);
+                }
 
                 Ok(())
             })?;

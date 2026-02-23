@@ -63,6 +63,9 @@ export const useProgressStore = defineStore('progress', () => {
         taskName: '',
         currentFile: '',
         taskProgress: '0/0',
+        currentTaskPercentage: 0,
+        currentTaskProcessedMB: '0.0',
+        currentTaskTotalMB: '0.0',
       }
     }
 
@@ -73,6 +76,9 @@ export const useProgressStore = defineStore('progress', () => {
       taskName: progress.value.currentTaskName,
       currentFile: progress.value.currentFile || '',
       taskProgress: `${progress.value.currentTaskIndex + 1}/${progress.value.totalTasks}`,
+      currentTaskPercentage: progress.value.currentTaskPercentage,
+      currentTaskProcessedMB: (progress.value.currentTaskProcessedBytes / 1048576).toFixed(1),
+      currentTaskTotalMB: (progress.value.currentTaskTotalBytes / 1048576).toFixed(1),
     }
   })
 
@@ -105,6 +111,9 @@ export const useProgressStore = defineStore('progress', () => {
         currentTaskName: '',
         currentFile: null,
         phase: 'finalizing',
+        currentTaskPercentage: 100,
+        currentTaskTotalBytes: 0,
+        currentTaskProcessedBytes: 0,
       }
     }
     // Also update display percentage immediately for direct sets

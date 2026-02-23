@@ -34,6 +34,8 @@ pub struct AtomicInstaller {
     total_tasks: usize,
     /// Current task index (for progress calculation)
     current_task: usize,
+    /// The overall percentage this task should show (task-proportional, not 100%)
+    task_percentage: f64,
 }
 
 impl AtomicInstaller {
@@ -46,12 +48,14 @@ impl AtomicInstaller {
     /// * `app_handle` - Tauri app handle for emitting progress events
     /// * `total_tasks` - Total number of tasks for progress calculation
     /// * `current_task` - Current task index for progress calculation
+    /// * `task_percentage` - The overall percentage this task should show when complete
     pub fn new(
         target_dir: &Path,
         xplane_root: &Path,
         app_handle: AppHandle,
         total_tasks: usize,
         current_task: usize,
+        task_percentage: f64,
     ) -> Result<Self> {
         // Check available disk space
         check_disk_space(xplane_root)?;
@@ -75,15 +79,14 @@ impl AtomicInstaller {
             app_handle,
             total_tasks,
             current_task,
+            task_percentage,
         })
     }
 
     /// Emit progress event to frontend
-    /// Note: We use percentage=90.0 for atomic operations since extraction (0-90%) is already done
-    /// This prevents the progress bar from resetting to 0% during atomic move/backup/restore phases
     fn emit_progress(&self, message: &str, phase: InstallPhase) {
         let progress = InstallProgress {
-            percentage: 90.0, // Atomic operations happen after extraction (which uses 0-90%)
+            percentage: self.task_percentage, // Use task-proportional percentage
             total_bytes: 0,
             processed_bytes: 0,
             current_task_index: self.current_task,
@@ -92,6 +95,9 @@ impl AtomicInstaller {
             current_file: Some(message.to_string()),
             phase,
             verification_progress: None,
+            current_task_percentage: 100.0, // Task extraction is complete during atomic operations
+            current_task_total_bytes: 0,
+            current_task_processed_bytes: 0,
         };
 
         let _ = self.app_handle.emit("install-progress", &progress);

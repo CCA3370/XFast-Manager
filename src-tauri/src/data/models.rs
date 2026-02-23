@@ -228,11 +228,10 @@ pub struct DetectedItem {
 #[serde(rename_all = "camelCase")]
 pub struct InstallProgress {
     /// Overall progress percentage (0.0 - 100.0)
-    /// Installation takes 90%, verification takes 10%
     pub percentage: f64,
-    /// Total bytes to process
+    /// Total bytes to process (all tasks)
     pub total_bytes: u64,
-    /// Bytes processed so far
+    /// Bytes processed so far (all tasks)
     pub processed_bytes: u64,
     /// Current task index (0-based)
     pub current_task_index: usize,
@@ -247,6 +246,13 @@ pub struct InstallProgress {
     /// Verification progress (0.0 - 100.0), only used during Verifying phase
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verification_progress: Option<f64>,
+    /// Current task progress percentage (0.0 - 100.0)
+    /// This represents the progress of the current task only, not the overall progress
+    pub current_task_percentage: f64,
+    /// Current task total bytes
+    pub current_task_total_bytes: u64,
+    /// Current task processed bytes
+    pub current_task_processed_bytes: u64,
 }
 
 /// Installation phase

@@ -273,6 +273,16 @@
               <span :class="[sizeConfig.typeSize, getStatusTextClass(index)]">
                 {{ getTaskStatusText(index) }}
               </span>
+              <!-- Per-task size info -->
+              <template v-if="getTaskSizeText(task, index)">
+                <span class="text-gray-300 dark:text-gray-600">•</span>
+                <span
+                  class="text-gray-400 dark:text-gray-500 tabular-nums"
+                  :class="sizeConfig.typeSize"
+                >
+                  {{ getTaskSizeText(task, index) }}
+                </span>
+              </template>
             </div>
 
             <!-- Current Task Progress Bar (only during installation) -->
@@ -280,15 +290,12 @@
               <div class="h-1 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
                 <div
                   class="h-full rounded-full transition-all duration-150 ease-out bg-gradient-to-r from-blue-500 to-blue-400"
-                  :style="{ width: percentage + '%' }"
+                  :style="{ width: currentTaskPercentageFormatted + '%' }"
                 ></div>
               </div>
-              <div class="flex justify-between items-center mt-0.5">
-                <span class="text-[10px] text-gray-400 dark:text-gray-500">
-                  {{ processedMB }} / {{ totalMB }} MB
-                </span>
+              <div class="flex justify-end items-center mt-0.5">
                 <span class="text-[10px] font-medium tabular-nums text-blue-600 dark:text-blue-400">
-                  {{ percentage }}%
+                  {{ currentTaskPercentageFormatted }}%
                 </span>
               </div>
             </div>
@@ -383,60 +390,25 @@
 
     <!-- Footer: Action Buttons -->
     <div
+      v-if="isComplete"
       class="flex-shrink-0 flex justify-center gap-3 pt-4 border-t border-gray-200 dark:border-gray-700/50 mt-4"
     >
-      <template v-if="!isComplete">
-        <!-- Skip Button -->
-        <button
-          class="px-4 py-2 bg-yellow-500/10 hover:bg-yellow-500/20 dark:bg-yellow-500/20 dark:hover:bg-yellow-500/30 text-yellow-700 dark:text-yellow-400 text-sm font-medium rounded-lg transition-all duration-200 border border-yellow-500/30 hover:border-yellow-500/50 flex items-center gap-2 shadow-sm hover:shadow-md"
-          @click="$emit('skip')"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M13 5l7 7-7 7M5 5l7 7-7 7"
-            ></path>
-          </svg>
-          <AnimatedText>{{ $t('taskControl.skipTask') }}</AnimatedText>
-        </button>
-
-        <!-- Cancel Button -->
-        <button
-          class="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 dark:bg-red-500/20 dark:hover:bg-red-500/30 text-red-700 dark:text-red-400 text-sm font-medium rounded-lg transition-all duration-200 border border-red-500/30 hover:border-red-500/50 flex items-center gap-2 shadow-sm hover:shadow-md"
-          @click="$emit('cancel')"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M6 18L18 6M6 6l12 12"
-            ></path>
-          </svg>
-          <AnimatedText>{{ $t('taskControl.cancelAll') }}</AnimatedText>
-        </button>
-      </template>
-
       <!-- Confirm Button (after completion) -->
-      <template v-else>
-        <button
-          class="px-6 py-2 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-md"
-          :class="getConfirmButtonClass()"
-          @click="$emit('confirm')"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M5 13l4 4L19 7"
-            ></path>
-          </svg>
-          <AnimatedText>{{ $t('completion.confirm') }}</AnimatedText>
-        </button>
-      </template>
+      <button
+        class="px-6 py-2 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-md"
+        :class="getConfirmButtonClass()"
+        @click="$emit('confirm')"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M5 13l4 4L19 7"
+          ></path>
+        </svg>
+        <AnimatedText>{{ $t('completion.confirm') }}</AnimatedText>
+      </button>
     </div>
 
     <!-- Error Detail Modal -->
@@ -575,11 +547,14 @@ const props = defineProps<{
   // Completion state
   isComplete: boolean
   installResult: InstallResult | null
+  // Current task percentage from backend
+  currentTaskPercentage: number
+  // Current task bytes
+  currentTaskProcessedMB: string
+  currentTaskTotalMB: string
 }>()
 
 defineEmits<{
-  skip: []
-  cancel: []
   confirm: []
 }>()
 
@@ -661,6 +636,12 @@ async function copyErrorMessage() {
 const displayPercentage = computed(() => {
   if (props.isComplete) return '100.0'
   return props.percentage
+})
+
+// Computed: current task progress percentage (0-100 for the current task only)
+// This comes directly from the backend calculation
+const currentTaskPercentageFormatted = computed(() => {
+  return props.currentTaskPercentage.toFixed(1)
 })
 
 // Computed: progress bar style with full-width gradient effect
@@ -867,6 +848,23 @@ function getIconBgClass(type: AddonType): string {
     [AddonType.LuaScript]: 'bg-gradient-to-br from-cyan-500 to-cyan-600',
   }
   return classes[type] || 'bg-gradient-to-br from-gray-500 to-gray-600'
+}
+
+// Get per-task size text for display
+function getTaskSizeText(task: InstallTask, index: number): string {
+  // For the active task, show dynamic progress bytes
+  if (!props.isComplete && index === props.currentTaskIndex) {
+    // Only show if we have meaningful data (totalMB > 0)
+    if (props.currentTaskTotalMB !== '0.0') {
+      return `${props.currentTaskProcessedMB} / ${props.currentTaskTotalMB} MB`
+    }
+    return ''
+  }
+  // For completed/waiting/failed tasks, show estimated size if available
+  if (task.estimatedSize && task.estimatedSize > 0) {
+    return `${(task.estimatedSize / 1048576).toFixed(1)} MB`
+  }
+  return ''
 }
 
 // Get localized label for addon type
