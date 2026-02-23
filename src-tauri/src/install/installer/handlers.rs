@@ -74,12 +74,13 @@ impl Installer {
                     "installer_timing"
                 );
                 // Direct overwrite mode: just install/extract files directly
-                self.install_content_with_progress(
+                self.install_content_with_progress_and_hashes(
                     source,
                     target,
                     task.archive_internal_root.as_deref(),
                     ctx,
                     password,
+                    task.file_hashes.as_ref(),
                 )?;
             }
         }
@@ -96,10 +97,23 @@ impl Installer {
         ctx: &ProgressContext,
         password: Option<&str>,
     ) -> Result<()> {
+        self.install_content_with_progress_and_hashes(source, target, internal_root, ctx, password, None)
+    }
+
+    /// Install content with progress tracking and optional expected hashes for inline verification
+    fn install_content_with_progress_and_hashes(
+        &self,
+        source: &Path,
+        target: &Path,
+        internal_root: Option<&str>,
+        ctx: &ProgressContext,
+        password: Option<&str>,
+        expected_hashes: Option<&HashMap<String, crate::models::FileHash>>,
+    ) -> Result<()> {
         if source.is_dir() {
             self.copy_directory_with_progress(source, target, ctx)?;
         } else if source.is_file() {
-            self.extract_archive_with_progress(source, target, internal_root, ctx, password)?;
+            self.extract_archive_with_progress(source, target, internal_root, ctx, password, expected_hashes)?;
         } else {
             return Err(anyhow::anyhow!("Source path is neither file nor directory"));
         }
@@ -451,6 +465,7 @@ impl Installer {
                 },
                 ctx,
                 current_password,
+                None,
             )?;
 
             // For non-last layers, find the nested archive in the extracted content
@@ -747,7 +762,8 @@ impl Installer {
                 let liveries_src = target.join("liveries");
                 if liveries_src.exists() {
                     let liveries_dst = backup_path.join("liveries");
-                    self.copy_directory_with_progress(&liveries_src, &liveries_dst, ctx)?;
+                    // Use copy without progress to avoid affecting installation progress
+                    self.copy_directory_without_progress(&liveries_src, &liveries_dst)?;
                 }
             }
 
@@ -862,12 +878,13 @@ impl Installer {
                     remove_dir_all_robust(target)
                         .context(format!("Failed to delete existing folder: {:?}", target))?;
                 }
-                self.install_content_with_progress(
+                self.install_content_with_progress_and_hashes(
                     source,
                     target,
                     task.archive_internal_root.as_deref(),
                     ctx,
                     password,
+                    task.file_hashes.as_ref(),
                 )?;
             }
         }
@@ -1002,7 +1019,8 @@ impl Installer {
                 backup.original_liveries_info = Some(original_info);
 
                 let liveries_dst = temp_dir.join("liveries");
-                self.copy_directory_with_progress(&liveries_src, &liveries_dst, ctx)
+                // Use copy without progress to avoid affecting installation progress
+                self.copy_directory_without_progress(&liveries_src, &liveries_dst)
                     .context("Failed to backup liveries folder")?;
                 backup.liveries_path = Some(liveries_dst);
             }
@@ -1025,10 +1043,11 @@ impl Installer {
                 if path.is_file() {
                     if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
                         if compiled.matches(name) {
-                            let original_size = fs::metadata(&path)?.len();
                             let backup_path = temp_dir.join(name);
                             fs::copy(&path, &backup_path)
                                 .context(format!("Failed to backup {}", name))?;
+
+                            let original_size = fs::metadata(&path)?.len();
                             backup
                                 .pref_files
                                 .push((name.to_string(), backup_path.clone()));
@@ -1036,9 +1055,7 @@ impl Installer {
                                 .original_pref_sizes
                                 .push((name.to_string(), original_size));
 
-                            // Update progress for each config file with filename for real-time display
-                            ctx.add_bytes(original_size);
-                            ctx.emit_progress(Some(name.to_string()), InstallPhase::Installing);
+                            // Don't update progress for backup operations
                         }
                     }
                 }
@@ -1648,6 +1665,28 @@ impl Installer {
         // Use X-Plane root path directly from settings
         let xplane_root = Path::new(xplane_path);
 
+        // Calculate the proper overall percentage for this task's completion
+        // (base_pct + task_pct = the proportional share up to and including this task)
+        let task_percentage = {
+            let total_f = ctx.total_bytes.load(std::sync::atomic::Ordering::SeqCst) as f64;
+            if total_f > 0.0 {
+                let cumulative = ctx
+                    .task_cumulative
+                    .get(ctx.current_task_index)
+                    .copied()
+                    .unwrap_or(0) as f64;
+                let task_size = ctx
+                    .task_sizes
+                    .get(ctx.current_task_index)
+                    .copied()
+                    .unwrap_or(0) as f64;
+                ((cumulative + task_size) / total_f * 100.0).min(99.9)
+            } else {
+                // Fallback: assume equal-sized tasks
+                ((ctx.current_task_index as f64 + 1.0) / ctx.total_tasks as f64 * 100.0).min(99.9)
+            }
+        };
+
         // Create atomic installer with X-Plane root and progress context
         let mut atomic = AtomicInstaller::new(
             target,
@@ -1655,6 +1694,7 @@ impl Installer {
             self.app_handle.clone(),
             ctx.total_tasks,
             ctx.current_task_index,
+            task_percentage,
         )?;
 
         // Step 1: Extract/copy to temp directory

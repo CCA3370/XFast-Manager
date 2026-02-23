@@ -655,6 +655,9 @@ impl Scanner {
             )
         };
 
+        // Read version info from the archive
+        let version_info = self.read_version_from_archive(archive_path, internal_root.as_deref());
+
         Ok(Some(DetectedItem {
             original_input_path: String::new(),
             addon_type: AddonType::Aircraft,
@@ -664,7 +667,7 @@ impl Scanner {
             extraction_chain: None,
             navdata_info: None,
             livery_aircraft_type: None,
-            version_info: None, // Archive version detection requires extraction, done separately
+            version_info,
         }))
     }
 
@@ -992,6 +995,9 @@ impl Scanner {
             ("Unknown Plugin".to_string(), None)
         };
 
+        // Read version info from the archive
+        let version_info = self.read_version_from_archive(archive_path, internal_root.as_deref());
+
         Ok(Some(DetectedItem {
             original_input_path: String::new(),
             addon_type: AddonType::Plugin,
@@ -1001,7 +1007,7 @@ impl Scanner {
             extraction_chain: None,
             navdata_info: None,
             livery_aircraft_type: None,
-            version_info: None, // Archive version detection requires extraction, done separately
+            version_info,
         }))
     }
 
@@ -1264,5 +1270,438 @@ impl Scanner {
             livery_aircraft_type: None,
             version_info: None,
         }))
+    }
+
+    /// Read version information from an archive
+    /// Returns VersionInfo if version files are found and parsed successfully
+    fn read_version_from_archive(
+        &self,
+        archive_path: &Path,
+        internal_root: Option<&str>,
+    ) -> Option<crate::models::VersionInfo> {
+        // Determine the archive type from extension
+        let extension = archive_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        // Read version file contents from the archive
+        let version_files_content = match extension.as_str() {
+            "zip" => self.read_version_files_from_zip(archive_path, internal_root),
+            "7z" => self.read_version_files_from_7z(archive_path, internal_root),
+            "rar" => self.read_version_files_from_rar(archive_path, internal_root),
+            _ => return None,
+        };
+
+        // Parse version from the collected file contents
+        if let Some((updater_cfg_content, version_file_contents)) = version_files_content {
+            // Parse version using the same logic as management_index
+            let version = self.parse_version_from_contents(updater_cfg_content, version_file_contents);
+            version.map(|v| crate::models::VersionInfo { version: Some(v) })
+        } else {
+            None
+        }
+    }
+
+    /// Parse version from file contents (mimics read_version_from_paths logic)
+    fn parse_version_from_contents(
+        &self,
+        updater_cfg_content: Option<String>,
+        version_file_contents: Vec<String>,
+    ) -> Option<String> {
+        // First, try skunkcrafts_updater.cfg (higher priority)
+        if let Some(content) = updater_cfg_content {
+            for line in content.lines() {
+                let line = line.trim();
+                let line_lower = line.to_lowercase();
+
+                if line_lower.starts_with("version|") {
+                    let parts: Vec<&str> = line.splitn(2, '|').collect();
+                    if parts.len() == 2 {
+                        let version = parts[1].trim();
+                        if !version.is_empty() {
+                            return Some(version.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fall back to version files
+        let mut version_tokens: Vec<String> = Vec::new();
+        let mut first_line_fallback: Option<String> = None;
+
+        for content in version_file_contents {
+            for line in content.lines() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+
+                // Record first non-empty line as fallback
+                if first_line_fallback.is_none() {
+                    first_line_fallback = Some(line.to_string());
+                }
+
+                if !crate::management_index::has_version_pattern(line) {
+                    continue;
+                }
+                for token in line.split_whitespace() {
+                    if crate::management_index::has_version_pattern(token)
+                        && !version_tokens.contains(&token.to_string())
+                    {
+                        version_tokens.push(token.to_string());
+                    }
+                }
+            }
+        }
+
+        if !version_tokens.is_empty() {
+            return Some(version_tokens.join("/"));
+        }
+
+        // Fallback: try to parse pure digit string
+        if let Some(ref first_line) = first_line_fallback {
+            if let Some(parsed) = crate::management_index::try_parse_digit_version(first_line) {
+                return Some(parsed);
+            }
+            // Last resort: return the first line as-is
+            return first_line_fallback;
+        }
+
+        None
+    }
+
+    /// Read version files from a ZIP archive
+    /// Returns (updater_cfg_content, version_file_contents)
+    fn read_version_files_from_zip(
+        &self,
+        archive_path: &Path,
+        internal_root: Option<&str>,
+    ) -> Option<(Option<String>, Vec<String>)> {
+        use std::io::Read;
+
+        let file = fs::File::open(archive_path).ok()?;
+        let mut archive = ::zip::ZipArchive::new(file).ok()?;
+
+        let mut updater_cfg_content: Option<String> = None;
+        let mut version_files_by_depth: Vec<(usize, String)> = Vec::new();
+
+        // Determine search prefix based on internal_root
+        let search_prefix = internal_root.map(|r| {
+            if r.ends_with('/') {
+                r.to_string()
+            } else {
+                format!("{}/", r)
+            }
+        });
+
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).ok()?;
+            let file_path = file.name().to_string();
+
+            // Skip if not in internal_root
+            if let Some(ref prefix) = search_prefix {
+                if !file_path.starts_with(prefix) {
+                    continue;
+                }
+            }
+
+            // Get relative path from internal_root
+            let relative_path = if let Some(ref prefix) = search_prefix {
+                file_path.strip_prefix(prefix).unwrap_or(&file_path)
+            } else {
+                &file_path
+            };
+
+            // Calculate depth (number of slashes = directory levels)
+            let depth = relative_path.matches('/').count();
+
+            // Skip if too deep (max 2 levels to avoid scanning entire subdirectories)
+            if depth > 2 {
+                continue;
+            }
+
+            let file_name = Path::new(relative_path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            let file_name_lower = file_name.to_lowercase();
+
+            // Check if this is a version file
+            let is_updater_cfg = file_name == "skunkcrafts_updater.cfg";
+            let is_version_file = file_name_lower.contains("version")
+                || file_name == "767.ini"
+                || file_name == "757.ini";
+
+            if is_updater_cfg || is_version_file {
+                // Read file content (limit to 10KB for safety)
+                if file.size() > 10240 {
+                    continue;
+                }
+
+                let mut content = String::new();
+                if file.read_to_string(&mut content).is_ok() {
+                    if is_updater_cfg {
+                        updater_cfg_content = Some(content);
+                    } else {
+                        // Store with depth for priority sorting
+                        version_files_by_depth.push((depth, content));
+                    }
+                }
+            }
+        }
+
+        // Sort by depth (shallowest first) and take only the shallowest level
+        if !version_files_by_depth.is_empty() {
+            version_files_by_depth.sort_by_key(|(depth, _)| *depth);
+            let min_depth = version_files_by_depth[0].0;
+
+            // Only keep files from the shallowest depth
+            let version_file_contents: Vec<String> = version_files_by_depth
+                .into_iter()
+                .filter(|(depth, _)| *depth == min_depth)
+                .map(|(_, content)| content)
+                .collect();
+
+            if updater_cfg_content.is_some() || !version_file_contents.is_empty() {
+                return Some((updater_cfg_content, version_file_contents));
+            }
+        }
+
+        if updater_cfg_content.is_some() {
+            Some((updater_cfg_content, Vec::new()))
+        } else {
+            None
+        }
+    }
+
+    /// Read version files from a 7z archive
+    fn read_version_files_from_7z(
+        &self,
+        archive_path: &Path,
+        internal_root: Option<&str>,
+    ) -> Option<(Option<String>, Vec<String>)> {
+        use sevenz_rust2::{ArchiveReader, Password};
+
+        let mut reader = ArchiveReader::open(archive_path, Password::empty()).ok()?;
+
+        let mut updater_cfg_content: Option<String> = None;
+        let mut version_files_by_depth: Vec<(usize, String)> = Vec::new();
+
+        let search_prefix = internal_root.map(|r| {
+            if r.ends_with('/') {
+                r.to_string()
+            } else {
+                format!("{}/", r)
+            }
+        });
+
+        let _ = reader.for_each_entries(|entry, reader| {
+            if entry.is_directory() {
+                return Ok(true);
+            }
+
+            let file_path = entry.name();
+
+            // Skip if not in internal_root
+            if let Some(ref prefix) = search_prefix {
+                if !file_path.starts_with(prefix.as_str()) {
+                    return Ok(true);
+                }
+            }
+
+            let relative_path = if let Some(ref prefix) = search_prefix {
+                file_path.strip_prefix(prefix.as_str()).unwrap_or(file_path)
+            } else {
+                file_path
+            };
+
+            // Calculate depth
+            let depth = relative_path.matches('/').count();
+
+            // Skip if too deep
+            if depth > 2 {
+                return Ok(true);
+            }
+
+            let file_name = Path::new(relative_path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            let file_name_lower = file_name.to_lowercase();
+
+            let is_updater_cfg = file_name == "skunkcrafts_updater.cfg";
+            let is_version_file = file_name_lower.contains("version")
+                || file_name == "767.ini"
+                || file_name == "757.ini";
+
+            if is_updater_cfg || is_version_file {
+                if entry.size() > 10240 {
+                    return Ok(true);
+                }
+
+                let mut content = String::new();
+                if reader.read_to_string(&mut content).is_ok() {
+                    if is_updater_cfg {
+                        updater_cfg_content = Some(content);
+                    } else {
+                        version_files_by_depth.push((depth, content));
+                    }
+                }
+            }
+
+            Ok(true)
+        });
+
+        // Sort by depth and keep only the shallowest level
+        if !version_files_by_depth.is_empty() {
+            version_files_by_depth.sort_by_key(|(depth, _)| *depth);
+            let min_depth = version_files_by_depth[0].0;
+
+            let version_file_contents: Vec<String> = version_files_by_depth
+                .into_iter()
+                .filter(|(depth, _)| *depth == min_depth)
+                .map(|(_, content)| content)
+                .collect();
+
+            if updater_cfg_content.is_some() || !version_file_contents.is_empty() {
+                return Some((updater_cfg_content, version_file_contents));
+            }
+        }
+
+        if updater_cfg_content.is_some() {
+            Some((updater_cfg_content, Vec::new()))
+        } else {
+            None
+        }
+    }
+
+    /// Read version files from a RAR archive
+    fn read_version_files_from_rar(
+        &self,
+        archive_path: &Path,
+        internal_root: Option<&str>,
+    ) -> Option<(Option<String>, Vec<String>)> {
+        use tempfile::Builder;
+        use unrar::Archive;
+
+        // Create temp directory for extraction
+        let temp_dir = Builder::new()
+            .prefix("xfi_version_")
+            .tempdir()
+            .ok()?;
+
+        let mut archive = Archive::new(archive_path).open_for_processing().ok()?;
+
+        let search_prefix = internal_root.map(|r| {
+            if r.ends_with('/') {
+                r.to_string()
+            } else {
+                format!("{}/", r)
+            }
+        });
+
+        let mut files_to_read: Vec<(usize, PathBuf)> = Vec::new();
+
+        // First pass: identify and extract version files
+        while let Some(header) = archive.read_header().ok().flatten() {
+            let file_path = header.entry().filename.to_string_lossy().to_string();
+
+            // Skip directories
+            if header.entry().is_directory() {
+                archive = header.skip().ok()?;
+                continue;
+            }
+
+            // Skip if not in internal_root
+            if let Some(ref prefix) = search_prefix {
+                if !file_path.starts_with(prefix) {
+                    archive = header.skip().ok()?;
+                    continue;
+                }
+            }
+
+            let relative_path = if let Some(ref prefix) = search_prefix {
+                file_path.strip_prefix(prefix).unwrap_or(&file_path)
+            } else {
+                &file_path
+            };
+
+            // Calculate depth
+            let depth = relative_path.matches('/').count();
+
+            // Skip if too deep
+            if depth > 2 {
+                archive = header.skip().ok()?;
+                continue;
+            }
+
+            let file_name = Path::new(relative_path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            let file_name_lower = file_name.to_lowercase();
+
+            let is_updater_cfg = file_name == "skunkcrafts_updater.cfg";
+            let is_version_file = file_name_lower.contains("version")
+                || file_name == "767.ini"
+                || file_name == "757.ini";
+
+            if is_updater_cfg || is_version_file {
+                if header.entry().unpacked_size > 10240 {
+                    archive = header.skip().ok()?;
+                    continue;
+                }
+
+                // Extract this file
+                archive = header.extract_with_base(temp_dir.path()).ok()?;
+                files_to_read.push((depth, temp_dir.path().join(&file_path)));
+            } else {
+                archive = header.skip().ok()?;
+            }
+        }
+
+        // Second pass: read extracted files, prioritizing by depth
+        let mut updater_cfg_content: Option<String> = None;
+        let mut version_files_by_depth: Vec<(usize, String)> = Vec::new();
+
+        for (depth, file_path) in files_to_read {
+            if let Ok(content) = fs::read_to_string(&file_path) {
+                let file_name = file_path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("");
+
+                if file_name == "skunkcrafts_updater.cfg" {
+                    updater_cfg_content = Some(content);
+                } else {
+                    version_files_by_depth.push((depth, content));
+                }
+            }
+        }
+
+        // Sort by depth and keep only the shallowest level
+        if !version_files_by_depth.is_empty() {
+            version_files_by_depth.sort_by_key(|(depth, _)| *depth);
+            let min_depth = version_files_by_depth[0].0;
+
+            let version_file_contents: Vec<String> = version_files_by_depth
+                .into_iter()
+                .filter(|(depth, _)| *depth == min_depth)
+                .map(|(_, content)| content)
+                .collect();
+
+            if updater_cfg_content.is_some() || !version_file_contents.is_empty() {
+                return Some((updater_cfg_content, version_file_contents));
+            }
+        }
+
+        if updater_cfg_content.is_some() {
+            Some((updater_cfg_content, Vec::new()))
+        } else {
+            None
+        }
     }
 }

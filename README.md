@@ -46,7 +46,7 @@ XFast Manager makes installing and managing X-Plane addons effortless. Drop in a
 ### Screenshots
 
 ![Home and drag-and-drop](screenshots/feature-1.png)
-![Install options](screenshots/feature-2.png)
+![Install confirm](screenshots/feature-2.png)
 ![Scenery management](screenshots/feature-3.png)
 ![Management overview](screenshots/feature-4.png)
 ![Settings and preferences](screenshots/feature-5.png)

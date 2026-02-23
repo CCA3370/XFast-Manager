@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-02-23
+
+### Added
+
+- **Archive Version Detection** - Aircraft and plugin versions are now detected directly from archive files during analysis
+  - No longer requires extraction to read version information
+  - Supports ZIP, 7z, and RAR archives
+  - Reads `skunkcrafts_updater.cfg` and version files within archives
+- **Per-Task Progress Details** - Installation progress overlay now shows per-task size information
+  - Active task displays real-time processed/total MB
+  - Completed and pending tasks show estimated size
+
+### Changed
+
+- **Faster Installation** - Significantly reduced installation time through inline verification
+  - ZIP archives: CRC32 hash is computed while writing files, eliminating the separate verification re-read pass
+  - 7z archives: SHA256 hash is computed while extracting, enabling verification without re-reading all files
+  - RAR archives: Direct extraction to target directory when no internal root stripping is needed, removing the temp directory copy step
+  - Larger I/O buffer (4 MB → 8 MB) for faster file operations
+- **Per-Task Progress Bar** - The progress bar for the current task now shows task-specific percentage instead of overall percentage
+
 ## [0.9.1] - 2026-02-23
 
 ### Added

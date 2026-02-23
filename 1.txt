@@ -1,1 +1,0 @@
-在错误弹窗中提供一个“上传错误报告”按钮，点击后自动提交一个github issue（使用和library link相同的提交方法）。要求：按照当前bug_report模板填写，Summary写错误类型
