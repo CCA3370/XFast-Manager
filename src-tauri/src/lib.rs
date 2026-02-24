@@ -103,10 +103,22 @@ fn open_in_explorer<P: AsRef<std::path::Path>>(path: P) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        std::process::Command::new("xdg-open")
-            .arg(path)
-            .spawn()
-            .map_err(|e| format!("Failed to open folder: {}", e))?;
+        // Try common file managers first to avoid xdg-open opening in a browser
+        let opened = ["nautilus", "dolphin", "thunar", "nemo", "pcmanfm"]
+            .iter()
+            .any(|fm| {
+                std::process::Command::new(fm)
+                    .arg(path)
+                    .spawn()
+                    .is_ok()
+            });
+        if !opened {
+            // Fallback to xdg-open
+            std::process::Command::new("xdg-open")
+                .arg(path)
+                .spawn()
+                .map_err(|e| format!("Failed to open folder: {}", e))?;
+        }
     }
 
     Ok(())
