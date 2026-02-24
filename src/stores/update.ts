@@ -119,7 +119,7 @@ export const useUpdateStore = defineStore('update', () => {
   }
 
   async function openReleaseUrl() {
-    const forumUrl = 'https://update.3370tech.cn/CCA3370/XFast-Manager'
+    const forumUrl = 'https://github.com/CCA3370/XFast-Manager/releases'
 
     logBasic('User clicked download button, opening forum URL', 'update')
 
