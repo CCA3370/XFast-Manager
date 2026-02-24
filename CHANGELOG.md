@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-02-24
+
+### Fixed
+
+- **Linux File Manager** - Fixed `open_in_explorer` on Linux opening folders in a browser instead of the file manager; now tries common file managers (nautilus, dolphin, thunar, nemo, pcmanfm) before falling back to xdg-open
+- **Linux X-Plane Detection** - Path validation, executable launch, and process detection now use `X-Plane*` glob matching instead of a hardcoded `X-Plane` filename
+
+### Changed
+
+- **Update Download URL** - "Download" button now selects URL based on current language
+- **Error Messages** - Updated invalid path error messages to remove platform-specific executable suffix
+
 ## [1.0.0] - 2026-02-24
 
 This is the first official public release of XFast Manager.

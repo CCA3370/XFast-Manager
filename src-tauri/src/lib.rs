@@ -103,10 +103,17 @@ fn open_in_explorer<P: AsRef<std::path::Path>>(path: P) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        std::process::Command::new("xdg-open")
-            .arg(path)
-            .spawn()
-            .map_err(|e| format!("Failed to open folder: {}", e))?;
+        // Try common file managers first to avoid xdg-open opening in a browser
+        let opened = ["nautilus", "dolphin", "thunar", "nemo", "pcmanfm"]
+            .iter()
+            .any(|fm| std::process::Command::new(fm).arg(path).spawn().is_ok());
+        if !opened {
+            // Fallback to xdg-open
+            std::process::Command::new("xdg-open")
+                .arg(path)
+                .spawn()
+                .map_err(|e| format!("Failed to open folder: {}", e))?;
+        }
     }
 
     Ok(())
@@ -603,7 +610,18 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
 
     #[cfg(target_os = "linux")]
     {
-        let exe_path = path.join("X-Plane");
+        // Find the first file matching X-Plane-*
+        let exe_path = std::fs::read_dir(path)
+            .map_err(|e| format!("Failed to read X-Plane directory: {}", e))?
+            .flatten()
+            .find(|entry| {
+                entry
+                    .file_name()
+                    .to_str()
+                    .is_some_and(|name| name.starts_with("X-Plane"))
+            })
+            .map(|entry| entry.path())
+            .ok_or_else(|| "X-Plane executable not found (expected X-Plane*)".to_string())?;
         std::process::Command::new(exe_path)
             .args(&extra_args)
             .spawn()
@@ -673,9 +691,18 @@ async fn is_xplane_running() -> bool {
         .await
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     {
         check_process_running("pgrep", &["-x", "X-Plane"], |output| {
+            output.status.success()
+        })
+        .await
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Linux executable is X-Plane-*, use pattern match instead of exact match
+        check_process_running("pgrep", &["-f", "X-Plane"], |output| {
             output.status.success()
         })
         .await
@@ -697,16 +724,30 @@ fn validate_xplane_path(path: String) -> Result<bool, String> {
     }
 
     // Check for X-Plane executable
-    let exe_name = if cfg!(target_os = "windows") {
-        "X-Plane.exe"
-    } else if cfg!(target_os = "macos") {
-        "X-Plane.app"
+    if cfg!(target_os = "linux") {
+        // Linux: match any file named X-Plane-*
+        match std::fs::read_dir(path_obj) {
+            Ok(entries) => {
+                for entry in entries.flatten() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        if name.starts_with("X-Plane") {
+                            return Ok(true);
+                        }
+                    }
+                }
+                Ok(false)
+            }
+            Err(_) => Ok(false),
+        }
     } else {
-        "X-Plane"
-    };
-
-    let exe_path = path_obj.join(exe_name);
-    Ok(exe_path.exists())
+        let exe_name = if cfg!(target_os = "windows") {
+            "X-Plane.exe"
+        } else {
+            "X-Plane.app"
+        };
+        let exe_path = path_obj.join(exe_name);
+        Ok(exe_path.exists())
+    }
 }
 
 // ========== Update Commands ==========

@@ -1297,7 +1297,8 @@ impl Scanner {
         // Parse version from the collected file contents
         if let Some((updater_cfg_content, version_file_contents)) = version_files_content {
             // Parse version using the same logic as management_index
-            let version = self.parse_version_from_contents(updater_cfg_content, version_file_contents);
+            let version =
+                self.parse_version_from_contents(updater_cfg_content, version_file_contents);
             version.map(|v| crate::models::VersionInfo { version: Some(v) })
         } else {
             None
@@ -1588,10 +1589,7 @@ impl Scanner {
         use unrar::Archive;
 
         // Create temp directory for extraction
-        let temp_dir = Builder::new()
-            .prefix("xfi_version_")
-            .tempdir()
-            .ok()?;
+        let temp_dir = Builder::new().prefix("xfi_version_").tempdir().ok()?;
 
         let mut archive = Archive::new(archive_path).open_for_processing().ok()?;
 
@@ -1669,10 +1667,7 @@ impl Scanner {
 
         for (depth, file_path) in files_to_read {
             if let Ok(content) = fs::read_to_string(&file_path) {
-                let file_name = file_path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("");
+                let file_name = file_path.file_name().and_then(|s| s.to_str()).unwrap_or("");
 
                 if file_name == "skunkcrafts_updater.cfg" {
                     updater_cfg_content = Some(content);

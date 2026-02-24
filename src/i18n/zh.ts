@@ -97,7 +97,7 @@ export default {
     pathSaved: '路径保存成功',
     pathError: '请输入路径',
     pathNotExist: '路径不存在，请检查输入',
-    notValidXplanePath: '不是有效的 X-Plane 安装目录（未找到 X-Plane.exe）',
+    notValidXplanePath: '不是有效的 X-Plane 安装目录（未找到 X-Plane）',
     selectXplaneFolder: '选择 X-Plane 文件夹',
     windowsIntegration: 'Windows 集成',
     windowsIntegrationDesc: '在右键菜单中添加"安装到X-Plane"选项',
