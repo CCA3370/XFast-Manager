@@ -196,6 +196,16 @@ export default {
     indexRebuilt: 'Scenery index rebuilt successfully',
     indexRebuildFailed: 'Failed to rebuild scenery index',
     experimental: 'Experimental',
+    // Parallel installation
+    parallelInstallTitle: 'Parallel Installation',
+    parallelInstallDesc: 'Install multiple addons simultaneously',
+    parallelInstallExplain: 'How it works',
+    parallelInstallBenefit1: 'Multiple tasks install at the same time',
+    parallelInstallBenefit2: 'Faster overall installation for multiple addons',
+    parallelInstallNote:
+      'Experimental feature. If you encounter issues, disable this option.',
+    parallelInstallExperimental: 'Experimental',
+    maxParallelTasks: 'Max parallel tasks',
     // About section
     development: 'Development',
     testing: 'Testing',
@@ -236,6 +246,11 @@ export default {
     liveryAircraftNotFound: 'Target aircraft not found',
     targetLockedWarning: 'Target exists and is locked',
     flyWithLuaRequired: 'Please install FlyWithLua plugin first',
+    // Target path conflicts
+    targetPathConflict: 'Target path conflict',
+    targetPathConflictDesc:
+      'Multiple tasks target the same directory. Disable duplicates to continue.',
+    targetPathConflictBadge: 'Path conflict',
     // Bug report
     submitBugReport: 'Report',
     bugReportSubmitted: 'Bug report submitted successfully',

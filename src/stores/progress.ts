@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { InstallProgress } from '@/types'
+import type { InstallProgress, ParallelTaskProgress } from '@/types'
 
 export const useProgressStore = defineStore('progress', () => {
   const progress = ref<InstallProgress | null>(null)
@@ -120,10 +120,24 @@ export const useProgressStore = defineStore('progress', () => {
     displayPercentage.value = percentage
   }
 
+  // Parallel mode detection and data
+  const isParallelMode = computed(() => {
+    // Parallel mode is active if activeTasks array exists (even if empty, meaning all tasks finished)
+    return progress.value?.activeTasks !== undefined && progress.value?.activeTasks !== null
+  })
+
+  const activeTasks = computed<ParallelTaskProgress[]>(() => progress.value?.activeTasks ?? [])
+  const completedTaskCount = computed(() => progress.value?.completedTaskCount ?? 0)
+  const completedTaskIds = computed<string[]>(() => progress.value?.completedTaskIds ?? [])
+
   return {
     progress,
     displayPercentage,
     formatted,
+    isParallelMode,
+    activeTasks,
+    completedTaskCount,
+    completedTaskIds,
     update,
     reset,
     setPercentage,

@@ -199,6 +199,15 @@ export default {
     indexRebuilt: '地景索引重建完成',
     indexRebuildFailed: '地景索引重建失败',
     experimental: '实验性',
+    // 并行安装
+    parallelInstallTitle: '并行安装',
+    parallelInstallDesc: '同时安装多个插件',
+    parallelInstallExplain: '工作原理',
+    parallelInstallBenefit1: '多个任务同时安装',
+    parallelInstallBenefit2: '多个插件时整体安装更快',
+    parallelInstallNote: '实验性功能。如遇问题请关闭此选项。',
+    parallelInstallExperimental: '实验性',
+    maxParallelTasks: '最大并行数量',
     // 关于页面
     development: '开发',
     testing: '测试',
@@ -237,6 +246,10 @@ export default {
     liveryAircraftNotFound: '未找到目标机模',
     targetLockedWarning: '目标已存在且被锁定',
     flyWithLuaRequired: '请先安装 FlyWithLua 插件',
+    // 目标路径冲突
+    targetPathConflict: '目标路径冲突',
+    targetPathConflictDesc: '多个任务安装到同一目录，请取消勾选重复项后再安装。',
+    targetPathConflictBadge: '路径冲突',
     // Bug report
     submitBugReport: '上报错误',
     bugReportSubmitted: '错误报告已成功提交',

@@ -746,63 +746,61 @@ enum LibraryKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::{apply_migrations, open_memory_connection};
+    use crate::database::{apply_migrations_async, open_memory_connection_async};
 
-    fn setup_test_db() -> DatabaseConnection {
-        let conn = open_memory_connection().unwrap();
-        apply_migrations(&conn).unwrap();
+    async fn setup_test_db() -> DatabaseConnection {
+        let conn = open_memory_connection_async().await.unwrap();
+        apply_migrations_async(&conn).await.unwrap();
         conn
     }
 
-    #[test]
-    fn test_insert_and_load_package() {
-        tauri::async_runtime::block_on(async {
-            let conn = setup_test_db();
+    #[tokio::test]
+    async fn test_insert_and_load_package() {
+        let conn = setup_test_db().await;
 
-            let info = SceneryPackageInfo {
-                folder_name: "TestAirport".to_string(),
-                category: SceneryCategory::Airport,
-                sub_priority: 0,
-                last_modified: SystemTime::now(),
-                indexed_at: SystemTime::now(),
-                has_apt_dat: true,
-                airport_id: Some("TEST".to_string()),
-                has_dsf: true,
-                has_library_txt: true,
-                has_textures: true,
-                has_objects: true,
-                texture_count: 12,
-                earth_nav_tile_count: 3,
-                enabled: true,
-                sort_order: 10,
-                required_libraries: vec!["libA".to_string()],
-                missing_libraries: vec!["libB".to_string()],
-                exported_library_names: vec!["libC".to_string()],
-                actual_path: None,
-                continent: Some("NA".to_string()),
-                original_category: Some(SceneryCategory::Airport),
-            };
+        let info = SceneryPackageInfo {
+            folder_name: "TestAirport".to_string(),
+            category: SceneryCategory::Airport,
+            sub_priority: 0,
+            last_modified: SystemTime::now(),
+            indexed_at: SystemTime::now(),
+            has_apt_dat: true,
+            airport_id: Some("TEST".to_string()),
+            has_dsf: true,
+            has_library_txt: true,
+            has_textures: true,
+            has_objects: true,
+            texture_count: 12,
+            earth_nav_tile_count: 3,
+            enabled: true,
+            sort_order: 10,
+            required_libraries: vec!["libA".to_string()],
+            missing_libraries: vec!["libB".to_string()],
+            exported_library_names: vec!["libC".to_string()],
+            actual_path: None,
+            continent: Some("NA".to_string()),
+            original_category: Some(SceneryCategory::Airport),
+        };
 
-            let index = SceneryIndex {
-                version: 1,
-                packages: vec![(info.folder_name.clone(), info.clone())]
-                    .into_iter()
-                    .collect(),
-                last_updated: SystemTime::now(),
-            };
+        let index = SceneryIndex {
+            version: 1,
+            packages: vec![(info.folder_name.clone(), info.clone())]
+                .into_iter()
+                .collect(),
+            last_updated: SystemTime::now(),
+        };
 
-            SceneryQueries::save_all(&conn, &index).await.unwrap();
-            let loaded = SceneryQueries::load_all(&conn).await.unwrap();
-            let loaded_info = loaded.packages.get("TestAirport").unwrap();
+        SceneryQueries::save_all(&conn, &index).await.unwrap();
+        let loaded = SceneryQueries::load_all(&conn).await.unwrap();
+        let loaded_info = loaded.packages.get("TestAirport").unwrap();
 
-            assert_eq!(loaded_info.folder_name, info.folder_name);
-            assert_eq!(loaded_info.category, info.category);
-            assert_eq!(loaded_info.required_libraries, info.required_libraries);
-            assert_eq!(loaded_info.missing_libraries, info.missing_libraries);
-            assert_eq!(
-                loaded_info.exported_library_names,
-                info.exported_library_names
-            );
-        });
+        assert_eq!(loaded_info.folder_name, info.folder_name);
+        assert_eq!(loaded_info.category, info.category);
+        assert_eq!(loaded_info.required_libraries, info.required_libraries);
+        assert_eq!(loaded_info.missing_libraries, info.missing_libraries);
+        assert_eq!(
+            loaded_info.exported_library_names,
+            info.exported_library_names
+        );
     }
 }

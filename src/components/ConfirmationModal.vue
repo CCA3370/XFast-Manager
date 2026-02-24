@@ -88,6 +88,36 @@
             </div>
           </div>
 
+          <!-- Target Path Conflict Warning Banner -->
+          <div
+            v-if="store.hasTargetPathConflicts"
+            class="mb-2 p-2 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg flex-shrink-0"
+          >
+            <div class="flex items-center space-x-1.5">
+              <svg
+                class="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                ></path>
+              </svg>
+              <div class="flex-1">
+                <div class="font-medium text-xs text-amber-700 dark:text-amber-100">
+                  <AnimatedText>{{ $t('modal.targetPathConflict') }}</AnimatedText>
+                </div>
+                <div class="text-xs text-amber-600 dark:text-amber-200/70 leading-tight mt-0.5">
+                  <AnimatedText>{{ $t('modal.targetPathConflictDesc') }}</AnimatedText>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Tasks List -->
           <TaskListSection />
 
@@ -153,7 +183,10 @@ const installDisabled = computed(() => {
   // Disable if no tasks are enabled
   if (store.enabledTasksCount === 0) return true
   // Disable if there are size warnings that haven't been confirmed
-  return store.hasSizeWarnings && !store.allSizeWarningsConfirmed
+  if (store.hasSizeWarnings && !store.allSizeWarningsConfirmed) return true
+  // Disable if there are target path conflicts among enabled tasks
+  if (store.hasTargetPathConflicts) return true
+  return false
 })
 </script>
 

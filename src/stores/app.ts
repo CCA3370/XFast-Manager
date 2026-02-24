@@ -91,6 +91,10 @@ export const useAppStore = defineStore('app', () => {
   // X-Plane launch arguments (default: empty)
   const xplaneLaunchArgs = ref('')
 
+  // Parallel installation (experimental, default: disabled)
+  const parallelInstallEnabled = ref(false)
+  const maxParallelTasks = ref(3)
+
   // Confirmation modal state (for exit confirmation)
   const isConfirmationOpen = ref(false)
 
@@ -128,6 +132,31 @@ export const useAppStore = defineStore('app', () => {
   const hasConflicts = computed(() => {
     return currentTasks.value.some((task) => task.conflictExists === true)
   })
+
+  // Detect enabled tasks that share the same targetPath
+  const targetPathConflicts = computed(() => {
+    const enabled = currentTasks.value.filter((t) => getTaskEnabled(t.id))
+    const pathMap = new Map<string, InstallTask[]>()
+    for (const task of enabled) {
+      const list = pathMap.get(task.targetPath) || []
+      list.push(task)
+      pathMap.set(task.targetPath, list)
+    }
+    const conflicts = new Map<string, InstallTask[]>()
+    for (const [path, tasks] of pathMap) {
+      if (tasks.length > 1) conflicts.set(path, tasks)
+    }
+    return conflicts
+  })
+
+  const hasTargetPathConflicts = computed(() => targetPathConflicts.value.size > 0)
+
+  function isTaskInTargetPathConflict(taskId: string): boolean {
+    for (const tasks of targetPathConflicts.value.values()) {
+      if (tasks.some((t) => t.id === taskId)) return true
+    }
+    return false
+  }
 
   // Check if any task has size warnings
   const hasSizeWarnings = computed(() => {
@@ -210,6 +239,13 @@ export const useAppStore = defineStore('app', () => {
       xplaneLaunchArgs.value = savedLaunchArgs
     }
 
+    // Load parallel install settings
+    const savedParallel = await getItem<boolean>(STORAGE_KEYS.PARALLEL_INSTALL_ENABLED)
+    if (typeof savedParallel === 'boolean') parallelInstallEnabled.value = savedParallel
+
+    const savedMaxParallel = await getItem<number>(STORAGE_KEYS.MAX_PARALLEL_TASKS)
+    if (typeof savedMaxParallel === 'number') maxParallelTasks.value = savedMaxParallel
+
     isInitialized.value = true
   }
 
@@ -253,6 +289,16 @@ export const useAppStore = defineStore('app', () => {
   async function setXplaneLaunchArgs(args: string) {
     xplaneLaunchArgs.value = args
     await setItem(STORAGE_KEYS.XPLANE_LAUNCH_ARGS, args)
+  }
+
+  async function toggleParallelInstall() {
+    parallelInstallEnabled.value = !parallelInstallEnabled.value
+    await setItem(STORAGE_KEYS.PARALLEL_INSTALL_ENABLED, parallelInstallEnabled.value)
+  }
+
+  async function setMaxParallelTasks(count: number) {
+    maxParallelTasks.value = Math.max(2, Math.min(10, count))
+    await setItem(STORAGE_KEYS.MAX_PARALLEL_TASKS, maxParallelTasks.value)
   }
 
   function showSceneryManagerHint(messageKey: string) {
@@ -519,6 +565,8 @@ export const useAppStore = defineStore('app', () => {
     deleteSourceAfterInstall,
     autoSortScenery,
     xplaneLaunchArgs,
+    parallelInstallEnabled,
+    maxParallelTasks,
     sceneryManagerHintVisible,
     sceneryManagerHintMessageKey,
     isConfirmationOpen,
@@ -527,6 +575,9 @@ export const useAppStore = defineStore('app', () => {
     taskStates,
     getTaskState,
     hasConflicts,
+    hasTargetPathConflicts,
+    targetPathConflicts,
+    isTaskInTargetPathConflict,
     hasSizeWarnings,
     allSizeWarningsConfirmed,
     enabledTasksCount,
@@ -545,6 +596,8 @@ export const useAppStore = defineStore('app', () => {
     toggleDeleteSourceAfterInstall,
     toggleAutoSortScenery,
     setXplaneLaunchArgs,
+    toggleParallelInstall,
+    setMaxParallelTasks,
     showSceneryManagerHint,
     dismissSceneryManagerHint,
     setConfirmationOpen,

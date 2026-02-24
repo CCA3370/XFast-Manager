@@ -245,6 +245,9 @@
             :current-task-total-m-b="progressStore.formatted.currentTaskTotalMB"
             :is-complete="store.showCompletion"
             :install-result="store.installResult"
+            :active-tasks="progressStore.activeTasks"
+            :completed-task-count="progressStore.completedTaskCount"
+            :completed-task-ids="progressStore.completedTaskIds"
             @skip="handleSkipTask"
             @cancel="handleCancelInstallation"
             @confirm="handleCompletionConfirm"
@@ -913,6 +916,8 @@ async function handleInstall() {
       xplanePath: store.xplanePath,
       deleteSourceAfterInstall: store.deleteSourceAfterInstall,
       autoSortScenery: store.autoSortScenery,
+      parallelEnabled: store.parallelInstallEnabled,
+      maxParallel: store.maxParallelTasks,
     })
 
     // Log results

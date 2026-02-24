@@ -303,6 +303,8 @@ async fn install_addons(
     xplane_path: String,
     delete_source_after_install: Option<bool>,
     auto_sort_scenery: Option<bool>,
+    parallel_enabled: Option<bool>,
+    max_parallel: Option<usize>,
 ) -> Result<InstallResult, String> {
     log_debug!(
         &format!(
@@ -319,16 +321,31 @@ async fn install_addons(
     );
 
     let installer = Installer::new(app_handle);
-    installer
-        .install(
-            tasks,
-            atomic_install_enabled.unwrap_or(false),
-            xplane_path,
-            delete_source_after_install.unwrap_or(false),
-            auto_sort_scenery.unwrap_or(false),
-        )
-        .await
-        .map_err(|e| format!("Installation failed: {}", e))
+
+    if parallel_enabled.unwrap_or(false) && tasks.len() > 1 {
+        installer
+            .install_parallel(
+                tasks,
+                max_parallel.unwrap_or(3),
+                atomic_install_enabled.unwrap_or(false),
+                xplane_path,
+                delete_source_after_install.unwrap_or(false),
+                auto_sort_scenery.unwrap_or(false),
+            )
+            .await
+            .map_err(|e| format!("Installation failed: {}", e))
+    } else {
+        installer
+            .install(
+                tasks,
+                atomic_install_enabled.unwrap_or(false),
+                xplane_path,
+                delete_source_after_install.unwrap_or(false),
+                auto_sort_scenery.unwrap_or(false),
+            )
+            .await
+            .map_err(|e| format!("Installation failed: {}", e))
+    }
 }
 
 // ============================================================================

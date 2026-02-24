@@ -98,6 +98,9 @@ impl AtomicInstaller {
             current_task_percentage: 100.0, // Task extraction is complete during atomic operations
             current_task_total_bytes: 0,
             current_task_processed_bytes: 0,
+            active_tasks: None,
+            completed_task_count: None,
+            completed_task_ids: None,
         };
 
         let _ = self.app_handle.emit("install-progress", &progress);
