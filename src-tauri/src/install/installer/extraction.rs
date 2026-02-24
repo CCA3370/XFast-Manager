@@ -115,9 +115,14 @@ impl Installer {
         );
 
         match extension {
-            "zip" => {
-                self.extract_zip_with_progress(archive, target, internal_root, ctx, password, expected_hashes)?
-            }
+            "zip" => self.extract_zip_with_progress(
+                archive,
+                target,
+                internal_root,
+                ctx,
+                password,
+                expected_hashes,
+            )?,
             "7z" => self.extract_7z_with_progress(archive, target, internal_root, ctx, password)?,
             "rar" => {
                 self.extract_rar_with_progress(archive, target, internal_root, ctx, password)?

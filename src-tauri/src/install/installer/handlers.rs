@@ -97,7 +97,14 @@ impl Installer {
         ctx: &ProgressContext,
         password: Option<&str>,
     ) -> Result<()> {
-        self.install_content_with_progress_and_hashes(source, target, internal_root, ctx, password, None)
+        self.install_content_with_progress_and_hashes(
+            source,
+            target,
+            internal_root,
+            ctx,
+            password,
+            None,
+        )
     }
 
     /// Install content with progress tracking and optional expected hashes for inline verification
@@ -113,7 +120,14 @@ impl Installer {
         if source.is_dir() {
             self.copy_directory_with_progress(source, target, ctx)?;
         } else if source.is_file() {
-            self.extract_archive_with_progress(source, target, internal_root, ctx, password, expected_hashes)?;
+            self.extract_archive_with_progress(
+                source,
+                target,
+                internal_root,
+                ctx,
+                password,
+                expected_hashes,
+            )?;
         } else {
             return Err(anyhow::anyhow!("Source path is neither file nor directory"));
         }

@@ -606,11 +606,7 @@ impl Installer {
             // This prevents over/under-extraction from a previous task (especially
             // 7z archives where estimated size = compressed_size * 3 may be inaccurate)
             // from bleeding into the current task's progress calculation.
-            let cumulative_start = ctx
-                .task_cumulative
-                .get(index)
-                .copied()
-                .unwrap_or(0);
+            let cumulative_start = ctx.task_cumulative.get(index).copied().unwrap_or(0);
             ctx.processed_bytes
                 .store(cumulative_start, Ordering::SeqCst);
 
