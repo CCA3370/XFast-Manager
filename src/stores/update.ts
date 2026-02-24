@@ -119,13 +119,18 @@ export const useUpdateStore = defineStore('update', () => {
   }
 
   async function openReleaseUrl() {
-    const forumUrl = 'https://github.com/CCA3370/XFast-Manager/releases'
+    // Select URL based on current language
+    const currentLocale = i18n.global.locale.value
+    const releaseUrl =
+      currentLocale === 'zh'
+        ? 'https://www.3370tech.cn/zh/products/xfast-manager'
+        : 'https://forums.x-plane.org/files/file/98845-linwinmacxfast-managerdrag-drop-addon-installer-auto-scenery-sorting-more/'
 
-    logBasic('User clicked download button, opening forum URL', 'update')
+    logBasic('User clicked download button, opening release URL', 'update')
 
     try {
-      await invokeVoidCommand('open_url', { url: forumUrl })
-      logDebug(`Successfully opened URL: ${forumUrl}`, 'update')
+      await invokeVoidCommand('open_url', { url: releaseUrl })
+      logDebug(`Successfully opened URL: ${releaseUrl}`, 'update')
     } catch (error) {
       const message = error instanceof CommandError ? error.message : String(error)
       logError(`Failed to open download URL: ${message}`, 'update')
