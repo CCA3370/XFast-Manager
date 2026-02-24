@@ -611,7 +611,7 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
                 entry
                     .file_name()
                     .to_str()
-                    .map_or(false, |name| name.starts_with("X-Plane"))
+                    .is_some_and(|name| name.starts_with("X-Plane"))
             })
             .map(|entry| entry.path())
             .ok_or_else(|| "X-Plane executable not found (expected X-Plane*)".to_string())?;
