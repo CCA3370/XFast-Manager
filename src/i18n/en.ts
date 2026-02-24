@@ -98,7 +98,7 @@ export default {
     pathSaved: 'Path saved successfully',
     pathError: 'Please enter a path',
     pathNotExist: 'Path does not exist, please check your input',
-    notValidXplanePath: 'Not a valid X-Plane installation directory (X-Plane.exe not found)',
+    notValidXplanePath: 'Not a valid X-Plane installation directory (X-Plane not found)',
     selectXplaneFolder: 'Select X-Plane Folder',
     windowsIntegration: 'Windows Integration',
     windowsIntegrationDesc: 'Add "Install to X-Plane" to the context menu',
