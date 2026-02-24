@@ -283,7 +283,7 @@
       "detection_rules": [
         {
           "pattern_type": "file",
-          "pattern": "B742_*Felis_*icon11*.png"
+          "pattern": "B742_PW_Felis_*icon11*.png"
         },
         {
           "pattern_type": "file",
@@ -295,27 +295,11 @@
         },
         {
           "pattern_type": "file",
-          "pattern": "objects/fuselage_main2.png"
+          "pattern": "objects/wings_main.png"
         },
         {
           "pattern_type": "file",
-          "pattern": "objects/fuselage_main2.dds"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/metal_parts.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/metal_parts.dds"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/mings_main.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/mings_main.dds"
+          "pattern": "objects/wings_main.dds"
         }
       ],
       "acf_identifiers": [
@@ -328,39 +312,15 @@
       "detection_rules": [
         {
           "pattern_type": "file",
-          "pattern": "B742_*Felis_*icon11*.png"
+          "pattern": "B742_Cargo_Felis_*icon11*.png"
         },
         {
           "pattern_type": "file",
-          "pattern": "objects/fuselage_main.png"
+          "pattern": "objects/fuselage_cargo.png"
         },
         {
           "pattern_type": "file",
-          "pattern": "objects/fuselage_main.dds"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/fuselage_main2.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/fuselage_main2.dds"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/metal_parts.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/metal_parts.dds"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/mings_main.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/mings_main.dds"
+          "pattern": "objects/fuselage_cargo.dds"
         }
       ],
       "acf_identifiers": [

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-02-24
+
+This is the first official public release of XFast Manager.
+
+### Fixed
+
+- **Toggle-Enabled Event Propagation** - Fixed the enable/disable toggle button in management cards triggering unintended parent click events
+- **Auto-Lock Sync on Disable/Enable** - Disabling an aircraft or plugin now immediately locks it in the UI and syncs to `skunkcrafts_updater.cfg`; re-enabling auto-unlocks it (manual locks are preserved)
+
+### Changed
+
+- **Livery Pattern Detection** - Refined detection rules for Felis B742 Classic and B742 Freighter
+  - More precise file patterns to reduce false positives
+  - Fixed typo in wing texture pattern (`mings_main` → `wings_main`)
+- **Update Download URL** - "Download" button now links to GitHub Releases
+
 ## [0.9.2] - 2026-02-23
 
 ### Added

@@ -297,7 +297,7 @@ function handleContextMenu(event: MouseEvent) {
       :disabled="isToggling"
       class="flex-shrink-0 w-9 h-5 rounded-full relative transition-colors disabled:opacity-70"
       :class="entry.enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'"
-      @click="emit('toggle-enabled', entry.folderName)"
+      @click.stop="emit('toggle-enabled', entry.folderName)"
     >
       <span v-if="isToggling" class="absolute inset-0 flex items-center justify-center">
         <svg class="w-3 h-3 animate-spin text-white" fill="none" viewBox="0 0 24 24">

@@ -509,6 +509,48 @@ export const useManagementStore = defineStore('management', () => {
     }
   }
 
+  // Track items auto-locked by disable toggle (not manually locked by user)
+  const autoLockedByDisable = new Set<string>()
+
+  // Sync lock state and cfg file after toggling enabled state
+  // Disabled → auto-lock (only if not already manually locked)
+  // Enabled → auto-unlock (only if was auto-locked, preserves manual locks)
+  async function syncLockAfterToggle(
+    type: 'aircraft' | 'plugin',
+    folderName: string,
+    newEnabled: boolean,
+  ) {
+    const key = `${type}:${folderName.toLowerCase()}`
+
+    if (!newEnabled) {
+      // Disabling → auto-lock, but only track if not already manually locked
+      if (!lockStore.isLocked(type, folderName)) {
+        autoLockedByDisable.add(key)
+        await lockStore.setLocked(type, folderName, true)
+      }
+    } else {
+      // Enabling → auto-unlock only if we auto-locked it (preserve manual locks)
+      if (autoLockedByDisable.has(key)) {
+        autoLockedByDisable.delete(key)
+        await lockStore.setLocked(type, folderName, false)
+      }
+    }
+
+    // Always sync disabled state to cfg file
+    if (appStore.xplanePath) {
+      try {
+        await invoke('set_cfg_disabled', {
+          xplanePath: appStore.xplanePath,
+          itemType: type,
+          folderName,
+          disabled: !newEnabled,
+        })
+      } catch (e) {
+        console.warn('Failed to sync disabled state to cfg file:', e)
+      }
+    }
+  }
+
   // Toggle enabled state
   async function toggleEnabled(itemType: ManagementItemType, folderName: string) {
     if (!validateXPlanePath(error)) {
@@ -531,6 +573,8 @@ export const useManagementStore = defineStore('management', () => {
             item.enabled = newEnabled
             aircraftEnabledCount.value = aircraft.value.filter((a) => a.enabled).length
           }
+          // Sync lock state: disabled → locked, enabled → unlocked
+          await syncLockAfterToggle('aircraft', folderName, newEnabled)
           break
         }
         case 'plugin': {
@@ -540,6 +584,8 @@ export const useManagementStore = defineStore('management', () => {
             item.enabled = newEnabled
             pluginsEnabledCount.value = plugins.value.filter((p) => p.enabled).length
           }
+          // Sync lock state: disabled → locked, enabled → unlocked
+          await syncLockAfterToggle('plugin', folderName, newEnabled)
           break
         }
         case 'navdata': {
