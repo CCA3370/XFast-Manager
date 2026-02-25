@@ -878,7 +878,7 @@ async function handleSubmitContributeLink() {
   if (!libName || !selectedModalEntry.value) return
 
   if (!isValidHttpUrl(inputUrl)) {
-    modalStore.showError(t('sceneryManager.invalidContributionUrl'))
+    toastStore.warning(t('sceneryManager.invalidContributionUrl'))
     return
   }
 

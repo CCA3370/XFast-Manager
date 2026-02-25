@@ -227,14 +227,14 @@ async function submitBugReport() {
     // Try API submission with timeout
     let submitTimeoutId: ReturnType<typeof setTimeout> | null = null
     try {
-      const result = await Promise.race<{ issueUrl: string; issueNumber: number }>([
-        invoke<{ issueUrl: string; issueNumber: number }>('create_bug_report_issue', {
+      const result = await Promise.race<{ issue_url: string; issue_number: number }>([
+        invoke<{ issue_url: string; issue_number: number }>('create_bug_report_issue', {
           errorTitle,
           errorMessage,
           logs,
           category: 'Other',
         }),
-        new Promise<{ issueUrl: string; issueNumber: number }>((_, reject) => {
+        new Promise<{ issue_url: string; issue_number: number }>((_, reject) => {
           submitTimeoutId = setTimeout(() => {
             reject(new Error('BUG_REPORT_SUBMIT_TIMEOUT'))
           }, BUG_REPORT_TIMEOUT_MS)
@@ -243,16 +243,16 @@ async function submitBugReport() {
 
       toast.success(t('modal.bugReportSubmitted'))
       // Open the created issue
-      await invoke('open_url', { url: result.issueUrl })
+      await invoke('open_url', { url: result.issue_url })
 
       // Track the issue for future update checks
-      if (result.issueNumber > 0) {
+      if (result.issue_number > 0) {
         try {
           const now = new Date().toISOString()
           const newEntry: TrackedIssue = {
-            issueNumber: result.issueNumber,
+            issueNumber: result.issue_number,
             issueTitle: `[Bug]: ${(errorTitle || errorMessage).slice(0, 80)}`,
-            issueUrl: result.issueUrl,
+            issueUrl: result.issue_url,
             state: 'open',
             commentCount: 0,
             reportedAt: now,
