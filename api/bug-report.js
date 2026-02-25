@@ -71,5 +71,5 @@ export default async function handler(req, res) {
     return res.status(ghResponse.status).json({ error: ghData })
   }
 
-  return res.status(200).json({ issueUrl: ghData.html_url })
+  return res.status(200).json({ issueUrl: ghData.html_url, issueNumber: ghData.number })
 }

@@ -244,6 +244,7 @@
     <ConfirmModal />
     <ContextMenu />
     <SponsorModal :show="showSponsor" @close="showSponsor = false" />
+    <IssueUpdateModal />
   </div>
 </template>
 
@@ -255,6 +256,7 @@ import { useAppStore } from '@/stores/app'
 import { useUpdateStore } from '@/stores/update'
 import { useSceneryStore } from '@/stores/scenery'
 import { useModalStore } from '@/stores/modal'
+import { useIssueTrackerStore } from '@/stores/issueTracker'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -268,12 +270,14 @@ import ErrorModal from '@/components/ErrorModal.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import ContextMenu from '@/components/ContextMenu.vue'
 import SponsorModal from '@/components/SponsorModal.vue'
+import IssueUpdateModal from '@/components/IssueUpdateModal.vue'
 
 const { t, locale } = useI18n()
 const store = useAppStore()
 const updateStore = useUpdateStore()
 const sceneryStore = useSceneryStore()
 const modalStore = useModalStore()
+const issueTrackerStore = useIssueTrackerStore()
 const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
@@ -370,6 +374,11 @@ onMounted(async () => {
       updateStore.checkForUpdates(false)
     }
   }, 3000) // 3 second delay
+
+  // Check tracked issue updates in the background
+  setTimeout(() => {
+    issueTrackerStore.checkAllTrackedIssues()
+  }, 5000) // 5 second delay
 
   // Disable context menu and devtools shortcuts in production
   if (import.meta.env.MODE === 'production') {

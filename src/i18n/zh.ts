@@ -598,6 +598,15 @@ export default {
     viewScripts: '查看脚本',
     previewImage: '预览图片',
   },
+  issueTracker: {
+    modalTitle: '问题动态',
+    subtitle: '您上报的问题有新的动态',
+    statusClosed: '问题已关闭',
+    newComments: '新评论',
+    by: '来自',
+    viewIssue: '查看问题',
+    dismiss: '关闭',
+  },
   errors: {
     validation_failed: '输入数据无效',
     permission_denied: '权限被拒绝',

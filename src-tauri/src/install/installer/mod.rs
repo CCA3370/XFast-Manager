@@ -489,6 +489,17 @@ impl ProgressContext {
     }
 
     fn emit_final(&self, phase: InstallPhase) {
+        // In parallel mode, delegate to parent's emit_aggregated instead of emitting directly
+        if let Some(ref emit_fn) = self.parallel_emit {
+            if let Some(ref cf) = self.parallel_current_file {
+                if let Ok(mut f) = cf.lock() {
+                    *f = None;
+                }
+            }
+            emit_fn();
+            return;
+        }
+
         let total = self.total_bytes.load(Ordering::SeqCst);
         let processed = self.processed_bytes.load(Ordering::SeqCst);
 

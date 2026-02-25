@@ -119,4 +119,15 @@ export const STORAGE_KEYS = {
   XPLANE_LAUNCH_ARGS: 'xplaneLaunchArgs',
   PARALLEL_INSTALL_ENABLED: 'parallelInstallEnabled',
   MAX_PARALLEL_TASKS: 'maxParallelTasks',
+  REPORTED_ISSUES: 'reportedIssues',
 } as const
+
+export interface TrackedIssue {
+  issueNumber: number
+  issueTitle: string
+  issueUrl: string
+  state: 'open' | 'closed'
+  commentCount: number
+  reportedAt: string
+  lastCheckedAt: string
+}

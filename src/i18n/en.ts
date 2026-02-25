@@ -615,8 +615,16 @@ export default {
     viewScripts: 'View Scripts',
     previewImage: 'Preview Image',
   },
+  issueTracker: {
+    modalTitle: 'Issue Updates',
+    subtitle: 'Your reported issue(s) have new activity',
+    statusClosed: 'Issue closed',
+    newComments: 'New comments',
+    by: 'by',
+    viewIssue: 'View Issue',
+    dismiss: 'Dismiss',
+  },
   errors: {
-    validation_failed: 'Invalid input data',
     permission_denied: 'Permission denied',
     not_found: 'Resource not found',
     conflict_exists: 'Resource already exists',

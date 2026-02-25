@@ -207,13 +207,19 @@ async fn create_library_link_issue(
     Ok(issue_url)
 }
 
+#[derive(serde::Serialize)]
+struct BugReportResult {
+    issue_url: String,
+    issue_number: u64,
+}
+
 #[tauri::command]
 async fn create_bug_report_issue(
     error_title: String,
     error_message: String,
     logs: Option<String>,
     category: Option<String>,
-) -> Result<String, String> {
+) -> Result<BugReportResult, String> {
     let app_version = env!("CARGO_PKG_VERSION").to_string();
     let os = std::env::consts::OS.to_string();
     let arch = std::env::consts::ARCH.to_string();
@@ -264,7 +270,122 @@ async fn create_bug_report_issue(
         return Err("Bug report created but response URL missing".to_string());
     }
 
-    Ok(issue_url)
+    let issue_number = response_json
+        .get("issueNumber")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    Ok(BugReportResult { issue_url, issue_number })
+}
+
+#[derive(serde::Serialize)]
+struct IssueCommentInfo {
+    author: String,
+    body: String,
+    created_at: String,
+}
+
+#[derive(serde::Serialize)]
+struct IssueUpdateResult {
+    state: String,
+    total_comments: u64,
+    new_comments: Vec<IssueCommentInfo>,
+}
+
+#[tauri::command]
+async fn check_issue_updates(
+    issue_number: u64,
+    since: String,
+) -> Result<IssueUpdateResult, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("XFast Manager")
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    // 1. Fetch issue state and comment count
+    let issue_url = format!(
+        "https://api.github.com/repos/CCA3370/XFast-Manager/issues/{}",
+        issue_number
+    );
+    let issue_response = client
+        .get(&issue_url)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch issue: {}", e))?;
+
+    if !issue_response.status().is_success() {
+        let status = issue_response.status();
+        return Err(format!("GitHub API error {}", status));
+    }
+
+    let issue_json: serde_json::Value = issue_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse issue response: {}", e))?;
+
+    let state = issue_json
+        .get("state")
+        .and_then(|v| v.as_str())
+        .unwrap_or("open")
+        .to_string();
+
+    let total_comments = issue_json
+        .get("comments")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    // 2. Fetch new comments since the given timestamp
+    let comments_url = format!(
+        "https://api.github.com/repos/CCA3370/XFast-Manager/issues/{}/comments?since={}&per_page=20",
+        issue_number, since
+    );
+    let comments_response = client
+        .get(&comments_url)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch comments: {}", e))?;
+
+    let new_comments = if comments_response.status().is_success() {
+        let comments_json: serde_json::Value = comments_response
+            .json()
+            .await
+            .unwrap_or(serde_json::Value::Array(vec![]));
+
+        comments_json
+            .as_array()
+            .unwrap_or(&vec![])
+            .iter()
+            .map(|c| IssueCommentInfo {
+                author: c
+                    .get("user")
+                    .and_then(|u| u.get("login"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
+                body: c
+                    .get("body")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                created_at: c
+                    .get("created_at")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+
+    Ok(IssueUpdateResult {
+        state,
+        total_comments,
+        new_comments,
+    })
 }
 
 // ============================================================================
@@ -1321,6 +1442,7 @@ pub fn run() {
             open_url,
             create_library_link_issue,
             create_bug_report_issue,
+            check_issue_updates,
             analyze_addons,
             install_addons,
             cancel_installation,
