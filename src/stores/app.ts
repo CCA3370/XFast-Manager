@@ -88,6 +88,9 @@ export const useAppStore = defineStore('app', () => {
   const sceneryManagerHintVisible = ref(false)
   const sceneryManagerHintMessageKey = ref<string | null>(null)
 
+  // Log analysis hint (first-time user guide)
+  const logAnalysisHintVisible = ref(false)
+
   // X-Plane launch arguments (default: empty)
   const xplaneLaunchArgs = ref('')
 
@@ -246,6 +249,12 @@ export const useAppStore = defineStore('app', () => {
     const savedMaxParallel = await getItem<number>(STORAGE_KEYS.MAX_PARALLEL_TASKS)
     if (typeof savedMaxParallel === 'number') maxParallelTasks.value = savedMaxParallel
 
+    // Check if log analysis hint should be shown (first time user)
+    const logAnalysisHintShown = await getItem<boolean>(STORAGE_KEYS.LOG_ANALYSIS_HINT_SHOWN)
+    if (!logAnalysisHintShown) {
+      logAnalysisHintVisible.value = true
+    }
+
     isInitialized.value = true
   }
 
@@ -308,6 +317,11 @@ export const useAppStore = defineStore('app', () => {
 
   function dismissSceneryManagerHint() {
     sceneryManagerHintVisible.value = false
+  }
+
+  async function dismissLogAnalysisHint() {
+    logAnalysisHintVisible.value = false
+    await setItem(STORAGE_KEYS.LOG_ANALYSIS_HINT_SHOWN, true)
   }
 
   function setConfirmationOpen(open: boolean) {
@@ -569,6 +583,7 @@ export const useAppStore = defineStore('app', () => {
     maxParallelTasks,
     sceneryManagerHintVisible,
     sceneryManagerHintMessageKey,
+    logAnalysisHintVisible,
     isConfirmationOpen,
     isLibraryLinkSubmitting,
     logLevel,
@@ -600,6 +615,7 @@ export const useAppStore = defineStore('app', () => {
     setMaxParallelTasks,
     showSceneryManagerHint,
     dismissSceneryManagerHint,
+    dismissLogAnalysisHint,
     setConfirmationOpen,
     setLibraryLinkSubmitting,
     setLogLevel,

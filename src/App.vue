@@ -110,6 +110,37 @@
             </div>
 
             <router-link
+              ref="logAnalysisLink"
+              to="/log-analysis"
+              class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
+              :class="
+                $route.path === '/log-analysis'
+                  ? 'text-blue-600 dark:text-white'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+              "
+            >
+              <div
+                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                :class="
+                  $route.path === '/log-analysis'
+                    ? 'scale-x-100 opacity-100'
+                    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
+                "
+              ></div>
+              <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                <AnimatedText>{{ $t('logAnalysis.navTitle') }}</AnimatedText>
+              </span>
+            </router-link>
+
+            <router-link
               to="/settings"
               class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
               :class="
@@ -245,6 +276,34 @@
     <ContextMenu />
     <SponsorModal :show="showSponsor" @close="showSponsor = false" />
     <IssueUpdateModal />
+
+    <!-- Log Analysis First-time Hint -->
+    <Teleport to="body">
+      <Transition name="hint-fade">
+        <div
+          v-if="store.logAnalysisHintVisible"
+          class="fixed z-50 pointer-events-none"
+          :style="{ top: hintPosition.top + 'px', left: hintPosition.left + 'px', transform: 'translateX(-50%)' }"
+        >
+          <!-- Arrow pointing up -->
+          <div class="flex flex-col items-center">
+            <svg width="16" height="10" viewBox="0 0 16 10" class="text-blue-600 dark:text-blue-500 flex-shrink-0">
+              <path d="M8 0 L16 10 L0 10 Z" fill="currentColor" />
+            </svg>
+            <!-- Bubble -->
+            <div class="pointer-events-auto bg-blue-600 dark:bg-blue-500 text-white rounded-xl px-4 py-3 shadow-xl max-w-[200px] text-center">
+              <p class="text-xs font-medium leading-relaxed">{{ $t('logAnalysis.hintText') }}</p>
+              <button
+                class="mt-2 text-xs text-blue-100 hover:text-white underline underline-offset-2 transition-colors"
+                @click="store.dismissLogAnalysisHint()"
+              >
+                {{ $t('common.gotIt') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -286,6 +345,10 @@ const isOnboardingRoute = computed(() => route.path === '/onboarding')
 const isAlwaysOnTop = ref(false)
 const showSponsor = ref(false)
 
+// Log analysis hint
+const logAnalysisLink = ref<HTMLElement | null>(null)
+const hintPosition = ref({ top: 0, left: 0 })
+
 async function toggleAlwaysOnTop() {
   try {
     const appWindow = getCurrentWindow()
@@ -301,7 +364,8 @@ const routeOrder: Record<string, number> = {
   '/': 0,
   '/management': 1,
   '/management/liveries': 1,
-  '/settings': 2,
+  '/log-analysis': 2,
+  '/settings': 3,
   '/onboarding': -1,
 }
 
@@ -506,6 +570,20 @@ onMounted(async () => {
   }
 
   logDebug('App.vue onMounted completed', 'app')
+
+  // Compute hint position after DOM is ready
+  if (store.logAnalysisHintVisible) {
+    setTimeout(() => {
+      const el = logAnalysisLink.value?.$el ?? logAnalysisLink.value
+      if (el) {
+        const rect = (el as HTMLElement).getBoundingClientRect()
+        hintPosition.value = {
+          top: rect.bottom + 10,
+          left: rect.left + rect.width / 2,
+        }
+      }
+    }, 300)
+  }
 })
 </script>
 
@@ -518,6 +596,18 @@ onMounted(async () => {
   overflow: hidden;
   background: linear-gradient(135deg, var(--app-bg-from), var(--app-bg-via), var(--app-bg-to));
   background-color: var(--app-bg-from);
+}
+
+.hint-fade-enter-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.hint-fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.hint-fade-enter-from,
+.hint-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-6px);
 }
 
 nav {

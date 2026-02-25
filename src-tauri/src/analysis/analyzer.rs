@@ -236,9 +236,7 @@ impl Analyzer {
 
         for task in tasks {
             let key = (task.target_path.clone(), task.original_input_path.clone());
-            if !seen.contains_key(&key) {
-                seen.insert(key, task);
-            }
+            seen.entry(key).or_insert(task);
             // If already exists (same target AND same input file), skip (keep the first one)
         }
 

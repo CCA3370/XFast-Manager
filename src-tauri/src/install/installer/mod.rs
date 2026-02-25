@@ -1279,7 +1279,7 @@ impl Installer {
         auto_sort_scenery: bool,
     ) -> Result<InstallResult> {
         let install_start = Instant::now();
-        let max_concurrent = max_concurrent.max(2).min(10);
+        let max_concurrent = max_concurrent.clamp(2, 10);
 
         crate::log_debug!(
             &format!(

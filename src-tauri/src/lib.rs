@@ -561,6 +561,447 @@ fn open_log_folder() -> Result<(), String> {
     open_in_explorer(logger::get_log_folder())
 }
 
+// ========== X-Plane Log Analysis ==========
+
+#[derive(serde::Serialize, Clone)]
+struct LogIssue {
+    /// i18n category key, e.g. "crash", "plugin_error"
+    category: String,
+    /// "high" | "medium" | "low"
+    severity: String,
+    /// Up to 5 matching line numbers
+    line_numbers: Vec<usize>,
+    /// For E/ lines: all consecutive E/ lines in the same block (multi-line).
+    /// For other lines: the single matching line.
+    sample_line: String,
+}
+
+#[derive(serde::Serialize, Default)]
+struct SystemInfo {
+    xplane_version: Option<String>,
+    gpu_model: Option<String>,
+    gpu_driver: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct XPlaneLogAnalysis {
+    log_path: String,
+    is_xplane_log: bool,
+    crash_detected: bool,
+    crash_info: Option<String>,
+    issues: Vec<LogIssue>,
+    system_info: SystemInfo,
+    total_high: usize,
+    total_medium: usize,
+    total_low: usize,
+}
+
+type MatcherFn = Box<dyn Fn(&str, &str) -> bool>;
+
+struct Pattern {
+    category: &'static str,
+    severity: &'static str,
+    matcher: MatcherFn,
+}
+
+fn build_patterns() -> Vec<Pattern> {
+    vec![
+        // ===== HIGH =====
+        Pattern {
+            category: "crash",
+            severity: "high",
+            matcher: Box::new(|l, _| l.contains("This application has crashed")),
+        },
+        Pattern {
+            category: "plugin_manager_error",
+            severity: "high",
+            matcher: Box::new(|l, _| {
+                l.contains("MACIBM_alert") && l.contains("plugin manager internal error")
+            }),
+        },
+        Pattern {
+            category: "scenery_load_failed",
+            severity: "high",
+            matcher: Box::new(|l, _| l.contains("MACIBM_alert: \u{4ee5}\u{4e0b}\u{5730}\u{666f}\u{5305}\u{6709}\u{95ee}\u{9898}")),
+        },
+        Pattern {
+            category: "aircraft_incompatible",
+            severity: "high",
+            matcher: Box::new(|l, _| {
+                l.contains("MACIBM_alert: The aircraft") && l.contains("has unusable")
+            }),
+        },
+        Pattern {
+            category: "vulkan_device_error",
+            severity: "high",
+            matcher: Box::new(|l, _| l.contains("MACIBM_alert: Vulkan")),
+        },
+        Pattern {
+            category: "system_alert",
+            severity: "high",
+            matcher: Box::new(|l, _| l.contains("E/SYS: MACIBM_alert")),
+        },
+        Pattern {
+            category: "plugin_assert",
+            severity: "high",
+            matcher: Box::new(|l, _| l.contains("E/PLG: Plugin assert:")),
+        },
+        Pattern {
+            category: "plugin_error",
+            severity: "high",
+            matcher: Box::new(|l, ll| {
+                l.contains(" E/PLG:")
+                    && (ll.contains("error") || ll.contains("fail") || ll.contains("crash"))
+            }),
+        },
+        Pattern {
+            category: "vulkan_gfx_error",
+            severity: "high",
+            matcher: Box::new(|l, _| l.contains(" E/GFX/VK:") && l.contains("VK_ERROR")),
+        },
+        Pattern {
+            category: "gfx_error",
+            severity: "high",
+            matcher: Box::new(|l, ll| {
+                l.contains(" E/GFX:")
+                    && (ll.contains("error") || ll.contains("fail") || ll.contains("crash"))
+            }),
+        },
+        Pattern {
+            category: "aircraft_model_error",
+            severity: "high",
+            matcher: Box::new(|l, _| l.contains(" E/ACF:")),
+        },
+        Pattern {
+            category: "heavy_memory_pressure",
+            severity: "high",
+            matcher: Box::new(|l, _| l.contains("W/MEM: Entered heavy memory pressure state")),
+        },
+        Pattern {
+            category: "missing_plugin_support",
+            severity: "high",
+            matcher: Box::new(|_, ll| {
+                ll.contains("you are missing a required plugin support file")
+            }),
+        },
+        Pattern {
+            category: "out_of_memory",
+            severity: "high",
+            matcher: Box::new(|_, ll| {
+                ll.contains("out of memory")
+                    || ll.contains("memory allocation failed")
+                    || ll.contains("cannot allocate")
+            }),
+        },
+        Pattern {
+            category: "memory_access_error",
+            severity: "high",
+            matcher: Box::new(|_, ll| {
+                ll.contains("access violation")
+                    || ll.contains("segmentation fault")
+                    || ll.contains("sigsegv")
+            }),
+        },
+        // ===== MEDIUM =====
+        Pattern {
+            category: "dsf_error",
+            severity: "medium",
+            matcher: Box::new(|l, _| l.contains(" E/DSF:")),
+        },
+        Pattern {
+            category: "scenery_error",
+            severity: "medium",
+            matcher: Box::new(|l, _| l.contains(" E/SCN:")),
+        },
+        Pattern {
+            category: "network_error",
+            severity: "medium",
+            matcher: Box::new(|l, _| l.contains(" E/NET:")),
+        },
+        Pattern {
+            category: "weather_error",
+            severity: "medium",
+            matcher: Box::new(|l, _| l.contains(" E/WXR:")),
+        },
+        Pattern {
+            category: "audio_error",
+            severity: "medium",
+            matcher: Box::new(|l, ll| {
+                l.contains(" E/FMOD:") || (l.contains("FMOD") && ll.contains("error"))
+            }),
+        },
+        Pattern {
+            category: "negative_memory_pressure",
+            severity: "medium",
+            matcher: Box::new(|l, _| {
+                l.contains("I/MEM: Entered negative memory pressure state")
+            }),
+        },
+        Pattern {
+            category: "severe_texture_downscale",
+            severity: "medium",
+            matcher: Box::new(|l, _| l.contains("I/TEX: Target scale moved to 0.0625")),
+        },
+        Pattern {
+            category: "runloop_backlog",
+            severity: "medium",
+            matcher: Box::new(|l, _| l.contains("W/RLP: Runloop is backed up")),
+        },
+        Pattern {
+            category: "nvidia_permission",
+            severity: "medium",
+            matcher: Box::new(|l, _| {
+                l.contains(" E/NVAPI:") || l.contains("NVAPI_INVALID_USER_PRIVILEGE")
+            }),
+        },
+        Pattern {
+            category: "third_party_blocked",
+            severity: "medium",
+            matcher: Box::new(|l, _| {
+                l.contains("I/GFX/VK: Disabled")
+                    && (l.contains("ReShade") || l.contains("GamePP"))
+            }),
+        },
+        Pattern {
+            category: "duplicate_plugin",
+            severity: "medium",
+            matcher: Box::new(|_, ll| ll.contains("a version of this plugin is already loaded")),
+        },
+        Pattern {
+            category: "ssl_failed",
+            severity: "medium",
+            matcher: Box::new(|l, ll| {
+                l.contains("SSL/TLS connection failed")
+                    || (ll.contains("schannel") && ll.contains("failed"))
+            }),
+        },
+        // ===== LOW =====
+        Pattern {
+            category: "regular_memory_pressure",
+            severity: "low",
+            matcher: Box::new(|l, _| {
+                l.contains("I/MEM: Entered regular memory pressure state")
+            }),
+        },
+        Pattern {
+            category: "deprecated_dataref",
+            severity: "low",
+            matcher: Box::new(|l, _| {
+                l.contains("Dataref '") && l.contains("has been replaced")
+            }),
+        },
+        Pattern {
+            category: "better_pushback_warning",
+            severity: "low",
+            matcher: Box::new(|l, _| l.contains("BetterPushback") && l.contains("WARN:")),
+        },
+        Pattern {
+            category: "art_controls_modified",
+            severity: "low",
+            matcher: Box::new(|l, _| l.contains("(Art controls are modified.)")),
+        },
+    ]
+}
+
+/// Collect all consecutive `E/` or `W/`-prefixed lines that form a single block around `idx`.
+/// Lines may have timestamp prefixes like "0:00:06.262 E/SYS: ..."
+/// If the matched line itself doesn't contain `E/` or `W/`, return just that line.
+/// Caps the block at 30 lines to avoid unreasonably large output.
+fn extract_consecutive_e_lines(lines: &[String], idx: usize) -> String {
+    let is_error_or_warning = |s: &str| s.contains(" E/") || s.contains(" W/");
+
+    if !is_error_or_warning(&lines[idx]) {
+        return lines[idx].clone();
+    }
+
+    // Extend upward
+    let mut start = idx;
+    while start > 0 && is_error_or_warning(&lines[start - 1]) {
+        start -= 1;
+    }
+    // Extend downward
+    let mut end = idx;
+    while end + 1 < lines.len() && is_error_or_warning(&lines[end + 1]) {
+        end += 1;
+    }
+    // Cap to 30 lines
+    let end = end.min(start + 29);
+    lines[start..=end].join("\n")
+}
+
+fn extract_system_info(lines: &[String]) -> SystemInfo {
+    let mut info = SystemInfo::default();
+
+    for line in lines.iter().take(150) {
+        // X-Plane version: "Log.txt for X-Plane 12.4.0-..."
+        if info.xplane_version.is_none() {
+            if let Some(pos) = line.find("Log.txt for X-Plane ") {
+                let rest = &line[pos + "Log.txt for X-Plane ".len()..];
+                let v: String = rest.split_whitespace().next().unwrap_or("").to_string();
+                if !v.is_empty() {
+                    info.xplane_version = Some(v);
+                }
+            } else if let Some(pos) = line.find("Log.txt for ") {
+                let rest = &line[pos + "Log.txt for ".len()..];
+                let v: String = rest.split_whitespace().next().unwrap_or("").to_string();
+                if !v.is_empty() {
+                    info.xplane_version = Some(v);
+                }
+            }
+        }
+
+        // GPU model — Vulkan first, then OpenGL
+        if info.gpu_model.is_none() {
+            for prefix in &["Vulkan Device", "OpenGL Render"] {
+                if let Some(pos) = line.find(prefix) {
+                    if let Some(colon) = line[pos..].find(':') {
+                        let rest = line[pos + colon + 1..].trim();
+                        let model = if let Some(p) = rest.rfind(" (") {
+                            rest[..p].trim()
+                        } else {
+                            rest
+                        };
+                        if !model.is_empty() {
+                            info.gpu_model = Some(model.to_string());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // GPU driver — Vulkan first, then OpenGL
+        if info.gpu_driver.is_none() {
+            if let Some(pos) = line.find("Vulkan Driver") {
+                if let Some(colon) = line[pos..].find(':') {
+                    let driver = line[pos + colon + 1..].trim().to_string();
+                    if !driver.is_empty() {
+                        info.gpu_driver = Some(driver);
+                    }
+                }
+            } else if let Some(pos) = line.find("OpenGL Version") {
+                if let Some(colon) = line[pos..].find(':') {
+                    // Format: "4.6.0 NVIDIA 515.76 (2022/07/19)"
+                    let rest = line[pos + colon + 1..].trim();
+                    let words: Vec<&str> = rest.split_whitespace().collect();
+                    if words.len() > 1 {
+                        let driver_raw = words[1..].join(" ");
+                        let driver = if let Some(p) = driver_raw.rfind(" (") {
+                            driver_raw[..p].to_string()
+                        } else {
+                            driver_raw
+                        };
+                        if !driver.is_empty() {
+                            info.gpu_driver = Some(driver);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    info
+}
+
+#[tauri::command]
+fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> {
+    use std::io::{BufRead, BufReader};
+    use std::fs::File;
+
+    let log_path = std::path::PathBuf::from(&xplane_path).join("Log.txt");
+    let log_path_str = log_path.to_string_lossy().to_string();
+
+    let file = File::open(&log_path).map_err(|e| format!("Cannot open Log.txt: {e}"))?;
+    let reader = BufReader::new(file);
+    let lines: Vec<String> = reader
+        .lines()
+        .map(|l| l.map_err(|e| format!("Read error: {e}")))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Check if it's an X-Plane log (first 100 lines)
+    let xplane_indicators = [
+        "X-Plane",
+        "X-System folder",
+        "Vulkan Device",
+        "OpenGL Render",
+        "Fetching plugins for",
+        "Laminar Research",
+    ];
+    let is_xplane_log = lines.iter().take(100).any(|line| {
+        xplane_indicators.iter().any(|ind| line.contains(ind))
+    });
+
+    let system_info = extract_system_info(&lines);
+
+    let patterns = build_patterns();
+
+    // category -> (severity, line_numbers, sample_line)
+    let mut issue_map: std::collections::HashMap<&'static str, (&'static str, Vec<usize>, String)> =
+        std::collections::HashMap::new();
+
+    let mut crash_detected = false;
+    let mut crash_info: Option<String> = None;
+
+    for (idx, line) in lines.iter().enumerate() {
+        let line_lower = line.to_lowercase();
+
+        if line.contains("This application has crashed") {
+            crash_detected = true;
+            if crash_info.is_none() {
+                crash_info = Some(line.clone());
+            }
+        }
+
+        for pat in &patterns {
+            if (pat.matcher)(line, &line_lower) {
+                let entry = issue_map
+                    .entry(pat.category)
+                    .or_insert((pat.severity, Vec::new(), String::new()));
+                if entry.1.len() < 5 {
+                    entry.1.push(idx + 1);
+                    // Keep the largest consecutive E/ block found so far
+                    let block = extract_consecutive_e_lines(&lines, idx);
+                    if block.len() > entry.2.len() {
+                        entry.2 = block;
+                    }
+                }
+            }
+        }
+    }
+
+    let sev_order = |s: &str| match s {
+        "high" => 0u8,
+        "medium" => 1,
+        _ => 2,
+    };
+    let mut issues: Vec<LogIssue> = issue_map
+        .into_iter()
+        .map(|(cat, (sev, nums, sample))| LogIssue {
+            category: cat.to_string(),
+            severity: sev.to_string(),
+            line_numbers: nums,
+            sample_line: sample,
+        })
+        .collect();
+    issues.sort_by_key(|i| sev_order(&i.severity));
+
+    let total_high = issues.iter().filter(|i| i.severity == "high").count();
+    let total_medium = issues.iter().filter(|i| i.severity == "medium").count();
+    let total_low = issues.iter().filter(|i| i.severity == "low").count();
+
+    Ok(XPlaneLogAnalysis {
+        log_path: log_path_str,
+        is_xplane_log,
+        crash_detected,
+        crash_info,
+        issues,
+        system_info,
+        total_high,
+        total_medium,
+        total_low,
+    })
+}
+
 // ========== Scenery Folder Commands ==========
 
 fn validate_scenery_folder_name(folder_name: &str) -> error::ApiResult<()> {
@@ -1467,6 +1908,7 @@ pub fn run() {
             get_recent_logs,
             get_log_path,
             get_all_logs,
+            analyze_xplane_log,
             open_log_folder,
             open_scenery_folder,
             delete_scenery_folder,
