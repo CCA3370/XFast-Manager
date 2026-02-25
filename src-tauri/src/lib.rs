@@ -275,6 +275,18 @@ async fn create_bug_report_issue(
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
+    // Fallback: if the server didn't return issueNumber, extract it from the URL
+    // e.g. "https://github.com/CCA3370/XFast-Manager/issues/42" → 42
+    let issue_number = if issue_number == 0 {
+        issue_url
+            .rsplit('/')
+            .next()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0)
+    } else {
+        issue_number
+    };
+
     Ok(BugReportResult { issue_url, issue_number })
 }
 
