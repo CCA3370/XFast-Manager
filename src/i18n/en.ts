@@ -249,7 +249,7 @@ export default {
     // Target path conflicts
     targetPathConflict: 'Target path conflict',
     targetPathConflictDesc:
-      'Multiple tasks target the same directory. Disable duplicates to continue.',
+      'Multiple tasks target the same or overlapping directories. Disable the conflicting tasks to continue.',
     targetPathConflictBadge: 'Path conflict',
     // Bug report
     submitBugReport: 'Report',

@@ -249,7 +249,7 @@ export default {
     flyWithLuaRequired: '请先安装 FlyWithLua 插件',
     // 目标路径冲突
     targetPathConflict: '目标路径冲突',
-    targetPathConflictDesc: '多个任务安装到同一目录，请取消勾选重复项后再安装。',
+    targetPathConflictDesc: '多个任务的安装目录相同或存在包含关系，请取消勾选冲突项后再安装。',
     targetPathConflictBadge: '路径冲突',
     // Bug report
     submitBugReport: '上报错误',

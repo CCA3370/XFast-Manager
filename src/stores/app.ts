@@ -136,19 +136,41 @@ export const useAppStore = defineStore('app', () => {
     return currentTasks.value.some((task) => task.conflictExists === true)
   })
 
-  // Detect enabled tasks that share the same targetPath
+  // Detect enabled tasks whose targetPaths overlap: same path OR one is an ancestor of the other.
+  // E.g. "Aircraft/C172" conflicts with "Aircraft/C172/liveries/DHC" because installing the
+  // parent would overwrite files inside the child directory.
   const targetPathConflicts = computed(() => {
     const enabled = currentTasks.value.filter((t) => getTaskEnabled(t.id))
-    const pathMap = new Map<string, InstallTask[]>()
-    for (const task of enabled) {
-      const list = pathMap.get(task.targetPath) || []
-      list.push(task)
-      pathMap.set(task.targetPath, list)
-    }
+
+    // Normalise to forward-slashes + trailing slash so prefix checks are unambiguous
+    const normalise = (p: string) => p.replace(/\\/g, '/').replace(/\/?$/, '/')
+
+    // Build list of [task, normalisedPath] pairs once
+    const pairs = enabled.map((t) => ({ task: t, norm: normalise(t.targetPath) }))
+
+    // For each task find every other task whose path is identical or a proper ancestor/descendant
     const conflicts = new Map<string, InstallTask[]>()
-    for (const [path, tasks] of pathMap) {
-      if (tasks.length > 1) conflicts.set(path, tasks)
+
+    for (let i = 0; i < pairs.length; i++) {
+      for (let j = i + 1; j < pairs.length; j++) {
+        const a = pairs[i]
+        const b = pairs[j]
+        const overlaps =
+          a.norm === b.norm ||
+          b.norm.startsWith(a.norm) || // a is ancestor of b
+          a.norm.startsWith(b.norm) // b is ancestor of a
+
+        if (overlaps) {
+          // Use the shared "conflict key": the shorter (ancestor) path
+          const key = a.norm.length <= b.norm.length ? a.norm : b.norm
+          const group = conflicts.get(key) ?? []
+          if (!group.includes(a.task)) group.push(a.task)
+          if (!group.includes(b.task)) group.push(b.task)
+          conflicts.set(key, group)
+        }
+      }
     }
+
     return conflicts
   })
 
