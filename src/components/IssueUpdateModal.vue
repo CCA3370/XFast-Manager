@@ -5,11 +5,10 @@
         v-if="issueTracker.pendingUpdates.length > 0"
         class="fixed inset-0 z-[1200] flex items-center justify-center"
       >
-        <!-- Backdrop -->
+        <!-- Backdrop (no click-to-close) -->
         <div
           ref="backdropRef"
           class="absolute inset-0 bg-black/50 backdrop-blur-sm"
-          @click="dismiss"
         />
 
         <!-- Card -->
@@ -45,62 +44,75 @@
                 </p>
               </div>
             </div>
-            <button
-              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1 shrink-0"
-              @click="dismiss"
-            >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
           </div>
 
           <!-- Body (scrollable) -->
-          <div class="overflow-y-auto flex-1 p-5 space-y-4">
+          <div class="overflow-y-auto flex-1 p-5 space-y-5">
             <div
               v-for="(update, index) in issueTracker.pendingUpdates"
               :key="update.issue.issueNumber"
             >
               <!-- Separator between issues -->
-              <div v-if="index > 0" class="border-t border-gray-100 dark:border-white/5 mb-4" />
+              <div v-if="index > 0" class="border-t border-gray-100 dark:border-white/5 -mt-1 mb-5" />
 
-              <!-- Issue header -->
-              <div class="flex items-start justify-between gap-2 mb-3">
-                <a
-                  class="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline truncate cursor-pointer"
+              <!-- Closed status card -->
+              <div
+                v-if="update.closed"
+                class="flex items-start gap-3 rounded-xl border border-green-200 dark:border-green-500/25 bg-green-50 dark:bg-green-500/10 px-4 py-3 mb-3"
+              >
+                <!-- Closed icon -->
+                <div class="mt-0.5 w-5 h-5 rounded-full bg-green-600 dark:bg-green-500 flex items-center justify-center shrink-0">
+                  <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-semibold text-green-700 dark:text-green-400 mb-0.5">
+                    {{ t('issueTracker.statusClosed') }}
+                  </p>
+                  <button
+                    class="text-sm font-medium text-gray-800 dark:text-gray-100 hover:underline text-left truncate w-full"
+                    @click="openUrl(update.issue.issueUrl)"
+                  >
+                    {{ update.issue.issueTitle }}
+                  </button>
+                </div>
+                <button
+                  class="shrink-0 text-xs text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 font-medium transition-colors whitespace-nowrap"
+                  @click="openUrl(update.issue.issueUrl)"
+                >
+                  {{ t('issueTracker.viewIssue') }} ↗
+                </button>
+              </div>
+
+              <!-- Open issue title (only if not closed) -->
+              <div v-else class="flex items-start justify-between gap-2 mb-3">
+                <button
+                  class="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline truncate text-left"
                   @click="openUrl(update.issue.issueUrl)"
                 >
                   {{ update.issue.issueTitle }}
-                </a>
-                <span
-                  v-if="update.closed"
-                  class="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                >
-                  {{ t('issueTracker.statusClosed') }}
-                </span>
+                </button>
               </div>
-
-              <!-- Closed notice -->
-              <p v-if="update.closed && update.newComments.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
-                {{ t('issueTracker.statusClosed') }}
-              </p>
 
               <!-- New comments -->
               <div v-if="update.newComments.length > 0" class="space-y-2">
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
                   {{ t('issueTracker.newComments') }}
                 </p>
                 <div
                   v-for="(comment, ci) in update.newComments"
                   :key="ci"
-                  class="bg-gray-50 dark:bg-white/5 rounded-lg p-3 text-sm border border-gray-100 dark:border-white/5"
+                  class="bg-gray-50 dark:bg-white/5 rounded-xl p-3 border border-gray-100 dark:border-white/5"
                 >
-                  <p class="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
-                    {{ t('issueTracker.by') }}
-                    <span class="font-medium text-gray-700 dark:text-gray-300">@{{ comment.author }}</span>
-                    · {{ formatDate(comment.created_at) }}
-                  </p>
-                  <p class="text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-wrap break-words">
+                  <div class="flex items-center gap-1.5 mb-2">
+                    <div class="w-5 h-5 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shrink-0">
+                      <span class="text-white text-[9px] font-bold leading-none">{{ comment.author.charAt(0).toUpperCase() }}</span>
+                    </div>
+                    <span class="text-xs font-medium text-gray-700 dark:text-gray-300">@{{ comment.author }}</span>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">· {{ formatDate(comment.created_at) }}</span>
+                  </div>
+                  <p class="text-sm text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-wrap break-words">
                     {{ truncate(comment.body, 400) }}
                   </p>
                 </div>
@@ -110,7 +122,7 @@
 
           <!-- Footer -->
           <div class="p-5 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3">
-            <template v-if="issueTracker.pendingUpdates.length === 1">
+            <template v-if="issueTracker.pendingUpdates.length === 1 && !issueTracker.pendingUpdates[0].closed">
               <button
                 class="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm text-white font-medium transition"
                 @click="openUrl(issueTracker.pendingUpdates[0].issue.issueUrl)"
@@ -119,10 +131,10 @@
               </button>
             </template>
             <button
-              class="px-3 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md text-sm text-gray-700 dark:text-gray-200 font-medium transition"
-              @click="dismiss"
+              class="px-3 py-2 bg-green-600 hover:bg-green-700 rounded-md text-sm text-white font-medium transition"
+              @click="confirm"
             >
-              {{ t('issueTracker.dismiss') }}
+              {{ t('issueTracker.confirm') }}
             </button>
           </div>
         </div>
@@ -132,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useIssueTrackerStore } from '@/stores/issueTracker'
@@ -143,8 +155,8 @@ const issueTracker = useIssueTrackerStore()
 const backdropRef = ref<HTMLElement | null>(null)
 const cardRef = ref<HTMLElement | null>(null)
 
-function dismiss() {
-  issueTracker.clearUpdates()
+async function confirm() {
+  await issueTracker.confirmUpdates()
 }
 
 async function openUrl(url: string) {
@@ -168,26 +180,6 @@ function formatDate(iso: string): string {
     return iso
   }
 }
-
-function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') dismiss()
-}
-
-watch(
-  () => issueTracker.pendingUpdates.length > 0,
-  (visible) => {
-    if (visible) {
-      window.addEventListener('keydown', onKey)
-    } else {
-      window.removeEventListener('keydown', onKey)
-    }
-  },
-  { immediate: true },
-)
-
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKey)
-})
 
 function onEnter(el: Element, done: () => void) {
   const container = el as HTMLElement

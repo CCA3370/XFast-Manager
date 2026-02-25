@@ -1996,22 +1996,6 @@
                   </span>
                 </div>
               </div>
-
-              <!-- Dev tools -->
-              <div class="pt-2 border-t border-gray-100 dark:border-gray-700/50 flex flex-wrap gap-2">
-                <button
-                  class="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors"
-                  @click="modal.showError('Test error: This is a manually triggered test error for bug report testing.')"
-                >
-                  Trigger Test Error
-                </button>
-                <button
-                  class="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors"
-                  @click="issueTrackerStore.checkAllTrackedIssues()"
-                >
-                  Check Issue Updates
-                </button>
-              </div>
             </div>
           </div>
         </transition>
@@ -2027,7 +2011,6 @@ import { useModalStore } from '@/stores/modal'
 import { useAppStore } from '@/stores/app'
 import { useSceneryStore } from '@/stores/scenery'
 import { useUpdateStore } from '@/stores/update'
-import { useIssueTrackerStore } from '@/stores/issueTracker'
 import { validateGlobPattern } from '@/utils/validation'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
@@ -2044,7 +2027,6 @@ const sceneryStore = useSceneryStore()
 const toast = useToastStore()
 const modal = useModalStore()
 const updateStore = useUpdateStore()
-const issueTrackerStore = useIssueTrackerStore()
 
 const xplanePathInput = ref('')
 const launchArgsInput = ref('')

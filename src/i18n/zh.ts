@@ -605,7 +605,7 @@ export default {
     newComments: '新评论',
     by: '来自',
     viewIssue: '查看问题',
-    dismiss: '关闭',
+    confirm: '确认',
   },
   errors: {
     validation_failed: '输入数据无效',

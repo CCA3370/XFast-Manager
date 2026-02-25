@@ -622,7 +622,7 @@ export default {
     newComments: 'New comments',
     by: 'by',
     viewIssue: 'View Issue',
-    dismiss: 'Dismiss',
+    confirm: 'Confirm',
   },
   errors: {
     permission_denied: 'Permission denied',

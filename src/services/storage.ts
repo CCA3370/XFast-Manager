@@ -120,6 +120,7 @@ export const STORAGE_KEYS = {
   PARALLEL_INSTALL_ENABLED: 'parallelInstallEnabled',
   MAX_PARALLEL_TASKS: 'maxParallelTasks',
   REPORTED_ISSUES: 'reportedIssues',
+  UNCONFIRMED_ISSUE_UPDATES: 'unconfirmedIssueUpdates',
 } as const
 
 export interface TrackedIssue {
