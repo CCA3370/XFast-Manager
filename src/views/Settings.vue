@@ -904,17 +904,13 @@
               <button
                 class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none"
                 :class="
-                  store.parallelInstallEnabled
-                    ? 'bg-violet-500'
-                    : 'bg-gray-300 dark:bg-gray-600'
+                  store.parallelInstallEnabled ? 'bg-violet-500' : 'bg-gray-300 dark:bg-gray-600'
                 "
                 @click="store.toggleParallelInstall()"
               >
                 <span
                   class="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200"
-                  :class="
-                    store.parallelInstallEnabled ? 'translate-x-4.5' : 'translate-x-0.5'
-                  "
+                  :class="store.parallelInstallEnabled ? 'translate-x-4.5' : 'translate-x-0.5'"
                 ></span>
               </button>
             </div>
@@ -946,12 +942,7 @@
                 <h4
                   class="text-xs font-semibold text-violet-700 dark:text-violet-300 mb-2 flex items-center space-x-1.5"
                 >
-                  <svg
-                    class="w-3.5 h-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -977,9 +968,7 @@
                       ></path>
                     </svg>
                     <span>
-                      <AnimatedText>{{
-                        $t('settings.parallelInstallBenefit1')
-                      }}</AnimatedText>
+                      <AnimatedText>{{ $t('settings.parallelInstallBenefit1') }}</AnimatedText>
                     </span>
                   </li>
                   <li class="flex items-center space-x-2">
@@ -997,9 +986,7 @@
                       ></path>
                     </svg>
                     <span>
-                      <AnimatedText>{{
-                        $t('settings.parallelInstallBenefit2')
-                      }}</AnimatedText>
+                      <AnimatedText>{{ $t('settings.parallelInstallBenefit2') }}</AnimatedText>
                     </span>
                   </li>
                 </ul>
@@ -1044,9 +1031,7 @@
               </div>
 
               <!-- Warning note -->
-              <p
-                class="text-xs text-amber-600 dark:text-amber-400 flex items-center space-x-1"
-              >
+              <p class="text-xs text-amber-600 dark:text-amber-400 flex items-center space-x-1">
                 <svg
                   class="w-3 h-3 flex-shrink-0"
                   fill="none"

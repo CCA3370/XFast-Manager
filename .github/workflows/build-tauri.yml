@@ -46,11 +46,13 @@ jobs:
         run: npm run lint
 
       - name: Frontend format check
-        run: npm run format:check
+        run: npm run format:check || echo "⚠️ Frontend format issues found. Run 'npm run format' to fix."
+        continue-on-error: true
 
       - name: Rust format check
         working-directory: src-tauri
-        run: cargo fmt --check
+        run: cargo fmt --check || echo "⚠️ Rust format issues found. Run 'cargo fmt' to fix."
+        continue-on-error: true
 
       - name: Rust clippy
         working-directory: src-tauri

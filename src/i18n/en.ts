@@ -202,8 +202,7 @@ export default {
     parallelInstallExplain: 'How it works',
     parallelInstallBenefit1: 'Multiple tasks install at the same time',
     parallelInstallBenefit2: 'Faster overall installation for multiple addons',
-    parallelInstallNote:
-      'Experimental feature. If you encounter issues, disable this option.',
+    parallelInstallNote: 'Experimental feature. If you encounter issues, disable this option.',
     parallelInstallExperimental: 'Experimental',
     maxParallelTasks: 'Max parallel tasks',
     // About section

@@ -6,10 +6,7 @@
         class="fixed inset-0 z-[1200] flex items-center justify-center"
       >
         <!-- Backdrop (no click-to-close) -->
-        <div
-          ref="backdropRef"
-          class="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        />
+        <div ref="backdropRef" class="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
         <!-- Card -->
         <div
@@ -21,12 +18,19 @@
           @click.stop
         >
           <!-- Header -->
-          <div class="flex items-start justify-between p-5 border-b border-gray-100 dark:border-white/5">
+          <div
+            class="flex items-start justify-between p-5 border-b border-gray-100 dark:border-white/5"
+          >
             <div class="flex items-center space-x-3">
               <div
                 class="w-10 h-10 flex items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-700 shrink-0"
               >
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg
+                  class="w-5 h-5 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -53,7 +57,10 @@
               :key="update.issue.issueNumber"
             >
               <!-- Separator between issues -->
-              <div v-if="index > 0" class="border-t border-gray-100 dark:border-white/5 -mt-1 mb-5" />
+              <div
+                v-if="index > 0"
+                class="border-t border-gray-100 dark:border-white/5 -mt-1 mb-5"
+              />
 
               <!-- Closed status card -->
               <div
@@ -61,8 +68,16 @@
                 class="flex items-start gap-3 rounded-xl border border-green-200 dark:border-green-500/25 bg-green-50 dark:bg-green-500/10 px-4 py-3 mb-3"
               >
                 <!-- Closed icon -->
-                <div class="mt-0.5 w-5 h-5 rounded-full bg-green-600 dark:bg-green-500 flex items-center justify-center shrink-0">
-                  <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                <div
+                  class="mt-0.5 w-5 h-5 rounded-full bg-green-600 dark:bg-green-500 flex items-center justify-center shrink-0"
+                >
+                  <svg
+                    class="w-3 h-3 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    stroke-width="2.5"
+                  >
                     <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
@@ -97,7 +112,9 @@
 
               <!-- New comments -->
               <div v-if="update.newComments.length > 0" class="space-y-2">
-                <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                <p
+                  class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider"
+                >
                   {{ t('issueTracker.newComments') }}
                 </p>
                 <div
@@ -106,13 +123,23 @@
                   class="bg-gray-50 dark:bg-white/5 rounded-xl p-3 border border-gray-100 dark:border-white/5"
                 >
                   <div class="flex items-center gap-1.5 mb-2">
-                    <div class="w-5 h-5 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shrink-0">
-                      <span class="text-white text-[9px] font-bold leading-none">{{ comment.author.charAt(0).toUpperCase() }}</span>
+                    <div
+                      class="w-5 h-5 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shrink-0"
+                    >
+                      <span class="text-white text-[9px] font-bold leading-none">{{
+                        comment.author.charAt(0).toUpperCase()
+                      }}</span>
                     </div>
-                    <span class="text-xs font-medium text-gray-700 dark:text-gray-300">@{{ comment.author }}</span>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">· {{ formatDate(comment.created_at) }}</span>
+                    <span class="text-xs font-medium text-gray-700 dark:text-gray-300"
+                      >@{{ comment.author }}</span
+                    >
+                    <span class="text-xs text-gray-400 dark:text-gray-500"
+                      >· {{ formatDate(comment.created_at) }}</span
+                    >
                   </div>
-                  <p class="text-sm text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-wrap break-words">
+                  <p
+                    class="text-sm text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-wrap break-words"
+                  >
                     {{ truncate(comment.body, 400) }}
                   </p>
                 </div>
@@ -121,8 +148,14 @@
           </div>
 
           <!-- Footer -->
-          <div class="p-5 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3">
-            <template v-if="issueTracker.pendingUpdates.length === 1 && !issueTracker.pendingUpdates[0].closed">
+          <div
+            class="p-5 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3"
+          >
+            <template
+              v-if="
+                issueTracker.pendingUpdates.length === 1 && !issueTracker.pendingUpdates[0].closed
+              "
+            >
               <button
                 class="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-md text-sm text-white font-medium transition"
                 @click="openUrl(issueTracker.pendingUpdates[0].issue.issueUrl)"
