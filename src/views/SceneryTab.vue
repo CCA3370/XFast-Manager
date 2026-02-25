@@ -207,7 +207,7 @@ async function handleIndexChangesSyncToIni() {
     syncLocalEntries()
     dismissIndexChangesModal()
   } catch (e) {
-    modalStore.showError(t('sceneryManager.applyFailed'))
+    modalStore.showError(String(e), t('sceneryManager.applyFailed'))
   }
 }
 
@@ -989,7 +989,7 @@ async function handleApplyChanges() {
     toastStore.success(t('sceneryManager.changesApplied'))
     syncLocalEntries()
   } catch (e) {
-    modalStore.showError(t('sceneryManager.applyFailed'))
+    modalStore.showError(String(e), t('sceneryManager.applyFailed'))
   }
 }
 
