@@ -20,16 +20,14 @@ fn main() {
         // this variable prevents that code path from running.
         set_default_env("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
 
-        // Some Wayland + AppImage combinations still fail early with:
-        // "Could not create default EGL display: EGL_BAD_PARAMETER".
-        // Force GTK to use X11 backend as a fallback, but never override user settings.
-        let is_wayland_session = std::env::var("XDG_SESSION_TYPE")
-            .map(|session| session.eq_ignore_ascii_case("wayland"))
-            .unwrap_or(false)
-            || std::env::var_os("WAYLAND_DISPLAY").is_some();
-        let is_appimage = std::env::var_os("APPIMAGE").is_some();
+        // Default is native backend (Wayland/X11 decided by GTK).
+        // For problematic Linux environments, allow explicit X11 fallback:
+        // XFAST_FORCE_X11=1 ./XFast-Manager.AppImage
+        let force_x11 = std::env::var("XFAST_FORCE_X11")
+            .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
 
-        if is_appimage && is_wayland_session && std::env::var_os("GDK_BACKEND").is_none() {
+        if force_x11 && std::env::var_os("GDK_BACKEND").is_none() {
             std::env::set_var("GDK_BACKEND", "x11");
         }
     }

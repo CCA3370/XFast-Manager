@@ -89,7 +89,8 @@ Enable it in Settings, then relaunch the app.
 Install GTK3 and WebKit2GTK packages.
 
 - **Linux Wayland AppImage shows `EGL_BAD_PARAMETER` on startup**  
-Run it from terminal with `GDK_BACKEND=x11 ./XFast-Manager-*.AppImage`.
+Wayland is used by default. If startup fails, try `GDK_BACKEND=x11 ./XFast-Manager-*.AppImage`  
+or `XFAST_FORCE_X11=1 ./XFast-Manager-*.AppImage`.
 
 - **Password requested**  
 Provide the archive password when prompted.
