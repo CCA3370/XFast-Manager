@@ -337,6 +337,14 @@ impl ProgressContext {
     }
 
     fn emit_progress(&self, current_file: Option<String>, phase: InstallPhase) {
+        self.emit_progress_internal(current_file, phase, false);
+    }
+
+    fn emit_progress_force(&self, current_file: Option<String>, phase: InstallPhase) {
+        self.emit_progress_internal(current_file, phase, true);
+    }
+
+    fn emit_progress_internal(&self, current_file: Option<String>, phase: InstallPhase, force: bool) {
         // In parallel mode, update tracker data and delegate to parent's emit_aggregated
         if let Some(ref emit_fn) = self.parallel_emit {
             // Update the tracker's current_file
@@ -349,23 +357,30 @@ impl ProgressContext {
             return;
         }
 
-        // Throttle: emit at most every 16ms (60fps for smooth animation)
-        let mut last = match self.last_emit.lock() {
-            Ok(guard) => guard,
-            Err(e) => {
-                logger::log_error(
-                    &format!("Progress mutex poisoned, skipping update: {}", e),
-                    Some("installer"),
-                );
-                return; // Skip progress update if lock is poisoned
+        // Throttle: emit at most every 16ms (60fps for smooth animation), unless force=true
+        if !force {
+            let mut last = match self.last_emit.lock() {
+                Ok(guard) => guard,
+                Err(e) => {
+                    logger::log_error(
+                        &format!("Progress mutex poisoned, skipping update: {}", e),
+                        Some("installer"),
+                    );
+                    return; // Skip progress update if lock is poisoned
+                }
+            };
+            let now = Instant::now();
+            if now.duration_since(*last).as_millis() < 16 {
+                return;
             }
-        };
-        let now = Instant::now();
-        if now.duration_since(*last).as_millis() < 16 {
-            return;
+            *last = now;
+            drop(last);
+        } else {
+            // Force mode: update last_emit time but don't check throttle
+            if let Ok(mut last) = self.last_emit.lock() {
+                *last = Instant::now();
+            }
         }
-        *last = now;
-        drop(last);
 
         let total = self.total_bytes.load(Ordering::SeqCst);
         let processed = self.processed_bytes.load(Ordering::SeqCst);
@@ -467,6 +482,20 @@ impl ProgressContext {
         let new_max = (percentage * 100.0) as u64;
         self.max_percentage.fetch_max(new_max, Ordering::SeqCst);
 
+        // Debug log for serial mode progress (before creating progress struct to avoid borrow issues)
+        if force {
+            crate::log_debug!(
+                &format!(
+                    "[PROGRESS] Force emit: task {}/{}, phase: {:?}, percentage: {:.1}%",
+                    self.current_task_index + 1,
+                    self.total_tasks,
+                    &phase,
+                    percentage
+                ),
+                "installer_progress"
+            );
+        }
+
         let progress = InstallProgress {
             percentage,
             total_bytes: total,
@@ -481,7 +510,9 @@ impl ProgressContext {
             current_task_total_bytes: task_size,
             current_task_processed_bytes: current_task_processed,
             active_tasks: None,
-            completed_task_count: None,
+            // In serial mode, provide completed count as current task index
+            // This helps frontend show completed tasks more reliably
+            completed_task_count: Some(self.current_task_index),
             completed_task_ids: None,
         };
 
@@ -510,12 +541,20 @@ impl ProgressContext {
             .copied()
             .unwrap_or(0);
 
+        // For serial mode: set current_task_index to total_tasks to indicate all tasks completed
+        // This ensures the frontend's "index < currentTaskIndex" check marks all tasks as completed
+        let final_task_index = if self.parallel_emit.is_none() {
+            self.total_tasks  // Serial mode: all tasks done, index points beyond last task
+        } else {
+            self.current_task_index  // Parallel mode: keep original index
+        };
+
         // Final progress is always 100%
         let progress = InstallProgress {
             percentage: 100.0,
             total_bytes: total,
             processed_bytes: processed,
-            current_task_index: self.current_task_index,
+            current_task_index: final_task_index,
             total_tasks: self.total_tasks,
             current_task_name: self.current_task_name.clone(),
             current_file: None,
@@ -525,7 +564,7 @@ impl ProgressContext {
             current_task_total_bytes: task_size,
             current_task_processed_bytes: task_size,
             active_tasks: None,
-            completed_task_count: None,
+            completed_task_count: Some(self.total_tasks),  // All tasks completed
             completed_task_ids: None,
         };
 
@@ -901,7 +940,8 @@ impl Installer {
         // Phase 1: Calculate total size
         let calc_start = Instant::now();
         crate::log_debug!("[TIMING] Size calculation started", "installer_timing");
-        ctx.emit_progress(None, InstallPhase::Calculating);
+        // Force emit at start of installation to ensure frontend gets initial state
+        ctx.emit_progress_force(None, InstallPhase::Calculating);
         let (total_size, task_sizes) = self.calculate_total_size(&tasks)?;
         ctx.set_total_bytes(total_size);
         ctx.set_task_sizes(task_sizes);
@@ -961,7 +1001,8 @@ impl Installer {
             ctx.inline_verified_count.store(0, Ordering::SeqCst);
             ctx.inline_hashes.lock().unwrap().clear();
 
-            ctx.emit_progress(None, InstallPhase::Installing);
+            // Force emit progress to ensure frontend sees the task state change immediately
+            ctx.emit_progress_force(None, InstallPhase::Installing);
 
             logger::log_info(
                 &format!(
@@ -1044,7 +1085,8 @@ impl Installer {
 
                     // Reset verification progress for this task
                     ctx.set_verification_progress(0.0);
-                    ctx.emit_progress(Some("Verifying...".to_string()), InstallPhase::Verifying);
+                    // Force emit to ensure frontend sees verification phase immediately
+                    ctx.emit_progress_force(Some("Verifying...".to_string()), InstallPhase::Verifying);
 
                     match self.verify_installation(task, &ctx) {
                         Ok(verification_stats) => {

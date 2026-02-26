@@ -579,7 +579,15 @@ onMounted(async () => {
   // Listen for installation progress events
   try {
     unlistenProgress = await listen<InstallProgress>('install-progress', (event) => {
-      progressStore.update(event.payload)
+      const payload = event.payload
+      // Debug log for serial mode progress
+      if (!payload.activeTasks) {
+        logDebug(
+          `[PROGRESS] Serial mode: task ${payload.currentTaskIndex + 1}/${payload.totalTasks}, phase: ${payload.phase}, percentage: ${payload.percentage.toFixed(1)}%`,
+          'install'
+        )
+      }
+      progressStore.update(payload)
     })
     logDebug('Progress listener registered', 'install')
   } catch (error) {

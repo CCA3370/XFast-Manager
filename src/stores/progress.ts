@@ -126,9 +126,9 @@ export const useProgressStore = defineStore('progress', () => {
     return progress.value?.activeTasks !== undefined && progress.value?.activeTasks !== null
   })
 
-  const activeTasks = computed<ParallelTaskProgress[]>(() => progress.value?.activeTasks ?? [])
+  const activeTasks = computed<ParallelTaskProgress[] | undefined>(() => progress.value?.activeTasks ?? undefined)
   const completedTaskCount = computed(() => progress.value?.completedTaskCount ?? 0)
-  const completedTaskIds = computed<string[]>(() => progress.value?.completedTaskIds ?? [])
+  const completedTaskIds = computed<string[] | undefined>(() => progress.value?.completedTaskIds ?? undefined)
 
   return {
     progress,
