@@ -1711,6 +1711,12 @@ impl Installer {
             task_percentage,
         )?;
 
+        // In parallel mode, wire up the atomic installer to delegate through
+        // the parallel progress context so it doesn't emit serial-mode events.
+        if let (Some(ref emit_fn), Some(ref cf)) = (&ctx.parallel_emit, &ctx.parallel_current_file) {
+            atomic.set_parallel_emit(Arc::clone(emit_fn), Arc::clone(cf));
+        }
+
         // Step 1: Extract/copy to temp directory
         logger::log_info(
             &format!(

@@ -512,7 +512,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AnimatedText from '@/components/AnimatedText.vue'
 import { AddonType, type InstallTask, type InstallResult, type ParallelTaskProgress } from '@/types'
@@ -681,6 +681,36 @@ const headerTitle = computed(() => {
 // Parallel mode detection
 const isParallel = computed(() => props.activeTasks !== undefined && props.activeTasks !== null)
 
+// [DEBUG] Watch parallel mode props for detailed logging
+watch(
+  () => ({
+    activeTasks: props.activeTasks,
+    completedTaskIds: props.completedTaskIds,
+    completedTaskCount: props.completedTaskCount,
+    percentage: props.percentage,
+    currentTaskIndex: props.currentTaskIndex,
+  }),
+  (val) => {
+    if (!props.tasks.length) return
+    const mode = isParallel.value ? 'PARALLEL' : 'SERIAL'
+    console.log(`[OVERLAY ${mode}] percentage=${val.percentage}, currentTaskIndex=${val.currentTaskIndex}, completedTaskCount=${val.completedTaskCount}`)
+    if (isParallel.value) {
+      console.log(`[OVERLAY PARALLEL] activeTasks(${val.activeTasks?.length ?? 0}):`, val.activeTasks?.map(t => `[${t.taskIndex}]${t.taskName} phase=${t.phase} ${t.percentage}%`))
+      console.log(`[OVERLAY PARALLEL] completedTaskIds:`, val.completedTaskIds)
+    }
+    // Log per-task status
+    props.tasks.forEach((task, i) => {
+      const active = isTaskActive(i)
+      const completed = isTaskCompleted(i)
+      const failed = isTaskFailed(i)
+      const status = getTaskStatusText(i)
+      const pct = getActiveTaskPercentage(i)
+      console.log(`[OVERLAY ${mode}] task[${i}] id=${task.id} name=${task.displayName} => active=${active} completed=${completed} failed=${failed} status="${status}" pct=${pct}%`)
+    })
+  },
+  { deep: true }
+)
+
 // Check if a task is currently active (installing) in parallel mode
 function isTaskActive(index: number): boolean {
   if (isParallel.value) {
@@ -793,6 +823,13 @@ function getTaskStatusText(index: number): string {
     return t('home.failed') || 'Failed'
   }
   if (!props.isComplete && isTaskActive(index)) {
+    // Check if the task is in verifying phase
+    if (isParallel.value) {
+      const at = props.activeTasks?.find((t) => t.taskIndex === index)
+      if (at?.phase === 'verifying') {
+        return t('home.verifying') || 'Verifying...'
+      }
+    }
     return t('home.installingNow') || 'Installing...'
   }
   return t('home.waiting') || 'Waiting'

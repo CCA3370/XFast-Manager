@@ -580,8 +580,16 @@ onMounted(async () => {
   try {
     unlistenProgress = await listen<InstallProgress>('install-progress', (event) => {
       const payload = event.payload
-      // Debug log for serial mode progress
-      if (!payload.activeTasks) {
+      if (payload.activeTasks) {
+        // Debug log for parallel mode progress
+        const activeInfo = payload.activeTasks.map(t => `${t.taskIndex}(${t.taskName})=${t.percentage.toFixed(1)}%/${t.phase}`).join(', ')
+        const completedIds = payload.completedTaskIds?.join(', ') ?? ''
+        logDebug(
+          `[PROGRESS] Parallel mode: overall ${payload.percentage.toFixed(1)}%, active=[${activeInfo}], completed=${payload.completedTaskCount}/${payload.totalTasks}, completedIds=[${completedIds}], phase: ${payload.phase}`,
+          'install'
+        )
+      } else {
+        // Debug log for serial mode progress
         logDebug(
           `[PROGRESS] Serial mode: task ${payload.currentTaskIndex + 1}/${payload.totalTasks}, phase: ${payload.phase}, percentage: ${payload.percentage.toFixed(1)}%`,
           'install'

@@ -83,6 +83,13 @@ export const useProgressStore = defineStore('progress', () => {
   })
 
   function update(p: InstallProgress) {
+    // [DEBUG] Log raw progress data
+    const hasActiveTasks = p.activeTasks !== undefined && p.activeTasks !== null
+    if (hasActiveTasks) {
+      console.log(`[STORE] update PARALLEL: pct=${p.percentage.toFixed(1)}%, phase=${p.phase}, activeTasks=${p.activeTasks?.length}, completedTaskCount=${p.completedTaskCount}, completedTaskIds=[${p.completedTaskIds?.join(',')}]`)
+    } else {
+      console.log(`[STORE] update SERIAL: pct=${p.percentage.toFixed(1)}%, phase=${p.phase}, taskIndex=${p.currentTaskIndex}/${p.totalTasks}, taskName=${p.currentTaskName}`)
+    }
     progress.value = p
     startAnimation()
   }

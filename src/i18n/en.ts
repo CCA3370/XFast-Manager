@@ -57,6 +57,7 @@ export default {
     installed: 'Installed',
     failed: 'Failed',
     installingNow: 'Installing...',
+    verifying: 'Verifying...',
     waiting: 'Waiting',
     launchXPlane: 'Launch X-Plane',
     launchConfirmTitle: 'Pending Scenery Changes',

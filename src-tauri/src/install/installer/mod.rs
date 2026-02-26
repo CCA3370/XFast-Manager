@@ -653,13 +653,27 @@ impl ParallelProgressContext {
         self.trackers[index]
             .phase
             .store(3, std::sync::atomic::Ordering::SeqCst);
-        self.completed_count.fetch_add(1, Ordering::SeqCst);
+        let new_count = self.completed_count.fetch_add(1, Ordering::SeqCst) + 1;
+        crate::log_debug!(
+            &format!(
+                "[PARALLEL] Task {} ({}) marked COMPLETED, completed_count: {}/{}",
+                index, self.trackers[index].name, new_count, self.total_tasks
+            ),
+            "parallel_progress"
+        );
     }
 
     fn mark_failed(&self, index: usize) {
         self.trackers[index]
             .phase
             .store(4, std::sync::atomic::Ordering::SeqCst);
+        crate::log_debug!(
+            &format!(
+                "[PARALLEL] Task {} ({}) marked FAILED",
+                index, self.trackers[index].name
+            ),
+            "parallel_progress"
+        );
     }
 
     fn emit_aggregated(&self) {
@@ -689,13 +703,26 @@ impl ParallelProgressContext {
 
         for tracker in &self.trackers {
             let processed = tracker.processed_bytes.load(Ordering::SeqCst);
-            total_processed += processed;
 
             let phase_val = tracker.phase.load(std::sync::atomic::Ordering::SeqCst);
             if phase_val == 1 || phase_val == 2 {
                 // installing or verifying
                 let task_total = tracker.total_bytes;
-                let pct = if task_total > 0 {
+
+                // For overall percentage: if verifying/done, extraction is complete
+                // so count full task size as processed to avoid percentage stalling
+                if phase_val == 2 {
+                    total_processed += task_total;
+                } else {
+                    total_processed += processed;
+                }
+
+                let pct = if phase_val == 2 {
+                    // Extraction is fully complete during verification phase.
+                    // Always show 100% to avoid percentage dropping backward.
+                    // The "Verifying" phase label already communicates the current activity.
+                    100.0
+                } else if task_total > 0 {
                     (processed as f64 / task_total as f64 * 100.0).min(100.0)
                 } else {
                     0.0
@@ -729,8 +756,12 @@ impl ParallelProgressContext {
                     found_active = true;
                 }
             } else if phase_val == 3 {
-                // Task completed successfully
+                // Task completed successfully — count full size as processed
+                total_processed += tracker.total_bytes;
                 completed_task_ids.push(tracker.id.clone());
+            } else if phase_val == 4 {
+                // Task failed — still count processed bytes for overall
+                total_processed += tracker.processed_bytes.load(Ordering::SeqCst);
             }
         }
 
@@ -752,6 +783,18 @@ impl ParallelProgressContext {
         } else {
             0.0
         };
+
+        crate::log_debug!(
+            &format!(
+                "[PARALLEL] emit_aggregated: overall {:.1}%, active_tasks: [{}], completed: {}/{}, completed_ids: [{}]",
+                percentage,
+                active_tasks.iter().map(|t| format!("{}({})={:.1}%/{:?}", t.task_index, t.task_name, t.percentage, t.phase)).collect::<Vec<_>>().join(", "),
+                completed,
+                self.total_tasks,
+                completed_task_ids.join(", ")
+            ),
+            "parallel_progress"
+        );
 
         let progress = InstallProgress {
             percentage,
@@ -781,6 +824,15 @@ impl ParallelProgressContext {
             .filter(|t| t.phase.load(std::sync::atomic::Ordering::SeqCst) == 3)
             .map(|t| t.id.clone())
             .collect();
+
+        crate::log_debug!(
+            &format!(
+                "[PARALLEL] emit_final: completed={}/{}, completed_ids=[{}]",
+                completed, self.total_tasks,
+                completed_task_ids.join(", ")
+            ),
+            "parallel_progress"
+        );
 
         let progress = InstallProgress {
             percentage: 100.0,
@@ -1358,7 +1410,7 @@ impl Installer {
             "installer_timing"
         );
 
-        // Emit calculating phase
+        // Emit calculating phase (include activeTasks so frontend detects parallel mode)
         {
             let progress = InstallProgress {
                 percentage: 0.0,
@@ -1373,7 +1425,7 @@ impl Installer {
                 current_task_percentage: 0.0,
                 current_task_total_bytes: 0,
                 current_task_processed_bytes: 0,
-                active_tasks: None,
+                active_tasks: Some(Vec::new()),
                 completed_task_count: Some(0),
                 completed_task_ids: Some(Vec::new()),
             };
@@ -1447,6 +1499,10 @@ impl Installer {
                 }
 
                 // Mark task as installing
+                crate::log_debug!(
+                    &format!("[PARALLEL] Task {} starting installation (semaphore acquired)", index),
+                    "parallel_progress"
+                );
                 ctx.trackers[index]
                     .phase
                     .store(1, std::sync::atomic::Ordering::SeqCst);
@@ -1691,7 +1747,8 @@ impl Installer {
 
     /// Calculate total size of all tasks for progress tracking
     /// Returns (total_size, per_task_sizes) for proportional progress calculation
-    /// Includes extra size for backup/restore operations during clean install
+    /// Only counts source extraction bytes — restore overhead is excluded because
+    /// atomic installer doesn't track restore bytes, and the restore phase is fast.
     fn calculate_total_size(&self, tasks: &[InstallTask]) -> Result<(u64, Vec<u64>)> {
         let mut total = 0u64;
         let mut task_sizes = Vec::with_capacity(tasks.len());
@@ -1699,42 +1756,13 @@ impl Installer {
         for task in tasks {
             let mut task_size = 0u64;
             let source = Path::new(&task.source_path);
-            let target = Path::new(&task.target_path);
 
-            // Add source size (archive or directory)
+            // Add source size (archive or directory) — this is the main extraction work
             if source.is_dir() {
                 task_size += self.get_directory_size(source)?;
             } else if source.is_file() {
                 task_size +=
                     self.get_archive_size(source, task.archive_internal_root.as_deref())?;
-            }
-
-            // For clean install with existing target, add restore overhead
-            // Note: Backup operations don't update progress, so we only count restore operations
-            if !task.should_overwrite && target.exists() {
-                match task.addon_type {
-                    AddonType::Aircraft => {
-                        // Restore liveries (only count restore, not backup)
-                        if task.backup_liveries {
-                            let liveries_path = target.join("liveries");
-                            if liveries_path.exists() && liveries_path.is_dir() {
-                                let liveries_size =
-                                    self.get_directory_size(&liveries_path).unwrap_or(0);
-                                task_size += liveries_size; // only restore
-                            }
-                        }
-
-                        // Restore config files (only count restore, not backup)
-                        if task.backup_config_files {
-                            let config_size =
-                                self.get_config_files_size(target, &task.config_file_patterns);
-                            task_size += config_size; // only restore
-                        }
-                    }
-                    _ => {
-                        // Other addon types don't have backup/restore overhead
-                    }
-                }
             }
 
             task_sizes.push(task_size);
@@ -1744,6 +1772,7 @@ impl Installer {
     }
 
     /// Get total size of config files matching patterns in a directory
+    #[allow(dead_code)]
     fn get_config_files_size(&self, dir: &Path, patterns: &[String]) -> u64 {
         // Pre-compile patterns once for efficiency
         let compiled = CompiledPatterns::new(patterns);

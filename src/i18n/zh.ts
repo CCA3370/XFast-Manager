@@ -56,6 +56,7 @@ export default {
     installed: '已安装',
     failed: '失败',
     installingNow: '安装中...',
+    verifying: '校验中...',
     waiting: '等待中',
     launchXPlane: '启动 X-Plane',
     launchConfirmTitle: '地景更改待应用',
