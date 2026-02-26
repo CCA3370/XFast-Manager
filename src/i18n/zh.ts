@@ -633,7 +633,7 @@ export default {
       crash: {
         name: '程序崩溃',
         description: 'X-Plane 发生崩溃',
-        suggestion: '查看崩溃前的日志内容，通常是插件冲突或内存不足导致。尝试禁用最近安装的插件。',
+        suggestion: '查看崩溃前的日志内容，通常是插件问题或内存/显存不足导致。尝试禁用最近安装的插件。',
       },
       plugin_manager_error: {
         name: '插件管理器内部错误',
@@ -643,7 +643,7 @@ export default {
       scenery_load_failed: {
         name: '地景包加载失败',
         description: '地景包无法加载，可能缺少依赖库或文件损坏',
-        suggestion: '检查地景包是否需要额外的库文件（如 MisterX Library 等），或重新安装该地景。',
+        suggestion: '检查地景包是否需要额外的库文件，或重新安装该地景。',
       },
       aircraft_incompatible: {
         name: '飞机数据不兼容',
@@ -653,7 +653,7 @@ export default {
       vulkan_device_error: {
         name: 'Vulkan 设备错误',
         description: 'Vulkan 渲染设备发生严重错误',
-        suggestion: '更新显卡驱动，或尝试切换到 OpenGL 模式。',
+        suggestion: '更新显卡驱动，或尝试切换到 OpenGL 模式 (XP11)。',
       },
       system_alert: {
         name: '系统警告弹窗',
@@ -673,7 +673,7 @@ export default {
       vulkan_gfx_error: {
         name: 'Vulkan 渲染错误',
         description: 'Vulkan 渲染引擎发生错误',
-        suggestion: '尝试更新显卡驱动，或切换到 OpenGL 模式。',
+        suggestion: '尝试更新显卡驱动，或切换到 OpenGL 模式 (XP11)。',
       },
       gfx_error: {
         name: '图形错误',
@@ -713,7 +713,7 @@ export default {
       dsf_error: {
         name: 'DSF 地形错误',
         description: 'DSF 地形文件的道路网络或其他数据存在问题',
-        suggestion: '通常不影响飞行。如果地景显示异常，尝试重新安装地景包。',
+        suggestion: '如果地景显示异常，尝试重新安装地景包。',
       },
       network_error: {
         name: '网络错误',

@@ -659,7 +659,7 @@ export default {
       scenery_load_failed: {
         name: 'Scenery Load Failed',
         description: 'Scenery package failed to load — missing library or corrupted files',
-        suggestion: 'Check if the scenery requires additional library files (e.g. MisterX Library), or reinstall the scenery.',
+        suggestion: 'Check if the scenery requires additional library files, or reinstall the scenery.',
       },
       aircraft_incompatible: {
         name: 'Aircraft Incompatible',
@@ -669,7 +669,7 @@ export default {
       vulkan_device_error: {
         name: 'Vulkan Device Error',
         description: 'Vulkan render device encountered a fatal error',
-        suggestion: 'Update your GPU driver, or switch to OpenGL mode.',
+        suggestion: 'Update your GPU driver, or switch to OpenGL mode (XP11).',
       },
       system_alert: {
         name: 'System Alert',
@@ -709,7 +709,7 @@ export default {
       missing_plugin_support: {
         name: 'Missing Plugin Support File',
         description: 'A required plugin support file is missing (e.g. XPLM_64.dll)',
-        suggestion: 'Verify game files via Steam, or reinstall X-Plane.',
+        suggestion: 'Verify game files via Steam OR Offical Installer, or reinstall X-Plane.',
       },
       out_of_memory: {
         name: 'Out of Memory',
@@ -729,7 +729,7 @@ export default {
       dsf_error: {
         name: 'DSF Terrain Error',
         description: 'DSF terrain file has issues with road network or other data',
-        suggestion: 'Usually non-critical. If scenery looks broken, try reinstalling the scenery package.',
+        suggestion: 'If scenery looks broken, try reinstalling the scenery package.',
       },
       network_error: {
         name: 'Network Error',
@@ -804,6 +804,7 @@ export default {
     },
   },
   errors: {
+    validation_failed: 'Invalid input data',
     permission_denied: 'Permission denied',
     not_found: 'Resource not found',
     conflict_exists: 'Resource already exists',
