@@ -67,16 +67,22 @@ impl Analyzer {
 
                     if is_in_target_dir {
                         let error_msg = tr(LogMsg::CannotInstallFromXPlane);
-                        return (path_str.clone(), Err(anyhow::anyhow!(error_msg)), None);
+                        return (path_str.clone(), Err(anyhow::anyhow!(error_msg)));
                     }
                 }
 
                 let password = passwords_ref.and_then(|p| p.get(path_str).map(|s| s.as_str()));
-                (
-                    path_str.clone(),
-                    self.scanner.scan_path(path, password),
-                    password.map(|s| s.to_string()),
-                )
+                // Use scan_path_with_passwords when we have a full passwords map
+                // This ensures nested archive passwords (keyed as "parent/nested") are
+                // available in ScanContext for lookup during nested archive scanning
+                if let Some(all_passwords) = passwords_ref {
+                    (
+                        path_str.clone(),
+                        self.scanner.scan_path_with_passwords(path, all_passwords),
+                    )
+                } else {
+                    (path_str.clone(), self.scanner.scan_path(path, password))
+                }
             })
             .collect();
 
@@ -88,12 +94,12 @@ impl Analyzer {
                                                            // Track which archives have passwords for setting on tasks later
         let mut archive_passwords: HashMap<String, String> = HashMap::new();
 
-        for (path_str, result, password) in results {
+        for (path_str, result) in results {
             match result {
                 Ok(detected) => {
                     // Store password for this archive if provided
                     // Use the same key format as scanner (Path::to_string_lossy)
-                    if let Some(pwd) = password {
+                    if let Some(pwd) = passwords_ref.and_then(|p| p.get(&path_str)) {
                         // Store with original path_str
                         archive_passwords.insert(path_str.clone(), pwd.clone());
                         // Also store with Path-normalized format (same as scanner uses)
@@ -224,19 +230,20 @@ impl Analyzer {
         }
     }
 
-    /// Deduplicate install tasks based on target_path
-    /// Multiple items with the same target path are merged into one task
+    /// Deduplicate install tasks based on target_path AND original_input_path
+    /// Multiple items with the same target path from the SAME input file are merged into one task
+    /// (e.g., multiple .acf files in same aircraft folder from one archive)
+    /// But tasks from DIFFERENT input files with the same target are kept (user should resolve conflict)
     fn deduplicate_by_target_path(&self, tasks: Vec<InstallTask>) -> Vec<InstallTask> {
         use std::collections::HashMap;
 
-        let mut seen: HashMap<String, InstallTask> = HashMap::new();
+        // Key: (target_path, original_input_path) - both must match to deduplicate
+        let mut seen: HashMap<(String, Option<String>), InstallTask> = HashMap::new();
 
         for task in tasks {
-            // Use target_path as the key for deduplication
-            if !seen.contains_key(&task.target_path) {
-                seen.insert(task.target_path.clone(), task);
-            }
-            // If already exists, skip (keep the first one)
+            let key = (task.target_path.clone(), task.original_input_path.clone());
+            seen.entry(key).or_insert(task);
+            // If already exists (same target AND same input file), skip (keep the first one)
         }
 
         seen.into_values().collect()
@@ -1163,11 +1170,29 @@ mod tests {
         target_path: &str,
         display_name: &str,
     ) -> InstallTask {
+        create_install_task_with_input(
+            id,
+            addon_type,
+            source_path,
+            target_path,
+            display_name,
+            source_path,
+        )
+    }
+
+    fn create_install_task_with_input(
+        id: &str,
+        addon_type: AddonType,
+        source_path: &str,
+        target_path: &str,
+        display_name: &str,
+        original_input_path: &str,
+    ) -> InstallTask {
         InstallTask {
             id: id.to_string(),
             addon_type,
             source_path: source_path.to_string(),
-            original_input_path: Some(source_path.to_string()),
+            original_input_path: Some(original_input_path.to_string()),
             target_path: target_path.to_string(),
             display_name: display_name.to_string(),
             conflict_exists: None,
@@ -1315,27 +1340,29 @@ mod tests {
     fn test_deduplicate_by_target_path() {
         let analyzer = Analyzer::new();
 
-        // Multiple .acf files in same aircraft folder -> same target path
+        // Multiple .acf files in same aircraft folder from the SAME archive -> same target path and same input
         let tasks = vec![
-            create_install_task(
+            create_install_task_with_input(
                 "1",
                 AddonType::Aircraft,
-                "/downloads/A330/A330.acf",
+                "/downloads/A330.zip/A330/A330.acf",
                 "/X-Plane/Aircraft/A330",
                 "A330",
+                "/downloads/A330.zip", // Same archive
             ),
-            create_install_task(
+            create_install_task_with_input(
                 "2",
                 AddonType::Aircraft,
-                "/downloads/A330/A330_cargo.acf",
+                "/downloads/A330.zip/A330/A330_cargo.acf",
                 "/X-Plane/Aircraft/A330",
                 "A330",
+                "/downloads/A330.zip", // Same archive
             ),
         ];
 
         let result = analyzer.deduplicate_by_target_path(tasks);
 
-        // Should only have one task since target paths are the same
+        // Should only have one task since target paths and input file are the same
         assert_eq!(result.len(), 1);
     }
 
@@ -1368,37 +1395,80 @@ mod tests {
     }
 
     #[test]
-    fn test_deduplicate_multiple_xpl_same_plugin() {
+    fn test_deduplicate_same_target_different_input_files() {
         let analyzer = Analyzer::new();
 
-        // Multiple .xpl files in same plugin folder -> same target path
+        // Three different archives with the same target path -> should NOT deduplicate
         let tasks = vec![
-            create_install_task(
+            create_install_task_with_input(
                 "1",
-                AddonType::Plugin,
-                "/downloads/MyPlugin/win.xpl",
-                "/X-Plane/Resources/plugins/MyPlugin",
-                "MyPlugin",
+                AddonType::Aircraft,
+                "/downloads/A330_v1.zip/A330",
+                "/X-Plane/Aircraft/A330",
+                "A330",
+                "/downloads/A330_v1.zip",
             ),
-            create_install_task(
+            create_install_task_with_input(
                 "2",
-                AddonType::Plugin,
-                "/downloads/MyPlugin/mac.xpl",
-                "/X-Plane/Resources/plugins/MyPlugin",
-                "MyPlugin",
+                AddonType::Aircraft,
+                "/downloads/A330_v2.zip/A330",
+                "/X-Plane/Aircraft/A330",
+                "A330",
+                "/downloads/A330_v2.zip",
             ),
-            create_install_task(
+            create_install_task_with_input(
                 "3",
-                AddonType::Plugin,
-                "/downloads/MyPlugin/lin.xpl",
-                "/X-Plane/Resources/plugins/MyPlugin",
-                "MyPlugin",
+                AddonType::Aircraft,
+                "/downloads/A330_v3.zip/A330",
+                "/X-Plane/Aircraft/A330",
+                "A330",
+                "/downloads/A330_v3.zip",
             ),
         ];
 
         let result = analyzer.deduplicate_by_target_path(tasks);
 
-        // Should only have one task since all target paths are the same
+        // Should have all 3 tasks since they come from different input files
+        // User needs to resolve the conflict in the UI
+        assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn test_deduplicate_multiple_xpl_same_plugin() {
+        let analyzer = Analyzer::new();
+
+        // Multiple .xpl files in same plugin folder -> same target path, same original input
+        // In real usage, these come from the same archive/folder so original_input_path is the same
+        let tasks = vec![
+            create_install_task_with_input(
+                "1",
+                AddonType::Plugin,
+                "/downloads/MyPlugin/win.xpl",
+                "/X-Plane/Resources/plugins/MyPlugin",
+                "MyPlugin",
+                "/downloads/MyPlugin.zip",
+            ),
+            create_install_task_with_input(
+                "2",
+                AddonType::Plugin,
+                "/downloads/MyPlugin/mac.xpl",
+                "/X-Plane/Resources/plugins/MyPlugin",
+                "MyPlugin",
+                "/downloads/MyPlugin.zip",
+            ),
+            create_install_task_with_input(
+                "3",
+                AddonType::Plugin,
+                "/downloads/MyPlugin/lin.xpl",
+                "/X-Plane/Resources/plugins/MyPlugin",
+                "MyPlugin",
+                "/downloads/MyPlugin.zip",
+            ),
+        ];
+
+        let result = analyzer.deduplicate_by_target_path(tasks);
+
+        // Should only have one task since all target paths and original inputs are the same
         assert_eq!(result.len(), 1);
     }
 

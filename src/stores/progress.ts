@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { InstallProgress } from '@/types'
+import type { InstallProgress, ParallelTaskProgress } from '@/types'
 
 export const useProgressStore = defineStore('progress', () => {
   const progress = ref<InstallProgress | null>(null)
@@ -83,6 +83,17 @@ export const useProgressStore = defineStore('progress', () => {
   })
 
   function update(p: InstallProgress) {
+    // [DEBUG] Log raw progress data
+    const hasActiveTasks = p.activeTasks !== undefined && p.activeTasks !== null
+    if (hasActiveTasks) {
+      console.log(
+        `[STORE] update PARALLEL: pct=${p.percentage.toFixed(1)}%, phase=${p.phase}, activeTasks=${p.activeTasks?.length}, completedTaskCount=${p.completedTaskCount}, completedTaskIds=[${p.completedTaskIds?.join(',')}]`,
+      )
+    } else {
+      console.log(
+        `[STORE] update SERIAL: pct=${p.percentage.toFixed(1)}%, phase=${p.phase}, taskIndex=${p.currentTaskIndex}/${p.totalTasks}, taskName=${p.currentTaskName}`,
+      )
+    }
     progress.value = p
     startAnimation()
   }
@@ -120,10 +131,28 @@ export const useProgressStore = defineStore('progress', () => {
     displayPercentage.value = percentage
   }
 
+  // Parallel mode detection and data
+  const isParallelMode = computed(() => {
+    // Parallel mode is active if activeTasks array exists (even if empty, meaning all tasks finished)
+    return progress.value?.activeTasks !== undefined && progress.value?.activeTasks !== null
+  })
+
+  const activeTasks = computed<ParallelTaskProgress[] | undefined>(
+    () => progress.value?.activeTasks ?? undefined,
+  )
+  const completedTaskCount = computed(() => progress.value?.completedTaskCount ?? 0)
+  const completedTaskIds = computed<string[] | undefined>(
+    () => progress.value?.completedTaskIds ?? undefined,
+  )
+
   return {
     progress,
     displayPercentage,
     formatted,
+    isParallelMode,
+    activeTasks,
+    completedTaskCount,
+    completedTaskIds,
     update,
     reset,
     setPercentage,

@@ -49,24 +49,6 @@ body:
     validations:
       required: true
 
-  - type: textarea
-    id: expected
-    attributes:
-      label: Expected Result
-      description: What should have happened?
-      placeholder: "The addon should install successfully"
-    validations:
-      required: true
-
-  - type: textarea
-    id: actual
-    attributes:
-      label: What Actually Happened
-      description: What went wrong?
-      placeholder: "The app froze for 30 seconds then displayed an error message"
-    validations:
-      required: true
-
   - type: input
     id: app_version
     attributes:

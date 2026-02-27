@@ -195,6 +195,21 @@ export interface InstallProgress {
   currentTaskTotalBytes: number
   /** Current task processed bytes */
   currentTaskProcessedBytes: number
+  /** Active tasks in parallel mode */
+  activeTasks?: ParallelTaskProgress[]
+  /** Count of completed tasks in parallel mode */
+  completedTaskCount?: number
+  /** IDs of completed tasks in parallel mode */
+  completedTaskIds?: string[]
+}
+
+export interface ParallelTaskProgress {
+  taskId: string
+  taskIndex: number
+  taskName: string
+  phase: InstallPhase
+  percentage: number
+  currentFile?: string | null
 }
 
 export interface TaskResult {

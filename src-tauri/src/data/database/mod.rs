@@ -11,7 +11,10 @@ mod queries;
 mod schema;
 
 #[cfg(test)]
+#[cfg(test)]
 pub use connection::open_memory_connection;
+#[cfg(test)]
+pub use connection::open_memory_connection_async;
 pub use connection::{delete_database, open_connection_async};
 #[cfg(test)]
 pub use migrations::apply_migrations;

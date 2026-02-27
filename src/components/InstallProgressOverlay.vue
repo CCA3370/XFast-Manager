@@ -286,16 +286,16 @@
             </div>
 
             <!-- Current Task Progress Bar (only during installation) -->
-            <div v-if="!isComplete && index === currentTaskIndex" class="mt-1.5">
+            <div v-if="!isComplete && isTaskActive(index)" class="mt-1.5">
               <div class="h-1 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
                 <div
                   class="h-full rounded-full transition-all duration-150 ease-out bg-gradient-to-r from-blue-500 to-blue-400"
-                  :style="{ width: currentTaskPercentageFormatted + '%' }"
+                  :style="{ width: getActiveTaskPercentage(index).toFixed(1) + '%' }"
                 ></div>
               </div>
               <div class="flex justify-end items-center mt-0.5">
                 <span class="text-[10px] font-medium tabular-nums text-blue-600 dark:text-blue-400">
-                  {{ currentTaskPercentageFormatted }}%
+                  {{ getActiveTaskPercentage(index).toFixed(1) }}%
                 </span>
               </div>
             </div>
@@ -347,7 +347,7 @@
             </div>
             <!-- Current: Spinning (only during installation) -->
             <div
-              v-else-if="!isComplete && index === currentTaskIndex"
+              v-else-if="!isComplete && isTaskActive(index)"
               class="rounded-full bg-blue-500 flex items-center justify-center shadow-sm"
               :class="sizeConfig.statusIconSize"
             >
@@ -512,10 +512,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AnimatedText from '@/components/AnimatedText.vue'
-import { AddonType, type InstallTask, type InstallResult } from '@/types'
+import { AddonType, type InstallTask, type InstallResult, type ParallelTaskProgress } from '@/types'
 
 const { t } = useI18n()
 
@@ -552,6 +552,10 @@ const props = defineProps<{
   // Current task bytes
   currentTaskProcessedMB: string
   currentTaskTotalMB: string
+  // Parallel mode props
+  activeTasks?: ParallelTaskProgress[]
+  completedTaskCount?: number
+  completedTaskIds?: string[]
 }>()
 
 defineEmits<{
@@ -638,12 +642,6 @@ const displayPercentage = computed(() => {
   return props.percentage
 })
 
-// Computed: current task progress percentage (0-100 for the current task only)
-// This comes directly from the backend calculation
-const currentTaskPercentageFormatted = computed(() => {
-  return props.currentTaskPercentage.toFixed(1)
-})
-
 // Computed: progress bar style with full-width gradient effect
 // The gradient should span the entire progress bar, so as progress increases,
 // the head moves through the color gradient (blue -> green)
@@ -680,10 +678,72 @@ const headerTitle = computed(() => {
   return t('completion.allFailed')
 })
 
+// Parallel mode detection
+const isParallel = computed(() => props.activeTasks !== undefined && props.activeTasks !== null)
+
+// [DEBUG] Watch parallel mode props for detailed logging
+watch(
+  () => ({
+    activeTasks: props.activeTasks,
+    completedTaskIds: props.completedTaskIds,
+    completedTaskCount: props.completedTaskCount,
+    percentage: props.percentage,
+    currentTaskIndex: props.currentTaskIndex,
+  }),
+  (val) => {
+    if (!props.tasks.length) return
+    const mode = isParallel.value ? 'PARALLEL' : 'SERIAL'
+    console.log(
+      `[OVERLAY ${mode}] percentage=${val.percentage}, currentTaskIndex=${val.currentTaskIndex}, completedTaskCount=${val.completedTaskCount}`,
+    )
+    if (isParallel.value) {
+      console.log(
+        `[OVERLAY PARALLEL] activeTasks(${val.activeTasks?.length ?? 0}):`,
+        val.activeTasks?.map(
+          (t) => `[${t.taskIndex}]${t.taskName} phase=${t.phase} ${t.percentage}%`,
+        ),
+      )
+      console.log(`[OVERLAY PARALLEL] completedTaskIds:`, val.completedTaskIds)
+    }
+    // Log per-task status
+    props.tasks.forEach((task, i) => {
+      const active = isTaskActive(i)
+      const completed = isTaskCompleted(i)
+      const failed = isTaskFailed(i)
+      const status = getTaskStatusText(i)
+      const pct = getActiveTaskPercentage(i)
+      console.log(
+        `[OVERLAY ${mode}] task[${i}] id=${task.id} name=${task.displayName} => active=${active} completed=${completed} failed=${failed} status="${status}" pct=${pct}%`,
+      )
+    })
+  },
+  { deep: true },
+)
+
+// Check if a task is currently active (installing) in parallel mode
+function isTaskActive(index: number): boolean {
+  if (isParallel.value) {
+    return props.activeTasks?.some((at) => at.taskIndex === index) ?? false
+  }
+  return index === props.currentTaskIndex
+}
+
+// Get the active task progress for a specific task index
+function getActiveTaskPercentage(index: number): number {
+  if (isParallel.value) {
+    const at = props.activeTasks?.find((t) => t.taskIndex === index)
+    return at?.percentage ?? 0
+  }
+  return props.currentTaskPercentage
+}
+
 // Computed: count of completed tasks
 const completedCount = computed(() => {
   if (props.isComplete && props.installResult) {
     return props.installResult.successfulTasks
+  }
+  if (isParallel.value) {
+    return props.completedTaskCount ?? 0
   }
   // During installation, tasks before currentTaskIndex are considered in progress or completed
   return props.currentTaskIndex
@@ -703,6 +763,11 @@ function isTaskCompleted(index: number): boolean {
   if (props.isComplete && props.installResult) {
     const result = getTaskResult(task.id)
     return result?.success === true
+  }
+
+  if (isParallel.value) {
+    // In parallel mode: check if task ID is in completedTaskIds
+    return props.completedTaskIds?.includes(task.id) ?? false
   }
 
   // During installation: tasks before current index are assumed complete
@@ -751,7 +816,7 @@ function getTaskItemClass(index: number): string {
   if (isTaskFailed(index)) {
     return 'bg-red-50/80 dark:bg-red-500/10 border border-red-200/50 dark:border-red-500/20'
   }
-  if (!props.isComplete && index === props.currentTaskIndex) {
+  if (!props.isComplete && isTaskActive(index)) {
     return 'bg-blue-50/80 dark:bg-blue-500/10 border-2 border-blue-400/50 dark:border-blue-500/40 shadow-sm'
   }
   // Waiting
@@ -766,7 +831,14 @@ function getTaskStatusText(index: number): string {
   if (isTaskFailed(index)) {
     return t('home.failed') || 'Failed'
   }
-  if (!props.isComplete && index === props.currentTaskIndex) {
+  if (!props.isComplete && isTaskActive(index)) {
+    // Check if the task is in verifying phase
+    if (isParallel.value) {
+      const at = props.activeTasks?.find((t) => t.taskIndex === index)
+      if (at?.phase === 'verifying') {
+        return t('home.verifying') || 'Verifying...'
+      }
+    }
     return t('home.installingNow') || 'Installing...'
   }
   return t('home.waiting') || 'Waiting'
@@ -780,7 +852,7 @@ function getStatusTextClass(index: number): string {
   if (isTaskFailed(index)) {
     return 'text-red-600 dark:text-red-400 font-medium'
   }
-  if (!props.isComplete && index === props.currentTaskIndex) {
+  if (!props.isComplete && isTaskActive(index)) {
     return 'text-blue-600 dark:text-blue-400 font-medium'
   }
   return 'text-gray-400 dark:text-gray-500'
@@ -853,7 +925,13 @@ function getIconBgClass(type: AddonType): string {
 // Get per-task size text for display
 function getTaskSizeText(task: InstallTask, index: number): string {
   // For the active task, show dynamic progress bytes
-  if (!props.isComplete && index === props.currentTaskIndex) {
+  if (!props.isComplete && isTaskActive(index)) {
+    if (isParallel.value) {
+      // In parallel mode, we don't have per-task byte data
+      const pct = getActiveTaskPercentage(index)
+      if (pct > 0) return `${pct.toFixed(0)}%`
+      return ''
+    }
     // Only show if we have meaningful data (totalMB > 0)
     if (props.currentTaskTotalMB !== '0.0') {
       return `${props.currentTaskProcessedMB} / ${props.currentTaskTotalMB} MB`

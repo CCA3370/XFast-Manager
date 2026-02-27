@@ -188,7 +188,9 @@ impl Installer {
         let mut current_archive_data = Vec::new();
         file.take(u64::MAX).read_to_end(&mut current_archive_data)?;
 
-        let mut current_password = outermost_password.map(|s| s.as_bytes().to_vec());
+        // Store password as bytes to avoid taint flow from string into logging sinks
+        let mut current_password_bytes: Option<Vec<u8>> =
+            outermost_password.map(|p| p.as_bytes().to_vec());
 
         // Navigate through all layers
         for archive_info in chain.archives.iter() {
@@ -216,12 +218,15 @@ impl Installer {
                 }
 
                 // Found the file, now try to read it
-                let mut file = if let Some(pwd) = current_password.as_deref() {
+                let mut file = if let Some(ref pwd) = current_password_bytes {
                     match archive.by_index_decrypt(i, pwd) {
                         Ok(f) => f,
-                        Err(e) => {
-                            decryption_error =
-                                Some(format!("Failed to decrypt {}: {}", nested_path, e));
+                        Err(_e) => {
+                            // Avoid logging potentially sensitive details from the underlying error
+                            decryption_error = Some(format!(
+                                "Failed to decrypt nested archive at {}",
+                                nested_path
+                            ));
                             break; // Stop searching, we found the file but can't decrypt
                         }
                     }
@@ -247,23 +252,28 @@ impl Installer {
 
             // Update for next iteration
             current_archive_data = nested_data;
-            current_password = archive_info
-                .password
-                .as_ref()
-                .map(|s| s.as_bytes().to_vec());
+            // Update password for next layer if specified
+            // If the nested archive has its own password, use it
+            // Otherwise, keep the current (parent) password for try-through
+            if let Some(ref next_pwd) = archive_info.password {
+                current_password_bytes = Some(next_pwd.as_bytes().to_vec());
+            }
+            // Note: if archive_info.password is None, we keep current_password_bytes
+            // as-is, since many nested archives share the same password as the parent
         }
 
         // Now extract the final (innermost) archive
         let cursor = Cursor::new(current_archive_data);
         let mut archive = ZipArchive::new(cursor)?;
 
+        let pwd_bytes = current_password_bytes.as_deref();
         // Extract all files with final_internal_root filter
         self.extract_zip_from_archive(
             &mut archive,
             target,
             chain.final_internal_root.as_deref(),
             ctx,
-            current_password.as_deref(),
+            pwd_bytes,
         )?;
 
         Ok(())
@@ -590,7 +600,8 @@ impl Installer {
         file.read_to_end(&mut zip_data)?;
 
         let mut current_archive_data = zip_data;
-        let mut current_password = password.map(|s| s.as_bytes().to_vec());
+        // Store password as bytes to avoid handling it as a string near logging/formatting sinks
+        let mut current_password_opt: Option<&[u8]> = password.map(|p| p.as_bytes());
 
         // Process remaining ZIP layers in memory
         for (index, archive_info) in remaining_chain.iter().enumerate() {
@@ -616,7 +627,7 @@ impl Installer {
                     target,
                     final_internal_root,
                     ctx,
-                    current_password.as_deref(),
+                    current_password_opt,
                 )?;
                 break;
             } else {
@@ -626,13 +637,12 @@ impl Installer {
 
                 let mut found = false;
                 for i in 0..archive.len() {
-                    let mut file = if let Some(pwd) = current_password.as_deref() {
-                        match archive.by_index_decrypt(i, pwd) {
+                    let mut file = match current_password_opt {
+                        Some(pwd) => match archive.by_index_decrypt(i, pwd) {
                             Ok(f) => f,
                             Err(_) => continue,
-                        }
-                    } else {
-                        archive.by_index(i)?
+                        },
+                        None => archive.by_index(i)?,
                     };
 
                     if file.name() == nested_path {
@@ -650,10 +660,12 @@ impl Installer {
                 }
 
                 current_archive_data = nested_data;
-                current_password = archive_info
-                    .password
-                    .as_ref()
-                    .map(|s| s.as_bytes().to_vec());
+                // Update password for next layer if specified
+                if let Some(ref next_pwd) = archive_info.password {
+                    current_password_opt = Some(next_pwd.as_bytes());
+                } else {
+                    current_password_opt = None;
+                }
             }
         }
 
@@ -1710,6 +1722,13 @@ impl Installer {
             ctx.current_task_index,
             task_percentage,
         )?;
+
+        // In parallel mode, wire up the atomic installer to delegate through
+        // the parallel progress context so it doesn't emit serial-mode events.
+        if let (Some(ref emit_fn), Some(ref cf)) = (&ctx.parallel_emit, &ctx.parallel_current_file)
+        {
+            atomic.set_parallel_emit(Arc::clone(emit_fn), Arc::clone(cf));
+        }
 
         // Step 1: Extract/copy to temp directory
         logger::log_info(

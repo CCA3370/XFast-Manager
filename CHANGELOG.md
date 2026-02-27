@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-27
+
+### Added
+
+- **X-Plane Log Analysis** - Added a dedicated log analysis page to quickly inspect errors and troubleshooting details.
+- **Parallel Installation (Experimental)** - Added optional parallel install mode with conflict awareness for overlapping target paths.
+- **Update Changelog Display** - Added automatic changelog display on first startup after updates, with manual viewing option in Settings.
+- **Bug Report Follow-Up UX** - Issue update flow and messaging were refined for clearer status communication after reporting problems.
+
+### Changed
+
+- **Installation Progress Feedback** - Progress display now reports phase/task updates more clearly, including improved tracking when parallel mode is enabled.
+
+
+### Fixed
+
+- **Scenery Error Messages** - Failure notifications now include clearer error details in scenery-related operations.
+- **Path Conflict Handling** - Improved overlap detection to better prevent problematic installs into conflicting target directories.
+- **Linux AppImage Startup** - Improved startup behavior and guidance in Wayland environments, including a more reliable X11 fallback path for problematic systems.
+
 ## [1.0.1] - 2026-02-24
 
 ### Fixed

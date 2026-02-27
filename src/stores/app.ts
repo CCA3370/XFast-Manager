@@ -88,8 +88,15 @@ export const useAppStore = defineStore('app', () => {
   const sceneryManagerHintVisible = ref(false)
   const sceneryManagerHintMessageKey = ref<string | null>(null)
 
+  // Log analysis hint (first-time user guide)
+  const logAnalysisHintVisible = ref(false)
+
   // X-Plane launch arguments (default: empty)
   const xplaneLaunchArgs = ref('')
+
+  // Parallel installation (experimental, default: disabled)
+  const parallelInstallEnabled = ref(false)
+  const maxParallelTasks = ref(3)
 
   // Confirmation modal state (for exit confirmation)
   const isConfirmationOpen = ref(false)
@@ -128,6 +135,53 @@ export const useAppStore = defineStore('app', () => {
   const hasConflicts = computed(() => {
     return currentTasks.value.some((task) => task.conflictExists === true)
   })
+
+  // Detect enabled tasks whose targetPaths overlap: same path OR one is an ancestor of the other.
+  // E.g. "Aircraft/C172" conflicts with "Aircraft/C172/liveries/DHC" because installing the
+  // parent would overwrite files inside the child directory.
+  const targetPathConflicts = computed(() => {
+    const enabled = currentTasks.value.filter((t) => getTaskEnabled(t.id))
+
+    // Normalise to forward-slashes + trailing slash so prefix checks are unambiguous
+    const normalise = (p: string) => p.replace(/\\/g, '/').replace(/\/?$/, '/')
+
+    // Build list of [task, normalisedPath] pairs once
+    const pairs = enabled.map((t) => ({ task: t, norm: normalise(t.targetPath) }))
+
+    // For each task find every other task whose path is identical or a proper ancestor/descendant
+    const conflicts = new Map<string, InstallTask[]>()
+
+    for (let i = 0; i < pairs.length; i++) {
+      for (let j = i + 1; j < pairs.length; j++) {
+        const a = pairs[i]
+        const b = pairs[j]
+        const overlaps =
+          a.norm === b.norm ||
+          b.norm.startsWith(a.norm) || // a is ancestor of b
+          a.norm.startsWith(b.norm) // b is ancestor of a
+
+        if (overlaps) {
+          // Use the shared "conflict key": the shorter (ancestor) path
+          const key = a.norm.length <= b.norm.length ? a.norm : b.norm
+          const group = conflicts.get(key) ?? []
+          if (!group.includes(a.task)) group.push(a.task)
+          if (!group.includes(b.task)) group.push(b.task)
+          conflicts.set(key, group)
+        }
+      }
+    }
+
+    return conflicts
+  })
+
+  const hasTargetPathConflicts = computed(() => targetPathConflicts.value.size > 0)
+
+  function isTaskInTargetPathConflict(taskId: string): boolean {
+    for (const tasks of targetPathConflicts.value.values()) {
+      if (tasks.some((t) => t.id === taskId)) return true
+    }
+    return false
+  }
 
   // Check if any task has size warnings
   const hasSizeWarnings = computed(() => {
@@ -210,6 +264,19 @@ export const useAppStore = defineStore('app', () => {
       xplaneLaunchArgs.value = savedLaunchArgs
     }
 
+    // Load parallel install settings
+    const savedParallel = await getItem<boolean>(STORAGE_KEYS.PARALLEL_INSTALL_ENABLED)
+    if (typeof savedParallel === 'boolean') parallelInstallEnabled.value = savedParallel
+
+    const savedMaxParallel = await getItem<number>(STORAGE_KEYS.MAX_PARALLEL_TASKS)
+    if (typeof savedMaxParallel === 'number') maxParallelTasks.value = savedMaxParallel
+
+    // Check if log analysis hint should be shown (first time user)
+    const logAnalysisHintShown = await getItem<boolean>(STORAGE_KEYS.LOG_ANALYSIS_HINT_SHOWN)
+    if (!logAnalysisHintShown) {
+      logAnalysisHintVisible.value = true
+    }
+
     isInitialized.value = true
   }
 
@@ -255,6 +322,16 @@ export const useAppStore = defineStore('app', () => {
     await setItem(STORAGE_KEYS.XPLANE_LAUNCH_ARGS, args)
   }
 
+  async function toggleParallelInstall() {
+    parallelInstallEnabled.value = !parallelInstallEnabled.value
+    await setItem(STORAGE_KEYS.PARALLEL_INSTALL_ENABLED, parallelInstallEnabled.value)
+  }
+
+  async function setMaxParallelTasks(count: number) {
+    maxParallelTasks.value = Math.max(2, Math.min(10, count))
+    await setItem(STORAGE_KEYS.MAX_PARALLEL_TASKS, maxParallelTasks.value)
+  }
+
   function showSceneryManagerHint(messageKey: string) {
     sceneryManagerHintMessageKey.value = messageKey
     sceneryManagerHintVisible.value = true
@@ -262,6 +339,11 @@ export const useAppStore = defineStore('app', () => {
 
   function dismissSceneryManagerHint() {
     sceneryManagerHintVisible.value = false
+  }
+
+  async function dismissLogAnalysisHint() {
+    logAnalysisHintVisible.value = false
+    await setItem(STORAGE_KEYS.LOG_ANALYSIS_HINT_SHOWN, true)
   }
 
   function setConfirmationOpen(open: boolean) {
@@ -519,14 +601,20 @@ export const useAppStore = defineStore('app', () => {
     deleteSourceAfterInstall,
     autoSortScenery,
     xplaneLaunchArgs,
+    parallelInstallEnabled,
+    maxParallelTasks,
     sceneryManagerHintVisible,
     sceneryManagerHintMessageKey,
+    logAnalysisHintVisible,
     isConfirmationOpen,
     isLibraryLinkSubmitting,
     logLevel,
     taskStates,
     getTaskState,
     hasConflicts,
+    hasTargetPathConflicts,
+    targetPathConflicts,
+    isTaskInTargetPathConflict,
     hasSizeWarnings,
     allSizeWarningsConfirmed,
     enabledTasksCount,
@@ -545,8 +633,11 @@ export const useAppStore = defineStore('app', () => {
     toggleDeleteSourceAfterInstall,
     toggleAutoSortScenery,
     setXplaneLaunchArgs,
+    toggleParallelInstall,
+    setMaxParallelTasks,
     showSceneryManagerHint,
     dismissSceneryManagerHint,
+    dismissLogAnalysisHint,
     setConfirmationOpen,
     setLibraryLinkSubmitting,
     setLogLevel,

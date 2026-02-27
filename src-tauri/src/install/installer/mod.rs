@@ -13,7 +13,8 @@ use crate::database::DatabaseState;
 use crate::logger;
 use crate::logger::{tr, LogMsg};
 use crate::models::{
-    AddonType, InstallPhase, InstallProgress, InstallResult, InstallTask, TaskResult,
+    AddonType, InstallPhase, InstallProgress, InstallResult, InstallTask, ParallelTaskProgress,
+    TaskResult,
 };
 use crate::task_control::TaskControl;
 
@@ -272,6 +273,11 @@ struct ProgressContext {
     inline_verified_count: Arc<AtomicU64>,
     /// Hashes computed inline during extraction (for 7z SHA256)
     inline_hashes: Arc<Mutex<HashMap<String, crate::models::FileHash>>>,
+    /// Optional parallel emit callback: when set, emit_progress updates tracker data
+    /// and calls this instead of emitting directly
+    parallel_emit: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// Optional tracker current_file reference for parallel mode
+    parallel_current_file: Option<Arc<Mutex<Option<String>>>>,
 }
 
 impl ProgressContext {
@@ -291,6 +297,8 @@ impl ProgressContext {
             inline_verified: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             inline_verified_count: Arc::new(AtomicU64::new(0)),
             inline_hashes: Arc::new(Mutex::new(HashMap::new())),
+            parallel_emit: None,
+            parallel_current_file: None,
         }
     }
 
@@ -329,23 +337,55 @@ impl ProgressContext {
     }
 
     fn emit_progress(&self, current_file: Option<String>, phase: InstallPhase) {
-        // Throttle: emit at most every 16ms (60fps for smooth animation)
-        let mut last = match self.last_emit.lock() {
-            Ok(guard) => guard,
-            Err(e) => {
-                logger::log_error(
-                    &format!("Progress mutex poisoned, skipping update: {}", e),
-                    Some("installer"),
-                );
-                return; // Skip progress update if lock is poisoned
+        self.emit_progress_internal(current_file, phase, false);
+    }
+
+    fn emit_progress_force(&self, current_file: Option<String>, phase: InstallPhase) {
+        self.emit_progress_internal(current_file, phase, true);
+    }
+
+    fn emit_progress_internal(
+        &self,
+        current_file: Option<String>,
+        phase: InstallPhase,
+        force: bool,
+    ) {
+        // In parallel mode, update tracker data and delegate to parent's emit_aggregated
+        if let Some(ref emit_fn) = self.parallel_emit {
+            // Update the tracker's current_file
+            if let Some(ref cf) = self.parallel_current_file {
+                if let Ok(mut f) = cf.lock() {
+                    *f = current_file;
+                }
             }
-        };
-        let now = Instant::now();
-        if now.duration_since(*last).as_millis() < 16 {
+            emit_fn();
             return;
         }
-        *last = now;
-        drop(last);
+
+        // Throttle: emit at most every 16ms (60fps for smooth animation), unless force=true
+        if !force {
+            let mut last = match self.last_emit.lock() {
+                Ok(guard) => guard,
+                Err(e) => {
+                    logger::log_error(
+                        &format!("Progress mutex poisoned, skipping update: {}", e),
+                        Some("installer"),
+                    );
+                    return; // Skip progress update if lock is poisoned
+                }
+            };
+            let now = Instant::now();
+            if now.duration_since(*last).as_millis() < 16 {
+                return;
+            }
+            *last = now;
+            drop(last);
+        } else {
+            // Force mode: update last_emit time but don't check throttle
+            if let Ok(mut last) = self.last_emit.lock() {
+                *last = Instant::now();
+            }
+        }
 
         let total = self.total_bytes.load(Ordering::SeqCst);
         let processed = self.processed_bytes.load(Ordering::SeqCst);
@@ -447,6 +487,20 @@ impl ProgressContext {
         let new_max = (percentage * 100.0) as u64;
         self.max_percentage.fetch_max(new_max, Ordering::SeqCst);
 
+        // Debug log for serial mode progress (before creating progress struct to avoid borrow issues)
+        if force {
+            crate::log_debug!(
+                &format!(
+                    "[PROGRESS] Force emit: task {}/{}, phase: {:?}, percentage: {:.1}%",
+                    self.current_task_index + 1,
+                    self.total_tasks,
+                    &phase,
+                    percentage
+                ),
+                "installer_progress"
+            );
+        }
+
         let progress = InstallProgress {
             percentage,
             total_bytes: total,
@@ -460,12 +514,28 @@ impl ProgressContext {
             current_task_percentage,
             current_task_total_bytes: task_size,
             current_task_processed_bytes: current_task_processed,
+            active_tasks: None,
+            // In serial mode, provide completed count as current task index
+            // This helps frontend show completed tasks more reliably
+            completed_task_count: Some(self.current_task_index),
+            completed_task_ids: None,
         };
 
         let _ = self.app_handle.emit("install-progress", &progress);
     }
 
     fn emit_final(&self, phase: InstallPhase) {
+        // In parallel mode, delegate to parent's emit_aggregated instead of emitting directly
+        if let Some(ref emit_fn) = self.parallel_emit {
+            if let Some(ref cf) = self.parallel_current_file {
+                if let Ok(mut f) = cf.lock() {
+                    *f = None;
+                }
+            }
+            emit_fn();
+            return;
+        }
+
         let total = self.total_bytes.load(Ordering::SeqCst);
         let processed = self.processed_bytes.load(Ordering::SeqCst);
 
@@ -476,12 +546,20 @@ impl ProgressContext {
             .copied()
             .unwrap_or(0);
 
+        // For serial mode: set current_task_index to total_tasks to indicate all tasks completed
+        // This ensures the frontend's "index < currentTaskIndex" check marks all tasks as completed
+        let final_task_index = if self.parallel_emit.is_none() {
+            self.total_tasks // Serial mode: all tasks done, index points beyond last task
+        } else {
+            self.current_task_index // Parallel mode: keep original index
+        };
+
         // Final progress is always 100%
         let progress = InstallProgress {
             percentage: 100.0,
             total_bytes: total,
             processed_bytes: processed,
-            current_task_index: self.current_task_index,
+            current_task_index: final_task_index,
             total_tasks: self.total_tasks,
             current_task_name: self.current_task_name.clone(),
             current_file: None,
@@ -490,9 +568,371 @@ impl ProgressContext {
             current_task_percentage: 100.0,
             current_task_total_bytes: task_size,
             current_task_processed_bytes: task_size,
+            active_tasks: None,
+            completed_task_count: Some(self.total_tasks), // All tasks completed
+            completed_task_ids: None,
         };
 
         let _ = self.app_handle.emit("install-progress", &progress);
+    }
+}
+
+// ========== Parallel Installation Support ==========
+
+/// Per-task progress tracker for parallel installation
+struct TaskTracker {
+    index: usize,
+    id: String,
+    name: String,
+    total_bytes: u64,
+    processed_bytes: Arc<AtomicU64>,
+    /// 0=waiting, 1=installing, 2=verifying, 3=done, 4=failed
+    phase: std::sync::atomic::AtomicU8,
+    verification_progress: Arc<AtomicU64>,
+    current_file: Arc<Mutex<Option<String>>>,
+    inline_verified: Arc<std::sync::atomic::AtomicBool>,
+    inline_verified_count: Arc<AtomicU64>,
+    inline_hashes: Arc<Mutex<HashMap<String, crate::models::FileHash>>>,
+}
+
+/// Aggregated parallel progress context
+#[allow(dead_code)]
+struct ParallelProgressContext {
+    app_handle: AppHandle,
+    total_bytes: u64,
+    total_tasks: usize,
+    trackers: Vec<Arc<TaskTracker>>,
+    completed_count: AtomicU64,
+    last_emit: Arc<Mutex<Instant>>,
+    /// Maximum percentage reached, prevents progress from going backward
+    max_percentage: AtomicU64,
+}
+
+impl ParallelProgressContext {
+    fn new(
+        app_handle: AppHandle,
+        total_bytes: u64,
+        total_tasks: usize,
+        task_sizes: &[u64],
+        tasks: &[InstallTask],
+    ) -> Self {
+        let trackers = tasks
+            .iter()
+            .enumerate()
+            .map(|(i, task)| {
+                Arc::new(TaskTracker {
+                    index: i,
+                    id: task.id.clone(),
+                    name: task.display_name.clone(),
+                    total_bytes: task_sizes.get(i).copied().unwrap_or(0),
+                    processed_bytes: Arc::new(AtomicU64::new(0)),
+                    phase: std::sync::atomic::AtomicU8::new(0),
+                    verification_progress: Arc::new(AtomicU64::new(0)),
+                    current_file: Arc::new(Mutex::new(None)),
+                    inline_verified: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    inline_verified_count: Arc::new(AtomicU64::new(0)),
+                    inline_hashes: Arc::new(Mutex::new(HashMap::new())),
+                })
+            })
+            .collect();
+
+        ParallelProgressContext {
+            app_handle,
+            total_bytes,
+            total_tasks,
+            trackers,
+            completed_count: AtomicU64::new(0),
+            last_emit: Arc::new(Mutex::new(Instant::now())),
+            max_percentage: AtomicU64::new(0),
+        }
+    }
+
+    fn get_task_view(self: &Arc<Self>, index: usize) -> TaskProgressView {
+        TaskProgressView {
+            tracker: Arc::clone(&self.trackers[index]),
+            parent: Arc::clone(self),
+        }
+    }
+
+    fn mark_completed(&self, index: usize) {
+        self.trackers[index]
+            .phase
+            .store(3, std::sync::atomic::Ordering::SeqCst);
+        let new_count = self.completed_count.fetch_add(1, Ordering::SeqCst) + 1;
+        crate::log_debug!(
+            &format!(
+                "[PARALLEL] Task {} ({}) marked COMPLETED, completed_count: {}/{}",
+                index, self.trackers[index].name, new_count, self.total_tasks
+            ),
+            "parallel_progress"
+        );
+    }
+
+    fn mark_failed(&self, index: usize) {
+        self.trackers[index]
+            .phase
+            .store(4, std::sync::atomic::Ordering::SeqCst);
+        crate::log_debug!(
+            &format!(
+                "[PARALLEL] Task {} ({}) marked FAILED",
+                index, self.trackers[index].name
+            ),
+            "parallel_progress"
+        );
+    }
+
+    fn emit_aggregated(&self) {
+        // Throttle: emit at most every 16ms
+        let mut last = match self.last_emit.lock() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        let now = Instant::now();
+        if now.duration_since(*last).as_millis() < 16 {
+            return;
+        }
+        *last = now;
+        drop(last);
+
+        let total_bytes = self.total_bytes;
+        let mut total_processed = 0u64;
+        let mut active_tasks = Vec::new();
+        let mut completed_task_ids = Vec::new();
+        let completed = self.completed_count.load(Ordering::SeqCst) as usize;
+
+        // Find the first active task to use as "current" for backwards-compat fields
+        let mut first_active_index = 0usize;
+        let mut first_active_name = String::new();
+        let mut first_active_file: Option<String> = None;
+        let mut found_active = false;
+
+        for tracker in &self.trackers {
+            let processed = tracker.processed_bytes.load(Ordering::SeqCst);
+
+            let phase_val = tracker.phase.load(std::sync::atomic::Ordering::SeqCst);
+            if phase_val == 1 || phase_val == 2 {
+                // installing or verifying
+                let task_total = tracker.total_bytes;
+
+                // For overall percentage: if verifying/done, extraction is complete
+                // so count full task size as processed to avoid percentage stalling
+                if phase_val == 2 {
+                    total_processed += task_total;
+                } else {
+                    total_processed += processed;
+                }
+
+                let pct = if phase_val == 2 {
+                    // Extraction is fully complete during verification phase.
+                    // Always show 100% to avoid percentage dropping backward.
+                    // The "Verifying" phase label already communicates the current activity.
+                    100.0
+                } else if task_total > 0 {
+                    (processed as f64 / task_total as f64 * 100.0).min(100.0)
+                } else {
+                    0.0
+                };
+
+                let current_file = tracker.current_file.lock().ok().and_then(|f| f.clone());
+
+                let phase = if phase_val == 2 {
+                    InstallPhase::Verifying
+                } else {
+                    InstallPhase::Installing
+                };
+
+                active_tasks.push(ParallelTaskProgress {
+                    task_id: tracker.id.clone(),
+                    task_index: tracker.index,
+                    task_name: tracker.name.clone(),
+                    phase,
+                    percentage: pct,
+                    current_file: current_file.clone(),
+                });
+
+                if !found_active {
+                    first_active_index = tracker.index;
+                    first_active_name = tracker.name.clone();
+                    first_active_file = current_file;
+                    found_active = true;
+                }
+            } else if phase_val == 3 {
+                // Task completed successfully — count full size as processed
+                total_processed += tracker.total_bytes;
+                completed_task_ids.push(tracker.id.clone());
+            } else if phase_val == 4 {
+                // Task failed — still count processed bytes for overall
+                total_processed += tracker.processed_bytes.load(Ordering::SeqCst);
+            }
+        }
+
+        let raw_percentage = if total_bytes > 0 {
+            (total_processed as f64 / total_bytes as f64 * 100.0).min(99.9)
+        } else {
+            0.0
+        };
+
+        // Ensure progress never goes backward
+        let stored_max = self.max_percentage.load(Ordering::SeqCst) as f64 / 100.0;
+        let percentage = raw_percentage.max(stored_max);
+        let new_max = (percentage * 100.0) as u64;
+        self.max_percentage.fetch_max(new_max, Ordering::SeqCst);
+
+        // Current task fields for backwards compatibility
+        let current_task_percentage = if !active_tasks.is_empty() {
+            active_tasks[0].percentage
+        } else {
+            0.0
+        };
+
+        crate::log_debug!(
+            &format!(
+                "[PARALLEL] emit_aggregated: overall {:.1}%, active_tasks: [{}], completed: {}/{}, completed_ids: [{}]",
+                percentage,
+                active_tasks.iter().map(|t| format!("{}({})={:.1}%/{:?}", t.task_index, t.task_name, t.percentage, t.phase)).collect::<Vec<_>>().join(", "),
+                completed,
+                self.total_tasks,
+                completed_task_ids.join(", ")
+            ),
+            "parallel_progress"
+        );
+
+        let progress = InstallProgress {
+            percentage,
+            total_bytes,
+            processed_bytes: total_processed,
+            current_task_index: first_active_index,
+            total_tasks: self.total_tasks,
+            current_task_name: first_active_name,
+            current_file: first_active_file,
+            phase: InstallPhase::Installing,
+            verification_progress: None,
+            current_task_percentage,
+            current_task_total_bytes: 0,
+            current_task_processed_bytes: 0,
+            active_tasks: Some(active_tasks),
+            completed_task_count: Some(completed),
+            completed_task_ids: Some(completed_task_ids),
+        };
+
+        let _ = self.app_handle.emit("install-progress", &progress);
+    }
+
+    fn emit_final(&self) {
+        let completed = self.completed_count.load(Ordering::SeqCst) as usize;
+
+        let completed_task_ids: Vec<String> = self
+            .trackers
+            .iter()
+            .filter(|t| t.phase.load(std::sync::atomic::Ordering::SeqCst) == 3)
+            .map(|t| t.id.clone())
+            .collect();
+
+        crate::log_debug!(
+            &format!(
+                "[PARALLEL] emit_final: completed={}/{}, completed_ids=[{}]",
+                completed,
+                self.total_tasks,
+                completed_task_ids.join(", ")
+            ),
+            "parallel_progress"
+        );
+
+        let progress = InstallProgress {
+            percentage: 100.0,
+            total_bytes: self.total_bytes,
+            processed_bytes: self.total_bytes,
+            current_task_index: 0,
+            total_tasks: self.total_tasks,
+            current_task_name: String::new(),
+            current_file: None,
+            phase: InstallPhase::Finalizing,
+            verification_progress: None,
+            current_task_percentage: 100.0,
+            current_task_total_bytes: 0,
+            current_task_processed_bytes: 0,
+            active_tasks: Some(Vec::new()),
+            completed_task_count: Some(completed),
+            completed_task_ids: Some(completed_task_ids),
+        };
+
+        let _ = self.app_handle.emit("install-progress", &progress);
+    }
+}
+
+/// A view into a single task's progress within a parallel installation.
+/// Implements the same interface as ProgressContext so existing extraction
+/// code can use it without changes.
+#[allow(dead_code)]
+struct TaskProgressView {
+    tracker: Arc<TaskTracker>,
+    parent: Arc<ParallelProgressContext>,
+}
+
+#[allow(dead_code)]
+impl TaskProgressView {
+    fn add_bytes(&self, bytes: u64) {
+        self.tracker
+            .processed_bytes
+            .fetch_add(bytes, Ordering::SeqCst);
+    }
+
+    fn emit_progress(&self, current_file: Option<String>, _phase: InstallPhase) {
+        if let Ok(mut f) = self.tracker.current_file.lock() {
+            *f = current_file;
+        }
+        self.parent.emit_aggregated();
+    }
+
+    fn set_verification_progress(&self, progress: f64) {
+        let stored = (progress * 100.0) as u64;
+        self.tracker
+            .verification_progress
+            .store(stored, Ordering::SeqCst);
+    }
+
+    fn get_verification_progress(&self) -> f64 {
+        let stored = self.tracker.verification_progress.load(Ordering::SeqCst);
+        stored as f64 / 100.0
+    }
+
+    /// Create a ProgressContext that wraps this task view for use with existing code.
+    /// The returned ProgressContext routes add_bytes through shared atomics and
+    /// emit_progress through the parent's emit_aggregated (no direct event emission).
+    fn as_progress_context(&self) -> ProgressContext {
+        // Create a ProgressContext that shares this tracker's atomics
+        let mut ctx = ProgressContext::new(self.parent.app_handle.clone(), self.parent.total_tasks);
+
+        // Override the shared atomics with this task's tracker values
+        ctx.total_bytes = Arc::new(AtomicU64::new(self.tracker.total_bytes));
+        ctx.processed_bytes = Arc::clone(&self.tracker.processed_bytes);
+        ctx.current_task_index = self.tracker.index;
+        ctx.current_task_name = self.tracker.name.clone();
+        ctx.verification_progress = Arc::clone(&self.tracker.verification_progress);
+        ctx.inline_verified = Arc::clone(&self.tracker.inline_verified);
+        ctx.inline_verified_count = Arc::clone(&self.tracker.inline_verified_count);
+        ctx.inline_hashes = Arc::clone(&self.tracker.inline_hashes);
+
+        // Set up task sizes so percentage calculations work correctly
+        let mut sizes = vec![0u64; self.parent.total_tasks];
+        sizes[self.tracker.index] = self.tracker.total_bytes;
+        ctx.task_sizes = Arc::new(sizes);
+
+        let mut cumulative = vec![0u64; self.parent.total_tasks];
+        cumulative[self.tracker.index] = 0;
+        ctx.task_cumulative = Arc::new(cumulative);
+
+        // Share the parent's throttle
+        ctx.last_emit = Arc::clone(&self.parent.last_emit);
+
+        // Set up parallel emit: delegate to parent's emit_aggregated instead of emitting directly
+        let parent_clone = Arc::clone(&self.parent);
+        ctx.parallel_emit = Some(Arc::new(move || {
+            parent_clone.emit_aggregated();
+        }));
+        ctx.parallel_current_file = Some(Arc::clone(&self.tracker.current_file));
+
+        ctx
     }
 }
 
@@ -556,7 +996,8 @@ impl Installer {
         // Phase 1: Calculate total size
         let calc_start = Instant::now();
         crate::log_debug!("[TIMING] Size calculation started", "installer_timing");
-        ctx.emit_progress(None, InstallPhase::Calculating);
+        // Force emit at start of installation to ensure frontend gets initial state
+        ctx.emit_progress_force(None, InstallPhase::Calculating);
         let (total_size, task_sizes) = self.calculate_total_size(&tasks)?;
         ctx.set_total_bytes(total_size);
         ctx.set_task_sizes(task_sizes);
@@ -616,7 +1057,8 @@ impl Installer {
             ctx.inline_verified_count.store(0, Ordering::SeqCst);
             ctx.inline_hashes.lock().unwrap().clear();
 
-            ctx.emit_progress(None, InstallPhase::Installing);
+            // Force emit progress to ensure frontend sees the task state change immediately
+            ctx.emit_progress_force(None, InstallPhase::Installing);
 
             logger::log_info(
                 &format!(
@@ -699,7 +1141,11 @@ impl Installer {
 
                     // Reset verification progress for this task
                     ctx.set_verification_progress(0.0);
-                    ctx.emit_progress(Some("Verifying...".to_string()), InstallPhase::Verifying);
+                    // Force emit to ensure frontend sees verification phase immediately
+                    ctx.emit_progress_force(
+                        Some("Verifying...".to_string()),
+                        InstallPhase::Verifying,
+                    );
 
                     match self.verify_installation(task, &ctx) {
                         Ok(verification_stats) => {
@@ -923,9 +1369,387 @@ impl Installer {
         })
     }
 
+    /// Install tasks in parallel with a configurable concurrency limit
+    pub async fn install_parallel(
+        &self,
+        tasks: Vec<InstallTask>,
+        max_concurrent: usize,
+        atomic_install_enabled: bool,
+        xplane_path: String,
+        delete_source_after_install: bool,
+        auto_sort_scenery: bool,
+    ) -> Result<InstallResult> {
+        let install_start = Instant::now();
+        let max_concurrent = max_concurrent.clamp(2, 10);
+
+        crate::log_debug!(
+            &format!(
+                "[TIMING] Parallel installation started: {} tasks, max_concurrent={}",
+                tasks.len(),
+                max_concurrent
+            ),
+            "installer_timing"
+        );
+
+        logger::log_info(
+            &format!(
+                "{}: {} task(s) (parallel, max_concurrent: {}, atomic: {})",
+                tr(LogMsg::InstallationStarted),
+                tasks.len(),
+                max_concurrent,
+                atomic_install_enabled
+            ),
+            Some("installer"),
+        );
+
+        // Reset task control at start
+        self.task_control.reset();
+
+        // Phase 1: Calculate total size
+        let calc_start = Instant::now();
+        let (total_size, task_sizes) = self.calculate_total_size(&tasks)?;
+        crate::log_debug!(
+            &format!(
+                "[TIMING] Parallel size calculation completed in {:.2}ms: {} bytes",
+                calc_start.elapsed().as_secs_f64() * 1000.0,
+                total_size
+            ),
+            "installer_timing"
+        );
+
+        // Emit calculating phase (include activeTasks so frontend detects parallel mode)
+        {
+            let progress = InstallProgress {
+                percentage: 0.0,
+                total_bytes: total_size,
+                processed_bytes: 0,
+                current_task_index: 0,
+                total_tasks: tasks.len(),
+                current_task_name: String::new(),
+                current_file: None,
+                phase: InstallPhase::Calculating,
+                verification_progress: None,
+                current_task_percentage: 0.0,
+                current_task_total_bytes: 0,
+                current_task_processed_bytes: 0,
+                active_tasks: Some(Vec::new()),
+                completed_task_count: Some(0),
+                completed_task_ids: Some(Vec::new()),
+            };
+            let _ = self.app_handle.emit("install-progress", &progress);
+        }
+
+        // Create parallel progress context
+        let ctx = Arc::new(ParallelProgressContext::new(
+            self.app_handle.clone(),
+            total_size,
+            tasks.len(),
+            &task_sizes,
+            &tasks,
+        ));
+
+        // Phase 2: Parallel installation
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
+        let task_control = self.task_control.clone();
+        let app_handle = self.app_handle.clone();
+
+        let mut handles = Vec::new();
+
+        // Save task metadata for post-install operations (scenery sorting, etc.)
+        // since tasks will be moved into spawn_blocking
+        #[allow(dead_code)]
+        struct TaskMeta {
+            addon_type: AddonType,
+            target_path: String,
+        }
+        let task_metas: Vec<TaskMeta> = tasks
+            .iter()
+            .map(|t| TaskMeta {
+                addon_type: t.addon_type.clone(),
+                target_path: t.target_path.clone(),
+            })
+            .collect();
+
+        for (index, task) in tasks.into_iter().enumerate() {
+            let sem = semaphore.clone();
+            let ctx = ctx.clone();
+            let tc = task_control.clone();
+            let ah = app_handle.clone();
+            let xp = xplane_path.clone();
+            let atomic = atomic_install_enabled;
+            let delete_source = delete_source_after_install;
+
+            let handle = tokio::spawn(async move {
+                // Acquire semaphore permit asynchronously
+                let _permit = match sem.acquire().await {
+                    Ok(permit) => permit,
+                    Err(_) => {
+                        return TaskResult {
+                            task_id: task.id.clone(),
+                            task_name: task.display_name.clone(),
+                            success: false,
+                            error_message: Some("Semaphore closed".to_string()),
+                            verification_stats: None,
+                        };
+                    }
+                };
+
+                // Check cancel
+                if tc.is_cancelled() {
+                    return TaskResult {
+                        task_id: task.id.clone(),
+                        task_name: task.display_name.clone(),
+                        success: false,
+                        error_message: Some("Cancelled by user".to_string()),
+                        verification_stats: None,
+                    };
+                }
+
+                // Mark task as installing
+                crate::log_debug!(
+                    &format!(
+                        "[PARALLEL] Task {} starting installation (semaphore acquired)",
+                        index
+                    ),
+                    "parallel_progress"
+                );
+                ctx.trackers[index]
+                    .phase
+                    .store(1, std::sync::atomic::Ordering::SeqCst);
+
+                // Run blocking I/O work in spawn_blocking
+                let result = tokio::task::spawn_blocking(move || {
+                    let task_view = ctx.get_task_view(index);
+                    let progress_ctx = task_view.as_progress_context();
+                    let installer = Installer::new(ah);
+
+                    let mut task = task;
+                    match installer.install_task_with_progress(&task, &progress_ctx, atomic, &xp) {
+                        Ok(_) => {
+                            {
+                                let inline = progress_ctx.inline_hashes.lock().unwrap();
+                                if !inline.is_empty() {
+                                    task.file_hashes = Some(inline.clone());
+                                    progress_ctx
+                                        .inline_verified
+                                        .store(true, std::sync::atomic::Ordering::SeqCst);
+                                    progress_ctx
+                                        .inline_verified_count
+                                        .store(inline.len() as u64, Ordering::SeqCst);
+                                }
+                            }
+
+                            ctx.trackers[index]
+                                .phase
+                                .store(2, std::sync::atomic::Ordering::SeqCst);
+
+                            progress_ctx.set_verification_progress(0.0);
+                            progress_ctx.emit_progress(
+                                Some("Verifying...".to_string()),
+                                InstallPhase::Verifying,
+                            );
+
+                            match installer.verify_installation(&task, &progress_ctx) {
+                                Ok(verification_stats) => {
+                                    ctx.mark_completed(index);
+                                    logger::log_info(
+                                        &format!(
+                                            "{}: {}",
+                                            tr(LogMsg::InstallationCompleted),
+                                            task.display_name
+                                        ),
+                                        Some("installer"),
+                                    );
+
+                                    if delete_source {
+                                        if let Some(original_path) = &task.original_input_path {
+                                            if let Err(e) = installer.delete_source_file(
+                                                original_path,
+                                                &task.source_path,
+                                            ) {
+                                                logger::log_error(
+                                                    &format!(
+                                                        "Failed to delete source file {}: {}",
+                                                        original_path, e
+                                                    ),
+                                                    Some("installer"),
+                                                );
+                                            }
+                                        }
+                                    }
+
+                                    TaskResult {
+                                        task_id: task.id.clone(),
+                                        task_name: task.display_name.clone(),
+                                        success: true,
+                                        error_message: None,
+                                        verification_stats,
+                                    }
+                                }
+                                Err(e) => {
+                                    ctx.mark_failed(index);
+                                    let error_msg = format!("Verification failed: {}", e);
+                                    logger::log_error(
+                                        &format!(
+                                            "{} {}: {}",
+                                            tr(LogMsg::InstallationFailed),
+                                            task.display_name,
+                                            error_msg
+                                        ),
+                                        Some("installer"),
+                                    );
+                                    TaskResult {
+                                        task_id: task.id.clone(),
+                                        task_name: task.display_name.clone(),
+                                        success: false,
+                                        error_message: Some(error_msg),
+                                        verification_stats: None,
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            ctx.mark_failed(index);
+                            let error_msg = format!("{}", e);
+                            logger::log_error(
+                                &format!(
+                                    "{} {}: {}",
+                                    tr(LogMsg::InstallationFailed),
+                                    task.display_name,
+                                    error_msg
+                                ),
+                                Some("installer"),
+                            );
+                            TaskResult {
+                                task_id: task.id.clone(),
+                                task_name: task.display_name.clone(),
+                                success: false,
+                                error_message: Some(error_msg),
+                                verification_stats: None,
+                            }
+                        }
+                    }
+                })
+                .await;
+
+                match result {
+                    Ok(task_result) => task_result,
+                    Err(e) => TaskResult {
+                        task_id: String::new(),
+                        task_name: String::new(),
+                        success: false,
+                        error_message: Some(format!("Task panicked: {}", e)),
+                        verification_stats: None,
+                    },
+                }
+            });
+            handles.push(handle);
+        }
+
+        // Collect results
+        let mut task_results = Vec::new();
+        for handle in handles {
+            match handle.await {
+                Ok(result) => task_results.push(result),
+                Err(e) => {
+                    task_results.push(TaskResult {
+                        task_id: String::new(),
+                        task_name: String::new(),
+                        success: false,
+                        error_message: Some(format!("Task panicked: {}", e)),
+                        verification_stats: None,
+                    });
+                }
+            }
+        }
+
+        // Phase 3: Finalize
+        ctx.emit_final();
+
+        // Auto-sort scenery for successful scenery tasks
+        if auto_sort_scenery {
+            for (i, result) in task_results.iter().enumerate() {
+                if !result.success {
+                    continue;
+                }
+                if let Some(meta) = task_metas.get(i) {
+                    if meta.addon_type == AddonType::Scenery
+                        || meta.addon_type == AddonType::SceneryLibrary
+                    {
+                        use crate::scenery_classifier::classify_scenery;
+                        use crate::scenery_packs_manager::SceneryPacksManager;
+
+                        let target_path = Path::new(&meta.target_path);
+                        if let Some(folder_name) = target_path.file_name().and_then(|n| n.to_str())
+                        {
+                            let xplane_path_buf = PathBuf::from(&xplane_path);
+                            match classify_scenery(target_path, &xplane_path_buf) {
+                                Ok(scenery_info) => {
+                                    let manager =
+                                        SceneryPacksManager::new(&xplane_path_buf, self.db.clone());
+                                    if let Err(e) =
+                                        manager.add_entry(folder_name, &scenery_info.category).await
+                                    {
+                                        logger::log_error(
+                                            &format!(
+                                                "Failed to add scenery to scenery_packs.ini: {}",
+                                                e
+                                            ),
+                                            Some("installer"),
+                                        );
+                                    } else {
+                                        logger::log_info(
+                                            &format!(
+                                                "Added {} to scenery_packs.ini (category: {:?})",
+                                                folder_name, scenery_info.category
+                                            ),
+                                            Some("installer"),
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    logger::log_error(
+                                        &format!(
+                                            "Failed to classify scenery {}: {}",
+                                            folder_name, e
+                                        ),
+                                        Some("installer"),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let successful = task_results.iter().filter(|r| r.success).count();
+        let failed = task_results.iter().filter(|r| !r.success).count();
+
+        crate::log_debug!(
+            &format!(
+                "[TIMING] Parallel installation completed in {:.2}ms: {} successful, {} failed",
+                install_start.elapsed().as_secs_f64() * 1000.0,
+                successful,
+                failed
+            ),
+            "installer_timing"
+        );
+
+        logger::log_info(&tr(LogMsg::InstallationCompleted), Some("installer"));
+
+        Ok(InstallResult {
+            total_tasks: task_results.len(),
+            successful_tasks: successful,
+            failed_tasks: failed,
+            task_results,
+        })
+    }
+
     /// Calculate total size of all tasks for progress tracking
     /// Returns (total_size, per_task_sizes) for proportional progress calculation
-    /// Includes extra size for backup/restore operations during clean install
+    /// Only counts source extraction bytes — restore overhead is excluded because
+    /// atomic installer doesn't track restore bytes, and the restore phase is fast.
     fn calculate_total_size(&self, tasks: &[InstallTask]) -> Result<(u64, Vec<u64>)> {
         let mut total = 0u64;
         let mut task_sizes = Vec::with_capacity(tasks.len());
@@ -933,42 +1757,13 @@ impl Installer {
         for task in tasks {
             let mut task_size = 0u64;
             let source = Path::new(&task.source_path);
-            let target = Path::new(&task.target_path);
 
-            // Add source size (archive or directory)
+            // Add source size (archive or directory) — this is the main extraction work
             if source.is_dir() {
                 task_size += self.get_directory_size(source)?;
             } else if source.is_file() {
                 task_size +=
                     self.get_archive_size(source, task.archive_internal_root.as_deref())?;
-            }
-
-            // For clean install with existing target, add restore overhead
-            // Note: Backup operations don't update progress, so we only count restore operations
-            if !task.should_overwrite && target.exists() {
-                match task.addon_type {
-                    AddonType::Aircraft => {
-                        // Restore liveries (only count restore, not backup)
-                        if task.backup_liveries {
-                            let liveries_path = target.join("liveries");
-                            if liveries_path.exists() && liveries_path.is_dir() {
-                                let liveries_size =
-                                    self.get_directory_size(&liveries_path).unwrap_or(0);
-                                task_size += liveries_size; // only restore
-                            }
-                        }
-
-                        // Restore config files (only count restore, not backup)
-                        if task.backup_config_files {
-                            let config_size =
-                                self.get_config_files_size(target, &task.config_file_patterns);
-                            task_size += config_size; // only restore
-                        }
-                    }
-                    _ => {
-                        // Other addon types don't have backup/restore overhead
-                    }
-                }
             }
 
             task_sizes.push(task_size);
@@ -978,6 +1773,7 @@ impl Installer {
     }
 
     /// Get total size of config files matching patterns in a directory
+    #[allow(dead_code)]
     fn get_config_files_size(&self, dir: &Path, patterns: &[String]) -> u64 {
         // Pre-compile patterns once for efficiency
         let compiled = CompiledPatterns::new(patterns);

@@ -16,8 +16,80 @@ use crate::path_utils;
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+
+#[cfg(target_os = "windows")]
+#[allow(clippy::permissions_set_readonly_false)]
+fn clear_readonly_attribute(path: &Path) -> Result<()> {
+    let metadata = fs::metadata(path)?;
+    let mut permissions = metadata.permissions();
+
+    if permissions.readonly() {
+        permissions.set_readonly(false);
+        fs::set_permissions(path, permissions)?;
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn clear_readonly_attribute(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn add_write_permission(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let metadata = fs::metadata(path)?;
+    let mut permissions = metadata.permissions();
+    let mut mode = permissions.mode();
+
+    mode |= 0o200; // Ensure user write permission.
+    if metadata.is_dir() {
+        mode |= 0o100; // Ensure user execute permission for directories.
+    }
+
+    permissions.set_mode(mode);
+    fs::set_permissions(path, permissions)?;
+
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn add_write_permission(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
+fn relax_permissions_recursive(path: &Path) -> Result<()> {
+    for entry in WalkDir::new(path).follow_links(false).into_iter().flatten() {
+        if entry.file_type().is_symlink() {
+            continue;
+        }
+
+        let entry_path = entry.path();
+        let _ = clear_readonly_attribute(entry_path);
+        let _ = add_write_permission(entry_path);
+    }
+
+    Ok(())
+}
+
+fn remove_dir_all_with_permission_fix(path: &Path, display_name: &str) -> Result<()> {
+    match fs::remove_dir_all(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::PermissionDenied => {
+            let _ = relax_permissions_recursive(path);
+            fs::remove_dir_all(path).map_err(|e2| {
+                anyhow!("Permission denied when deleting {}: {}", display_name, e2)
+            })?;
+            Ok(())
+        }
+        Err(e) => Err(e.into()),
+    }
+}
 
 /// Validate a folder name to prevent path traversal and separator injection
 fn validate_folder_name(folder_name: &str) -> Result<()> {
@@ -898,7 +970,7 @@ pub fn delete_management_item(
     folder_name: &str,
 ) -> Result<()> {
     let target_path = resolve_management_path(xplane_path, item_type, folder_name)?;
-    fs::remove_dir_all(&target_path)?;
+    remove_dir_all_with_permission_fix(&target_path, folder_name)?;
 
     logger::log_info(
         &format!("Deleted {} folder: {}", item_type, folder_name),
@@ -1560,7 +1632,8 @@ pub fn delete_aircraft_livery(
     let canonical_livery = path_utils::validate_child_path(&liveries_path, &livery_path)
         .map_err(|e| anyhow!("Invalid livery path: {}", e))?;
 
-    fs::remove_dir_all(&canonical_livery).map_err(|e| anyhow!("Failed to delete livery: {}", e))?;
+    remove_dir_all_with_permission_fix(&canonical_livery, livery_folder)
+        .map_err(|e| anyhow!("Failed to delete livery: {}", e))?;
 
     logger::log_info(
         &format!(

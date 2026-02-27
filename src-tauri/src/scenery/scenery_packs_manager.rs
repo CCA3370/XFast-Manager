@@ -52,21 +52,15 @@ impl SceneryPacksManager {
             fs::create_dir_all(parent)?;
         }
 
-        // Write to temp file first for atomic write
-        let temp_path = ini_path.with_extension("ini.tmp");
-        let mut file = fs::File::create(&temp_path)?;
-
-        // Write header
-        file.write_all(INI_HEADER.as_bytes())?;
-
-        // Write entries
+        // Build content in memory first so we can retry with a fallback strategy
+        let mut content: Vec<u8> = Vec::new();
+        content.extend_from_slice(INI_HEADER.as_bytes());
         for entry in entries {
             let prefix = if entry.enabled {
                 "SCENERY_PACK"
             } else {
                 "SCENERY_PACK_DISABLED"
             };
-
             // Normalize path: convert backslashes to forward slashes and ensure trailing slash
             // *GLOBAL_AIRPORTS* is special and should not be modified
             let path = if entry.is_global_airports {
@@ -74,12 +68,36 @@ impl SceneryPacksManager {
             } else {
                 normalize_scenery_path(&entry.path)
             };
-
-            writeln!(file, "{} {}", prefix, path)?;
+            content.extend_from_slice(format!("{} {}\n", prefix, path).as_bytes());
         }
 
-        // Atomic rename
-        fs::rename(&temp_path, ini_path)?;
+        // Strategy 1: atomic write via temp file + rename (preferred)
+        let temp_path = ini_path.with_extension("ini.tmp");
+        let atomic_result = (|| -> std::io::Result<()> {
+            let mut file = fs::File::create(&temp_path)?;
+            file.write_all(&content)?;
+            file.flush()?;
+            drop(file);
+            fs::rename(&temp_path, ini_path)?;
+            Ok(())
+        })();
+
+        if atomic_result.is_ok() {
+            return Ok(());
+        }
+        // Clean up temp file if rename failed
+        let _ = fs::remove_file(&temp_path);
+
+        // Strategy 2: direct overwrite (works when rename is blocked but file itself is writable,
+        // e.g. macOS directory permission edge cases or X-Plane holding a rename lock)
+        if let Err(direct_err) = fs::write(ini_path, &content) {
+            let hint = if cfg!(target_os = "macos") {
+                " If X-Plane is running, close it and try again. Otherwise check permissions: right-click Custom Scenery > Get Info > Sharing & Permissions."
+            } else {
+                " Make sure X-Plane is not running, and that the Custom Scenery folder is writable."
+            };
+            return Err(anyhow!("{}{}", direct_err, hint));
+        }
 
         Ok(())
     }

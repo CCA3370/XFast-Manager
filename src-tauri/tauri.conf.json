@@ -1,6 +1,6 @@
 {
   "productName": "XFast Manager",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "identifier": "com.xfastmanager.tool",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -55,7 +55,7 @@
     },
     "linux": {
       "appimage": {
-        "bundleMediaFramework": true
+        "bundleMediaFramework": false
       },
       "deb": {
         "depends": [

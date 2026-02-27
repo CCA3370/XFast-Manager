@@ -155,6 +155,7 @@ import { useToastStore } from '@/stores/toast'
 import { useI18n } from 'vue-i18n'
 import { logError } from '@/services/logger'
 import { logger } from '@/services/logger'
+import { getItem, setItem, STORAGE_KEYS, type TrackedIssue } from '@/services/storage'
 
 const modal = useModalStore()
 const okBtn = ref<HTMLElement | null>(null)
@@ -226,14 +227,14 @@ async function submitBugReport() {
     // Try API submission with timeout
     let submitTimeoutId: ReturnType<typeof setTimeout> | null = null
     try {
-      const issueUrl = await Promise.race<string>([
-        invoke<string>('create_bug_report_issue', {
+      const result = await Promise.race<{ issue_url: string; issue_number: number }>([
+        invoke<{ issue_url: string; issue_number: number }>('create_bug_report_issue', {
           errorTitle,
           errorMessage,
           logs,
           category: 'Other',
         }),
-        new Promise<string>((_, reject) => {
+        new Promise<{ issue_url: string; issue_number: number }>((_, reject) => {
           submitTimeoutId = setTimeout(() => {
             reject(new Error('BUG_REPORT_SUBMIT_TIMEOUT'))
           }, BUG_REPORT_TIMEOUT_MS)
@@ -242,7 +243,28 @@ async function submitBugReport() {
 
       toast.success(t('modal.bugReportSubmitted'))
       // Open the created issue
-      await invoke('open_url', { url: issueUrl })
+      await invoke('open_url', { url: result.issue_url })
+
+      // Track the issue for future update checks
+      if (result.issue_number > 0) {
+        try {
+          const now = new Date().toISOString()
+          const newEntry: TrackedIssue = {
+            issueNumber: result.issue_number,
+            issueTitle: `[Bug]: ${(errorTitle || errorMessage).slice(0, 80)}`,
+            issueUrl: result.issue_url,
+            state: 'open',
+            commentCount: 0,
+            reportedAt: now,
+            lastCheckedAt: now,
+          }
+          const existing = (await getItem<TrackedIssue[]>(STORAGE_KEYS.REPORTED_ISSUES)) ?? []
+          const updated = [newEntry, ...existing].slice(0, 10)
+          await setItem(STORAGE_KEYS.REPORTED_ISSUES, updated)
+        } catch (trackErr) {
+          logError(`Failed to track reported issue: ${trackErr}`, 'bug-report')
+        }
+      }
     } catch {
       // Fallback: open prefilled GitHub issue page
       try {

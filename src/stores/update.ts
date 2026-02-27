@@ -8,6 +8,7 @@ import { i18n } from '@/i18n'
 import { logError, logDebug, logBasic } from '@/services/logger'
 import { invokeVoidCommand, CommandError } from '@/services/api'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
+import bundledChangelog from '../../CHANGELOG.md?raw'
 
 const t = i18n.global.t
 
@@ -21,6 +22,10 @@ export const useUpdateStore = defineStore('update', () => {
   const checkInProgress = ref(false)
   const autoCheckEnabled = ref(true)
   const includePreRelease = ref(false)
+  const showPostUpdateChangelog = ref(false)
+  const postUpdateVersion = ref('')
+  const postUpdateReleaseNotes = ref('')
+  const postUpdateReleaseUrl = ref('')
 
   // Initialization flag
   const isInitialized = ref(false)
@@ -150,6 +155,83 @@ export const useUpdateStore = defineStore('update', () => {
     logBasic(`Include pre-release ${includePreRelease.value ? 'enabled' : 'disabled'}`, 'update')
   }
 
+  function normalizeVersionTag(version: string): string {
+    return version.trim().replace(/^v/i, '')
+  }
+
+  function extractChangelogSection(markdown: string, version: string): string {
+    const normalized = normalizeVersionTag(version)
+    const escapedVersion = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const sectionRegex = new RegExp(
+      `^##\\s+\\[v?${escapedVersion}\\].*\\n([\\s\\S]*?)(?=^##\\s+\\[|\\Z)`,
+      'm',
+    )
+
+    const match = markdown.match(sectionRegex)
+    return match?.[1]?.trim() ?? ''
+  }
+
+  function readBundledChangelogSection(version: string): string {
+    return extractChangelogSection(bundledChangelog, version)
+  }
+
+  async function checkAndShowPostUpdateChangelog() {
+    try {
+      const currentVersion = await invoke<string>('get_app_version')
+      const normalizedVersion = normalizeVersionTag(currentVersion)
+      const shownVersion = await getItem<string>(STORAGE_KEYS.LAST_SHOWN_CHANGELOG_VERSION)
+
+      if (shownVersion && normalizeVersionTag(shownVersion) === normalizedVersion) {
+        return
+      }
+
+      const releaseNotes = readBundledChangelogSection(normalizedVersion)
+      if (!releaseNotes) {
+        logDebug(`No bundled changelog section found for v${normalizedVersion}`, 'update')
+        await setItem(STORAGE_KEYS.LAST_SHOWN_CHANGELOG_VERSION, normalizedVersion)
+        return
+      }
+
+      postUpdateVersion.value = normalizedVersion
+      postUpdateReleaseNotes.value = releaseNotes
+      postUpdateReleaseUrl.value = `https://github.com/CCA3370/XFast-Manager/releases/tag/v${normalizedVersion}`
+      showPostUpdateChangelog.value = true
+
+      await setItem(STORAGE_KEYS.LAST_SHOWN_CHANGELOG_VERSION, normalizedVersion)
+      logBasic(`Showing post-update changelog for v${normalizedVersion}`, 'update')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logError(`Failed to check post-update changelog: ${message}`, 'update')
+    }
+  }
+
+  async function viewCurrentVersionChangelog() {
+    try {
+      const currentVersion = await invoke<string>('get_app_version')
+      const normalizedVersion = normalizeVersionTag(currentVersion)
+      const releaseNotes = readBundledChangelogSection(normalizedVersion)
+
+      if (!releaseNotes) {
+        modal.showError(t('update.changelogNotFound', { version: normalizedVersion }))
+        return
+      }
+
+      postUpdateVersion.value = normalizedVersion
+      postUpdateReleaseNotes.value = releaseNotes
+      postUpdateReleaseUrl.value = `https://github.com/CCA3370/XFast-Manager/releases/tag/v${normalizedVersion}`
+      showPostUpdateChangelog.value = true
+      logDebug(`Showing current version changelog for v${normalizedVersion}`, 'update')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logError(`Failed to show current version changelog: ${message}`, 'update')
+      modal.showError(t('common.error'))
+    }
+  }
+
+  function dismissPostUpdateChangelog() {
+    showPostUpdateChangelog.value = false
+  }
+
   return {
     updateInfo,
     showUpdateBanner,
@@ -157,10 +239,17 @@ export const useUpdateStore = defineStore('update', () => {
     checkInProgress,
     autoCheckEnabled,
     includePreRelease,
+    showPostUpdateChangelog,
+    postUpdateVersion,
+    postUpdateReleaseNotes,
+    postUpdateReleaseUrl,
     isInitialized,
     initStore,
     checkForUpdates,
+    checkAndShowPostUpdateChangelog,
+    viewCurrentVersionChangelog,
     dismissUpdate,
+    dismissPostUpdateChangelog,
     openReleaseUrl,
     toggleAutoCheck,
     toggleIncludePreRelease,

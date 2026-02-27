@@ -115,19 +115,19 @@ async function loadTabData(tab: ManagementTab) {
       case 'aircraft':
         await managementStore.loadAircraft()
         if (managementStore.error) {
-          modalStore.showError(t('management.scanFailed') + ': ' + managementStore.error)
+          toastStore.warning(t('management.scanFailed') + ': ' + managementStore.error)
         }
         break
       case 'plugin':
         await managementStore.loadPlugins()
         if (managementStore.error) {
-          modalStore.showError(t('management.scanFailed') + ': ' + managementStore.error)
+          toastStore.warning(t('management.scanFailed') + ': ' + managementStore.error)
         }
         break
       case 'navdata':
         await managementStore.loadNavdata()
         if (managementStore.error) {
-          modalStore.showError(t('management.scanFailed') + ': ' + managementStore.error)
+          toastStore.warning(t('management.scanFailed') + ': ' + managementStore.error)
         }
         break
       case 'scenery':
@@ -135,7 +135,7 @@ async function loadTabData(tab: ManagementTab) {
         break
     }
   } catch (e) {
-    modalStore.showError(t('management.scanFailed') + ': ' + String(e))
+    toastStore.warning(t('management.scanFailed') + ': ' + String(e))
   }
 }
 

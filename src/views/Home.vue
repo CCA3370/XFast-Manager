@@ -245,6 +245,9 @@
             :current-task-total-m-b="progressStore.formatted.currentTaskTotalMB"
             :is-complete="store.showCompletion"
             :install-result="store.installResult"
+            :active-tasks="progressStore.activeTasks"
+            :completed-task-count="progressStore.completedTaskCount"
+            :completed-task-ids="progressStore.completedTaskIds"
             @skip="handleSkipTask"
             @cancel="handleCancelInstallation"
             @confirm="handleCompletionConfirm"
@@ -576,7 +579,25 @@ onMounted(async () => {
   // Listen for installation progress events
   try {
     unlistenProgress = await listen<InstallProgress>('install-progress', (event) => {
-      progressStore.update(event.payload)
+      const payload = event.payload
+      if (payload.activeTasks) {
+        // Debug log for parallel mode progress
+        const activeInfo = payload.activeTasks
+          .map((t) => `${t.taskIndex}(${t.taskName})=${t.percentage.toFixed(1)}%/${t.phase}`)
+          .join(', ')
+        const completedIds = payload.completedTaskIds?.join(', ') ?? ''
+        logDebug(
+          `[PROGRESS] Parallel mode: overall ${payload.percentage.toFixed(1)}%, active=[${activeInfo}], completed=${payload.completedTaskCount}/${payload.totalTasks}, completedIds=[${completedIds}], phase: ${payload.phase}`,
+          'install',
+        )
+      } else {
+        // Debug log for serial mode progress
+        logDebug(
+          `[PROGRESS] Serial mode: task ${payload.currentTaskIndex + 1}/${payload.totalTasks}, phase: ${payload.phase}, percentage: ${payload.percentage.toFixed(1)}%`,
+          'install',
+        )
+      }
+      progressStore.update(payload)
     })
     logDebug('Progress listener registered', 'install')
   } catch (error) {
@@ -670,17 +691,22 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
       'analysis',
     )
 
-    // Check if any archives require passwords
-    if (result.passwordRequired && result.passwordRequired.length > 0) {
+    // Check if any archives (including nested archives) require passwords
+    const nestedRequiredPaths = result.nestedPasswordRequired
+      ? Object.keys(result.nestedPasswordRequired)
+      : []
+    const allRequiredPaths = [...(result.passwordRequired || []), ...nestedRequiredPaths]
+
+    if (allRequiredPaths.length > 0) {
       // Log password requirement
       logOperation(
         t('log.passwordRequired'),
-        t('log.fileCount', { count: result.passwordRequired.length }),
+        t('log.fileCount', { count: allRequiredPaths.length }),
       )
-      logDebug(`Password required for: ${result.passwordRequired.join(', ')}`, 'analysis')
+      logDebug(`Password required for: ${allRequiredPaths.join(', ')}`, 'analysis')
       // Store the original paths for re-analysis after password input
       pendingAnalysisPaths.value = paths
-      passwordRequiredPaths.value = result.passwordRequired
+      passwordRequiredPaths.value = allRequiredPaths
       // Preserve already collected passwords
       if (passwords) {
         collectedPasswords.value = { ...passwords }
@@ -913,6 +939,8 @@ async function handleInstall() {
       xplanePath: store.xplanePath,
       deleteSourceAfterInstall: store.deleteSourceAfterInstall,
       autoSortScenery: store.autoSortScenery,
+      parallelEnabled: store.parallelInstallEnabled,
+      maxParallel: store.maxParallelTasks,
     })
 
     // Log results

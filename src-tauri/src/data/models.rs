@@ -253,6 +253,27 @@ pub struct InstallProgress {
     pub current_task_total_bytes: u64,
     /// Current task processed bytes
     pub current_task_processed_bytes: u64,
+    /// Active tasks in parallel mode (only present when parallel install is active)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_tasks: Option<Vec<ParallelTaskProgress>>,
+    /// Count of completed tasks in parallel mode
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_task_count: Option<usize>,
+    /// IDs of completed tasks in parallel mode (for UI to show checkmarks)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_task_ids: Option<Vec<String>>,
+}
+
+/// Progress information for a single task during parallel installation
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParallelTaskProgress {
+    pub task_id: String,
+    pub task_index: usize,
+    pub task_name: String,
+    pub phase: InstallPhase,
+    pub percentage: f64,
+    pub current_file: Option<String>,
 }
 
 /// Installation phase

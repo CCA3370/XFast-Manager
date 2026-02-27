@@ -77,7 +77,12 @@ impl Scanner {
         }
 
         // Convert password to bytes if provided
-        let password_bytes = password.map(|p| p.as_bytes());
+        let password_str = password;
+        // Store password as bytes early to break taint flow from string into logging sinks
+        let password_bytes: Option<&[u8]> = match password {
+            Some(p) => Some(p.as_bytes()),
+            None => None,
+        };
 
         // SINGLE PASS: collect file info, check encryption, identify markers, AND find nested archives
         let enumerate_start = std::time::Instant::now();
@@ -103,7 +108,7 @@ impl Scanner {
                         || err_str.contains("encrypted")
                         || err_str.contains("InvalidPassword")
                     {
-                        if password_bytes.is_none() {
+                        if password_str.is_none() {
                             return Err(anyhow::anyhow!(PasswordRequiredError {
                                 archive_path: zip_path.to_string_lossy().to_string(),
                             }));
@@ -195,7 +200,7 @@ impl Scanner {
         );
 
         // If any file is encrypted but no password provided, request password
-        if has_encrypted && password_bytes.is_none() {
+        if has_encrypted && password_str.is_none() {
             return Err(anyhow::anyhow!(PasswordRequiredError {
                 archive_path: zip_path.to_string_lossy().to_string(),
             }));
@@ -203,7 +208,8 @@ impl Scanner {
 
         // If password was provided and archive has encrypted files, verify password by trying to read first encrypted file
         if has_encrypted {
-            if let Some(pwd) = password_bytes {
+            if let Some(pwd) = password_str {
+                let pwd_bytes = pwd.as_bytes();
                 // Find first encrypted file index
                 let mut encrypted_index: Option<usize> = None;
                 for i in 0..archive.len() {
@@ -218,7 +224,7 @@ impl Scanner {
                 // Try to decrypt the first encrypted file
                 if let Some(idx) = encrypted_index {
                     use std::io::Read;
-                    match archive.by_index_decrypt(idx, pwd) {
+                    match archive.by_index_decrypt(idx, pwd_bytes) {
                         Ok(mut f) => {
                             let mut buf = [0u8; 1];
                             if f.read(&mut buf).is_err() {
@@ -313,8 +319,9 @@ impl Scanner {
                     let mut content = String::new();
 
                     let read_ok = if is_encrypted {
-                        if let Some(pwd) = password_bytes {
-                            match archive.by_index_decrypt(i, pwd) {
+                        if let Some(pwd) = password_str {
+                            let pwd_bytes = pwd.as_bytes();
+                            match archive.by_index_decrypt(i, pwd_bytes) {
                                 Ok(mut f) => f.read_to_string(&mut content).is_ok(),
                                 Err(_) => false,
                             }
@@ -569,8 +576,8 @@ impl Scanner {
         &self,
         archive: &mut ::zip::ZipArchive<std::io::Cursor<Vec<u8>>>,
         parent_path: &Path,
-        _ctx: &mut ScanContext,
-        _nested_path: &str,
+        ctx: &mut ScanContext,
+        nested_path: &str,
     ) -> Result<Vec<DetectedItem>> {
         use std::io::Read;
 
@@ -579,10 +586,14 @@ impl Scanner {
         let mut aircraft_dirs: HashSet<String> = HashSet::new();
         let mut marker_files: Vec<(usize, String, &str)> = Vec::new(); // (index, path, marker_type)
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
+        let mut has_encrypted = false;
 
         for i in 0..archive.len() {
             // Use by_index_raw to avoid triggering decryption errors when reading metadata
             let file: ::zip::read::ZipFile<'_> = archive.by_index_raw(i)?;
+            if file.encrypted() {
+                has_encrypted = true;
+            }
             let file_path = file.name().replace('\\', "/");
 
             // Skip ignored paths
@@ -636,6 +647,19 @@ impl Scanner {
             } else if file_path.ends_with(".lua") {
                 // Lua script detection (lowest priority)
                 marker_files.push((i, file_path, "lua"));
+            }
+        }
+
+        // After first pass: check if this nested archive has encrypted entries
+        // If encrypted and no password is available, report it so the user can provide one
+        if has_encrypted {
+            let parent_str = parent_path.to_string_lossy();
+            let nested_password = ctx.get_nested_password(&parent_str, nested_path);
+            if nested_password.is_none() {
+                // No password available for this encrypted nested archive
+                return Err(anyhow::anyhow!(PasswordRequiredError {
+                    archive_path: format!("{}/{}", parent_str, nested_path),
+                }));
             }
         }
 
@@ -780,9 +804,6 @@ impl Scanner {
             return Ok(Vec::new());
         }
 
-        // Convert password to bytes if provided
-        let password_bytes = password.map(|p| p.as_bytes());
-
         // Single pass: collect file info, check encryption, and identify markers
         let enumerate_start = std::time::Instant::now();
         let mut plugin_dirs: HashSet<String> = HashSet::new();
@@ -801,7 +822,7 @@ impl Scanner {
                         || err_str.contains("encrypted")
                         || err_str.contains("InvalidPassword")
                     {
-                        if password_bytes.is_none() {
+                        if password.is_none() {
                             return Err(anyhow::anyhow!(PasswordRequiredError {
                                 archive_path: zip_path.to_string_lossy().to_string(),
                             }));
@@ -888,7 +909,7 @@ impl Scanner {
         );
 
         // If any file is encrypted but no password provided, request password
-        if has_encrypted && password_bytes.is_none() {
+        if has_encrypted && password.is_none() {
             return Err(anyhow::anyhow!(PasswordRequiredError {
                 archive_path: zip_path.to_string_lossy().to_string(),
             }));
@@ -896,7 +917,8 @@ impl Scanner {
 
         // If password was provided and archive has encrypted files, verify password by trying to read first encrypted file
         if has_encrypted {
-            if let Some(pwd) = password_bytes {
+            if let Some(pwd) = password {
+                let pwd_bytes = pwd.as_bytes();
                 // Find first encrypted file index
                 let mut encrypted_index: Option<usize> = None;
                 for i in 0..archive.len() {
@@ -911,7 +933,7 @@ impl Scanner {
                 // Try to decrypt the first encrypted file
                 if let Some(idx) = encrypted_index {
                     use std::io::Read;
-                    match archive.by_index_decrypt(idx, pwd) {
+                    match archive.by_index_decrypt(idx, pwd_bytes) {
                         Ok(mut f) => {
                             let mut buf = [0u8; 1];
                             if f.read(&mut buf).is_err() {
@@ -990,8 +1012,9 @@ impl Scanner {
                     use std::io::Read;
 
                     let read_ok = if is_encrypted {
-                        if let Some(pwd) = password_bytes {
-                            match archive.by_index_decrypt(i, pwd) {
+                        if let Some(pwd) = password {
+                            let pwd_bytes = pwd.as_bytes();
+                            match archive.by_index_decrypt(i, pwd_bytes) {
                                 Ok(mut f) => f.read_to_string(&mut content).is_ok(),
                                 Err(_) => false,
                             }

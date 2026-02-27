@@ -113,8 +113,24 @@ export const STORAGE_KEYS = {
   SCENERY_GROUPS_COLLAPSED: 'sceneryGroupsCollapsed',
   ONBOARDING_COMPLETED: 'onboardingCompleted',
   SCENERY_AUTO_SORT_HINT_SHOWN: 'sceneryAutoSortHintShown',
+  LOG_ANALYSIS_HINT_SHOWN: 'logAnalysisHintShown',
   AUTO_CHECK_ENABLED: 'autoCheckEnabled',
   INCLUDE_PRE_RELEASE: 'includePreRelease',
   LAST_CHECK_TIME: 'lastCheckTime',
+  LAST_SHOWN_CHANGELOG_VERSION: 'lastShownChangelogVersion',
   XPLANE_LAUNCH_ARGS: 'xplaneLaunchArgs',
+  PARALLEL_INSTALL_ENABLED: 'parallelInstallEnabled',
+  MAX_PARALLEL_TASKS: 'maxParallelTasks',
+  REPORTED_ISSUES: 'reportedIssues',
+  UNCONFIRMED_ISSUE_UPDATES: 'unconfirmedIssueUpdates',
 } as const
+
+export interface TrackedIssue {
+  issueNumber: number
+  issueTitle: string
+  issueUrl: string
+  state: 'open' | 'closed'
+  commentCount: number
+  reportedAt: string
+  lastCheckedAt: string
+}

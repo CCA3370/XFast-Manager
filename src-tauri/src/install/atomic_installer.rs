@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 use walkdir::WalkDir;
@@ -36,6 +37,10 @@ pub struct AtomicInstaller {
     current_task: usize,
     /// The overall percentage this task should show (task-proportional, not 100%)
     task_percentage: f64,
+    /// In parallel mode, delegate to parent's emit_aggregated instead of emitting directly
+    parallel_emit: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// In parallel mode, update tracker's current_file
+    parallel_current_file: Option<Arc<Mutex<Option<String>>>>,
 }
 
 impl AtomicInstaller {
@@ -80,11 +85,35 @@ impl AtomicInstaller {
             total_tasks,
             current_task,
             task_percentage,
+            parallel_emit: None,
+            parallel_current_file: None,
         })
+    }
+
+    /// Set parallel mode callbacks so atomic installer delegates to the parallel
+    /// progress context instead of emitting serial-mode events directly.
+    pub fn set_parallel_emit(
+        &mut self,
+        emit_fn: Arc<dyn Fn() + Send + Sync>,
+        current_file: Arc<Mutex<Option<String>>>,
+    ) {
+        self.parallel_emit = Some(emit_fn);
+        self.parallel_current_file = Some(current_file);
     }
 
     /// Emit progress event to frontend
     fn emit_progress(&self, message: &str, phase: InstallPhase) {
+        // In parallel mode, update tracker's current_file and delegate to parent's emit_aggregated
+        if let Some(ref emit_fn) = self.parallel_emit {
+            if let Some(ref cf) = self.parallel_current_file {
+                if let Ok(mut f) = cf.lock() {
+                    *f = Some(message.to_string());
+                }
+            }
+            emit_fn();
+            return;
+        }
+
         let progress = InstallProgress {
             percentage: self.task_percentage, // Use task-proportional percentage
             total_bytes: 0,
@@ -98,6 +127,9 @@ impl AtomicInstaller {
             current_task_percentage: 100.0, // Task extraction is complete during atomic operations
             current_task_total_bytes: 0,
             current_task_processed_bytes: 0,
+            active_tasks: None,
+            completed_task_count: None,
+            completed_task_ids: None,
         };
 
         let _ = self.app_handle.emit("install-progress", &progress);
