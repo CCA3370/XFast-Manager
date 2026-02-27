@@ -67,16 +67,12 @@ impl Analyzer {
 
                     if is_in_target_dir {
                         let error_msg = tr(LogMsg::CannotInstallFromXPlane);
-                        return (path_str.clone(), Err(anyhow::anyhow!(error_msg)), None);
+                        return (path_str.clone(), Err(anyhow::anyhow!(error_msg)));
                     }
                 }
 
                 let password = passwords_ref.and_then(|p| p.get(path_str).map(|s| s.as_str()));
-                (
-                    path_str.clone(),
-                    self.scanner.scan_path(path, password),
-                    password.map(|s| s.to_string()),
-                )
+                (path_str.clone(), self.scanner.scan_path(path, password))
             })
             .collect();
 
@@ -88,12 +84,12 @@ impl Analyzer {
                                                            // Track which archives have passwords for setting on tasks later
         let mut archive_passwords: HashMap<String, String> = HashMap::new();
 
-        for (path_str, result, password) in results {
+        for (path_str, result) in results {
             match result {
                 Ok(detected) => {
                     // Store password for this archive if provided
                     // Use the same key format as scanner (Path::to_string_lossy)
-                    if let Some(pwd) = password {
+                    if let Some(pwd) = passwords_ref.and_then(|p| p.get(&path_str)) {
                         // Store with original path_str
                         archive_passwords.insert(path_str.clone(), pwd.clone());
                         // Also store with Path-normalized format (same as scanner uses)

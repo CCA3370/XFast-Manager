@@ -163,7 +163,6 @@ impl Installer {
 
         let internal_root_normalized = internal_root.map(|s| s.replace('\\', "/"));
         let prefix = internal_root_normalized.as_deref();
-        let password_bytes = password.map(|p| p.as_bytes().to_vec());
 
         // Collect all file entries with their metadata
         let mut skipped_count = 0;
@@ -288,7 +287,6 @@ impl Installer {
 
         let archive_path = archive_path.to_path_buf();
         let target = target.to_path_buf();
-        let password_bytes = Arc::new(password_bytes);
         let expected_hashes_arc = expected_hashes.map(|h| Arc::new(h.clone()));
 
         // Collect non-directory file entries for chunked processing
@@ -322,8 +320,9 @@ impl Installer {
 
                     // Extract file with or without password, computing CRC32 inline
                     let (file_size, computed_crc) = if *is_encrypted {
-                        if let Some(ref pwd) = password_bytes.as_ref() {
-                            match archive.by_index_decrypt(*index, pwd) {
+                        if let Some(pwd) = password {
+                            let pwd_bytes = pwd.as_bytes();
+                            match archive.by_index_decrypt(*index, pwd_bytes) {
                                 Ok(mut file) => {
                                     let mut outfile = fs::File::create(&outpath)?;
                                     copy_file_with_crc32(&mut file, &mut outfile)?

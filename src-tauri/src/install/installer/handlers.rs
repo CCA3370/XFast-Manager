@@ -188,7 +188,7 @@ impl Installer {
         let mut current_archive_data = Vec::new();
         file.take(u64::MAX).read_to_end(&mut current_archive_data)?;
 
-        let mut current_password = outermost_password.map(|s| s.as_bytes().to_vec());
+        let mut current_password_opt = outermost_password;
 
         // Navigate through all layers
         for archive_info in chain.archives.iter() {
@@ -216,7 +216,8 @@ impl Installer {
                 }
 
                 // Found the file, now try to read it
-                let mut file = if let Some(pwd) = current_password.as_deref() {
+                let pwd_bytes = current_password_opt.map(|s| s.as_bytes());
+                let mut file = if let Some(pwd) = pwd_bytes {
                     match archive.by_index_decrypt(i, pwd) {
                         Ok(f) => f,
                         Err(e) => {
@@ -247,23 +248,26 @@ impl Installer {
 
             // Update for next iteration
             current_archive_data = nested_data;
-            current_password = archive_info
-                .password
-                .as_ref()
-                .map(|s| s.as_bytes().to_vec());
+            // Update password for next layer if specified
+            if let Some(ref next_pwd) = archive_info.password {
+                current_password_opt = Some(next_pwd.as_str());
+            } else {
+                current_password_opt = None;
+            }
         }
 
         // Now extract the final (innermost) archive
         let cursor = Cursor::new(current_archive_data);
         let mut archive = ZipArchive::new(cursor)?;
 
+        let pwd_bytes = current_password_opt.map(|s| s.as_bytes());
         // Extract all files with final_internal_root filter
         self.extract_zip_from_archive(
             &mut archive,
             target,
             chain.final_internal_root.as_deref(),
             ctx,
-            current_password.as_deref(),
+            pwd_bytes,
         )?;
 
         Ok(())
@@ -590,7 +594,7 @@ impl Installer {
         file.read_to_end(&mut zip_data)?;
 
         let mut current_archive_data = zip_data;
-        let mut current_password = password.map(|s| s.as_bytes().to_vec());
+        let mut current_password_opt = password;
 
         // Process remaining ZIP layers in memory
         for (index, archive_info) in remaining_chain.iter().enumerate() {
@@ -611,12 +615,13 @@ impl Installer {
                 let cursor = Cursor::new(current_archive_data);
                 let mut archive = ZipArchive::new(cursor)?;
 
+                let pwd_bytes = current_password_opt.map(|s| s.as_bytes());
                 self.extract_zip_from_archive(
                     &mut archive,
                     target,
                     final_internal_root,
                     ctx,
-                    current_password.as_deref(),
+                    pwd_bytes,
                 )?;
                 break;
             } else {
@@ -625,8 +630,9 @@ impl Installer {
                 let mut nested_data = Vec::new();
 
                 let mut found = false;
+                let pwd_bytes = current_password_opt.map(|s| s.as_bytes());
                 for i in 0..archive.len() {
-                    let mut file = if let Some(pwd) = current_password.as_deref() {
+                    let mut file = if let Some(pwd) = pwd_bytes {
                         match archive.by_index_decrypt(i, pwd) {
                             Ok(f) => f,
                             Err(_) => continue,
@@ -650,10 +656,12 @@ impl Installer {
                 }
 
                 current_archive_data = nested_data;
-                current_password = archive_info
-                    .password
-                    .as_ref()
-                    .map(|s| s.as_bytes().to_vec());
+                // Update password for next layer if specified
+                if let Some(ref next_pwd) = archive_info.password {
+                    current_password_opt = Some(next_pwd.as_str());
+                } else {
+                    current_password_opt = None;
+                }
             }
         }
 
