@@ -691,17 +691,22 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
       'analysis',
     )
 
-    // Check if any archives require passwords
-    if (result.passwordRequired && result.passwordRequired.length > 0) {
+    // Check if any archives (including nested archives) require passwords
+    const nestedRequiredPaths = result.nestedPasswordRequired
+      ? Object.keys(result.nestedPasswordRequired)
+      : []
+    const allRequiredPaths = [...(result.passwordRequired || []), ...nestedRequiredPaths]
+
+    if (allRequiredPaths.length > 0) {
       // Log password requirement
       logOperation(
         t('log.passwordRequired'),
-        t('log.fileCount', { count: result.passwordRequired.length }),
+        t('log.fileCount', { count: allRequiredPaths.length }),
       )
-      logDebug(`Password required for: ${result.passwordRequired.join(', ')}`, 'analysis')
+      logDebug(`Password required for: ${allRequiredPaths.join(', ')}`, 'analysis')
       // Store the original paths for re-analysis after password input
       pendingAnalysisPaths.value = paths
-      passwordRequiredPaths.value = result.passwordRequired
+      passwordRequiredPaths.value = allRequiredPaths
       // Preserve already collected passwords
       if (passwords) {
         collectedPasswords.value = { ...passwords }

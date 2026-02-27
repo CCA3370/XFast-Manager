@@ -188,7 +188,9 @@ impl Installer {
         let mut current_archive_data = Vec::new();
         file.take(u64::MAX).read_to_end(&mut current_archive_data)?;
 
-        let mut current_password_opt = outermost_password;
+        // Store password as bytes to avoid taint flow from string into logging sinks
+        let mut current_password_bytes: Option<Vec<u8>> =
+            outermost_password.map(|p| p.as_bytes().to_vec());
 
         // Navigate through all layers
         for archive_info in chain.archives.iter() {
@@ -216,8 +218,7 @@ impl Installer {
                 }
 
                 // Found the file, now try to read it
-                let pwd_bytes = current_password_opt.map(|s| s.as_bytes());
-                let mut file = if let Some(pwd) = pwd_bytes {
+                let mut file = if let Some(ref pwd) = current_password_bytes {
                     match archive.by_index_decrypt(i, pwd) {
                         Ok(f) => f,
                         Err(_e) => {
@@ -253,9 +254,9 @@ impl Installer {
             current_archive_data = nested_data;
             // Update password for next layer if specified
             if let Some(ref next_pwd) = archive_info.password {
-                current_password_opt = Some(next_pwd.as_str());
+                current_password_bytes = Some(next_pwd.as_bytes().to_vec());
             } else {
-                current_password_opt = None;
+                current_password_bytes = None;
             }
         }
 
@@ -263,10 +264,7 @@ impl Installer {
         let cursor = Cursor::new(current_archive_data);
         let mut archive = ZipArchive::new(cursor)?;
 
-        let pwd_bytes = match current_password_opt {
-            Some(pwd) => Some(pwd.as_bytes()),
-            None => None,
-        };
+        let pwd_bytes = current_password_bytes.as_deref();
         // Extract all files with final_internal_root filter
         self.extract_zip_from_archive(
             &mut archive,

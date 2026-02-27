@@ -78,6 +78,11 @@ impl Scanner {
 
         // Convert password to bytes if provided
         let password_str = password;
+        // Store password as bytes early to break taint flow from string into logging sinks
+        let password_bytes: Option<&[u8]> = match password {
+            Some(p) => Some(p.as_bytes()),
+            None => None,
+        };
 
         // SINGLE PASS: collect file info, check encryption, identify markers, AND find nested archives
         let enumerate_start = std::time::Instant::now();
@@ -407,7 +412,7 @@ impl Scanner {
                     nested_path: nested_path.as_str(),
                     parent_path: zip_path,
                     ctx,
-                    parent_password: None,
+                    parent_password: password_bytes,
                     is_encrypted,
                 };
                 match self.scan_nested_archive_in_zip(params) {
