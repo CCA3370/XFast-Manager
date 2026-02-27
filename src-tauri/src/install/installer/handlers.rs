@@ -600,7 +600,8 @@ impl Installer {
         file.read_to_end(&mut zip_data)?;
 
         let mut current_archive_data = zip_data;
-        let mut current_password_opt = password;
+        // Store password as bytes to avoid handling it as a string near logging/formatting sinks
+        let mut current_password_opt: Option<&[u8]> = password.map(|p| p.as_bytes());
 
         // Process remaining ZIP layers in memory
         for (index, archive_info) in remaining_chain.iter().enumerate() {
@@ -621,13 +622,12 @@ impl Installer {
                 let cursor = Cursor::new(current_archive_data);
                 let mut archive = ZipArchive::new(cursor)?;
 
-                let pwd_bytes = current_password_opt.map(|s| s.as_bytes());
                 self.extract_zip_from_archive(
                     &mut archive,
                     target,
                     final_internal_root,
                     ctx,
-                    pwd_bytes,
+                    current_password_opt,
                 )?;
                 break;
             } else {
@@ -663,7 +663,7 @@ impl Installer {
                 current_archive_data = nested_data;
                 // Update password for next layer if specified
                 if let Some(ref next_pwd) = archive_info.password {
-                    current_password_opt = Some(next_pwd.as_str());
+                    current_password_opt = Some(next_pwd.as_bytes());
                 } else {
                     current_password_opt = None;
                 }
