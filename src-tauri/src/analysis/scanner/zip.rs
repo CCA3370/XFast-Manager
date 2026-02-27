@@ -576,8 +576,8 @@ impl Scanner {
         &self,
         archive: &mut ::zip::ZipArchive<std::io::Cursor<Vec<u8>>>,
         parent_path: &Path,
-        _ctx: &mut ScanContext,
-        _nested_path: &str,
+        ctx: &mut ScanContext,
+        nested_path: &str,
     ) -> Result<Vec<DetectedItem>> {
         use std::io::Read;
 
@@ -586,10 +586,14 @@ impl Scanner {
         let mut aircraft_dirs: HashSet<String> = HashSet::new();
         let mut marker_files: Vec<(usize, String, &str)> = Vec::new(); // (index, path, marker_type)
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
+        let mut has_encrypted = false;
 
         for i in 0..archive.len() {
             // Use by_index_raw to avoid triggering decryption errors when reading metadata
             let file: ::zip::read::ZipFile<'_> = archive.by_index_raw(i)?;
+            if file.encrypted() {
+                has_encrypted = true;
+            }
             let file_path = file.name().replace('\\', "/");
 
             // Skip ignored paths
@@ -643,6 +647,19 @@ impl Scanner {
             } else if file_path.ends_with(".lua") {
                 // Lua script detection (lowest priority)
                 marker_files.push((i, file_path, "lua"));
+            }
+        }
+
+        // After first pass: check if this nested archive has encrypted entries
+        // If encrypted and no password is available, report it so the user can provide one
+        if has_encrypted {
+            let parent_str = parent_path.to_string_lossy();
+            let nested_password = ctx.get_nested_password(&parent_str, nested_path);
+            if nested_password.is_none() {
+                // No password available for this encrypted nested archive
+                return Err(anyhow::anyhow!(PasswordRequiredError {
+                    archive_path: format!("{}/{}", parent_str, nested_path),
+                }));
             }
         }
 

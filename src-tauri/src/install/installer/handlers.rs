@@ -253,11 +253,13 @@ impl Installer {
             // Update for next iteration
             current_archive_data = nested_data;
             // Update password for next layer if specified
+            // If the nested archive has its own password, use it
+            // Otherwise, keep the current (parent) password for try-through
             if let Some(ref next_pwd) = archive_info.password {
                 current_password_bytes = Some(next_pwd.as_bytes().to_vec());
-            } else {
-                current_password_bytes = None;
             }
+            // Note: if archive_info.password is None, we keep current_password_bytes
+            // as-is, since many nested archives share the same password as the parent
         }
 
         // Now extract the final (innermost) archive

@@ -72,7 +72,17 @@ impl Analyzer {
                 }
 
                 let password = passwords_ref.and_then(|p| p.get(path_str).map(|s| s.as_str()));
-                (path_str.clone(), self.scanner.scan_path(path, password))
+                // Use scan_path_with_passwords when we have a full passwords map
+                // This ensures nested archive passwords (keyed as "parent/nested") are
+                // available in ScanContext for lookup during nested archive scanning
+                if let Some(all_passwords) = passwords_ref {
+                    (
+                        path_str.clone(),
+                        self.scanner.scan_path_with_passwords(path, all_passwords),
+                    )
+                } else {
+                    (path_str.clone(), self.scanner.scan_path(path, password))
+                }
             })
             .collect();
 

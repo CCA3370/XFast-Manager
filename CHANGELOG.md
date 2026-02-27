@@ -12,11 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **X-Plane Log Analysis** - Added a dedicated log analysis page to quickly inspect errors and troubleshooting details.
 - **Parallel Installation (Experimental)** - Added optional parallel install mode with conflict awareness for overlapping target paths.
 - **Update Changelog Display** - Added automatic changelog display on first startup after updates, with manual viewing option in Settings.
+- **Bug Report Follow-Up UX** - Issue update flow and messaging were refined for clearer status communication after reporting problems.
 
 ### Changed
 
 - **Installation Progress Feedback** - Progress display now reports phase/task updates more clearly, including improved tracking when parallel mode is enabled.
-- **Bug Report Follow-Up UX** - Issue update flow and messaging were refined for clearer status communication after reporting problems.
+
 
 ### Fixed
 

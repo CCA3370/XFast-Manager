@@ -306,6 +306,33 @@ impl Scanner {
         Ok(items)
     }
 
+    /// Scan a path with a full passwords map (supports nested archive passwords)
+    /// Unlike scan_path which only accepts a single password for the outer archive,
+    /// this method injects ALL passwords into ScanContext so that nested archive
+    /// passwords (keyed as "parent_path/nested_name") can be found during scanning.
+    pub fn scan_path_with_passwords(
+        &self,
+        path: &Path,
+        passwords: &HashMap<String, String>,
+    ) -> Result<Vec<DetectedItem>> {
+        let original_input_path = path.to_string_lossy().to_string();
+        let mut ctx = ScanContext::new();
+        // Insert all provided passwords into context
+        // This includes outer archive passwords (key = archive path)
+        // and nested archive passwords (key = "parent_path/nested_name")
+        for (key, value) in passwords {
+            ctx.passwords.insert(key.clone(), value.clone());
+        }
+        let mut items = self.scan_path_with_context(path, &mut ctx)?;
+
+        // Set original_input_path for all detected items
+        for item in &mut items {
+            item.original_input_path = original_input_path.clone();
+        }
+
+        Ok(items)
+    }
+
     /// Internal method: Scan a path with context (supports nested archives)
     pub(super) fn scan_path_with_context(
         &self,
