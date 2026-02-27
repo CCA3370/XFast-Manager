@@ -396,8 +396,10 @@ export default {
     autoUpdateCheckBenefit3: '发现新版本时在首页显示横幅通知',
     includePreRelease: '包含预发布版本',
     includePreReleaseDesc: '检查更新时包含 Beta/RC 等预发布版本',
+    viewCurrentChangelog: '查看本版本更新日志',
+    changelogNotFound: '未找到 v{version} 的更新日志条目',
     postUpdateTitle: 'v{version} 更新日志',
-    postUpdateSubtitle: '从 dev 分支 CHANGELOG.md 解析',
+    postUpdateSubtitle: '查看本次更新的详细内容',
     viewOnGitHub: '在 GitHub 查看',
   },
   onboarding: {

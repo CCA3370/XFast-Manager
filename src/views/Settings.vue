@@ -1694,6 +1694,23 @@
               </span>
             </button>
 
+            <button
+              class="w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+              @click="handleViewCurrentVersionChangelog"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                ></path>
+              </svg>
+              <span>
+                <AnimatedText>{{ $t('update.viewCurrentChangelog') }}</AnimatedText>
+              </span>
+            </button>
+
             <!-- 上次检查时间 -->
             <p v-if="updateStore.lastCheckTime" class="text-xs text-gray-400 text-center">
               {{ $t('update.lastChecked') }}: {{ formatLastCheckTime(updateStore.lastCheckTime) }}
@@ -2464,6 +2481,10 @@ function getLogColorClass(log: string): string {
 // Update check functions
 async function handleCheckUpdate() {
   await updateStore.checkForUpdates(true)
+}
+
+async function handleViewCurrentVersionChangelog() {
+  await updateStore.viewCurrentVersionChangelog()
 }
 
 // Scenery auto-sorting functions

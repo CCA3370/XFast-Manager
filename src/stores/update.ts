@@ -8,6 +8,7 @@ import { i18n } from '@/i18n'
 import { logError, logDebug, logBasic } from '@/services/logger'
 import { invokeVoidCommand, CommandError } from '@/services/api'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
+import bundledChangelog from '../../CHANGELOG.md?raw'
 
 const t = i18n.global.t
 
@@ -170,24 +171,8 @@ export const useUpdateStore = defineStore('update', () => {
     return match?.[1]?.trim() ?? ''
   }
 
-  async function fetchDevChangelogSection(version: string): Promise<string> {
-    const changelogUrl =
-      'https://raw.githubusercontent.com/CCA3370/XFast-Manager/dev/CHANGELOG.md'
-
-    try {
-      const response = await fetch(changelogUrl)
-      if (!response.ok) {
-        logDebug(`Failed to fetch dev CHANGELOG.md, status: ${response.status}`, 'update')
-        return ''
-      }
-
-      const markdown = await response.text()
-      return extractChangelogSection(markdown, version)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      logError(`Failed to fetch dev CHANGELOG.md: ${message}`, 'update')
-      return ''
-    }
+  function readBundledChangelogSection(version: string): string {
+    return extractChangelogSection(bundledChangelog, version)
   }
 
   async function checkAndShowPostUpdateChangelog() {
@@ -200,9 +185,9 @@ export const useUpdateStore = defineStore('update', () => {
         return
       }
 
-      const releaseNotes = await fetchDevChangelogSection(normalizedVersion)
+      const releaseNotes = readBundledChangelogSection(normalizedVersion)
       if (!releaseNotes) {
-        logDebug(`No changelog section found in dev branch for v${normalizedVersion}`, 'update')
+        logDebug(`No bundled changelog section found for v${normalizedVersion}`, 'update')
         await setItem(STORAGE_KEYS.LAST_SHOWN_CHANGELOG_VERSION, normalizedVersion)
         return
       }
@@ -217,6 +202,29 @@ export const useUpdateStore = defineStore('update', () => {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       logError(`Failed to check post-update changelog: ${message}`, 'update')
+    }
+  }
+
+  async function viewCurrentVersionChangelog() {
+    try {
+      const currentVersion = await invoke<string>('get_app_version')
+      const normalizedVersion = normalizeVersionTag(currentVersion)
+      const releaseNotes = readBundledChangelogSection(normalizedVersion)
+
+      if (!releaseNotes) {
+        modal.showError(t('update.changelogNotFound', { version: normalizedVersion }))
+        return
+      }
+
+      postUpdateVersion.value = normalizedVersion
+      postUpdateReleaseNotes.value = releaseNotes
+      postUpdateReleaseUrl.value = `https://github.com/CCA3370/XFast-Manager/releases/tag/v${normalizedVersion}`
+      showPostUpdateChangelog.value = true
+      logDebug(`Showing current version changelog for v${normalizedVersion}`, 'update')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logError(`Failed to show current version changelog: ${message}`, 'update')
+      modal.showError(t('common.error'))
     }
   }
 
@@ -239,6 +247,7 @@ export const useUpdateStore = defineStore('update', () => {
     initStore,
     checkForUpdates,
     checkAndShowPostUpdateChangelog,
+    viewCurrentVersionChangelog,
     dismissUpdate,
     dismissPostUpdateChangelog,
     openReleaseUrl,

@@ -37,9 +37,10 @@
             </button>
           </div>
 
-          <div class="px-5 py-4 max-h-[55vh] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-gray-700 dark:text-gray-200">
-            {{ updateStore.postUpdateReleaseNotes }}
-          </div>
+          <div 
+            class="px-5 py-4 max-h-[55vh] overflow-y-auto text-sm leading-relaxed text-gray-700 dark:text-gray-200 markdown-content"
+            v-html="renderedMarkdown"
+          ></div>
 
           <div class="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-2">
             <button
@@ -63,12 +64,19 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { marked } from 'marked'
 import AnimatedText from './AnimatedText.vue'
 import { useUpdateStore } from '@/stores/update'
 import { logError } from '@/services/logger'
 
 const updateStore = useUpdateStore()
+
+const renderedMarkdown = computed(() => {
+  const markdown = updateStore.postUpdateReleaseNotes || ''
+  return marked(markdown)
+})
 
 function close() {
   updateStore.dismissPostUpdateChangelog()
@@ -96,5 +104,175 @@ async function openRelease() {
 .modal-fade-enter-from,
 .modal-fade-leave-to {
   opacity: 0;
+}
+
+.markdown-content :deep(*:first-child) {
+  margin-top: 0 !important;
+}
+
+.markdown-content :deep(h1),
+.markdown-content :deep(h2),
+.markdown-content :deep(h3),
+.markdown-content :deep(h4) {
+  font-weight: 600;
+  margin-top: 1.5em;
+  margin-bottom: 0.75em;
+  line-height: 1.25;
+}
+
+.markdown-content :deep(h1) {
+  font-size: 1.5rem;
+  border-bottom: 2px solid rgb(229 231 235);
+  padding-bottom: 0.3em;
+}
+
+:root.dark .markdown-content :deep(h1) {
+  border-bottom-color: rgb(55 65 81);
+}
+
+.markdown-content :deep(h2) {
+  font-size: 1.25rem;
+  border-bottom: 1px solid rgb(229 231 235);
+  padding-bottom: 0.3em;
+}
+
+:root.dark .markdown-content :deep(h2) {
+  border-bottom-color: rgb(55 65 81);
+}
+
+.markdown-content :deep(h3) {
+  font-size: 1.125rem;
+}
+
+.markdown-content :deep(h4) {
+  font-size: 1rem;
+}
+
+.markdown-content :deep(p) {
+  margin-bottom: 1em;
+}
+
+.markdown-content :deep(ul),
+.markdown-content :deep(ol) {
+  margin-bottom: 1em;
+  padding-left: 2em;
+}
+
+.markdown-content :deep(ul) {
+  list-style-type: disc;
+}
+
+.markdown-content :deep(ol) {
+  list-style-type: decimal;
+}
+
+.markdown-content :deep(li) {
+  margin-bottom: 0.5em;
+}
+
+.markdown-content :deep(li > ul),
+.markdown-content :deep(li > ol) {
+  margin-top: 0.5em;
+}
+
+.markdown-content :deep(a) {
+  color: rgb(37 99 235);
+  text-decoration: none;
+}
+
+.markdown-content :deep(a:hover) {
+  text-decoration: underline;
+}
+
+:root.dark .markdown-content :deep(a) {
+  color: rgb(96 165 250);
+}
+
+.markdown-content :deep(code) {
+  background-color: rgb(243 244 246);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+:root.dark .markdown-content :deep(code) {
+  background-color: rgb(31 41 55);
+}
+
+.markdown-content :deep(pre) {
+  background-color: rgb(243 244 246);
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin-bottom: 1em;
+}
+
+:root.dark .markdown-content :deep(pre) {
+  background-color: rgb(31 41 55);
+}
+
+.markdown-content :deep(pre code) {
+  background-color: transparent;
+  padding: 0;
+}
+
+.markdown-content :deep(blockquote) {
+  border-left: 4px solid rgb(209 213 219);
+  padding-left: 1rem;
+  font-style: italic;
+  margin-bottom: 1em;
+}
+
+:root.dark .markdown-content :deep(blockquote) {
+  border-left-color: rgb(75 85 99);
+}
+
+.markdown-content :deep(hr) {
+  border-color: rgb(229 231 235);
+  margin: 1.5em 0;
+}
+
+:root.dark .markdown-content :deep(hr) {
+  border-color: rgb(55 65 81);
+}
+
+.markdown-content :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 1em;
+}
+
+.markdown-content :deep(th),
+.markdown-content :deep(td) {
+  border: 1px solid rgb(209 213 219);
+  padding: 0.5rem 0.75rem;
+}
+
+:root.dark .markdown-content :deep(th),
+:root.dark .markdown-content :deep(td) {
+  border-color: rgb(75 85 99);
+}
+
+.markdown-content :deep(th) {
+  background-color: rgb(243 244 246);
+  font-weight: 600;
+}
+
+:root.dark .markdown-content :deep(th) {
+  background-color: rgb(31 41 55);
+}
+
+.markdown-content :deep(strong) {
+  font-weight: 700;
+  color: rgb(17 24 39);
+}
+
+:root.dark .markdown-content :deep(strong) {
+  color: rgb(249 250 251);
+}
+
+.markdown-content :deep(em) {
+  font-style: italic;
 }
 </style>

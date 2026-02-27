@@ -403,8 +403,10 @@ export default {
     includePreRelease: 'Include Pre-releases',
     includePreReleaseDesc:
       'Include Beta/RC and other pre-release versions when checking for updates',
+    viewCurrentChangelog: 'View This Version Changelog',
+    changelogNotFound: 'No changelog entry found for v{version}',
     postUpdateTitle: "What's New in v{version}",
-    postUpdateSubtitle: 'Update notes parsed from dev branch CHANGELOG.md',
+    postUpdateSubtitle: 'See what changed in this update',
     viewOnGitHub: 'View on GitHub',
   },
   onboarding: {
