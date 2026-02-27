@@ -18,7 +18,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Installation Progress Feedback** - Progress display now reports phase/task updates more clearly, including improved tracking when parallel mode is enabled.
 
-
 ### Fixed
 
 - **Scenery Error Messages** - Failure notifications now include clearer error details in scenery-related operations.
