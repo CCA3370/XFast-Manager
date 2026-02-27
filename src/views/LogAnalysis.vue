@@ -34,7 +34,7 @@
               ? 'bg-blue-600 hover:bg-blue-700 text-white'
               : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
           "
-          @click="analyze"
+          @click="analyze(true)"
         >
           <svg
             v-if="loading"
@@ -280,7 +280,7 @@
         <!-- Issues list -->
         <div v-else class="space-y-2">
           <div
-            v-for="issue in result.issues"
+            v-for="issue in processedIssues"
             :key="issue.category"
             class="bg-white/80 dark:bg-gray-800/40 border rounded-xl overflow-hidden"
             :class="severityBorderClass(issue.severity)"
@@ -346,11 +346,7 @@
                   <div
                     class="mt-1 text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-black/20 rounded p-2 leading-relaxed overflow-x-auto"
                   >
-                    <div
-                      v-for="(line, idx) in issue.sample_line.split('\n')"
-                      :key="idx"
-                      class="break-words"
-                    >
+                    <div v-for="(line, idx) in issue.sampleLines" :key="idx" class="break-words">
                       {{ line }}
                     </div>
                   </div>
@@ -414,6 +410,10 @@ interface LogIssue {
   sample_line: string
 }
 
+interface RenderLogIssue extends LogIssue {
+  sampleLines: string[]
+}
+
 interface XPlaneLogAnalysis {
   log_path: string
   is_xplane_log: boolean
@@ -430,20 +430,42 @@ const loading = ref(false)
 const result = ref<XPlaneLogAnalysis | null>(null)
 const error = ref<string | null>(null)
 
+const analysisCache = new Map<string, XPlaneLogAnalysis>()
+
 const hasSystemInfo = computed(() => {
   const si = result.value?.system_info
   return si && (si.xplane_version || si.gpu_model || si.gpu_driver)
 })
 
-async function analyze() {
+const processedIssues = computed<RenderLogIssue[]>(() => {
+  return (result.value?.issues || []).map((issue) => ({
+    ...issue,
+    sampleLines: issue.sample_line ? issue.sample_line.split('\n') : [],
+  }))
+})
+
+async function analyze(force = false) {
   if (!appStore.xplanePath) return
+
+  const cacheKey = appStore.xplanePath
+  if (!force) {
+    const cached = analysisCache.get(cacheKey)
+    if (cached) {
+      result.value = cached
+      error.value = null
+      return
+    }
+  }
+
   loading.value = true
   error.value = null
-  result.value = null
+
   try {
-    result.value = await invoke<XPlaneLogAnalysis>('analyze_xplane_log', {
+    const latest = await invoke<XPlaneLogAnalysis>('analyze_xplane_log', {
       xplanePath: appStore.xplanePath,
     })
+    result.value = latest
+    analysisCache.set(cacheKey, latest)
   } catch (e) {
     error.value = String(e)
   } finally {
@@ -453,7 +475,11 @@ async function analyze() {
 
 onMounted(() => {
   if (appStore.xplanePath) {
-    analyze()
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        void analyze(false)
+      }, 0)
+    })
   }
 })
 

@@ -862,7 +862,7 @@
 
         <!-- Parallel Installation (Experimental) -->
         <section
-          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2"
+          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-dashed border-amber-300 dark:border-amber-400/40 ring-1 ring-inset ring-amber-300/50 dark:ring-amber-400/30 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2 experimental-parallel-highlight"
         >
           <div
             class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
@@ -872,13 +872,13 @@
               <div
                 class="w-8 h-8 bg-violet-100 dark:bg-violet-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-violet-600 dark:text-violet-400"
               >
-                <!-- Beaker/Flask icon -->
+                <!-- Parallel Download/Install icon -->
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
-                    d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714a2.25 2.25 0 00.659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M5 14.5l-1.43 5.14a1.5 1.5 0 001.45 1.86h13.96a1.5 1.5 0 001.45-1.86L19 14.5"
+                    d="M9 3v12m0 0l-3-3m3 3l3-3 M15 3v12m0 0l-3-3m3 3l3-3 M3 21h18"
                   ></path>
                 </svg>
               </div>
@@ -2512,6 +2512,13 @@ function formatLastCheckTime(timestamp: number): string {
 </script>
 
 <style scoped>
+.experimental-parallel-highlight {
+  box-shadow:
+    inset 0 0 0 1px rgb(251 191 36 / 0.48),
+    inset 0 0 28px rgb(250 204 21 / 0.32),
+    inset 0 0 46px rgb(234 179 8 / 0.18);
+}
+
 /* Collapse transition */
 .collapse-enter-active,
 .collapse-leave-active {
