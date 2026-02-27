@@ -1192,9 +1192,19 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
                 logger::log_info("X-Plane launched successfully", Some("app"));
             }
             Err(e) if e.raw_os_error() == Some(740) => {
-                return Err(
-                    "X-Plane 需要管理员权限才能启动。请右键点击 X-Plane.exe 并选择「以管理员身份运行」，或者以管理员身份运行 XFast Manager。".to_string()
+                let msg = format!(
+                    "X-Plane 启动失败：需要管理员权限（错误 740）\n\n\
+                    可能的原因：\n\
+                    1. X-Plane.exe 被设置为「以管理员身份运行」\n\
+                    2. 安装在受保护的系统目录（如 Program Files）\n\
+                    3. 文件权限配置不正确\n\n\
+                    建议解决方法：\n\
+                    • 右键点击 X-Plane.exe → 属性 → 兼容性 → 取消勾选「以管理员身份运行此程序」\n\
+                    • 或者以管理员身份运行 XFast Manager\n\n\
+                    路径：{}",
+                    exe_path.display()
                 );
+                return Err(msg);
             }
             Err(e) => {
                 return Err(format!("Failed to launch X-Plane: {}", e));
