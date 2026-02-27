@@ -36,6 +36,10 @@ semver = "1.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls-vendored"] }
 futures = "0.3"
 opener = "0.8"
+minidump = "0.22"
+minidump-processor = "0.22"
+minidump-unwind = "0.22"
+async-trait = "0.1"
 sea-orm = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio-native-tls"] }
 sea-orm-migration = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio-native-tls"] }
 
