@@ -117,6 +117,7 @@ export const STORAGE_KEYS = {
   AUTO_CHECK_ENABLED: 'autoCheckEnabled',
   INCLUDE_PRE_RELEASE: 'includePreRelease',
   LAST_CHECK_TIME: 'lastCheckTime',
+  LAST_SHOWN_CHANGELOG_VERSION: 'lastShownChangelogVersion',
   XPLANE_LAUNCH_ARGS: 'xplaneLaunchArgs',
   PARALLEL_INSTALL_ENABLED: 'parallelInstallEnabled',
   MAX_PARALLEL_TASKS: 'maxParallelTasks',

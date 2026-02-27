@@ -276,6 +276,7 @@
     <ContextMenu />
     <SponsorModal :show="showSponsor" @close="showSponsor = false" />
     <IssueUpdateModal />
+    <UpdateChangelogModal />
 
     <!-- Log Analysis First-time Hint -->
     <Teleport to="body">
@@ -330,6 +331,7 @@ import ConfirmModal from '@/components/ConfirmModal.vue'
 import ContextMenu from '@/components/ContextMenu.vue'
 import SponsorModal from '@/components/SponsorModal.vue'
 import IssueUpdateModal from '@/components/IssueUpdateModal.vue'
+import UpdateChangelogModal from '@/components/UpdateChangelogModal.vue'
 
 const { t, locale } = useI18n()
 const store = useAppStore()
@@ -432,6 +434,10 @@ onMounted(async () => {
   syncLocaleToBackend()
 
   // Check for updates (non-blocking, delayed to avoid affecting startup performance)
+  setTimeout(() => {
+    updateStore.checkAndShowPostUpdateChangelog()
+  }, 1500)
+
   setTimeout(() => {
     if (updateStore.autoCheckEnabled) {
       logDebug('Auto-checking for updates...', 'app')

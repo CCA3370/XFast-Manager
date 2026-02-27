@@ -403,6 +403,9 @@ export default {
     includePreRelease: 'Include Pre-releases',
     includePreReleaseDesc:
       'Include Beta/RC and other pre-release versions when checking for updates',
+    postUpdateTitle: "What's New in v{version}",
+    postUpdateSubtitle: 'Update notes parsed from dev branch CHANGELOG.md',
+    viewOnGitHub: 'View on GitHub',
   },
   onboarding: {
     title: 'First-Run Setup',

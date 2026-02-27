@@ -21,6 +21,10 @@ export const useUpdateStore = defineStore('update', () => {
   const checkInProgress = ref(false)
   const autoCheckEnabled = ref(true)
   const includePreRelease = ref(false)
+  const showPostUpdateChangelog = ref(false)
+  const postUpdateVersion = ref('')
+  const postUpdateReleaseNotes = ref('')
+  const postUpdateReleaseUrl = ref('')
 
   // Initialization flag
   const isInitialized = ref(false)
@@ -150,6 +154,76 @@ export const useUpdateStore = defineStore('update', () => {
     logBasic(`Include pre-release ${includePreRelease.value ? 'enabled' : 'disabled'}`, 'update')
   }
 
+  function normalizeVersionTag(version: string): string {
+    return version.trim().replace(/^v/i, '')
+  }
+
+  function extractChangelogSection(markdown: string, version: string): string {
+    const normalized = normalizeVersionTag(version)
+    const escapedVersion = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const sectionRegex = new RegExp(
+      `^##\\s+\\[v?${escapedVersion}\\].*\\n([\\s\\S]*?)(?=^##\\s+\\[|\\Z)`,
+      'm',
+    )
+
+    const match = markdown.match(sectionRegex)
+    return match?.[1]?.trim() ?? ''
+  }
+
+  async function fetchDevChangelogSection(version: string): Promise<string> {
+    const changelogUrl =
+      'https://raw.githubusercontent.com/CCA3370/XFast-Manager/dev/CHANGELOG.md'
+
+    try {
+      const response = await fetch(changelogUrl)
+      if (!response.ok) {
+        logDebug(`Failed to fetch dev CHANGELOG.md, status: ${response.status}`, 'update')
+        return ''
+      }
+
+      const markdown = await response.text()
+      return extractChangelogSection(markdown, version)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logError(`Failed to fetch dev CHANGELOG.md: ${message}`, 'update')
+      return ''
+    }
+  }
+
+  async function checkAndShowPostUpdateChangelog() {
+    try {
+      const currentVersion = await invoke<string>('get_app_version')
+      const normalizedVersion = normalizeVersionTag(currentVersion)
+      const shownVersion = await getItem<string>(STORAGE_KEYS.LAST_SHOWN_CHANGELOG_VERSION)
+
+      if (shownVersion && normalizeVersionTag(shownVersion) === normalizedVersion) {
+        return
+      }
+
+      const releaseNotes = await fetchDevChangelogSection(normalizedVersion)
+      if (!releaseNotes) {
+        logDebug(`No changelog section found in dev branch for v${normalizedVersion}`, 'update')
+        await setItem(STORAGE_KEYS.LAST_SHOWN_CHANGELOG_VERSION, normalizedVersion)
+        return
+      }
+
+      postUpdateVersion.value = normalizedVersion
+      postUpdateReleaseNotes.value = releaseNotes
+      postUpdateReleaseUrl.value = `https://github.com/CCA3370/XFast-Manager/releases/tag/v${normalizedVersion}`
+      showPostUpdateChangelog.value = true
+
+      await setItem(STORAGE_KEYS.LAST_SHOWN_CHANGELOG_VERSION, normalizedVersion)
+      logBasic(`Showing post-update changelog for v${normalizedVersion}`, 'update')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logError(`Failed to check post-update changelog: ${message}`, 'update')
+    }
+  }
+
+  function dismissPostUpdateChangelog() {
+    showPostUpdateChangelog.value = false
+  }
+
   return {
     updateInfo,
     showUpdateBanner,
@@ -157,10 +231,16 @@ export const useUpdateStore = defineStore('update', () => {
     checkInProgress,
     autoCheckEnabled,
     includePreRelease,
+    showPostUpdateChangelog,
+    postUpdateVersion,
+    postUpdateReleaseNotes,
+    postUpdateReleaseUrl,
     isInitialized,
     initStore,
     checkForUpdates,
+    checkAndShowPostUpdateChangelog,
     dismissUpdate,
+    dismissPostUpdateChangelog,
     openReleaseUrl,
     toggleAutoCheck,
     toggleIncludePreRelease,
