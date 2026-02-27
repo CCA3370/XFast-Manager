@@ -447,12 +447,13 @@
                     ({{ crashAnalysis.loaded_plugins.length }})
                   </h4>
                   <div
-                    class="text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-black/20 rounded p-2"
+                    class="text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-black/20 rounded p-2 max-h-60 overflow-y-auto"
                   >
                     <div
                       v-for="(plugin, idx) in crashAnalysis.loaded_plugins"
                       :key="idx"
-                      class="truncate"
+                      class="py-0.5 break-all"
+                      :title="plugin"
                     >
                       {{ plugin }}
                     </div>
