@@ -693,9 +693,16 @@ watch(
   (val) => {
     if (!props.tasks.length) return
     const mode = isParallel.value ? 'PARALLEL' : 'SERIAL'
-    console.log(`[OVERLAY ${mode}] percentage=${val.percentage}, currentTaskIndex=${val.currentTaskIndex}, completedTaskCount=${val.completedTaskCount}`)
+    console.log(
+      `[OVERLAY ${mode}] percentage=${val.percentage}, currentTaskIndex=${val.currentTaskIndex}, completedTaskCount=${val.completedTaskCount}`,
+    )
     if (isParallel.value) {
-      console.log(`[OVERLAY PARALLEL] activeTasks(${val.activeTasks?.length ?? 0}):`, val.activeTasks?.map(t => `[${t.taskIndex}]${t.taskName} phase=${t.phase} ${t.percentage}%`))
+      console.log(
+        `[OVERLAY PARALLEL] activeTasks(${val.activeTasks?.length ?? 0}):`,
+        val.activeTasks?.map(
+          (t) => `[${t.taskIndex}]${t.taskName} phase=${t.phase} ${t.percentage}%`,
+        ),
+      )
       console.log(`[OVERLAY PARALLEL] completedTaskIds:`, val.completedTaskIds)
     }
     // Log per-task status
@@ -705,10 +712,12 @@ watch(
       const failed = isTaskFailed(i)
       const status = getTaskStatusText(i)
       const pct = getActiveTaskPercentage(i)
-      console.log(`[OVERLAY ${mode}] task[${i}] id=${task.id} name=${task.displayName} => active=${active} completed=${completed} failed=${failed} status="${status}" pct=${pct}%`)
+      console.log(
+        `[OVERLAY ${mode}] task[${i}] id=${task.id} name=${task.displayName} => active=${active} completed=${completed} failed=${failed} status="${status}" pct=${pct}%`,
+      )
     })
   },
-  { deep: true }
+  { deep: true },
 )
 
 // Check if a task is currently active (installing) in parallel mode

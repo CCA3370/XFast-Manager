@@ -284,15 +284,26 @@
         <div
           v-if="store.logAnalysisHintVisible"
           class="fixed z-50 pointer-events-none"
-          :style="{ top: hintPosition.top + 'px', left: hintPosition.left + 'px', transform: 'translateX(-50%)' }"
+          :style="{
+            top: hintPosition.top + 'px',
+            left: hintPosition.left + 'px',
+            transform: 'translateX(-50%)',
+          }"
         >
           <!-- Arrow pointing up -->
           <div class="flex flex-col items-center">
-            <svg width="16" height="10" viewBox="0 0 16 10" class="text-blue-600 dark:text-blue-500 flex-shrink-0">
+            <svg
+              width="16"
+              height="10"
+              viewBox="0 0 16 10"
+              class="text-blue-600 dark:text-blue-500 flex-shrink-0"
+            >
               <path d="M8 0 L16 10 L0 10 Z" fill="currentColor" />
             </svg>
             <!-- Bubble -->
-            <div class="pointer-events-auto bg-blue-600 dark:bg-blue-500 text-white rounded-xl px-4 py-3 shadow-xl max-w-[200px] text-center">
+            <div
+              class="pointer-events-auto bg-blue-600 dark:bg-blue-500 text-white rounded-xl px-4 py-3 shadow-xl max-w-[200px] text-center"
+            >
               <p class="text-xs font-medium leading-relaxed">{{ $t('logAnalysis.hintText') }}</p>
               <button
                 class="mt-2 text-xs text-blue-100 hover:text-white underline underline-offset-2 transition-colors"
@@ -605,10 +616,14 @@ onMounted(async () => {
 }
 
 .hint-fade-enter-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
 }
 .hint-fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 .hint-fade-enter-from,
 .hint-fade-leave-to {

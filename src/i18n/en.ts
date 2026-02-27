@@ -655,22 +655,26 @@ export default {
       crash: {
         name: 'Crash',
         description: 'X-Plane crashed',
-        suggestion: 'Check the log lines before the crash. Usually caused by plugin conflict or low memory. Try disabling recently installed plugins.',
+        suggestion:
+          'Check the log lines before the crash. Usually caused by plugin conflict or low memory. Try disabling recently installed plugins.',
       },
       plugin_manager_error: {
         name: 'Plugin Manager Error',
         description: 'Plugin manager encountered an internal error',
-        suggestion: 'Disable all third-party plugins and re-enable them one by one to find the culprit.',
+        suggestion:
+          'Disable all third-party plugins and re-enable them one by one to find the culprit.',
       },
       scenery_load_failed: {
         name: 'Scenery Load Failed',
         description: 'Scenery package failed to load — missing library or corrupted files',
-        suggestion: 'Check if the scenery requires additional library files, or reinstall the scenery.',
+        suggestion:
+          'Check if the scenery requires additional library files, or reinstall the scenery.',
       },
       aircraft_incompatible: {
         name: 'Aircraft Incompatible',
         description: 'Aircraft file contains incompatible data',
-        suggestion: 'Re-open the aircraft in Plane-Maker, or contact the author for an updated version.',
+        suggestion:
+          'Re-open the aircraft in Plane-Maker, or contact the author for an updated version.',
       },
       vulkan_device_error: {
         name: 'Vulkan Device Error',
@@ -710,7 +714,8 @@ export default {
       heavy_memory_pressure: {
         name: 'Heavy Memory Pressure',
         description: 'System entered heavy memory pressure — may cause crash or severe stuttering',
-        suggestion: 'Close other programs to free memory, lower texture quality / object density settings, or add more RAM.',
+        suggestion:
+          'Close other programs to free memory, lower texture quality / object density settings, or add more RAM.',
       },
       missing_plugin_support: {
         name: 'Missing Plugin Support File',
@@ -725,7 +730,8 @@ export default {
       memory_access_error: {
         name: 'Memory Access Error',
         description: 'Program encountered a memory access violation (CTD crash)',
-        suggestion: 'Likely plugin conflict or system issue — try disabling all third-party plugins.',
+        suggestion:
+          'Likely plugin conflict or system issue — try disabling all third-party plugins.',
       },
       scenery_error: {
         name: 'Scenery Error',
@@ -750,22 +756,26 @@ export default {
       audio_error: {
         name: 'Audio Error',
         description: 'Audio system error',
-        suggestion: 'Check system audio device settings and ensure an audio output device is available.',
+        suggestion:
+          'Check system audio device settings and ensure an audio output device is available.',
       },
       negative_memory_pressure: {
         name: 'Memory Pressure',
-        description: 'System entered negative memory pressure — textures may be forcibly downscaled',
+        description:
+          'System entered negative memory pressure — textures may be forcibly downscaled',
         suggestion: 'Close background apps and lower graphics settings.',
       },
       severe_texture_downscale: {
         name: 'Severe Texture Downscale',
         description: 'Textures forcibly scaled to minimum quality (6.25%) — VRAM critically low',
-        suggestion: 'Lower texture quality settings and reduce loaded scenery and aircraft add-ons.',
+        suggestion:
+          'Lower texture quality settings and reduce loaded scenery and aircraft add-ons.',
       },
       runloop_backlog: {
         name: 'Task Queue Backlog',
         description: 'X-Plane task queue backed up, may cause stuttering or slow response',
-        suggestion: 'Usually temporary during heavy scenery/plugin loading. If persistent, reduce plugin count.',
+        suggestion:
+          'Usually temporary during heavy scenery/plugin loading. If persistent, reduce plugin count.',
       },
       nvidia_permission: {
         name: 'NVIDIA Driver Permission',
@@ -775,7 +785,8 @@ export default {
       third_party_blocked: {
         name: 'Third-Party Layer Disabled',
         description: 'Third-party graphics software was automatically disabled',
-        suggestion: 'These apps (e.g. ReShade) can cause X-Plane crashes. Consider uninstalling them.',
+        suggestion:
+          'These apps (e.g. ReShade) can cause X-Plane crashes. Consider uninstalling them.',
       },
       duplicate_plugin: {
         name: 'Duplicate Plugin',
@@ -785,12 +796,14 @@ export default {
       ssl_failed: {
         name: 'SSL Connection Failed',
         description: 'Secure connection failed — cannot retrieve online data',
-        suggestion: 'Check that system clock is correct, update root certificates, or check firewall settings.',
+        suggestion:
+          'Check that system clock is correct, update root certificates, or check firewall settings.',
       },
       regular_memory_pressure: {
         name: 'Normal Memory Pressure',
         description: 'System entered regular memory pressure state',
-        suggestion: 'Normal memory management behavior. If frequent, consider closing background programs.',
+        suggestion:
+          'Normal memory management behavior. If frequent, consider closing background programs.',
       },
       deprecated_dataref: {
         name: 'Deprecated Dataref',
@@ -805,7 +818,8 @@ export default {
       art_controls_modified: {
         name: 'Art Controls Modified',
         description: 'A plugin modified X-Plane graphic control settings',
-        suggestion: 'Some plugins adjust graphics settings for better effects — this is usually normal.',
+        suggestion:
+          'Some plugins adjust graphics settings for better effects — this is usually normal.',
       },
     },
   },

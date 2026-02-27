@@ -204,7 +204,9 @@
           v-if="hasSystemInfo"
           class="bg-white/80 dark:bg-gray-800/40 border border-gray-200 dark:border-white/5 rounded-xl p-4"
         >
-          <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+          <h3
+            class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3"
+          >
             {{ $t('logAnalysis.systemInfo') }}
           </h3>
           <div class="grid grid-cols-3 gap-3">

@@ -582,17 +582,19 @@ onMounted(async () => {
       const payload = event.payload
       if (payload.activeTasks) {
         // Debug log for parallel mode progress
-        const activeInfo = payload.activeTasks.map(t => `${t.taskIndex}(${t.taskName})=${t.percentage.toFixed(1)}%/${t.phase}`).join(', ')
+        const activeInfo = payload.activeTasks
+          .map((t) => `${t.taskIndex}(${t.taskName})=${t.percentage.toFixed(1)}%/${t.phase}`)
+          .join(', ')
         const completedIds = payload.completedTaskIds?.join(', ') ?? ''
         logDebug(
           `[PROGRESS] Parallel mode: overall ${payload.percentage.toFixed(1)}%, active=[${activeInfo}], completed=${payload.completedTaskCount}/${payload.totalTasks}, completedIds=[${completedIds}], phase: ${payload.phase}`,
-          'install'
+          'install',
         )
       } else {
         // Debug log for serial mode progress
         logDebug(
           `[PROGRESS] Serial mode: task ${payload.currentTaskIndex + 1}/${payload.totalTasks}, phase: ${payload.phase}, percentage: ${payload.percentage.toFixed(1)}%`,
-          'install'
+          'install',
         )
       }
       progressStore.update(payload)

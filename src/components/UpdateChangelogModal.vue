@@ -10,7 +10,9 @@
         <div
           class="relative w-full max-w-2xl mx-4 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl overflow-hidden"
         >
-          <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between">
+          <div
+            class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between"
+          >
             <div>
               <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 <AnimatedText>
@@ -37,12 +39,14 @@
             </button>
           </div>
 
-          <div 
+          <div
             class="px-5 py-4 max-h-[55vh] overflow-y-auto text-sm leading-relaxed text-gray-700 dark:text-gray-200 markdown-content"
             v-html="renderedMarkdown"
           ></div>
 
-          <div class="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-2">
+          <div
+            class="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-2"
+          >
             <button
               class="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               @click="close"
@@ -193,7 +197,8 @@ async function openRelease() {
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
   font-size: 0.875rem;
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
 :root.dark .markdown-content :deep(code) {

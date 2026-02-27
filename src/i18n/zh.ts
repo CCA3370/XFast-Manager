@@ -639,7 +639,8 @@ export default {
       crash: {
         name: '程序崩溃',
         description: 'X-Plane 发生崩溃',
-        suggestion: '查看崩溃前的日志内容，通常是插件问题或内存/显存不足导致。尝试禁用最近安装的插件。',
+        suggestion:
+          '查看崩溃前的日志内容，通常是插件问题或内存/显存不足导致。尝试禁用最近安装的插件。',
       },
       plugin_manager_error: {
         name: '插件管理器内部错误',
@@ -694,7 +695,8 @@ export default {
       heavy_memory_pressure: {
         name: '严重内存压力',
         description: '系统进入严重内存压力状态，可能导致崩溃或严重卡顿',
-        suggestion: '关闭其他程序释放内存，降低 X-Plane 图形设置（纹理质量、物体数量），或增加系统内存。',
+        suggestion:
+          '关闭其他程序释放内存，降低 X-Plane 图形设置（纹理质量、物体数量），或增加系统内存。',
       },
       missing_plugin_support: {
         name: '缺少插件支持文件',

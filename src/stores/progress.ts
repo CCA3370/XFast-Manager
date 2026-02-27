@@ -86,9 +86,13 @@ export const useProgressStore = defineStore('progress', () => {
     // [DEBUG] Log raw progress data
     const hasActiveTasks = p.activeTasks !== undefined && p.activeTasks !== null
     if (hasActiveTasks) {
-      console.log(`[STORE] update PARALLEL: pct=${p.percentage.toFixed(1)}%, phase=${p.phase}, activeTasks=${p.activeTasks?.length}, completedTaskCount=${p.completedTaskCount}, completedTaskIds=[${p.completedTaskIds?.join(',')}]`)
+      console.log(
+        `[STORE] update PARALLEL: pct=${p.percentage.toFixed(1)}%, phase=${p.phase}, activeTasks=${p.activeTasks?.length}, completedTaskCount=${p.completedTaskCount}, completedTaskIds=[${p.completedTaskIds?.join(',')}]`,
+      )
     } else {
-      console.log(`[STORE] update SERIAL: pct=${p.percentage.toFixed(1)}%, phase=${p.phase}, taskIndex=${p.currentTaskIndex}/${p.totalTasks}, taskName=${p.currentTaskName}`)
+      console.log(
+        `[STORE] update SERIAL: pct=${p.percentage.toFixed(1)}%, phase=${p.phase}, taskIndex=${p.currentTaskIndex}/${p.totalTasks}, taskName=${p.currentTaskName}`,
+      )
     }
     progress.value = p
     startAnimation()
@@ -133,9 +137,13 @@ export const useProgressStore = defineStore('progress', () => {
     return progress.value?.activeTasks !== undefined && progress.value?.activeTasks !== null
   })
 
-  const activeTasks = computed<ParallelTaskProgress[] | undefined>(() => progress.value?.activeTasks ?? undefined)
+  const activeTasks = computed<ParallelTaskProgress[] | undefined>(
+    () => progress.value?.activeTasks ?? undefined,
+  )
   const completedTaskCount = computed(() => progress.value?.completedTaskCount ?? 0)
-  const completedTaskIds = computed<string[] | undefined>(() => progress.value?.completedTaskIds ?? undefined)
+  const completedTaskIds = computed<string[] | undefined>(
+    () => progress.value?.completedTaskIds ?? undefined,
+  )
 
   return {
     progress,
