@@ -22,6 +22,7 @@ jobs:
       tag: ${{ steps.get-version.outputs.tag }}
       changelog: ${{ steps.extract-changelog.outputs.changelog }}
       is_prerelease: ${{ steps.check-prerelease.outputs.is_prerelease }}
+      should_release: ${{ steps.check-tag.outputs.skip != 'true' }}
 
     steps:
       - name: Checkout
@@ -57,24 +58,20 @@ jobs:
             echo "✅ Stable release (version >= 1.0.0)"
           fi
 
-      - name: Sync version to package.json
-        run: |
-          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          node -e "const fs=require('fs'); const pkg=require('./package.json'); pkg.version='$VERSION'; fs.writeFileSync('package.json', JSON.stringify(pkg,null,2)+'\n');"
-          echo "✅ Synced version to package.json: $VERSION"
-
       - name: Check if tag exists
+        id: check-tag
         run: |
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
           if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            echo "❌ Tag v$VERSION already exists!"
-            echo "Please update the version in src-tauri/tauri.conf.json"
-            exit 1
+            echo "⚠️ Tag v$VERSION already exists, skipping release."
+            echo "skip=true" >> $GITHUB_OUTPUT
           else
             echo "✅ Tag v$VERSION does not exist, proceeding..."
+            echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Extract changelog for this version
+        if: steps.check-tag.outputs.skip != 'true'
         id: extract-changelog
         run: |
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
@@ -107,6 +104,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Commit version sync
+        if: steps.check-tag.outputs.skip != 'true'
         run: |
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
@@ -122,6 +120,7 @@ jobs:
   build:
     name: Build (${{ matrix.suffix }})
     needs: prepare-release
+    if: needs.prepare-release.outputs.should_release == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -279,6 +278,7 @@ jobs:
   release:
     name: Create Release
     needs: [prepare-release, build]
+    if: needs.prepare-release.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
