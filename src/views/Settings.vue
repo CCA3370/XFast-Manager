@@ -1799,6 +1799,38 @@
               </div>
             </div>
 
+            <!-- Crash analysis date check toggle -->
+            <div
+              class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5"
+            >
+              <div class="flex-1 min-w-0 mr-3">
+                <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                  <AnimatedText>{{ $t('settings.crashAnalysisIgnoreDateCheck') }}</AnimatedText>
+                </label>
+                <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                  <AnimatedText>{{
+                    $t('settings.crashAnalysisIgnoreDateCheckDesc')
+                  }}</AnimatedText>
+                </p>
+              </div>
+              <button
+                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
+                :class="
+                  store.crashAnalysisIgnoreDateCheck
+                    ? 'bg-amber-500'
+                    : 'bg-gray-300 dark:bg-gray-600'
+                "
+                @click.stop="store.toggleCrashAnalysisIgnoreDateCheck()"
+              >
+                <span
+                  class="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200"
+                  :class="
+                    store.crashAnalysisIgnoreDateCheck ? 'translate-x-4.5' : 'translate-x-0.5'
+                  "
+                />
+              </button>
+            </div>
+
             <!-- Action buttons -->
             <div class="flex items-center justify-end space-x-2">
               <button
