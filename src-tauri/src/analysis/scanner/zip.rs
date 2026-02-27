@@ -407,7 +407,7 @@ impl Scanner {
                     nested_path: nested_path.as_str(),
                     parent_path: zip_path,
                     ctx,
-                    parent_password: password_str.map(|p| p.as_bytes()),
+                    parent_password: None,
                     is_encrypted,
                 };
                 match self.scan_nested_archive_in_zip(params) {

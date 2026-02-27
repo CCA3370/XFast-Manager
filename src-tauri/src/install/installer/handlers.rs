@@ -220,9 +220,12 @@ impl Installer {
                 let mut file = if let Some(pwd) = pwd_bytes {
                     match archive.by_index_decrypt(i, pwd) {
                         Ok(f) => f,
-                        Err(e) => {
-                            decryption_error =
-                                Some(format!("Failed to decrypt {}: {}", nested_path, e));
+                        Err(_e) => {
+                            // Avoid logging potentially sensitive details from the underlying error
+                            decryption_error = Some(format!(
+                                "Failed to decrypt nested archive at {}",
+                                nested_path
+                            ));
                             break; // Stop searching, we found the file but can't decrypt
                         }
                     }
@@ -260,7 +263,10 @@ impl Installer {
         let cursor = Cursor::new(current_archive_data);
         let mut archive = ZipArchive::new(cursor)?;
 
-        let pwd_bytes = current_password_opt.map(|s| s.as_bytes());
+        let pwd_bytes = match current_password_opt {
+            Some(pwd) => Some(pwd.as_bytes()),
+            None => None,
+        };
         // Extract all files with final_internal_root filter
         self.extract_zip_from_archive(
             &mut archive,
@@ -630,10 +636,9 @@ impl Installer {
                 let mut nested_data = Vec::new();
 
                 let mut found = false;
-                let pwd_bytes = current_password_opt.map(|s| s.as_bytes());
                 for i in 0..archive.len() {
-                    let mut file = if let Some(pwd) = pwd_bytes {
-                        match archive.by_index_decrypt(i, pwd) {
+                    let mut file = if let Some(pwd) = current_password_opt {
+                        match archive.by_index_decrypt(i, pwd.as_bytes()) {
                             Ok(f) => f,
                             Err(_) => continue,
                         }
