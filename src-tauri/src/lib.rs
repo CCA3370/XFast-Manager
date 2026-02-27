@@ -1180,10 +1180,26 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
     #[cfg(target_os = "windows")]
     {
         let exe_path = path.join("X-Plane.exe");
-        std::process::Command::new(exe_path)
+
+        // Try to launch without elevation first
+        let result = std::process::Command::new(&exe_path)
             .args(&extra_args)
-            .spawn()
-            .map_err(|e| format!("Failed to launch X-Plane: {}", e))?;
+            .spawn();
+
+        // If it fails with error 740 (requires elevation), inform user
+        match result {
+            Ok(_) => {
+                logger::log_info("X-Plane launched successfully", Some("app"));
+            }
+            Err(e) if e.raw_os_error() == Some(740) => {
+                return Err(
+                    "X-Plane 需要管理员权限才能启动。请右键点击 X-Plane.exe 并选择「以管理员身份运行」，或者以管理员身份运行 XFast Manager。".to_string()
+                );
+            }
+            Err(e) => {
+                return Err(format!("Failed to launch X-Plane: {}", e));
+            }
+        }
     }
 
     #[cfg(target_os = "macos")]
