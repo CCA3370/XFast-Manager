@@ -401,7 +401,8 @@ pub async fn parse_minidump(dmp_path: &Path) -> Result<ParsedMinidump, String> {
         let is_plug = is_plugin(&filename);
 
         if is_plug {
-            loaded_plugins.push(filename.clone());
+            // Store full path instead of just filename for better plugin identification
+            loaded_plugins.push(code_file.to_string());
         }
 
         let version = module.version().map(|v| v.to_string());
