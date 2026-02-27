@@ -399,6 +399,26 @@
                       {{ $t('logAnalysis.crashAnalysis.technical.crashOffset') }}:
                       {{ crashAnalysis.exception.crash_module_offset }}
                     </div>
+                    <div
+                      v-if="crashAnalysis.exception.exception_flags !== null"
+                      class="pt-1 border-t border-gray-200 dark:border-gray-700"
+                    >
+                      {{ $t('logAnalysis.crashAnalysis.technical.exceptionFlags') }}:
+                      0x{{ crashAnalysis.exception.exception_flags.toString(16).toUpperCase() }}
+                      <span
+                        v-if="
+                          crashAnalysis.exception.exception_type
+                            .toUpperCase()
+                            .includes('0X40000015') ||
+                          crashAnalysis.exception.exception_type
+                            .toUpperCase()
+                            .includes('FATAL_APP_EXIT')
+                        "
+                        class="ml-2 text-amber-600 dark:text-amber-400"
+                      >
+                        ({{ $t('logAnalysis.crashAnalysis.technical.controlledExit') }})
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -748,6 +768,7 @@ interface CrashExceptionInfo {
   crash_address: string
   crash_module: string | null
   crash_module_offset: string | null
+  exception_flags: number | null
 }
 
 interface CrashStackFrame {

@@ -28,6 +28,7 @@ pub struct CrashExceptionInfo {
     pub crash_address: String,
     pub crash_module: Option<String>,
     pub crash_module_offset: Option<String>,
+    pub exception_flags: Option<u32>,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -286,6 +287,12 @@ pub async fn parse_minidump(dmp_path: &Path) -> Result<ParsedMinidump, String> {
 
     logger::log_info("Minidump file loaded, starting processing", Some(LOG_CTX));
 
+    // Extract raw exception info before processing
+    let raw_exception_flags = dump
+        .get_stream::<minidump::MinidumpException>()
+        .ok()
+        .map(|exc| exc.raw.exception_record.exception_flags);
+
     let provider = MultiSymbolProvider::new();
     let opts = ProcessorOptions::default();
 
@@ -339,6 +346,7 @@ pub async fn parse_minidump(dmp_path: &Path) -> Result<ParsedMinidump, String> {
             crash_address: format!("0x{:x}", *exc.address),
             crash_module: crash_mod,
             crash_module_offset: crash_offset,
+            exception_flags: raw_exception_flags,
         })
     } else {
         let warn = "No exception info found in crash dump".to_string();
@@ -478,6 +486,12 @@ pub fn score_crash_causes(parsed: &ParsedMinidump, log_issues: &[LogIssue]) -> V
     if let Some(ref exc) = parsed.exception {
         let exc_type = exc.exception_type.to_uppercase();
 
+        // Check for STATUS_FATAL_APP_EXIT (0x40000015)
+        // This indicates a controlled application exit, not a crash
+        let is_fatal_app_exit = exc_type.contains("0X40000015")
+            || exc_type.contains("FATAL_APP_EXIT")
+            || exc_type.contains("STATUS_FATAL_APP_EXIT");
+
         // Exception type classification
         if exc_type.contains("ACCESS_VIOLATION")
             || exc_type.contains("SIGSEGV")
@@ -494,10 +508,12 @@ pub fn score_crash_causes(parsed: &ParsedMinidump, log_issues: &[LogIssue]) -> V
         }
 
         // Crash module classification
+        // Skip if this is a controlled exit (STATUS_FATAL_APP_EXIT)
         if let Some(ref crash_mod) = exc.crash_module {
             if is_plugin(crash_mod) {
                 add_evidence("plugin_crash", 40.0, "crash_in_plugin_module", Some(crash_mod));
-            } else if is_xplane_core(crash_mod) {
+            } else if is_xplane_core(crash_mod) && !is_fatal_app_exit {
+                // Only attribute to xplane_bug if it's NOT a controlled exit
                 add_evidence("xplane_bug", 25.0, "crash_in_xplane_core", None);
             } else if is_gpu_driver(crash_mod) {
                 add_evidence(

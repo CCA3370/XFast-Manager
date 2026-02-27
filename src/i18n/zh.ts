@@ -859,6 +859,8 @@ export default {
         crashAddress: '崩溃地址',
         crashModule: '崩溃模块',
         crashOffset: '模块偏移',
+        exceptionFlags: '异常标志',
+        controlledExit: '受控退出',
         stackTrace: '堆栈跟踪（崩溃线程）',
         frameIndex: '#',
         frameModule: '模块',

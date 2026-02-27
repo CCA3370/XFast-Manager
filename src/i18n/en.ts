@@ -887,6 +887,8 @@ export default {
         crashAddress: 'Crash Address',
         crashModule: 'Crash Module',
         crashOffset: 'Module Offset',
+        exceptionFlags: 'Exception Flags',
+        controlledExit: 'Controlled Exit',
         stackTrace: 'Stack Trace (Crash Thread)',
         frameIndex: '#',
         frameModule: 'Module',
