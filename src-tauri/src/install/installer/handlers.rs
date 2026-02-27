@@ -637,13 +637,12 @@ impl Installer {
 
                 let mut found = false;
                 for i in 0..archive.len() {
-                    let mut file = if let Some(pwd) = current_password_opt {
-                        match archive.by_index_decrypt(i, pwd.as_bytes()) {
+                    let mut file = match current_password_opt {
+                        Some(pwd) => match archive.by_index_decrypt(i, pwd) {
                             Ok(f) => f,
                             Err(_) => continue,
-                        }
-                    } else {
-                        archive.by_index(i)?
+                        },
+                        None => archive.by_index(i)?,
                     };
 
                     if file.name() == nested_path {
