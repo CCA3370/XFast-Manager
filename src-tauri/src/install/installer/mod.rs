@@ -344,7 +344,12 @@ impl ProgressContext {
         self.emit_progress_internal(current_file, phase, true);
     }
 
-    fn emit_progress_internal(&self, current_file: Option<String>, phase: InstallPhase, force: bool) {
+    fn emit_progress_internal(
+        &self,
+        current_file: Option<String>,
+        phase: InstallPhase,
+        force: bool,
+    ) {
         // In parallel mode, update tracker data and delegate to parent's emit_aggregated
         if let Some(ref emit_fn) = self.parallel_emit {
             // Update the tracker's current_file
@@ -544,9 +549,9 @@ impl ProgressContext {
         // For serial mode: set current_task_index to total_tasks to indicate all tasks completed
         // This ensures the frontend's "index < currentTaskIndex" check marks all tasks as completed
         let final_task_index = if self.parallel_emit.is_none() {
-            self.total_tasks  // Serial mode: all tasks done, index points beyond last task
+            self.total_tasks // Serial mode: all tasks done, index points beyond last task
         } else {
-            self.current_task_index  // Parallel mode: keep original index
+            self.current_task_index // Parallel mode: keep original index
         };
 
         // Final progress is always 100%
@@ -564,7 +569,7 @@ impl ProgressContext {
             current_task_total_bytes: task_size,
             current_task_processed_bytes: task_size,
             active_tasks: None,
-            completed_task_count: Some(self.total_tasks),  // All tasks completed
+            completed_task_count: Some(self.total_tasks), // All tasks completed
             completed_task_ids: None,
         };
 
@@ -728,11 +733,7 @@ impl ParallelProgressContext {
                     0.0
                 };
 
-                let current_file = tracker
-                    .current_file
-                    .lock()
-                    .ok()
-                    .and_then(|f| f.clone());
+                let current_file = tracker.current_file.lock().ok().and_then(|f| f.clone());
 
                 let phase = if phase_val == 2 {
                     InstallPhase::Verifying
@@ -820,7 +821,9 @@ impl ParallelProgressContext {
     fn emit_final(&self) {
         let completed = self.completed_count.load(Ordering::SeqCst) as usize;
 
-        let completed_task_ids: Vec<String> = self.trackers.iter()
+        let completed_task_ids: Vec<String> = self
+            .trackers
+            .iter()
             .filter(|t| t.phase.load(std::sync::atomic::Ordering::SeqCst) == 3)
             .map(|t| t.id.clone())
             .collect();
@@ -828,7 +831,8 @@ impl ParallelProgressContext {
         crate::log_debug!(
             &format!(
                 "[PARALLEL] emit_final: completed={}/{}, completed_ids=[{}]",
-                completed, self.total_tasks,
+                completed,
+                self.total_tasks,
                 completed_task_ids.join(", ")
             ),
             "parallel_progress"
@@ -1138,7 +1142,10 @@ impl Installer {
                     // Reset verification progress for this task
                     ctx.set_verification_progress(0.0);
                     // Force emit to ensure frontend sees verification phase immediately
-                    ctx.emit_progress_force(Some("Verifying...".to_string()), InstallPhase::Verifying);
+                    ctx.emit_progress_force(
+                        Some("Verifying...".to_string()),
+                        InstallPhase::Verifying,
+                    );
 
                     match self.verify_installation(task, &ctx) {
                         Ok(verification_stats) => {
@@ -1500,7 +1507,10 @@ impl Installer {
 
                 // Mark task as installing
                 crate::log_debug!(
-                    &format!("[PARALLEL] Task {} starting installation (semaphore acquired)", index),
+                    &format!(
+                        "[PARALLEL] Task {} starting installation (semaphore acquired)",
+                        index
+                    ),
                     "parallel_progress"
                 );
                 ctx.trackers[index]
@@ -1514,12 +1524,7 @@ impl Installer {
                     let installer = Installer::new(ah);
 
                     let mut task = task;
-                    match installer.install_task_with_progress(
-                        &task,
-                        &progress_ctx,
-                        atomic,
-                        &xp,
-                    ) {
+                    match installer.install_task_with_progress(&task, &progress_ctx, atomic, &xp) {
                         Ok(_) => {
                             {
                                 let inline = progress_ctx.inline_hashes.lock().unwrap();
@@ -1675,19 +1680,15 @@ impl Installer {
                         use crate::scenery_packs_manager::SceneryPacksManager;
 
                         let target_path = Path::new(&meta.target_path);
-                        if let Some(folder_name) =
-                            target_path.file_name().and_then(|n| n.to_str())
+                        if let Some(folder_name) = target_path.file_name().and_then(|n| n.to_str())
                         {
                             let xplane_path_buf = PathBuf::from(&xplane_path);
                             match classify_scenery(target_path, &xplane_path_buf) {
                                 Ok(scenery_info) => {
-                                    let manager = SceneryPacksManager::new(
-                                        &xplane_path_buf,
-                                        self.db.clone(),
-                                    );
-                                    if let Err(e) = manager
-                                        .add_entry(folder_name, &scenery_info.category)
-                                        .await
+                                    let manager =
+                                        SceneryPacksManager::new(&xplane_path_buf, self.db.clone());
+                                    if let Err(e) =
+                                        manager.add_entry(folder_name, &scenery_info.category).await
                                     {
                                         logger::log_error(
                                             &format!(

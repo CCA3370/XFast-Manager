@@ -287,7 +287,10 @@ async fn create_bug_report_issue(
         issue_number
     };
 
-    Ok(BugReportResult { issue_url, issue_number })
+    Ok(BugReportResult {
+        issue_url,
+        issue_number,
+    })
 }
 
 #[derive(serde::Serialize)]
@@ -622,7 +625,9 @@ fn build_patterns() -> Vec<Pattern> {
         Pattern {
             category: "scenery_load_failed",
             severity: "high",
-            matcher: Box::new(|l, _| l.contains("MACIBM_alert: \u{4ee5}\u{4e0b}\u{5730}\u{666f}\u{5305}\u{6709}\u{95ee}\u{9898}")),
+            matcher: Box::new(|l, _| {
+                l.contains("MACIBM_alert: \u{4ee5}\u{4e0b}\u{5730}\u{666f}\u{5305}\u{6709}\u{95ee}\u{9898}")
+            }),
         },
         Pattern {
             category: "aircraft_incompatible",
@@ -733,9 +738,7 @@ fn build_patterns() -> Vec<Pattern> {
         Pattern {
             category: "negative_memory_pressure",
             severity: "medium",
-            matcher: Box::new(|l, _| {
-                l.contains("I/MEM: Entered negative memory pressure state")
-            }),
+            matcher: Box::new(|l, _| l.contains("I/MEM: Entered negative memory pressure state")),
         },
         Pattern {
             category: "severe_texture_downscale",
@@ -758,8 +761,7 @@ fn build_patterns() -> Vec<Pattern> {
             category: "third_party_blocked",
             severity: "medium",
             matcher: Box::new(|l, _| {
-                l.contains("I/GFX/VK: Disabled")
-                    && (l.contains("ReShade") || l.contains("GamePP"))
+                l.contains("I/GFX/VK: Disabled") && (l.contains("ReShade") || l.contains("GamePP"))
             }),
         },
         Pattern {
@@ -779,16 +781,12 @@ fn build_patterns() -> Vec<Pattern> {
         Pattern {
             category: "regular_memory_pressure",
             severity: "low",
-            matcher: Box::new(|l, _| {
-                l.contains("I/MEM: Entered regular memory pressure state")
-            }),
+            matcher: Box::new(|l, _| l.contains("I/MEM: Entered regular memory pressure state")),
         },
         Pattern {
             category: "deprecated_dataref",
             severity: "low",
-            matcher: Box::new(|l, _| {
-                l.contains("Dataref '") && l.contains("has been replaced")
-            }),
+            matcher: Box::new(|l, _| l.contains("Dataref '") && l.contains("has been replaced")),
         },
         Pattern {
             category: "better_pushback_warning",
@@ -905,8 +903,8 @@ fn extract_system_info(lines: &[String]) -> SystemInfo {
 
 #[tauri::command]
 fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> {
-    use std::io::{BufRead, BufReader};
     use std::fs::File;
+    use std::io::{BufRead, BufReader};
 
     let log_path = std::path::PathBuf::from(&xplane_path).join("Log.txt");
     let log_path_str = log_path.to_string_lossy().to_string();
@@ -927,9 +925,10 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
         "Fetching plugins for",
         "Laminar Research",
     ];
-    let is_xplane_log = lines.iter().take(100).any(|line| {
-        xplane_indicators.iter().any(|ind| line.contains(ind))
-    });
+    let is_xplane_log = lines
+        .iter()
+        .take(100)
+        .any(|line| xplane_indicators.iter().any(|ind| line.contains(ind)));
 
     let system_info = extract_system_info(&lines);
 
@@ -954,9 +953,11 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
 
         for pat in &patterns {
             if (pat.matcher)(line, &line_lower) {
-                let entry = issue_map
-                    .entry(pat.category)
-                    .or_insert((pat.severity, Vec::new(), String::new()));
+                let entry = issue_map.entry(pat.category).or_insert((
+                    pat.severity,
+                    Vec::new(),
+                    String::new(),
+                ));
                 if entry.1.len() < 5 {
                     entry.1.push(idx + 1);
                     // Keep the largest consecutive E/ block found so far

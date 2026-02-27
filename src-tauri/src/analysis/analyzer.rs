@@ -1160,7 +1160,14 @@ mod tests {
         target_path: &str,
         display_name: &str,
     ) -> InstallTask {
-        create_install_task_with_input(id, addon_type, source_path, target_path, display_name, source_path)
+        create_install_task_with_input(
+            id,
+            addon_type,
+            source_path,
+            target_path,
+            display_name,
+            source_path,
+        )
     }
 
     fn create_install_task_with_input(
@@ -1331,7 +1338,7 @@ mod tests {
                 "/downloads/A330.zip/A330/A330.acf",
                 "/X-Plane/Aircraft/A330",
                 "A330",
-                "/downloads/A330.zip",  // Same archive
+                "/downloads/A330.zip", // Same archive
             ),
             create_install_task_with_input(
                 "2",
@@ -1339,7 +1346,7 @@ mod tests {
                 "/downloads/A330.zip/A330/A330_cargo.acf",
                 "/X-Plane/Aircraft/A330",
                 "A330",
-                "/downloads/A330.zip",  // Same archive
+                "/downloads/A330.zip", // Same archive
             ),
         ];
 
