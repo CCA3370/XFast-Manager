@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Lua Install Compatibility** - Fixed Lua install flow so Lua tasks no longer fail with `Unsupported archive format: lua`.
 - **Default Aircraft Protection** - Required default X-Plane aircraft can no longer be disabled by mistake.
 - **Navdata Backup Consistency** - Backup location is now consistent with atomic mode (`Custom Data/Backup_Data`), cleanup removes only same-provider backups, and full navdata folder content is included in backup scope.
+- **Failed Task Detail Navigation** - In the install-failed flow, clicking a failed task now opens only that task's error details instead of an aggregated all-task error panel.
+- **Bug Report Availability in Failure Details** - Error details opened from failed tasks now use the unified error modal, so auto-report and privacy notice are available there as well.
 
 ## [1.1.0] - 2026-02-27
 
