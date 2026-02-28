@@ -189,7 +189,7 @@
         </div>
 
         <!-- Deep Crash Analysis -->
-        <template v-if="result.crash_detected">
+        <template v-if="result.crash_detected && appStore.crashAnalysisDmpEnabled">
           <!-- Loading state -->
           <div
             v-if="crashAnalysisLoading"
@@ -833,10 +833,14 @@ async function analyze(force = false) {
     if (cached) {
       result.value = cached
       error.value = null
-      // Restore crash cache too
-      const cachedCrash = crashCache.get(cacheKey)
-      if (cachedCrash) {
-        crashAnalysis.value = cachedCrash
+      // Restore deep crash analysis cache only when dmp-based analysis is enabled.
+      if (appStore.crashAnalysisDmpEnabled) {
+        const cachedCrash = crashCache.get(cacheKey)
+        if (cachedCrash) {
+          crashAnalysis.value = cachedCrash
+        }
+      } else {
+        crashAnalysis.value = null
       }
       return
     }
@@ -854,8 +858,8 @@ async function analyze(force = false) {
     result.value = latest
     analysisCache.set(cacheKey, latest)
 
-    // Auto-trigger crash analysis if crash detected
-    if (latest.crash_detected) {
+    // Auto-trigger deep crash analysis only when enabled.
+    if (latest.crash_detected && appStore.crashAnalysisDmpEnabled) {
       crashAnalysisLoading.value = true
       try {
         const crashResult = await invoke<DeepCrashAnalysis | null>('analyze_crash_report', {

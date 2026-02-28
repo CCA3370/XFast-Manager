@@ -145,6 +145,9 @@ export default {
     logLevelBasic: 'Basic',
     logLevelFull: 'Full',
     logLevelDebug: 'Debug',
+    crashAnalysisDmpEnabled: 'DMP Crash Analysis',
+    crashAnalysisDmpEnabledDesc:
+      'Experimental feature. When disabled, crash dump (.dmp) files are not read.',
     crashAnalysisIgnoreDateCheck: 'Ignore crash dump date',
     crashAnalysisIgnoreDateCheckDesc:
       'By default, only crash dumps from the same day as Log.txt are analyzed. Enable this to analyze any crash dump (for testing).',

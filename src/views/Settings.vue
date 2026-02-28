@@ -862,7 +862,7 @@
 
         <!-- Parallel Installation (Experimental) -->
         <section
-          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-dashed border-amber-300 dark:border-amber-400/40 ring-1 ring-inset ring-amber-300/50 dark:ring-amber-400/30 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2 experimental-parallel-highlight"
+          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-dashed border-amber-300 dark:border-amber-400/40 ring-1 ring-inset ring-amber-300/50 dark:ring-amber-400/30 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2 experimental-highlight"
         >
           <div
             class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
@@ -888,7 +888,7 @@
                     <AnimatedText>{{ $t('settings.parallelInstallTitle') }}</AnimatedText>
                   </h3>
                   <span
-                    class="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 rounded"
+                    class="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded"
                   >
                     {{ $t('settings.parallelInstallExperimental') }}
                   </span>
@@ -1047,6 +1047,121 @@
                 </svg>
                 <AnimatedText>{{ $t('settings.parallelInstallNote') }}</AnimatedText>
               </p>
+            </div>
+          </transition>
+        </section>
+
+        <!-- DMP Crash Analysis (Experimental) -->
+        <section
+          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-dashed border-amber-300 dark:border-amber-400/40 ring-1 ring-inset ring-amber-300/50 dark:ring-amber-400/30 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2 experimental-highlight"
+        >
+          <div
+            class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors"
+            :class="crashAnalysisDmpExpanded ? 'rounded-t-xl' : 'rounded-xl'"
+            @click="crashAnalysisDmpExpanded = !crashAnalysisDmpExpanded"
+          >
+            <div class="flex items-center space-x-3 flex-1 min-w-0">
+              <div
+                class="w-8 h-8 bg-amber-100 dark:bg-amber-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-amber-600 dark:text-amber-400"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M6 20h12a2 2 0 002-2V8l-6-6H6a2 2 0 00-2 2v14a2 2 0 002 2z"
+                  ></path>
+                </svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                    <AnimatedText>{{ $t('settings.crashAnalysisDmpEnabled') }}</AnimatedText>
+                  </h3>
+                  <span
+                    class="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded"
+                  >
+                    {{ $t('settings.experimental') }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center space-x-2 flex-shrink-0" @click.stop>
+              <button
+                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none"
+                :class="
+                  store.crashAnalysisDmpEnabled ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600'
+                "
+                @click="store.toggleCrashAnalysisDmpEnabled()"
+              >
+                <span
+                  class="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200"
+                  :class="store.crashAnalysisDmpEnabled ? 'translate-x-4.5' : 'translate-x-0.5'"
+                ></span>
+              </button>
+
+              <svg
+                class="w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform duration-200"
+                :class="{ 'rotate-180': crashAnalysisDmpExpanded }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 9l-7 7-7-7"
+                ></path>
+              </svg>
+            </div>
+          </div>
+
+          <transition name="collapse">
+            <div v-if="crashAnalysisDmpExpanded" class="px-4 pb-4 space-y-3">
+              <div
+                class="bg-amber-50 dark:bg-amber-500/10 rounded-lg p-3 border border-amber-200 dark:border-amber-500/20"
+              >
+                <p class="text-xs text-gray-700 dark:text-gray-300">
+                  <AnimatedText>{{ $t('settings.crashAnalysisDmpEnabledDesc') }}</AnimatedText>
+                </p>
+              </div>
+
+              <div
+                class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5"
+                :class="{ 'opacity-50': !store.crashAnalysisDmpEnabled }"
+              >
+                <div class="flex-1 min-w-0 mr-3">
+                  <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    <AnimatedText>{{ $t('settings.crashAnalysisIgnoreDateCheck') }}</AnimatedText>
+                  </label>
+                  <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                    <AnimatedText>
+                      {{ $t('settings.crashAnalysisIgnoreDateCheckDesc') }}
+                    </AnimatedText>
+                  </p>
+                </div>
+                <button
+                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
+                  :class="
+                    store.crashAnalysisDmpEnabled && store.crashAnalysisIgnoreDateCheck
+                      ? 'bg-amber-500'
+                      : 'bg-gray-300 dark:bg-gray-600'
+                  "
+                  :disabled="!store.crashAnalysisDmpEnabled"
+                  @click.stop="store.toggleCrashAnalysisIgnoreDateCheck()"
+                >
+                  <span
+                    class="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200"
+                    :class="
+                      store.crashAnalysisDmpEnabled && store.crashAnalysisIgnoreDateCheck
+                        ? 'translate-x-4.5'
+                        : 'translate-x-0.5'
+                    "
+                  />
+                </button>
+              </div>
             </div>
           </transition>
         </section>
@@ -1799,38 +1914,6 @@
               </div>
             </div>
 
-            <!-- Crash analysis date check toggle -->
-            <div
-              class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5"
-            >
-              <div class="flex-1 min-w-0 mr-3">
-                <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
-                  <AnimatedText>{{ $t('settings.crashAnalysisIgnoreDateCheck') }}</AnimatedText>
-                </label>
-                <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
-                  <AnimatedText>{{
-                    $t('settings.crashAnalysisIgnoreDateCheckDesc')
-                  }}</AnimatedText>
-                </p>
-              </div>
-              <button
-                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                :class="
-                  store.crashAnalysisIgnoreDateCheck
-                    ? 'bg-amber-500'
-                    : 'bg-gray-300 dark:bg-gray-600'
-                "
-                @click.stop="store.toggleCrashAnalysisIgnoreDateCheck()"
-              >
-                <span
-                  class="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200"
-                  :class="
-                    store.crashAnalysisIgnoreDateCheck ? 'translate-x-4.5' : 'translate-x-0.5'
-                  "
-                />
-              </button>
-            </div>
-
             <!-- Action buttons -->
             <div class="flex items-center justify-end space-x-2">
               <button
@@ -2097,6 +2180,7 @@ const windowsIntegrationExpanded = ref(false) // Default collapsed
 const patternSaveStatus = ref<'saving' | 'saved' | null>(null)
 const sceneryAutoSortExpanded = ref(false) // Default collapsed
 const parallelInstallExpanded = ref(false) // Default collapsed
+const crashAnalysisDmpExpanded = ref(false) // Default collapsed
 const aboutExpanded = ref(false) // Default collapsed
 const isRebuildingIndex = ref(false)
 const indexExists = computed(() => sceneryStore.indexExists)
@@ -2565,11 +2649,11 @@ function formatLastCheckTime(timestamp: number): string {
 </script>
 
 <style scoped>
-.experimental-parallel-highlight {
+.experimental-highlight {
   box-shadow:
-    inset 0 0 0 1px rgb(251 191 36 / 0.48),
-    inset 0 0 28px rgb(250 204 21 / 0.32),
-    inset 0 0 46px rgb(234 179 8 / 0.18);
+    inset 0 0 0 1px rgb(251 191 36 / 0.34),
+    inset 0 0 18px rgb(250 204 21 / 0.2),
+    inset 0 0 30px rgb(234 179 8 / 0.12);
 }
 
 /* Collapse transition */
