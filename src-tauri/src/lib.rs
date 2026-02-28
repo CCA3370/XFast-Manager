@@ -31,6 +31,8 @@ mod hash_collector;
 mod livery_patterns;
 #[path = "analysis/scanner/mod.rs"]
 mod scanner;
+#[path = "analysis/crash_analysis.rs"]
+mod crash_analysis;
 
 // Installation
 #[path = "install/atomic_installer.rs"]
@@ -566,7 +568,7 @@ fn open_log_folder() -> Result<(), String> {
 
 // ========== X-Plane Log Analysis ==========
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 struct LogIssue {
     /// i18n category key, e.g. "crash", "plugin_error"
     category: String,
@@ -680,7 +682,11 @@ fn build_patterns() -> Vec<Pattern> {
         Pattern {
             category: "heavy_memory_pressure",
             severity: "high",
-            matcher: Box::new(|l, _| l.contains("W/MEM: Entered heavy memory pressure state")),
+            matcher: Box::new(|l, _| {
+                l.contains("W/MEM: Entered heavy memory pressure state")
+                    || l.contains("I/MEM: Entered heavy memory pressure state")
+                    || (l.contains("E/MEM:") && l.contains("Physical memory usage"))
+            }),
         },
         Pattern {
             category: "missing_plugin_support",
@@ -692,10 +698,27 @@ fn build_patterns() -> Vec<Pattern> {
         Pattern {
             category: "out_of_memory",
             severity: "high",
-            matcher: Box::new(|_, ll| {
+            matcher: Box::new(|l, ll| {
+                // English patterns
                 ll.contains("out of memory")
                     || ll.contains("memory allocation failed")
                     || ll.contains("cannot allocate")
+                    // Chinese patterns
+                    || l.contains("内存已满")
+                    || l.contains("内存不足")
+                    // System fatal assert about memory
+                    || (l.contains("E/SYS: THREAD FATAL ASSERT") && l.contains("内存"))
+            }),
+        },
+        Pattern {
+            category: "memory_status_critical",
+            severity: "high",
+            matcher: Box::new(|l, _| {
+                l.contains(" E/MEM:") && (
+                    l.contains("Memory status information") ||
+                    l.contains("Physical memory usage") ||
+                    l.contains("Virtual memory usage")
+                )
             }),
         },
         Pattern {
@@ -827,6 +850,27 @@ fn extract_consecutive_e_lines(lines: &[String], idx: usize) -> String {
     lines[start..=end].join("\n")
 }
 
+/// Like extract_consecutive_e_lines but anchored on the crash marker line.
+/// Captures consecutive E/ lines immediately above and below the crash line,
+/// so the user sees the full error context surrounding the crash.
+fn extract_crash_context(lines: &[String], crash_idx: usize) -> String {
+    let is_error_line = |s: &str| s.contains(" E/");
+
+    // Extend upward to capture consecutive E/ lines before the crash marker
+    let mut start = crash_idx;
+    while start > 0 && is_error_line(&lines[start - 1]) {
+        start -= 1;
+    }
+    // Extend downward to capture consecutive E/ lines after the crash marker
+    let mut end = crash_idx;
+    while end + 1 < lines.len() && is_error_line(&lines[end + 1]) {
+        end += 1;
+    }
+    // Cap to 30 lines
+    let end = end.min(start + 29);
+    lines[start..=end].join("\n")
+}
+
 fn extract_system_info(lines: &[String]) -> SystemInfo {
     let mut info = SystemInfo::default();
 
@@ -947,7 +991,7 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
         if line.contains("This application has crashed") {
             crash_detected = true;
             if crash_info.is_none() {
-                crash_info = Some(line.clone());
+                crash_info = Some(extract_crash_context(&lines, idx));
             }
         }
 
@@ -1001,6 +1045,15 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
         total_medium,
         total_low,
     })
+}
+
+#[tauri::command]
+async fn analyze_crash_report(
+    xplane_path: String,
+    log_issues: Vec<LogIssue>,
+    skip_date_check: bool,
+) -> Result<Option<crash_analysis::DeepCrashAnalysis>, String> {
+    crash_analysis::analyze_crash_report(&xplane_path, &log_issues, skip_date_check).await
 }
 
 // ========== Scenery Folder Commands ==========
@@ -1928,6 +1981,7 @@ pub fn run() {
             get_log_path,
             get_all_logs,
             analyze_xplane_log,
+            analyze_crash_report,
             open_log_folder,
             open_scenery_folder,
             delete_scenery_folder,
