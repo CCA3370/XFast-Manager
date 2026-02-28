@@ -68,6 +68,7 @@
 
           <!-- Privacy notice for bug reporting -->
           <div
+            v-if="!modal.errorModal.hideReport"
             class="mt-3 px-3 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/30 rounded-lg text-xs leading-relaxed text-blue-800 dark:text-blue-200"
           >
             {{ t('modal.bugReportPrivacyNotice') }}
@@ -76,6 +77,7 @@
           <div class="mt-6 flex justify-end items-center space-x-3">
             <!-- Upload Bug Report -->
             <button
+              v-if="!modal.errorModal.hideReport"
               class="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md text-sm text-white transition flex items-center space-x-2"
               :disabled="isSubmitting"
               :title="t('modal.submitBugReport')"

@@ -1118,6 +1118,8 @@ async function launchXPlane() {
             t('home.elevationRequired.path') +
             ' ' +
             exePath,
+          '',
+          { hideReport: true },
         )
       } else {
         modal.showError(t('home.launchFailed') + ': ' + errorMsg)

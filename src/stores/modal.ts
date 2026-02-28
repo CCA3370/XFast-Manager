@@ -19,6 +19,7 @@ export interface ErrorModalState {
   visible: boolean
   title: string
   message: string
+  hideReport?: boolean
 }
 
 /** State for the confirm modal */
@@ -31,13 +32,13 @@ export const useModalStore = defineStore('modal', () => {
   const errorModal = ref<ErrorModalState>({ visible: false, title: '', message: '' })
   const confirmModal = ref<ConfirmModalState>({ visible: false, options: null })
 
-  function showError(message: string, title = '') {
+  function showError(message: string, title = '', options?: { hideReport?: boolean }) {
     // Deduplicate error messages by splitting on newlines and removing duplicates
     const lines = message.split('\n').filter((line) => line.trim() !== '')
     const uniqueLines = Array.from(new Set(lines))
     const deduplicatedMessage = uniqueLines.join('\n')
 
-    errorModal.value = { visible: true, title, message: deduplicatedMessage }
+    errorModal.value = { visible: true, title, message: deduplicatedMessage, hideReport: options?.hideReport }
     // Automatically log error modal messages
     logger.error(`[Modal] ${title ? title + ': ' : ''}${deduplicatedMessage}`, 'ui')
   }
