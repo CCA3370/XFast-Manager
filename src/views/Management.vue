@@ -534,7 +534,9 @@ const isLoading = computed(() => {
         <div
           v-if="selectionMode"
           key="batch-bar"
-          class="flex items-center gap-3 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 mb-3 text-sm"
+          class="flex items-center gap-3 min-h-11 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 mb-3 text-sm cursor-pointer"
+          :title="t('management.selectAll')"
+          @click="toggleSelectAll"
         >
           <!-- Master checkbox -->
           <button
@@ -547,7 +549,7 @@ const isLoading = computed(() => {
                   : 'border-blue-300 dark:border-blue-500 hover:border-blue-400'
             "
             :title="t('management.selectAll')"
-            @click="toggleSelectAll"
+            @click.stop="toggleSelectAll"
           >
             <svg
               v-if="isAllSelected"
@@ -590,7 +592,7 @@ const isLoading = computed(() => {
             <button
               :disabled="isBatchProcessing"
               class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-green-500 text-white hover:bg-green-600 disabled:opacity-50"
-              @click="batchSetEnabled(true)"
+              @click.stop="batchSetEnabled(true)"
             >
               <Transition name="text-fade" mode="out-in">
                 <span :key="locale">{{ t('management.enableSelected') }}</span>
@@ -599,7 +601,7 @@ const isLoading = computed(() => {
             <button
               :disabled="isBatchProcessing"
               class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-gray-400 dark:bg-gray-500 text-white hover:bg-gray-500 dark:hover:bg-gray-400 disabled:opacity-50"
-              @click="batchSetEnabled(false)"
+              @click.stop="batchSetEnabled(false)"
             >
               <Transition name="text-fade" mode="out-in">
                 <span :key="locale">{{ t('management.disableSelected') }}</span>

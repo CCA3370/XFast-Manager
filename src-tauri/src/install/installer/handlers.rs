@@ -1,6 +1,309 @@
 use super::*;
 
 impl Installer {
+    /// Check whether a source file is a supported archive format.
+    fn is_supported_archive_file(path: &Path) -> bool {
+        path.extension()
+            .and_then(|s| s.to_str())
+            .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "zip" | "7z" | "rar"))
+            .unwrap_or(false)
+    }
+
+    /// Copy a single file with progress tracking.
+    /// If target points to an existing directory, copy into that directory
+    /// using the source filename.
+    fn copy_single_file_with_progress(
+        &self,
+        source: &Path,
+        target: &Path,
+        ctx: &ProgressContext,
+    ) -> Result<()> {
+        let final_target = if target.exists() && target.is_dir() {
+            let file_name = source
+                .file_name()
+                .ok_or_else(|| anyhow::anyhow!("Source file has no filename"))?;
+            target.join(file_name)
+        } else {
+            target.to_path_buf()
+        };
+
+        if let Some(parent) = final_target.parent() {
+            fs::create_dir_all(parent).context(format!(
+                "Failed to create target directory for file copy: {:?}",
+                parent
+            ))?;
+        }
+
+        let file_size = fs::metadata(source)?.len();
+        let display_name = final_target
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        let mut source_file = fs::File::open(source)
+            .context(format!("Failed to open source file {:?}", source))?;
+        let mut target_file = fs::File::create(&final_target)
+            .context(format!("Failed to create target file {:?}", final_target))?;
+        copy_file_optimized(&mut source_file, &mut target_file)?;
+
+        // Remove read-only attribute from copied file to avoid future deletion issues
+        let _ = remove_readonly_attribute(&final_target);
+
+        ctx.add_bytes(file_size);
+        ctx.emit_progress(Some(display_name), InstallPhase::Installing);
+
+        Ok(())
+    }
+
+    /// Remove an existing install target path regardless of whether it's a file or directory.
+    fn remove_existing_target_path(&self, target: &Path) -> Result<()> {
+        if !target.exists() {
+            return Ok(());
+        }
+
+        if target.is_dir() {
+            remove_dir_all_robust(target)
+                .context(format!("Failed to delete existing folder: {:?}", target))?;
+        } else {
+            let _ = remove_readonly_attribute(target);
+            fs::remove_file(target)
+                .context(format!("Failed to delete existing file: {:?}", target))?;
+        }
+
+        Ok(())
+    }
+
+    /// Build the list of Lua bundle entries to install:
+    /// the script itself plus detected companion paths.
+    fn get_lua_bundle_entries(task: &InstallTask, target: &Path) -> Result<Vec<PathBuf>> {
+        use std::collections::HashSet;
+
+        let script_name = target
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("Lua target path has no filename: {:?}", target))?;
+
+        let mut entries: Vec<PathBuf> = Vec::new();
+        let mut seen: HashSet<PathBuf> = HashSet::new();
+
+        let script_entry = PathBuf::from(script_name);
+        seen.insert(script_entry.clone());
+        entries.push(script_entry);
+
+        for companion in &task.companion_paths {
+            if let Some(safe_path) = sanitize_path(Path::new(companion)) {
+                if seen.insert(safe_path.clone()) {
+                    entries.push(safe_path);
+                }
+            } else {
+                logger::log_info(
+                    &format!(
+                        "Skipping unsafe Lua companion path for task {}: {}",
+                        task.display_name, companion
+                    ),
+                    Some("installer"),
+                );
+            }
+        }
+
+        Ok(entries)
+    }
+
+    /// Remove existing Lua bundle targets (script + companions) before clean install.
+    fn remove_lua_bundle_targets(&self, scripts_dir: &Path, bundle_entries: &[PathBuf]) -> Result<()> {
+        for entry in bundle_entries {
+            let target_path = scripts_dir.join(entry);
+            if target_path.exists() {
+                self.remove_existing_target_path(&target_path)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Copy selected Lua bundle entries from a source directory to Scripts with progress tracking.
+    fn copy_lua_bundle_from_directory_with_progress(
+        &self,
+        source_dir: &Path,
+        scripts_dir: &Path,
+        bundle_entries: &[PathBuf],
+        ctx: &ProgressContext,
+        should_overwrite: bool,
+    ) -> Result<()> {
+        for entry in bundle_entries {
+            let source_path = source_dir.join(entry);
+            if !source_path.exists() {
+                logger::log_info(
+                    &format!(
+                        "Lua bundle entry not found in source directory, skipping: {:?}",
+                        source_path
+                    ),
+                    Some("installer"),
+                );
+                continue;
+            }
+
+            let target_path = scripts_dir.join(entry);
+            if !should_overwrite && target_path.exists() {
+                self.remove_existing_target_path(&target_path)?;
+            }
+
+            if source_path.is_dir() {
+                self.copy_directory_with_progress(&source_path, &target_path, ctx)?;
+            } else {
+                self.copy_single_file_with_progress(&source_path, &target_path, ctx)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Copy selected Lua bundle entries from a staging directory to Scripts.
+    /// This phase intentionally avoids progress updates because archive extraction
+    /// has already reported byte progress.
+    fn copy_lua_bundle_from_staging_without_progress(
+        &self,
+        staging_dir: &Path,
+        scripts_dir: &Path,
+        bundle_entries: &[PathBuf],
+        should_overwrite: bool,
+    ) -> Result<()> {
+        for entry in bundle_entries {
+            let source_path = staging_dir.join(entry);
+            if !source_path.exists() {
+                logger::log_info(
+                    &format!(
+                        "Lua bundle entry not found in extracted archive, skipping: {:?}",
+                        source_path
+                    ),
+                    Some("installer"),
+                );
+                continue;
+            }
+
+            let target_path = scripts_dir.join(entry);
+
+            if source_path.is_dir() {
+                if should_overwrite && target_path.exists() && target_path.is_dir() {
+                    self.copy_directory_without_progress(&source_path, &target_path)?;
+                } else {
+                    if target_path.exists() {
+                        self.remove_existing_target_path(&target_path)?;
+                    }
+
+                    if fs::rename(&source_path, &target_path).is_err() {
+                        self.copy_directory_without_progress(&source_path, &target_path)?;
+                    }
+                }
+            } else {
+                if target_path.exists() {
+                    self.remove_existing_target_path(&target_path)?;
+                }
+
+                if let Some(parent) = target_path.parent() {
+                    fs::create_dir_all(parent).context(format!(
+                        "Failed to create Lua companion parent directory: {:?}",
+                        parent
+                    ))?;
+                }
+
+                if fs::rename(&source_path, &target_path).is_err() {
+                    fs::copy(&source_path, &target_path).context(format!(
+                        "Failed to copy Lua bundle entry: {:?} -> {:?}",
+                        source_path, target_path
+                    ))?;
+                }
+
+                let _ = remove_readonly_attribute(&target_path);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Install Lua script task (script + detected companions).
+    fn install_lua_task_with_companions(
+        &self,
+        task: &InstallTask,
+        source: &Path,
+        target: &Path,
+        ctx: &ProgressContext,
+        password: Option<&str>,
+    ) -> Result<()> {
+        use tempfile::TempDir;
+
+        let scripts_dir = target
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Lua target path has no parent: {:?}", target))?;
+        fs::create_dir_all(scripts_dir)
+            .context(format!("Failed to create Lua Scripts directory: {:?}", scripts_dir))?;
+
+        let bundle_entries = Self::get_lua_bundle_entries(task, target)?;
+
+        if !task.should_overwrite {
+            self.remove_lua_bundle_targets(scripts_dir, &bundle_entries)?;
+        }
+
+        // Archive source (including nested archive chain): extract to staging first.
+        if source.is_file() && (task.extraction_chain.is_some() || Self::is_supported_archive_file(source))
+        {
+            let staging =
+                TempDir::new().context("Failed to create temp staging directory for Lua install")?;
+
+            if let Some(ref chain) = task.extraction_chain {
+                self.install_content_with_extraction_chain(source, staging.path(), chain, ctx, password)?;
+            } else {
+                self.extract_archive_with_progress(
+                    source,
+                    staging.path(),
+                    task.archive_internal_root.as_deref(),
+                    ctx,
+                    password,
+                    task.file_hashes.as_ref(),
+                )?;
+            }
+
+            self.copy_lua_bundle_from_staging_without_progress(
+                staging.path(),
+                scripts_dir,
+                &bundle_entries,
+                task.should_overwrite,
+            )?;
+            return Ok(());
+        }
+
+        // Direct file source: copy from the .lua parent directory.
+        if source.is_file() {
+            let source_dir = source
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("Lua source file has no parent directory"))?;
+            self.copy_lua_bundle_from_directory_with_progress(
+                source_dir,
+                scripts_dir,
+                &bundle_entries,
+                ctx,
+                task.should_overwrite,
+            )?;
+            return Ok(());
+        }
+
+        // Directory source (fallback): copy directly from source directory.
+        if source.is_dir() {
+            self.copy_lua_bundle_from_directory_with_progress(
+                source,
+                scripts_dir,
+                &bundle_entries,
+                ctx,
+                task.should_overwrite,
+            )?;
+            return Ok(());
+        }
+
+        Err(anyhow::anyhow!(
+            "Lua source path is neither file nor directory: {:?}",
+            source
+        ))
+    }
+
     /// Install a single task with progress tracking
     pub(super) fn install_task_with_progress(
         &self,
@@ -27,6 +330,14 @@ impl Installer {
             "installer_timing"
         );
 
+        // Lua scripts are treated as a file bundle: script + detected companions.
+        // Handle them with a dedicated path so archives install into Scripts root
+        // (not into a "script.lua/" directory).
+        if task.addon_type == AddonType::LuaScript {
+            self.install_lua_task_with_companions(task, source, target, ctx, password)?;
+            return Ok(());
+        }
+
         // Check if this is a nested archive installation
         if let Some(ref chain) = task.extraction_chain {
             crate::log_debug!(
@@ -52,7 +363,8 @@ impl Installer {
                 );
                 self.install_content_with_extraction_chain(source, target, chain, ctx, password)?;
             }
-        } else if atomic_install_enabled {
+        } else if atomic_install_enabled && (source.is_dir() || Self::is_supported_archive_file(source))
+        {
             // Atomic installation mode
             crate::log_debug!(
                 "[TIMING] Using atomic installation mode",
@@ -120,14 +432,18 @@ impl Installer {
         if source.is_dir() {
             self.copy_directory_with_progress(source, target, ctx)?;
         } else if source.is_file() {
-            self.extract_archive_with_progress(
-                source,
-                target,
-                internal_root,
-                ctx,
-                password,
-                expected_hashes,
-            )?;
+            if Self::is_supported_archive_file(source) {
+                self.extract_archive_with_progress(
+                    source,
+                    target,
+                    internal_root,
+                    ctx,
+                    password,
+                    expected_hashes,
+                )?;
+            } else {
+                self.copy_single_file_with_progress(source, target, ctx)?;
+            }
         } else {
             return Err(anyhow::anyhow!("Source path is neither file nor directory"));
         }
@@ -748,8 +1064,7 @@ impl Installer {
             _ => {
                 // For other types: delete and reinstall
                 if target.exists() {
-                    remove_dir_all_robust(target)
-                        .context(format!("Failed to delete existing folder: {:?}", target))?;
+                    self.remove_existing_target_path(target)?;
                 }
                 self.install_content_with_extraction_chain(source, target, chain, ctx, password)?;
             }
@@ -901,8 +1216,7 @@ impl Installer {
             _ => {
                 // For other types: delete and reinstall using robust removal
                 if target.exists() {
-                    remove_dir_all_robust(target)
-                        .context(format!("Failed to delete existing folder: {:?}", target))?;
+                    self.remove_existing_target_path(target)?;
                 }
                 self.install_content_with_progress_and_hashes(
                     source,
@@ -1645,14 +1959,31 @@ impl Installer {
     pub(super) fn cleanup_task(&self, task: &InstallTask) -> Result<()> {
         let target = Path::new(&task.target_path);
 
-        if !target.exists() {
-            return Ok(());
-        }
-
         logger::log_info(
             &format!("Cleaning up task: {}", task.display_name),
             Some("installer"),
         );
+
+        // Lua cleanup should remove script + companions, even if the script file itself
+        // wasn't created yet but companions were partially copied.
+        if task.addon_type == AddonType::LuaScript {
+            if let Some(scripts_dir) = target.parent() {
+                let bundle_entries = Self::get_lua_bundle_entries(task, target)?;
+                self.remove_lua_bundle_targets(scripts_dir, &bundle_entries)?;
+            } else if target.exists() {
+                self.remove_existing_target_path(target)?;
+            }
+
+            logger::log_info(
+                &format!("Cleanup completed: {}", task.display_name),
+                Some("installer"),
+            );
+            return Ok(());
+        }
+
+        if !target.exists() {
+            return Ok(());
+        }
 
         // For Navdata, we should NOT delete the entire Custom Data folder
         // Just log a warning
@@ -1665,8 +1996,8 @@ impl Installer {
         }
 
         // For other types, delete the target directory
-        remove_dir_all_robust(target)
-            .context(format!("Failed to cleanup task directory: {:?}", target))?;
+        self.remove_existing_target_path(target)
+            .context(format!("Failed to cleanup task path: {:?}", target))?;
 
         logger::log_info(
             &format!("Cleanup completed: {}", task.display_name),

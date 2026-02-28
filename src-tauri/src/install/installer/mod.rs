@@ -1751,6 +1751,8 @@ impl Installer {
     /// Only counts source extraction bytes — restore overhead is excluded because
     /// atomic installer doesn't track restore bytes, and the restore phase is fast.
     fn calculate_total_size(&self, tasks: &[InstallTask]) -> Result<(u64, Vec<u64>)> {
+        use std::collections::HashSet;
+
         let mut total = 0u64;
         let mut task_sizes = Vec::with_capacity(tasks.len());
 
@@ -1758,8 +1760,31 @@ impl Installer {
             let mut task_size = 0u64;
             let source = Path::new(&task.source_path);
 
-            // Add source size (archive or directory) — this is the main extraction work
-            if source.is_dir() {
+            // LuaScript from direct file source may include companion files/folders.
+            // Include those sizes so progress remains accurate.
+            let source_ext = source
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            let source_is_archive =
+                matches!(source_ext.as_str(), "zip" | "7z" | "rar");
+
+            if task.addon_type == AddonType::LuaScript && source.is_file() && !source_is_archive {
+                task_size += fs::metadata(source)?.len();
+
+                if let Some(parent_dir) = source.parent() {
+                    let mut seen: HashSet<PathBuf> = HashSet::new();
+                    for companion in &task.companion_paths {
+                        if let Some(safe_path) = sanitize_path(Path::new(companion)) {
+                            if seen.insert(safe_path.clone()) {
+                                let companion_source = parent_dir.join(safe_path);
+                                task_size += self.get_path_size(&companion_source)?;
+                            }
+                        }
+                    }
+                }
+            } else if source.is_dir() {
                 task_size += self.get_directory_size(source)?;
             } else if source.is_file() {
                 task_size +=
@@ -1770,6 +1795,17 @@ impl Installer {
             total += task_size;
         }
         Ok((total, task_sizes))
+    }
+
+    /// Get size of a file or a directory path. Missing paths return 0.
+    fn get_path_size(&self, path: &Path) -> Result<u64> {
+        if path.is_dir() {
+            self.get_directory_size(path)
+        } else if path.is_file() {
+            Ok(fs::metadata(path)?.len())
+        } else {
+            Ok(0)
+        }
     }
 
     /// Get total size of config files matching patterns in a directory
@@ -1827,7 +1863,8 @@ impl Installer {
             Some("zip") => self.get_zip_size(archive, internal_root),
             Some("7z") => self.get_7z_size(archive),
             Some("rar") => self.get_rar_size(archive),
-            _ => Ok(0),
+            // Non-archive files (e.g. standalone Lua scripts) are installed by direct copy.
+            _ => Ok(fs::metadata(archive)?.len()),
         }
     }
 

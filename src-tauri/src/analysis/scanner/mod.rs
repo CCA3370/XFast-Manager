@@ -1288,13 +1288,35 @@ impl Scanner {
         companions.into_iter().collect()
     }
 
+    /// Check whether a path component is valid as a Lua companion root entry.
+    /// Rejects traversal-like dot segments such as ".", "..", or "...".
+    fn is_valid_companion_component(component: &str) -> bool {
+        !component.is_empty() && !component.chars().all(|c| c == '.')
+    }
+
     /// Extract the first path component from a path string
     fn extract_first_component(path: &str) -> Option<String> {
-        path.trim_start_matches(['/', '\\'])
+        let mut parts = path
+            .trim_start_matches(['/', '\\'])
             .split(['/', '\\'])
-            .next()
             .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
+            .peekable();
+
+        // Allow one or more leading "./" segments, but reject traversal-like segments.
+        while let Some(part) = parts.peek() {
+            if *part == "." {
+                let _ = parts.next();
+            } else {
+                break;
+            }
+        }
+
+        let first = parts.next()?;
+        if !Self::is_valid_companion_component(first) {
+            return None;
+        }
+
+        Some(first.to_string())
     }
 
     // Type G: Lua Script Detection (for FlyWithLua)
