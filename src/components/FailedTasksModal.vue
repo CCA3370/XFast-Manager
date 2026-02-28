@@ -67,41 +67,54 @@
             <div
               v-for="task in failedTasks"
               :key="task.taskId"
-              class="bg-gray-100 dark:bg-gray-800/50 border border-red-200 dark:border-red-500/20 rounded-lg p-3 hover:border-red-300 dark:hover:border-red-500/40 transition-colors"
+              class="bg-gray-100 dark:bg-gray-800/50 border border-red-200 dark:border-red-500/20 rounded-lg hover:border-red-300 dark:hover:border-red-500/40 transition-colors overflow-hidden"
             >
-              <div class="flex items-start space-x-2">
-                <svg
-                  class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M6 18L18 6M6 6l12 12"
-                  ></path>
-                </svg>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2 mb-1">
-                    <span
-                      class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30 flex-shrink-0"
-                    >
-                      {{ getSimpleErrorReason(task.errorMessage) }}
-                    </span>
-                    <span class="font-medium text-gray-900 dark:text-white text-sm truncate">{{
-                      task.taskName
-                    }}</span>
-                  </div>
-                  <div
-                    v-if="task.errorMessage"
-                    class="mt-2 text-xs text-gray-600 dark:text-gray-400 font-mono bg-gray-200 dark:bg-gray-900/50 p-2 rounded border border-gray-300 dark:border-gray-700/50 break-all"
+              <button
+                type="button"
+                class="w-full p-3 text-left"
+                @click="$emit('viewTask', task)"
+              >
+                <div class="flex items-start space-x-2">
+                  <svg
+                    class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    {{ task.errorMessage }}
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M6 18L18 6M6 6l12 12"
+                    ></path>
+                  </svg>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span
+                        class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30 flex-shrink-0"
+                      >
+                        {{ getSimpleErrorReason(task.errorMessage) }}
+                      </span>
+                      <span class="font-medium text-gray-900 dark:text-white text-sm truncate">{{
+                        task.taskName
+                      }}</span>
+                    </div>
                   </div>
+                  <svg
+                    class="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9 5l7 7-7 7"
+                    ></path>
+                  </svg>
                 </div>
-              </div>
+              </button>
             </div>
           </div>
 
@@ -165,6 +178,7 @@ const props = defineProps<{
 
 defineEmits<{
   close: []
+  viewTask: [task: TaskResult]
 }>()
 
 const backdrop = ref<HTMLElement | null>(null)

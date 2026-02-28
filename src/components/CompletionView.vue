@@ -68,6 +68,7 @@
       :visible="showFailedTasksModal"
       :failed-tasks="failedTasks"
       @close="showFailedTasksModal = false"
+      @view-task="handleViewTaskError"
     />
 
     <!-- Confirm Button -->
@@ -82,12 +83,14 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { InstallResult } from '@/types'
+import type { InstallResult, TaskResult } from '@/types'
 import AnimatedText from './AnimatedText.vue'
 import FailedTasksModal from './FailedTasksModal.vue'
 import { useI18n } from 'vue-i18n'
+import { useModalStore } from '@/stores/modal'
 
 const { t } = useI18n()
+const modalStore = useModalStore()
 
 const props = defineProps<{
   result: InstallResult
@@ -113,6 +116,11 @@ const statusTitle = computed(() => {
 })
 
 const failedTasks = computed(() => props.result.taskResults.filter((task) => !task.success))
+
+function handleViewTaskError(task: TaskResult) {
+  showFailedTasksModal.value = false
+  modalStore.showError(task.errorMessage || t('completion.unknownError'), task.taskName)
+}
 </script>
 
 <style scoped>
