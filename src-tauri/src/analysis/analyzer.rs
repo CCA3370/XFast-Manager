@@ -694,6 +694,8 @@ impl Analyzer {
                         // Checked in order; first match wins. Default fallback is "Custom Data" root.
                         const NAVDATA_INSTALL_PATHS: &[(&str, &[&str])] = &[
                             ("GNS430", &["GNS430"]),
+                            ("Universal FMC (UFMC)", &["UFMC"]),
+                            ("Modern UFMC", &["UFMC"]),
                             (
                                 "FlightFactor Boeing 777v2",
                                 &["STSFF", "nav-data", "ndbl", "data"],
@@ -831,6 +833,7 @@ impl Analyzer {
             livery_aircraft_type: item.livery_aircraft_type,
             livery_aircraft_found,
             flywithlua_installed,
+            companion_paths: item.companion_paths,
         }
     }
 
@@ -1159,6 +1162,7 @@ mod tests {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            companion_paths: Vec::new(),
         }
     }
 
@@ -1216,6 +1220,7 @@ mod tests {
             livery_aircraft_type: None,
             livery_aircraft_found: false,
             flywithlua_installed: true,
+            companion_paths: Vec::new(),
         }
     }
 

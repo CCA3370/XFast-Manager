@@ -10,7 +10,10 @@ interface LockedItemsData {
   plugin: string[]
   navdata: string[]
   scenery: string[]
+  lua: string[]
 }
+
+type LockItemType = ManagementItemType | 'scenery' | 'lua'
 
 export const useLockStore = defineStore('lock', () => {
   // Internal state using Sets for efficient lookup
@@ -18,6 +21,7 @@ export const useLockStore = defineStore('lock', () => {
   const plugin = ref<Set<string>>(new Set())
   const navdata = ref<Set<string>>(new Set())
   const scenery = ref<Set<string>>(new Set())
+  const lua = ref<Set<string>>(new Set())
 
   // Initialization flag
   const isInitialized = ref(false)
@@ -37,6 +41,8 @@ export const useLockStore = defineStore('lock', () => {
           navdata.value = new Set(data.navdata.map((s) => s.toLowerCase()))
         if (Array.isArray(data.scenery))
           scenery.value = new Set(data.scenery.map((s) => s.toLowerCase()))
+        if (Array.isArray(data.lua))
+          lua.value = new Set(data.lua.map((s) => s.toLowerCase()))
       }
     } catch (e) {
       console.error('Failed to load locked items from storage:', e)
@@ -52,12 +58,13 @@ export const useLockStore = defineStore('lock', () => {
       plugin: Array.from(plugin.value),
       navdata: Array.from(navdata.value),
       scenery: Array.from(scenery.value),
+      lua: Array.from(lua.value),
     }
     await setItem(STORAGE_KEYS.LOCKED_ITEMS, data)
   }
 
   // Get the set for a specific type
-  function getSetForType(type: ManagementItemType | 'scenery'): Set<string> {
+  function getSetForType(type: LockItemType): Set<string> {
     switch (type) {
       case 'aircraft':
         return aircraft.value
@@ -67,21 +74,20 @@ export const useLockStore = defineStore('lock', () => {
         return navdata.value
       case 'scenery':
         return scenery.value
+      case 'lua':
+        return lua.value
       default:
         return new Set()
     }
   }
 
   // Check if an item is locked
-  function isLocked(type: ManagementItemType | 'scenery', folderName: string): boolean {
+  function isLocked(type: LockItemType, folderName: string): boolean {
     return getSetForType(type).has(folderName.toLowerCase())
   }
 
   // Toggle lock state
-  async function toggleLock(
-    type: ManagementItemType | 'scenery',
-    folderName: string,
-  ): Promise<boolean> {
+  async function toggleLock(type: LockItemType, folderName: string): Promise<boolean> {
     const set = getSetForType(type)
     const key = folderName.toLowerCase()
     const wasLocked = set.has(key)
@@ -118,7 +124,7 @@ export const useLockStore = defineStore('lock', () => {
 
   // Set lock state explicitly
   async function setLocked(
-    type: ManagementItemType | 'scenery',
+    type: LockItemType,
     folderName: string,
     locked: boolean,
   ) {
@@ -155,12 +161,24 @@ export const useLockStore = defineStore('lock', () => {
     // Determine the type and folder name based on the path
     // Aircraft: Aircraft/folderName
     // Plugin: Resources/plugins/folderName
+    // Lua script: Resources/plugins/FlyWithLua/Scripts/script.lua
     // Navdata: Custom Data/folderName or similar
     // Scenery: Custom Scenery/folderName
 
     if (cleanPath.startsWith('aircraft/')) {
       const folderName = cleanPath.split('/')[1]
       if (folderName) return aircraft.value.has(folderName)
+    } else if (cleanPath.startsWith('resources/plugins/flywithlua/scripts/')) {
+      // Lua scripts and companions should be controlled by per-script Lua locks only.
+      // Do NOT inherit FlyWithLua plugin lock for installation conflict checks.
+      const scriptEntry = cleanPath.split('/')[4]
+      if (!scriptEntry) return false
+
+      // Lock key for Lua scripts is display name (file stem, lower-cased).
+      const scriptStem = scriptEntry.includes('.')
+        ? scriptEntry.substring(0, scriptEntry.lastIndexOf('.'))
+        : scriptEntry
+      return lua.value.has(scriptStem)
     } else if (cleanPath.startsWith('resources/plugins/')) {
       const folderName = cleanPath.split('/')[2]
       if (folderName) return plugin.value.has(folderName)
@@ -180,8 +198,14 @@ export const useLockStore = defineStore('lock', () => {
   const lockedPluginCount = computed(() => plugin.value.size)
   const lockedNavdataCount = computed(() => navdata.value.size)
   const lockedSceneryCount = computed(() => scenery.value.size)
+  const lockedLuaCount = computed(() => lua.value.size)
   const totalLockedCount = computed(
-    () => aircraft.value.size + plugin.value.size + navdata.value.size + scenery.value.size,
+    () =>
+      aircraft.value.size +
+      plugin.value.size +
+      navdata.value.size +
+      scenery.value.size +
+      lua.value.size,
   )
 
   return {
@@ -190,6 +214,7 @@ export const useLockStore = defineStore('lock', () => {
     lockedPluginCount,
     lockedNavdataCount,
     lockedSceneryCount,
+    lockedLuaCount,
     totalLockedCount,
     isInitialized,
 

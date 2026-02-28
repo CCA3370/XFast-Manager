@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -251,6 +252,16 @@ impl Scanner {
         false
     }
 
+    /// Check if a path is inside any of the given directories
+    fn is_path_inside_dirs(file_path: &Path, dirs: &HashSet<PathBuf>) -> bool {
+        for ancestor in file_path.ancestors().skip(1) {
+            if dirs.contains(ancestor) {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Check if a string path is inside any aircraft directory (for archive paths)
     /// Used to skip .xpl files that are embedded inside aircraft packages
     #[inline]
@@ -391,6 +402,8 @@ impl Scanner {
         let mut plugin_dirs: HashSet<PathBuf> = HashSet::new();
         let mut aircraft_dirs: HashSet<PathBuf> = HashSet::new();
         let mut skip_dirs: HashSet<PathBuf> = HashSet::new();
+        // Track directories where Lua scripts were found, so subdirectories' .lua files are skipped
+        let mut lua_dirs: HashSet<PathBuf> = HashSet::new();
 
         // Queue for breadth-first traversal: (directory_path, current_depth)
         let mut queue: VecDeque<(PathBuf, usize)> = VecDeque::new();
@@ -528,10 +541,16 @@ impl Scanner {
                 }
 
                 // Lua script detection (lowest priority - only standalone .lua files)
-                if let Some(item) = self.check_lua_script(file_path, dir)? {
-                    // Don't add to skip_dirs - lua files are single files, not directories
-                    detected.push(item);
-                    continue;
+                // Skip if a parent directory already has .lua files detected
+                if !Self::is_path_inside_dirs(file_path, &lua_dirs) {
+                    if let Some(item) = self.check_lua_script(file_path, dir)? {
+                        // Record this directory so subdirectories' .lua files are skipped
+                        if let Some(parent) = file_path.parent() {
+                            lua_dirs.insert(parent.to_path_buf());
+                        }
+                        detected.push(item);
+                        continue;
+                    }
                 }
             }
 
@@ -620,6 +639,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info,
+            companion_paths: Vec::new(),
         }))
     }
 
@@ -695,6 +715,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info,
+            companion_paths: Vec::new(),
         }))
     }
 
@@ -735,6 +756,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            companion_paths: Vec::new(),
         }))
     }
 
@@ -760,6 +782,7 @@ impl Scanner {
                 navdata_info: None,
                 livery_aircraft_type: None,
                 version_info: None,
+                companion_paths: Vec::new(),
             }))
         } else {
             Ok(None)
@@ -845,6 +868,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            companion_paths: Vec::new(),
         }))
     }
 
@@ -895,6 +919,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            companion_paths: Vec::new(),
         }))
     }
 
@@ -971,6 +996,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info,
+            companion_paths: Vec::new(),
         }))
     }
 
@@ -1035,6 +1061,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info,
+            companion_paths: Vec::new(),
         }))
     }
 
@@ -1042,7 +1069,12 @@ impl Scanner {
 
     /// Known navdata format keywords.
     /// A cycle.json `name` is accepted if it contains any of these strings.
-    const NAVDATA_KNOWN_FORMATS: &[&str] = &["X-Plane", "FlightFactor Boeing 777v2"];
+    const NAVDATA_KNOWN_FORMATS: &[&str] = &[
+        "X-Plane",
+        "FlightFactor Boeing 777v2",
+        "Universal FMC (UFMC)",
+        "Modern UFMC",
+    ];
 
     fn is_known_navdata_format(name: &str) -> bool {
         Self::NAVDATA_KNOWN_FORMATS
@@ -1073,7 +1105,12 @@ impl Scanner {
 
         // Validate navdata format
         if !Self::is_known_navdata_format(&cycle.name) {
-            return Err(anyhow::anyhow!("Unknown Navdata Format: {}", cycle.name));
+            crate::logger::log_debug(
+                &format!("Skipping unsupported navdata format: {}", cycle.name),
+                Some("scanner"),
+                None,
+            );
+            return Ok(None);
         }
 
         let install_path = parent.to_path_buf();
@@ -1089,6 +1126,7 @@ impl Scanner {
             navdata_info: Some(navdata_info),
             livery_aircraft_type: None,
             version_info: None,
+            companion_paths: Vec::new(),
         }))
     }
 
@@ -1113,7 +1151,15 @@ impl Scanner {
 
         // Validate navdata format
         if !Self::is_known_navdata_format(&cycle.name) {
-            return Err(anyhow::anyhow!("Unknown Navdata Format: {}", cycle.name));
+            crate::logger::log_debug(
+                &format!(
+                    "Skipping unsupported navdata format in archive: {}",
+                    cycle.name
+                ),
+                Some("scanner"),
+                None,
+            );
+            return Ok(None);
         }
 
         let display_name = cycle.name.clone();
@@ -1147,6 +1193,7 @@ impl Scanner {
             navdata_info: Some(navdata_info),
             livery_aircraft_type: None,
             version_info: None,
+            companion_paths: Vec::new(),
         }))
     }
 
@@ -1184,6 +1231,7 @@ impl Scanner {
                 navdata_info: None,
                 livery_aircraft_type: Some(aircraft_type_id.clone()),
                 version_info: None,
+                companion_paths: Vec::new(),
             }))
         } else {
             Ok(None)
@@ -1233,10 +1281,60 @@ impl Scanner {
                 navdata_info: None,
                 livery_aircraft_type: Some(aircraft_type_id.clone()),
                 version_info: None,
+                companion_paths: Vec::new(),
             }))
         } else {
             Ok(None)
         }
+    }
+
+    /// Parse Lua script content to find companion files/folders referenced by SCRIPT_DIRECTORY
+    fn parse_lua_companions(lua_content: &str) -> Vec<String> {
+        let re = Regex::new(r#"SCRIPT_DIRECTORY\s*\.\.\s*["']([^"']+)["']"#).unwrap();
+        let mut companions = HashSet::new();
+
+        for cap in re.captures_iter(lua_content) {
+            if let Some(path_match) = cap.get(1) {
+                let path = path_match.as_str();
+                // Extract first path component (folder or file name)
+                if let Some(first_component) = Self::extract_first_component(path) {
+                    companions.insert(first_component);
+                }
+            }
+        }
+
+        companions.into_iter().collect()
+    }
+
+    /// Check whether a path component is valid as a Lua companion root entry.
+    /// Rejects traversal-like dot segments such as ".", "..", or "...".
+    fn is_valid_companion_component(component: &str) -> bool {
+        !component.is_empty() && !component.chars().all(|c| c == '.')
+    }
+
+    /// Extract the first path component from a path string
+    fn extract_first_component(path: &str) -> Option<String> {
+        let mut parts = path
+            .trim_start_matches(['/', '\\'])
+            .split(['/', '\\'])
+            .filter(|s| !s.is_empty())
+            .peekable();
+
+        // Allow one or more leading "./" segments, but reject traversal-like segments.
+        while let Some(part) = parts.peek() {
+            if *part == "." {
+                let _ = parts.next();
+            } else {
+                break;
+            }
+        }
+
+        let first = parts.next()?;
+        if !Self::is_valid_companion_component(first) {
+            return None;
+        }
+
+        Some(first.to_string())
     }
 
     // Type G: Lua Script Detection (for FlyWithLua)
@@ -1253,6 +1351,22 @@ impl Scanner {
             .unwrap_or("Unknown Script")
             .to_string();
 
+        // Read the lua file content to parse companions
+        let mut companion_paths = Vec::new();
+        if let Ok(lua_content) = fs::read_to_string(file_path) {
+            let companion_names = Self::parse_lua_companions(&lua_content);
+
+            // Check if companions exist in the same directory as the .lua file
+            if let Some(parent_dir) = file_path.parent() {
+                for companion_name in companion_names {
+                    let companion_path = parent_dir.join(&companion_name);
+                    if companion_path.exists() {
+                        companion_paths.push(companion_name);
+                    }
+                }
+            }
+        }
+
         Ok(Some(DetectedItem {
             original_input_path: String::new(),
             addon_type: AddonType::LuaScript,
@@ -1263,13 +1377,16 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            companion_paths,
         }))
     }
 
-    fn detect_lua_script_in_archive(
+    fn detect_lua_script_in_archive_with_data(
         &self,
         file_path: &str,
         archive_path: &Path,
+        lua_content: Option<&str>,
+        archive_entries: Option<&[String]>,
     ) -> Result<Option<DetectedItem>> {
         let path = PathBuf::from(file_path);
 
@@ -1286,6 +1403,59 @@ impl Scanner {
             .filter(|p| !p.as_os_str().is_empty())
             .map(|p| p.to_string_lossy().to_string());
 
+        // Parse companions from archive
+        let mut companion_paths = Vec::new();
+        let mut companion_names = if let Some(content) = lua_content {
+            Self::parse_lua_companions(content)
+        } else if let Ok(content) = self.read_lua_from_archive(archive_path, file_path) {
+            Self::parse_lua_companions(&content)
+        } else {
+            Vec::new()
+        };
+
+        let use_layout_inference =
+            companion_names.is_empty() && lua_content.map(|s| s.is_empty()).unwrap_or(false);
+
+        if !companion_names.is_empty() || use_layout_inference {
+            let owned_entries;
+            let entries: &[String] = if let Some(entries) = archive_entries {
+                entries
+            } else if let Ok(listed) = self.list_archive_entries(archive_path) {
+                owned_entries = listed;
+                &owned_entries
+            } else {
+                &[]
+            };
+
+            // Solid 7z fast-scan fallback:
+            // if lua content was intentionally skipped (empty placeholder),
+            // infer companion candidates from sibling archive entries.
+            if use_layout_inference {
+                companion_names = Self::infer_lua_companions_from_archive_entries(file_path, entries);
+            }
+
+            let lua_parent = internal_root.as_deref().unwrap_or("");
+            for companion_name in companion_names {
+                // Build the expected companion path in archive
+                let companion_prefix = if lua_parent.is_empty() {
+                    companion_name.clone()
+                } else {
+                    format!("{}/{}", lua_parent, companion_name)
+                };
+                let slash_prefix = format!("{}/", companion_prefix);
+                let backslash_prefix = format!("{}\\", companion_prefix);
+
+                // Companion exists if the exact file exists, or there are nested files under that folder.
+                if entries.iter().any(|entry| {
+                    entry == &companion_prefix
+                        || entry.starts_with(&slash_prefix)
+                        || entry.starts_with(&backslash_prefix)
+                }) {
+                    companion_paths.push(companion_name);
+                }
+            }
+        }
+
         Ok(Some(DetectedItem {
             original_input_path: String::new(),
             addon_type: AddonType::LuaScript,
@@ -1296,7 +1466,178 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            companion_paths,
         }))
+    }
+
+    /// Infer Lua companions from archive layout when script content is unavailable.
+    /// This is a best-effort fallback for solid archives.
+    fn infer_lua_companions_from_archive_entries(file_path: &str, entries: &[String]) -> Vec<String> {
+        use std::collections::HashMap;
+
+        let normalized_file = file_path.replace('\\', "/");
+        let script_stem = Path::new(&normalized_file)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let script_name = Path::new(&normalized_file)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+
+        let lua_parent = Path::new(&normalized_file)
+            .parent()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+
+        let prefix = if lua_parent.is_empty() {
+            String::new()
+        } else {
+            format!("{}/", lua_parent.trim_matches('/'))
+        };
+
+        let mut inferred: HashMap<String, bool> = HashMap::new(); // candidate -> has_nested_entry
+
+        for entry in entries {
+            let normalized = entry.replace('\\', "/");
+            let relative = if prefix.is_empty() {
+                normalized.as_str()
+            } else if let Some(rel) = normalized.strip_prefix(&prefix) {
+                rel
+            } else {
+                continue;
+            };
+
+            if relative.is_empty() {
+                continue;
+            }
+
+            let first = relative
+                .split('/')
+                .next()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("");
+            if first.is_empty() {
+                continue;
+            }
+
+            if first.eq_ignore_ascii_case(script_name) {
+                continue;
+            }
+
+            let first_lower = first.to_ascii_lowercase();
+            let first_no_ext = Path::new(first)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if first_lower.ends_with(".lua")
+                || first_lower.ends_with(".txt")
+                || first_lower.ends_with(".md")
+                || first_lower.ends_with(".pdf")
+                || first_lower.ends_with(".rtf")
+                || first_lower.ends_with(".zip")
+                || first_lower.ends_with(".7z")
+                || first_lower.ends_with(".rar")
+                || first_no_ext == "readme"
+                || first_no_ext == "license"
+                || first_no_ext == "changelog"
+                || first_no_ext == "manual"
+                || first_no_ext == "install"
+                || first_no_ext == "docs"
+                || first_no_ext == "doc"
+            {
+                continue;
+            }
+
+            if Self::is_valid_companion_component(first) {
+                let has_nested = relative.contains('/');
+                inferred
+                    .entry(first.to_string())
+                    .and_modify(|v| *v = *v || has_nested)
+                    .or_insert(has_nested);
+            }
+        }
+
+        if inferred.is_empty() {
+            return Vec::new();
+        }
+
+        // Prefer directory-like companions when any exist; this avoids common
+        // false positives from unrelated single files in the same folder.
+        let has_directory_like = inferred.values().any(|v| *v);
+        let mut result: Vec<String> = inferred
+            .into_iter()
+            .filter_map(|(name, is_dir_like)| {
+                if has_directory_like && !is_dir_like {
+                    None
+                } else {
+                    Some(name)
+                }
+            })
+            .collect();
+
+        // Strong disambiguation:
+        // if a companion exactly matches the script stem, keep only that one.
+        // Example:
+        //   script: Simple_Ground_Equipment_and_Services.lua
+        //   siblings: Simple_Ground_Equipment_and_Services/,
+        //             Simple_Ground_Equipment_and_Services_expanded_documentation/
+        // Keep only the exact-stem companion to avoid documentation false positives.
+        if !script_stem.is_empty() {
+            let exact_stem: Vec<String> = result
+                .iter()
+                .filter(|name| name.to_ascii_lowercase() == script_stem)
+                .cloned()
+                .collect();
+            if !exact_stem.is_empty() {
+                return exact_stem;
+            }
+        }
+
+        result.sort();
+        result
+    }
+
+    fn detect_lua_script_in_archive(
+        &self,
+        file_path: &str,
+        archive_path: &Path,
+    ) -> Result<Option<DetectedItem>> {
+        self.detect_lua_script_in_archive_with_data(file_path, archive_path, None, None)
+    }
+
+    /// Read Lua file content from archive
+    fn read_lua_from_archive(&self, archive_path: &Path, lua_file_path: &str) -> Result<String> {
+        let extension = archive_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        match extension.as_str() {
+            "zip" => self.read_file_from_zip(archive_path, lua_file_path),
+            "7z" => self.read_file_from_7z_no_password(archive_path, lua_file_path),
+            "rar" => self.read_file_from_rar_no_password(archive_path, lua_file_path),
+            _ => Err(anyhow::anyhow!("Unsupported archive format")),
+        }
+    }
+
+    /// List all entries in an archive
+    fn list_archive_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
+        let extension = archive_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        match extension.as_str() {
+            "zip" => self.list_zip_entries(archive_path),
+            "7z" => self.list_7z_entries(archive_path),
+            "rar" => self.list_rar_entries(archive_path),
+            _ => Err(anyhow::anyhow!("Unsupported archive format")),
+        }
     }
 
     /// Read version information from an archive
@@ -1399,6 +1740,73 @@ impl Scanner {
         }
 
         None
+    }
+
+    /// Read a file from a ZIP archive
+    fn read_file_from_zip(&self, archive_path: &Path, file_path: &str) -> Result<String> {
+        use std::io::Read;
+
+        let file = fs::File::open(archive_path)?;
+        let mut archive = ::zip::ZipArchive::new(file)?;
+
+        let mut zip_file = archive.by_name(file_path)?;
+        let mut content = String::new();
+        zip_file.read_to_string(&mut content)?;
+
+        Ok(content)
+    }
+
+    /// List all entries in a ZIP archive
+    fn list_zip_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
+        let file = fs::File::open(archive_path)?;
+        let archive = ::zip::ZipArchive::new(file)?;
+
+        let entries: Vec<String> = (0..archive.len())
+            .filter_map(|i| archive.name_for_index(i).map(|s| s.to_string()))
+            .collect();
+
+        Ok(entries)
+    }
+
+    /// Read a file from a 7z archive (wrapper for companion detection)
+    fn read_file_from_7z_no_password(&self, archive_path: &Path, file_path: &str) -> Result<String> {
+        // Call the existing function with None password
+        self.read_file_from_7z(archive_path, file_path, None)
+    }
+
+    /// List all entries in a 7z archive
+    fn list_7z_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
+        let archive = sevenz_rust2::Archive::open(archive_path)?;
+        Ok(archive
+            .files
+            .iter()
+            .filter(|entry| !entry.is_directory() && entry.has_stream())
+            .map(|entry| entry.name().replace('\\', "/"))
+            .collect())
+    }
+
+    /// Read a file from a RAR archive (wrapper for companion detection)
+    fn read_file_from_rar_no_password(&self, archive_path: &Path, file_path: &str) -> Result<String> {
+        // Call the existing function with None password
+        self.read_file_from_rar(archive_path, file_path, None)
+    }
+
+    /// List all entries in a RAR archive
+    fn list_rar_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
+        use unrar::Archive;
+
+        let mut archive = Archive::new(archive_path).open_for_listing()?;
+        let mut entries = Vec::new();
+
+        while let Some(header) = archive.read_header()? {
+            let entry = header.entry();
+            if !entry.is_directory() {
+                entries.push(entry.filename.to_string_lossy().to_string());
+            }
+            archive = header.skip()?;
+        }
+
+        Ok(entries)
     }
 
     /// Read version files from a ZIP archive

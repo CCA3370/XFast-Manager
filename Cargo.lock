@@ -7377,7 +7377,7 @@ dependencies = [
 
 [[package]]
 name = "xfastmanager"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -7390,6 +7390,7 @@ dependencies = [
  "lnk",
  "opener",
  "rayon",
+ "regex",
  "reqwest 0.12.28",
  "sea-orm",
  "sea-orm-migration",

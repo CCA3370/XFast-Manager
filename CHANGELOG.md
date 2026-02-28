@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-02-28
+
+### Added
+
+- **Lua Companion Bundle Support** - Lua scripts now detect `SCRIPT_DIRECTORY` companion files/folders and install them together; companion items are shown in the confirmation list with expandable details.
+- **Lua Lock Controls in Scripts Page** - Lua entries now support lock/unlock directly in the Lua management page.
+- **Batch Mode for Aircraft/Plugin Management** - Added multi-select with full-row "Select All" behavior and batch enable/disable actions.
+- **Drop-Zone File Picker** - Clicking the drag-and-drop area now opens a file picker for manual file selection.
+- **UFMC Navdata Support** - Added installation support for UFMC-type navdata (providers `Universal FMC (UFMC)` and `Modern UFMC`); installs to `Custom Data/UFMC`.
+
+### Changed
+
+- **7z Analysis and Install Performance** - Improved 7z scanning speed (including nested archive handling) and password/encryption detection responsiveness.
+- **7z Size Estimation Accuracy** - Installation size display for 7z sources is now based on archive metadata instead of rough multipliers.
+- **Scenery Priority Ordering** - `Lines3D` is now kept at the top of fixed high-priority scenery libraries.
+
+### Fixed
+
+- **X-Plane Elevation Error Guidance** - When launch fails with Windows error 740, the app now shows actionable cause/solution guidance instead of only a generic failure message.
+- **Unsupported Navdata UX** - Unknown navdata formats no longer interrupt scan flow with a blocking failure modal.
+- **Lua Install Compatibility** - Fixed Lua install flow so Lua tasks no longer fail with `Unsupported archive format: lua`.
+- **Default Aircraft Protection** - Required default X-Plane aircraft can no longer be disabled by mistake.
+- **Navdata Backup Consistency** - Backup location is now consistent with atomic mode (`Custom Data/Backup_Data`), cleanup removes only same-provider backups, and full navdata folder content is included in backup scope.
+- **Failed Task Detail Navigation** - In the install-failed flow, clicking a failed task now opens only that task's error details instead of an aggregated all-task error panel.
+- **Bug Report Availability in Failure Details** - Error details opened from failed tasks now use the unified error modal, so auto-report and privacy notice are available there as well.
+
 ## [1.1.0] - 2026-02-27
 
 ### Added
