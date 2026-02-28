@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from '@/stores/app'
+import { useLockStore } from '@/stores/lock'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import ConfirmModal from '@/components/ConfirmModal.vue'
@@ -14,6 +15,7 @@ import type { ContextMenuItem } from '@/composables/useContextMenu'
 const { t } = useI18n()
 const router = useRouter()
 const appStore = useAppStore()
+const lockStore = useLockStore()
 const modalStore = useModalStore()
 const toastStore = useToastStore()
 const contextMenu = useContextMenu()
@@ -29,6 +31,22 @@ const deleteTarget = ref<LuaScriptInfo | null>(null)
 const isDeleting = ref(false)
 
 const scriptCount = computed(() => scripts.value.length)
+
+function getLuaLockKey(script: LuaScriptInfo): string {
+  return script.displayName
+}
+
+function isScriptLocked(script: LuaScriptInfo): boolean {
+  return lockStore.isLocked('lua', getLuaLockKey(script))
+}
+
+async function handleToggleLock(script: LuaScriptInfo) {
+  try {
+    await lockStore.toggleLock('lua', getLuaLockKey(script))
+  } catch (e) {
+    modalStore.showError(t('management.toggleFailed') + ': ' + String(e))
+  }
+}
 
 async function loadScripts() {
   if (!appStore.xplanePath) return
@@ -119,6 +137,14 @@ function handleScriptContextMenu(event: MouseEvent, script: LuaScriptInfo) {
       dividerAfter: true,
     },
     {
+      id: 'toggle-lock',
+      label: isScriptLocked(script) ? t('management.unlock') : t('management.lock'),
+      icon: isScriptLocked(script)
+        ? '<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>'
+        : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>',
+      dividerAfter: true,
+    },
+    {
       id: 'delete',
       label: t('common.delete'),
       icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>',
@@ -130,6 +156,9 @@ function handleScriptContextMenu(event: MouseEvent, script: LuaScriptInfo) {
     switch (id) {
       case 'toggle-enabled':
         handleToggle(script.fileName)
+        break
+      case 'toggle-lock':
+        handleToggleLock(script)
         break
       case 'delete':
         confirmDelete(script)
@@ -264,6 +293,32 @@ onMounted(() => {
           >
             {{ script.enabled ? t('scripts.enabled') : t('scripts.disabled') }}
           </span>
+
+          <!-- Lock button -->
+          <button
+            class="flex-shrink-0 p-0.5 rounded transition-colors"
+            :class="
+              isScriptLocked(script)
+                ? 'text-amber-500 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30'
+                : 'text-gray-400 dark:text-gray-500 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30'
+            "
+            :title="isScriptLocked(script) ? t('management.unlock') : t('management.lock')"
+            @click.stop="handleToggleLock(script)"
+          >
+            <svg v-if="isScriptLocked(script)" class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+              <path
+                d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"
+              />
+            </svg>
+            <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"
+              />
+            </svg>
+          </button>
 
           <!-- Delete button -->
           <button
