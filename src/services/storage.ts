@@ -123,6 +123,7 @@ export const STORAGE_KEYS = {
   MAX_PARALLEL_TASKS: 'maxParallelTasks',
   REPORTED_ISSUES: 'reportedIssues',
   UNCONFIRMED_ISSUE_UPDATES: 'unconfirmedIssueUpdates',
+  CRASH_ANALYSIS_DMP_ENABLED: 'crashAnalysisDmpEnabled',
   CRASH_ANALYSIS_IGNORE_DATE_CHECK: 'crashAnalysisIgnoreDateCheck',
 } as const
 

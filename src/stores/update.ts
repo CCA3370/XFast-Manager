@@ -162,13 +162,17 @@ export const useUpdateStore = defineStore('update', () => {
   function extractChangelogSection(markdown: string, version: string): string {
     const normalized = normalizeVersionTag(version)
     const escapedVersion = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const sectionRegex = new RegExp(
-      `^##\\s+\\[v?${escapedVersion}\\].*\\n([\\s\\S]*?)(?=^##\\s+\\[|\\Z)`,
-      'm',
-    )
+    const headerRegex = new RegExp(`^##\\s+\\[v?${escapedVersion}\\].*$`, 'm')
+    const headerMatch = headerRegex.exec(markdown)
 
-    const match = markdown.match(sectionRegex)
-    return match?.[1]?.trim() ?? ''
+    if (!headerMatch) return ''
+
+    const sectionStart = headerMatch.index + headerMatch[0].length
+    const remaining = markdown.slice(sectionStart)
+    const nextHeaderMatch = /^##\s+\[.*$/m.exec(remaining)
+    const sectionEnd = nextHeaderMatch ? sectionStart + nextHeaderMatch.index : markdown.length
+
+    return markdown.slice(sectionStart, sectionEnd).trim()
   }
 
   function readBundledChangelogSection(version: string): string {

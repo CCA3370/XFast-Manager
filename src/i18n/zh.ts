@@ -144,6 +144,8 @@ export default {
     logLevelBasic: '基本',
     logLevelFull: '完整',
     logLevelDebug: '调试',
+    crashAnalysisDmpEnabled: 'DMP 崩溃分析',
+    crashAnalysisDmpEnabledDesc: '实验性功能。关闭时不会读取崩溃转储（.dmp）文件。',
     crashAnalysisIgnoreDateCheck: '忽略崩溃转储日期',
     crashAnalysisIgnoreDateCheckDesc:
       '默认仅分析与 Log.txt 同一天的崩溃转储。开启此选项后将分析任意日期的崩溃转储（用于测试）。',

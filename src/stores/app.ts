@@ -100,6 +100,8 @@ export const useAppStore = defineStore('app', () => {
 
   // Crash analysis: ignore dmp date check (for testing)
   const crashAnalysisIgnoreDateCheck = ref(false)
+  // Crash analysis: deep analysis based on .dmp reports (experimental, default disabled)
+  const crashAnalysisDmpEnabled = ref(false)
 
   // Confirmation modal state (for exit confirmation)
   const isConfirmationOpen = ref(false)
@@ -275,6 +277,12 @@ export const useAppStore = defineStore('app', () => {
     if (typeof savedMaxParallel === 'number') maxParallelTasks.value = savedMaxParallel
 
     // Load crash analysis date check setting
+    const savedCrashAnalysisDmpEnabled = await getItem<boolean>(
+      STORAGE_KEYS.CRASH_ANALYSIS_DMP_ENABLED,
+    )
+    if (typeof savedCrashAnalysisDmpEnabled === 'boolean')
+      crashAnalysisDmpEnabled.value = savedCrashAnalysisDmpEnabled
+
     const savedIgnoreDateCheck = await getItem<boolean>(
       STORAGE_KEYS.CRASH_ANALYSIS_IGNORE_DATE_CHECK,
     )
@@ -348,6 +356,11 @@ export const useAppStore = defineStore('app', () => {
       STORAGE_KEYS.CRASH_ANALYSIS_IGNORE_DATE_CHECK,
       crashAnalysisIgnoreDateCheck.value,
     )
+  }
+
+  async function toggleCrashAnalysisDmpEnabled() {
+    crashAnalysisDmpEnabled.value = !crashAnalysisDmpEnabled.value
+    await setItem(STORAGE_KEYS.CRASH_ANALYSIS_DMP_ENABLED, crashAnalysisDmpEnabled.value)
   }
 
   function showSceneryManagerHint(messageKey: string) {
@@ -622,6 +635,7 @@ export const useAppStore = defineStore('app', () => {
     parallelInstallEnabled,
     maxParallelTasks,
     crashAnalysisIgnoreDateCheck,
+    crashAnalysisDmpEnabled,
     sceneryManagerHintVisible,
     sceneryManagerHintMessageKey,
     logAnalysisHintVisible,
@@ -655,6 +669,7 @@ export const useAppStore = defineStore('app', () => {
     toggleParallelInstall,
     setMaxParallelTasks,
     toggleCrashAnalysisIgnoreDateCheck,
+    toggleCrashAnalysisDmpEnabled,
     showSceneryManagerHint,
     dismissSceneryManagerHint,
     dismissLogAnalysisHint,
