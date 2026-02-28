@@ -1,6 +1,17 @@
 use super::*;
 
 impl Scanner {
+    /// Fast metadata-only check for encrypted 7z content.
+    /// Avoids probing archive streams during scan.
+    fn archive_has_encrypted_blocks(archive: &sevenz_rust2::Archive) -> bool {
+        archive.blocks.iter().any(|block| {
+            block
+                .coders
+                .iter()
+                .any(|coder| coder.encoder_method_id() == sevenz_rust2::EncoderMethod::ID_AES256_SHA256)
+        })
+    }
+
     /// Scan a 7z archive with context (supports nested archives)
     /// OPTIMIZED: Single pass to collect both addon markers and nested archives
     pub(super) fn scan_7z_with_context(
@@ -17,8 +28,23 @@ impl Scanner {
 
         // Open archive to read file list (fast, no decompression)
         let open_start = std::time::Instant::now();
-        let archive = sevenz_rust2::Archive::open(archive_path)
-            .map_err(|e| anyhow::anyhow!("Failed to open 7z archive: {}", e))?;
+        let archive = match sevenz_rust2::Archive::open(archive_path) {
+            Ok(a) => a,
+            Err(e) => {
+                let err_str = format!("{:?}", e);
+                if password.is_none()
+                    && (err_str.contains("password")
+                        || err_str.contains("Password")
+                        || err_str.contains("encrypted")
+                        || err_str.contains("WrongPassword"))
+                {
+                    return Err(anyhow::anyhow!(PasswordRequiredError {
+                        archive_path: archive_path.to_string_lossy().to_string(),
+                    }));
+                }
+                return Err(anyhow::anyhow!("Failed to open 7z archive: {}", e));
+            }
+        };
         crate::log_debug!(
             &format!(
                 "[TIMING] 7z open completed in {:.2}ms: {}",
@@ -37,58 +63,11 @@ impl Scanner {
             return Ok(Vec::new());
         }
 
-        // Check if archive has encrypted files by examining headers
-        let has_encrypted_headers = archive
-            .files
-            .iter()
-            .any(|f| f.has_stream() && !f.is_directory());
-
-        // Only do the slow encryption check if no password provided and archive might be encrypted
-        if password.is_none() && has_encrypted_headers {
-            let encrypt_check_start = std::time::Instant::now();
-            crate::log_debug!("[TIMING] 7z encryption check started", "scanner_timing");
-
-            match sevenz_rust2::ArchiveReader::open(archive_path, sevenz_rust2::Password::empty()) {
-                Ok(mut reader) => {
-                    let mut encryption_detected = false;
-                    let _ = reader.for_each_entries(|entry, reader| {
-                        if !entry.is_directory() {
-                            let mut buf = [0u8; 1];
-                            if std::io::Read::read(reader, &mut buf).is_err() {
-                                encryption_detected = true;
-                            }
-                            return Ok(false);
-                        }
-                        Ok(true)
-                    });
-
-                    if encryption_detected {
-                        return Err(anyhow::anyhow!(PasswordRequiredError {
-                            archive_path: archive_path.to_string_lossy().to_string(),
-                        }));
-                    }
-                }
-                Err(e) => {
-                    let err_str = format!("{:?}", e);
-                    if err_str.contains("password")
-                        || err_str.contains("Password")
-                        || err_str.contains("encrypted")
-                        || err_str.contains("WrongPassword")
-                    {
-                        return Err(anyhow::anyhow!(PasswordRequiredError {
-                            archive_path: archive_path.to_string_lossy().to_string(),
-                        }));
-                    }
-                }
-            }
-
-            crate::log_debug!(
-                &format!(
-                    "[TIMING] 7z encryption check completed in {:.2}ms",
-                    encrypt_check_start.elapsed().as_secs_f64() * 1000.0
-                ),
-                "scanner_timing"
-            );
+        // Fast path: encryption detection from metadata only.
+        if password.is_none() && Self::archive_has_encrypted_blocks(&archive) {
+            return Err(anyhow::anyhow!(PasswordRequiredError {
+                archive_path: archive_path.to_string_lossy().to_string(),
+            }));
         }
 
         // SINGLE PASS: collect addon markers AND nested archives
@@ -106,10 +85,15 @@ impl Scanner {
         let mut marker_files: Vec<(String, &str)> = Vec::new();
         let mut nested_archives: Vec<String> = Vec::new();
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
+        let mut archive_entries: Vec<String> = Vec::new();
 
         for entry in &archive.files {
             let file_path = entry.name().to_string();
             let normalized = file_path.replace('\\', "/");
+
+            if !entry.is_directory() && entry.has_stream() {
+                archive_entries.push(normalized.clone());
+            }
 
             if Self::should_ignore_archive_path(&normalized) {
                 continue;
@@ -202,6 +186,8 @@ impl Scanner {
 
         let mut detected = Vec::new();
         let mut skip_prefixes: Vec<String> = Vec::new();
+        let mut marker_text_cache: HashMap<String, String> = HashMap::new();
+        let mut text_reader: Option<sevenz_rust2::ArchiveReader<std::fs::File>> = None;
 
         // Process marker files
         let process_start = std::time::Instant::now();
@@ -241,15 +227,80 @@ impl Scanner {
                 "dsf" => self.detect_scenery_dsf(&file_path, archive_path)?,
                 "xpl" => self.detect_plugin_in_archive(&file_path, archive_path)?,
                 "navdata" => {
-                    if let Ok(content) = self.read_file_from_7z(archive_path, &file_path, password)
-                    {
+                    let content = if let Some(cached) = marker_text_cache.get(&file_path) {
+                        Some(cached.clone())
+                    } else {
+                        if text_reader.is_none() {
+                            let pwd = match password {
+                                Some(pwd) => sevenz_rust2::Password::from(pwd),
+                                None => sevenz_rust2::Password::empty(),
+                            };
+                            text_reader = sevenz_rust2::ArchiveReader::open(archive_path, pwd).ok();
+                        }
+
+                        let read_result = if let Some(reader) = text_reader.as_mut() {
+                            reader
+                                .read_file(&file_path)
+                                .ok()
+                                .and_then(|bytes| String::from_utf8(bytes).ok())
+                        } else {
+                            None
+                        };
+
+                        let final_content =
+                            read_result.or_else(|| self.read_file_from_7z(archive_path, &file_path, password).ok());
+                        if let Some(ref content) = final_content {
+                            marker_text_cache.insert(file_path.clone(), content.clone());
+                        }
+                        final_content
+                    };
+
+                    if let Some(content) = content {
                         self.detect_navdata_in_archive(&file_path, &content, archive_path)?
                     } else {
                         None
                     }
                 }
                 "livery" => self.detect_livery_in_archive(&file_path, archive_path)?,
-                "lua" => self.detect_lua_script_in_archive(&file_path, archive_path)?,
+                "lua" => {
+                    // Solid 7z random-read is expensive; defer companion parsing to install stage.
+                    let lua_content = if archive.is_solid {
+                        Some(String::new())
+                    } else if let Some(cached) = marker_text_cache.get(&file_path) {
+                        Some(cached.clone())
+                    } else {
+                        if text_reader.is_none() {
+                            let pwd = match password {
+                                Some(pwd) => sevenz_rust2::Password::from(pwd),
+                                None => sevenz_rust2::Password::empty(),
+                            };
+                            text_reader = sevenz_rust2::ArchiveReader::open(archive_path, pwd).ok();
+                        }
+
+                        let read_result = if let Some(reader) = text_reader.as_mut() {
+                            reader
+                                .read_file(&file_path)
+                                .ok()
+                                .and_then(|bytes| String::from_utf8(bytes).ok())
+                        } else {
+                            None
+                        };
+
+                        let final_content =
+                            read_result.or_else(|| self.read_file_from_7z(archive_path, &file_path, password).ok());
+                        if let Some(ref content) = final_content {
+                            marker_text_cache.insert(file_path.clone(), content.clone());
+                        }
+                        final_content
+                    };
+
+                    self.detect_lua_script_in_archive_with_data(
+                        &file_path,
+                        archive_path,
+                        lua_content.as_deref(),
+                        Some(&archive_entries),
+                    )?
+                }
                 _ => None,
             };
 
@@ -279,8 +330,22 @@ impl Scanner {
             "scanner_timing"
         );
 
-        // Scan nested archives
-        if !nested_archives.is_empty() {
+        // Scan nested archives.
+        // Performance optimization: if we already found a concrete top-level addon
+        // (non-Lua), skip nested scans for this 7z.
+        let has_top_level_concrete_addon = detected
+            .iter()
+            .any(|item| item.addon_type != AddonType::LuaScript);
+
+        if has_top_level_concrete_addon && !nested_archives.is_empty() {
+            crate::log_debug!(
+                &format!(
+                    "[TIMING] 7z nested archive scan skipped: top-level addon already detected ({} nested archives)",
+                    nested_archives.len()
+                ),
+                "scanner_timing"
+            );
+        } else if !nested_archives.is_empty() {
             let nested_start = std::time::Instant::now();
             let total_nested = nested_archives.len();
 
@@ -369,56 +434,78 @@ impl Scanner {
             .tempdir()
             .context("Failed to create temp directory")?;
 
-        // Extract using 7z library
-        if let Some(pwd) = parent_password {
-            let mut reader =
-                sevenz_rust2::ArchiveReader::open(parent_path, sevenz_rust2::Password::from(pwd))
-                    .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
-            reader
-                .for_each_entries(|entry, reader| {
-                    let dest_path = temp_dir.path().join(entry.name());
-                    if entry.is_directory() {
-                        std::fs::create_dir_all(&dest_path)?;
-                    } else {
-                        if let Some(parent) = dest_path.parent() {
-                            std::fs::create_dir_all(parent)?;
-                        }
-                        let mut file = std::fs::File::create(&dest_path)?;
-                        std::io::copy(reader, &mut file)?;
-                    }
-                    Ok(true)
-                })
-                .map_err(|e| anyhow::anyhow!("Failed to extract 7z with password: {}", e))?;
-        } else {
-            sevenz_rust2::decompress_file(parent_path, temp_dir.path())
-                .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
+        // Extract only the nested archive entry (avoid full 7z extraction).
+        let safe_nested_path = crate::installer::sanitize_path(Path::new(nested_path))
+            .ok_or_else(|| anyhow::anyhow!("Unsafe nested archive path in 7z: {}", nested_path))?;
+        let normalized_target = safe_nested_path.to_string_lossy().replace('\\', "/");
+        let fallback_target = nested_path.replace('\\', "/");
+        let temp_archive_path = temp_dir.path().join(&safe_nested_path);
+
+        if let Some(parent) = temp_archive_path.parent() {
+            fs::create_dir_all(parent)?;
         }
 
-        // Find the nested archive in extracted files
-        let temp_archive_path = temp_dir.path().join(nested_path);
+        let read_nested_entry = |entry_name: &str| -> Result<Vec<u8>> {
+            let pwd = match parent_password {
+                Some(pwd) => sevenz_rust2::Password::from(pwd),
+                None => sevenz_rust2::Password::empty(),
+            };
 
-        if !temp_archive_path.exists() {
-            // Provide detailed error with directory listing
-            let mut available_files = Vec::new();
-            if let Ok(entries) = fs::read_dir(temp_dir.path()) {
-                for entry in entries.flatten().take(10) {
-                    if let Some(name) = entry.file_name().to_str() {
-                        available_files.push(name.to_string());
+            let mut reader =
+                sevenz_rust2::ArchiveReader::open(parent_path, pwd).map_err(|e| {
+                    let err_str = format!("{:?}", e);
+                    if err_str.contains("password")
+                        || err_str.contains("Password")
+                        || err_str.contains("encrypted")
+                        || err_str.contains("WrongPassword")
+                    {
+                        if parent_password.is_some() {
+                            anyhow::anyhow!("Wrong password for archive: {}", parent_path.display())
+                        } else {
+                            anyhow::anyhow!(PasswordRequiredError {
+                                archive_path: parent_path.to_string_lossy().to_string(),
+                            })
+                        }
+                    } else {
+                        anyhow::anyhow!("Failed to open 7z archive: {}", e)
                     }
+                })?;
+
+            reader.read_file(entry_name).map_err(|e| {
+                let err_str = format!("{:?}", e);
+                if err_str.contains("password")
+                    || err_str.contains("Password")
+                    || err_str.contains("encrypted")
+                    || err_str.contains("WrongPassword")
+                {
+                    if parent_password.is_some() {
+                        anyhow::anyhow!("Wrong password for archive: {}", parent_path.display())
+                    } else {
+                        anyhow::anyhow!(PasswordRequiredError {
+                            archive_path: parent_path.to_string_lossy().to_string(),
+                        })
+                    }
+                } else {
+                    anyhow::anyhow!("Failed to read nested archive from 7z: {}", e)
+                }
+            })
+        };
+
+        let nested_bytes = match read_nested_entry(&normalized_target) {
+            Ok(data) => data,
+            Err(primary_err) if fallback_target != normalized_target => {
+                match read_nested_entry(&fallback_target) {
+                    Ok(data) => data,
+                    Err(_) => return Err(primary_err),
                 }
             }
+            Err(e) => return Err(e),
+        };
 
-            return Err(anyhow::anyhow!(
-                "Nested archive not found after extraction: {}\nExpected at: {:?}\nAvailable files: {}",
-                nested_path,
-                temp_archive_path,
-                if available_files.is_empty() {
-                    "(none)".to_string()
-                } else {
-                    available_files.join(", ")
-                }
-            ));
-        }
+        fs::write(&temp_archive_path, nested_bytes).context(format!(
+            "Failed to write nested archive to temp file: {:?}",
+            temp_archive_path
+        ))?;
 
         // Get archive format
         let format = get_archive_format(nested_path)
@@ -499,8 +586,23 @@ impl Scanner {
         password: Option<&str>,
     ) -> Result<Vec<DetectedItem>> {
         // Open archive to read file list (fast, no decompression)
-        let archive = sevenz_rust2::Archive::open(archive_path)
-            .map_err(|e| anyhow::anyhow!("Failed to open 7z archive: {}", e))?;
+        let archive = match sevenz_rust2::Archive::open(archive_path) {
+            Ok(a) => a,
+            Err(e) => {
+                let err_str = format!("{:?}", e);
+                if password.is_none()
+                    && (err_str.contains("password")
+                        || err_str.contains("Password")
+                        || err_str.contains("encrypted")
+                        || err_str.contains("WrongPassword"))
+                {
+                    return Err(anyhow::anyhow!(PasswordRequiredError {
+                        archive_path: archive_path.to_string_lossy().to_string(),
+                    }));
+                }
+                return Err(anyhow::anyhow!("Failed to open 7z archive: {}", e));
+            }
+        };
 
         // Check for empty archive
         if archive.files.is_empty() {
@@ -511,74 +613,41 @@ impl Scanner {
             return Ok(Vec::new());
         }
 
-        // Check if archive has encrypted files by examining headers
-        // This is faster than trying to read file content
-        let has_encrypted_headers = archive
-            .files
-            .iter()
-            .any(|f| f.has_stream() && !f.is_directory());
+        // Fast metadata-only encryption detection.
+        let has_encrypted_content = Self::archive_has_encrypted_blocks(&archive);
+        if has_encrypted_content && password.is_none() {
+            return Err(anyhow::anyhow!(PasswordRequiredError {
+                archive_path: archive_path.to_string_lossy().to_string(),
+            }));
+        }
 
-        // Check encryption and password validity
-        if has_encrypted_headers {
-            // Determine which password to use for testing
-            let test_password = match password {
-                Some(pwd) => sevenz_rust2::Password::from(pwd),
-                None => sevenz_rust2::Password::empty(),
-            };
+        // If a password is provided, validate it with a single entry read.
+        if has_encrypted_content {
+            if let Some(first_file) = archive
+                .files
+                .iter()
+                .find(|f| !f.is_directory() && f.has_stream())
+                .map(|f| f.name().to_string())
+            {
+                let mut reader = sevenz_rust2::ArchiveReader::open(
+                    archive_path,
+                    sevenz_rust2::Password::from(password.unwrap_or_default()),
+                )
+                .map_err(|_| {
+                    anyhow::anyhow!("Wrong password for archive: {}", archive_path.display())
+                })?;
 
-            // Try a quick open test - if it fails with password error, we know it's encrypted
-            match sevenz_rust2::ArchiveReader::open(archive_path, test_password) {
-                Ok(mut reader) => {
-                    // Try to read first non-directory entry to verify password
-                    let mut encryption_detected = false;
-                    let mut wrong_password = false;
-                    let _ = reader.for_each_entries(|entry, reader| {
-                        if !entry.is_directory() {
-                            let mut buf = [0u8; 1];
-                            if std::io::Read::read(reader, &mut buf).is_err() {
-                                if password.is_some() {
-                                    // Password provided but still can't read - wrong password
-                                    wrong_password = true;
-                                } else {
-                                    // No password provided - encryption detected
-                                    encryption_detected = true;
-                                }
-                            }
-                            return Ok(false); // Stop after first file
-                        }
-                        Ok(true)
-                    });
-
-                    if wrong_password {
-                        return Err(anyhow::anyhow!(
-                            "Wrong password for archive: {}",
-                            archive_path.display()
-                        ));
-                    }
-
-                    if encryption_detected {
-                        return Err(anyhow::anyhow!(PasswordRequiredError {
-                            archive_path: archive_path.to_string_lossy().to_string(),
-                        }));
-                    }
-                }
-                Err(e) => {
+                if let Err(e) = reader.read_file(&first_file) {
                     let err_str = format!("{:?}", e);
                     if err_str.contains("password")
                         || err_str.contains("Password")
                         || err_str.contains("encrypted")
                         || err_str.contains("WrongPassword")
                     {
-                        if password.is_some() {
-                            // Password provided but still failed - wrong password
-                            return Err(anyhow::anyhow!(
-                                "Wrong password for archive: {}",
-                                archive_path.display()
-                            ));
-                        }
-                        return Err(anyhow::anyhow!(PasswordRequiredError {
-                            archive_path: archive_path.to_string_lossy().to_string(),
-                        }));
+                        return Err(anyhow::anyhow!(
+                            "Wrong password for archive: {}",
+                            archive_path.display()
+                        ));
                     }
                 }
             }
@@ -705,7 +774,18 @@ impl Scanner {
                     }
                 }
                 "livery" => self.detect_livery_in_archive(&file_path, archive_path)?,
-                "lua" => self.detect_lua_script_in_archive(&file_path, archive_path)?,
+                "lua" => {
+                    if archive.is_solid {
+                        self.detect_lua_script_in_archive_with_data(
+                            &file_path,
+                            archive_path,
+                            Some(""),
+                            None,
+                        )?
+                    } else {
+                        self.detect_lua_script_in_archive(&file_path, archive_path)?
+                    }
+                }
                 _ => None,
             };
 
@@ -736,44 +816,41 @@ impl Scanner {
         file_path: &str,
         password: Option<&str>,
     ) -> Result<String> {
-        // Create secure temp directory using tempfile crate
-        let temp_dir = tempfile::Builder::new()
-            .prefix("xfi_7z_read_")
-            .tempdir()
-            .context("Failed to create secure temp directory")?;
+        use sevenz_rust2::{ArchiveReader, Password};
 
-        // Extract to temp (with password if provided)
-        if let Some(pwd) = password {
-            let mut reader =
-                sevenz_rust2::ArchiveReader::open(archive_path, sevenz_rust2::Password::from(pwd))
-                    .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
-            reader
-                .for_each_entries(|entry, reader| {
-                    let dest_path = temp_dir.path().join(entry.name());
-                    if entry.is_directory() {
-                        std::fs::create_dir_all(&dest_path)?;
-                    } else {
-                        if let Some(parent) = dest_path.parent() {
-                            std::fs::create_dir_all(parent)?;
-                        }
-                        let mut file = std::fs::File::create(&dest_path)?;
-                        std::io::copy(reader, &mut file)?;
-                    }
-                    Ok(true)
-                })
-                .map_err(|e| anyhow::anyhow!("Failed to extract 7z with password: {}", e))?;
-        } else {
-            sevenz_rust2::decompress_file(archive_path, temp_dir.path())
-                .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
-        }
-
-        // Sanitize the file path to prevent path traversal using proper sanitization
+        // Sanitize target path to avoid traversal-like patterns
         let safe_path = crate::installer::sanitize_path(Path::new(file_path))
             .ok_or_else(|| anyhow::anyhow!("Unsafe path in 7z archive: {}", file_path))?;
-        let target_file = temp_dir.path().join(safe_path);
-        let content = fs::read_to_string(&target_file).context("Failed to read file from 7z")?;
+        let target_normalized = safe_path.to_string_lossy().replace('\\', "/");
+        let fallback_normalized = file_path.replace('\\', "/");
 
-        // TempDir automatically cleans up when dropped
-        Ok(content)
+        // Helper: open reader with optional password
+        let open_reader = || -> Result<ArchiveReader<std::fs::File>> {
+            let pwd = match password {
+                Some(pwd) => Password::from(pwd),
+                None => Password::empty(),
+            };
+            ArchiveReader::open(archive_path, pwd)
+                .map_err(|e| anyhow::anyhow!("Failed to open 7z archive: {}", e))
+        };
+
+        // ArchiveReader::read_file is significantly faster than extracting whole archive to disk.
+        let bytes = {
+            let mut reader = open_reader()?;
+            match reader.read_file(&target_normalized) {
+                Ok(data) => data,
+                Err(_) if fallback_normalized != target_normalized => {
+                    let mut reader = open_reader()?;
+                    reader
+                        .read_file(&fallback_normalized)
+                        .map_err(|e| anyhow::anyhow!("Failed to read file from 7z: {}", e))?
+                }
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Failed to read file from 7z: {}", e));
+                }
+            }
+        };
+
+        String::from_utf8(bytes).map_err(|e| anyhow::anyhow!("Failed to decode UTF-8 file from 7z: {}", e))
     }
 }

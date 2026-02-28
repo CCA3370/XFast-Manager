@@ -220,6 +220,77 @@ impl Installer {
         Ok(())
     }
 
+    /// Extract first companion component from SCRIPT_DIRECTORY path.
+    fn extract_lua_companion_component(path: &str) -> Option<String> {
+        let mut parts = path
+            .trim_start_matches(['/', '\\'])
+            .split(['/', '\\'])
+            .filter(|s| !s.is_empty())
+            .peekable();
+
+        while let Some(part) = parts.peek() {
+            if *part == "." {
+                let _ = parts.next();
+            } else {
+                break;
+            }
+        }
+
+        let first = parts.next()?;
+        if first.is_empty() || first.chars().all(|c| c == '.') {
+            return None;
+        }
+        Some(first.to_string())
+    }
+
+    /// Discover Lua companion entries from extracted staging content.
+    /// Used as a fallback when scan-time companion detection is skipped.
+    fn discover_lua_companion_entries_in_staging(
+        &self,
+        staging_dir: &Path,
+        target: &Path,
+    ) -> Result<Vec<PathBuf>> {
+        use regex::Regex;
+        use std::collections::HashSet;
+
+        let script_name = match target.file_name() {
+            Some(name) => name,
+            None => return Ok(Vec::new()),
+        };
+
+        let script_path = staging_dir.join(script_name);
+        if !script_path.is_file() {
+            return Ok(Vec::new());
+        }
+
+        let lua_content = match fs::read_to_string(&script_path) {
+            Ok(content) => content,
+            Err(_) => return Ok(Vec::new()),
+        };
+
+        let re = Regex::new(r#"SCRIPT_DIRECTORY\s*\.\.\s*["']([^"']+)["']"#)
+            .map_err(|e| anyhow::anyhow!("Failed to compile Lua companion regex: {}", e))?;
+
+        let mut companions = Vec::new();
+        let mut seen: HashSet<PathBuf> = HashSet::new();
+
+        for cap in re.captures_iter(&lua_content) {
+            let raw = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+            if let Some(component) = Self::extract_lua_companion_component(raw) {
+                let rel_path = PathBuf::from(component);
+                if !seen.insert(rel_path.clone()) {
+                    continue;
+                }
+
+                if staging_dir.join(&rel_path).exists() {
+                    companions.push(rel_path);
+                }
+            }
+        }
+
+        Ok(companions)
+    }
+
     /// Install Lua script task (script + detected companions).
     fn install_lua_task_with_companions(
         &self,
@@ -237,7 +308,7 @@ impl Installer {
         fs::create_dir_all(scripts_dir)
             .context(format!("Failed to create Lua Scripts directory: {:?}", scripts_dir))?;
 
-        let bundle_entries = Self::get_lua_bundle_entries(task, target)?;
+        let mut bundle_entries = Self::get_lua_bundle_entries(task, target)?;
 
         if !task.should_overwrite {
             self.remove_lua_bundle_targets(scripts_dir, &bundle_entries)?;
@@ -260,6 +331,34 @@ impl Installer {
                     password,
                     task.file_hashes.as_ref(),
                 )?;
+            }
+
+            // Always reconcile companions from extracted staging content.
+            // This makes install-time behavior authoritative even when scan-time
+            // inference is conservative or slightly inaccurate.
+            let discovered =
+                self.discover_lua_companion_entries_in_staging(staging.path(), target)?;
+            if !discovered.is_empty() {
+                use std::collections::HashSet;
+
+                let script_entry = target
+                    .file_name()
+                    .map(PathBuf::from)
+                    .ok_or_else(|| anyhow::anyhow!("Lua target path has no filename: {:?}", target))?;
+                let mut resolved_entries = vec![script_entry];
+                let mut seen: HashSet<PathBuf> = resolved_entries.iter().cloned().collect();
+
+                for entry in discovered {
+                    if seen.insert(entry.clone()) {
+                        resolved_entries.push(entry);
+                    }
+                }
+
+                bundle_entries = resolved_entries;
+            }
+
+            if !task.should_overwrite {
+                self.remove_lua_bundle_targets(scripts_dir, &bundle_entries)?;
             }
 
             self.copy_lua_bundle_from_staging_without_progress(

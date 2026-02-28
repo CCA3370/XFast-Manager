@@ -397,7 +397,7 @@
       <button
         class="px-6 py-2 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-md"
         :class="getConfirmButtonClass()"
-        @click="$emit('confirm')"
+        @click.stop="$emit('confirm')"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path

@@ -256,6 +256,17 @@ fn is_sam_folder_name(folder_name: &str) -> bool {
     has_sam_word || has_sam_suffix
 }
 
+fn is_lines3d_folder_name(folder_name: &str) -> bool {
+    folder_name.trim().eq_ignore_ascii_case("lines3d")
+}
+
+fn should_promote_to_fixed_high_priority(folder_name: &str, info: &SceneryPackageInfo) -> bool {
+    (is_sam_folder_name(folder_name) || is_lines3d_folder_name(folder_name))
+        && info.has_library_txt
+        && !info.has_dsf
+        && !info.has_apt_dat
+}
+
 /// Common sorting comparison for non-FixedHighPriority scenery packages
 /// This ensures consistent ordering between rebuild_index, recalculate_sort_order, and reset_sort_order
 fn compare_packages_for_sorting(
@@ -269,6 +280,26 @@ fn compare_packages_for_sorting(
 
     match priority_a.cmp(&priority_b) {
         std::cmp::Ordering::Equal => {
+            if info_a.category == SceneryCategory::FixedHighPriority
+                && info_b.category == SceneryCategory::FixedHighPriority
+            {
+                // Keep Lines3D at the absolute top of FixedHighPriority.
+                let lines3d_a = is_lines3d_folder_name(name_a);
+                let lines3d_b = is_lines3d_folder_name(name_b);
+                match lines3d_b.cmp(&lines3d_a) {
+                    std::cmp::Ordering::Equal => {}
+                    other => return other,
+                }
+
+                // Keep SAM entries near the top, after Lines3D.
+                let sam_a = is_sam_folder_name(name_a);
+                let sam_b = is_sam_folder_name(name_b);
+                match sam_b.cmp(&sam_a) {
+                    std::cmp::Ordering::Equal => {}
+                    other => return other,
+                }
+            }
+
             if info_a.category == info_b.category
                 && matches!(
                     info_a.category,
@@ -598,12 +629,9 @@ impl SceneryIndexManager {
             return;
         }
 
-        // Promote SAM libraries to FixedHighPriority before sorting
+        // Promote special high-priority libraries (Lines3D, SAM) before sorting.
         for (name, info) in index.packages.iter_mut() {
-            if is_sam_folder_name(name)
-                && info.has_library_txt
-                && !info.has_dsf
-                && !info.has_apt_dat
+            if should_promote_to_fixed_high_priority(name, info)
                 && info.category != SceneryCategory::FixedHighPriority
             {
                 info.category = SceneryCategory::FixedHighPriority;
@@ -619,6 +647,13 @@ impl SceneryIndexManager {
             .collect();
 
         fixed_packages.sort_by(|(name_a, info_a), (name_b, info_b)| {
+            let lines3d_a = is_lines3d_folder_name(name_a);
+            let lines3d_b = is_lines3d_folder_name(name_b);
+            match lines3d_b.cmp(&lines3d_a) {
+                std::cmp::Ordering::Equal => {}
+                other => return other,
+            }
+
             let sam_a = is_sam_folder_name(name_a);
             let sam_b = is_sam_folder_name(name_b);
             match sam_b.cmp(&sam_a) {
@@ -1115,13 +1150,10 @@ impl SceneryIndexManager {
             return Ok(false);
         }
 
-        // Promote SAM libraries to FixedHighPriority before sorting
+        // Promote special high-priority libraries (Lines3D, SAM) before sorting.
         let mut category_changed = false;
         for (name, info) in index.packages.iter_mut() {
-            if is_sam_folder_name(name)
-                && info.has_library_txt
-                && !info.has_dsf
-                && !info.has_apt_dat
+            if should_promote_to_fixed_high_priority(name, info)
                 && info.category != SceneryCategory::FixedHighPriority
             {
                 info.category = SceneryCategory::FixedHighPriority;
@@ -1138,6 +1170,13 @@ impl SceneryIndexManager {
             .collect();
 
         fixed_packages.sort_by(|(name_a, info_a), (name_b, info_b)| {
+            let lines3d_a = is_lines3d_folder_name(name_a);
+            let lines3d_b = is_lines3d_folder_name(name_b);
+            match lines3d_b.cmp(&lines3d_a) {
+                std::cmp::Ordering::Equal => {}
+                other => return other,
+            }
+
             let sam_a = is_sam_folder_name(name_a);
             let sam_b = is_sam_folder_name(name_b);
             match sam_b.cmp(&sam_a) {
@@ -1876,5 +1915,13 @@ mod tests {
 
         // Test names without patterns
         assert_eq!(extract_scenery_prefix("SimpleFolder"), None);
+    }
+
+    #[test]
+    fn test_lines3d_folder_detection() {
+        assert!(is_lines3d_folder_name("Lines3D"));
+        assert!(is_lines3d_folder_name("lines3d"));
+        assert!(!is_lines3d_folder_name("Lines3D_expanded_documentation"));
+        assert!(!is_lines3d_folder_name("Simple_Ground_Equipment_and_Services"));
     }
 }

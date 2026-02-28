@@ -1751,8 +1751,6 @@ impl Installer {
     /// Only counts source extraction bytes — restore overhead is excluded because
     /// atomic installer doesn't track restore bytes, and the restore phase is fast.
     fn calculate_total_size(&self, tasks: &[InstallTask]) -> Result<(u64, Vec<u64>)> {
-        use std::collections::HashSet;
-
         let mut total = 0u64;
         let mut task_sizes = Vec::with_capacity(tasks.len());
 
@@ -1770,20 +1768,16 @@ impl Installer {
             let source_is_archive =
                 matches!(source_ext.as_str(), "zip" | "7z" | "rar");
 
-            if task.addon_type == AddonType::LuaScript && source.is_file() && !source_is_archive {
-                task_size += fs::metadata(source)?.len();
-
-                if let Some(parent_dir) = source.parent() {
-                    let mut seen: HashSet<PathBuf> = HashSet::new();
-                    for companion in &task.companion_paths {
-                        if let Some(safe_path) = sanitize_path(Path::new(companion)) {
-                            if seen.insert(safe_path.clone()) {
-                                let companion_source = parent_dir.join(safe_path);
-                                task_size += self.get_path_size(&companion_source)?;
-                            }
-                        }
-                    }
+            if task.addon_type == AddonType::LuaScript && source.is_file() {
+                if source_is_archive {
+                    task_size += self.get_lua_bundle_size_in_archive(task, source)?;
+                } else if let Some(parent_dir) = source.parent() {
+                    task_size += self.get_lua_bundle_size_from_directory(task, parent_dir)?;
+                } else {
+                    task_size += fs::metadata(source)?.len();
                 }
+            } else if task.addon_type == AddonType::LuaScript && source.is_dir() {
+                task_size += self.get_lua_bundle_size_from_directory(task, source)?;
             } else if source.is_dir() {
                 task_size += self.get_directory_size(source)?;
             } else if source.is_file() {
@@ -1795,6 +1789,150 @@ impl Installer {
             total += task_size;
         }
         Ok((total, task_sizes))
+    }
+
+    /// Build Lua bundle entries from task info: script file + companions.
+    fn get_lua_bundle_entries_for_size(&self, task: &InstallTask) -> Vec<PathBuf> {
+        use std::collections::HashSet;
+
+        let mut entries = Vec::new();
+        let mut seen: HashSet<PathBuf> = HashSet::new();
+
+        if let Some(script_name) = Path::new(&task.target_path).file_name() {
+            let script_entry = PathBuf::from(script_name);
+            seen.insert(script_entry.clone());
+            entries.push(script_entry);
+        }
+
+        for companion in &task.companion_paths {
+            if let Some(safe_path) = sanitize_path(Path::new(companion)) {
+                if seen.insert(safe_path.clone()) {
+                    entries.push(safe_path);
+                }
+            }
+        }
+
+        entries
+    }
+
+    /// Calculate Lua bundle size from an on-disk source directory.
+    fn get_lua_bundle_size_from_directory(&self, task: &InstallTask, source_dir: &Path) -> Result<u64> {
+        let mut total = 0u64;
+        for entry in self.get_lua_bundle_entries_for_size(task) {
+            total = total.saturating_add(self.get_path_size(&source_dir.join(entry))?);
+        }
+        Ok(total)
+    }
+
+    /// Whether an archive-relative path belongs to a Lua bundle entry.
+    fn lua_bundle_entry_matches(relative_path: &str, bundle_entries: &[String]) -> bool {
+        let rel = relative_path.trim_start_matches('/').trim_end_matches('/');
+        if rel.is_empty() {
+            return false;
+        }
+
+        bundle_entries.iter().any(|entry| {
+            rel == entry
+                || rel
+                    .strip_prefix(entry)
+                    .map(|suffix| suffix.starts_with('/'))
+                    .unwrap_or(false)
+        })
+    }
+
+    /// Calculate Lua bundle size from archive metadata only (no extraction).
+    fn get_lua_bundle_size_in_archive(&self, task: &InstallTask, archive: &Path) -> Result<u64> {
+        let source_ext = archive
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+
+        if task.extraction_chain.is_some() {
+            return self.get_archive_size(archive, task.archive_internal_root.as_deref());
+        }
+
+        // For 7z fast-scan fallback (solid archives), companion_paths may be empty at scan time.
+        // Use internal_root size to avoid underestimating progress bytes.
+        if source_ext == "7z" && task.companion_paths.is_empty() {
+            return self.get_archive_size(archive, task.archive_internal_root.as_deref());
+        }
+
+        let bundle_entries_raw = self.get_lua_bundle_entries_for_size(task);
+        let bundle_entries: Vec<String> = bundle_entries_raw
+            .into_iter()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .collect();
+
+        if bundle_entries.is_empty() {
+            return self.get_archive_size(archive, task.archive_internal_root.as_deref());
+        }
+
+        let prefix = task.archive_internal_root.as_ref().map(|root| {
+            let normalized = root.replace('\\', "/").trim_matches('/').to_string();
+            if normalized.is_empty() {
+                String::new()
+            } else {
+                format!("{}/", normalized)
+            }
+        });
+
+        let mut total = 0u64;
+
+        match source_ext.as_str() {
+            "zip" => {
+                use zip::ZipArchive;
+                let file = fs::File::open(archive)?;
+                let mut archive_reader = ZipArchive::new(file)?;
+                for i in 0..archive_reader.len() {
+                    let file = match archive_reader.by_index_raw(i) {
+                        Ok(f) => f,
+                        Err(_) => continue,
+                    };
+                    let name = file.name().replace('\\', "/");
+                    let relative = if let Some(ref p) = prefix {
+                        if !name.starts_with(p) {
+                            continue;
+                        }
+                        name[p.len()..].to_string()
+                    } else {
+                        name
+                    };
+                    if Self::lua_bundle_entry_matches(&relative, &bundle_entries) {
+                        total = total.saturating_add(file.size());
+                    }
+                }
+            }
+            "7z" => {
+                let archive_meta = sevenz_rust2::Archive::open(archive)?;
+                for entry in &archive_meta.files {
+                    if entry.is_directory() || !entry.has_stream() {
+                        continue;
+                    }
+                    let name = entry.name().replace('\\', "/");
+                    let relative = if let Some(ref p) = prefix {
+                        if !name.starts_with(p) {
+                            continue;
+                        }
+                        name[p.len()..].to_string()
+                    } else {
+                        name
+                    };
+                    if Self::lua_bundle_entry_matches(&relative, &bundle_entries) {
+                        total = total.saturating_add(entry.size());
+                    }
+                }
+            }
+            _ => {
+                return self.get_archive_size(archive, task.archive_internal_root.as_deref());
+            }
+        }
+
+        if total == 0 {
+            self.get_archive_size(archive, task.archive_internal_root.as_deref())
+        } else {
+            Ok(total)
+        }
     }
 
     /// Get size of a file or a directory path. Missing paths return 0.
@@ -1858,10 +1996,13 @@ impl Installer {
 
     /// Get uncompressed size of archive
     fn get_archive_size(&self, archive: &Path, internal_root: Option<&str>) -> Result<u64> {
-        let ext = archive.extension().and_then(|s| s.to_str());
-        match ext {
+        let ext = archive
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_ascii_lowercase());
+        match ext.as_deref() {
             Some("zip") => self.get_zip_size(archive, internal_root),
-            Some("7z") => self.get_7z_size(archive),
+            Some("7z") => self.get_7z_size(archive, internal_root),
             Some("rar") => self.get_rar_size(archive),
             // Non-archive files (e.g. standalone Lua scripts) are installed by direct copy.
             _ => Ok(fs::metadata(archive)?.len()),
@@ -1873,7 +2014,14 @@ impl Installer {
         use zip::ZipArchive;
         let file = fs::File::open(archive)?;
         let mut archive_reader = ZipArchive::new(file)?;
-        let prefix = internal_root.map(|s| s.replace('\\', "/"));
+        let prefix = internal_root.map(|s| {
+            let normalized = s.replace('\\', "/").trim_matches('/').to_string();
+            if normalized.is_empty() {
+                String::new()
+            } else {
+                format!("{}/", normalized)
+            }
+        });
 
         let mut total = 0u64;
         for i in 0..archive_reader.len() {
@@ -1890,11 +2038,59 @@ impl Installer {
         Ok(total)
     }
 
-    /// Get uncompressed size of 7z archive (estimate from file size)
-    fn get_7z_size(&self, archive: &Path) -> Result<u64> {
-        // sevenz-rust2 doesn't have easy size query, use compressed size * 3 as estimate
-        let meta = fs::metadata(archive)?;
-        Ok(meta.len() * 3)
+    /// Get uncompressed size of 7z archive.
+    /// Uses archive metadata directly and supports internal_root filtering.
+    fn get_7z_size(&self, archive: &Path, internal_root: Option<&str>) -> Result<u64> {
+        // For full-archive queries, use cache when available.
+        if internal_root.is_none() {
+            if let Some(cached) = crate::cache::get_cached_metadata(archive) {
+                return Ok(cached.uncompressed_size);
+            }
+        }
+
+        let prefix = internal_root.map(|s| {
+            let normalized = s.replace('\\', "/").trim_matches('/').to_string();
+            if normalized.is_empty() {
+                String::new()
+            } else {
+                format!("{}/", normalized)
+            }
+        });
+
+        let archive_meta = match sevenz_rust2::Archive::open(archive) {
+            Ok(a) => a,
+            Err(_) => {
+                // Fallback for corrupted/unsupported 7z metadata:
+                // keep previous conservative behavior.
+                let meta = fs::metadata(archive)?;
+                return Ok(meta.len() * 3);
+            }
+        };
+
+        let mut total = 0u64;
+        let mut file_count = 0usize;
+
+        for entry in &archive_meta.files {
+            if entry.is_directory() || !entry.has_stream() {
+                continue;
+            }
+
+            let entry_name = entry.name().replace('\\', "/");
+            if let Some(ref p) = prefix {
+                if !entry_name.starts_with(p) {
+                    continue;
+                }
+            }
+
+            total = total.saturating_add(entry.size());
+            file_count += 1;
+        }
+
+        if internal_root.is_none() && total > 0 {
+            crate::cache::cache_metadata(archive, total, file_count);
+        }
+
+        Ok(total)
     }
 
     /// Get uncompressed size of RAR archive

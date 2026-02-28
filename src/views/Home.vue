@@ -75,6 +75,7 @@
           'animate-pulse border-blue-400': store.isAnalyzing,
           'debug-drop': debugDropFlash,
         }"
+        @click="handleDropZoneClick"
       >
         <!-- Hover Gradient -->
         <div
@@ -395,6 +396,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { listen } from '@tauri-apps/api/event'
 import type { UnlistenFn } from '@tauri-apps/api/event'
+import { open } from '@tauri-apps/plugin-dialog'
 import ConfirmationModal from '@/components/ConfirmationModal.vue'
 import PasswordModal from '@/components/PasswordModal.vue'
 import AnimatedText from '@/components/AnimatedText.vue'
@@ -442,7 +444,10 @@ const passwordAttemptTimestamps = ref<number[]>([])
 const MIN_PASSWORD_ATTEMPT_DELAY_MS = 1000 // 1 second between attempts
 const PASSWORD_RATE_LIMIT_WINDOW_MS = 10000 // 10 second window for rate limiting
 const DEBUG_DROP_FLASH_DURATION_MS = 800 // Duration for debug drop flash visual feedback
+const DROP_ZONE_CLICK_SUPPRESS_AFTER_FOCUS_MS = 350 // Prevent activation click from opening picker
 const COMPLETION_ANIMATION_DELAY_MS = 100 // Brief delay before hiding progress to allow animation to start
+const suppressDropZoneClickUntil = ref(0)
+const windowWasBlurred = ref(!document.hasFocus())
 
 // Timer tracking for cleanup on unmount to prevent memory leaks
 // Using Set for O(1) add/delete operations instead of array
@@ -523,10 +528,62 @@ function onWindowDrop(e: DragEvent) {
   )
 }
 
+function onWindowFocus() {
+  if (windowWasBlurred.value) {
+    suppressDropZoneClickUntil.value = Date.now() + DROP_ZONE_CLICK_SUPPRESS_AFTER_FOCUS_MS
+  }
+  windowWasBlurred.value = false
+}
+
+function onWindowBlur() {
+  windowWasBlurred.value = true
+  suppressDropZoneClickUntil.value = 0
+}
+
+async function handleDropZoneClick() {
+  if (store.isInstalling || store.isAnalyzing || store.showCompletion) {
+    return
+  }
+
+  if (!document.hasFocus() || Date.now() < suppressDropZoneClickUntil.value) {
+    logDebug('Ignoring drop-zone click while window is inactive/just activated', 'drag-drop')
+    return
+  }
+
+  try {
+    const selected = await open({
+      multiple: true,
+      title: t('home.dropFilesHere'),
+      filters: [
+        {
+          name: 'Addon Files',
+          extensions: ['zip', '7z', 'rar', 'lua'],
+        },
+        {
+          name: 'All Files',
+          extensions: ['*'],
+        },
+      ],
+    })
+
+    const paths = Array.isArray(selected) ? selected : selected ? [selected] : []
+    if (paths.length === 0) {
+      return
+    }
+
+    await analyzeFiles(paths)
+  } catch (error) {
+    logError(`Failed to open file picker: ${error}`, 'drag-drop')
+    modal.showError(getErrorMessage(error))
+  }
+}
+
 onMounted(async () => {
   window.addEventListener('dragover', onWindowDragOver)
   window.addEventListener('dragleave', onWindowDragLeave)
   window.addEventListener('drop', onWindowDrop)
+  window.addEventListener('focus', onWindowFocus)
+  window.addEventListener('blur', onWindowBlur)
 
   // Use Tauri 2's native drag-drop event for getting file paths
   try {
@@ -634,6 +691,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('dragover', onWindowDragOver)
   window.removeEventListener('dragleave', onWindowDragLeave)
   window.removeEventListener('drop', onWindowDrop)
+  window.removeEventListener('focus', onWindowFocus)
+  window.removeEventListener('blur', onWindowBlur)
 
   // Cleanup all tracked timeouts to prevent memory leaks
   activeTimeoutIds.forEach((id) => clearTimeout(id))

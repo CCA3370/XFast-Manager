@@ -16,6 +16,10 @@ use walkdir::WalkDir;
 
 const MAX_PLUGIN_SCAN_DEPTH: usize = 5;
 
+fn is_lines3d_folder_name(folder_name: &str) -> bool {
+    folder_name.trim().eq_ignore_ascii_case("lines3d")
+}
+
 /// Check if folder contains plugins (.xpl files)
 fn has_plugins(scenery_path: &Path) -> bool {
     let plugins_path = scenery_path.join("plugins");
@@ -371,7 +375,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
         }
     }
 
-    // 3. Has library.txt but no Earth nav data → Library or FixedHighPriority (SAM)
+    // 3. Has library.txt but no Earth nav data → Library or FixedHighPriority (Lines3D/SAM)
     if has_library_txt && !has_earth_nav_data {
         // Check if it's a SAM library
         // Match patterns:
@@ -400,10 +404,11 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
         });
 
         let is_sam = has_sam_word || has_sam_suffix;
+        let is_lines3d = is_lines3d_folder_name(&folder_name);
 
-        let category = if is_sam {
+        let category = if is_lines3d || is_sam {
             crate::log_debug!(
-                "  ✓ Classified as FixedHighPriority (SAM library)",
+                "  ✓ Classified as FixedHighPriority (Lines3D/SAM library)",
                 "scenery_classifier"
             );
             SceneryCategory::FixedHighPriority
@@ -1482,6 +1487,13 @@ mod tests {
             let lower = name.to_lowercase();
             assert!(lower.contains("sam"), "{} should contain 'sam'", name);
         }
+    }
+
+    #[test]
+    fn test_lines3d_library_detection() {
+        assert!(is_lines3d_folder_name("Lines3D"));
+        assert!(is_lines3d_folder_name("lines3d"));
+        assert!(!is_lines3d_folder_name("Lines3D_expanded_documentation"));
     }
 
     #[test]
