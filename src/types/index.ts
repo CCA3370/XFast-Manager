@@ -159,6 +159,8 @@ export interface InstallTask {
   liveryAircraftFound?: boolean
   /** For LuaScript: whether FlyWithLua plugin is installed */
   flyWithLuaInstalled?: boolean
+  /** For LuaScript: companion files/folders referenced by SCRIPT_DIRECTORY */
+  companionPaths?: string[]
 }
 
 export interface AnalysisResult {

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-02-28
+
+### Fixed
+
+- **X-Plane Elevation Error Guidance** - When X-Plane fails to launch due to administrator privilege requirements (error 740), a detailed diagnosis with causes and suggested solutions is now shown instead of a generic error message.
+
 ## [1.1.0] - 2026-02-27
 
 ### Added

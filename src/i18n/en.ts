@@ -89,6 +89,11 @@ export default {
     Livery: 'Livery',
     LuaScript: 'Lua Script',
   },
+  luaCompanion: {
+    companions: 'Companion Files',
+    companionCount: '{count} companions',
+    expandCompanions: 'Expand to view',
+  },
   settings: {
     title: 'Settings',
     subtitle: 'Configure X-Plane installation path and other options',
@@ -591,6 +596,12 @@ export default {
     restoringBackup: 'Restoring backup...',
     backupVersion: 'Backup Version',
     backupTime: 'Backup Time',
+    selectAll: 'Select All',
+    enableSelected: 'Enable Selected',
+    disableSelected: 'Disable Selected',
+    selectedCount: '{count} selected',
+    batchMode: 'Batch Mode',
+    protectedAircraft: 'This is a default X-Plane aircraft and cannot be disabled',
   },
   livery: {
     noLiveries: 'No liveries found',

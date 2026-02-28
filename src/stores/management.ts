@@ -24,6 +24,18 @@ const UPDATE_CACHE_DURATION = 60 * 60 * 1000
 // Maximum number of entries in update cache to prevent unbounded memory growth
 const MAX_UPDATE_CACHE_SIZE = 500
 
+// Default X-Plane aircraft required for simulator startup — cannot be disabled
+const PROTECTED_AIRCRAFT_NAMES = new Set([
+  'cessna 172 sp',
+  'cirrus sr22',
+  'sikorsky s-76',
+  'stinson l-5 sentinel',
+])
+
+export function isProtectedAircraft(displayName: string): boolean {
+  return PROTECTED_AIRCRAFT_NAMES.has(displayName.toLowerCase())
+}
+
 // Cache structure for update check results
 // Only cache latestVersion, hasUpdate should be recalculated based on current local version
 interface UpdateCacheEntry {
@@ -557,6 +569,15 @@ export const useManagementStore = defineStore('management', () => {
       return
     }
 
+    // Prevent disabling protected aircraft
+    if (itemType === 'aircraft') {
+      const item = aircraft.value.find((a) => a.folderName === folderName)
+      if (item && item.enabled && isProtectedAircraft(item.displayName)) {
+        toast.warning(t('management.protectedAircraft'))
+        return
+      }
+    }
+
     try {
       const newEnabled = await invoke<boolean>('toggle_management_item', {
         xplanePath: appStore.xplanePath,
@@ -662,6 +683,67 @@ export const useManagementStore = defineStore('management', () => {
     }
   }
 
+  // Batch set enabled state for multiple items
+  async function batchSetEnabled(
+    itemType: ManagementItemType,
+    folderNames: string[],
+    enabled: boolean,
+  ) {
+    if (!validateXPlanePath(error)) {
+      return
+    }
+
+    const itemsRef =
+      itemType === 'aircraft' ? aircraft : itemType === 'plugin' ? plugins : navdata
+
+    // Filter to only items that need state change
+    let toChange = folderNames.filter((fn) => {
+      const item = itemsRef.value.find((i) => i.folderName === fn)
+      return item && item.enabled !== enabled
+    })
+
+    // Skip protected aircraft when disabling
+    if (itemType === 'aircraft' && !enabled) {
+      toChange = toChange.filter((fn) => {
+        const item = aircraft.value.find((a) => a.folderName === fn)
+        return !item || !isProtectedAircraft(item.displayName)
+      })
+    }
+
+    for (const folderName of toChange) {
+      try {
+        await invoke<boolean>('toggle_management_item', {
+          xplanePath: appStore.xplanePath,
+          itemType,
+          folderName,
+        })
+
+        // Update local state
+        const item = itemsRef.value.find((i) => i.folderName === folderName)
+        if (item) {
+          item.enabled = enabled
+        }
+
+        // Sync lock state for aircraft/plugin
+        if (itemType === 'aircraft' || itemType === 'plugin') {
+          await syncLockAfterToggle(itemType, folderName, enabled)
+        }
+      } catch (e) {
+        logError(`Failed to toggle ${folderName}: ${e}`, 'management')
+        // Continue with remaining items
+      }
+    }
+
+    // Update enabled counts
+    if (itemType === 'aircraft') {
+      aircraftEnabledCount.value = aircraft.value.filter((a) => a.enabled).length
+    } else if (itemType === 'plugin') {
+      pluginsEnabledCount.value = plugins.value.filter((p) => p.enabled).length
+    } else {
+      navdataEnabledCount.value = navdata.value.filter((n) => n.enabled).length
+    }
+  }
+
   // Set active tab
   function setActiveTab(tab: ManagementTab) {
     activeTab.value = tab
@@ -714,6 +796,7 @@ export const useManagementStore = defineStore('management', () => {
     restoreNavdataBackup,
     loadCurrentTabData,
     toggleEnabled,
+    batchSetEnabled,
     deleteItem,
     openFolder,
     setActiveTab,

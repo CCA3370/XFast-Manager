@@ -88,6 +88,11 @@ export default {
     Livery: '涂装',
     LuaScript: 'Lua 脚本',
   },
+  luaCompanion: {
+    companions: '伴随文件',
+    companionCount: '{count} 个伴随文件',
+    expandCompanions: '展开查看',
+  },
   settings: {
     title: '设置',
     subtitle: '配置X-Plane安装路径和其他选项',
@@ -577,6 +582,12 @@ export default {
     restoringBackup: '正在恢复备份...',
     backupVersion: '备份版本',
     backupTime: '备份时间',
+    selectAll: '全选',
+    enableSelected: '启用选中',
+    disableSelected: '禁用选中',
+    selectedCount: '已选 {count} 项',
+    batchMode: '批量操作',
+    protectedAircraft: '此机模为 X-Plane 默认机模，无法禁用',
   },
   livery: {
     noLiveries: '未找到涂装',
