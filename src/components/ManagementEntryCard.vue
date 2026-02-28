@@ -22,10 +22,16 @@ const props = withDefaults(
     itemType: ManagementItemType
     isToggling?: boolean
     backupInfo?: NavdataBackupInfo | null
+    selected?: boolean
+    showCheckbox?: boolean
+    isProtected?: boolean
   }>(),
   {
     isToggling: false,
     backupInfo: null,
+    selected: false,
+    showCheckbox: false,
+    isProtected: false,
   },
 )
 
@@ -36,6 +42,7 @@ const emit = defineEmits<{
   (e: 'restore-backup', backupInfo: NavdataBackupInfo): void
   (e: 'view-liveries', folderName: string): void
   (e: 'view-scripts', folderName: string): void
+  (e: 'toggle-select', folderName: string): void
 }>()
 
 const { t } = useI18n()
@@ -188,7 +195,7 @@ function handleDeleteConfirm() {
 function handleContextMenu(event: MouseEvent) {
   const menuItems: ContextMenuItem[] = []
 
-  if (!isNavdata(props.entry)) {
+  if (!isNavdata(props.entry) && !(props.isProtected && props.entry.enabled)) {
     menuItems.push({
       id: 'toggle-enabled',
       label: props.entry.enabled ? t('contextMenu.disable') : t('contextMenu.enable'),
@@ -291,12 +298,40 @@ function handleContextMenu(event: MouseEvent) {
     @dblclick="handleDoubleClick"
     @contextmenu.prevent="handleContextMenu"
   >
+    <!-- Selection checkbox -->
+    <button
+      v-if="showCheckbox"
+      class="flex-shrink-0 w-4 h-4 rounded border-2 transition-all duration-150 flex items-center justify-center"
+      :class="
+        selected
+          ? 'bg-blue-500 border-blue-500'
+          : 'border-gray-300 dark:border-gray-500 hover:border-blue-400 dark:hover:border-blue-400'
+      "
+      @click.stop="emit('toggle-select', entry.folderName)"
+    >
+      <svg
+        v-if="selected"
+        class="w-3 h-3 text-white"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="3"
+          d="M5 13l4 4L19 7"
+        />
+      </svg>
+    </button>
+
     <!-- Enable/Disable toggle (not for navdata) -->
     <button
       v-if="!isNavdata(entry)"
-      :disabled="isToggling"
+      :disabled="isToggling || (isProtected && entry.enabled)"
       class="flex-shrink-0 w-9 h-5 rounded-full relative transition-colors disabled:opacity-70"
       :class="entry.enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'"
+      :title="isProtected && entry.enabled ? t('management.protectedAircraft') : undefined"
       @click.stop="emit('toggle-enabled', entry.folderName)"
     >
       <span v-if="isToggling" class="absolute inset-0 flex items-center justify-center">

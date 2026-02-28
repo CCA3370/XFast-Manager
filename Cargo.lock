@@ -7630,7 +7630,7 @@ dependencies = [
 
 [[package]]
 name = "xfastmanager"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7647,6 +7647,7 @@ dependencies = [
  "minidump-unwind",
  "opener",
  "rayon",
+ "regex",
  "reqwest 0.12.28",
  "sea-orm",
  "sea-orm-migration",

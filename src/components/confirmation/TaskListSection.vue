@@ -77,6 +77,85 @@
             >
           </div>
 
+          <!-- Lua companion files/folders -->
+          <div
+            v-if="task.type === 'LuaScript' && hasLuaCompanions(task)"
+            class="mt-1"
+          >
+            <button
+              type="button"
+              class="w-full flex items-center justify-between px-2 py-1 rounded bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200 dark:border-cyan-500/30 text-cyan-700 dark:text-cyan-300 text-xs"
+              @click.stop="toggleLuaCompanions(task.id)"
+            >
+              <span class="flex items-center gap-1.5 min-w-0">
+                <svg
+                  class="w-3 h-3 flex-shrink-0 transition-transform duration-150"
+                  :class="{ 'rotate-90': isLuaCompanionsExpanded(task.id) }"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 5l7 7-7 7"
+                  ></path>
+                </svg>
+                <span class="truncate">
+                  {{ $t('luaCompanion.companionCount', { count: getLuaCompanions(task).length }) }}
+                </span>
+              </span>
+              <span class="text-[10px] opacity-80">
+                {{ $t('luaCompanion.expandCompanions') }}
+              </span>
+            </button>
+
+            <div
+              v-if="isLuaCompanionsExpanded(task.id)"
+              class="mt-1 p-2 rounded border border-cyan-200 dark:border-cyan-500/30 bg-cyan-50/60 dark:bg-cyan-500/5 space-y-1"
+            >
+              <div class="text-[11px] font-medium text-cyan-700 dark:text-cyan-300">
+                {{ $t('luaCompanion.companions') }}
+              </div>
+              <div
+                v-for="companion in getLuaCompanions(task)"
+                :key="`${task.id}-${companion}`"
+                class="flex items-center gap-1.5 text-[11px] text-cyan-800 dark:text-cyan-200"
+              >
+                <svg
+                  v-if="isLuaCompanionFile(companion)"
+                  class="w-3.5 h-3.5 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M7 2h7l5 5v13a2 2 0 01-2 2H7a2 2 0 01-2-2V4a2 2 0 012-2z"
+                  ></path>
+                </svg>
+                <svg
+                  v-else
+                  class="w-3.5 h-3.5 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-7l-2-2H5a2 2 0 00-2 2z"
+                  ></path>
+                </svg>
+                <span class="break-all">{{ companion }}</span>
+              </div>
+            </div>
+          </div>
+
           <!-- Conflict warning with install mode toggle switch (only for non-locked conflicts) -->
           <div v-if="task.conflictExists && !isLockedConflict(task)" class="mt-1.5">
             <div
@@ -379,7 +458,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useLockStore } from '@/stores/lock'
 import { AddonType, NavdataInfo } from '@/types'
@@ -461,6 +540,57 @@ function toggleTaskSizeConfirm(taskId: string) {
 function toggleTaskEnabled(taskId: string) {
   const currentValue = store.getTaskEnabled(taskId)
   store.setTaskEnabled(taskId, !currentValue)
+}
+
+const expandedLuaCompanions = ref<Record<string, boolean>>({})
+
+function hasLuaCompanions(task: InstallTask): boolean {
+  return task.type === 'LuaScript' && getLuaCompanions(task).length > 0
+}
+
+function isLuaCompanionsExpanded(taskId: string): boolean {
+  return !!expandedLuaCompanions.value[taskId]
+}
+
+function toggleLuaCompanions(taskId: string) {
+  expandedLuaCompanions.value[taskId] = !expandedLuaCompanions.value[taskId]
+}
+
+function normalizeLuaCompanion(companion: string): string {
+  return companion.trim().replace(/^[/\\]+/, '')
+}
+
+function isDisplayableLuaCompanion(companion: string): boolean {
+  const normalized = normalizeLuaCompanion(companion)
+  if (!normalized) return false
+
+  const firstSegment = normalized.split(/[\\/]/).find(Boolean)
+  return !!firstSegment && !/^\.+$/.test(firstSegment)
+}
+
+function getLuaCompanions(task: InstallTask): string[] {
+  if (task.type !== 'LuaScript') return []
+
+  const companions = task.companionPaths || []
+  const deduped: string[] = []
+  const seen = new Set<string>()
+
+  for (const rawCompanion of companions) {
+    if (!isDisplayableLuaCompanion(rawCompanion)) continue
+    const normalized = normalizeLuaCompanion(rawCompanion)
+    const key = normalized.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(normalized)
+  }
+
+  return deduped
+}
+
+function isLuaCompanionFile(companion: string): boolean {
+  const normalized = normalizeLuaCompanion(companion)
+  const name = normalized.split(/[\\/]/).pop() || normalized
+  return /\.[A-Za-z0-9]+$/.test(name)
 }
 
 // Check if task is a livery without installed aircraft

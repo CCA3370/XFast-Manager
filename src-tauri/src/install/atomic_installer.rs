@@ -379,6 +379,24 @@ impl AtomicInstaller {
             .map(|e| e.file_name())
             .collect();
 
+        // For navdata installed into a dedicated subfolder (e.g. UFMC/GNS430/FF777 path),
+        // backup and clean the whole target folder content to avoid leaving stale folders
+        // that may not appear in the new package listing.
+        let target_is_custom_data_root = self
+            .target_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.eq_ignore_ascii_case("Custom Data"))
+            .unwrap_or(false);
+        let backup_scope_entries: Vec<std::ffi::OsString> = if target_is_custom_data_root {
+            new_entries.clone()
+        } else {
+            fs::read_dir(&self.target_dir)?
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name())
+                .collect()
+        };
+
         if new_entries.is_empty() {
             logger::log_info(
                 "No new navdata entries found in temp directory",
@@ -414,6 +432,10 @@ impl AtomicInstaller {
             let backup_data_dir = self.xplane_root.join("Custom Data").join("Backup_Data");
             fs::create_dir_all(&backup_data_dir)?;
 
+            // Keep only the latest backup for the same navdata provider.
+            // Do not touch backups from other providers.
+            self.cleanup_navdata_backups_for_provider(&backup_data_dir, &provider_name);
+
             // Use timestamp to create unique backup folder name
             let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
             let sanitized_provider = sanitize_folder_name(&provider_name);
@@ -433,7 +455,7 @@ impl AtomicInstaller {
             let custom_data_dir = self.xplane_root.join("Custom Data");
             let mut backup_entries: Vec<BackupFileEntry> = Vec::new();
 
-            for entry_name in &new_entries {
+            for entry_name in &backup_scope_entries {
                 let old_path = self.target_dir.join(entry_name);
                 if old_path.exists() {
                     // Use walkdir for efficient enumeration (DirEntry::file_type() uses cached stat)
@@ -471,7 +493,7 @@ impl AtomicInstaller {
 
             // Step 5: Move files to backup directory (OPTIMIZED: directory-level rename)
             self.emit_progress("Moving files to backup...", InstallPhase::Installing);
-            for entry_name in &new_entries {
+            for entry_name in &backup_scope_entries {
                 let old_path = self.target_dir.join(entry_name);
                 if old_path.exists() {
                     // Compute relative path from Custom Data for consistent backup structure
@@ -530,29 +552,10 @@ impl AtomicInstaller {
             );
 
             // Also delete existing backups for the same provider
-            let sanitized_provider = sanitize_folder_name(&provider_name);
             let backup_data_dir = self.xplane_root.join("Custom Data").join("Backup_Data");
-            if backup_data_dir.exists() {
-                if let Ok(entries) = fs::read_dir(&backup_data_dir) {
-                    for entry in entries.filter_map(|e| e.ok()) {
-                        let folder_name = entry.file_name().to_string_lossy().to_string();
-                        if folder_name.starts_with(&sanitized_provider) {
-                            logger::log_info(
-                                &format!("Deleting existing backup: {}", folder_name),
-                                Some("atomic_installer"),
-                            );
-                            if let Err(e) = fs::remove_dir_all(entry.path()) {
-                                logger::log_error(
-                                    &format!("Failed to delete backup {}: {}", folder_name, e),
-                                    Some("atomic_installer"),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
+            self.cleanup_navdata_backups_for_provider(&backup_data_dir, &provider_name);
 
-            for entry_name in &new_entries {
+            for entry_name in &backup_scope_entries {
                 let old_path = self.target_dir.join(entry_name);
                 if old_path.exists() {
                     if old_path.is_dir() {
@@ -615,6 +618,88 @@ impl AtomicInstaller {
             .map(|s| s.to_string());
 
         Ok((provider_name, cycle, airac))
+    }
+
+    /// Read provider_name from navdata backup verification.json (if present and valid).
+    fn read_navdata_backup_provider_name(backup_dir: &Path) -> Option<String> {
+        let verification_path = backup_dir.join("verification.json");
+        let content = fs::read_to_string(verification_path).ok()?;
+        let json: serde_json::Value = serde_json::from_str(&content).ok()?;
+        json.get("provider_name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    }
+
+    /// Check whether a backup folder name belongs to a specific provider hash.
+    /// Accepts exact provider hash or provider hash followed by an underscore timestamp suffix.
+    fn is_backup_folder_for_provider_hash(folder_name: &str, provider_hash: &str) -> bool {
+        folder_name == provider_hash
+            || folder_name
+                .strip_prefix(provider_hash)
+                .map(|suffix| suffix.starts_with('_'))
+                .unwrap_or(false)
+    }
+
+    /// Remove existing navdata backups for the same provider only.
+    /// This must not delete backups for other navdata providers.
+    fn cleanup_navdata_backups_for_provider(&self, backup_data_dir: &Path, provider_name: &str) {
+        if !backup_data_dir.exists() {
+            return;
+        }
+
+        let provider_hash = sanitize_folder_name(provider_name);
+        let entries = match fs::read_dir(backup_data_dir) {
+            Ok(entries) => entries,
+            Err(e) => {
+                logger::log_error(
+                    &format!(
+                        "Failed to read navdata backup directory {:?}: {}",
+                        backup_data_dir, e
+                    ),
+                    Some("atomic_installer"),
+                );
+                return;
+            }
+        };
+
+        for entry in entries.filter_map(|e| e.ok()) {
+            let backup_path = entry.path();
+            if !backup_path.is_dir() {
+                continue;
+            }
+
+            let folder_name = entry.file_name().to_string_lossy().to_string();
+            let name_matches =
+                Self::is_backup_folder_for_provider_hash(&folder_name, &provider_hash);
+            let verified_provider = Self::read_navdata_backup_provider_name(&backup_path);
+
+            // Safety rule:
+            // - If verification.json exists, require exact provider_name match.
+            // - If it does not exist, fall back to provider-hash folder naming.
+            let should_delete = match verified_provider.as_deref() {
+                Some(name) => name == provider_name,
+                None => name_matches,
+            };
+
+            if !should_delete {
+                continue;
+            }
+
+            logger::log_info(
+                &format!(
+                    "Deleting previous navdata backup for provider '{}': {}",
+                    provider_name, folder_name
+                ),
+                Some("atomic_installer"),
+            );
+
+            if let Err(e) = fs::remove_dir_all(&backup_path) {
+                logger::log_error(
+                    &format!("Failed to delete navdata backup {}: {}", folder_name, e),
+                    Some("atomic_installer"),
+                );
+            }
+        }
     }
 
     /// Restore backup files (liveries and config files) from backup directory

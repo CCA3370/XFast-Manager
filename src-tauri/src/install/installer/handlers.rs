@@ -1,6 +1,512 @@
 use super::*;
 
 impl Installer {
+    /// Check whether a source file is a supported archive format.
+    fn is_supported_archive_file(path: &Path) -> bool {
+        path.extension()
+            .and_then(|s| s.to_str())
+            .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "zip" | "7z" | "rar"))
+            .unwrap_or(false)
+    }
+
+    /// Copy a single file with progress tracking.
+    /// If target points to an existing directory, copy into that directory
+    /// using the source filename.
+    fn copy_single_file_with_progress(
+        &self,
+        source: &Path,
+        target: &Path,
+        ctx: &ProgressContext,
+    ) -> Result<()> {
+        let final_target = if target.exists() && target.is_dir() {
+            let file_name = source
+                .file_name()
+                .ok_or_else(|| anyhow::anyhow!("Source file has no filename"))?;
+            target.join(file_name)
+        } else {
+            target.to_path_buf()
+        };
+
+        if let Some(parent) = final_target.parent() {
+            fs::create_dir_all(parent).context(format!(
+                "Failed to create target directory for file copy: {:?}",
+                parent
+            ))?;
+        }
+
+        let file_size = fs::metadata(source)?.len();
+        let display_name = final_target
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        let mut source_file = fs::File::open(source)
+            .context(format!("Failed to open source file {:?}", source))?;
+        let mut target_file = fs::File::create(&final_target)
+            .context(format!("Failed to create target file {:?}", final_target))?;
+        copy_file_optimized(&mut source_file, &mut target_file)?;
+
+        // Remove read-only attribute from copied file to avoid future deletion issues
+        let _ = remove_readonly_attribute(&final_target);
+
+        ctx.add_bytes(file_size);
+        ctx.emit_progress(Some(display_name), InstallPhase::Installing);
+
+        Ok(())
+    }
+
+    /// Remove an existing install target path regardless of whether it's a file or directory.
+    fn remove_existing_target_path(&self, target: &Path) -> Result<()> {
+        if !target.exists() {
+            return Ok(());
+        }
+
+        if target.is_dir() {
+            remove_dir_all_robust(target)
+                .context(format!("Failed to delete existing folder: {:?}", target))?;
+        } else {
+            let _ = remove_readonly_attribute(target);
+            fs::remove_file(target)
+                .context(format!("Failed to delete existing file: {:?}", target))?;
+        }
+
+        Ok(())
+    }
+
+    /// Read provider_name from navdata backup verification.json (if present and valid).
+    fn read_navdata_backup_provider_name(backup_dir: &Path) -> Option<String> {
+        let verification_path = backup_dir.join("verification.json");
+        let content = fs::read_to_string(verification_path).ok()?;
+        let json: serde_json::Value = serde_json::from_str(&content).ok()?;
+        json.get("provider_name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    }
+
+    /// Check whether a backup folder name belongs to a specific provider hash.
+    /// Accepts exact provider hash or provider hash followed by an underscore timestamp suffix.
+    fn is_backup_folder_for_provider_hash(folder_name: &str, provider_hash: &str) -> bool {
+        folder_name == provider_hash
+            || folder_name
+                .strip_prefix(provider_hash)
+                .map(|suffix| suffix.starts_with('_'))
+                .unwrap_or(false)
+    }
+
+    /// Remove existing navdata backups for the same provider only.
+    /// This must not delete backups for other navdata providers.
+    fn cleanup_navdata_backups_for_provider(&self, backup_data_dir: &Path, provider_name: &str) {
+        if !backup_data_dir.exists() {
+            return;
+        }
+
+        let provider_hash = sanitize_folder_name(provider_name);
+        let entries = match fs::read_dir(backup_data_dir) {
+            Ok(entries) => entries,
+            Err(e) => {
+                logger::log_error(
+                    &format!("Failed to read navdata backup directory {:?}: {}", backup_data_dir, e),
+                    Some("installer"),
+                );
+                return;
+            }
+        };
+
+        for entry in entries.filter_map(|e| e.ok()) {
+            let backup_path = entry.path();
+            if !backup_path.is_dir() {
+                continue;
+            }
+
+            let folder_name = entry.file_name().to_string_lossy().to_string();
+            let name_matches =
+                Self::is_backup_folder_for_provider_hash(&folder_name, &provider_hash);
+            let verified_provider = Self::read_navdata_backup_provider_name(&backup_path);
+
+            // Safety rule:
+            // - If verification.json exists, require exact provider_name match.
+            // - If it does not exist, fall back to provider-hash folder naming.
+            let should_delete = match verified_provider.as_deref() {
+                Some(name) => name == provider_name,
+                None => name_matches,
+            };
+
+            if !should_delete {
+                continue;
+            }
+
+            logger::log_info(
+                &format!("Deleting previous navdata backup for provider '{}': {}", provider_name, folder_name),
+                Some("installer"),
+            );
+
+            if let Err(e) = remove_dir_all_robust(&backup_path) {
+                logger::log_error(
+                    &format!("Failed to delete navdata backup {}: {}", folder_name, e),
+                    Some("installer"),
+                );
+            }
+        }
+    }
+
+    /// Resolve the Custom Data root directory from a navdata target path.
+    /// This keeps non-atomic navdata backup path consistent with atomic mode:
+    /// `<X-Plane>/Custom Data/Backup_Data`.
+    fn resolve_navdata_custom_data_root(&self, target: &Path) -> PathBuf {
+        for ancestor in target.ancestors() {
+            if ancestor
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.eq_ignore_ascii_case("Custom Data"))
+                .unwrap_or(false)
+            {
+                return ancestor.to_path_buf();
+            }
+        }
+
+        // Fallback for unexpected layouts: keep legacy behavior.
+        if target
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.eq_ignore_ascii_case("GNS430"))
+            .unwrap_or(false)
+        {
+            target.parent().unwrap_or(target).to_path_buf()
+        } else {
+            target.to_path_buf()
+        }
+    }
+
+    /// Build the list of Lua bundle entries to install:
+    /// the script itself plus detected companion paths.
+    fn get_lua_bundle_entries(task: &InstallTask, target: &Path) -> Result<Vec<PathBuf>> {
+        use std::collections::HashSet;
+
+        let script_name = target
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("Lua target path has no filename: {:?}", target))?;
+
+        let mut entries: Vec<PathBuf> = Vec::new();
+        let mut seen: HashSet<PathBuf> = HashSet::new();
+
+        let script_entry = PathBuf::from(script_name);
+        seen.insert(script_entry.clone());
+        entries.push(script_entry);
+
+        for companion in &task.companion_paths {
+            if let Some(safe_path) = sanitize_path(Path::new(companion)) {
+                if seen.insert(safe_path.clone()) {
+                    entries.push(safe_path);
+                }
+            } else {
+                logger::log_info(
+                    &format!(
+                        "Skipping unsafe Lua companion path for task {}: {}",
+                        task.display_name, companion
+                    ),
+                    Some("installer"),
+                );
+            }
+        }
+
+        Ok(entries)
+    }
+
+    /// Remove existing Lua bundle targets (script + companions) before clean install.
+    fn remove_lua_bundle_targets(&self, scripts_dir: &Path, bundle_entries: &[PathBuf]) -> Result<()> {
+        for entry in bundle_entries {
+            let target_path = scripts_dir.join(entry);
+            if target_path.exists() {
+                self.remove_existing_target_path(&target_path)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Copy selected Lua bundle entries from a source directory to Scripts with progress tracking.
+    fn copy_lua_bundle_from_directory_with_progress(
+        &self,
+        source_dir: &Path,
+        scripts_dir: &Path,
+        bundle_entries: &[PathBuf],
+        ctx: &ProgressContext,
+        should_overwrite: bool,
+    ) -> Result<()> {
+        for entry in bundle_entries {
+            let source_path = source_dir.join(entry);
+            if !source_path.exists() {
+                logger::log_info(
+                    &format!(
+                        "Lua bundle entry not found in source directory, skipping: {:?}",
+                        source_path
+                    ),
+                    Some("installer"),
+                );
+                continue;
+            }
+
+            let target_path = scripts_dir.join(entry);
+            if !should_overwrite && target_path.exists() {
+                self.remove_existing_target_path(&target_path)?;
+            }
+
+            if source_path.is_dir() {
+                self.copy_directory_with_progress(&source_path, &target_path, ctx)?;
+            } else {
+                self.copy_single_file_with_progress(&source_path, &target_path, ctx)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Copy selected Lua bundle entries from a staging directory to Scripts.
+    /// This phase intentionally avoids progress updates because archive extraction
+    /// has already reported byte progress.
+    fn copy_lua_bundle_from_staging_without_progress(
+        &self,
+        staging_dir: &Path,
+        scripts_dir: &Path,
+        bundle_entries: &[PathBuf],
+        should_overwrite: bool,
+    ) -> Result<()> {
+        for entry in bundle_entries {
+            let source_path = staging_dir.join(entry);
+            if !source_path.exists() {
+                logger::log_info(
+                    &format!(
+                        "Lua bundle entry not found in extracted archive, skipping: {:?}",
+                        source_path
+                    ),
+                    Some("installer"),
+                );
+                continue;
+            }
+
+            let target_path = scripts_dir.join(entry);
+
+            if source_path.is_dir() {
+                if should_overwrite && target_path.exists() && target_path.is_dir() {
+                    self.copy_directory_without_progress(&source_path, &target_path)?;
+                } else {
+                    if target_path.exists() {
+                        self.remove_existing_target_path(&target_path)?;
+                    }
+
+                    if fs::rename(&source_path, &target_path).is_err() {
+                        self.copy_directory_without_progress(&source_path, &target_path)?;
+                    }
+                }
+            } else {
+                if target_path.exists() {
+                    self.remove_existing_target_path(&target_path)?;
+                }
+
+                if let Some(parent) = target_path.parent() {
+                    fs::create_dir_all(parent).context(format!(
+                        "Failed to create Lua companion parent directory: {:?}",
+                        parent
+                    ))?;
+                }
+
+                if fs::rename(&source_path, &target_path).is_err() {
+                    fs::copy(&source_path, &target_path).context(format!(
+                        "Failed to copy Lua bundle entry: {:?} -> {:?}",
+                        source_path, target_path
+                    ))?;
+                }
+
+                let _ = remove_readonly_attribute(&target_path);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Extract first companion component from SCRIPT_DIRECTORY path.
+    fn extract_lua_companion_component(path: &str) -> Option<String> {
+        let mut parts = path
+            .trim_start_matches(['/', '\\'])
+            .split(['/', '\\'])
+            .filter(|s| !s.is_empty())
+            .peekable();
+
+        while let Some(part) = parts.peek() {
+            if *part == "." {
+                let _ = parts.next();
+            } else {
+                break;
+            }
+        }
+
+        let first = parts.next()?;
+        if first.is_empty() || first.chars().all(|c| c == '.') {
+            return None;
+        }
+        Some(first.to_string())
+    }
+
+    /// Discover Lua companion entries from extracted staging content.
+    /// Used as a fallback when scan-time companion detection is skipped.
+    fn discover_lua_companion_entries_in_staging(
+        &self,
+        staging_dir: &Path,
+        target: &Path,
+    ) -> Result<Vec<PathBuf>> {
+        use regex::Regex;
+        use std::collections::HashSet;
+
+        let script_name = match target.file_name() {
+            Some(name) => name,
+            None => return Ok(Vec::new()),
+        };
+
+        let script_path = staging_dir.join(script_name);
+        if !script_path.is_file() {
+            return Ok(Vec::new());
+        }
+
+        let lua_content = match fs::read_to_string(&script_path) {
+            Ok(content) => content,
+            Err(_) => return Ok(Vec::new()),
+        };
+
+        let re = Regex::new(r#"SCRIPT_DIRECTORY\s*\.\.\s*["']([^"']+)["']"#)
+            .map_err(|e| anyhow::anyhow!("Failed to compile Lua companion regex: {}", e))?;
+
+        let mut companions = Vec::new();
+        let mut seen: HashSet<PathBuf> = HashSet::new();
+
+        for cap in re.captures_iter(&lua_content) {
+            let raw = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+            if let Some(component) = Self::extract_lua_companion_component(raw) {
+                let rel_path = PathBuf::from(component);
+                if !seen.insert(rel_path.clone()) {
+                    continue;
+                }
+
+                if staging_dir.join(&rel_path).exists() {
+                    companions.push(rel_path);
+                }
+            }
+        }
+
+        Ok(companions)
+    }
+
+    /// Install Lua script task (script + detected companions).
+    fn install_lua_task_with_companions(
+        &self,
+        task: &InstallTask,
+        source: &Path,
+        target: &Path,
+        ctx: &ProgressContext,
+        password: Option<&str>,
+    ) -> Result<()> {
+        use tempfile::TempDir;
+
+        let scripts_dir = target
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Lua target path has no parent: {:?}", target))?;
+        fs::create_dir_all(scripts_dir)
+            .context(format!("Failed to create Lua Scripts directory: {:?}", scripts_dir))?;
+
+        let mut bundle_entries = Self::get_lua_bundle_entries(task, target)?;
+
+        if !task.should_overwrite {
+            self.remove_lua_bundle_targets(scripts_dir, &bundle_entries)?;
+        }
+
+        // Archive source (including nested archive chain): extract to staging first.
+        if source.is_file() && (task.extraction_chain.is_some() || Self::is_supported_archive_file(source))
+        {
+            let staging =
+                TempDir::new().context("Failed to create temp staging directory for Lua install")?;
+
+            if let Some(ref chain) = task.extraction_chain {
+                self.install_content_with_extraction_chain(source, staging.path(), chain, ctx, password)?;
+            } else {
+                self.extract_archive_with_progress(
+                    source,
+                    staging.path(),
+                    task.archive_internal_root.as_deref(),
+                    ctx,
+                    password,
+                    task.file_hashes.as_ref(),
+                )?;
+            }
+
+            // Always reconcile companions from extracted staging content.
+            // This makes install-time behavior authoritative even when scan-time
+            // inference is conservative or slightly inaccurate.
+            let discovered =
+                self.discover_lua_companion_entries_in_staging(staging.path(), target)?;
+            if !discovered.is_empty() {
+                use std::collections::HashSet;
+
+                let script_entry = target
+                    .file_name()
+                    .map(PathBuf::from)
+                    .ok_or_else(|| anyhow::anyhow!("Lua target path has no filename: {:?}", target))?;
+                let mut resolved_entries = vec![script_entry];
+                let mut seen: HashSet<PathBuf> = resolved_entries.iter().cloned().collect();
+
+                for entry in discovered {
+                    if seen.insert(entry.clone()) {
+                        resolved_entries.push(entry);
+                    }
+                }
+
+                bundle_entries = resolved_entries;
+            }
+
+            if !task.should_overwrite {
+                self.remove_lua_bundle_targets(scripts_dir, &bundle_entries)?;
+            }
+
+            self.copy_lua_bundle_from_staging_without_progress(
+                staging.path(),
+                scripts_dir,
+                &bundle_entries,
+                task.should_overwrite,
+            )?;
+            return Ok(());
+        }
+
+        // Direct file source: copy from the .lua parent directory.
+        if source.is_file() {
+            let source_dir = source
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("Lua source file has no parent directory"))?;
+            self.copy_lua_bundle_from_directory_with_progress(
+                source_dir,
+                scripts_dir,
+                &bundle_entries,
+                ctx,
+                task.should_overwrite,
+            )?;
+            return Ok(());
+        }
+
+        // Directory source (fallback): copy directly from source directory.
+        if source.is_dir() {
+            self.copy_lua_bundle_from_directory_with_progress(
+                source,
+                scripts_dir,
+                &bundle_entries,
+                ctx,
+                task.should_overwrite,
+            )?;
+            return Ok(());
+        }
+
+        Err(anyhow::anyhow!(
+            "Lua source path is neither file nor directory: {:?}",
+            source
+        ))
+    }
+
     /// Install a single task with progress tracking
     pub(super) fn install_task_with_progress(
         &self,
@@ -27,6 +533,14 @@ impl Installer {
             "installer_timing"
         );
 
+        // Lua scripts are treated as a file bundle: script + detected companions.
+        // Handle them with a dedicated path so archives install into Scripts root
+        // (not into a "script.lua/" directory).
+        if task.addon_type == AddonType::LuaScript {
+            self.install_lua_task_with_companions(task, source, target, ctx, password)?;
+            return Ok(());
+        }
+
         // Check if this is a nested archive installation
         if let Some(ref chain) = task.extraction_chain {
             crate::log_debug!(
@@ -52,7 +566,8 @@ impl Installer {
                 );
                 self.install_content_with_extraction_chain(source, target, chain, ctx, password)?;
             }
-        } else if atomic_install_enabled {
+        } else if atomic_install_enabled && (source.is_dir() || Self::is_supported_archive_file(source))
+        {
             // Atomic installation mode
             crate::log_debug!(
                 "[TIMING] Using atomic installation mode",
@@ -120,14 +635,18 @@ impl Installer {
         if source.is_dir() {
             self.copy_directory_with_progress(source, target, ctx)?;
         } else if source.is_file() {
-            self.extract_archive_with_progress(
-                source,
-                target,
-                internal_root,
-                ctx,
-                password,
-                expected_hashes,
-            )?;
+            if Self::is_supported_archive_file(source) {
+                self.extract_archive_with_progress(
+                    source,
+                    target,
+                    internal_root,
+                    ctx,
+                    password,
+                    expected_hashes,
+                )?;
+            } else {
+                self.copy_single_file_with_progress(source, target, ctx)?;
+            }
         } else {
             return Err(anyhow::anyhow!("Source path is neither file nor directory"));
         }
@@ -748,8 +1267,7 @@ impl Installer {
             _ => {
                 // For other types: delete and reinstall
                 if target.exists() {
-                    remove_dir_all_robust(target)
-                        .context(format!("Failed to delete existing folder: {:?}", target))?;
+                    self.remove_existing_target_path(target)?;
                 }
                 self.install_content_with_extraction_chain(source, target, chain, ctx, password)?;
             }
@@ -901,8 +1419,7 @@ impl Installer {
             _ => {
                 // For other types: delete and reinstall using robust removal
                 if target.exists() {
-                    remove_dir_all_robust(target)
-                        .context(format!("Failed to delete existing folder: {:?}", target))?;
+                    self.remove_existing_target_path(target)?;
                 }
                 self.install_content_with_progress_and_hashes(
                     source,
@@ -1360,12 +1877,30 @@ impl Installer {
 
         let (provider_name, _, _) = read_cycle_json(&temp_dir);
         let (_, old_cycle, old_airac) = read_cycle_json(target);
+        let custom_data_dir = self.resolve_navdata_custom_data_root(target);
 
         // Step 3: Enumerate new entries
         let new_entries: Vec<std::ffi::OsString> = fs::read_dir(&temp_dir)?
             .filter_map(|e| e.ok())
             .map(|e| e.file_name())
             .collect();
+
+        // For navdata installed into a dedicated subfolder (e.g. UFMC/GNS430/FF777 path),
+        // backup and clean the whole target folder content to avoid leaving stale folders
+        // that may not appear in the new package listing.
+        let target_is_custom_data_root = target
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.eq_ignore_ascii_case("Custom Data"))
+            .unwrap_or(false);
+        let backup_scope_entries: Vec<std::ffi::OsString> = if target_is_custom_data_root {
+            new_entries.clone()
+        } else {
+            fs::read_dir(target)?
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name())
+                .collect()
+        };
 
         if backup_navdata {
             // Step 4: Create Backup_Data directory in Custom Data (not in target)
@@ -1374,14 +1909,13 @@ impl Installer {
                 InstallPhase::Installing,
             );
 
-            // Backup_Data always goes in Custom Data, not in target (which might be Custom Data/GNS430)
-            let custom_data_dir = if target.file_name().and_then(|n| n.to_str()) == Some("GNS430") {
-                target.parent().unwrap_or(target)
-            } else {
-                target
-            };
+            // Backup_Data always goes in Custom Data root.
             let backup_data_dir = custom_data_dir.join("Backup_Data");
             fs::create_dir_all(&backup_data_dir)?;
+
+            // Keep only the latest backup for the same navdata provider.
+            // Do not touch backups from other providers.
+            self.cleanup_navdata_backups_for_provider(&backup_data_dir, &provider_name);
 
             // Use timestamp to create unique backup folder name
             let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
@@ -1399,7 +1933,7 @@ impl Installer {
             // Use Custom Data as base for relative paths (for consistent restore)
             let mut backup_entries: Vec<BackupFileEntry> = Vec::new();
 
-            for entry_name in &new_entries {
+            for entry_name in &backup_scope_entries {
                 let old_path = target.join(entry_name);
                 if old_path.exists() {
                     // Use walkdir for efficient enumeration (DirEntry::file_type() uses cached stat)
@@ -1413,7 +1947,7 @@ impl Installer {
                         // Relative path from Custom Data (not target) for consistent restore
                         let relative_path = entry
                             .path()
-                            .strip_prefix(custom_data_dir)
+                            .strip_prefix(&custom_data_dir)
                             .unwrap_or(entry.path())
                             .to_string_lossy()
                             .replace('\\', "/");
@@ -1481,12 +2015,12 @@ impl Installer {
                 Ok(())
             }
 
-            for entry_name in &new_entries {
+            for entry_name in &backup_scope_entries {
                 let old_path = target.join(entry_name);
                 if old_path.exists() {
                     // Compute relative path from Custom Data for consistent backup structure
                     let relative_entry = old_path
-                        .strip_prefix(custom_data_dir)
+                        .strip_prefix(&custom_data_dir)
                         .unwrap_or(Path::new(entry_name));
                     let backup_path = backup_subdir.join(relative_entry);
                     move_directory_optimized(&old_path, &backup_path)?;
@@ -1552,36 +2086,11 @@ impl Installer {
             );
 
             // Also delete existing backups for the same provider
-            let sanitized_provider = sanitize_folder_name(&provider_name);
-            // Backup_Data always goes in Custom Data
-            let custom_data_dir = if target.file_name().and_then(|n| n.to_str()) == Some("GNS430") {
-                target.parent().unwrap_or(target)
-            } else {
-                target
-            };
+            // Backup_Data always goes in Custom Data root.
             let backup_data_dir = custom_data_dir.join("Backup_Data");
-            if backup_data_dir.exists() {
-                if let Ok(entries) = fs::read_dir(&backup_data_dir) {
-                    for entry in entries.filter_map(|e| e.ok()) {
-                        let folder_name = entry.file_name().to_string_lossy().to_string();
-                        // Match folders that start with the sanitized provider name
-                        if folder_name.starts_with(&sanitized_provider) {
-                            logger::log_info(
-                                &format!("Deleting existing backup: {}", folder_name),
-                                Some("installer"),
-                            );
-                            if let Err(e) = remove_dir_all_robust(&entry.path()) {
-                                logger::log_error(
-                                    &format!("Failed to delete backup {}: {}", folder_name, e),
-                                    Some("installer"),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
+            self.cleanup_navdata_backups_for_provider(&backup_data_dir, &provider_name);
 
-            for entry_name in &new_entries {
+            for entry_name in &backup_scope_entries {
                 let old_path = target.join(entry_name);
                 if old_path.exists() {
                     if old_path.is_dir() {
@@ -1645,14 +2154,31 @@ impl Installer {
     pub(super) fn cleanup_task(&self, task: &InstallTask) -> Result<()> {
         let target = Path::new(&task.target_path);
 
-        if !target.exists() {
-            return Ok(());
-        }
-
         logger::log_info(
             &format!("Cleaning up task: {}", task.display_name),
             Some("installer"),
         );
+
+        // Lua cleanup should remove script + companions, even if the script file itself
+        // wasn't created yet but companions were partially copied.
+        if task.addon_type == AddonType::LuaScript {
+            if let Some(scripts_dir) = target.parent() {
+                let bundle_entries = Self::get_lua_bundle_entries(task, target)?;
+                self.remove_lua_bundle_targets(scripts_dir, &bundle_entries)?;
+            } else if target.exists() {
+                self.remove_existing_target_path(target)?;
+            }
+
+            logger::log_info(
+                &format!("Cleanup completed: {}", task.display_name),
+                Some("installer"),
+            );
+            return Ok(());
+        }
+
+        if !target.exists() {
+            return Ok(());
+        }
 
         // For Navdata, we should NOT delete the entire Custom Data folder
         // Just log a warning
@@ -1665,8 +2191,8 @@ impl Installer {
         }
 
         // For other types, delete the target directory
-        remove_dir_all_robust(target)
-            .context(format!("Failed to cleanup task directory: {:?}", target))?;
+        self.remove_existing_target_path(target)
+            .context(format!("Failed to cleanup task path: {:?}", target))?;
 
         logger::log_info(
             &format!("Cleanup completed: {}", task.display_name),

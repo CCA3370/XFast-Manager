@@ -397,7 +397,7 @@
       <button
         class="px-6 py-2 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-md"
         :class="getConfirmButtonClass()"
-        @click="$emit('confirm')"
+        @click.stop="$emit('confirm')"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -410,114 +410,18 @@
         <AnimatedText>{{ $t('completion.confirm') }}</AnimatedText>
       </button>
     </div>
-
-    <!-- Error Detail Modal -->
-    <Teleport to="body">
-      <transition name="fade">
-        <div
-          v-if="showErrorModal"
-          class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-          @click.self="showErrorModal = false"
-        >
-          <div
-            class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 animate-scale-in"
-          >
-            <!-- Header -->
-            <div class="flex items-center gap-3 min-w-0">
-              <div
-                class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-500/20 flex items-center justify-center flex-shrink-0"
-              >
-                <svg
-                  class="w-5 h-5 text-red-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
-                  ></path>
-                </svg>
-              </div>
-              <div class="min-w-0">
-                <h4 class="font-semibold text-gray-900 dark:text-white truncate">
-                  {{ errorModalTask?.displayName }}
-                </h4>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ $t('home.failed') || 'Failed' }}
-                </p>
-              </div>
-            </div>
-
-            <!-- Error Message -->
-            <div
-              class="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg p-3"
-            >
-              <p class="text-sm text-red-700 dark:text-red-300 break-words select-text">
-                {{ errorModalMessage }}
-              </p>
-            </div>
-
-            <!-- Buttons -->
-            <div class="flex justify-end gap-2">
-              <!-- Copy Button -->
-              <button
-                class="px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
-                :class="
-                  copied
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
-                    : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200'
-                "
-                @click="copyErrorMessage"
-              >
-                <svg
-                  v-if="!copied"
-                  class="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                  ></path>
-                </svg>
-                <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M5 13l4 4L19 7"
-                  ></path>
-                </svg>
-                {{ copied ? $t('copy.copied') : $t('copy.copy') }}
-              </button>
-              <!-- Close Button -->
-              <button
-                class="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg transition-colors"
-                @click="showErrorModal = false"
-              >
-                {{ $t('common.close') }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </transition>
-    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useModalStore } from '@/stores/modal'
 import AnimatedText from '@/components/AnimatedText.vue'
 import { AddonType, type InstallTask, type InstallResult, type ParallelTaskProgress } from '@/types'
 
 const { t } = useI18n()
+const modal = useModalStore()
 
 // Size level based on task count
 type SizeLevel = 'large' | 'medium' | 'compact'
@@ -609,32 +513,6 @@ const sizeConfig = computed<SizeConfig>(() => {
   }
   return configs[sizeLevel.value]
 })
-
-// Error modal state
-const showErrorModal = ref(false)
-const errorModalTask = ref<InstallTask | null>(null)
-const errorModalMessage = ref('')
-const copied = ref(false)
-let copyResetTimer: ReturnType<typeof setTimeout> | null = null
-
-// Copy error message to clipboard
-async function copyErrorMessage() {
-  try {
-    const textToCopy = `${errorModalTask.value?.displayName || 'Task'}: ${errorModalMessage.value}`
-    await navigator.clipboard.writeText(textToCopy)
-    copied.value = true
-
-    // Reset copied state after 2 seconds
-    if (copyResetTimer) {
-      clearTimeout(copyResetTimer)
-    }
-    copyResetTimer = setTimeout(() => {
-      copied.value = false
-    }, 2000)
-  } catch (err) {
-    console.error('Failed to copy:', err)
-  }
-}
 
 // Computed: display percentage (100% when complete)
 const displayPercentage = computed(() => {
@@ -802,10 +680,7 @@ function handleTaskClick(index: number) {
   const result = getTaskResult(task.id)
   if (!result) return
 
-  errorModalTask.value = task
-  errorModalMessage.value = result.errorMessage || t('completion.unknownError')
-  copied.value = false // Reset copied state for new modal
-  showErrorModal.value = true
+  modal.showError(result.errorMessage || t('completion.unknownError'), task.displayName)
 }
 
 // Get task item container class based on status
@@ -1015,17 +890,6 @@ function getTaskTypeLabel(type: AddonType): string {
   transform: translateX(2px);
 }
 
-/* Modal animations */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
 /* Slide-up transition for percentage → completion count */
 .slide-up-enter-active,
 .slide-up-leave-active {
@@ -1042,18 +906,4 @@ function getTaskTypeLabel(type: AddonType): string {
   transform: translateY(-8px);
 }
 
-@keyframes scale-in {
-  0% {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.animate-scale-in {
-  animation: scale-in 0.2s ease-out;
-}
 </style>

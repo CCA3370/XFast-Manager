@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { useManagementStore } from '@/stores/management'
+import { useManagementStore, isProtectedAircraft } from '@/stores/management'
 import { useToastStore } from '@/stores/toast'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
@@ -50,6 +50,11 @@ const showOnlyUpdates = ref(false)
 const showOnlyOutdated = ref(false)
 const suppressLoading = ref(false)
 
+// Selection mode & state (transient, not persisted)
+const selectionMode = ref(false)
+const selectedAircraft = ref<Set<string>>(new Set())
+const selectedPlugins = ref<Set<string>>(new Set())
+
 // Initialize tab from route query
 onMounted(() => {
   const tabParam = route.query.tab as ManagementTab | undefined
@@ -75,6 +80,10 @@ watch(activeTab, async (newTab, oldTab) => {
   // Reset filter states when switching tabs
   showOnlyUpdates.value = false
   showOnlyOutdated.value = false
+  // Clear selection when switching tabs
+  selectionMode.value = false
+  selectedAircraft.value = new Set()
+  selectedPlugins.value = new Set()
 
   // Start loading data (non-blocking)
   const loadPromise = loadTabData(newTab)
@@ -181,6 +190,97 @@ const filteredNavdata = computed(() => {
       n.providerName.toLowerCase().includes(query) || n.folderName.toLowerCase().includes(query),
   )
 })
+
+// Selection computed properties
+const currentSelected = computed(() => {
+  return activeTab.value === 'aircraft' ? selectedAircraft.value : selectedPlugins.value
+})
+
+const currentFilteredItems = computed(() => {
+  return activeTab.value === 'aircraft' ? filteredAircraft.value : filteredPlugins.value
+})
+
+const isAllSelected = computed(() => {
+  const items = currentFilteredItems.value
+  const selected = currentSelected.value
+  return items.length > 0 && items.every((item) => selected.has(item.folderName))
+})
+
+const isIndeterminate = computed(() => {
+  const items = currentFilteredItems.value
+  const selected = currentSelected.value
+  const selectedCount = items.filter((item) => selected.has(item.folderName)).length
+  return selectedCount > 0 && selectedCount < items.length
+})
+
+const selectedCount = computed(() => {
+  return currentSelected.value.size
+})
+
+// Selection methods
+function toggleSelectionMode() {
+  selectionMode.value = !selectionMode.value
+  if (!selectionMode.value) {
+    selectedAircraft.value = new Set()
+    selectedPlugins.value = new Set()
+  }
+}
+
+function toggleSelectAll() {
+  const items = currentFilteredItems.value
+  const selected = activeTab.value === 'aircraft' ? selectedAircraft : selectedPlugins
+
+  if (isAllSelected.value) {
+    // Deselect all filtered items
+    const newSet = new Set(selected.value)
+    for (const item of items) {
+      newSet.delete(item.folderName)
+    }
+    selected.value = newSet
+  } else {
+    // Select all filtered items
+    const newSet = new Set(selected.value)
+    for (const item of items) {
+      newSet.add(item.folderName)
+    }
+    selected.value = newSet
+  }
+}
+
+function toggleSelect(folderName: string) {
+  const selected = activeTab.value === 'aircraft' ? selectedAircraft : selectedPlugins
+  const newSet = new Set(selected.value)
+  if (newSet.has(folderName)) {
+    newSet.delete(folderName)
+  } else {
+    newSet.add(folderName)
+  }
+  selected.value = newSet
+}
+
+const isBatchProcessing = ref(false)
+
+async function batchSetEnabled(enabled: boolean) {
+  if (isBatchProcessing.value) return
+  const itemType = activeTab.value as ManagementItemType
+  const folderNames = [...currentSelected.value]
+
+  isBatchProcessing.value = true
+  try {
+    await managementStore.batchSetEnabled(itemType, folderNames, enabled)
+  } catch (e) {
+    await loadTabData(activeTab.value)
+    modalStore.showError(t('management.toggleFailed') + ': ' + String(e))
+  } finally {
+    isBatchProcessing.value = false
+    // Clear selection after batch operation
+    if (activeTab.value === 'aircraft') {
+      selectedAircraft.value = new Set()
+    } else {
+      selectedPlugins.value = new Set()
+    }
+  }
+}
 
 // Handle toggle for non-scenery items
 async function handleToggleEnabled(itemType: ManagementItemType, folderName: string) {
@@ -405,28 +505,133 @@ const isLoading = computed(() => {
             <span :key="locale">{{ t('management.checkUpdates') }}</span>
           </Transition>
         </button>
+
+        <!-- Selection mode toggle (aircraft/plugin tabs only) -->
+        <button
+          v-if="activeTab === 'aircraft' || activeTab === 'plugin'"
+          class="px-3 py-2 rounded-lg transition-colors flex items-center justify-center"
+          :class="
+            selectionMode
+              ? 'bg-blue-500 text-white hover:bg-blue-600'
+              : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+          "
+          :title="t('management.batchMode')"
+          @click="toggleSelectionMode"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+            />
+          </svg>
+        </button>
       </div>
 
-      <!-- Statistics bar -->
-      <div
-        class="flex items-center gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700 mb-3 text-sm"
-      >
-        <div class="flex items-center gap-2">
-          <Transition name="text-fade" mode="out-in">
-            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
-              >{{ t('management.total') }}:</span
+      <!-- Batch action bar (replaces statistics bar when in selection mode) -->
+      <Transition name="bar-swap" mode="out-in">
+        <div
+          v-if="selectionMode"
+          key="batch-bar"
+          class="flex items-center gap-3 min-h-11 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 mb-3 text-sm cursor-pointer"
+          :title="t('management.selectAll')"
+          @click="toggleSelectAll"
+        >
+          <!-- Master checkbox -->
+          <button
+            class="flex-shrink-0 w-4 h-4 rounded border-2 transition-all duration-150 flex items-center justify-center"
+            :class="
+              isAllSelected
+                ? 'bg-blue-500 border-blue-500'
+                : isIndeterminate
+                  ? 'bg-blue-500 border-blue-500'
+                  : 'border-blue-300 dark:border-blue-500 hover:border-blue-400'
+            "
+            :title="t('management.selectAll')"
+            @click.stop="toggleSelectAll"
+          >
+            <svg
+              v-if="isAllSelected"
+              class="w-3 h-3 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-          </Transition>
-          <span class="font-semibold text-gray-900 dark:text-gray-100">
-            {{
-              activeTab === 'aircraft'
-                ? managementStore.aircraftTotalCount
-                : activeTab === 'plugin'
-                  ? managementStore.pluginsTotalCount
-                  : managementStore.navdataTotalCount
-            }}
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="3"
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            <svg
+              v-else-if="isIndeterminate"
+              class="w-3 h-3 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="3"
+                d="M5 12h14"
+              />
+            </svg>
+          </button>
+
+          <span class="text-xs text-blue-600 dark:text-blue-300">
+            {{ selectedCount > 0 ? t('management.selectedCount', { count: selectedCount }) : t('management.selectAll') }}
           </span>
+
+          <div class="flex-1"></div>
+
+          <!-- Batch buttons (only when items selected) -->
+          <template v-if="selectedCount > 0">
+            <button
+              :disabled="isBatchProcessing"
+              class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-green-500 text-white hover:bg-green-600 disabled:opacity-50"
+              @click.stop="batchSetEnabled(true)"
+            >
+              <Transition name="text-fade" mode="out-in">
+                <span :key="locale">{{ t('management.enableSelected') }}</span>
+              </Transition>
+            </button>
+            <button
+              :disabled="isBatchProcessing"
+              class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-gray-400 dark:bg-gray-500 text-white hover:bg-gray-500 dark:hover:bg-gray-400 disabled:opacity-50"
+              @click.stop="batchSetEnabled(false)"
+            >
+              <Transition name="text-fade" mode="out-in">
+                <span :key="locale">{{ t('management.disableSelected') }}</span>
+              </Transition>
+            </button>
+          </template>
         </div>
+
+        <!-- Statistics bar (normal mode) -->
+        <div
+          v-else
+          key="stats-bar"
+          class="flex items-center gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700 mb-3 text-sm"
+        >
+          <div class="flex items-center gap-2">
+            <Transition name="text-fade" mode="out-in">
+              <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+                >{{ t('management.total') }}:</span
+              >
+            </Transition>
+            <span class="font-semibold text-gray-900 dark:text-gray-100">
+              {{
+                activeTab === 'aircraft'
+                  ? managementStore.aircraftTotalCount
+                  : activeTab === 'plugin'
+                    ? managementStore.pluginsTotalCount
+                    : managementStore.navdataTotalCount
+              }}
+            </span>
+          </div>
         <div v-if="activeTab !== 'navdata'" class="flex items-center gap-2">
           <Transition name="text-fade" mode="out-in">
             <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
@@ -579,6 +784,7 @@ const isLoading = computed(() => {
           <span class="text-xs">{{ t('management.restoringBackup') }}</span>
         </div>
       </div>
+      </Transition>
 
       <!-- Content -->
       <div ref="scrollContainerRef" class="flex-1 overflow-y-auto tab-content-container">
@@ -630,10 +836,14 @@ const isLoading = computed(() => {
                   :entry="item"
                   item-type="aircraft"
                   :is-toggling="togglingItems.has(`aircraft:${item.folderName}`)"
+                  :selected="selectedAircraft.has(item.folderName)"
+                  :show-checkbox="selectionMode"
+                  :is-protected="isProtectedAircraft(item.displayName)"
                   @toggle-enabled="(fn) => handleToggleEnabled('aircraft', fn)"
                   @delete="(fn) => handleDelete('aircraft', fn)"
                   @open-folder="(fn) => handleOpenFolder('aircraft', fn)"
                   @view-liveries="handleViewLiveries"
+                  @toggle-select="toggleSelect"
                 />
               </div>
             </template>
@@ -654,10 +864,13 @@ const isLoading = computed(() => {
                   :entry="item"
                   item-type="plugin"
                   :is-toggling="togglingItems.has(`plugin:${item.folderName}`)"
+                  :selected="selectedPlugins.has(item.folderName)"
+                  :show-checkbox="selectionMode"
                   @toggle-enabled="(fn) => handleToggleEnabled('plugin', fn)"
                   @delete="(fn) => handleDelete('plugin', fn)"
                   @open-folder="(fn) => handleOpenFolder('plugin', fn)"
                   @view-scripts="handleViewScripts"
+                  @toggle-select="toggleSelect"
                 />
               </div>
             </template>
@@ -771,5 +984,21 @@ const isLoading = computed(() => {
 /* Tab indicator animation enhancement */
 .tab-indicator {
   will-change: transform, width, left;
+}
+
+/* Bar swap transition between stats bar and batch action bar */
+.bar-swap-enter-active,
+.bar-swap-leave-active {
+  transition: all 0.2s ease;
+}
+
+.bar-swap-enter-from {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.bar-swap-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
 }
 </style>

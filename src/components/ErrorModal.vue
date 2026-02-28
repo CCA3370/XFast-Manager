@@ -68,6 +68,7 @@
 
           <!-- Privacy notice for bug reporting -->
           <div
+            v-if="!modal.errorModal.hideReport"
             class="mt-3 px-3 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/30 rounded-lg text-xs leading-relaxed text-blue-800 dark:text-blue-200"
           >
             {{ t('modal.bugReportPrivacyNotice') }}
@@ -76,6 +77,7 @@
           <div class="mt-6 flex justify-end items-center space-x-3">
             <!-- Upload Bug Report -->
             <button
+              v-if="!modal.errorModal.hideReport"
               class="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md text-sm text-white transition flex items-center space-x-2"
               :disabled="isSubmitting"
               :title="t('modal.submitBugReport')"
@@ -149,13 +151,11 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch, nextTick } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import { useI18n } from 'vue-i18n'
 import { logError } from '@/services/logger'
-import { logger } from '@/services/logger'
-import { getItem, setItem, STORAGE_KEYS, type TrackedIssue } from '@/services/storage'
+import { submitBugReport as submitBugReportShared } from '@/services/bugReport'
 
 const modal = useModalStore()
 const okBtn = ref<HTMLElement | null>(null)
@@ -185,100 +185,20 @@ async function copyAll() {
   }
 }
 
-const BUG_REPORT_TIMEOUT_MS = 20000
-
 async function submitBugReport() {
   if (isSubmitting.value) return
   isSubmitting.value = true
 
   try {
-    // Collect logs
-    let logs = ''
-    try {
-      logs = await invoke<string>('get_all_logs')
-    } catch {
-      logs = '(failed to retrieve logs)'
-    }
-
     const errorTitle = modal.errorModal.title || ''
     const errorMessage = modal.errorModal.message || ''
-
-    // Build fallback GitHub issue URL
-    const fallbackTitle = `[Bug]: ${(errorTitle || errorMessage).slice(0, 80)}`
-    const fallbackBody = [
-      '### Bug Report (Auto-submitted)',
-      '',
-      '**Error Message**',
-      '```',
+    await submitBugReportShared({
+      errorTitle,
       errorMessage,
-      '```',
-      '',
-      '**Logs**',
-      '<details>',
-      '<summary>Click to expand logs</summary>',
-      '',
-      '```',
-      logs.slice(0, 5000),
-      '```',
-      '</details>',
-    ].join('\n')
-    const fallbackUrl = `https://github.com/CCA3370/XFast-Manager/issues/new?template=bug_report.yml&labels=${encodeURIComponent('bug')}&title=${encodeURIComponent(fallbackTitle)}&body=${encodeURIComponent(fallbackBody)}`
-
-    // Try API submission with timeout
-    let submitTimeoutId: ReturnType<typeof setTimeout> | null = null
-    try {
-      const result = await Promise.race<{ issue_url: string; issue_number: number }>([
-        invoke<{ issue_url: string; issue_number: number }>('create_bug_report_issue', {
-          errorTitle,
-          errorMessage,
-          logs,
-          category: 'Other',
-        }),
-        new Promise<{ issue_url: string; issue_number: number }>((_, reject) => {
-          submitTimeoutId = setTimeout(() => {
-            reject(new Error('BUG_REPORT_SUBMIT_TIMEOUT'))
-          }, BUG_REPORT_TIMEOUT_MS)
-        }),
-      ])
-
-      toast.success(t('modal.bugReportSubmitted'))
-      // Open the created issue
-      await invoke('open_url', { url: result.issue_url })
-
-      // Track the issue for future update checks
-      if (result.issue_number > 0) {
-        try {
-          const now = new Date().toISOString()
-          const newEntry: TrackedIssue = {
-            issueNumber: result.issue_number,
-            issueTitle: `[Bug]: ${(errorTitle || errorMessage).slice(0, 80)}`,
-            issueUrl: result.issue_url,
-            state: 'open',
-            commentCount: 0,
-            reportedAt: now,
-            lastCheckedAt: now,
-          }
-          const existing = (await getItem<TrackedIssue[]>(STORAGE_KEYS.REPORTED_ISSUES)) ?? []
-          const updated = [newEntry, ...existing].slice(0, 10)
-          await setItem(STORAGE_KEYS.REPORTED_ISSUES, updated)
-        } catch (trackErr) {
-          logError(`Failed to track reported issue: ${trackErr}`, 'bug-report')
-        }
-      }
-    } catch {
-      // Fallback: open prefilled GitHub issue page
-      try {
-        await invoke('open_url', { url: fallbackUrl })
-        toast.success(t('modal.bugReportOpened'))
-      } catch (e2) {
-        logError(`Failed to open bug report URL: ${e2}`, 'bug-report')
-        toast.error(t('modal.bugReportFailed'))
-      }
-    } finally {
-      if (submitTimeoutId !== null) {
-        clearTimeout(submitTimeoutId)
-      }
-    }
+      category: 'Other',
+      t,
+      toast,
+    })
   } catch (e) {
     logError(`Bug report submission failed: ${e}`, 'bug-report')
     toast.error(t('modal.bugReportFailed'))
