@@ -145,21 +145,24 @@ fn module_name_from_path(path: &str) -> String {
 
 // ========== Core Functions ==========
 
-pub fn find_most_recent_crash_report(
-    xplane_path: &str,
-    skip_date_check: bool,
-) -> Option<PathBuf> {
+pub fn find_most_recent_crash_report(xplane_path: &str, skip_date_check: bool) -> Option<PathBuf> {
     let reports_dir = Path::new(xplane_path)
         .join("Output")
         .join("crash_reports")
         .join("reports");
 
     if !reports_dir.is_dir() {
-        log_debug!("Crash reports directory not found", &reports_dir.to_string_lossy());
+        log_debug!(
+            "Crash reports directory not found",
+            &reports_dir.to_string_lossy()
+        );
         return None;
     }
 
-    log_debug!("Scanning crash reports directory", &reports_dir.to_string_lossy());
+    log_debug!(
+        "Scanning crash reports directory",
+        &reports_dir.to_string_lossy()
+    );
 
     // Get Log.txt modification date for same-day filtering
     let log_date = if skip_date_check {
@@ -373,8 +376,10 @@ pub async fn parse_minidump(dmp_path: &Path) -> Result<ParsedMinidump, String> {
                 .take(15)
                 .enumerate()
                 .map(|(i, frame)| {
-                    let module_name =
-                        frame.module.as_ref().map(|m| module_name_from_path(&m.code_file()));
+                    let module_name = frame
+                        .module
+                        .as_ref()
+                        .map(|m| module_name_from_path(&m.code_file()));
                     CrashStackFrame {
                         frame_index: i,
                         module_name,
@@ -467,7 +472,9 @@ pub fn score_crash_causes(parsed: &ParsedMinidump, log_issues: &[LogIssue]) -> V
                 evidence,
                 key,
                 points,
-                blamed.map(|b| format!(", blamed: {}", b)).unwrap_or_default()
+                blamed
+                    .map(|b| format!(", blamed: {}", b))
+                    .unwrap_or_default()
             ),
             LOG_CTX
         );
@@ -497,7 +504,12 @@ pub fn score_crash_causes(parsed: &ParsedMinidump, log_issues: &[LogIssue]) -> V
             || exc_type.contains("SIGSEGV")
             || exc_type.contains("EXC_BAD_ACCESS")
         {
-            add_evidence("memory_corruption", 25.0, "exception_access_violation", None);
+            add_evidence(
+                "memory_corruption",
+                25.0,
+                "exception_access_violation",
+                None,
+            );
         }
 
         if exc_type.contains("OUT_OF_MEMORY")
@@ -511,7 +523,12 @@ pub fn score_crash_causes(parsed: &ParsedMinidump, log_issues: &[LogIssue]) -> V
         // Skip if this is a controlled exit (STATUS_FATAL_APP_EXIT)
         if let Some(ref crash_mod) = exc.crash_module {
             if is_plugin(crash_mod) {
-                add_evidence("plugin_crash", 40.0, "crash_in_plugin_module", Some(crash_mod));
+                add_evidence(
+                    "plugin_crash",
+                    40.0,
+                    "crash_in_plugin_module",
+                    Some(crash_mod),
+                );
             } else if is_xplane_core(crash_mod) && !is_fatal_app_exit {
                 // Only attribute to xplane_bug if it's NOT a controlled exit
                 add_evidence("xplane_bug", 25.0, "crash_in_xplane_core", None);
@@ -537,7 +554,12 @@ pub fn score_crash_causes(parsed: &ParsedMinidump, log_issues: &[LogIssue]) -> V
     for frame in parsed.crash_stack.iter().take(5) {
         if let Some(ref mod_name) = frame.module_name {
             if is_plugin(mod_name) {
-                add_evidence("plugin_crash", 20.0, "plugin_in_stack_frames", Some(mod_name));
+                add_evidence(
+                    "plugin_crash",
+                    20.0,
+                    "plugin_in_stack_frames",
+                    Some(mod_name),
+                );
             }
             if is_gpu_driver(mod_name) {
                 add_evidence(
@@ -595,7 +617,12 @@ pub fn score_crash_causes(parsed: &ParsedMinidump, log_issues: &[LogIssue]) -> V
                 add_evidence("memory_exhaustion", 35.0, "log_out_of_memory", None);
             }
             "memory_status_critical" => {
-                add_evidence("memory_exhaustion", 30.0, "log_memory_status_critical", None);
+                add_evidence(
+                    "memory_exhaustion",
+                    30.0,
+                    "log_memory_status_critical",
+                    None,
+                );
             }
             "plugin_error" | "plugin_assert" => {
                 add_evidence("plugin_crash", 15.0, "log_plugin_error", None);
@@ -614,7 +641,10 @@ pub fn score_crash_causes(parsed: &ParsedMinidump, log_issues: &[LogIssue]) -> V
     let total: f64 = scores.values().map(|(s, _, _)| s).sum();
 
     if total <= 0.0 {
-        logger::log_info("No crash cause evidence accumulated, no causes to report", Some(LOG_CTX));
+        logger::log_info(
+            "No crash cause evidence accumulated, no causes to report",
+            Some(LOG_CTX),
+        );
         return Vec::new();
     }
 
@@ -633,7 +663,11 @@ pub fn score_crash_causes(parsed: &ParsedMinidump, log_issues: &[LogIssue]) -> V
         .collect();
 
     // Sort descending by score
-    causes.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    causes.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // Adjust so percentages sum to 100%
     let filtered_sum: f64 = causes.iter().map(|c| c.score).sum();
@@ -645,7 +679,10 @@ pub fn score_crash_causes(parsed: &ParsedMinidump, log_issues: &[LogIssue]) -> V
 
     // Log final results
     logger::log_info(
-        &format!("Crash cause scoring complete, {} cause(s) identified:", causes.len()),
+        &format!(
+            "Crash cause scoring complete, {} cause(s) identified:",
+            causes.len()
+        ),
         Some(LOG_CTX),
     );
     for cause in &causes {
@@ -680,7 +717,10 @@ pub async fn analyze_crash_report(
     let dmp_path = match find_most_recent_crash_report(xplane_path, skip_date_check) {
         Some(p) => p,
         None => {
-            logger::log_info("No crash dump files found, skipping deep analysis", Some(LOG_CTX));
+            logger::log_info(
+                "No crash dump files found, skipping deep analysis",
+                Some(LOG_CTX),
+            );
             return Ok(None);
         }
     };
@@ -744,7 +784,10 @@ pub async fn analyze_crash_report(
         }
         Err(e) => {
             logger::log_error(
-                &format!("Minidump parse failed: {}, falling back to log-only scoring", e),
+                &format!(
+                    "Minidump parse failed: {}, falling back to log-only scoring",
+                    e
+                ),
                 Some(LOG_CTX),
             );
 

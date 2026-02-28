@@ -31,6 +31,7 @@ const emit = defineEmits<{
   (e: 'show-missing-libs', entry: SceneryManagerEntry): void
   (e: 'show-duplicate-tiles', entry: SceneryManagerEntry): void
   (e: 'show-delete-confirm', entry: SceneryManagerEntry): void
+  (e: 'update', folderName: string): void
 }>()
 
 const { t } = useI18n()
@@ -191,6 +192,12 @@ function handleContextMenu(event: MouseEvent) {
     icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/></svg>',
   })
 
+  menuItems.push({
+    id: 'update',
+    label: t('management.startUpdate'),
+    icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>',
+  })
+
   if (!props.disableReorder) {
     menuItems.push({
       id: 'move-up',
@@ -249,6 +256,9 @@ function handleContextMenu(event: MouseEvent) {
         break
       case 'open-folder':
         handleDoubleClick()
+        break
+      case 'update':
+        emit('update', props.entry.folderName)
         break
       case 'move-up':
         emit('move-up', props.entry.folderName)

@@ -1922,6 +1922,8 @@ mod tests {
         assert!(is_lines3d_folder_name("Lines3D"));
         assert!(is_lines3d_folder_name("lines3d"));
         assert!(!is_lines3d_folder_name("Lines3D_expanded_documentation"));
-        assert!(!is_lines3d_folder_name("Simple_Ground_Equipment_and_Services"));
+        assert!(!is_lines3d_folder_name(
+            "Simple_Ground_Equipment_and_Services"
+        ));
     }
 }

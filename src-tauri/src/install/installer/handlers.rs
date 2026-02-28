@@ -41,8 +41,8 @@ impl Installer {
             .unwrap_or("unknown")
             .to_string();
 
-        let mut source_file = fs::File::open(source)
-            .context(format!("Failed to open source file {:?}", source))?;
+        let mut source_file =
+            fs::File::open(source).context(format!("Failed to open source file {:?}", source))?;
         let mut target_file = fs::File::create(&final_target)
             .context(format!("Failed to create target file {:?}", final_target))?;
         copy_file_optimized(&mut source_file, &mut target_file)?;
@@ -106,7 +106,10 @@ impl Installer {
             Ok(entries) => entries,
             Err(e) => {
                 logger::log_error(
-                    &format!("Failed to read navdata backup directory {:?}: {}", backup_data_dir, e),
+                    &format!(
+                        "Failed to read navdata backup directory {:?}: {}",
+                        backup_data_dir, e
+                    ),
                     Some("installer"),
                 );
                 return;
@@ -137,7 +140,10 @@ impl Installer {
             }
 
             logger::log_info(
-                &format!("Deleting previous navdata backup for provider '{}': {}", provider_name, folder_name),
+                &format!(
+                    "Deleting previous navdata backup for provider '{}': {}",
+                    provider_name, folder_name
+                ),
                 Some("installer"),
             );
 
@@ -214,7 +220,11 @@ impl Installer {
     }
 
     /// Remove existing Lua bundle targets (script + companions) before clean install.
-    fn remove_lua_bundle_targets(&self, scripts_dir: &Path, bundle_entries: &[PathBuf]) -> Result<()> {
+    fn remove_lua_bundle_targets(
+        &self,
+        scripts_dir: &Path,
+        bundle_entries: &[PathBuf],
+    ) -> Result<()> {
         for entry in bundle_entries {
             let target_path = scripts_dir.join(entry);
             if target_path.exists() {
@@ -409,8 +419,10 @@ impl Installer {
         let scripts_dir = target
             .parent()
             .ok_or_else(|| anyhow::anyhow!("Lua target path has no parent: {:?}", target))?;
-        fs::create_dir_all(scripts_dir)
-            .context(format!("Failed to create Lua Scripts directory: {:?}", scripts_dir))?;
+        fs::create_dir_all(scripts_dir).context(format!(
+            "Failed to create Lua Scripts directory: {:?}",
+            scripts_dir
+        ))?;
 
         let mut bundle_entries = Self::get_lua_bundle_entries(task, target)?;
 
@@ -419,13 +431,20 @@ impl Installer {
         }
 
         // Archive source (including nested archive chain): extract to staging first.
-        if source.is_file() && (task.extraction_chain.is_some() || Self::is_supported_archive_file(source))
+        if source.is_file()
+            && (task.extraction_chain.is_some() || Self::is_supported_archive_file(source))
         {
-            let staging =
-                TempDir::new().context("Failed to create temp staging directory for Lua install")?;
+            let staging = TempDir::new()
+                .context("Failed to create temp staging directory for Lua install")?;
 
             if let Some(ref chain) = task.extraction_chain {
-                self.install_content_with_extraction_chain(source, staging.path(), chain, ctx, password)?;
+                self.install_content_with_extraction_chain(
+                    source,
+                    staging.path(),
+                    chain,
+                    ctx,
+                    password,
+                )?;
             } else {
                 self.extract_archive_with_progress(
                     source,
@@ -445,10 +464,9 @@ impl Installer {
             if !discovered.is_empty() {
                 use std::collections::HashSet;
 
-                let script_entry = target
-                    .file_name()
-                    .map(PathBuf::from)
-                    .ok_or_else(|| anyhow::anyhow!("Lua target path has no filename: {:?}", target))?;
+                let script_entry = target.file_name().map(PathBuf::from).ok_or_else(|| {
+                    anyhow::anyhow!("Lua target path has no filename: {:?}", target)
+                })?;
                 let mut resolved_entries = vec![script_entry];
                 let mut seen: HashSet<PathBuf> = resolved_entries.iter().cloned().collect();
 
@@ -566,7 +584,8 @@ impl Installer {
                 );
                 self.install_content_with_extraction_chain(source, target, chain, ctx, password)?;
             }
-        } else if atomic_install_enabled && (source.is_dir() || Self::is_supported_archive_file(source))
+        } else if atomic_install_enabled
+            && (source.is_dir() || Self::is_supported_archive_file(source))
         {
             // Atomic installation mode
             crate::log_debug!(

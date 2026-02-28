@@ -10,6 +10,10 @@ import type {
   ManagementData,
   ManagementTab,
   ManagementItemType,
+  SkunkUpdateOptions,
+  SkunkUpdatePlan,
+  SkunkUpdateResult,
+  SkunkUpdatableItemType,
 } from '@/types'
 import { useAppStore } from './app'
 import { useToastStore } from './toast'
@@ -17,12 +21,21 @@ import { useLockStore } from './lock'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import { logError } from '@/services/logger'
 import { validateXPlanePath } from '@/utils/validation'
+import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
 
 // Cache duration: 1 hour in milliseconds
 const UPDATE_CACHE_DURATION = 60 * 60 * 1000
 
 // Maximum number of entries in update cache to prevent unbounded memory growth
 const MAX_UPDATE_CACHE_SIZE = 500
+
+const DEFAULT_SKUNK_UPDATE_OPTIONS: SkunkUpdateOptions = {
+  useBeta: false,
+  includeLiveries: true,
+  applyBlacklist: false,
+  rollbackOnFailure: true,
+  parallelDownloads: 4,
+}
 
 // Default X-Plane aircraft required for simulator startup — cannot be disabled
 const PROTECTED_AIRCRAFT_NAMES = new Set([
@@ -113,7 +126,11 @@ export const useManagementStore = defineStore('management', () => {
   const isLoading = ref(false)
   const isCheckingUpdates = ref(false)
   const isRestoringBackup = ref(false)
+  const isBuildingUpdatePlan = ref(false)
+  const isExecutingUpdate = ref(false)
   const error = ref<string | null>(null)
+  const skunkUpdateOptions = ref<SkunkUpdateOptions>({ ...DEFAULT_SKUNK_UPDATE_OPTIONS })
+  const skunkUpdateOptionsLoaded = ref(false)
 
   // Counts
   const aircraftTotalCount = ref(0)
@@ -158,6 +175,70 @@ export const useManagementStore = defineStore('management', () => {
       return getNavdataCycleStatus(cycleText) === 'outdated'
     }).length
   })
+
+  async function loadSkunkUpdateOptions() {
+    if (skunkUpdateOptionsLoaded.value) return
+
+    const [useBeta, includeLiveries, applyBlacklist, rollbackOnFailure, parallelDownloads] =
+      await Promise.all([
+        getItem<boolean>(STORAGE_KEYS.SKUNK_UPDATE_USE_BETA),
+        getItem<boolean>(STORAGE_KEYS.SKUNK_UPDATE_INCLUDE_LIVERIES),
+        getItem<boolean>(STORAGE_KEYS.SKUNK_UPDATE_APPLY_BLACKLIST),
+        getItem<boolean>(STORAGE_KEYS.SKUNK_UPDATE_ROLLBACK_ON_FAILURE),
+        getItem<number>(STORAGE_KEYS.SKUNK_UPDATE_PARALLEL_DOWNLOADS),
+      ])
+
+    skunkUpdateOptions.value = {
+      useBeta: typeof useBeta === 'boolean' ? useBeta : DEFAULT_SKUNK_UPDATE_OPTIONS.useBeta,
+      includeLiveries:
+        typeof includeLiveries === 'boolean'
+          ? includeLiveries
+          : DEFAULT_SKUNK_UPDATE_OPTIONS.includeLiveries,
+      applyBlacklist:
+        typeof applyBlacklist === 'boolean'
+          ? applyBlacklist
+          : DEFAULT_SKUNK_UPDATE_OPTIONS.applyBlacklist,
+      rollbackOnFailure:
+        typeof rollbackOnFailure === 'boolean'
+          ? rollbackOnFailure
+          : DEFAULT_SKUNK_UPDATE_OPTIONS.rollbackOnFailure,
+      parallelDownloads:
+        typeof parallelDownloads === 'number' && parallelDownloads > 0
+          ? Math.min(Math.max(parallelDownloads, 1), 8)
+          : DEFAULT_SKUNK_UPDATE_OPTIONS.parallelDownloads,
+    }
+
+    skunkUpdateOptionsLoaded.value = true
+  }
+
+  async function setSkunkUpdateOptions(next: Partial<SkunkUpdateOptions>) {
+    await loadSkunkUpdateOptions()
+
+    skunkUpdateOptions.value = {
+      ...skunkUpdateOptions.value,
+      ...next,
+    }
+
+    await Promise.all([
+      setItem(STORAGE_KEYS.SKUNK_UPDATE_USE_BETA, skunkUpdateOptions.value.useBeta),
+      setItem(
+        STORAGE_KEYS.SKUNK_UPDATE_INCLUDE_LIVERIES,
+        skunkUpdateOptions.value.includeLiveries,
+      ),
+      setItem(
+        STORAGE_KEYS.SKUNK_UPDATE_APPLY_BLACKLIST,
+        skunkUpdateOptions.value.applyBlacklist,
+      ),
+      setItem(
+        STORAGE_KEYS.SKUNK_UPDATE_ROLLBACK_ON_FAILURE,
+        skunkUpdateOptions.value.rollbackOnFailure,
+      ),
+      setItem(
+        STORAGE_KEYS.SKUNK_UPDATE_PARALLEL_DOWNLOADS,
+        skunkUpdateOptions.value.parallelDownloads ?? 4,
+      ),
+    ])
+  }
 
   // ========================================
   // Generic helper functions to reduce code duplication
@@ -452,6 +533,66 @@ export const useManagementStore = defineStore('management', () => {
     // Show toast when check was actually performed and no updates found
     if (result.checked && result.updateCount === 0) {
       toast.info(t('management.allUpToDate'))
+    }
+  }
+
+  async function buildSkunkUpdatePlan(
+    itemType: SkunkUpdatableItemType,
+    folderName: string,
+  ): Promise<SkunkUpdatePlan> {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value)
+    }
+
+    await loadSkunkUpdateOptions()
+
+    isBuildingUpdatePlan.value = true
+    try {
+      return await invoke<SkunkUpdatePlan>('build_skunk_update_plan', {
+        xplanePath: appStore.xplanePath,
+        itemType,
+        folderName,
+        options: skunkUpdateOptions.value,
+      })
+    } catch (e) {
+      logError(`Failed to build skunk update plan for ${itemType}:${folderName}: ${e}`, 'management')
+      throw e
+    } finally {
+      isBuildingUpdatePlan.value = false
+    }
+  }
+
+  async function executeSkunkUpdate(
+    itemType: SkunkUpdatableItemType,
+    folderName: string,
+  ): Promise<SkunkUpdateResult> {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value)
+    }
+
+    await loadSkunkUpdateOptions()
+
+    isExecutingUpdate.value = true
+    try {
+      const result = await invoke<SkunkUpdateResult>('execute_skunk_update', {
+        xplanePath: appStore.xplanePath,
+        itemType,
+        folderName,
+        options: skunkUpdateOptions.value,
+      })
+
+      if (itemType === 'aircraft') {
+        await loadAircraft()
+      } else if (itemType === 'plugin') {
+        await loadPlugins()
+      }
+
+      return result
+    } catch (e) {
+      logError(`Failed to execute skunk update for ${itemType}:${folderName}: ${e}`, 'management')
+      throw e
+    } finally {
+      isExecutingUpdate.value = false
     }
   }
 
@@ -768,7 +909,10 @@ export const useManagementStore = defineStore('management', () => {
     isLoading,
     isCheckingUpdates,
     isRestoringBackup,
+    isBuildingUpdatePlan,
+    isExecutingUpdate,
     error,
+    skunkUpdateOptions,
 
     // Counts
     aircraftTotalCount,
@@ -791,6 +935,10 @@ export const useManagementStore = defineStore('management', () => {
     checkAircraftUpdates,
     loadPlugins,
     checkPluginsUpdates,
+    loadSkunkUpdateOptions,
+    setSkunkUpdateOptions,
+    buildSkunkUpdatePlan,
+    executeSkunkUpdate,
     loadNavdata,
     loadNavdataBackups,
     restoreNavdataBackup,

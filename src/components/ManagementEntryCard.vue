@@ -43,6 +43,7 @@ const emit = defineEmits<{
   (e: 'view-liveries', folderName: string): void
   (e: 'view-scripts', folderName: string): void
   (e: 'toggle-select', folderName: string): void
+  (e: 'update', folderName: string): void
 }>()
 
 const { t } = useI18n()
@@ -227,6 +228,14 @@ function handleContextMenu(event: MouseEvent) {
     })
   }
 
+  if (updateAvailable.value) {
+    menuItems.push({
+      id: 'update',
+      label: t('management.startUpdate'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>',
+    })
+  }
+
   if (isNavdata(props.entry) && props.backupInfo) {
     menuItems.push({
       id: 'restore-backup',
@@ -268,6 +277,9 @@ function handleContextMenu(event: MouseEvent) {
         break
       case 'view-scripts':
         emit('view-scripts', props.entry.folderName)
+        break
+      case 'update':
+        emit('update', props.entry.folderName)
         break
       case 'restore-backup':
         if (props.backupInfo) emit('restore-backup', props.backupInfo)
@@ -382,6 +394,15 @@ function handleContextMenu(event: MouseEvent) {
       {{ versionInfo }}
       <template v-if="updateAvailable"> → {{ latestVersion }} </template>
     </span>
+
+    <button
+      v-if="updateAvailable"
+      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-white bg-emerald-500 hover:bg-emerald-600 transition-colors"
+      :title="t('management.startUpdate')"
+      @click.stop="emit('update', entry.folderName)"
+    >
+      {{ t('management.startUpdate') }}
+    </button>
 
     <!-- Badge (liveries count / platform / cycle) -->
     <span

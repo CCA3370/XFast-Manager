@@ -1431,7 +1431,8 @@ impl Scanner {
             // if lua content was intentionally skipped (empty placeholder),
             // infer companion candidates from sibling archive entries.
             if use_layout_inference {
-                companion_names = Self::infer_lua_companions_from_archive_entries(file_path, entries);
+                companion_names =
+                    Self::infer_lua_companions_from_archive_entries(file_path, entries);
             }
 
             let lua_parent = internal_root.as_deref().unwrap_or("");
@@ -1472,7 +1473,10 @@ impl Scanner {
 
     /// Infer Lua companions from archive layout when script content is unavailable.
     /// This is a best-effort fallback for solid archives.
-    fn infer_lua_companions_from_archive_entries(file_path: &str, entries: &[String]) -> Vec<String> {
+    fn infer_lua_companions_from_archive_entries(
+        file_path: &str,
+        entries: &[String],
+    ) -> Vec<String> {
         use std::collections::HashMap;
 
         let normalized_file = file_path.replace('\\', "/");
@@ -1769,7 +1773,11 @@ impl Scanner {
     }
 
     /// Read a file from a 7z archive (wrapper for companion detection)
-    fn read_file_from_7z_no_password(&self, archive_path: &Path, file_path: &str) -> Result<String> {
+    fn read_file_from_7z_no_password(
+        &self,
+        archive_path: &Path,
+        file_path: &str,
+    ) -> Result<String> {
         // Call the existing function with None password
         self.read_file_from_7z(archive_path, file_path, None)
     }
@@ -1786,7 +1794,11 @@ impl Scanner {
     }
 
     /// Read a file from a RAR archive (wrapper for companion detection)
-    fn read_file_from_rar_no_password(&self, archive_path: &Path, file_path: &str) -> Result<String> {
+    fn read_file_from_rar_no_password(
+        &self,
+        archive_path: &Path,
+        file_path: &str,
+    ) -> Result<String> {
         // Call the existing function with None password
         self.read_file_from_rar(archive_path, file_path, None)
     }

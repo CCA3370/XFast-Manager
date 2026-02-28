@@ -16,6 +16,7 @@ import { useModalStore } from '@/stores/modal'
 import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
 import ConfirmModal from '@/components/ConfirmModal.vue'
+import SkunkUpdateDrawer from '@/components/SkunkUpdateDrawer.vue'
 import type { SceneryManagerEntry, SceneryCategory, SceneryIndexScanResult } from '@/types'
 import { parseApiError, getErrorMessage } from '@/types'
 
@@ -68,6 +69,8 @@ const contributingLibName = ref('')
 const contributingLibUrl = ref('')
 const isSubmittingContributeLink = ref(false)
 const isDeletingEntry = ref(false)
+const showUpdateDrawer = ref(false)
+const updateTargetFolder = ref('')
 
 // 拖拽自动滚动状态 (非响应式，无需触发渲染)
 let dragAutoScrollRafId: number | null = null
@@ -794,6 +797,16 @@ async function handleShowMissingLibs(entry: SceneryManagerEntry) {
     .catch(() => {
       // Keep local links if remote refresh fails
     })
+}
+
+function handleOpenSceneryUpdate(folderName: string) {
+  updateTargetFolder.value = folderName
+  showUpdateDrawer.value = true
+}
+
+async function handleSceneryUpdated() {
+  await sceneryStore.loadData()
+  syncLocalEntries()
 }
 
 function handleShowDuplicateTiles(entry: SceneryManagerEntry) {
@@ -2281,6 +2294,7 @@ onBeforeUnmount(() => {
                               @show-missing-libs="handleShowMissingLibs"
                               @show-duplicate-tiles="handleShowDuplicateTiles"
                               @show-delete-confirm="handleShowDeleteConfirm"
+                              @update="handleOpenSceneryUpdate"
                             />
                           </div>
                         </div>
@@ -2386,6 +2400,7 @@ onBeforeUnmount(() => {
                       @show-missing-libs="handleShowMissingLibs"
                       @show-duplicate-tiles="handleShowDuplicateTiles"
                       @show-delete-confirm="handleShowDeleteConfirm"
+                      @update="handleOpenSceneryUpdate"
                     />
                   </div>
                 </div>
@@ -2508,6 +2523,7 @@ onBeforeUnmount(() => {
                           @show-missing-libs="handleShowMissingLibs"
                           @show-duplicate-tiles="handleShowDuplicateTiles"
                           @show-delete-confirm="handleShowDeleteConfirm"
+                          @update="handleOpenSceneryUpdate"
                         />
                       </div>
                     </div>
@@ -2519,6 +2535,14 @@ onBeforeUnmount(() => {
         </template>
       </div>
     </div>
+
+    <SkunkUpdateDrawer
+      v-model:show="showUpdateDrawer"
+      item-type="scenery"
+      :folder-name="updateTargetFolder"
+      :display-name="updateTargetFolder"
+      @updated="handleSceneryUpdated"
+    />
 
     <!-- Shared Missing Libraries Modal -->
     <Teleport to="body">

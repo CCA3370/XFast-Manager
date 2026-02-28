@@ -25,14 +25,14 @@ mod models;
 // Analysis & scanning
 #[path = "analysis/analyzer.rs"]
 mod analyzer;
+#[path = "analysis/crash_analysis.rs"]
+mod crash_analysis;
 #[path = "analysis/hash_collector.rs"]
 mod hash_collector;
 #[path = "analysis/livery_patterns.rs"]
 mod livery_patterns;
 #[path = "analysis/scanner/mod.rs"]
 mod scanner;
-#[path = "analysis/crash_analysis.rs"]
-mod crash_analysis;
 
 // Installation
 #[path = "install/atomic_installer.rs"]
@@ -45,6 +45,8 @@ mod verifier;
 // Management
 #[path = "management/management_index.rs"]
 mod management_index;
+#[path = "management/skunk_updater.rs"]
+mod skunk_updater;
 
 // Scenery
 #[path = "scenery/geo_regions.rs"]
@@ -714,11 +716,10 @@ fn build_patterns() -> Vec<Pattern> {
             category: "memory_status_critical",
             severity: "high",
             matcher: Box::new(|l, _| {
-                l.contains(" E/MEM:") && (
-                    l.contains("Memory status information") ||
-                    l.contains("Physical memory usage") ||
-                    l.contains("Virtual memory usage")
-                )
+                l.contains(" E/MEM:")
+                    && (l.contains("Memory status information")
+                        || l.contains("Physical memory usage")
+                        || l.contains("Virtual memory usage"))
             }),
         },
         Pattern {
@@ -1246,10 +1247,7 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
             }
             Err(e) if e.raw_os_error() == Some(740) => {
                 // Return a structured error that frontend can handle
-                return Err(format!(
-                    "ELEVATION_REQUIRED:{}",
-                    exe_path.display()
-                ));
+                return Err(format!("ELEVATION_REQUIRED:{}", exe_path.display()));
             }
             Err(e) => {
                 return Err(format!("Failed to launch X-Plane: {}", e));
@@ -1735,6 +1733,32 @@ async fn check_plugins_updates(mut plugins: Vec<PluginInfo>) -> Result<Vec<Plugi
 }
 
 #[tauri::command]
+async fn build_skunk_update_plan(
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+    options: skunk_updater::SkunkUpdateOptions,
+) -> Result<skunk_updater::SkunkUpdatePlan, String> {
+    let xplane_path = std::path::Path::new(&xplane_path);
+    skunk_updater::build_update_plan(xplane_path, &item_type, &folder_name, options)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn execute_skunk_update(
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+    options: skunk_updater::SkunkUpdateOptions,
+) -> Result<skunk_updater::SkunkUpdateResult, String> {
+    let xplane_path = std::path::Path::new(&xplane_path);
+    skunk_updater::execute_update(xplane_path, &item_type, &folder_name, options)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn scan_plugins(xplane_path: String) -> Result<ManagementData<PluginInfo>, String> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
@@ -2017,6 +2041,8 @@ pub fn run() {
             check_aircraft_updates,
             scan_plugins,
             check_plugins_updates,
+            build_skunk_update_plan,
+            execute_skunk_update,
             scan_navdata,
             scan_navdata_backups,
             restore_navdata_backup,
