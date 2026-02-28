@@ -8,6 +8,7 @@ import { useAppStore } from '@/stores/app'
 import { useToastStore } from '@/stores/toast'
 import { useModalStore } from '@/stores/modal'
 import LiveryCard from '@/components/LiveryCard.vue'
+import SkunkUpdateDrawer from '@/components/SkunkUpdateDrawer.vue'
 import type { LiveryInfo } from '@/types'
 
 const { t } = useI18n()
@@ -28,6 +29,9 @@ const previewScale = ref(1)
 const previewX = ref(0)
 const previewY = ref(0)
 const isDragging = ref(false)
+const showUpdateDrawer = ref(false)
+const updateTargetFolder = ref('')
+const updateTargetDisplayName = ref('')
 let dragStartX = 0
 let dragStartY = 0
 let dragStartPanX = 0
@@ -171,6 +175,24 @@ async function handleOpenLiveryFolder(folderName: string) {
   }
 }
 
+function buildLiveryUpdateTarget(folderName: string): string {
+  const aircraft = aircraftFolder.value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  const livery = folderName.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  return aircraft ? `${aircraft}/liveries/${livery}` : `liveries/${livery}`
+}
+
+function handleOpenLiveryUpdate(folderName: string) {
+  const livery = liveries.value.find((item) => item.folderName === folderName)
+  updateTargetFolder.value = buildLiveryUpdateTarget(folderName)
+  updateTargetDisplayName.value = livery?.displayName || folderName
+  showUpdateDrawer.value = true
+}
+
+async function handleLiveryUpdated() {
+  await loadLiveries()
+  await managementStore.loadAircraft()
+}
+
 onMounted(() => {
   loadLiveries()
 })
@@ -238,9 +260,18 @@ onMounted(() => {
           @delete="handleDeleteLivery"
           @preview="(src: string) => handlePreview(src, livery.displayName)"
           @open-folder="handleOpenLiveryFolder"
+          @update="handleOpenLiveryUpdate"
         />
       </div>
     </div>
+
+    <SkunkUpdateDrawer
+      v-model:show="showUpdateDrawer"
+      item-type="livery"
+      :folder-name="updateTargetFolder"
+      :display-name="updateTargetDisplayName"
+      @updated="handleLiveryUpdated"
+    />
 
     <!-- Lightbox overlay -->
     <Teleport to="body">

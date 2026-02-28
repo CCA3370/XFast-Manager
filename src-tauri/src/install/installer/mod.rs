@@ -1765,8 +1765,7 @@ impl Installer {
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_ascii_lowercase();
-            let source_is_archive =
-                matches!(source_ext.as_str(), "zip" | "7z" | "rar");
+            let source_is_archive = matches!(source_ext.as_str(), "zip" | "7z" | "rar");
 
             if task.addon_type == AddonType::LuaScript && source.is_file() {
                 if source_is_archive {
@@ -1816,7 +1815,11 @@ impl Installer {
     }
 
     /// Calculate Lua bundle size from an on-disk source directory.
-    fn get_lua_bundle_size_from_directory(&self, task: &InstallTask, source_dir: &Path) -> Result<u64> {
+    fn get_lua_bundle_size_from_directory(
+        &self,
+        task: &InstallTask,
+        source_dir: &Path,
+    ) -> Result<u64> {
         let mut total = 0u64;
         for entry in self.get_lua_bundle_entries_for_size(task) {
             total = total.saturating_add(self.get_path_size(&source_dir.join(entry))?);

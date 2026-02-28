@@ -125,6 +125,11 @@ export const STORAGE_KEYS = {
   UNCONFIRMED_ISSUE_UPDATES: 'unconfirmedIssueUpdates',
   CRASH_ANALYSIS_DMP_ENABLED: 'crashAnalysisDmpEnabled',
   CRASH_ANALYSIS_IGNORE_DATE_CHECK: 'crashAnalysisIgnoreDateCheck',
+  SKUNK_UPDATE_USE_BETA: 'skunkUpdateUseBeta',
+  SKUNK_UPDATE_INCLUDE_LIVERIES: 'skunkUpdateIncludeLiveries',
+  SKUNK_UPDATE_APPLY_BLACKLIST: 'skunkUpdateApplyBlacklist',
+  SKUNK_UPDATE_ROLLBACK_ON_FAILURE: 'skunkUpdateRollbackOnFailure',
+  SKUNK_UPDATE_PARALLEL_DOWNLOADS: 'skunkUpdateParallelDownloads',
 } as const
 
 export interface TrackedIssue {

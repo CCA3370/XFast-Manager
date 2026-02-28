@@ -8,8 +8,14 @@ import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import ManagementEntryCard from '@/components/ManagementEntryCard.vue'
+import SkunkUpdateDrawer from '@/components/SkunkUpdateDrawer.vue'
 import SceneryTab from '@/views/SceneryTab.vue'
-import type { ManagementTab, ManagementItemType, NavdataBackupInfo } from '@/types'
+import type {
+  ManagementTab,
+  ManagementItemType,
+  NavdataBackupInfo,
+  SkunkUpdatableItemType,
+} from '@/types'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -54,6 +60,12 @@ const suppressLoading = ref(false)
 const selectionMode = ref(false)
 const selectedAircraft = ref<Set<string>>(new Set())
 const selectedPlugins = ref<Set<string>>(new Set())
+
+// SkunkCrafts updater drawer state
+const showUpdateDrawer = ref(false)
+const updateTargetType = ref<SkunkUpdatableItemType>('aircraft')
+const updateTargetFolder = ref('')
+const updateTargetDisplayName = ref('')
 
 // Initialize tab from route query
 onMounted(() => {
@@ -340,6 +352,17 @@ async function handleCheckUpdates() {
   } else if (activeTab.value === 'plugin') {
     await managementStore.checkPluginsUpdates(true)
   }
+}
+
+function handleOpenUpdate(
+  itemType: SkunkUpdatableItemType,
+  folderName: string,
+  displayName: string,
+) {
+  updateTargetType.value = itemType
+  updateTargetFolder.value = folderName
+  updateTargetDisplayName.value = displayName
+  showUpdateDrawer.value = true
 }
 
 // Find backup for a navdata entry by matching provider name
@@ -844,6 +867,7 @@ const isLoading = computed(() => {
                   @open-folder="(fn) => handleOpenFolder('aircraft', fn)"
                   @view-liveries="handleViewLiveries"
                   @toggle-select="toggleSelect"
+                  @update="(fn) => handleOpenUpdate('aircraft', fn, item.displayName)"
                 />
               </div>
             </template>
@@ -871,6 +895,7 @@ const isLoading = computed(() => {
                   @open-folder="(fn) => handleOpenFolder('plugin', fn)"
                   @view-scripts="handleViewScripts"
                   @toggle-select="toggleSelect"
+                  @update="(fn) => handleOpenUpdate('plugin', fn, item.displayName)"
                 />
               </div>
             </template>
@@ -903,6 +928,14 @@ const isLoading = computed(() => {
         </Transition>
       </div>
     </template>
+
+    <SkunkUpdateDrawer
+      v-model:show="showUpdateDrawer"
+      :item-type="updateTargetType"
+      :folder-name="updateTargetFolder"
+      :display-name="updateTargetDisplayName"
+      @updated="loadTabData(activeTab)"
+    />
   </div>
 </template>
 

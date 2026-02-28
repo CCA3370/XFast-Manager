@@ -352,6 +352,45 @@ export interface PluginInfo {
   scriptCount: number
 }
 
+export type SkunkUpdatableItemType = 'aircraft' | 'plugin' | 'scenery' | 'livery'
+
+export interface SkunkUpdateOptions {
+  useBeta: boolean
+  includeLiveries: boolean
+  applyBlacklist: boolean
+  rollbackOnFailure: boolean
+  parallelDownloads?: number
+}
+
+export interface SkunkUpdatePlan {
+  itemType: string
+  folderName: string
+  localVersion?: string
+  remoteVersion?: string
+  remoteModule?: string
+  remoteLocked: boolean
+  hasUpdate: boolean
+  estimatedDownloadBytes: number
+  addFiles: string[]
+  replaceFiles: string[]
+  deleteFiles: string[]
+  skipFiles: string[]
+  warnings: string[]
+}
+
+export interface SkunkUpdateResult {
+  success: boolean
+  message: string
+  itemType: string
+  folderName: string
+  localVersion?: string
+  remoteVersion?: string
+  updatedFiles: number
+  deletedFiles: number
+  skippedFiles: number
+  rollbackUsed: boolean
+}
+
 export interface LuaScriptInfo {
   fileName: string
   displayName: string
