@@ -885,7 +885,18 @@ function isValidHttpUrl(value: string): boolean {
 }
 
 function parseIssueNumberFromUrl(url: string): number {
-  const issueTail = url.trim().split('/').pop() ?? ''
+  const trimmed = url.trim()
+  if (!trimmed) return 0
+
+  try {
+    const parsed = new URL(trimmed)
+    const queryNumber = Number(parsed.searchParams.get('number') || parsed.searchParams.get('issueNumber') || 0)
+    if (Number.isFinite(queryNumber) && queryNumber > 0) return queryNumber
+  } catch {
+    // ignore and fallback to tail parsing
+  }
+
+  const issueTail = trimmed.split('/').pop() ?? ''
   const issueNumber = Number(issueTail)
   return Number.isFinite(issueNumber) && issueNumber > 0 ? issueNumber : 0
 }
@@ -914,7 +925,9 @@ async function handleSubmitContributeLink() {
     'Please review this link. If valid, add the `approved-link` label to trigger auto-update for `data/library_links.json` on `dev`.',
   ].join('\n')
 
-  const issueUrl = `https://github.com/CCA3370/XFast-Manager/issues/new?template=library_link_submission.yml&labels=${encodeURIComponent('library-link')}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
+  const issueDraftApiBase =
+    import.meta.env.VITE_XFAST_ISSUE_DRAFT_API_URL || 'https://x-fast-manager.vercel.app/api/issue-draft'
+  const issueUrl = `${issueDraftApiBase}?template=${encodeURIComponent('library_link_submission.yml')}&labels=${encodeURIComponent('library-link')}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
 
   isSubmittingContributeLink.value = true
   appStore.setLibraryLinkSubmitting(true)
@@ -949,7 +962,7 @@ async function handleSubmitContributeLink() {
     // Open created issue for user visibility
     await invoke('open_url', { url: createdIssueUrl })
   } catch (error) {
-    // Fallback: open prefilled GitHub issue page if direct API creation is unavailable
+    // Fallback: open prefilled issue page via proxy if API creation is unavailable
     try {
       await invoke('open_url', { url: issueUrl })
       toastStore.success(t('sceneryManager.contributionOpened'))

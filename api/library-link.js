@@ -59,5 +59,16 @@ export default async function handler(req, res) {
     return res.status(ghResponse.status).json({ error: ghData })
   }
 
-  return res.status(200).json({ issueUrl: ghData.html_url })
+  const forwardedHost = req.headers['x-forwarded-host'] || req.headers.host || 'x-fast-manager.vercel.app'
+  const forwardedProto = req.headers['x-forwarded-proto'] || 'https'
+  const origin = `${forwardedProto}://${forwardedHost}`
+  const issueNumber = Number(ghData.number || 0)
+  const proxyIssueUrl = issueNumber > 0
+    ? `${origin}/api/issue-redirect?number=${issueNumber}`
+    : ''
+
+  return res.status(200).json({
+    issueUrl: proxyIssueUrl || ghData.html_url,
+    issueNumber,
+  })
 }

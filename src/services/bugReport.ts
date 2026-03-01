@@ -18,6 +18,8 @@ export interface SubmitBugReportParams {
 }
 
 const DEFAULT_BUG_REPORT_TIMEOUT_MS = 20000
+const ISSUE_DRAFT_API_BASE =
+  import.meta.env.VITE_XFAST_ISSUE_DRAFT_API_URL || 'https://x-fast-manager.vercel.app/api/issue-draft'
 
 function buildFallbackBugReportUrl(errorTitle: string, errorMessage: string, logs: string): string {
   const fallbackTitle = `[Bug]: ${(errorTitle || errorMessage).slice(0, 80)}`
@@ -39,7 +41,7 @@ function buildFallbackBugReportUrl(errorTitle: string, errorMessage: string, log
     '</details>',
   ].join('\n')
 
-  return `https://github.com/CCA3370/XFast-Manager/issues/new?template=bug_report.yml&labels=${encodeURIComponent('bug')}&title=${encodeURIComponent(fallbackTitle)}&body=${encodeURIComponent(fallbackBody)}`
+  return `${ISSUE_DRAFT_API_BASE}?template=${encodeURIComponent('bug_report.yml')}&labels=${encodeURIComponent('bug')}&title=${encodeURIComponent(fallbackTitle)}&body=${encodeURIComponent(fallbackBody)}`
 }
 
 async function trackReportedIssue(

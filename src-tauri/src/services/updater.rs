@@ -15,9 +15,9 @@ pub struct UpdateInfo {
     pub published_at: String,
 }
 
-/// GitHub Release API response structure
+/// Remote release API response structure
 #[derive(Debug, Deserialize)]
-struct GitHubRelease {
+struct RemoteRelease {
     tag_name: String,
     #[allow(dead_code)]
     name: String,
@@ -30,8 +30,6 @@ struct GitHubRelease {
 
 /// Update checker
 pub struct UpdateChecker {
-    repo_owner: String,
-    repo_name: String,
     cache_duration: Duration,
 }
 
@@ -39,8 +37,6 @@ impl UpdateChecker {
     /// Create a new update checker
     pub fn new() -> Self {
         Self {
-            repo_owner: "CCA3370".to_string(),
-            repo_name: "XFast-Manager".to_string(),
             cache_duration: Duration::from_secs(24 * 60 * 60), // 24 hours
         }
     }
@@ -64,7 +60,7 @@ impl UpdateChecker {
             return Err("Cache not expired".to_string());
         }
 
-        // Fetch latest release from GitHub
+        // Fetch latest release from proxy API
         let latest_release = self.fetch_latest_release(include_pre_release).await?;
 
         // Parse version numbers (remove 'v' prefix if present)
@@ -101,14 +97,27 @@ impl UpdateChecker {
         Ok(update_info)
     }
 
-    /// Fetch latest release from GitHub API
+    fn update_release_api_url(include_pre_release: bool) -> String {
+        let base = std::env::var("XFAST_UPDATE_RELEASE_API_URL")
+            .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/update-release".to_string());
+        let has_query = base.contains('?');
+        let sep = if has_query { "&" } else { "?" };
+        format!(
+            "{}{}includePreRelease={}",
+            base,
+            sep,
+            if include_pre_release { "1" } else { "0" }
+        )
+    }
+
+    /// Fetch latest release from proxy API
     async fn fetch_latest_release(
         &self,
         include_pre_release: bool,
-    ) -> Result<GitHubRelease, String> {
+    ) -> Result<RemoteRelease, String> {
         crate::logger::log_debug(
             &format!(
-                "Fetching releases (include_pre_release: {})",
+                "Fetching release metadata (include_pre_release: {})",
                 include_pre_release
             ),
             Some("updater"),
@@ -122,118 +131,29 @@ impl UpdateChecker {
             .build()
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-        if include_pre_release {
-            // Get all releases and filter for the latest (including pre-releases)
-            let url = format!(
-                "https://api.github.com/repos/{}/{}/releases",
-                self.repo_owner, self.repo_name
-            );
+        let url = Self::update_release_api_url(include_pre_release);
+        crate::logger::log_debug(
+            &format!("Fetching from proxy: {}", url),
+            Some("updater"),
+            None,
+        );
 
-            crate::logger::log_debug(&format!("Fetching from: {}", url), Some("updater"), None);
+        let response = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch release metadata: {}", e))?;
 
-            let response = client
-                .get(&url)
-                .send()
-                .await
-                .map_err(|e| format!("Failed to fetch releases: {}", e))?;
-
-            if !response.status().is_success() {
-                return Err(format!("GitHub API returned status: {}", response.status()));
-            }
-
-            let releases: Vec<GitHubRelease> = response
-                .json()
-                .await
-                .map_err(|e| format!("Failed to parse releases: {}", e))?;
-
-            releases
-                .into_iter()
-                .next()
-                .ok_or_else(|| "No releases found".to_string())
-        } else {
-            // Try to get latest stable release first
-            let latest_url = format!(
-                "https://api.github.com/repos/{}/{}/releases/latest",
-                self.repo_owner, self.repo_name
-            );
-
-            crate::logger::log_debug(
-                &format!("Fetching from: {}", latest_url),
-                Some("updater"),
-                None,
-            );
-
-            let response = client.get(&latest_url).send().await;
-
-            match response {
-                Ok(resp) if resp.status().is_success() => {
-                    // Successfully got latest stable release
-                    resp.json()
-                        .await
-                        .map_err(|e| format!("Failed to parse release: {}", e))
-                }
-                Ok(resp) if resp.status().as_u16() == 404 => {
-                    // No stable release found, try to get all releases and filter non-prerelease
-                    crate::logger::log_debug(
-                        "No stable release found, fetching all releases",
-                        Some("updater"),
-                        None,
-                    );
-
-                    let all_url = format!(
-                        "https://api.github.com/repos/{}/{}/releases",
-                        self.repo_owner, self.repo_name
-                    );
-
-                    let all_response = client
-                        .get(&all_url)
-                        .send()
-                        .await
-                        .map_err(|e| format!("Failed to fetch all releases: {}", e))?;
-
-                    if !all_response.status().is_success() {
-                        return Err(format!(
-                            "GitHub API returned status: {}",
-                            all_response.status()
-                        ));
-                    }
-
-                    let releases: Vec<GitHubRelease> = all_response
-                        .json()
-                        .await
-                        .map_err(|e| format!("Failed to parse releases: {}", e))?;
-
-                    // Filter for non-prerelease versions
-                    let stable_release = releases.into_iter().find(|r| !r.prerelease);
-
-                    match stable_release {
-                        Some(release) => Ok(release),
-                        None => {
-                            // No stable releases found, return a dummy release with current version
-                            // This will result in "no update available" message
-                            crate::logger::log_debug(
-                                "No stable releases found, returning current version",
-                                Some("updater"),
-                                None,
-                            );
-                            Ok(GitHubRelease {
-                                tag_name: format!("v{}", env!("CARGO_PKG_VERSION")),
-                                name: "Current Version".to_string(),
-                                body: None,
-                                prerelease: false,
-                                published_at: "1970-01-01T00:00:00Z".to_string(), // Placeholder date
-                                html_url: format!(
-                                    "https://github.com/{}/{}/releases",
-                                    self.repo_owner, self.repo_name
-                                ),
-                            })
-                        }
-                    }
-                }
-                Ok(resp) => Err(format!("GitHub API returned status: {}", resp.status())),
-                Err(e) => Err(format!("Failed to fetch release: {}", e)),
-            }
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(format!("Update API returned status: {} ({})", status, error_text));
         }
+
+        response
+            .json::<RemoteRelease>()
+            .await
+            .map_err(|e| format!("Failed to parse release metadata: {}", e))
     }
 
     /// Compare two version strings using semver

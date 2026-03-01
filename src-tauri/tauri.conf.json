@@ -27,7 +27,7 @@
         "enable": true,
         "scope": ["**"]
       },
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost https://asset.localhost; connect-src 'self' https://api.github.com"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost https://asset.localhost; connect-src 'self' https://x-fast-manager.vercel.app"
     },
     "withGlobalTauri": false
   },
@@ -67,7 +67,7 @@
   },
   "plugins": {
     "http": {
-      "scope": ["https://api.github.com/repos/CCA3370/*"]
+      "scope": ["https://x-fast-manager.vercel.app/*"]
     }
   }
 }

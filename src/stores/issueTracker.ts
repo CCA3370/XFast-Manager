@@ -47,6 +47,7 @@ export interface IssueDetailResult {
   page: number
   per_page: number
   has_more: boolean
+  from_cache?: boolean
 }
 
 const MAX_TRACKED_ISSUES = 100
@@ -264,11 +265,48 @@ export const useIssueTrackerStore = defineStore('issueTracker', () => {
     page = 1,
     perPage = 30,
   ): Promise<IssueDetailResult> {
-    return invoke<IssueDetailResult>('get_issue_detail', {
-      issueNumber,
-      page,
-      perPage,
-    })
+    try {
+      return await invoke<IssueDetailResult>('get_issue_detail', {
+        issueNumber,
+        page,
+        perPage,
+      })
+    } catch (error) {
+      const message = String(error || '')
+      const lowered = message.toLowerCase()
+      const isRateLimited403 = lowered.includes('403')
+
+      if (!isRateLimited403) {
+        throw error
+      }
+
+      const cached = trackedIssues.value.find((item) => item.issueNumber === issueNumber)
+      if (!cached) {
+        throw error
+      }
+
+      logDebug(
+        `[issueTracker] getIssueDetail fallback to cache for #${issueNumber}: ${message}`,
+        'issue-tracker',
+      )
+
+      return {
+        issue: {
+          number: cached.issueNumber,
+          title: cached.issueTitle || `#${cached.issueNumber}`,
+          state: cached.state === 'closed' ? 'closed' : 'open',
+          html_url: cached.issueUrl,
+          comments: typeof cached.commentCount === 'number' ? cached.commentCount : 0,
+          created_at: cached.reportedAt || '',
+          updated_at: cached.lastCheckedAt || cached.reportedAt || '',
+        },
+        comments: [],
+        page: 1,
+        per_page: perPage,
+        has_more: false,
+        from_cache: true,
+      }
+    }
   }
 
   async function postIssueComment(issueNumber: number, commentBody: string): Promise<void> {
