@@ -222,6 +222,13 @@ struct BugReportResult {
     issue_number: u64,
 }
 
+#[derive(serde::Serialize)]
+struct FeedbackIssueResult {
+    issue_url: String,
+    issue_number: u64,
+    issue_title: String,
+}
+
 #[tauri::command]
 async fn create_bug_report_issue(
     error_title: String,
@@ -302,11 +309,171 @@ async fn create_bug_report_issue(
     })
 }
 
+#[tauri::command]
+async fn create_feedback_issue(
+    feedback_title: String,
+    feedback_type: String,
+    feedback_content: String,
+) -> Result<FeedbackIssueResult, String> {
+    let feedback_title = feedback_title.trim();
+    let feedback_content = feedback_content.trim();
+    if feedback_title.is_empty() {
+        return Err("Feedback title is required".to_string());
+    }
+    if feedback_content.is_empty() {
+        return Err("Feedback content is required".to_string());
+    }
+
+    let app_version = env!("CARGO_PKG_VERSION").to_string();
+    let os = std::env::consts::OS.to_string();
+    let arch = std::env::consts::ARCH.to_string();
+    let feedback_type = feedback_type.trim().to_lowercase();
+
+    let api_url = std::env::var("XFAST_FEEDBACK_API_URL")
+        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/feedback-issue".to_string());
+
+    let client = reqwest::Client::builder()
+        .user_agent("XFast Manager")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client
+        .post(&api_url)
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "title": feedback_title,
+            "type": feedback_type,
+            "content": feedback_content,
+            "appVersion": app_version,
+            "os": os,
+            "arch": arch
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to submit feedback: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("Feedback API error {}: {}", status, error_text));
+    }
+
+    let response_json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse API response: {}", e))?;
+
+    let issue_url = response_json
+        .get("issueUrl")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if issue_url.is_empty() {
+        return Err("Feedback created but response URL missing".to_string());
+    }
+
+    let issue_number = response_json
+        .get("issueNumber")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let issue_number = if issue_number == 0 {
+        issue_url
+            .rsplit('/')
+            .next()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0)
+    } else {
+        issue_number
+    };
+
+    Ok(FeedbackIssueResult {
+        issue_url,
+        issue_number,
+        issue_title: feedback_title.to_string(),
+    })
+}
+
+#[derive(serde::Serialize)]
+struct IssueCommentPostResult {
+    ok: bool,
+}
+
+#[tauri::command]
+async fn post_issue_comment(issue_number: u64, comment_body: String) -> Result<IssueCommentPostResult, String> {
+    if issue_number == 0 {
+        return Err("issue_number must be greater than 0".to_string());
+    }
+
+    let body = comment_body.trim();
+    if body.is_empty() {
+        return Err("comment_body is required".to_string());
+    }
+
+    let api_url = std::env::var("XFAST_ISSUE_COMMENT_API_URL")
+        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/issue-comment".to_string());
+
+    let client = reqwest::Client::builder()
+        .user_agent("XFast Manager")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client
+        .post(&api_url)
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "issueNumber": issue_number,
+            "commentBody": body
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to submit issue comment: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("Issue comment API error {}: {}", status, error_text));
+    }
+
+    Ok(IssueCommentPostResult { ok: true })
+}
+
 #[derive(serde::Serialize)]
 struct IssueCommentInfo {
     author: String,
     body: String,
     created_at: String,
+}
+
+#[derive(serde::Serialize)]
+struct IssueDetailInfo {
+    number: u64,
+    title: String,
+    state: String,
+    html_url: String,
+    comments: u64,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(serde::Serialize)]
+struct IssueDetailCommentInfo {
+    id: u64,
+    author: String,
+    body: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(serde::Serialize)]
+struct IssueDetailResult {
+    issue: IssueDetailInfo,
+    comments: Vec<IssueDetailCommentInfo>,
+    page: u32,
+    per_page: u32,
+    has_more: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -409,6 +576,134 @@ async fn check_issue_updates(
         state,
         total_comments,
         new_comments,
+    })
+}
+
+#[tauri::command]
+async fn get_issue_detail(
+    issue_number: u64,
+    page: Option<u32>,
+    per_page: Option<u32>,
+) -> Result<IssueDetailResult, String> {
+    if issue_number == 0 {
+        return Err("issue_number must be greater than 0".to_string());
+    }
+
+    let page = page.unwrap_or(1).max(1);
+    let per_page = per_page.unwrap_or(30).clamp(1, 100);
+
+    let client = reqwest::Client::builder()
+        .user_agent("XFast Manager")
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let issue_url = format!(
+        "https://api.github.com/repos/CCA3370/XFast-Manager/issues/{}",
+        issue_number
+    );
+    let issue_response = client
+        .get(&issue_url)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch issue: {}", e))?;
+
+    if !issue_response.status().is_success() {
+        return Err(format!("GitHub API error {}", issue_response.status()));
+    }
+
+    let issue_json: serde_json::Value = issue_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse issue response: {}", e))?;
+
+    let issue_info = IssueDetailInfo {
+        number: issue_json.get("number").and_then(|v| v.as_u64()).unwrap_or(issue_number),
+        title: issue_json
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        state: issue_json
+            .get("state")
+            .and_then(|v| v.as_str())
+            .unwrap_or("open")
+            .to_string(),
+        html_url: issue_json
+            .get("html_url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        comments: issue_json.get("comments").and_then(|v| v.as_u64()).unwrap_or(0),
+        created_at: issue_json
+            .get("created_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        updated_at: issue_json
+            .get("updated_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    };
+
+    let comments_url = format!(
+        "https://api.github.com/repos/CCA3370/XFast-Manager/issues/{}/comments?page={}&per_page={}",
+        issue_number, page, per_page
+    );
+    let comments_response = client
+        .get(&comments_url)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch issue comments: {}", e))?;
+
+    if !comments_response.status().is_success() {
+        return Err(format!("GitHub comments API error {}", comments_response.status()));
+    }
+
+    let comments_json: serde_json::Value = comments_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse comments response: {}", e))?;
+
+    let comment_items = comments_json.as_array().cloned().unwrap_or_default();
+    let has_more = comment_items.len() as u32 >= per_page;
+    let comments = comment_items
+        .iter()
+        .map(|c| IssueDetailCommentInfo {
+            id: c.get("id").and_then(|v| v.as_u64()).unwrap_or(0),
+            author: c
+                .get("user")
+                .and_then(|u| u.get("login"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            body: c
+                .get("body")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            created_at: c
+                .get("created_at")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            updated_at: c
+                .get("updated_at")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        })
+        .collect();
+
+    Ok(IssueDetailResult {
+        issue: issue_info,
+        comments,
+        page,
+        per_page: per_page,
+        has_more,
     })
 }
 
@@ -2284,7 +2579,10 @@ pub fn run() {
             open_url,
             create_library_link_issue,
             create_bug_report_issue,
+            create_feedback_issue,
+            post_issue_comment,
             check_issue_updates,
+            get_issue_detail,
             analyze_addons,
             install_addons,
             cancel_installation,

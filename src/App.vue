@@ -180,6 +180,25 @@
           <div class="h-6 w-px bg-gray-200 dark:bg-white/10 transition-colors"></div>
 
           <div class="flex items-center space-x-1">
+            <button
+              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white"
+              :title="$t('feedback.navTitle')"
+              @click="handleFeedbackClick"
+            >
+              <div
+                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-center scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50"
+              ></div>
+              <span class="relative flex items-center z-10">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 10h8M8 14h5M7 3h10a2 2 0 012 2v14l-4-2-4 2-4-2-4 2V5a2 2 0 012-2z"
+                  />
+                </svg>
+              </span>
+            </button>
             <!-- Sponsor button (Chinese locale only) -->
             <button
               v-if="locale === 'zh'"
@@ -277,6 +296,11 @@
     <SponsorModal :show="showSponsor" @close="showSponsor = false" />
     <IssueUpdateModal />
     <UpdateChangelogModal />
+    <FeedbackModal
+      v-model:show="feedbackStore.showSubmitModal"
+      @dirty-change="handleFeedbackDirtyChange"
+      @submitted="handleFeedbackSubmitted"
+    />
 
     <!-- Log Analysis First-time Hint -->
     <Teleport to="body">
@@ -328,6 +352,7 @@ import { useUpdateStore } from '@/stores/update'
 import { useSceneryStore } from '@/stores/scenery'
 import { useModalStore } from '@/stores/modal'
 import { useIssueTrackerStore } from '@/stores/issueTracker'
+import { useFeedbackStore } from '@/stores/feedback'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -343,6 +368,7 @@ import ContextMenu from '@/components/ContextMenu.vue'
 import SponsorModal from '@/components/SponsorModal.vue'
 import IssueUpdateModal from '@/components/IssueUpdateModal.vue'
 import UpdateChangelogModal from '@/components/UpdateChangelogModal.vue'
+import FeedbackModal from '@/components/FeedbackModal.vue'
 
 const { t, locale } = useI18n()
 const store = useAppStore()
@@ -350,6 +376,7 @@ const updateStore = useUpdateStore()
 const sceneryStore = useSceneryStore()
 const modalStore = useModalStore()
 const issueTrackerStore = useIssueTrackerStore()
+const feedbackStore = useFeedbackStore()
 const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
@@ -378,7 +405,8 @@ const routeOrder: Record<string, number> = {
   '/management': 1,
   '/management/liveries': 1,
   '/log-analysis': 2,
-  '/settings': 3,
+  '/feedback': 3,
+  '/settings': 4,
   '/onboarding': -1,
 }
 
@@ -395,6 +423,39 @@ watch(
     transitionName.value = newOrder > oldOrder ? 'page-left' : 'page-right'
   },
 )
+
+watch(
+  () => feedbackStore.showSubmitModal,
+  (visible) => {
+    if (!visible) {
+      feedbackStore.setModalDirty(false)
+    }
+  },
+)
+
+function handleFeedbackDirtyChange(isDirty: boolean) {
+  feedbackStore.setModalDirty(isDirty)
+}
+
+async function handleFeedbackSubmitted(issueNumber: number) {
+  feedbackStore.setModalDirty(false)
+  await router.push({
+    path: '/feedback',
+    query: {
+      issue: String(issueNumber),
+    },
+  })
+}
+
+async function handleFeedbackClick() {
+  await issueTrackerStore.initStore()
+  if (issueTrackerStore.hasSubmittedFeedback) {
+    await router.push('/feedback')
+    return
+  }
+
+  feedbackStore.openSubmitModal()
+}
 
 onMounted(async () => {
   // Log app startup (basic level - always logged)
@@ -554,6 +615,18 @@ onMounted(async () => {
         // Library link submission in progress
         event.preventDefault()
         modalStore.showError(t('sceneryManager.submissionInProgressCloseBlocked'))
+      } else if (feedbackStore.showSubmitModal && feedbackStore.feedbackModalDirty) {
+        event.preventDefault()
+        modalStore.showConfirm({
+          title: t('feedback.discardTitle'),
+          message: t('feedback.closeAppDiscardMessage'),
+          warning: t('feedback.discardWarning'),
+          confirmText: t('feedback.discardConfirm'),
+          cancelText: t('feedback.discardCancel'),
+          type: 'warning',
+          onConfirm: async () => await appWindow.destroy(),
+          onCancel: () => {},
+        })
       } else if (store.isConfirmationOpen) {
         // Confirmation modal is open - pending installation
         event.preventDefault()

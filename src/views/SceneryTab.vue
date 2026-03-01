@@ -13,6 +13,7 @@ import { useSceneryStore } from '@/stores/scenery'
 import { useToastStore } from '@/stores/toast'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
+import { useIssueTrackerStore } from '@/stores/issueTracker'
 import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
 import ConfirmModal from '@/components/ConfirmModal.vue'
@@ -32,6 +33,7 @@ const sceneryStore = useSceneryStore()
 const toastStore = useToastStore()
 const appStore = useAppStore()
 const modalStore = useModalStore()
+const issueTrackerStore = useIssueTrackerStore()
 
 // Scenery-specific state (migrated from SceneryManager.vue)
 const drag = ref(false)
@@ -882,6 +884,12 @@ function isValidHttpUrl(value: string): boolean {
   }
 }
 
+function parseIssueNumberFromUrl(url: string): number {
+  const issueTail = url.trim().split('/').pop() ?? ''
+  const issueNumber = Number(issueTail)
+  return Number.isFinite(issueNumber) && issueNumber > 0 ? issueNumber : 0
+}
+
 async function handleSubmitContributeLink() {
   if (isSubmittingContributeLink.value) return
 
@@ -927,6 +935,16 @@ async function handleSubmitContributeLink() {
 
     toastStore.success(t('sceneryManager.contributionCreated'))
     closeContributeLinkModal()
+
+    const issueNumber = parseIssueNumberFromUrl(createdIssueUrl)
+    if (issueNumber > 0) {
+      await issueTrackerStore.appendTrackedIssue({
+        issueNumber,
+        issueTitle: title,
+        issueUrl: createdIssueUrl,
+        source: 'library-link',
+      })
+    }
 
     // Open created issue for user visibility
     await invoke('open_url', { url: createdIssueUrl })

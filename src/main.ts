@@ -26,6 +26,7 @@ import { useThemeStore } from './stores/theme'
 import { useLockStore } from './stores/lock'
 import { useUpdateStore } from './stores/update'
 import { useSceneryStore } from './stores/scenery'
+import { useIssueTrackerStore } from './stores/issueTracker'
 
 // ============================================================================
 // Loading Screen Error Display
@@ -197,6 +198,7 @@ const router = createRouter({
     { path: '/management/liveries', component: () => import('./views/Liveries.vue') },
     { path: '/management/scripts', component: () => import('./views/Scripts.vue') },
     { path: '/log-analysis', component: () => import('./views/LogAnalysis.vue') },
+    { path: '/feedback', component: () => import('./views/FeedbackCenter.vue') },
     { path: '/scenery', redirect: '/management?tab=scenery' },
     { path: '/settings', component: preloadSettings },
   ],
@@ -322,6 +324,7 @@ async function initApp(): Promise<void> {
     const lockStore = useLockStore()
     const updateStore = useUpdateStore()
     const sceneryStore = useSceneryStore()
+    const issueTrackerStore = useIssueTrackerStore()
 
     // Step 5: Initialize all stores with timeout protection
     bootstrapInfo('Initializing stores...', 'init')
@@ -331,6 +334,7 @@ async function initApp(): Promise<void> {
       initStoreWithTimeout('lockStore', () => lockStore.initStore()),
       initStoreWithTimeout('updateStore', () => updateStore.initStore()),
       initStoreWithTimeout('sceneryStore', () => sceneryStore.initStore()),
+      initStoreWithTimeout('issueTrackerStore', () => issueTrackerStore.initStore()),
     ])
 
     // Check for store initialization failures

@@ -1,7 +1,14 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { getItem, setItem, STORAGE_KEYS, type TrackedIssue } from '@/services/storage'
+import {
+  getItem,
+  setItem,
+  STORAGE_KEYS,
+  type FeedbackType,
+  type TrackedIssue,
+  type TrackedIssueSource,
+} from '@/services/storage'
 import { logDebug, logError } from '@/services/logger'
 
 interface IssueUpdateResult {
@@ -16,132 +23,235 @@ export interface IssueUpdate {
   newComments: Array<{ author: string; body: string; created_at: string }>
 }
 
+export interface IssueDetailComment {
+  id: number
+  author: string
+  body: string
+  created_at: string
+  updated_at: string
+}
+
+export interface IssueDetailIssue {
+  number: number
+  title: string
+  state: string
+  html_url: string
+  comments: number
+  created_at: string
+  updated_at: string
+}
+
+export interface IssueDetailResult {
+  issue: IssueDetailIssue
+  comments: IssueDetailComment[]
+  page: number
+  per_page: number
+  has_more: boolean
+}
+
+const MAX_TRACKED_ISSUES = 100
+
+function inferIssueSource(issue: TrackedIssue): TrackedIssueSource {
+  if (issue.source) return issue.source
+  if (issue.feedbackType) return 'feedback'
+  const title = issue.issueTitle || ''
+  if (title.startsWith('[Feedback]')) return 'feedback'
+  if (title.startsWith('[Library Link]')) return 'library-link'
+  return 'auto-report'
+}
+
+function normalizeTrackedIssue(issue: TrackedIssue): TrackedIssue {
+  const now = new Date().toISOString()
+  const reportedAt = issue.reportedAt || now
+  return {
+    issueNumber: issue.issueNumber,
+    issueTitle: issue.issueTitle,
+    issueUrl: issue.issueUrl,
+    state: issue.state === 'closed' ? 'closed' : 'open',
+    commentCount: typeof issue.commentCount === 'number' ? issue.commentCount : 0,
+    reportedAt,
+    lastCheckedAt: issue.lastCheckedAt || reportedAt,
+    source: inferIssueSource(issue),
+    feedbackType: issue.feedbackType,
+    feedbackContentPreview: issue.feedbackContentPreview,
+    appVersion: issue.appVersion,
+    os: issue.os,
+    arch: issue.arch,
+  }
+}
+
 export const useIssueTrackerStore = defineStore('issueTracker', () => {
   const pendingUpdates = ref<IssueUpdate[]>([])
+  const trackedIssues = ref<TrackedIssue[]>([])
+  const isInitialized = ref(false)
+
+  const feedbackRecords = computed(() =>
+    trackedIssues.value.filter((issue) => {
+      const source = inferIssueSource(issue)
+      return source === 'feedback' || source === 'auto-report'
+    }),
+  )
+
+  const hasFeedbackRecords = computed(() => feedbackRecords.value.length > 0)
+  const hasSubmittedFeedback = computed(() =>
+    trackedIssues.value.some((issue) => inferIssueSource(issue) === 'feedback'),
+  )
+
+  async function initStore(): Promise<void> {
+    if (isInitialized.value) return
+
+    const storedTracked = (await getItem<TrackedIssue[]>(STORAGE_KEYS.REPORTED_ISSUES)) ?? []
+    const normalized = storedTracked
+      .map((issue) => normalizeTrackedIssue(issue))
+      .filter((issue) => issue.issueNumber > 0 && issue.issueUrl)
+    trackedIssues.value = normalized
+
+    const storedUnconfirmed =
+      (await getItem<IssueUpdate[]>(STORAGE_KEYS.UNCONFIRMED_ISSUE_UPDATES)) ?? []
+    pendingUpdates.value = storedUnconfirmed
+
+    // Persist normalized shape so old records gain source/default fields.
+    await setItem(STORAGE_KEYS.REPORTED_ISSUES, normalized)
+
+    isInitialized.value = true
+  }
+
+  async function appendTrackedIssue(
+    issue: Omit<TrackedIssue, 'state' | 'commentCount' | 'reportedAt' | 'lastCheckedAt'> & {
+      state?: TrackedIssue['state']
+      commentCount?: number
+      reportedAt?: string
+      lastCheckedAt?: string
+      source?: TrackedIssueSource
+      feedbackType?: FeedbackType
+    },
+  ): Promise<void> {
+    if (!isInitialized.value) {
+      await initStore()
+    }
+
+    const now = new Date().toISOString()
+    const incoming = normalizeTrackedIssue({
+      ...issue,
+      state: issue.state ?? 'open',
+      commentCount: issue.commentCount ?? 0,
+      reportedAt: issue.reportedAt ?? now,
+      lastCheckedAt: issue.lastCheckedAt ?? now,
+    })
+
+    const current = [...trackedIssues.value]
+    const existingIndex = current.findIndex((item) => item.issueNumber === incoming.issueNumber)
+    if (existingIndex >= 0) {
+      const existing = current[existingIndex]
+      current.splice(existingIndex, 1)
+      current.unshift(
+        normalizeTrackedIssue({
+          ...existing,
+          ...incoming,
+          reportedAt: existing.reportedAt || incoming.reportedAt,
+        }),
+      )
+    } else {
+      current.unshift(incoming)
+    }
+
+    trackedIssues.value = current.slice(0, MAX_TRACKED_ISSUES)
+    await setItem(STORAGE_KEYS.REPORTED_ISSUES, trackedIssues.value)
+  }
 
   async function checkAllTrackedIssues(): Promise<void> {
-    const tracked = (await getItem<TrackedIssue[]>(STORAGE_KEYS.REPORTED_ISSUES)) ?? []
-    const unconfirmed = (await getItem<IssueUpdate[]>(STORAGE_KEYS.UNCONFIRMED_ISSUE_UPDATES)) ?? []
+    if (!isInitialized.value) {
+      await initStore()
+    }
+
+    const tracked = [...trackedIssues.value]
+    const existingUnconfirmed =
+      (await getItem<IssueUpdate[]>(STORAGE_KEYS.UNCONFIRMED_ISSUE_UPDATES)) ?? []
 
     logDebug(
-      `[issueTracker] tracked: ${tracked.length}, unconfirmed: ${unconfirmed.length}`,
+      `[issueTracker] tracked: ${tracked.length}, unconfirmed: ${existingUnconfirmed.length}`,
       'issue-tracker',
     )
 
-    if (tracked.length === 0 && unconfirmed.length === 0) {
+    if (tracked.length === 0 && existingUnconfirmed.length === 0) {
       logDebug('[issueTracker] nothing to check', 'issue-tracker')
+      pendingUpdates.value = []
       return
     }
 
     const now = new Date().toISOString()
+    const existingUnconfirmedMap = new Map<number, IssueUpdate>()
+    for (const update of existingUnconfirmed) {
+      existingUnconfirmedMap.set(update.issue.issueNumber, update)
+    }
 
-    // Build a unified map of all issues to check.
-    // Tracked open issues use their lastCheckedAt.
-    // Closed-but-unconfirmed issues use the lastCheckedAt stored in the unconfirmed entry
-    // so we can still pick up new comments posted after the previous check.
-    const issuesToCheck = new Map<number, { issue: TrackedIssue; isTracked: boolean }>()
+    const nextTracked: TrackedIssue[] = []
+    const nextUnconfirmedMap = new Map<number, IssueUpdate>()
+
     for (const issue of tracked) {
-      issuesToCheck.set(issue.issueNumber, { issue, isTracked: true })
-    }
-    for (const update of unconfirmed) {
-      if (!issuesToCheck.has(update.issue.issueNumber)) {
-        issuesToCheck.set(update.issue.issueNumber, { issue: update.issue, isTracked: false })
-      }
-    }
-
-    // Index existing unconfirmed entries by issue number
-    const unconfirmedMap = new Map<number, IssueUpdate>()
-    for (const u of unconfirmed) {
-      unconfirmedMap.set(u.issue.issueNumber, u)
-    }
-
-    // Run all checks
-    const checkResults = new Map<number, IssueUpdateResult>()
-    const remaining: TrackedIssue[] = []
-
-    for (const [issueNumber, { issue, isTracked }] of issuesToCheck) {
       logDebug(
-        `[issueTracker] checking #${issueNumber} since ${issue.lastCheckedAt}`,
+        `[issueTracker] checking #${issue.issueNumber} since ${issue.lastCheckedAt}`,
         'issue-tracker',
       )
       try {
         const result = await invoke<IssueUpdateResult>('check_issue_updates', {
-          issueNumber,
+          issueNumber: issue.issueNumber,
           since: issue.lastCheckedAt,
         })
         logDebug(
-          `[issueTracker] #${issueNumber} state=${result.state} new_comments=${result.new_comments.length}`,
+          `[issueTracker] #${issue.issueNumber} state=${result.state} new_comments=${result.new_comments.length}`,
           'issue-tracker',
         )
-        checkResults.set(issueNumber, result)
 
-        if (isTracked && result.state !== 'closed') {
-          remaining.push({
-            ...issue,
-            state: 'open',
-            commentCount: result.total_comments,
-            lastCheckedAt: now,
+        const updatedIssue = normalizeTrackedIssue({
+          ...issue,
+          state: result.state === 'closed' ? 'closed' : 'open',
+          commentCount: result.total_comments,
+          lastCheckedAt: now,
+        })
+        nextTracked.push(updatedIssue)
+
+        const wasClosed = issue.state === 'closed'
+        const isClosedNow = result.state === 'closed'
+        const justClosed = !wasClosed && isClosedNow
+        const existing = existingUnconfirmedMap.get(issue.issueNumber)
+        const mergedComments = [...(existing?.newComments ?? []), ...result.new_comments]
+        const closed = (existing?.closed ?? false) || justClosed
+        if (closed || mergedComments.length > 0) {
+          nextUnconfirmedMap.set(issue.issueNumber, {
+            issue: updatedIssue,
+            closed,
+            newComments: mergedComments,
           })
         }
       } catch (e) {
-        logError(`[issueTracker] check failed for #${issueNumber}: ${e}`, 'issue-tracker')
-        if (isTracked) {
-          remaining.push(issue) // keep tracking, retry next time
+        logError(`[issueTracker] check failed for #${issue.issueNumber}: ${e}`, 'issue-tracker')
+        nextTracked.push(issue)
+        const existing = existingUnconfirmedMap.get(issue.issueNumber)
+        if (existing) {
+          nextUnconfirmedMap.set(issue.issueNumber, existing)
         }
       }
     }
 
-    // Build merged unconfirmed list
-    const newUnconfirmed: IssueUpdate[] = []
-    const processedNumbers = new Set<number>()
-
-    // Merge existing unconfirmed entries with fresh check results
-    for (const existing of unconfirmed) {
-      const issueNumber = existing.issue.issueNumber
-      processedNumbers.add(issueNumber)
-
-      const result = checkResults.get(issueNumber)
-      if (result) {
-        // Append any new comments to the already-unconfirmed ones
-        const mergedComments = [...existing.newComments, ...result.new_comments]
-        const closed = existing.closed || result.state === 'closed'
-        newUnconfirmed.push({
-          issue: { ...existing.issue, lastCheckedAt: now },
-          closed,
-          newComments: mergedComments,
-        })
-      } else {
-        // Check failed or no new activity — preserve existing unconfirmed data unchanged
-        newUnconfirmed.push(existing)
+    // Preserve unconfirmed updates for records no longer tracked.
+    for (const [issueNumber, update] of existingUnconfirmedMap) {
+      if (!nextUnconfirmedMap.has(issueNumber)) {
+        nextUnconfirmedMap.set(issueNumber, update)
       }
     }
 
-    // Add brand-new updates not previously in unconfirmed
-    for (const [issueNumber, result] of checkResults) {
-      if (processedNumbers.has(issueNumber)) continue
-      const closed = result.state === 'closed'
-      const hasNewComments = result.new_comments.length > 0
-      if (closed || hasNewComments) {
-        const issueInfo = issuesToCheck.get(issueNumber)!
-        newUnconfirmed.push({
-          issue: { ...issueInfo.issue, lastCheckedAt: now },
-          closed,
-          newComments: result.new_comments,
-        })
-      }
-    }
+    const nextUnconfirmed = Array.from(nextUnconfirmedMap.values())
 
     logDebug(
-      `[issueTracker] updates: ${newUnconfirmed.length}, remaining tracked: ${remaining.length}`,
+      `[issueTracker] updates: ${nextUnconfirmed.length}, tracked total: ${nextTracked.length}`,
       'issue-tracker',
     )
 
-    await setItem(STORAGE_KEYS.REPORTED_ISSUES, remaining)
-    await setItem(STORAGE_KEYS.UNCONFIRMED_ISSUE_UPDATES, newUnconfirmed)
-
-    if (newUnconfirmed.length > 0) {
-      pendingUpdates.value = newUnconfirmed
-    }
+    trackedIssues.value = nextTracked
+    pendingUpdates.value = nextUnconfirmed
+    await setItem(STORAGE_KEYS.REPORTED_ISSUES, nextTracked)
+    await setItem(STORAGE_KEYS.UNCONFIRMED_ISSUE_UPDATES, nextUnconfirmed)
   }
 
   async function confirmUpdates(): Promise<void> {
@@ -149,5 +259,37 @@ export const useIssueTrackerStore = defineStore('issueTracker', () => {
     pendingUpdates.value = []
   }
 
-  return { pendingUpdates, checkAllTrackedIssues, confirmUpdates }
+  async function getIssueDetail(
+    issueNumber: number,
+    page = 1,
+    perPage = 30,
+  ): Promise<IssueDetailResult> {
+    return invoke<IssueDetailResult>('get_issue_detail', {
+      issueNumber,
+      page,
+      perPage,
+    })
+  }
+
+  async function postIssueComment(issueNumber: number, commentBody: string): Promise<void> {
+    await invoke<{ ok: boolean }>('post_issue_comment', {
+      issueNumber,
+      commentBody,
+    })
+  }
+
+  return {
+    pendingUpdates,
+    trackedIssues,
+    feedbackRecords,
+    hasFeedbackRecords,
+    hasSubmittedFeedback,
+    isInitialized,
+    initStore,
+    appendTrackedIssue,
+    checkAllTrackedIssues,
+    confirmUpdates,
+    getIssueDetail,
+    postIssueComment,
+  }
 })
