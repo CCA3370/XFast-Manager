@@ -555,7 +555,7 @@ export const useManagementStore = defineStore('management', () => {
         options: skunkUpdateOptions.value,
       })
     } catch (e) {
-      logError(`Failed to build skunk update plan for ${itemType}:${folderName}: ${e}`, 'management')
+      logError(`Failed to build addon update plan for ${itemType}:${folderName}: ${e}`, 'management')
       throw e
     } finally {
       isBuildingUpdatePlan.value = false
@@ -589,7 +589,7 @@ export const useManagementStore = defineStore('management', () => {
 
       return result
     } catch (e) {
-      logError(`Failed to execute skunk update for ${itemType}:${folderName}: ${e}`, 'management')
+      logError(`Failed to execute addon update for ${itemType}:${folderName}: ${e}`, 'management')
       throw e
     } finally {
       isExecutingUpdate.value = false

@@ -10,6 +10,7 @@ import type {
 } from '@/types'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import ConfirmModal from '@/components/ConfirmModal.vue'
+import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import { useLockStore } from '@/stores/lock'
 import { useContextMenu } from '@/composables/useContextMenu'
 import type { ContextMenuItem } from '@/composables/useContextMenu'
@@ -338,15 +339,20 @@ function handleContextMenu(event: MouseEvent) {
     </button>
 
     <!-- Enable/Disable toggle (not for navdata) -->
-    <button
+    <div
       v-if="!isNavdata(entry)"
-      :disabled="isToggling || (isProtected && entry.enabled)"
-      class="flex-shrink-0 w-9 h-5 rounded-full relative transition-colors disabled:opacity-70"
-      :class="entry.enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'"
+      class="flex-shrink-0 relative"
       :title="isProtected && entry.enabled ? t('management.protectedAircraft') : undefined"
-      @click.stop="emit('toggle-enabled', entry.folderName)"
     >
-      <span v-if="isToggling" class="absolute inset-0 flex items-center justify-center">
+      <ToggleSwitch
+        :model-value="entry.enabled"
+        active-class="bg-blue-500"
+        inactive-class="bg-gray-300 dark:bg-gray-600"
+        :disabled="isToggling || (isProtected && entry.enabled)"
+        :aria-label="entry.enabled ? t('contextMenu.disable') : t('contextMenu.enable')"
+        @update:model-value="emit('toggle-enabled', entry.folderName)"
+      />
+      <span v-if="isToggling" class="absolute inset-0 flex items-center justify-center pointer-events-none">
         <svg class="w-3 h-3 animate-spin text-white" fill="none" viewBox="0 0 24 24">
           <circle
             class="opacity-25"
@@ -363,12 +369,7 @@ function handleContextMenu(event: MouseEvent) {
           ></path>
         </svg>
       </span>
-      <span
-        v-else
-        class="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-        :class="entry.enabled ? 'left-4.5' : 'left-0.5'"
-      />
-    </button>
+    </div>
 
     <!-- Display name -->
     <div class="flex-1 min-w-0">
