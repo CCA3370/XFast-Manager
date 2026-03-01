@@ -49,6 +49,9 @@ export default {
       'Please drag files or archives from outside X-Plane folder. Cannot drag existing folders from within X-Plane.',
     ignoredTasks: '{count} add-ons ignored due to settings',
     allIgnored: 'All detected add-ons were ignored due to settings',
+    partialAnalysisWarning:
+      '{count} source file(s) failed to scan. Valid add-ons were still detected.',
+    partialAnalysisHint: 'Open logs for details.',
     taskProgress: 'Task {current}',
     noTasksEnabled: 'No tasks are enabled for installation',
     tasksAppended: '{count} new task(s) added',
@@ -599,7 +602,7 @@ export default {
     updateAll: 'Update All',
     updateAllRunning: 'Updating All...',
     updateAllConfirm:
-      'This will add all aircraft with Addon Update support to the update task list ({count} items). Continue?',
+      'This will add all Addon Update supported items on the current page to the update task list ({count} items). Continue?',
     updateAllSuccess: 'Batch update finished: {updated}/{total} updated',
     updateAllPartialFailed: 'Batch update partially failed ({failed}/{total} failed)',
     outdated: 'Outdated',

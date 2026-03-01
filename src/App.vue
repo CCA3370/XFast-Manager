@@ -649,6 +649,27 @@ onMounted(async () => {
           onConfirm: async () => await appWindow.destroy(),
           onCancel: () => {},
         })
+      } else if (managementStore.isExecutingUpdate) {
+        // Addon update installation in progress
+        event.preventDefault()
+        modalStore.showConfirm({
+          title: t('management.updateCloseRunningTitle'),
+          message: t('management.updateCloseRunningMessage'),
+          warning: t('management.updateCloseRunningWarning'),
+          confirmText: t('management.updateCloseRunningConfirm'),
+          cancelText: t('management.updateCloseRunningCancel'),
+          type: 'warning',
+          onConfirm: async () => {
+            try {
+              await invoke('cancel_installation')
+            } catch {
+              // Ignore cancellation errors; window close will terminate remaining work.
+            } finally {
+              await appWindow.destroy()
+            }
+          },
+          onCancel: () => {},
+        })
       } else if (store.isLibraryLinkSubmitting) {
         // Library link submission in progress
         event.preventDefault()

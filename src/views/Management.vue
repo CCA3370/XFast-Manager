@@ -277,6 +277,16 @@ const skunkUpdatableAircraftCount = computed(() => {
   return managementStore.sortedAircraft.filter((item) => isSkunkUpdateUrl(item.updateUrl)).length
 })
 
+const skunkUpdatablePluginCount = computed(() => {
+  return managementStore.sortedPlugins.filter((item) => isSkunkUpdateUrl(item.updateUrl)).length
+})
+
+const currentSkunkUpdatableCount = computed(() => {
+  if (activeTab.value === 'aircraft') return skunkUpdatableAircraftCount.value
+  if (activeTab.value === 'plugin') return skunkUpdatablePluginCount.value
+  return 0
+})
+
 const selectedSkunkUpdateTasks = computed<AddonUpdateDrawerTask[]>(() => {
   if (activeTab.value === 'aircraft') {
     return managementStore.sortedAircraft
@@ -343,16 +353,32 @@ async function batchSetEnabled(enabled: boolean) {
   }
 }
 
-function runUpdateAllAircraft() {
-  const targets = managementStore.sortedAircraft
+function buildUpdateAllTargets(tab: 'aircraft' | 'plugin'): AddonUpdateDrawerTask[] {
+  if (tab === 'aircraft') {
+    return managementStore.sortedAircraft
+      .filter((item) => isSkunkUpdateUrl(item.updateUrl))
+      .map((item) => ({
+        itemType: 'aircraft' as const,
+        folderName: item.folderName,
+        displayName: item.displayName,
+        initialLocalVersion: item.version || '',
+        initialTargetVersion: item.latestVersion || '',
+      }))
+  }
+
+  return managementStore.sortedPlugins
     .filter((item) => isSkunkUpdateUrl(item.updateUrl))
     .map((item) => ({
-      itemType: 'aircraft' as const,
+      itemType: 'plugin' as const,
       folderName: item.folderName,
       displayName: item.displayName,
       initialLocalVersion: item.version || '',
       initialTargetVersion: item.latestVersion || '',
     }))
+}
+
+function runUpdateAll(tab: 'aircraft' | 'plugin') {
+  const targets = buildUpdateAllTargets(tab)
 
   if (targets.length === 0) {
     toastStore.info(t('management.allUpToDate'))
@@ -362,19 +388,19 @@ function runUpdateAllAircraft() {
   addonUpdateDrawerStore.openTasks(targets, `${targets[0].itemType}:${targets[0].folderName}`)
 }
 
-function handleUpdateAllAircraft() {
+function handleUpdateAll() {
   if (managementStore.isExecutingUpdate) return
-  if (activeTab.value !== 'aircraft') return
-  if (skunkUpdatableAircraftCount.value === 0) return
+  if (activeTab.value !== 'aircraft' && activeTab.value !== 'plugin') return
+  if (currentSkunkUpdatableCount.value === 0) return
 
   modalStore.showConfirm({
     title: t('management.updateAll'),
-    message: t('management.updateAllConfirm', { count: skunkUpdatableAircraftCount.value }),
+    message: t('management.updateAllConfirm', { count: currentSkunkUpdatableCount.value }),
     confirmText: t('management.updateAll'),
     cancelText: t('common.cancel'),
     type: 'warning',
     onConfirm: () => {
-      runUpdateAllAircraft()
+      runUpdateAll(activeTab.value)
     },
     onCancel: () => {},
   })
@@ -805,13 +831,15 @@ const isLoading = computed(() => {
           </button>
         </div>
         <div
-          v-if="activeTab === 'aircraft' && skunkUpdatableAircraftCount > 0"
+          v-if="
+            (activeTab === 'aircraft' || activeTab === 'plugin') && currentSkunkUpdatableCount > 0
+          "
           class="flex items-center gap-2"
         >
           <button
             class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
             :disabled="managementStore.isCheckingUpdates || managementStore.isExecutingUpdate"
-            @click="handleUpdateAllAircraft"
+            @click="handleUpdateAll"
           >
             <Transition name="text-fade" mode="out-in">
               <span :key="locale">{{ t('management.updateAll') }}</span>

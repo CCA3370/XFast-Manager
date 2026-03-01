@@ -493,40 +493,37 @@ impl Installer {
         }
 
         // For archives, extract based on format
-        let ext = source
-            .extension()
-            .and_then(|s| s.to_str())
-            .ok_or_else(|| anyhow::anyhow!("No file extension"))?;
+        let format = crate::archive_input::detect_archive_format(source).ok_or_else(|| {
+            anyhow::anyhow!("Unsupported archive format for retry: {}", source.display())
+        })?;
+        let prepared_source = crate::archive_input::prepare_archive_for_read(source, format)?;
+        let read_source = prepared_source.read_path();
 
-        match ext {
-            "zip" => self.re_extract_from_zip(
-                source,
+        match format {
+            crate::archive_input::ArchiveFormat::Zip => self.re_extract_from_zip(
+                read_source,
                 target,
                 relative_path,
                 internal_root,
                 extraction_chain,
                 password,
             ),
-            "7z" => self.re_extract_from_7z(
-                source,
+            crate::archive_input::ArchiveFormat::SevenZ => self.re_extract_from_7z(
+                read_source,
                 target,
                 relative_path,
                 internal_root,
                 extraction_chain,
                 password,
             ),
-            "rar" => self.re_extract_from_rar(
-                source,
+            crate::archive_input::ArchiveFormat::Rar => self.re_extract_from_rar(
+                read_source,
                 target,
                 relative_path,
                 internal_root,
                 extraction_chain,
                 password,
             ),
-            _ => Err(anyhow::anyhow!(
-                "Unsupported archive format for retry: {}",
-                ext
-            )),
         }
     }
 

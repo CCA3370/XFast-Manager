@@ -3,10 +3,7 @@ use super::*;
 impl Installer {
     /// Check whether a source file is a supported archive format.
     fn is_supported_archive_file(path: &Path) -> bool {
-        path.extension()
-            .and_then(|s| s.to_str())
-            .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "zip" | "7z" | "rar"))
-            .unwrap_or(false)
+        crate::archive_input::detect_archive_format(path).is_some()
     }
 
     /// Copy a single file with progress tracking.
@@ -685,11 +682,9 @@ impl Installer {
         // For multi-layer chains (including single-layer nested archives),
         // check if we can use the memory-optimized path
         // IMPORTANT: Must also check that the outermost archive (source) is a ZIP file
-        let source_is_zip = source
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s.eq_ignore_ascii_case("zip"))
-            .unwrap_or(false);
+        let source_is_zip =
+            crate::archive_input::detect_archive_format(source)
+                == Some(crate::archive_input::ArchiveFormat::Zip);
         let all_nested_zip = chain.archives.iter().all(|a| a.format == "zip");
 
         if source_is_zip && all_nested_zip {
@@ -721,8 +716,13 @@ impl Installer {
             Some("installer"),
         );
 
+        let prepared_source = crate::archive_input::prepare_archive_for_read(
+            source,
+            crate::archive_input::ArchiveFormat::Zip,
+        )?;
+
         // Open the outermost archive
-        let file = fs::File::open(source)?;
+        let file = fs::File::open(prepared_source.read_path())?;
         let mut current_archive_data = Vec::new();
         file.take(u64::MAX).read_to_end(&mut current_archive_data)?;
 
