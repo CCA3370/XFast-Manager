@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
 import { getItem, setItem, STORAGE_KEYS, type TrackedIssue } from '@/services/storage'
+import { useIssueTrackerStore } from '@/stores/issueTracker'
 
 export interface BugReportToast {
   success: (message: string) => void
@@ -41,7 +42,12 @@ function buildFallbackBugReportUrl(errorTitle: string, errorMessage: string, log
   return `https://github.com/CCA3370/XFast-Manager/issues/new?template=bug_report.yml&labels=${encodeURIComponent('bug')}&title=${encodeURIComponent(fallbackTitle)}&body=${encodeURIComponent(fallbackBody)}`
 }
 
-async function trackReportedIssue(issueNumber: number, issueTitle: string, issueUrl: string) {
+async function trackReportedIssue(
+  issueNumber: number,
+  issueTitle: string,
+  issueUrl: string,
+  feedbackPreview: string,
+) {
   if (issueNumber <= 0) return
 
   try {
@@ -54,9 +60,22 @@ async function trackReportedIssue(issueNumber: number, issueTitle: string, issue
       commentCount: 0,
       reportedAt: now,
       lastCheckedAt: now,
+      source: 'auto-report',
+      feedbackType: 'bug',
+      feedbackContentPreview: feedbackPreview.slice(0, 200),
     }
+
+    try {
+      const issueTrackerStore = useIssueTrackerStore()
+      await issueTrackerStore.appendTrackedIssue(newEntry)
+      return
+    } catch (storeErr) {
+      logError(`Failed to append tracked issue via store, fallback to storage: ${storeErr}`, 'bug-report')
+    }
+
     const existing = (await getItem<TrackedIssue[]>(STORAGE_KEYS.REPORTED_ISSUES)) ?? []
-    const updated = [newEntry, ...existing].slice(0, 10)
+    const deduplicated = existing.filter((issue) => issue.issueNumber !== issueNumber)
+    const updated = [newEntry, ...deduplicated].slice(0, 100)
     await setItem(STORAGE_KEYS.REPORTED_ISSUES, updated)
   } catch (trackErr) {
     logError(`Failed to track reported issue: ${trackErr}`, 'bug-report')
@@ -94,7 +113,7 @@ export async function submitBugReport(params: SubmitBugReportParams): Promise<vo
 
     toast.success(t('modal.bugReportSubmitted'))
     await invoke('open_url', { url: result.issue_url })
-    await trackReportedIssue(result.issue_number, fallbackTitle, result.issue_url)
+    await trackReportedIssue(result.issue_number, fallbackTitle, result.issue_url, errorMessage)
   } catch {
     try {
       await invoke('open_url', { url: fallbackUrl })

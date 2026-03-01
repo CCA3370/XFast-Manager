@@ -123,6 +123,7 @@ export const STORAGE_KEYS = {
   MAX_PARALLEL_TASKS: 'maxParallelTasks',
   REPORTED_ISSUES: 'reportedIssues',
   UNCONFIRMED_ISSUE_UPDATES: 'unconfirmedIssueUpdates',
+  FEEDBACK_DRAFT: 'feedbackDraft',
   CRASH_ANALYSIS_DMP_ENABLED: 'crashAnalysisDmpEnabled',
   CRASH_ANALYSIS_IGNORE_DATE_CHECK: 'crashAnalysisIgnoreDateCheck',
   ADDON_UPDATE_USE_BETA: 'addonUpdateUseBeta',
@@ -134,6 +135,9 @@ export const STORAGE_KEYS = {
   ADDON_UPDATE_FRESH_INSTALL: 'addonUpdateFreshInstall',
 } as const
 
+export type TrackedIssueSource = 'feedback' | 'auto-report' | 'library-link'
+export type FeedbackType = 'bug' | 'feature-request' | 'improvement' | 'other'
+
 export interface TrackedIssue {
   issueNumber: number
   issueTitle: string
@@ -142,4 +146,10 @@ export interface TrackedIssue {
   commentCount: number
   reportedAt: string
   lastCheckedAt: string
+  source?: TrackedIssueSource
+  feedbackType?: FeedbackType
+  feedbackContentPreview?: string
+  appVersion?: string
+  os?: string
+  arch?: string
 }
