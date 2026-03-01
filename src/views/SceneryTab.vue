@@ -16,7 +16,7 @@ import { useModalStore } from '@/stores/modal'
 import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
 import ConfirmModal from '@/components/ConfirmModal.vue'
-import SkunkUpdateDrawer from '@/components/SkunkUpdateDrawer.vue'
+import AddonUpdateDrawer from '@/components/AddonUpdateDrawer.vue'
 import type { SceneryManagerEntry, SceneryCategory, SceneryIndexScanResult } from '@/types'
 import { parseApiError, getErrorMessage } from '@/types'
 
@@ -2536,7 +2536,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <SkunkUpdateDrawer
+    <AddonUpdateDrawer
       v-model:show="showUpdateDrawer"
       item-type="scenery"
       :folder-name="updateTargetFolder"

@@ -13,6 +13,7 @@ use crate::models::{
     NavdataBackupVerification, NavdataManagerInfo, PluginInfo,
 };
 use crate::path_utils;
+use crate::x_updater_profile::{find_profile_in_folder, tag_host_as_update_url, XUPDATER_URL_PREFIX};
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
 use std::fs;
@@ -295,8 +296,16 @@ fn scan_single_aircraft_folder(
     };
 
     // Read version info (priority: skunkcrafts_updater.cfg > version files)
-    let (version, update_url, cfg_disabled) =
+    let (mut version, mut update_url, cfg_disabled) =
         read_version_from_paths(updater_cfg_path.as_deref(), &version_file_paths);
+    if update_url.is_none() {
+        if let Some(profile) = find_profile_in_folder(folder) {
+            update_url = Some(tag_host_as_update_url(&profile.host));
+            if version.is_none() {
+                version = profile.version_label.clone();
+            }
+        }
+    }
 
     let relative_path = folder
         .strip_prefix(base_path)
@@ -446,7 +455,19 @@ pub fn read_version_info_with_url(folder: &Path) -> (Option<String>, Option<Stri
         }
     }
 
-    read_version_from_paths(updater_cfg_path.as_deref(), &version_file_paths)
+    let (mut version, mut update_url, cfg_disabled) =
+        read_version_from_paths(updater_cfg_path.as_deref(), &version_file_paths);
+
+    if update_url.is_none() {
+        if let Some(profile) = find_profile_in_folder(folder) {
+            update_url = Some(tag_host_as_update_url(&profile.host));
+            if version.is_none() {
+                version = profile.version_label.clone();
+            }
+        }
+    }
+
+    (version, update_url, cfg_disabled)
 }
 
 /// Check if a string contains a version-like pattern (digit(s).digit(s))
@@ -1069,7 +1090,15 @@ pub async fn check_aircraft_updates(aircraft: &mut [AircraftInfo]) {
     let update_tasks: Vec<_> = aircraft
         .iter()
         .enumerate()
-        .filter_map(|(idx, a)| a.update_url.as_ref().map(|url| (idx, url.clone())))
+        .filter_map(|(idx, a)| {
+            a.update_url.as_ref().and_then(|url| {
+                if is_x_updater_url(url) {
+                    None
+                } else {
+                    Some((idx, url.clone()))
+                }
+            })
+        })
         .collect();
 
     if update_tasks.is_empty() {
@@ -1103,7 +1132,15 @@ pub async fn check_plugins_updates(plugins: &mut [PluginInfo]) {
     let update_tasks: Vec<_> = plugins
         .iter()
         .enumerate()
-        .filter_map(|(idx, p)| p.update_url.as_ref().map(|url| (idx, url.clone())))
+        .filter_map(|(idx, p)| {
+            p.update_url.as_ref().and_then(|url| {
+                if is_x_updater_url(url) {
+                    None
+                } else {
+                    Some((idx, url.clone()))
+                }
+            })
+        })
         .collect();
 
     if update_tasks.is_empty() {
@@ -1170,6 +1207,11 @@ async fn fetch_remote_version(base_url: String) -> Option<String> {
     }
 
     None
+}
+
+fn is_x_updater_url(url: &str) -> bool {
+    url.to_lowercase()
+        .starts_with(&XUPDATER_URL_PREFIX.to_lowercase())
 }
 
 /// Set the disabled| field in skunkcrafts_updater.cfg for an aircraft or plugin

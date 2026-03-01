@@ -45,8 +45,12 @@ mod verifier;
 // Management
 #[path = "management/management_index.rs"]
 mod management_index;
+#[path = "management/addon_updater.rs"]
+mod addon_updater;
 #[path = "management/skunk_updater.rs"]
 mod skunk_updater;
+#[path = "management/x_updater_profile.rs"]
+mod x_updater_profile;
 
 // Scenery
 #[path = "scenery/geo_regions.rs"]
@@ -67,6 +71,9 @@ mod updater;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
+
+use futures::future::join_all;
 
 use crate::error::ToTauriError;
 use analyzer::Analyzer;
@@ -1707,6 +1714,140 @@ async fn apply_scenery_changes(
 
 // ========== Management Commands ==========
 
+fn emit_addon_update_status(
+    app_handle: &tauri::AppHandle,
+    item_type: &str,
+    folder_name: &str,
+    stage: &str,
+    status: &str,
+    message: Option<String>,
+) {
+    let _ = app_handle.emit(
+        "addon-update-progress",
+        addon_updater::AddonUpdateProgressEvent {
+            item_type: item_type.to_string(),
+            folder_name: folder_name.to_string(),
+            stage: stage.to_string(),
+            status: status.to_string(),
+            percentage: if status.eq_ignore_ascii_case("completed") {
+                100.0
+            } else {
+                0.0
+            },
+            processed_units: 0,
+            total_units: 0,
+            processed_bytes: 0,
+            total_bytes: 0,
+            speed_bytes_per_sec: 0.0,
+            current_file: None,
+            message,
+        },
+    );
+}
+
+fn is_x_updater_update_url(update_url: Option<&str>) -> bool {
+    update_url
+        .map(|url| {
+            url.trim()
+                .to_lowercase()
+                .starts_with(&x_updater_profile::XUPDATER_URL_PREFIX.to_lowercase())
+        })
+        .unwrap_or(false)
+}
+
+fn default_addon_update_check_options() -> addon_updater::AddonUpdateOptions {
+    addon_updater::AddonUpdateOptions {
+        use_beta: false,
+        include_liveries: true,
+        apply_blacklist: false,
+        rollback_on_failure: true,
+        parallel_downloads: Some(4),
+        channel: Some("stable".to_string()),
+        fresh_install: false,
+    }
+}
+
+fn normalize_update_version(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let without_prefix = trimmed.trim_start_matches(|c| c == 'v' || c == 'V').trim();
+    let semver_core = without_prefix
+        .split('+')
+        .next()
+        .unwrap_or(without_prefix)
+        .split('-')
+        .next()
+        .unwrap_or(without_prefix)
+        .trim();
+
+    if semver_core.is_empty() {
+        return String::new();
+    }
+
+    let mut numeric = String::new();
+    let mut started = false;
+    for ch in semver_core.chars() {
+        if ch.is_ascii_digit() || ch == '.' {
+            numeric.push(ch);
+            started = true;
+        } else if started {
+            break;
+        }
+    }
+
+    if numeric.is_empty() {
+        return semver_core.to_lowercase();
+    }
+
+    let mut segments: Vec<String> = numeric
+        .split('.')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            part.parse::<u64>()
+                .map(|n| n.to_string())
+                .unwrap_or_else(|_| part.to_string())
+        })
+        .collect();
+
+    while segments.len() > 3 && segments.last().map(|s| s == "0").unwrap_or(false) {
+        segments.pop();
+    }
+
+    if segments.is_empty() {
+        semver_core.to_lowercase()
+    } else {
+        segments.join(".")
+    }
+}
+
+fn has_remote_update(local_version: Option<&str>, remote_version: &str) -> bool {
+    let remote_trimmed = remote_version.trim();
+    if remote_trimmed.is_empty() {
+        return false;
+    }
+
+    let local_trimmed = local_version.unwrap_or("").trim();
+    if local_trimmed.is_empty() {
+        return true;
+    }
+
+    let local_normalized = normalize_update_version(local_trimmed);
+    let remote_normalized = normalize_update_version(remote_trimmed);
+    if !local_normalized.is_empty() && !remote_normalized.is_empty() {
+        return local_normalized != remote_normalized;
+    }
+
+    remote_trimmed != local_trimmed
+}
+
+fn is_numeric_revision_only(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty() && trimmed.chars().all(|ch| ch.is_ascii_digit())
+}
+
 #[tauri::command]
 async fn scan_aircraft(xplane_path: String) -> Result<ManagementData<AircraftInfo>, String> {
     tokio::task::spawn_blocking(move || {
@@ -1720,9 +1861,114 @@ async fn scan_aircraft(xplane_path: String) -> Result<ManagementData<AircraftInf
 
 #[tauri::command]
 async fn check_aircraft_updates(
+    xplane_path: String,
     mut aircraft: Vec<AircraftInfo>,
 ) -> Result<Vec<AircraftInfo>, String> {
     management_index::check_aircraft_updates(&mut aircraft).await;
+
+    let xupdater_tasks: Vec<(usize, String)> = aircraft
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, item)| {
+            if is_x_updater_update_url(item.update_url.as_deref()) {
+                Some((idx, item.folder_name.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if xupdater_tasks.is_empty() {
+        return Ok(aircraft);
+    }
+
+    let xplane_root = PathBuf::from(xplane_path);
+    let check_options = default_addon_update_check_options();
+
+    let checks = xupdater_tasks.into_iter().map(|(idx, folder_name)| {
+        let xplane_root = xplane_root.clone();
+        let options = check_options.clone();
+        async move {
+            match addon_updater::get_updater_credentials(&xplane_root, "aircraft", &folder_name) {
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    logger::log_debug(
+                        &format!(
+                            "Skipping x-updater check for aircraft '{}' because account or activation key is missing",
+                            folder_name
+                        ),
+                        Some("management"),
+                        None,
+                    );
+                    return (idx, None::<String>, None::<String>);
+                }
+                Err(e) => {
+                    logger::log_debug(
+                        &format!(
+                            "Skipping x-updater check for aircraft '{}' because reading credentials failed: {}",
+                            folder_name, e
+                        ),
+                        Some("management"),
+                        None,
+                    );
+                    return (idx, None::<String>, None::<String>);
+                }
+            }
+
+            match addon_updater::fetch_update_preview(
+                &xplane_root,
+                "aircraft",
+                &folder_name,
+                options,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            {
+                Ok(preview) => (idx, preview.target_version, preview.local_version),
+                Err(e) => {
+                    logger::log_debug(
+                        &format!(
+                            "x-updater check failed for aircraft '{}': {}",
+                            folder_name, e
+                        ),
+                        Some("management"),
+                        None,
+                    );
+                    (idx, None::<String>, None::<String>)
+                }
+            }
+        }
+    });
+
+    let results = join_all(checks).await;
+    for (idx, remote_version, preview_local_version) in results {
+        if let Some(local_version) = preview_local_version {
+            let incoming = local_version.trim();
+            let existing = aircraft[idx]
+                .version
+                .as_deref()
+                .map(|v| v.trim())
+                .unwrap_or("");
+            let should_replace_local = !incoming.is_empty()
+                && (existing.is_empty()
+                    || (incoming.contains('.') && !existing.contains('.'))
+                    || (incoming.contains('.') && is_numeric_revision_only(existing)));
+            if should_replace_local {
+                aircraft[idx].version = Some(local_version);
+            }
+        }
+
+        if let Some(remote_version) = remote_version {
+            let local_version = aircraft[idx].version.clone();
+            aircraft[idx].latest_version = Some(remote_version.clone());
+            aircraft[idx].has_update =
+                has_remote_update(local_version.as_deref(), &remote_version);
+        }
+    }
+
     Ok(aircraft)
 }
 
@@ -1733,29 +1979,195 @@ async fn check_plugins_updates(mut plugins: Vec<PluginInfo>) -> Result<Vec<Plugi
 }
 
 #[tauri::command]
-async fn build_skunk_update_plan(
+async fn build_addon_update_plan(
+    app_handle: tauri::AppHandle,
+    task_control: State<'_, TaskControl>,
     xplane_path: String,
     item_type: String,
     folder_name: String,
-    options: skunk_updater::SkunkUpdateOptions,
-) -> Result<skunk_updater::SkunkUpdatePlan, String> {
+    options: addon_updater::AddonUpdateOptions,
+) -> Result<addon_updater::AddonUpdatePlan, String> {
+    task_control.reset();
+    let event_handle = app_handle.clone();
+    let progress_callback: addon_updater::AddonUpdateProgressCallback =
+        Arc::new(move |event| {
+            let _ = event_handle.emit("addon-update-progress", event);
+        });
     let xplane_path = std::path::Path::new(&xplane_path);
-    skunk_updater::build_update_plan(xplane_path, &item_type, &folder_name, options)
-        .await
-        .map_err(|e| e.to_string())
+    match addon_updater::build_update_plan(
+        xplane_path,
+        &item_type,
+        &folder_name,
+        options,
+        Some(task_control.inner().clone()),
+        Some(progress_callback),
+    )
+    .await
+    {
+        Ok(plan) => Ok(plan),
+        Err(e) => {
+            emit_addon_update_status(
+                &app_handle,
+                &item_type,
+                &folder_name,
+                "scan",
+                if e.to_string().to_lowercase().contains("cancelled") {
+                    "cancelled"
+                } else {
+                    "failed"
+                },
+                Some(e.to_string()),
+            );
+            Err(e.to_string())
+        }
+    }
 }
 
 #[tauri::command]
-async fn execute_skunk_update(
+async fn fetch_addon_update_preview(
+    app_handle: tauri::AppHandle,
+    task_control: State<'_, TaskControl>,
     xplane_path: String,
     item_type: String,
     folder_name: String,
-    options: skunk_updater::SkunkUpdateOptions,
-) -> Result<skunk_updater::SkunkUpdateResult, String> {
+    options: addon_updater::AddonUpdateOptions,
+    login: Option<String>,
+    license_key: Option<String>,
+) -> Result<addon_updater::AddonUpdatePreview, String> {
+    task_control.reset();
+    let event_handle = app_handle.clone();
+    let progress_callback: addon_updater::AddonUpdateProgressCallback =
+        Arc::new(move |event| {
+            let _ = event_handle.emit("addon-update-progress", event);
+        });
     let xplane_path = std::path::Path::new(&xplane_path);
-    skunk_updater::execute_update(xplane_path, &item_type, &folder_name, options)
-        .await
+    match addon_updater::fetch_update_preview(
+        xplane_path,
+        &item_type,
+        &folder_name,
+        options,
+        login,
+        license_key,
+        Some(task_control.inner().clone()),
+        Some(progress_callback),
+    )
+    .await
+    {
+        Ok(preview) => Ok(preview),
+        Err(e) => {
+            emit_addon_update_status(
+                &app_handle,
+                &item_type,
+                &folder_name,
+                "check",
+                if e.to_string().to_lowercase().contains("cancelled") {
+                    "cancelled"
+                } else {
+                    "failed"
+                },
+                Some(e.to_string()),
+            );
+            Err(e.to_string())
+        }
+    }
+}
+
+#[tauri::command]
+async fn execute_addon_update(
+    app_handle: tauri::AppHandle,
+    task_control: State<'_, TaskControl>,
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+    options: addon_updater::AddonUpdateOptions,
+) -> Result<addon_updater::AddonUpdateResult, String> {
+    task_control.reset();
+    let event_handle = app_handle.clone();
+    let progress_callback: addon_updater::AddonUpdateProgressCallback =
+        Arc::new(move |event| {
+            let _ = event_handle.emit("addon-update-progress", event);
+        });
+    let xplane_path = std::path::Path::new(&xplane_path);
+    match addon_updater::execute_update(
+        xplane_path,
+        &item_type,
+        &folder_name,
+        options,
+        Some(task_control.inner().clone()),
+        Some(progress_callback),
+    )
+    .await
+    {
+        Ok(result) => Ok(result),
+        Err(e) => {
+            emit_addon_update_status(
+                &app_handle,
+                &item_type,
+                &folder_name,
+                "install",
+                if e.to_string().to_lowercase().contains("cancelled") {
+                    "cancelled"
+                } else {
+                    "failed"
+                },
+                Some(e.to_string()),
+            );
+            Err(e.to_string())
+        }
+    }
+}
+
+#[tauri::command]
+async fn set_addon_updater_credentials(
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+    login: String,
+    license_key: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        addon_updater::set_updater_credentials(
+            xplane_path,
+            &item_type,
+            &folder_name,
+            &login,
+            &license_key,
+        )
         .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn get_addon_updater_credentials(
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+) -> Result<Option<addon_updater::AddonUpdaterCredentials>, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        addon_updater::get_updater_credentials(xplane_path, &item_type, &folder_name)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn get_addon_update_disk_space(
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+) -> Result<addon_updater::AddonDiskSpaceInfo, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        addon_updater::get_target_disk_space(xplane_path, &item_type, &folder_name)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[tauri::command]
@@ -2041,8 +2453,12 @@ pub fn run() {
             check_aircraft_updates,
             scan_plugins,
             check_plugins_updates,
-            build_skunk_update_plan,
-            execute_skunk_update,
+            build_addon_update_plan,
+            fetch_addon_update_preview,
+            execute_addon_update,
+            set_addon_updater_credentials,
+            get_addon_updater_credentials,
+            get_addon_update_disk_space,
             scan_navdata,
             scan_navdata_backups,
             restore_navdata_backup,

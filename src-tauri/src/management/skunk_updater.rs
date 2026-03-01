@@ -28,11 +28,17 @@ pub struct SkunkUpdateOptions {
     pub rollback_on_failure: bool,
     #[serde(default)]
     pub parallel_downloads: Option<usize>,
+    #[serde(default)]
+    pub channel: Option<String>,
+    #[serde(default)]
+    pub fresh_install: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkunkUpdatePlan {
+    #[serde(default)]
+    pub provider: String,
     pub item_type: String,
     pub folder_name: String,
     pub local_version: Option<String>,
@@ -51,6 +57,8 @@ pub struct SkunkUpdatePlan {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkunkUpdateResult {
+    #[serde(default)]
+    pub provider: String,
     pub success: bool,
     pub message: String,
     pub item_type: String,
@@ -244,6 +252,7 @@ pub async fn execute_update(
             update_local_cfg_version(&prepared.local.cfg_path, remote_version)?;
         }
         return Ok(SkunkUpdateResult {
+            provider: "manifest".to_string(),
             success: true,
             message: "No file changes required".to_string(),
             item_type: item_type.to_string(),
@@ -341,6 +350,7 @@ pub async fn execute_update(
     }
 
     Ok(SkunkUpdateResult {
+        provider: "manifest".to_string(),
         success: true,
         message: "Update completed successfully".to_string(),
         item_type: item_type.to_string(),
@@ -454,6 +464,7 @@ fn build_plan_internal(
     }
 
     Ok(SkunkUpdatePlan {
+        provider: "manifest".to_string(),
         item_type: item_type.to_string(),
         folder_name: folder_name.to_string(),
         local_version,

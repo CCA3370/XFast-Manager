@@ -125,11 +125,13 @@ export const STORAGE_KEYS = {
   UNCONFIRMED_ISSUE_UPDATES: 'unconfirmedIssueUpdates',
   CRASH_ANALYSIS_DMP_ENABLED: 'crashAnalysisDmpEnabled',
   CRASH_ANALYSIS_IGNORE_DATE_CHECK: 'crashAnalysisIgnoreDateCheck',
-  SKUNK_UPDATE_USE_BETA: 'skunkUpdateUseBeta',
-  SKUNK_UPDATE_INCLUDE_LIVERIES: 'skunkUpdateIncludeLiveries',
-  SKUNK_UPDATE_APPLY_BLACKLIST: 'skunkUpdateApplyBlacklist',
-  SKUNK_UPDATE_ROLLBACK_ON_FAILURE: 'skunkUpdateRollbackOnFailure',
-  SKUNK_UPDATE_PARALLEL_DOWNLOADS: 'skunkUpdateParallelDownloads',
+  ADDON_UPDATE_USE_BETA: 'addonUpdateUseBeta',
+  ADDON_UPDATE_INCLUDE_LIVERIES: 'addonUpdateIncludeLiveries',
+  ADDON_UPDATE_APPLY_BLACKLIST: 'addonUpdateApplyBlacklist',
+  ADDON_UPDATE_ROLLBACK_ON_FAILURE: 'addonUpdateRollbackOnFailure',
+  ADDON_UPDATE_PARALLEL_DOWNLOADS: 'addonUpdateParallelDownloads',
+  ADDON_UPDATE_CHANNEL: 'addonUpdateChannel',
+  ADDON_UPDATE_FRESH_INSTALL: 'addonUpdateFreshInstall',
 } as const
 
 export interface TrackedIssue {
