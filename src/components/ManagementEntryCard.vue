@@ -174,8 +174,9 @@ const latestVersion = computed(() => {
 
 const canOpenUpdater = computed(() => {
   if (!(isAircraft(props.entry) || isPlugin(props.entry))) return false
-  if (props.entry.hasUpdate) return true
-  return (props.entry.updateUrl || '').toLowerCase().startsWith('x-updater:')
+  const updateUrl = (props.entry.updateUrl || '').toLowerCase()
+  if (updateUrl.startsWith('x-updater:')) return false
+  return props.entry.hasUpdate
 })
 
 function handleDoubleClick() {

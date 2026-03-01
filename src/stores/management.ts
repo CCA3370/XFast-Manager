@@ -72,10 +72,8 @@ function getUpdateCacheKey(item: { updateUrl?: string; folderName: string }): st
   const updateUrl = item.updateUrl?.trim()
   if (!updateUrl) return null
 
-  // x-updater URLs are host-level and can be shared by multiple addons.
-  // Include folderName to avoid cache collisions between different aircraft/plugins.
   if (isXUpdaterTaggedUrl(updateUrl)) {
-    return `${updateUrl.toLowerCase()}::${item.folderName.toLowerCase()}`
+    return null
   }
 
   return updateUrl
@@ -360,7 +358,9 @@ export const useManagementStore = defineStore('management', () => {
   ): T[] {
     const lockStore = useLockStore()
     return items.filter((item) => {
-      if (!item.updateUrl) return false
+      const updateUrl = item.updateUrl?.trim()
+      if (!updateUrl) return false
+      if (isXUpdaterTaggedUrl(updateUrl)) return false
       if (isCacheValid(item)) return false
       // Skip locked items - they shouldn't be checked for updates
       if (lockStore.isLocked(itemType, item.folderName)) return false

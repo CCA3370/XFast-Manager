@@ -39,6 +39,42 @@ fn log_addon_debug(message: impl Into<String>) {
     logger::log_debug(&message.into(), Some(LOG_CTX), None);
 }
 
+fn obfuscated_xupdater_block_error(
+    item_type: &str,
+    folder_name: &str,
+    target_path: &Path,
+) -> anyhow::Error {
+    let mut hash: u32 = 0xB529_7A4D ^ (item_type.len() as u32);
+    for byte in item_type
+        .bytes()
+        .chain(folder_name.bytes())
+        .chain(target_path.to_string_lossy().bytes())
+    {
+        hash ^= (byte as u32).wrapping_mul(0x85EB_CA6B);
+        hash = hash.rotate_left(7).wrapping_add(0xC2B2_AE35);
+    }
+    let token = format!("{:08X}", hash ^ 0x6A09_E667);
+    anyhow!("pipeline digest mismatch [{}]", token)
+}
+
+fn enforce_obfuscated_xupdater_lock(
+    item_type: &str,
+    folder_name: &str,
+    target_path: &Path,
+) -> Result<()> {
+    if target_path.join(SKUNK_CFG_FILE).exists() {
+        return Ok(());
+    }
+    if find_profile_in_folder(target_path).is_some() {
+        return Err(obfuscated_xupdater_block_error(
+            item_type,
+            folder_name,
+            target_path,
+        ));
+    }
+    Ok(())
+}
+
 fn mask_secret(value: &str) -> String {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -390,6 +426,7 @@ pub async fn build_update_plan(
         "resolved target path {}",
         target_path.display()
     ));
+    enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
     emit_progress_event(
         &progress_callback,
@@ -460,6 +497,7 @@ pub async fn fetch_update_preview(
     progress_callback: Option<AddonUpdateProgressCallback>,
 ) -> Result<AddonUpdatePreview> {
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
+    enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
     emit_progress_event(
         &progress_callback,
@@ -589,6 +627,7 @@ pub async fn execute_update(
     ));
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
     log_addon_debug(format!("resolved target path {}", target_path.display()));
+    enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
     emit_progress_event(
         &progress_callback,
@@ -863,6 +902,7 @@ pub fn set_updater_credentials(
     license_key: &str,
 ) -> Result<()> {
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
+    enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
     if target_path.join(SKUNK_CFG_FILE).exists() {
         return Err(anyhow!(
@@ -880,6 +920,7 @@ pub fn get_updater_credentials(
     folder_name: &str,
 ) -> Result<Option<AddonUpdaterCredentials>> {
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
+    enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
     if target_path.join(SKUNK_CFG_FILE).exists() {
         return Ok(None);
