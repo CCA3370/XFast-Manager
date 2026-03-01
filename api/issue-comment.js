@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'server token not configured' })
   }
 
-  const prefixedBody = ['用户评论', '', body].join('\n')
+  const prefixedBody = ['User Comment:', '', body].join('\n')
 
   const ghResponse = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments`,

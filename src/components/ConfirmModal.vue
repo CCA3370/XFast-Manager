@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <Transition name="modal" :css="false" @enter="onEnter" @leave="onLeave">
-      <div v-if="isVisible" class="fixed inset-0 z-[1100] flex items-center justify-center">
+      <div v-if="isVisible" class="fixed inset-0 z-[1300] flex items-center justify-center">
         <!-- Backdrop -->
         <div
           ref="backdrop"
