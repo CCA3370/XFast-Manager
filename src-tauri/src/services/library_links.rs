@@ -29,9 +29,8 @@ static CACHE: LazyLock<Mutex<Option<CachedLinks>>> = LazyLock::new(|| Mutex::new
 /// Cache TTL: 24 hours (matching updater pattern)
 const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// Remote URL for the library links JSON file
-const REMOTE_URL: &str =
-    "https://raw.githubusercontent.com/CCA3370/XFast-Manager/dev/data/library_links.json";
+/// Remote URL for the library links JSON file via proxy
+const REMOTE_URL: &str = "https://x-fast-manager.vercel.app/api/library-links-data";
 
 fn normalize_library_key(raw: &str) -> String {
     let trimmed = raw
@@ -122,7 +121,7 @@ async fn get_remote_links(force_refresh: bool) -> Result<HashMap<String, String>
     }
 }
 
-/// Fetch library links JSON from the remote GitHub repository.
+/// Fetch library links JSON from the remote proxy service.
 async fn fetch_remote_links() -> Result<HashMap<String, String>, String> {
     let client = reqwest::Client::builder()
         .user_agent("XFast Manager")
@@ -130,8 +129,10 @@ async fn fetch_remote_links() -> Result<HashMap<String, String>, String> {
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
+    let remote_url =
+        std::env::var("XFAST_LIBRARY_LINKS_API_URL").unwrap_or_else(|_| REMOTE_URL.to_string());
     let response = client
-        .get(REMOTE_URL)
+        .get(&remote_url)
         .send()
         .await
         .map_err(|e| format!("Failed to fetch: {}", e))?;

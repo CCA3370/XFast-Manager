@@ -21,7 +21,7 @@
       <div class="flex-1 min-h-0 flex flex-col gap-3">
         <section
           class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md overflow-hidden flex flex-col transition-all duration-300 ease-out"
-          :class="detailVisible && selectedRecord ? 'flex-none' : 'flex-1 min-h-0'"
+          :class="selectedRecord ? 'flex-none' : 'flex-1 min-h-0'"
         >
           <div class="px-3 py-2 border-b border-gray-200 dark:border-white/5 flex items-center justify-between gap-2">
             <div class="min-w-0">
@@ -40,7 +40,7 @@
             </p>
           </div>
 
-          <div v-else-if="detailVisible && selectedRecord" class="p-1.5">
+          <div v-else-if="selectedRecord" class="p-1.5">
             <button
               class="w-full text-left p-2.5 rounded-lg border transition-colors border-blue-300 dark:border-blue-500/40 bg-blue-50 dark:bg-blue-500/10"
               @click="selectIssue(selectedRecord.issueNumber)"
@@ -206,7 +206,7 @@
           </section>
         </Transition>
 
-        <div v-if="!detailVisible && records.length > 0" class="px-1">
+        <div v-if="!selectedRecord && records.length > 0" class="px-1">
           <p class="text-xs text-gray-500 dark:text-gray-400">
             {{ $t('feedback.selectHint') }}
           </p>
@@ -375,8 +375,30 @@ function displayFeedbackType(type?: string): string {
 }
 
 async function openIssue(url: string) {
+  const issueRedirectApiBase =
+    import.meta.env.VITE_XFAST_ISSUE_REDIRECT_API_URL ||
+    'https://x-fast-manager.vercel.app/api/issue-redirect'
+  let finalUrl = String(url || '').trim()
+  if (!finalUrl) return
+
   try {
-    await invoke('open_url', { url })
+    const parsed = new URL(finalUrl)
+    const numberFromQuery = Number(parsed.searchParams.get('number') || parsed.searchParams.get('issueNumber') || 0)
+    if (Number.isFinite(numberFromQuery) && numberFromQuery > 0) {
+      finalUrl = `${issueRedirectApiBase}?number=${numberFromQuery}`
+    } else {
+      const issueTail = parsed.pathname.split('/').pop() ?? ''
+      const issueNumber = Number(issueTail)
+      if (parsed.hostname.toLowerCase().includes('github.com') && Number.isFinite(issueNumber) && issueNumber > 0) {
+        finalUrl = `${issueRedirectApiBase}?number=${issueNumber}`
+      }
+    }
+  } catch {
+    // keep original URL if parsing fails
+  }
+
+  try {
+    await invoke('open_url', { url: finalUrl })
   } catch {
     // ignore
   }

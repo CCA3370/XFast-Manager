@@ -419,7 +419,7 @@ export default {
     autoUpdateCheckDesc: 'Automatically check for new versions on startup',
     autoUpdateCheckExplain: 'Automatic Update Check Explanation',
     autoUpdateCheckBenefit1: 'Automatically check for new versions on startup (once per 24 hours)',
-    autoUpdateCheckBenefit2: 'No user data collected, only sends requests to GitHub API',
+    autoUpdateCheckBenefit2: 'No user data collected, only sends requests to the official update proxy service',
     autoUpdateCheckBenefit3:
       'Shows a banner notification on the home page when a new version is found',
     includePreRelease: 'Include Pre-releases',
@@ -429,7 +429,7 @@ export default {
     changelogNotFound: 'No changelog entry found for v{version}',
     postUpdateTitle: "What's New in v{version}",
     postUpdateSubtitle: 'See what changed in this update',
-    viewOnGitHub: 'View on GitHub',
+    viewOnGitHub: 'View Release Page',
   },
   onboarding: {
     title: 'First-Run Setup',
@@ -476,14 +476,14 @@ export default {
     contributeLink: 'Contribute Link',
     contributeLinkTitle: 'Submit Library Download Link',
     contributeLinkDesc:
-      'After you enter a valid download URL, the app first submits it for review automatically; if that fails, it opens the GitHub submission page automatically.',
+      'After you enter a valid download URL, the app first submits it for review automatically; if that fails, it opens the proxy submission page automatically.',
     libraryNameLabel: 'Library Name',
     downloadUrlLabel: 'Download URL',
     downloadUrlPlaceholder: 'https://example.com/library-download',
     submitContribution: 'Submit Contribution',
     submittingContribution: 'Submitting...',
     contributionCreated: 'Your contribution has been submitted for review',
-    contributionOpened: 'Automatically redirected to the GitHub submission page',
+    contributionOpened: 'Automatically redirected to the submission page',
     submissionInProgressCloseBlocked:
       'Library link submission is in progress. Please wait for success or timeout fallback.',
     invalidContributionUrl: 'Please enter a valid http/https URL',

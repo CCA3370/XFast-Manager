@@ -11,6 +11,9 @@ import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
 import bundledChangelog from '@/generated/changelog'
 
 const t = i18n.global.t
+const RELEASE_REDIRECT_API_BASE =
+  import.meta.env.VITE_XFAST_RELEASE_REDIRECT_API_URL ||
+  'https://x-fast-manager.vercel.app/api/release-redirect'
 
 export const useUpdateStore = defineStore('update', () => {
   const toast = useToastStore()
@@ -109,7 +112,7 @@ export const useUpdateStore = defineStore('update', () => {
         /api rate limit/i.test(errorMessage)
 
       if (isRateLimited && !manual) {
-        logDebug('Update check skipped (GitHub API rate limit)', 'update')
+        logDebug('Update check skipped (upstream rate limit)', 'update')
         return
       }
 
@@ -240,7 +243,7 @@ export const useUpdateStore = defineStore('update', () => {
   function applyChangelog(version: string, releaseNotes: string) {
     postUpdateVersion.value = version
     postUpdateReleaseNotes.value = releaseNotes
-    postUpdateReleaseUrl.value = `https://github.com/CCA3370/XFast-Manager/releases/tag/v${version}`
+    postUpdateReleaseUrl.value = `${RELEASE_REDIRECT_API_BASE}?tag=${encodeURIComponent(`v${version}`)}`
     showPostUpdateChangelog.value = true
   }
 

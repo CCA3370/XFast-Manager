@@ -291,13 +291,20 @@ async fn create_bug_report_issue(
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
-    // Fallback: if the server didn't return issueNumber, extract it from the URL
-    // e.g. "https://github.com/CCA3370/XFast-Manager/issues/42" → 42
+    // Fallback: if the server didn't return issueNumber, extract it from URL query or tail.
     let issue_number = if issue_number == 0 {
-        issue_url
-            .rsplit('/')
-            .next()
-            .and_then(|s| s.parse::<u64>().ok())
+        reqwest::Url::parse(&issue_url)
+            .ok()
+            .and_then(|url| {
+                url.query_pairs()
+                    .find(|(k, _)| k == "number" || k == "issueNumber")
+                    .and_then(|(_, v)| v.parse::<u64>().ok())
+                    .or_else(|| {
+                        url.path_segments()
+                            .and_then(|segments| segments.last())
+                            .and_then(|s| s.parse::<u64>().ok())
+                    })
+            })
             .unwrap_or(0)
     } else {
         issue_number
@@ -379,10 +386,18 @@ async fn create_feedback_issue(
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
     let issue_number = if issue_number == 0 {
-        issue_url
-            .rsplit('/')
-            .next()
-            .and_then(|s| s.parse::<u64>().ok())
+        reqwest::Url::parse(&issue_url)
+            .ok()
+            .and_then(|url| {
+                url.query_pairs()
+                    .find(|(k, _)| k == "number" || k == "issueNumber")
+                    .and_then(|(_, v)| v.parse::<u64>().ok())
+                    .or_else(|| {
+                        url.path_segments()
+                            .and_then(|segments| segments.last())
+                            .and_then(|s| s.parse::<u64>().ok())
+                    })
+            })
             .unwrap_or(0)
     } else {
         issue_number
@@ -440,14 +455,14 @@ async fn post_issue_comment(issue_number: u64, comment_body: String) -> Result<I
     Ok(IssueCommentPostResult { ok: true })
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct IssueCommentInfo {
     author: String,
     body: String,
     created_at: String,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct IssueDetailInfo {
     number: u64,
     title: String,
@@ -458,7 +473,7 @@ struct IssueDetailInfo {
     updated_at: String,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct IssueDetailCommentInfo {
     id: u64,
     author: String,
@@ -467,7 +482,7 @@ struct IssueDetailCommentInfo {
     updated_at: String,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct IssueDetailResult {
     issue: IssueDetailInfo,
     comments: Vec<IssueDetailCommentInfo>,
@@ -476,11 +491,21 @@ struct IssueDetailResult {
     has_more: bool,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct IssueUpdateResult {
     state: String,
     total_comments: u64,
     new_comments: Vec<IssueCommentInfo>,
+}
+
+fn issue_updates_api_url() -> String {
+    std::env::var("XFAST_ISSUE_UPDATES_API_URL")
+        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/issue-updates".to_string())
+}
+
+fn issue_detail_api_url() -> String {
+    std::env::var("XFAST_ISSUE_DETAIL_API_URL")
+        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/issue-detail".to_string())
 }
 
 #[tauri::command]
@@ -488,95 +513,37 @@ async fn check_issue_updates(
     issue_number: u64,
     since: String,
 ) -> Result<IssueUpdateResult, String> {
+    if issue_number == 0 {
+        return Err("issue_number must be greater than 0".to_string());
+    }
+
     let client = reqwest::Client::builder()
         .user_agent("XFast Manager")
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    // 1. Fetch issue state and comment count
-    let issue_url = format!(
-        "https://api.github.com/repos/CCA3370/XFast-Manager/issues/{}",
-        issue_number
-    );
-    let issue_response = client
-        .get(&issue_url)
-        .header("Accept", "application/vnd.github+json")
+    let api_url = issue_updates_api_url();
+    let response = client
+        .get(&api_url)
+        .query(&[
+            ("issueNumber", issue_number.to_string()),
+            ("since", since.clone()),
+        ])
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch issue: {}", e))?;
+        .map_err(|e| format!("Failed to fetch issue updates: {}", e))?;
 
-    if !issue_response.status().is_success() {
-        let status = issue_response.status();
-        return Err(format!("GitHub API error {}", status));
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Issue updates API error {}: {}", status, body));
     }
 
-    let issue_json: serde_json::Value = issue_response
-        .json()
+    response
+        .json::<IssueUpdateResult>()
         .await
-        .map_err(|e| format!("Failed to parse issue response: {}", e))?;
-
-    let state = issue_json
-        .get("state")
-        .and_then(|v| v.as_str())
-        .unwrap_or("open")
-        .to_string();
-
-    let total_comments = issue_json
-        .get("comments")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-
-    // 2. Fetch new comments since the given timestamp
-    let comments_url = format!(
-        "https://api.github.com/repos/CCA3370/XFast-Manager/issues/{}/comments?since={}&per_page=20",
-        issue_number, since
-    );
-    let comments_response = client
-        .get(&comments_url)
-        .header("Accept", "application/vnd.github+json")
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch comments: {}", e))?;
-
-    let new_comments = if comments_response.status().is_success() {
-        let comments_json: serde_json::Value = comments_response
-            .json()
-            .await
-            .unwrap_or(serde_json::Value::Array(vec![]));
-
-        comments_json
-            .as_array()
-            .unwrap_or(&vec![])
-            .iter()
-            .map(|c| IssueCommentInfo {
-                author: c
-                    .get("user")
-                    .and_then(|u| u.get("login"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown")
-                    .to_string(),
-                body: c
-                    .get("body")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                created_at: c
-                    .get("created_at")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-            })
-            .collect()
-    } else {
-        vec![]
-    };
-
-    Ok(IssueUpdateResult {
-        state,
-        total_comments,
-        new_comments,
-    })
+        .map_err(|e| format!("Failed to parse issue updates response: {}", e))
 }
 
 #[tauri::command]
@@ -598,113 +565,28 @@ async fn get_issue_detail(
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    let issue_url = format!(
-        "https://api.github.com/repos/CCA3370/XFast-Manager/issues/{}",
-        issue_number
-    );
-    let issue_response = client
-        .get(&issue_url)
-        .header("Accept", "application/vnd.github+json")
+    let api_url = issue_detail_api_url();
+    let response = client
+        .get(&api_url)
+        .query(&[
+            ("issueNumber", issue_number.to_string()),
+            ("page", page.to_string()),
+            ("perPage", per_page.to_string()),
+        ])
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch issue: {}", e))?;
+        .map_err(|e| format!("Failed to fetch issue detail: {}", e))?;
 
-    if !issue_response.status().is_success() {
-        return Err(format!("GitHub API error {}", issue_response.status()));
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Issue detail API error {}: {}", status, body));
     }
 
-    let issue_json: serde_json::Value = issue_response
-        .json()
+    response
+        .json::<IssueDetailResult>()
         .await
-        .map_err(|e| format!("Failed to parse issue response: {}", e))?;
-
-    let issue_info = IssueDetailInfo {
-        number: issue_json.get("number").and_then(|v| v.as_u64()).unwrap_or(issue_number),
-        title: issue_json
-            .get("title")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        state: issue_json
-            .get("state")
-            .and_then(|v| v.as_str())
-            .unwrap_or("open")
-            .to_string(),
-        html_url: issue_json
-            .get("html_url")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        comments: issue_json.get("comments").and_then(|v| v.as_u64()).unwrap_or(0),
-        created_at: issue_json
-            .get("created_at")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        updated_at: issue_json
-            .get("updated_at")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-    };
-
-    let comments_url = format!(
-        "https://api.github.com/repos/CCA3370/XFast-Manager/issues/{}/comments?page={}&per_page={}",
-        issue_number, page, per_page
-    );
-    let comments_response = client
-        .get(&comments_url)
-        .header("Accept", "application/vnd.github+json")
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch issue comments: {}", e))?;
-
-    if !comments_response.status().is_success() {
-        return Err(format!("GitHub comments API error {}", comments_response.status()));
-    }
-
-    let comments_json: serde_json::Value = comments_response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse comments response: {}", e))?;
-
-    let comment_items = comments_json.as_array().cloned().unwrap_or_default();
-    let has_more = comment_items.len() as u32 >= per_page;
-    let comments = comment_items
-        .iter()
-        .map(|c| IssueDetailCommentInfo {
-            id: c.get("id").and_then(|v| v.as_u64()).unwrap_or(0),
-            author: c
-                .get("user")
-                .and_then(|u| u.get("login"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string(),
-            body: c
-                .get("body")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            created_at: c
-                .get("created_at")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            updated_at: c
-                .get("updated_at")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-        })
-        .collect();
-
-    Ok(IssueDetailResult {
-        issue: issue_info,
-        comments,
-        page,
-        per_page: per_page,
-        has_more,
-    })
+        .map_err(|e| format!("Failed to parse issue detail response: {}", e))
 }
 
 // ============================================================================

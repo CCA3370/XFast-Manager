@@ -51,9 +51,8 @@ struct LiveryPatternsData {
     patterns: Vec<LiveryPattern>,
 }
 
-/// Remote URL for the livery patterns JSON file
-const REMOTE_URL: &str =
-    "https://raw.githubusercontent.com/CCA3370/XFast-Manager/dev/data/livery_patterns.json";
+/// Remote URL for the livery patterns JSON file via proxy
+const REMOTE_URL: &str = "https://x-fast-manager.vercel.app/api/livery-patterns-data";
 
 /// Loaded livery patterns (embedded by default, remote override when available)
 static LIVERY_PATTERNS: LazyLock<RwLock<Vec<LiveryPattern>>> =
@@ -103,8 +102,10 @@ async fn fetch_remote_patterns() -> Result<Vec<LiveryPattern>, String> {
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
+    let remote_url =
+        std::env::var("XFAST_LIVERY_PATTERNS_API_URL").unwrap_or_else(|_| REMOTE_URL.to_string());
     let response = client
-        .get(REMOTE_URL)
+        .get(&remote_url)
         .send()
         .await
         .map_err(|e| format!("Failed to fetch: {}", e))?;
