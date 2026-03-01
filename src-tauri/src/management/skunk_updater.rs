@@ -7,7 +7,11 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use crate::task_control::TaskControl;
 
 const LOCAL_CFG_FILE: &str = "skunkcrafts_updater.cfg";
 const LOCAL_BETA_CFG_FILE: &str = "skunkcraft_updater_beta.cfg";
@@ -69,6 +73,46 @@ pub struct SkunkUpdateResult {
     pub deleted_files: usize,
     pub skipped_files: usize,
     pub rollback_used: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct SkunkUpdateProgressEvent {
+    pub stage: String,
+    pub status: String,
+    pub percentage: f64,
+    pub processed_units: u64,
+    pub total_units: u64,
+    pub processed_bytes: u64,
+    pub total_bytes: u64,
+    pub speed_bytes_per_sec: f64,
+    pub current_file: Option<String>,
+    pub message: Option<String>,
+}
+
+pub type SkunkUpdateProgressCallback = Arc<dyn Fn(SkunkUpdateProgressEvent) + Send + Sync>;
+
+fn emit_progress_event(
+    callback: &Option<SkunkUpdateProgressCallback>,
+    event: SkunkUpdateProgressEvent,
+) {
+    let Some(cb) = callback.as_ref() else {
+        return;
+    };
+    cb(event);
+}
+
+fn ensure_not_cancelled(task_control: Option<&TaskControl>, stage: &str) -> Result<()> {
+    if task_control.map(|tc| tc.is_cancelled()).unwrap_or(false) {
+        return Err(anyhow!(
+            "Addon update {} cancelled by user",
+            stage.trim().to_lowercase()
+        ));
+    }
+    Ok(())
+}
+
+fn is_cancelled_error(err: &anyhow::Error) -> bool {
+    err.to_string().to_lowercase().contains("cancelled")
 }
 
 #[derive(Debug, Clone)]
@@ -236,10 +280,30 @@ pub async fn execute_update(
     item_type: &str,
     folder_name: &str,
     options: SkunkUpdateOptions,
+    task_control: Option<TaskControl>,
+    progress_callback: Option<SkunkUpdateProgressCallback>,
 ) -> Result<SkunkUpdateResult> {
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
     let prepared = prepare_update_context(&target_path, options.use_beta).await?;
     let plan = build_plan_internal(&prepared, item_type, folder_name, &options)?;
+    let install_started = Instant::now();
+
+    emit_progress_event(
+        &progress_callback,
+        SkunkUpdateProgressEvent {
+            stage: "install".to_string(),
+            status: "started".to_string(),
+            percentage: 0.0,
+            processed_units: 0,
+            total_units: 0,
+            processed_bytes: 0,
+            total_bytes: plan.estimated_download_bytes,
+            speed_bytes_per_sec: 0.0,
+            current_file: None,
+            message: Some("Preparing installation".to_string()),
+        },
+    );
+    ensure_not_cancelled(task_control.as_ref(), "install")?;
 
     if plan.remote_locked {
         return Err(anyhow!(
@@ -251,6 +315,21 @@ pub async fn execute_update(
         if let Some(remote_version) = plan.remote_version.as_ref() {
             update_local_cfg_version(&prepared.local.cfg_path, remote_version)?;
         }
+        emit_progress_event(
+            &progress_callback,
+            SkunkUpdateProgressEvent {
+                stage: "install".to_string(),
+                status: "completed".to_string(),
+                percentage: 100.0,
+                processed_units: 0,
+                total_units: 0,
+                processed_bytes: 0,
+                total_bytes: 0,
+                speed_bytes_per_sec: 0.0,
+                current_file: None,
+                message: Some("No file changes required".to_string()),
+            },
+        );
         return Ok(SkunkUpdateResult {
             provider: "manifest".to_string(),
             success: true,
@@ -275,20 +354,148 @@ pub async fn execute_update(
     download_targets.extend(plan.add_files.clone());
     download_targets.extend(plan.replace_files.clone());
 
+    let total_download_units = download_targets.len() as u64;
+    let total_download_bytes = plan.estimated_download_bytes;
+    let download_phase_weight = if total_download_units > 0 { 90.0 } else { 0.0 };
+    let processed_download_bytes = Arc::new(AtomicU64::new(0));
+    let processed_download_units = Arc::new(AtomicU64::new(0));
+    let last_emit = Arc::new(Mutex::new(Instant::now() - Duration::from_secs(1)));
+
+    let chunk_progress_callback: Option<Arc<dyn Fn(String, u64) + Send + Sync>> =
+        progress_callback.as_ref().map(|_| {
+            let progress_callback = progress_callback.clone();
+            let processed_download_bytes = Arc::clone(&processed_download_bytes);
+            let processed_download_units = Arc::clone(&processed_download_units);
+            let last_emit = Arc::clone(&last_emit);
+            Arc::new(move |rel_path: String, chunk_size: u64| {
+                let processed =
+                    processed_download_bytes.fetch_add(chunk_size, Ordering::Relaxed) + chunk_size;
+                let processed_units = processed_download_units.load(Ordering::Relaxed);
+                let mut should_emit = true;
+                if let Ok(mut guard) = last_emit.lock() {
+                    if guard.elapsed() < Duration::from_millis(120) {
+                        should_emit = false;
+                    } else {
+                        *guard = Instant::now();
+                    }
+                }
+                if !should_emit {
+                    return;
+                }
+
+                let ratio = if total_download_bytes > 0 {
+                    processed as f64 / total_download_bytes as f64
+                } else if total_download_units > 0 {
+                    processed_units as f64 / total_download_units as f64
+                } else {
+                    1.0
+                };
+                let percentage = (ratio * download_phase_weight).clamp(0.0, download_phase_weight);
+                let elapsed = install_started.elapsed().as_secs_f64().max(0.001);
+                let speed = processed as f64 / elapsed;
+                emit_progress_event(
+                    &progress_callback,
+                    SkunkUpdateProgressEvent {
+                        stage: "install".to_string(),
+                        status: "in_progress".to_string(),
+                        percentage,
+                        processed_units,
+                        total_units: total_download_units,
+                        processed_bytes: processed,
+                        total_bytes: total_download_bytes,
+                        speed_bytes_per_sec: speed,
+                        current_file: Some(rel_path),
+                        message: Some("Downloading".to_string()),
+                    },
+                );
+            }) as Arc<dyn Fn(String, u64) + Send + Sync>
+        });
+
+    let file_completed_callback: Option<Arc<dyn Fn(String) + Send + Sync>> =
+        progress_callback.as_ref().map(|_| {
+            let progress_callback = progress_callback.clone();
+            let processed_download_bytes = Arc::clone(&processed_download_bytes);
+            let processed_download_units = Arc::clone(&processed_download_units);
+            Arc::new(move |rel_path: String| {
+                let processed_units = processed_download_units.fetch_add(1, Ordering::Relaxed) + 1;
+                let processed = processed_download_bytes.load(Ordering::Relaxed);
+                let ratio = if total_download_bytes > 0 {
+                    processed as f64 / total_download_bytes as f64
+                } else if total_download_units > 0 {
+                    processed_units as f64 / total_download_units as f64
+                } else {
+                    1.0
+                };
+                let percentage = (ratio * download_phase_weight).clamp(0.0, download_phase_weight);
+                let elapsed = install_started.elapsed().as_secs_f64().max(0.001);
+                let speed = processed as f64 / elapsed;
+                emit_progress_event(
+                    &progress_callback,
+                    SkunkUpdateProgressEvent {
+                        stage: "install".to_string(),
+                        status: "in_progress".to_string(),
+                        percentage,
+                        processed_units,
+                        total_units: total_download_units,
+                        processed_bytes: processed,
+                        total_bytes: total_download_bytes,
+                        speed_bytes_per_sec: speed,
+                        current_file: Some(rel_path),
+                        message: Some("Downloading".to_string()),
+                    },
+                );
+            }) as Arc<dyn Fn(String) + Send + Sync>
+        });
+
     let parallel = options.parallel_downloads.unwrap_or(4).clamp(1, 8);
-    let downloaded = download_files(
+    let downloaded = match download_files(
         &prepared.module_url,
         &download_targets,
         &whitelist_crc,
         &prepared.manifest.sizes,
         parallel,
+        task_control.clone(),
+        chunk_progress_callback,
+        file_completed_callback,
     )
-    .await?;
+    .await
+    {
+        Ok(result) => result,
+        Err(e) => {
+            let status = if is_cancelled_error(&e) {
+                "cancelled"
+            } else {
+                "failed"
+            };
+            emit_progress_event(
+                &progress_callback,
+                SkunkUpdateProgressEvent {
+                    stage: "install".to_string(),
+                    status: status.to_string(),
+                    percentage: 0.0,
+                    processed_units: processed_download_units.load(Ordering::Relaxed),
+                    total_units: total_download_units,
+                    processed_bytes: processed_download_bytes.load(Ordering::Relaxed),
+                    total_bytes: total_download_bytes,
+                    speed_bytes_per_sec: 0.0,
+                    current_file: None,
+                    message: Some(e.to_string()),
+                },
+            );
+            return Err(e);
+        }
+    };
 
     let mut rollback = RollbackState::new(options.rollback_on_failure)?;
+    let total_apply_units =
+        (plan.replace_files.len() + plan.add_files.len() + plan.delete_files.len()) as u64;
+    let apply_base_percentage = download_phase_weight;
+    let apply_span = 100.0 - apply_base_percentage;
+    let mut processed_apply_units = 0u64;
 
     let apply_result: Result<()> = (|| {
         for rel_path in &plan.replace_files {
+            ensure_not_cancelled(task_control.as_ref(), "install")?;
             let destination = resolve_entry_path(&prepared.target_path, rel_path)?;
             let existed = destination.exists();
 
@@ -302,9 +509,36 @@ pub async fn execute_update(
                 .get(rel_path)
                 .ok_or_else(|| anyhow!("Missing downloaded data for '{}'", rel_path))?;
             write_file_atomic(&destination, bytes)?;
+
+            processed_apply_units = processed_apply_units.saturating_add(1);
+            let processed_bytes = processed_download_bytes.load(Ordering::Relaxed);
+            let ratio = if total_apply_units > 0 {
+                processed_apply_units as f64 / total_apply_units as f64
+            } else {
+                1.0
+            };
+            let percentage = (apply_base_percentage + ratio * apply_span).clamp(0.0, 100.0);
+            let elapsed = install_started.elapsed().as_secs_f64().max(0.001);
+            let speed = processed_bytes as f64 / elapsed;
+            emit_progress_event(
+                &progress_callback,
+                SkunkUpdateProgressEvent {
+                    stage: "install".to_string(),
+                    status: "in_progress".to_string(),
+                    percentage,
+                    processed_units: processed_apply_units,
+                    total_units: total_apply_units,
+                    processed_bytes,
+                    total_bytes: total_download_bytes,
+                    speed_bytes_per_sec: speed,
+                    current_file: Some(rel_path.clone()),
+                    message: Some("Applying changes".to_string()),
+                },
+            );
         }
 
         for rel_path in &plan.add_files {
+            ensure_not_cancelled(task_control.as_ref(), "install")?;
             let destination = resolve_entry_path(&prepared.target_path, rel_path)?;
             let existed = destination.exists();
 
@@ -318,14 +552,67 @@ pub async fn execute_update(
                 .get(rel_path)
                 .ok_or_else(|| anyhow!("Missing downloaded data for '{}'", rel_path))?;
             write_file_atomic(&destination, bytes)?;
+
+            processed_apply_units = processed_apply_units.saturating_add(1);
+            let processed_bytes = processed_download_bytes.load(Ordering::Relaxed);
+            let ratio = if total_apply_units > 0 {
+                processed_apply_units as f64 / total_apply_units as f64
+            } else {
+                1.0
+            };
+            let percentage = (apply_base_percentage + ratio * apply_span).clamp(0.0, 100.0);
+            let elapsed = install_started.elapsed().as_secs_f64().max(0.001);
+            let speed = processed_bytes as f64 / elapsed;
+            emit_progress_event(
+                &progress_callback,
+                SkunkUpdateProgressEvent {
+                    stage: "install".to_string(),
+                    status: "in_progress".to_string(),
+                    percentage,
+                    processed_units: processed_apply_units,
+                    total_units: total_apply_units,
+                    processed_bytes,
+                    total_bytes: total_download_bytes,
+                    speed_bytes_per_sec: speed,
+                    current_file: Some(rel_path.clone()),
+                    message: Some("Applying changes".to_string()),
+                },
+            );
         }
 
         for rel_path in &plan.delete_files {
+            ensure_not_cancelled(task_control.as_ref(), "install")?;
             let destination = resolve_entry_path(&prepared.target_path, rel_path)?;
             if destination.exists() {
                 rollback.backup_if_needed(&destination)?;
                 remove_path(&destination)?;
             }
+
+            processed_apply_units = processed_apply_units.saturating_add(1);
+            let processed_bytes = processed_download_bytes.load(Ordering::Relaxed);
+            let ratio = if total_apply_units > 0 {
+                processed_apply_units as f64 / total_apply_units as f64
+            } else {
+                1.0
+            };
+            let percentage = (apply_base_percentage + ratio * apply_span).clamp(0.0, 100.0);
+            let elapsed = install_started.elapsed().as_secs_f64().max(0.001);
+            let speed = processed_bytes as f64 / elapsed;
+            emit_progress_event(
+                &progress_callback,
+                SkunkUpdateProgressEvent {
+                    stage: "install".to_string(),
+                    status: "in_progress".to_string(),
+                    percentage,
+                    processed_units: processed_apply_units,
+                    total_units: total_apply_units,
+                    processed_bytes,
+                    total_bytes: total_download_bytes,
+                    speed_bytes_per_sec: speed,
+                    current_file: Some(rel_path.clone()),
+                    message: Some("Applying changes".to_string()),
+                },
+            );
         }
 
         if let Some(remote_version) = plan.remote_version.as_ref() {
@@ -346,8 +633,44 @@ pub async fn execute_update(
                 ));
             }
         }
+        let status = if is_cancelled_error(&e) {
+            "cancelled"
+        } else {
+            "failed"
+        };
+        emit_progress_event(
+            &progress_callback,
+            SkunkUpdateProgressEvent {
+                stage: "install".to_string(),
+                status: status.to_string(),
+                percentage: 0.0,
+                processed_units: processed_apply_units,
+                total_units: total_apply_units,
+                processed_bytes: processed_download_bytes.load(Ordering::Relaxed),
+                total_bytes: total_download_bytes,
+                speed_bytes_per_sec: 0.0,
+                current_file: None,
+                message: Some(e.to_string()),
+            },
+        );
         return Err(anyhow!("Update failed: {}", e));
     }
+
+    emit_progress_event(
+        &progress_callback,
+        SkunkUpdateProgressEvent {
+            stage: "install".to_string(),
+            status: "completed".to_string(),
+            percentage: 100.0,
+            processed_units: total_apply_units,
+            total_units: total_apply_units,
+            processed_bytes: total_download_bytes,
+            total_bytes: total_download_bytes,
+            speed_bytes_per_sec: 0.0,
+            current_file: None,
+            message: Some("Installation completed".to_string()),
+        },
+    );
 
     Ok(SkunkUpdateResult {
         provider: "manifest".to_string(),
@@ -651,6 +974,9 @@ async fn download_files(
     expected_crc: &HashMap<String, i64>,
     expected_sizes: &HashMap<String, u64>,
     parallel_downloads: usize,
+    task_control: Option<TaskControl>,
+    chunk_progress_callback: Option<Arc<dyn Fn(String, u64) + Send + Sync>>,
+    file_completed_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
 ) -> Result<HashMap<String, Vec<u8>>> {
     if paths.is_empty() {
         return Ok(HashMap::new());
@@ -671,7 +997,11 @@ async fn download_files(
         let base = base.clone();
         let expected_crc = Arc::clone(&expected_crc);
         let expected_sizes = Arc::clone(&expected_sizes);
+        let task_control = task_control.clone();
+        let chunk_progress_callback = chunk_progress_callback.clone();
+        let file_completed_callback = file_completed_callback.clone();
         async move {
+            ensure_not_cancelled(task_control.as_ref(), "install")?;
             let url = join_url(&base, &rel_path)?;
             let response = client
                 .get(url.clone())
@@ -687,11 +1017,17 @@ async fn download_files(
                 ));
             }
 
-            let bytes = response
-                .bytes()
-                .await
-                .with_context(|| format!("Failed to read response body for '{}'", url))?;
-            let data = bytes.to_vec();
+            let mut data = Vec::new();
+            let mut stream = response.bytes_stream();
+            while let Some(next_chunk) = stream.next().await {
+                ensure_not_cancelled(task_control.as_ref(), "install")?;
+                let chunk = next_chunk
+                    .with_context(|| format!("Failed to stream response body for '{}'", url))?;
+                data.extend_from_slice(&chunk);
+                if let Some(cb) = chunk_progress_callback.as_ref() {
+                    cb(rel_path.clone(), chunk.len() as u64);
+                }
+            }
 
             if let Some(expected) = expected_sizes.get(&rel_path) {
                 let actual = data.len() as u64;
@@ -717,6 +1053,10 @@ async fn download_files(
                         ));
                     }
                 }
+            }
+
+            if let Some(cb) = file_completed_callback.as_ref() {
+                cb(rel_path.clone());
             }
 
             Ok::<(String, Vec<u8>), anyhow::Error>((rel_path, data))

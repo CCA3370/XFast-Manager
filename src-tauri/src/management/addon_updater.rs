@@ -648,7 +648,37 @@ pub async fn execute_update(
 
     if target_path.join(SKUNK_CFG_FILE).exists() {
         log_addon_info("detected legacy updater metadata; delegating to legacy updater execution flow");
-        return crate::skunk_updater::execute_update(xplane_path, item_type, folder_name, options).await;
+        let mapped_progress_callback: Option<crate::skunk_updater::SkunkUpdateProgressCallback> =
+            progress_callback.as_ref().map(|cb| {
+                let addon_cb = Arc::clone(cb);
+                let item_type = item_type.to_string();
+                let folder_name = folder_name.to_string();
+                Arc::new(move |event: crate::skunk_updater::SkunkUpdateProgressEvent| {
+                    addon_cb(AddonUpdateProgressEvent {
+                        item_type: item_type.clone(),
+                        folder_name: folder_name.clone(),
+                        stage: event.stage,
+                        status: event.status,
+                        percentage: event.percentage,
+                        processed_units: event.processed_units,
+                        total_units: event.total_units,
+                        processed_bytes: event.processed_bytes,
+                        total_bytes: event.total_bytes,
+                        speed_bytes_per_sec: event.speed_bytes_per_sec,
+                        current_file: event.current_file,
+                        message: event.message,
+                    });
+                }) as crate::skunk_updater::SkunkUpdateProgressCallback
+            });
+        return crate::skunk_updater::execute_update(
+            xplane_path,
+            item_type,
+            folder_name,
+            options,
+            task_control,
+            mapped_progress_callback,
+        )
+        .await;
     }
 
     let context = prepare_xupdater_context(
