@@ -189,7 +189,8 @@ fn ensure_native_updater_dir(folder: &Path) -> Result<PathBuf> {
     }
 
     if let Some(dir) = find_native_updater_dirs(folder).into_iter().next() {
-        fs::create_dir_all(&dir).with_context(|| format!("Failed to create '{}'", dir.display()))?;
+        fs::create_dir_all(&dir)
+            .with_context(|| format!("Failed to create '{}'", dir.display()))?;
         return Ok(dir);
     }
 
@@ -496,9 +497,8 @@ fn parse_profile_json(path: &Path) -> Option<XUpdaterProfile> {
             "module",
         ],
     );
-    let login = get_string(body, &["login", "username", "user", "email"]).or_else(|| {
-        auth.and_then(|obj| get_string(obj, &["login", "username", "user", "email"]))
-    });
+    let login = get_string(body, &["login", "username", "user", "email"])
+        .or_else(|| auth.and_then(|obj| get_string(obj, &["login", "username", "user", "email"])));
     let license_key = get_string(
         body,
         &[
@@ -589,15 +589,8 @@ fn parse_profile_cfg(path: &Path) -> Option<XUpdaterProfile> {
             "licensekey" | "license_key" | "key" | "license" | "password" | "token" => {
                 license_key = Some(value)
             }
-            "package_version"
-            | "packageversion"
-            | "package"
-            | "since"
-            | "revision"
-            | "snapshotnum"
-            | "snapshot_num" => {
-                package_version = parse_i64(&value)
-            }
+            "package_version" | "packageversion" | "package" | "since" | "revision"
+            | "snapshotnum" | "snapshot_num" => package_version = parse_i64(&value),
             "version" => {
                 version_label = Some(value.clone());
                 if package_version.is_none() {

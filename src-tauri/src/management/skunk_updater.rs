@@ -14,9 +14,9 @@ use std::time::{Duration, Instant};
 use crate::task_control::TaskControl;
 
 const LOCAL_CFG_FILE: &str = "skunkcrafts_updater.cfg";
-const LOCAL_BETA_CFG_FILE: &str = "skunkcraft_updater_beta.cfg";
-const REMOTE_CONFIG_FILE: &str = "skunkcrafts_updater_config.txt";
-const REMOTE_CFG_FALLBACK_FILE: &str = "skunkcrafts_updater.cfg";
+const LOCAL_BETA_CFG_FILE: &str = "skunkcrafts_updater_beta.cfg";
+const LOCAL_BETA_CFG_LEGACY_FILE: &str = "skunkcraft_updater_beta.cfg";
+const REMOTE_CFG_FILE: &str = "skunkcrafts_updater.cfg";
 const REMOTE_WHITELIST_FILE: &str = "skunkcrafts_updater_whitelist.txt";
 const REMOTE_IGNORELIST_FILE: &str = "skunkcrafts_updater_ignorelist.txt";
 const REMOTE_ONCELIST_FILE: &str = "skunkcrafts_updater_oncelist.txt";
@@ -118,9 +118,11 @@ fn is_cancelled_error(err: &anyhow::Error) -> bool {
 #[derive(Debug, Clone)]
 struct LocalConfig {
     cfg_path: PathBuf,
+    zone: Option<String>,
     module: String,
     version: Option<String>,
     liveries: bool,
+    beta_zone: Option<String>,
     beta_module: Option<String>,
 }
 
@@ -128,6 +130,9 @@ struct LocalConfig {
 struct RemoteConfig {
     version: String,
     locked: bool,
+    zone: Option<String>,
+    module: Option<String>,
+    name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -312,8 +317,8 @@ pub async fn execute_update(
     }
 
     if plan.add_files.is_empty() && plan.replace_files.is_empty() && plan.delete_files.is_empty() {
-        if let Some(remote_version) = plan.remote_version.as_ref() {
-            update_local_cfg_version(&prepared.local.cfg_path, remote_version)?;
+        if plan.remote_version.is_some() {
+            update_local_cfg_fields(&prepared.local.cfg_path, &prepared.remote)?;
         }
         emit_progress_event(
             &progress_callback,
@@ -452,7 +457,6 @@ pub async fn execute_update(
         &prepared.module_url,
         &download_targets,
         &whitelist_crc,
-        &prepared.manifest.sizes,
         parallel,
         task_control.clone(),
         chunk_progress_callback,
@@ -615,8 +619,8 @@ pub async fn execute_update(
             );
         }
 
-        if let Some(remote_version) = plan.remote_version.as_ref() {
-            update_local_cfg_version(&prepared.local.cfg_path, remote_version)?;
+        if plan.remote_version.is_some() {
+            update_local_cfg_fields(&prepared.local.cfg_path, &prepared.remote)?;
         }
 
         Ok(())
@@ -720,7 +724,7 @@ fn build_plan_internal(
         }
 
         let local_path = resolve_entry_path(&prepared.target_path, rel_path)?;
-        let should_copy_once = entry.crc32 < 0 || prepared.manifest.oncelist.contains(rel_path);
+        let should_copy_once = entry.crc32 == -1 || prepared.manifest.oncelist.contains(rel_path);
         if should_copy_once {
             if local_path.exists() {
                 skip_files.push(rel_path.clone());
@@ -806,7 +810,7 @@ fn build_plan_internal(
 
 async fn prepare_update_context(target_path: &Path, use_beta: bool) -> Result<PreparedUpdate> {
     let local = read_local_config(target_path)?;
-    let module_url = select_module_url(&local, use_beta);
+    let module_url = select_module_url(&local, use_beta)?;
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
@@ -840,11 +844,14 @@ fn read_local_config(target_path: &Path) -> Result<LocalConfig> {
         .with_context(|| format!("Failed to read {}", cfg_path.display()))?;
     let cfg_map = parse_cfg_lines(&cfg_content);
 
+    let zone = cfg_map
+        .get("zone")
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
     let module = cfg_map
         .get("module")
         .cloned()
         .ok_or_else(|| anyhow!("Missing 'module|' in {}", cfg_path.display()))?;
-    ensure_http_or_https(&module)?;
 
     let version = cfg_map.get("version").cloned();
     let liveries = cfg_map
@@ -852,67 +859,117 @@ fn read_local_config(target_path: &Path) -> Result<LocalConfig> {
         .map(|v| parse_bool(v).unwrap_or(true))
         .unwrap_or(true);
 
-    let beta_cfg_path = target_path.join(LOCAL_BETA_CFG_FILE);
-    let beta_module = if beta_cfg_path.exists() {
+    let beta_cfg_path = {
+        let primary = target_path.join(LOCAL_BETA_CFG_FILE);
+        if primary.exists() {
+            Some(primary)
+        } else {
+            let legacy = target_path.join(LOCAL_BETA_CFG_LEGACY_FILE);
+            if legacy.exists() {
+                Some(legacy)
+            } else {
+                None
+            }
+        }
+    };
+
+    let (beta_zone, beta_module) = if let Some(beta_cfg_path) = beta_cfg_path {
         let beta_content = fs::read_to_string(&beta_cfg_path)
             .with_context(|| format!("Failed to read {}", beta_cfg_path.display()))?;
         let beta_map = parse_cfg_lines(&beta_content);
-        beta_map
+        let beta_zone = beta_map
+            .get("zone")
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty());
+        let beta_module = beta_map
             .get("module")
             .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty())
+            .filter(|v| !v.is_empty());
+        (beta_zone, beta_module)
     } else {
-        None
+        (None, None)
     };
 
-    if let Some(beta) = beta_module.as_ref() {
-        ensure_http_or_https(beta)?;
+    // Validate default module resolution early to fail fast on malformed local cfg.
+    let _ = resolve_module_url(zone.as_deref(), &module)?;
+
+    // Validate beta override if configured.
+    if beta_zone.is_some() || beta_module.is_some() {
+        let override_zone = beta_zone.as_deref().or(zone.as_deref());
+        let override_module = beta_module.as_deref().unwrap_or(module.trim());
+        let _ = resolve_module_url(override_zone, override_module)?;
     }
 
     Ok(LocalConfig {
         cfg_path,
+        zone,
         module: module.trim().to_string(),
         version: version
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty()),
         liveries,
+        beta_zone,
         beta_module,
     })
 }
 
-fn select_module_url(local: &LocalConfig, use_beta: bool) -> String {
+fn select_module_url(local: &LocalConfig, use_beta: bool) -> Result<String> {
+    let mut selected_zone = local.zone.clone();
+    let mut selected_module = local.module.clone();
+
     if use_beta {
+        if let Some(beta_zone) = local.beta_zone.as_ref() {
+            selected_zone = Some(beta_zone.clone());
+        }
         if let Some(beta) = local.beta_module.as_ref() {
-            return beta.clone();
+            selected_module = beta.clone();
         }
     }
-    local.module.clone()
+
+    resolve_module_url(selected_zone.as_deref(), &selected_module)
 }
 
 async fn fetch_remote_config(client: &reqwest::Client, base_url: &str) -> Result<RemoteConfig> {
-    let primary_url = join_url(base_url, REMOTE_CONFIG_FILE)?;
-    let fallback_url = join_url(base_url, REMOTE_CFG_FALLBACK_FILE)?;
-
-    let primary = fetch_text_optional(client, &primary_url).await?;
-    let content = if let Some(text) = primary {
-        text
-    } else {
-        fetch_text_required(client, &fallback_url).await?
-    };
+    let cfg_url = join_url(base_url, REMOTE_CFG_FILE)?;
+    let content = fetch_text_required(client, &cfg_url).await?;
 
     let map = parse_cfg_lines(&content);
     let version = map
         .get("version")
         .cloned()
         .ok_or_else(|| anyhow!("Remote config is missing 'version|'"))?;
+    let zone = map
+        .get("zone")
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    let module = map
+        .get("module")
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    let name = map
+        .get("name")
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
     let locked = map
         .get("locked")
         .map(|v| parse_bool(v).unwrap_or(false))
         .unwrap_or(false);
 
+    if let Some(module_value) = module.as_deref() {
+        let module_trim = module_value.trim();
+        if module_trim.contains("://") {
+            ensure_http_or_https(module_trim)?;
+        } else if zone.is_some() {
+            let _ = resolve_module_url(zone.as_deref(), module_trim)?;
+        }
+    }
+
     Ok(RemoteConfig {
         version: version.trim().to_string(),
         locked,
+        zone,
+        module,
+        name,
     })
 }
 
@@ -972,7 +1029,6 @@ async fn download_files(
     base_url: &str,
     paths: &[String],
     expected_crc: &HashMap<String, i64>,
-    expected_sizes: &HashMap<String, u64>,
     parallel_downloads: usize,
     task_control: Option<TaskControl>,
     chunk_progress_callback: Option<Arc<dyn Fn(String, u64) + Send + Sync>>,
@@ -990,13 +1046,11 @@ async fn download_files(
 
     let base = base_url.trim_end_matches('/').to_string();
     let expected_crc = Arc::new(expected_crc.clone());
-    let expected_sizes = Arc::new(expected_sizes.clone());
 
     let stream = stream::iter(paths.iter().cloned()).map(|rel_path| {
         let client = client.clone();
         let base = base.clone();
         let expected_crc = Arc::clone(&expected_crc);
-        let expected_sizes = Arc::clone(&expected_sizes);
         let task_control = task_control.clone();
         let chunk_progress_callback = chunk_progress_callback.clone();
         let file_completed_callback = file_completed_callback.clone();
@@ -1026,18 +1080,6 @@ async fn download_files(
                 data.extend_from_slice(&chunk);
                 if let Some(cb) = chunk_progress_callback.as_ref() {
                     cb(rel_path.clone(), chunk.len() as u64);
-                }
-            }
-
-            if let Some(expected) = expected_sizes.get(&rel_path) {
-                let actual = data.len() as u64;
-                if actual != *expected {
-                    return Err(anyhow!(
-                        "Size mismatch for '{}': expected {}, got {}",
-                        rel_path,
-                        expected,
-                        actual
-                    ));
                 }
             }
 
@@ -1110,25 +1152,35 @@ fn remove_path(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn update_local_cfg_version(cfg_path: &Path, version: &str) -> Result<()> {
+fn update_local_cfg_fields(cfg_path: &Path, remote: &RemoteConfig) -> Result<()> {
     let content = fs::read_to_string(cfg_path)
         .with_context(|| format!("Failed to read cfg '{}'", cfg_path.display()))?;
 
     let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
-    let mut replaced = false;
-    for line in &mut lines {
-        if line.trim().to_lowercase().starts_with("version|") {
-            *line = format!("version|{}", version.trim());
-            replaced = true;
-            break;
-        }
+    upsert_cfg_field(&mut lines, "version", remote.version.trim());
+    if let Some(zone) = remote.zone.as_deref() {
+        upsert_cfg_field(&mut lines, "zone", zone.trim());
     }
-    if !replaced {
-        lines.push(format!("version|{}", version.trim()));
+    if let Some(module) = remote.module.as_deref() {
+        upsert_cfg_field(&mut lines, "module", module.trim());
+    }
+    if let Some(name) = remote.name.as_deref() {
+        upsert_cfg_field(&mut lines, "name", name.trim());
     }
     fs::write(cfg_path, lines.join("\n"))
         .with_context(|| format!("Failed to write cfg '{}'", cfg_path.display()))?;
     Ok(())
+}
+
+fn upsert_cfg_field(lines: &mut Vec<String>, key: &str, value: &str) {
+    let key_prefix = format!("{}|", key.to_lowercase());
+    for line in lines.iter_mut() {
+        if line.trim().to_lowercase().starts_with(&key_prefix) {
+            *line = format!("{}|{}", key, value);
+            return;
+        }
+    }
+    lines.push(format!("{}|{}", key, value));
 }
 
 fn resolve_target_path(xplane_path: &Path, item_type: &str, folder_name: &str) -> Result<PathBuf> {
@@ -1202,6 +1254,28 @@ fn is_livery_path(rel_path: &str) -> bool {
     lower.starts_with("liveries/") || lower.contains("/liveries/")
 }
 
+fn resolve_module_url(zone: Option<&str>, module: &str) -> Result<String> {
+    let module_value = module.trim();
+    if module_value.is_empty() {
+        return Err(anyhow!("Missing 'module|' value"));
+    }
+
+    if ensure_http_or_https(module_value).is_ok() {
+        return Ok(module_value.to_string());
+    }
+
+    let zone_value = zone
+        .map(|z| z.trim())
+        .filter(|z| !z.is_empty())
+        .ok_or_else(|| {
+            anyhow!(
+                "Module '{}' is not an absolute URL and no valid 'zone|' was provided",
+                module_value
+            )
+        })?;
+    join_url(zone_value, module_value)
+}
+
 fn compute_file_crc32(path: &Path) -> Result<u32> {
     let mut file = fs::File::open(path)
         .with_context(|| format!("Failed to open file '{}' for CRC32", path.display()))?;
@@ -1273,6 +1347,13 @@ fn parse_whitelist(content: &str, warnings: &mut Vec<String>) -> Result<Vec<Whit
                 continue;
             }
         };
+        if crc32 < -1 {
+            warnings.push(format!(
+                "Skipped whitelist path '{}' due to unsupported negative CRC '{}'",
+                path, crc32
+            ));
+            continue;
+        }
         map.insert(path, crc32);
     }
 

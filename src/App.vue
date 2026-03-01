@@ -9,17 +9,10 @@
         class="absolute inset-0 bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl border-b border-gray-200/50 dark:border-white/5 shadow-sm dark:shadow-2xl transition-colors duration-300"
       ></div>
 
-      <div class="relative container mx-auto px-6 h-12 flex justify-between items-center">
-        <!-- Logo -->
-        <div class="flex items-center space-x-3 group cursor-default">
-          <h1 class="text-lg font-bold tracking-wide">
-            <span class="text-gray-900 dark:text-white transition-colors">XFast</span
-            ><span class="text-blue-600 dark:text-blue-400 transition-colors">Manager</span>
-          </h1>
-        </div>
+      <div class="relative container mx-auto px-6 h-12 flex justify-center items-center">
 
         <!-- Navigation -->
-        <div class="flex items-center space-x-2">
+        <div class="flex items-center">
           <div v-if="!isOnboardingRoute" class="flex items-center space-x-1">
             <router-link
               to="/"
@@ -177,16 +170,29 @@
             </router-link>
           </div>
 
-          <div class="h-6 w-px bg-gray-200 dark:bg-white/10 transition-colors"></div>
+          <div
+            v-if="!isOnboardingRoute"
+            class="mx-[clamp(1.25rem,5vw,4.5rem)] h-6 w-px bg-gray-200 dark:bg-white/10 transition-colors"
+          ></div>
 
           <div class="flex items-center space-x-1">
             <button
-              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white"
+              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
+              :class="
+                $route.path === '/feedback'
+                  ? 'text-blue-600 dark:text-white'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+              "
               :title="$t('feedback.navTitle')"
               @click="handleFeedbackClick"
             >
               <div
-                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-center scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50"
+                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-center"
+                :class="
+                  $route.path === '/feedback'
+                    ? 'scale-100 opacity-100'
+                    : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50'
+                "
               ></div>
               <span class="relative flex items-center z-10">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -301,6 +307,13 @@
       @dirty-change="handleFeedbackDirtyChange"
       @submitted="handleFeedbackSubmitted"
     />
+    <AddonUpdateDrawer
+      v-model:show="addonDrawerVisible"
+      :tasks="addonUpdateDrawerStore.tasks"
+      :active-task-key="addonUpdateDrawerStore.activeTaskKey"
+      @select-task="addonUpdateDrawerStore.selectTask"
+      @updated="handleGlobalAddonUpdated"
+    />
 
     <!-- Log Analysis First-time Hint -->
     <Teleport to="body">
@@ -353,6 +366,8 @@ import { useSceneryStore } from '@/stores/scenery'
 import { useModalStore } from '@/stores/modal'
 import { useIssueTrackerStore } from '@/stores/issueTracker'
 import { useFeedbackStore } from '@/stores/feedback'
+import { useManagementStore } from '@/stores/management'
+import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -369,6 +384,7 @@ import SponsorModal from '@/components/SponsorModal.vue'
 import IssueUpdateModal from '@/components/IssueUpdateModal.vue'
 import UpdateChangelogModal from '@/components/UpdateChangelogModal.vue'
 import FeedbackModal from '@/components/FeedbackModal.vue'
+import AddonUpdateDrawer from '@/components/AddonUpdateDrawer.vue'
 
 const { t, locale } = useI18n()
 const store = useAppStore()
@@ -377,9 +393,21 @@ const sceneryStore = useSceneryStore()
 const modalStore = useModalStore()
 const issueTrackerStore = useIssueTrackerStore()
 const feedbackStore = useFeedbackStore()
+const managementStore = useManagementStore()
+const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
 const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
+const addonDrawerVisible = computed({
+  get: () => addonUpdateDrawerStore.show,
+  set: (visible: boolean) => {
+    if (visible) {
+      addonUpdateDrawerStore.show = true
+      return
+    }
+    addonUpdateDrawerStore.clearTasks()
+  },
+})
 
 // Always on top state
 const isAlwaysOnTop = ref(false)
@@ -455,6 +483,16 @@ async function handleFeedbackClick() {
   }
 
   feedbackStore.openSubmitModal()
+}
+
+async function handleGlobalAddonUpdated() {
+  const refreshJobs: Promise<unknown>[] = [managementStore.loadAircraft(), managementStore.loadPlugins()]
+
+  if (route.path.startsWith('/management') && String(route.query.tab || '') === 'scenery') {
+    refreshJobs.push(sceneryStore.loadData())
+  }
+
+  await Promise.allSettled(refreshJobs)
 }
 
 onMounted(async () => {

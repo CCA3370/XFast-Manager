@@ -151,8 +151,23 @@
 
             <div class="flex-1 min-h-0 flex flex-col">
               <div class="flex-1 min-h-0 overflow-y-auto px-3 py-2.5 space-y-2.5">
-                <div v-if="loadingDetail" class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ $t('feedback.loadingDetail') }}
+                <div v-if="loadingDetail" class="space-y-2.5">
+                  <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                    <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    <span>{{ $t('feedback.loadingDetail') }}</span>
+                  </div>
+                  <div
+                    v-for="idx in 3"
+                    :key="`comment-loading-skeleton-${idx}`"
+                    class="rounded-lg border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-gray-900/30 p-2.5 animate-pulse"
+                  >
+                    <div class="h-3 w-28 rounded bg-gray-200 dark:bg-gray-700"></div>
+                    <div class="mt-2 h-3 w-full rounded bg-gray-200 dark:bg-gray-700"></div>
+                    <div class="mt-1.5 h-3 w-4/5 rounded bg-gray-200 dark:bg-gray-700"></div>
+                  </div>
                 </div>
                 <div v-else-if="comments.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
                   {{ $t('feedback.noComments') }}
@@ -178,9 +193,13 @@
                 >
                   {{ $t('feedback.loadMoreComments') }}
                 </button>
-                <p v-if="loadingMoreComments" class="text-xs text-gray-500 dark:text-gray-400">
-                  {{ $t('feedback.loadingMoreComments') }}
-                </p>
+                <div v-if="loadingMoreComments" class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span>{{ $t('feedback.loadingMoreComments') }}</span>
+                </div>
               </div>
 
               <div class="feedback-composer px-3 py-2 border-t border-gray-200 dark:border-white/5 space-y-1.5">

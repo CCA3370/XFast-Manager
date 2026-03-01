@@ -4,8 +4,9 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useI18n } from 'vue-i18n'
 import { useManagementStore } from '@/stores/management'
+import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
-import type { AddonUpdatableItemType, AddonUpdatePlan } from '@/types'
+import type { AddonUpdatableItemType, AddonUpdatePlan, AddonUpdateOptions } from '@/types'
 
 interface AddonUpdateDrawerTask {
   itemType: AddonUpdatableItemType
@@ -52,9 +53,10 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const managementStore = useManagementStore()
+const modalStore = useModalStore()
 const toast = useToastStore()
 
-const minSheetHeight = 340
+const minSheetHeight = 200
 const collapsedSheetHeight = 78
 const collapseSnapThreshold = 160
 const maxSheetHeight = ref(560)
@@ -68,6 +70,10 @@ let preDragExpandedHeight = 500
 
 const expandedTaskKey = ref('')
 const taskStateMap = ref<Record<string, TaskUiState>>({})
+const preferenceSaving = ref(false)
+const preferenceRefreshPending = ref(false)
+let preferenceMutationToken = 0
+let preferenceRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let unlistenAddonUpdateProgress: UnlistenFn | null = null
 
 function taskKeyOf(task: Pick<AddonUpdateDrawerTask, 'itemType' | 'folderName'>): string {
@@ -192,8 +198,43 @@ function onResizeStart(event: PointerEvent) {
   window.addEventListener('pointerup', stopResize)
 }
 
+function hasInstallingTasks(): boolean {
+  return taskCards.value.some((task) => stateFor(task).installing) || managementStore.isExecutingUpdate
+}
+
+async function requestCancelAndClose() {
+  try {
+    await invoke('cancel_installation')
+  } catch {
+    // Ignore cancellation errors when closing the drawer.
+  } finally {
+    emit('update:show', false)
+  }
+}
+
 function closeDrawer() {
-  emit('update:show', false)
+  if (!hasInstallingTasks()) {
+    emit('update:show', false)
+    return
+  }
+
+  modalStore.showConfirm({
+    title: t('management.updateCloseRunningTitle'),
+    message: t('management.updateCloseRunningMessage'),
+    warning: t('management.updateCloseRunningWarning'),
+    confirmText: t('management.updateCloseRunningConfirm'),
+    cancelText: t('management.updateCloseRunningCancel'),
+    type: 'warning',
+    onConfirm: () => {
+      void requestCancelAndClose()
+    },
+    onCancel: () => {},
+  })
+}
+
+function collapseDrawerFromOutside() {
+  if (!props.show || isCollapsed.value) return
+  isCollapsed.value = true
 }
 
 function formatBytes(bytes: number): string {
@@ -254,6 +295,59 @@ function localVersionTextClass(task: AddonUpdateDrawerTask, state: TaskUiState):
 
 function targetVersionTextClass(_task: AddonUpdateDrawerTask, _state: TaskUiState): string {
   return 'text-emerald-600 dark:text-emerald-400 font-semibold'
+}
+
+function clearPreferenceRefreshTimer() {
+  if (!preferenceRefreshTimer) return
+  clearTimeout(preferenceRefreshTimer)
+  preferenceRefreshTimer = null
+}
+
+async function refreshAllTaskPlansAfterPreferenceChange() {
+  const targets = [...taskCards.value]
+  if (!targets.length) {
+    preferenceRefreshPending.value = false
+    return
+  }
+
+  await Promise.allSettled(
+    targets.map(async (task) => {
+      const state = stateFor(task)
+      if (state.installing) return
+      state.planError = ''
+      await loadPlanForTask(task, true)
+    }),
+  )
+  preferenceRefreshPending.value = false
+}
+
+async function setPreference(
+  key: 'useBeta' | 'includeLiveries',
+  value: boolean,
+) {
+  const token = ++preferenceMutationToken
+  preferenceSaving.value = true
+  clearPreferenceRefreshTimer()
+  preferenceRefreshPending.value = true
+  try {
+    await managementStore.setAddonUpdateOptions({ [key]: value } as Partial<AddonUpdateOptions>)
+  } catch {
+    if (token === preferenceMutationToken) {
+      preferenceRefreshPending.value = false
+      preferenceSaving.value = false
+    }
+    return
+  } finally {
+    if (token === preferenceMutationToken) {
+      preferenceSaving.value = false
+    }
+  }
+
+  preferenceRefreshTimer = setTimeout(() => {
+    if (token !== preferenceMutationToken) return
+    preferenceRefreshTimer = null
+    void refreshAllTaskPlansAfterPreferenceChange()
+  }, 1000)
 }
 
 function isCancelledError(error: unknown): boolean {
@@ -435,6 +529,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopResize()
+  clearPreferenceRefreshTimer()
   if (unlistenAddonUpdateProgress) {
     unlistenAddonUpdateProgress()
     unlistenAddonUpdateProgress = null
@@ -462,10 +557,13 @@ watch(
   (open) => {
     if (!open) {
       stopResize()
+      preferenceRefreshPending.value = false
+      clearPreferenceRefreshTimer()
       return
     }
     resetSheetHeight()
     syncTaskStates()
+    void managementStore.loadAddonUpdateOptions()
     primePlansForVisibleTasks()
   },
 )
@@ -473,18 +571,15 @@ watch(
 
 <template>
   <Teleport to="body">
-    <Transition
-      enter-active-class="transition duration-200 ease-out"
-      enter-from-class="opacity-0"
-      enter-to-class="opacity-100"
-      leave-active-class="transition duration-150 ease-in"
-      leave-from-class="opacity-100"
-      leave-to-class="opacity-0"
-    >
-      <div v-if="show" class="fixed inset-0 z-[120] pointer-events-none">
+    <Transition name="drawer-overlay">
+      <div
+        v-if="show"
+        class="fixed inset-0 z-[120] pointer-events-auto"
+        @click.self="collapseDrawerFromOutside"
+      >
         <div class="absolute inset-x-0 bottom-0 px-2 pb-2 sm:px-4 sm:pb-4 pointer-events-none">
           <div
-            class="mx-auto w-full max-w-5xl pointer-events-auto rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/95 shadow-2xl overflow-hidden flex flex-col transition-[height] duration-200 ease-out"
+            class="drawer-shell mx-auto w-full max-w-5xl pointer-events-auto rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/95 shadow-2xl overflow-hidden flex flex-col transition-[height] duration-200 ease-out"
             :style="{ height: `${effectiveSheetHeight}px` }"
           >
             <div class="shrink-0">
@@ -570,7 +665,13 @@ watch(
                             (!stateFor(task).plan || planNeedsAction(stateFor(task).plan))
                           "
                           class="px-3 py-1.5 rounded-lg text-xs text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
-                          :disabled="stateFor(task).loadingPlan || stateFor(task).installing || managementStore.isExecutingUpdate"
+                          :disabled="
+                            stateFor(task).loadingPlan ||
+                            stateFor(task).installing ||
+                            managementStore.isExecutingUpdate ||
+                            preferenceSaving ||
+                            preferenceRefreshPending
+                          "
                           @click.stop="startUpdate(task)"
                         >
                           {{ stateFor(task).installing ? t('management.updating') : t('management.startUpdate') }}
@@ -619,11 +720,15 @@ watch(
                     </div>
 
                     <div v-else-if="stateFor(task).plan" class="mt-2 space-y-3">
-                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                        <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-2">
-                          <p class="text-slate-500 dark:text-slate-400">{{ t('management.installInfo') }}</p>
+                      <div
+                        class="grid gap-2 text-xs [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]"
+                      >
+                        <div class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 p-2">
+                          <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
+                            {{ t('management.installInfo') }}
+                          </p>
                           <p
-                            class="mt-1"
+                            class="mt-1.5 text-sm leading-5"
                             :class="
                               planNeedsAction(stateFor(task).plan)
                                 ? stateFor(task).plan?.hasUpdate
@@ -641,11 +746,48 @@ watch(
                             }}
                           </p>
                         </div>
-                        <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-2">
-                          <p class="text-slate-500 dark:text-slate-400">{{ t('management.estimatedDownload') }}</p>
-                          <p class="mt-1 text-slate-800 dark:text-slate-100">
+                        <div class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 p-2">
+                          <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
+                            {{ t('management.estimatedDownload') }}
+                          </p>
+                          <p class="mt-1.5 text-sm leading-5 font-semibold text-slate-800 dark:text-slate-100">
                             {{ formatBytes(stateFor(task).plan?.estimatedDownloadBytes || 0) }}
                           </p>
+                        </div>
+                        <div class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/70 dark:to-slate-900/50 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:shadow-none">
+                          <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
+                            {{ t('management.updateOptions') }}
+                          </p>
+                          <div class="mt-2 space-y-2">
+                            <label
+                              class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300 transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60"
+                            >
+                              <input
+                                type="checkbox"
+                                class="peer sr-only"
+                                :checked="managementStore.addonUpdateOptions.useBeta"
+                                @change="setPreference('useBeta', ($event.target as HTMLInputElement).checked)"
+                              />
+                              <span
+                                class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 peer-checked:after:translate-x-4 peer-disabled:opacity-60"
+                              ></span>
+                              <span class="font-semibold">{{ t('management.useBeta') }}</span>
+                            </label>
+                            <label
+                              class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300 transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60"
+                            >
+                              <input
+                                type="checkbox"
+                                class="peer sr-only"
+                                :checked="managementStore.addonUpdateOptions.includeLiveries"
+                                @change="setPreference('includeLiveries', ($event.target as HTMLInputElement).checked)"
+                              />
+                              <span
+                                class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 peer-checked:after:translate-x-4 peer-disabled:opacity-60"
+                              ></span>
+                              <span class="font-semibold">{{ t('management.includeLiveries') }}</span>
+                            </label>
+                          </div>
                         </div>
                       </div>
 
@@ -726,6 +868,35 @@ watch(
   </Teleport>
 </template>
 <style scoped>
+.drawer-overlay-enter-active,
+.drawer-overlay-leave-active {
+  transition: opacity 0.18s ease;
+}
+
+.drawer-overlay-enter-from,
+.drawer-overlay-leave-to {
+  opacity: 0;
+}
+
+.drawer-overlay-enter-active .drawer-shell,
+.drawer-overlay-leave-active .drawer-shell {
+  transition:
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.18s ease;
+}
+
+.drawer-overlay-enter-from .drawer-shell,
+.drawer-overlay-leave-to .drawer-shell {
+  transform: translateY(36px);
+  opacity: 0.94;
+}
+
+.drawer-overlay-enter-to .drawer-shell,
+.drawer-overlay-leave-from .drawer-shell {
+  transform: translateY(0);
+  opacity: 1;
+}
+
 .task-detail-enter-active,
 .task-detail-leave-active {
   transition:

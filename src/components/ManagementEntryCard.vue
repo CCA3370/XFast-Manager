@@ -176,19 +176,21 @@ const canOpenUpdater = computed(() => {
   if (!(isAircraft(props.entry) || isPlugin(props.entry))) return false
   const updateUrl = (props.entry.updateUrl || '').toLowerCase()
   if (updateUrl.startsWith('x-updater:')) return false
-  if (props.itemType === 'aircraft') {
-    return !!updateUrl
-  }
-  return props.entry.hasUpdate
+  return !!updateUrl
 })
 
 function handleDoubleClick() {
   emit('open-folder', props.entry.folderName)
 }
 
-function handleClick() {
-  if (isAircraft(props.entry) && props.entry.hasLiveries) {
-    emit('view-liveries', props.entry.folderName)
+function handleClick(event: MouseEvent) {
+  if (props.showCheckbox) return
+
+  const target = event.target as HTMLElement
+  if (target.closest('button')) return
+
+  if (isAircraft(props.entry) && canOpenUpdater.value) {
+    emit('update', props.entry.folderName)
   } else if (isPlugin(props.entry) && props.entry.hasScripts) {
     emit('view-scripts', props.entry.folderName)
   }
@@ -313,7 +315,7 @@ function handleContextMenu(event: MouseEvent) {
       isNavdata(entry) || entry.enabled
         ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
         : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200/50 dark:border-gray-700/50 opacity-60',
-      (isAircraft(entry) && entry.hasLiveries) || (isPlugin(entry) && entry.hasScripts)
+      (isAircraft(entry) && canOpenUpdater) || (isPlugin(entry) && entry.hasScripts)
         ? 'cursor-pointer'
         : '',
     ]"
@@ -416,8 +418,17 @@ function handleContextMenu(event: MouseEvent) {
     </button>
 
     <!-- Badge (liveries count / platform / cycle) -->
+    <button
+      v-if="isAircraft(entry) && entry.hasLiveries && badgeInfo"
+      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium hover:opacity-90 transition-opacity"
+      :class="[badgeInfo.color, badgeInfo.bgColor]"
+      :title="t('contextMenu.viewLiveries')"
+      @click.stop="emit('view-liveries', entry.folderName)"
+    >
+      {{ badgeInfo.text }}
+    </button>
     <span
-      v-if="badgeInfo"
+      v-else-if="badgeInfo"
       class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium"
       :class="[badgeInfo.color, badgeInfo.bgColor]"
     >

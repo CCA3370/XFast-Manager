@@ -13,7 +13,9 @@ use crate::models::{
     NavdataBackupVerification, NavdataManagerInfo, PluginInfo,
 };
 use crate::path_utils;
-use crate::x_updater_profile::{find_profile_in_folder, tag_host_as_update_url, XUPDATER_URL_PREFIX};
+use crate::x_updater_profile::{
+    find_profile_in_folder, tag_host_as_update_url, XUPDATER_URL_PREFIX,
+};
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
 use std::fs;

@@ -5,6 +5,7 @@
 
 use crate::database::{SceneryQueries, CURRENT_SCHEMA_VERSION};
 use crate::logger;
+use crate::management_index::read_version_from_paths;
 use crate::models::{
     SceneryCategory, SceneryIndex, SceneryIndexScanResult, SceneryIndexStats, SceneryIndexStatus,
     SceneryManagerData, SceneryManagerEntry, SceneryPackageInfo,
@@ -265,6 +266,16 @@ fn should_promote_to_fixed_high_priority(folder_name: &str, info: &SceneryPackag
         && info.has_library_txt
         && !info.has_dsf
         && !info.has_apt_dat
+}
+
+fn read_scenery_update_url(folder_path: &Path) -> Option<String> {
+    let cfg_path = folder_path.join("skunkcrafts_updater.cfg");
+    if !cfg_path.is_file() {
+        return None;
+    }
+
+    let (_version, update_url, _cfg_disabled) = read_version_from_paths(Some(&cfg_path), &[]);
+    update_url
 }
 
 /// Common sorting comparison for non-FixedHighPriority scenery packages
@@ -1266,6 +1277,7 @@ impl SceneryIndexManager {
                 sub_priority: info.sub_priority,
                 enabled: info.enabled,
                 sort_order: info.sort_order,
+                update_url: read_scenery_update_url(&custom_scenery_path.join(&info.folder_name)),
                 missing_libraries: info.missing_libraries.clone(),
                 required_libraries: info.required_libraries.clone(),
                 continent: info.continent.clone(),

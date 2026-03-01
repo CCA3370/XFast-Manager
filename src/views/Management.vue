@@ -6,15 +6,16 @@ import { useManagementStore, isProtectedAircraft } from '@/stores/management'
 import { useToastStore } from '@/stores/toast'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
+import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import ManagementEntryCard from '@/components/ManagementEntryCard.vue'
-import AddonUpdateDrawer from '@/components/AddonUpdateDrawer.vue'
 import SceneryTab from '@/views/SceneryTab.vue'
 import type {
   ManagementTab,
   ManagementItemType,
   NavdataBackupInfo,
   AddonUpdatableItemType,
+  AddonUpdateDrawerTask,
 } from '@/types'
 
 const { t, locale } = useI18n()
@@ -24,6 +25,7 @@ const managementStore = useManagementStore()
 const toastStore = useToastStore()
 const appStore = useAppStore()
 const modalStore = useModalStore()
+const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
 
 // Tab state
 const activeTab = ref<ManagementTab>('aircraft')
@@ -60,18 +62,6 @@ const suppressLoading = ref(false)
 const selectionMode = ref(false)
 const selectedAircraft = ref<Set<string>>(new Set())
 const selectedPlugins = ref<Set<string>>(new Set())
-
-// Addon update drawer state
-const showUpdateDrawer = ref(false)
-type UpdateDrawerTask = {
-  itemType: AddonUpdatableItemType
-  folderName: string
-  displayName: string
-  initialLocalVersion?: string
-  initialTargetVersion?: string
-}
-const updateDrawerTasks = ref<UpdateDrawerTask[]>([])
-const updateDrawerActiveKey = ref('')
 
 // Initialize tab from route query
 onMounted(() => {
@@ -133,12 +123,6 @@ watch(
     }
   },
 )
-
-watch(showUpdateDrawer, (open) => {
-  if (open) return
-  updateDrawerTasks.value = []
-  updateDrawerActiveKey.value = ''
-})
 
 async function loadTabData(tab: ManagementTab) {
   if (!appStore.xplanePath) return
@@ -283,7 +267,6 @@ function toggleSelect(folderName: string) {
 }
 
 const isBatchProcessing = ref(false)
-const isUpdatingAllAircraft = ref(false)
 
 function isSkunkUpdateUrl(url?: string): boolean {
   const value = (url || '').trim().toLowerCase()
@@ -293,6 +276,50 @@ function isSkunkUpdateUrl(url?: string): boolean {
 const skunkUpdatableAircraftCount = computed(() => {
   return managementStore.sortedAircraft.filter((item) => isSkunkUpdateUrl(item.updateUrl)).length
 })
+
+const selectedSkunkUpdateTasks = computed<AddonUpdateDrawerTask[]>(() => {
+  if (activeTab.value === 'aircraft') {
+    return managementStore.sortedAircraft
+      .filter(
+        (item) => selectedAircraft.value.has(item.folderName) && isSkunkUpdateUrl(item.updateUrl),
+      )
+      .map((item) => ({
+        itemType: 'aircraft' as const,
+        folderName: item.folderName,
+        displayName: item.displayName,
+        initialLocalVersion: item.version || '',
+        initialTargetVersion: item.latestVersion || '',
+      }))
+  }
+
+  if (activeTab.value === 'plugin') {
+    return managementStore.sortedPlugins
+      .filter(
+        (item) => selectedPlugins.value.has(item.folderName) && isSkunkUpdateUrl(item.updateUrl),
+      )
+      .map((item) => ({
+        itemType: 'plugin' as const,
+        folderName: item.folderName,
+        displayName: item.displayName,
+        initialLocalVersion: item.version || '',
+        initialTargetVersion: item.latestVersion || '',
+      }))
+  }
+
+  return []
+})
+
+const canBatchUpdateSelected = computed(() => selectedSkunkUpdateTasks.value.length > 0)
+
+function handleBatchUpdateSelected() {
+  if (!canBatchUpdateSelected.value || managementStore.isExecutingUpdate) return
+
+  const firstTask = selectedSkunkUpdateTasks.value[0]
+  addonUpdateDrawerStore.openTasks(
+    selectedSkunkUpdateTasks.value,
+    `${firstTask.itemType}:${firstTask.folderName}`,
+  )
+}
 
 async function batchSetEnabled(enabled: boolean) {
   if (isBatchProcessing.value) return
@@ -316,56 +343,27 @@ async function batchSetEnabled(enabled: boolean) {
   }
 }
 
-async function runUpdateAllAircraft() {
-  isUpdatingAllAircraft.value = true
-  try {
-    await managementStore.checkAircraftUpdates(true)
+function runUpdateAllAircraft() {
+  const targets = managementStore.sortedAircraft
+    .filter((item) => isSkunkUpdateUrl(item.updateUrl))
+    .map((item) => ({
+      itemType: 'aircraft' as const,
+      folderName: item.folderName,
+      displayName: item.displayName,
+      initialLocalVersion: item.version || '',
+      initialTargetVersion: item.latestVersion || '',
+    }))
 
-    const targets = managementStore.sortedAircraft.filter(
-      (item) => isSkunkUpdateUrl(item.updateUrl) && item.hasUpdate,
-    )
-
-    if (targets.length === 0) {
-      toastStore.info(t('management.allUpToDate'))
-      return
-    }
-
-    let success = 0
-    const failed: string[] = []
-
-    for (const item of targets) {
-      try {
-        await managementStore.executeAddonUpdate('aircraft', item.folderName)
-        success += 1
-      } catch (e) {
-        failed.push(`${item.displayName}: ${String(e)}`)
-      }
-    }
-
-    if (success > 0) {
-      toastStore.success(
-        t('management.updateAllSuccess', {
-          updated: success,
-          total: targets.length,
-        }),
-      )
-    }
-
-    if (failed.length > 0) {
-      modalStore.showError(
-        `${t('management.updateAllPartialFailed', {
-          failed: failed.length,
-          total: targets.length,
-        })}\n\n${failed.join('\n')}`,
-      )
-    }
-  } finally {
-    isUpdatingAllAircraft.value = false
+  if (targets.length === 0) {
+    toastStore.info(t('management.allUpToDate'))
+    return
   }
+
+  addonUpdateDrawerStore.openTasks(targets, `${targets[0].itemType}:${targets[0].folderName}`)
 }
 
 function handleUpdateAllAircraft() {
-  if (isUpdatingAllAircraft.value || managementStore.isExecutingUpdate) return
+  if (managementStore.isExecutingUpdate) return
   if (activeTab.value !== 'aircraft') return
   if (skunkUpdatableAircraftCount.value === 0) return
 
@@ -375,8 +373,8 @@ function handleUpdateAllAircraft() {
     confirmText: t('management.updateAll'),
     cancelText: t('common.cancel'),
     type: 'warning',
-    onConfirm: async () => {
-      await runUpdateAllAircraft()
+    onConfirm: () => {
+      runUpdateAllAircraft()
     },
     onCancel: () => {},
   })
@@ -436,9 +434,9 @@ async function handleCheckUpdates() {
   if (managementStore.isCheckingUpdates) return
 
   if (activeTab.value === 'aircraft') {
-    await managementStore.checkAircraftUpdates(true)
+    await managementStore.checkAircraftUpdates(true, true)
   } else if (activeTab.value === 'plugin') {
-    await managementStore.checkPluginsUpdates(true)
+    await managementStore.checkPluginsUpdates(true, true)
   }
 }
 
@@ -449,30 +447,14 @@ function handleOpenUpdate(
   currentVersion?: string,
   latestVersion?: string,
 ) {
-  const key = `${itemType}:${folderName}`
-  const task: UpdateDrawerTask = {
+  const task: AddonUpdateDrawerTask = {
     itemType,
     folderName,
     displayName,
     initialLocalVersion: currentVersion || '',
     initialTargetVersion: latestVersion || '',
   }
-
-  const index = updateDrawerTasks.value.findIndex(
-    (entry) => `${entry.itemType}:${entry.folderName}` === key,
-  )
-  if (index >= 0) {
-    updateDrawerTasks.value[index] = task
-  } else {
-    updateDrawerTasks.value.push(task)
-  }
-  updateDrawerActiveKey.value = key
-  showUpdateDrawer.value = true
-}
-
-function handleSelectUpdateTask(key: string) {
-  if (!key) return
-  updateDrawerActiveKey.value = key
+  addonUpdateDrawerStore.openTask(task)
 }
 
 // Find backup for a navdata entry by matching provider name
@@ -723,6 +705,19 @@ const isLoading = computed(() => {
           <!-- Batch buttons (only when items selected) -->
           <template v-if="selectedCount > 0">
             <button
+              :disabled="
+                !canBatchUpdateSelected ||
+                managementStore.isExecutingUpdate ||
+                managementStore.isCheckingUpdates
+              "
+              class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50"
+              @click.stop="handleBatchUpdateSelected"
+            >
+              <Transition name="text-fade" mode="out-in">
+                <span :key="locale">{{ t('management.updateSelected') }}</span>
+              </Transition>
+            </button>
+            <button
               :disabled="isBatchProcessing"
               class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-green-500 text-white hover:bg-green-600 disabled:opacity-50"
               @click.stop="batchSetEnabled(true)"
@@ -815,35 +810,11 @@ const isLoading = computed(() => {
         >
           <button
             class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-            :disabled="
-              isUpdatingAllAircraft || managementStore.isCheckingUpdates || managementStore.isExecutingUpdate
-            "
+            :disabled="managementStore.isCheckingUpdates || managementStore.isExecutingUpdate"
             @click="handleUpdateAllAircraft"
           >
-            <svg
-              v-if="isUpdatingAllAircraft"
-              class="w-3 h-3 animate-spin"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              ></circle>
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
             <Transition name="text-fade" mode="out-in">
-              <span :key="`${locale}-${isUpdatingAllAircraft}`">{{
-                isUpdatingAllAircraft ? t('management.updateAllRunning') : t('management.updateAll')
-              }}</span>
+              <span :key="locale">{{ t('management.updateAll') }}</span>
             </Transition>
           </button>
         </div>
@@ -1076,14 +1047,6 @@ const isLoading = computed(() => {
         </Transition>
       </div>
     </template>
-
-    <AddonUpdateDrawer
-      v-model:show="showUpdateDrawer"
-      :tasks="updateDrawerTasks"
-      :active-task-key="updateDrawerActiveKey"
-      @select-task="handleSelectUpdateTask"
-      @updated="loadTabData(activeTab)"
-    />
   </div>
 </template>
 

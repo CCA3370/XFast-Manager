@@ -523,6 +523,9 @@ pub struct SceneryManagerEntry {
     pub sub_priority: u8,
     pub enabled: bool,
     pub sort_order: u32,
+    /// URL for checking updates (from skunkcrafts_updater.cfg module| field)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update_url: Option<String>,
     pub missing_libraries: Vec<String>,
     pub required_libraries: Vec<String>,
     /// Continent name (e.g., "Asia", "Europe", "North America")
@@ -875,6 +878,7 @@ mod tests {
             sub_priority: 0,
             enabled: true,
             sort_order: 10,
+            update_url: Some("https://example.com".to_string()),
             missing_libraries: vec![],
             required_libraries: vec!["opensceneryx".to_string()],
             continent: Some("Asia".to_string()),
