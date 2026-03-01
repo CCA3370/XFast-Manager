@@ -1,6 +1,8 @@
 // Core/shared
 #[path = "core/app_dirs.rs"]
 mod app_dirs;
+#[path = "core/archive_input.rs"]
+mod archive_input;
 #[path = "core/cache.rs"]
 mod cache;
 #[path = "core/error.rs"]

@@ -104,28 +104,31 @@ impl Installer {
         expected_hashes: Option<&HashMap<String, crate::models::FileHash>>,
     ) -> Result<()> {
         let extract_start = Instant::now();
-        let extension = archive
-            .extension()
-            .and_then(|s| s.to_str())
-            .ok_or_else(|| anyhow::anyhow!("No file extension"))?;
+        let format = crate::archive_input::detect_archive_format(archive)
+            .ok_or_else(|| anyhow::anyhow!("Unsupported archive format: {}", archive.display()))?;
+        let prepared_archive = crate::archive_input::prepare_archive_for_read(archive, format)?;
+        let read_archive = prepared_archive.read_path();
 
         crate::log_debug!(
-            &format!("[TIMING] Archive extraction started: {} format", extension),
+            &format!(
+                "[TIMING] Archive extraction started: {} format",
+                format.as_str()
+            ),
             "installer_timing"
         );
 
-        match extension {
-            "zip" => self.extract_zip_with_progress(
-                archive,
+        match format {
+            crate::archive_input::ArchiveFormat::Zip => self.extract_zip_with_progress(
+                read_archive,
                 target,
                 internal_root,
                 ctx,
                 password,
                 expected_hashes,
             )?,
-            "7z" => {
+            crate::archive_input::ArchiveFormat::SevenZ => {
                 let primary_result =
-                    self.extract_7z_with_progress(archive, target, internal_root, ctx, password);
+                    self.extract_7z_with_progress(read_archive, target, internal_root, ctx, password);
                 if let Err(primary_err) = primary_result {
                     if Self::is_7z_checksum_error(&primary_err) {
                         logger::log_error(
@@ -136,7 +139,7 @@ impl Installer {
                             Some("installer"),
                         );
                         self.extract_7z_with_external_fallback(
-                            archive,
+                            read_archive,
                             target,
                             internal_root,
                             ctx,
@@ -154,17 +157,16 @@ impl Installer {
                     }
                 }
             }
-            "rar" => {
-                self.extract_rar_with_progress(archive, target, internal_root, ctx, password)?
+            crate::archive_input::ArchiveFormat::Rar => {
+                self.extract_rar_with_progress(read_archive, target, internal_root, ctx, password)?
             }
-            _ => return Err(anyhow::anyhow!("Unsupported archive format: {}", extension)),
         }
 
         crate::log_debug!(
             &format!(
                 "[TIMING] Archive extraction completed in {:.2}ms: {} format",
                 extract_start.elapsed().as_secs_f64() * 1000.0,
-                extension
+                format.as_str()
             ),
             "installer_timing"
         );

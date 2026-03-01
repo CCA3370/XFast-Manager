@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::archive_input::{detect_archive_format, prepare_archive_for_read, ArchiveFormat};
 use crate::livery_patterns;
 use crate::logger;
 use crate::models::{
@@ -125,22 +126,12 @@ struct NestedZipScanParams<'a> {
 
 /// Check if a filename is an archive file
 fn is_archive_file(filename: &str) -> bool {
-    let lower = filename.to_lowercase();
-    lower.ends_with(".zip") || lower.ends_with(".7z") || lower.ends_with(".rar")
+    detect_archive_format(Path::new(filename)).is_some()
 }
 
 /// Get archive format from filename
 fn get_archive_format(filename: &str) -> Option<String> {
-    let lower = filename.to_lowercase();
-    if lower.ends_with(".zip") {
-        Some("zip".to_string())
-    } else if lower.ends_with(".7z") {
-        Some("7z".to_string())
-    } else if lower.ends_with(".rar") {
-        Some("rar".to_string())
-    } else {
-        None
-    }
+    detect_archive_format(Path::new(filename)).map(|fmt| fmt.as_str().to_string())
 }
 
 /// Scans a directory or archive and detects addon types based on markers
@@ -374,22 +365,29 @@ impl Scanner {
         archive_path: &Path,
         ctx: &mut ScanContext,
     ) -> Result<Vec<DetectedItem>> {
-        let extension = archive_path
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-
+        let normalized_archive = crate::archive_input::normalize_archive_entry_path(archive_path);
         let password = ctx
             .passwords
             .get(&archive_path.to_string_lossy().to_string())
-            .cloned(); // Clone the password to avoid borrow issues
+            .cloned()
+            .or_else(|| {
+                ctx.passwords
+                    .get(&normalized_archive.to_string_lossy().to_string())
+                    .cloned()
+            });
 
-        match extension.as_str() {
-            "zip" => self.scan_zip_with_context(archive_path, ctx, password.as_deref()),
-            "7z" => self.scan_7z_with_context(archive_path, ctx, password.as_deref()),
-            "rar" => self.scan_rar_with_context(archive_path, ctx, password.as_deref()),
-            _ => Ok(Vec::new()),
+        match detect_archive_format(archive_path).or_else(|| detect_archive_format(&normalized_archive))
+        {
+            Some(ArchiveFormat::Zip) => {
+                self.scan_zip_with_context(archive_path, ctx, password.as_deref())
+            }
+            Some(ArchiveFormat::SevenZ) => {
+                self.scan_7z_with_context(archive_path, ctx, password.as_deref())
+            }
+            Some(ArchiveFormat::Rar) => {
+                self.scan_rar_with_context(archive_path, ctx, password.as_deref())
+            }
+            None => Ok(Vec::new()),
         }
     }
 
@@ -572,21 +570,11 @@ impl Scanner {
         archive_path: &Path,
         password: Option<&str>,
     ) -> Result<Vec<DetectedItem>> {
-        let extension = archive_path
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-
-        match extension.as_str() {
-            "zip" => self.scan_zip(archive_path, password),
-            "7z" => self.scan_7z(archive_path, password),
-            "rar" => self.scan_rar(archive_path, password),
-            _ => {
-                // Silently skip non-archive files (no extension or unsupported format)
-                // Return empty result instead of error
-                Ok(Vec::new())
-            }
+        match detect_archive_format(archive_path) {
+            Some(ArchiveFormat::Zip) => self.scan_zip(archive_path, password),
+            Some(ArchiveFormat::SevenZ) => self.scan_7z(archive_path, password),
+            Some(ArchiveFormat::Rar) => self.scan_rar(archive_path, password),
+            None => Ok(Vec::new()), // Silently skip unsupported files
         }
     }
 
@@ -1614,33 +1602,21 @@ impl Scanner {
 
     /// Read Lua file content from archive
     fn read_lua_from_archive(&self, archive_path: &Path, lua_file_path: &str) -> Result<String> {
-        let extension = archive_path
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-
-        match extension.as_str() {
-            "zip" => self.read_file_from_zip(archive_path, lua_file_path),
-            "7z" => self.read_file_from_7z_no_password(archive_path, lua_file_path),
-            "rar" => self.read_file_from_rar_no_password(archive_path, lua_file_path),
-            _ => Err(anyhow::anyhow!("Unsupported archive format")),
+        match detect_archive_format(archive_path) {
+            Some(ArchiveFormat::Zip) => self.read_file_from_zip(archive_path, lua_file_path),
+            Some(ArchiveFormat::SevenZ) => self.read_file_from_7z_no_password(archive_path, lua_file_path),
+            Some(ArchiveFormat::Rar) => self.read_file_from_rar_no_password(archive_path, lua_file_path),
+            None => Err(anyhow::anyhow!("Unsupported archive format")),
         }
     }
 
     /// List all entries in an archive
     fn list_archive_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
-        let extension = archive_path
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-
-        match extension.as_str() {
-            "zip" => self.list_zip_entries(archive_path),
-            "7z" => self.list_7z_entries(archive_path),
-            "rar" => self.list_rar_entries(archive_path),
-            _ => Err(anyhow::anyhow!("Unsupported archive format")),
+        match detect_archive_format(archive_path) {
+            Some(ArchiveFormat::Zip) => self.list_zip_entries(archive_path),
+            Some(ArchiveFormat::SevenZ) => self.list_7z_entries(archive_path),
+            Some(ArchiveFormat::Rar) => self.list_rar_entries(archive_path),
+            None => Err(anyhow::anyhow!("Unsupported archive format")),
         }
     }
 
@@ -1651,19 +1627,12 @@ impl Scanner {
         archive_path: &Path,
         internal_root: Option<&str>,
     ) -> Option<crate::models::VersionInfo> {
-        // Determine the archive type from extension
-        let extension = archive_path
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-
         // Read version file contents from the archive
-        let version_files_content = match extension.as_str() {
-            "zip" => self.read_version_files_from_zip(archive_path, internal_root),
-            "7z" => self.read_version_files_from_7z(archive_path, internal_root),
-            "rar" => self.read_version_files_from_rar(archive_path, internal_root),
-            _ => return None,
+        let version_files_content = match detect_archive_format(archive_path) {
+            Some(ArchiveFormat::Zip) => self.read_version_files_from_zip(archive_path, internal_root),
+            Some(ArchiveFormat::SevenZ) => self.read_version_files_from_7z(archive_path, internal_root),
+            Some(ArchiveFormat::Rar) => self.read_version_files_from_rar(archive_path, internal_root),
+            None => return None,
         };
 
         // Parse version from the collected file contents
@@ -1750,7 +1719,8 @@ impl Scanner {
     fn read_file_from_zip(&self, archive_path: &Path, file_path: &str) -> Result<String> {
         use std::io::Read;
 
-        let file = fs::File::open(archive_path)?;
+        let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::Zip)?;
+        let file = fs::File::open(prepared.read_path())?;
         let mut archive = ::zip::ZipArchive::new(file)?;
 
         let mut zip_file = archive.by_name(file_path)?;
@@ -1762,7 +1732,8 @@ impl Scanner {
 
     /// List all entries in a ZIP archive
     fn list_zip_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
-        let file = fs::File::open(archive_path)?;
+        let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::Zip)?;
+        let file = fs::File::open(prepared.read_path())?;
         let archive = ::zip::ZipArchive::new(file)?;
 
         let entries: Vec<String> = (0..archive.len())
@@ -1784,7 +1755,8 @@ impl Scanner {
 
     /// List all entries in a 7z archive
     fn list_7z_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
-        let archive = sevenz_rust2::Archive::open(archive_path)?;
+        let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::SevenZ)?;
+        let archive = sevenz_rust2::Archive::open(prepared.read_path())?;
         Ok(archive
             .files
             .iter()
@@ -1807,7 +1779,8 @@ impl Scanner {
     fn list_rar_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
         use unrar::Archive;
 
-        let mut archive = Archive::new(archive_path).open_for_listing()?;
+        let normalized = crate::archive_input::normalize_archive_entry_path(archive_path);
+        let mut archive = Archive::new(&normalized).open_for_listing()?;
         let mut entries = Vec::new();
 
         while let Some(header) = archive.read_header()? {

@@ -1,5 +1,5 @@
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -32,19 +32,52 @@ impl Analyzer {
         passwords: Option<HashMap<String, String>>,
         verification_preferences: Option<HashMap<String, bool>>,
     ) -> AnalysisResult {
+        // Normalize split-volume inputs (e.g. .z01/.zip.001/part2.rar) to a stable
+        // archive entry path and deduplicate equivalent paths.
+        let mut normalized_paths: Vec<String> = Vec::new();
+        let mut seen_paths: HashSet<String> = HashSet::new();
+        for path_str in paths {
+            let normalized =
+                crate::archive_input::normalize_archive_entry_path(Path::new(&path_str));
+            let normalized_str = normalized.to_string_lossy().to_string();
+            if seen_paths.insert(normalized_str.clone()) {
+                normalized_paths.push(normalized_str);
+            }
+        }
+
+        // Keep original password map entries, but also add normalized aliases for
+        // filesystem-backed keys so split-volume retries can resolve correctly.
+        let normalized_passwords = passwords.as_ref().map(|raw| {
+            let mut merged = raw.clone();
+            for (key, value) in raw {
+                let key_path = Path::new(key);
+                if key_path.exists() {
+                    let normalized = crate::archive_input::normalize_archive_entry_path(key_path)
+                        .to_string_lossy()
+                        .to_string();
+                    merged.entry(normalized).or_insert_with(|| value.clone());
+                }
+            }
+            merged
+        });
+
         logger::log_info(
-            &format!("{}: {} path(s)", tr(LogMsg::AnalysisStarted), paths.len()),
+            &format!(
+                "{}: {} path(s)",
+                tr(LogMsg::AnalysisStarted),
+                normalized_paths.len()
+            ),
             Some("analyzer"),
         );
 
-        crate::log_debug!(&format!("Analyzing paths: {:?}", paths), "analysis");
+        crate::log_debug!(&format!("Analyzing paths: {:?}", normalized_paths), "analysis");
         crate::log_debug!(&format!("X-Plane path: {}", xplane_path), "analysis");
 
-        let passwords_ref = passwords.as_ref();
+        let passwords_ref = normalized_passwords.as_ref();
         let xplane_root = Path::new(xplane_path);
 
         // Parallel scan all paths using rayon for better performance
-        let results: Vec<_> = paths
+        let results: Vec<_> = normalized_paths
             .par_iter()
             .map(|path_str| {
                 let path = Path::new(path_str);
@@ -147,7 +180,8 @@ impl Analyzer {
                         logger::log_error(&error_msg, Some("analyzer"));
 
                         // For frontend display, use a cleaner format
-                        let display_msg = format!("{}: {}", tr(LogMsg::ScanFailed), e);
+                        let display_msg =
+                            format!("{} ({}): {}", tr(LogMsg::ScanFailed), path_str, e);
                         errors.push(display_msg);
                     }
                 }

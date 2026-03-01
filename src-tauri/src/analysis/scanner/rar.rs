@@ -8,6 +8,8 @@ impl Scanner {
         ctx: &mut ScanContext,
         password: Option<&str>,
     ) -> Result<Vec<DetectedItem>> {
+        let normalized_archive_path = crate::archive_input::normalize_archive_entry_path(archive_path);
+
         let scan_start = std::time::Instant::now();
         crate::log_debug!(
             &format!("[TIMING] RAR scan started: {}", archive_path.display()),
@@ -36,9 +38,9 @@ impl Scanner {
 
             // Open archive to list files
             let archive_builder = if let Some(pwd) = password {
-                unrar::Archive::with_password(archive_path, pwd)
+                unrar::Archive::with_password(&normalized_archive_path, pwd)
             } else {
-                unrar::Archive::new(archive_path)
+                unrar::Archive::new(&normalized_archive_path)
             };
 
             let archive = archive_builder
@@ -176,10 +178,11 @@ impl Scanner {
             .context("Failed to create temp directory")?;
 
         // Extract the RAR archive to temp using the typestate pattern
+        let normalized_parent_path = crate::archive_input::normalize_archive_entry_path(parent_path);
         let archive_builder = if let Some(pwd) = parent_password {
-            unrar::Archive::with_password(parent_path, pwd)
+            unrar::Archive::with_password(&normalized_parent_path, pwd)
         } else {
-            unrar::Archive::new(parent_path)
+            unrar::Archive::new(&normalized_parent_path)
         };
 
         let mut archive = archive_builder
@@ -305,6 +308,8 @@ impl Scanner {
         archive_path: &Path,
         password: Option<&str>,
     ) -> Result<Vec<DetectedItem>> {
+        let normalized_archive_path = crate::archive_input::normalize_archive_entry_path(archive_path);
+
         let open_start = std::time::Instant::now();
         crate::log_debug!(
             &format!("[TIMING] RAR open started: {}", archive_path.display()),
@@ -313,9 +318,9 @@ impl Scanner {
 
         // Create archive with or without password
         let archive_builder = if let Some(pwd) = password {
-            unrar::Archive::with_password(archive_path, pwd)
+            unrar::Archive::with_password(&normalized_archive_path, pwd)
         } else {
-            unrar::Archive::new(archive_path)
+            unrar::Archive::new(&normalized_archive_path)
         };
 
         let archive = archive_builder.open_for_listing().map_err(|e| {
@@ -555,6 +560,8 @@ impl Scanner {
         target_file: &str,
         password: Option<&str>,
     ) -> Result<String> {
+        let normalized_archive_path = crate::archive_input::normalize_archive_entry_path(archive_path);
+
         // Create secure temp directory using tempfile crate
         let temp_dir = tempfile::Builder::new()
             .prefix("xfi_rar_read_")
@@ -563,9 +570,9 @@ impl Scanner {
 
         // Extract to temp using the typestate pattern (with password if provided)
         let archive_builder = if let Some(pwd) = password {
-            unrar::Archive::with_password(archive_path, pwd)
+            unrar::Archive::with_password(&normalized_archive_path, pwd)
         } else {
-            unrar::Archive::new(archive_path)
+            unrar::Archive::new(&normalized_archive_path)
         };
 
         let mut archive = archive_builder

@@ -63,6 +63,7 @@ const maxSheetHeight = ref(560)
 const sheetHeight = ref(500)
 const isResizing = ref(false)
 const isCollapsed = ref(false)
+const drawerShellRef = ref<HTMLElement | null>(null)
 let dragStartY = 0
 let dragStartHeight = 0
 let dragStartedCollapsed = false
@@ -235,6 +236,15 @@ function closeDrawer() {
 function collapseDrawerFromOutside() {
   if (!props.show || isCollapsed.value) return
   isCollapsed.value = true
+}
+
+function onGlobalPointerDown(event: PointerEvent) {
+  if (!props.show || isCollapsed.value) return
+  const target = event.target as Node | null
+  if (!target) return
+  const shell = drawerShellRef.value
+  if (!shell || shell.contains(target)) return
+  collapseDrawerFromOutside()
 }
 
 function formatBytes(bytes: number): string {
@@ -517,6 +527,7 @@ function applyAddonProgressEvent(event: AddonUpdateProgressEvent) {
 onMounted(async () => {
   updateMaxSheetHeight()
   window.addEventListener('resize', updateMaxSheetHeight)
+  window.addEventListener('pointerdown', onGlobalPointerDown, true)
   unlistenAddonUpdateProgress = await listen<AddonUpdateProgressEvent>(
     'addon-update-progress',
     (event) => {
@@ -535,6 +546,7 @@ onBeforeUnmount(() => {
     unlistenAddonUpdateProgress = null
   }
   window.removeEventListener('resize', updateMaxSheetHeight)
+  window.removeEventListener('pointerdown', onGlobalPointerDown, true)
 })
 
 watch(taskCards, () => {
@@ -574,11 +586,11 @@ watch(
     <Transition name="drawer-overlay">
       <div
         v-if="show"
-        class="fixed inset-0 z-[120] pointer-events-auto"
-        @click.self="collapseDrawerFromOutside"
+        class="fixed inset-0 z-[120] pointer-events-none"
       >
         <div class="absolute inset-x-0 bottom-0 px-2 pb-2 sm:px-4 sm:pb-4 pointer-events-none">
           <div
+            ref="drawerShellRef"
             class="drawer-shell mx-auto w-full max-w-5xl pointer-events-auto rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/95 shadow-2xl overflow-hidden flex flex-col transition-[height] duration-200 ease-out"
             :style="{ height: `${effectiveSheetHeight}px` }"
           >
@@ -599,7 +611,7 @@ watch(
                   </p>
                 </div>
                 <button
-                  class="px-2.5 py-1 text-xs rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 transition-colors"
+                  class="px-2.5 py-1 text-xs rounded-lg bg-rose-600 hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-600 text-white transition-colors"
                   @click="closeDrawer"
                 >
                   {{ t('common.close') }}

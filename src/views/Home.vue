@@ -819,8 +819,16 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
         return
       }
 
-      // Show errors as a modal popup; keep other notifications as toasts
-      modal.showError(result.errors.join('\n'))
+      if (result.tasks.length > 0) {
+        // Non-blocking warning: keep valid tasks and continue install flow.
+        const warningSummary = t('home.partialAnalysisWarning', { count: result.errors.length })
+        logOperation(warningSummary, result.errors.join(' | '))
+        toast.warning(`${warningSummary} ${t('home.partialAnalysisHint')}`)
+      } else {
+        // Blocking only when nothing usable was detected.
+        modal.showError(result.errors.join('\n'))
+        return
+      }
     }
 
     if (result.tasks.length > 0) {

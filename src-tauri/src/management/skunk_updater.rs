@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use crc32fast::Hasher;
+use dashmap::DashMap;
 use futures::stream::{self, StreamExt};
+use rayon::prelude::*;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -8,8 +10,9 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::LazyLock;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::task_control::TaskControl;
 
@@ -22,6 +25,18 @@ const REMOTE_IGNORELIST_FILE: &str = "skunkcrafts_updater_ignorelist.txt";
 const REMOTE_ONCELIST_FILE: &str = "skunkcrafts_updater_oncelist.txt";
 const REMOTE_SIZESLIST_FILE: &str = "skunkcrafts_updater_sizeslist.txt";
 const REMOTE_BLACKLIST_FILE: &str = "skunkcrafts_updater_blacklist.txt";
+const LOCAL_CRC_CACHE_TTL: Duration = Duration::from_secs(300);
+const LOCAL_CRC_CACHE_MAX_SIZE: usize = 20_000;
+
+#[derive(Debug, Clone)]
+struct LocalCrcCacheEntry {
+    crc32: u32,
+    len: u64,
+    modified: Option<SystemTime>,
+    cached_at: SystemTime,
+}
+
+static LOCAL_CRC_CACHE: LazyLock<DashMap<String, LocalCrcCacheEntry>> = LazyLock::new(DashMap::new);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -701,6 +716,7 @@ fn build_plan_internal(
     let mut replace_files: Vec<String> = Vec::new();
     let mut delete_files: Vec<String> = Vec::new();
     let mut skip_files: Vec<String> = Vec::new();
+    let mut crc_candidates: Vec<(String, PathBuf, i64)> = Vec::new();
     let mut warnings = prepared.manifest.warnings.clone();
 
     let mut whitelist_paths: HashSet<String> = HashSet::new();
@@ -748,11 +764,22 @@ fn build_plan_internal(
             continue;
         }
 
-        let local_crc = compute_file_crc32(&local_path)? as i64;
-        if local_crc != entry.crc32 {
-            replace_files.push(rel_path.clone());
+        crc_candidates.push((rel_path.clone(), local_path, entry.crc32));
+    }
+
+    let crc_results: Result<Vec<(String, bool)>> = crc_candidates
+        .par_iter()
+        .map(|(rel_path, local_path, expected_crc)| {
+            let local_crc = compute_file_crc32_cached(local_path)? as i64;
+            Ok::<(String, bool), anyhow::Error>((rel_path.clone(), local_crc != *expected_crc))
+        })
+        .collect();
+
+    for (rel_path, needs_replace) in crc_results? {
+        if needs_replace {
+            replace_files.push(rel_path);
         } else {
-            skip_files.push(rel_path.clone());
+            skip_files.push(rel_path);
         }
     }
 
@@ -1280,7 +1307,7 @@ fn compute_file_crc32(path: &Path) -> Result<u32> {
     let mut file = fs::File::open(path)
         .with_context(|| format!("Failed to open file '{}' for CRC32", path.display()))?;
     let mut hasher = Hasher::new();
-    let mut buffer = [0u8; 8192];
+    let mut buffer = [0u8; 64 * 1024];
 
     loop {
         let n = file.read(&mut buffer)?;
@@ -1291,6 +1318,81 @@ fn compute_file_crc32(path: &Path) -> Result<u32> {
     }
 
     Ok(hasher.finalize())
+}
+
+fn evict_local_crc_cache_if_needed() {
+    let expired_keys: Vec<String> = LOCAL_CRC_CACHE
+        .iter()
+        .filter_map(|entry| {
+            if let Ok(elapsed) = entry.value().cached_at.elapsed() {
+                if elapsed >= LOCAL_CRC_CACHE_TTL {
+                    return Some(entry.key().clone());
+                }
+            }
+            None
+        })
+        .collect();
+    for key in expired_keys {
+        LOCAL_CRC_CACHE.remove(&key);
+    }
+
+    if LOCAL_CRC_CACHE.len() >= LOCAL_CRC_CACHE_MAX_SIZE {
+        let remove_count = std::cmp::max(LOCAL_CRC_CACHE_MAX_SIZE / 10, 1000);
+        let keys: Vec<String> = LOCAL_CRC_CACHE
+            .iter()
+            .take(remove_count)
+            .map(|entry| entry.key().clone())
+            .collect();
+        for key in keys {
+            LOCAL_CRC_CACHE.remove(&key);
+        }
+    }
+}
+
+fn get_cached_file_crc32(path: &Path, len: u64, modified: Option<SystemTime>) -> Option<u32> {
+    let key = path.to_string_lossy().to_string();
+    if let Some(entry) = LOCAL_CRC_CACHE.get(&key) {
+        let cache = entry.value();
+        let is_valid = cache.len == len
+            && cache.modified == modified
+            && cache
+                .cached_at
+                .elapsed()
+                .map(|elapsed| elapsed < LOCAL_CRC_CACHE_TTL)
+                .unwrap_or(false);
+        if is_valid {
+            return Some(cache.crc32);
+        }
+        drop(entry);
+        LOCAL_CRC_CACHE.remove(&key);
+    }
+    None
+}
+
+fn cache_file_crc32(path: &Path, len: u64, modified: Option<SystemTime>, crc32: u32) {
+    evict_local_crc_cache_if_needed();
+    LOCAL_CRC_CACHE.insert(
+        path.to_string_lossy().to_string(),
+        LocalCrcCacheEntry {
+            crc32,
+            len,
+            modified,
+            cached_at: SystemTime::now(),
+        },
+    );
+}
+
+fn compute_file_crc32_cached(path: &Path) -> Result<u32> {
+    let metadata = fs::metadata(path)
+        .with_context(|| format!("Failed to read file metadata '{}'", path.display()))?;
+    let len = metadata.len();
+    let modified = metadata.modified().ok();
+    if let Some(cached) = get_cached_file_crc32(path, len, modified) {
+        return Ok(cached);
+    }
+    let crc32 = compute_file_crc32(path)?;
+    cache_file_crc32(path, len, modified, crc32);
+    Ok(crc32)
 }
 
 fn parse_cfg_lines(content: &str) -> HashMap<String, String> {

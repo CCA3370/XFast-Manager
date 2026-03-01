@@ -1810,12 +1810,7 @@ impl Installer {
 
             // LuaScript from direct file source may include companion files/folders.
             // Include those sizes so progress remains accurate.
-            let source_ext = source
-                .extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .to_ascii_lowercase();
-            let source_is_archive = matches!(source_ext.as_str(), "zip" | "7z" | "rar");
+            let source_is_archive = crate::archive_input::detect_archive_format(source).is_some();
 
             if task.addon_type == AddonType::LuaScript && source.is_file() {
                 if source_is_archive {
