@@ -172,6 +172,12 @@ const latestVersion = computed(() => {
   return null
 })
 
+const canOpenUpdater = computed(() => {
+  if (!(isAircraft(props.entry) || isPlugin(props.entry))) return false
+  if (props.entry.hasUpdate) return true
+  return (props.entry.updateUrl || '').toLowerCase().startsWith('x-updater:')
+})
+
 function handleDoubleClick() {
   emit('open-folder', props.entry.folderName)
 }
@@ -229,7 +235,7 @@ function handleContextMenu(event: MouseEvent) {
     })
   }
 
-  if (updateAvailable.value) {
+  if (canOpenUpdater.value) {
     menuItems.push({
       id: 'update',
       label: t('management.startUpdate'),
@@ -390,14 +396,14 @@ function handleContextMenu(event: MouseEvent) {
           ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30'
           : 'text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700'
       "
-      :title="updateAvailable ? `${versionInfo} → ${latestVersion}` : versionInfo"
+      :title="updateAvailable && latestVersion ? `${versionInfo} → ${latestVersion}` : versionInfo"
     >
       {{ versionInfo }}
-      <template v-if="updateAvailable"> → {{ latestVersion }} </template>
+      <template v-if="updateAvailable && latestVersion"> → {{ latestVersion }} </template>
     </span>
 
     <button
-      v-if="updateAvailable"
+      v-if="canOpenUpdater"
       class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-white bg-emerald-500 hover:bg-emerald-600 transition-colors"
       :title="t('management.startUpdate')"
       @click.stop="emit('update', entry.folderName)"

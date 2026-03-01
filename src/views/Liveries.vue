@@ -8,7 +8,7 @@ import { useAppStore } from '@/stores/app'
 import { useToastStore } from '@/stores/toast'
 import { useModalStore } from '@/stores/modal'
 import LiveryCard from '@/components/LiveryCard.vue'
-import SkunkUpdateDrawer from '@/components/SkunkUpdateDrawer.vue'
+import AddonUpdateDrawer from '@/components/AddonUpdateDrawer.vue'
 import type { LiveryInfo } from '@/types'
 
 const { t } = useI18n()
@@ -265,7 +265,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <SkunkUpdateDrawer
+    <AddonUpdateDrawer
       v-model:show="showUpdateDrawer"
       item-type="livery"
       :folder-name="updateTargetFolder"

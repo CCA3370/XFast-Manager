@@ -8,7 +8,7 @@ import { i18n } from '@/i18n'
 import { logError, logDebug, logBasic } from '@/services/logger'
 import { invokeVoidCommand, CommandError } from '@/services/api'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
-import bundledChangelog from '../../CHANGELOG.md?raw'
+import bundledChangelog from '@/generated/changelog'
 
 const t = i18n.global.t
 
@@ -156,27 +156,79 @@ export const useUpdateStore = defineStore('update', () => {
   }
 
   function normalizeVersionTag(version: string): string {
-    return version.trim().replace(/^v/i, '')
+    const withoutPrefix = version.trim().replace(/^v/i, '')
+    const semverCore = withoutPrefix.split('+')[0]?.split('-')[0] ?? withoutPrefix
+    const match = semverCore.match(/\d+(?:\.\d+){0,3}/)
+    if (!match) return semverCore.trim()
+
+    const segments = match[0].split('.').map((segment) => {
+      const normalized = Number.parseInt(segment, 10)
+      return Number.isFinite(normalized) ? String(normalized) : segment
+    })
+
+    // Normalize "1.2.3.0" to "1.2.3" for release tag matching.
+    if (segments.length > 3 && segments[segments.length - 1] === '0') {
+      segments.pop()
+    }
+
+    return segments.join('.').trim()
   }
 
-  function extractChangelogSection(markdown: string, version: string): string {
-    const normalized = normalizeVersionTag(version)
-    const escapedVersion = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const headerRegex = new RegExp(`^##\\s+\\[v?${escapedVersion}\\].*$`, 'm')
-    const headerMatch = headerRegex.exec(markdown)
-
-    if (!headerMatch) return ''
-
-    const sectionStart = headerMatch.index + headerMatch[0].length
-    const remaining = markdown.slice(sectionStart)
-    const nextHeaderMatch = /^##\s+\[.*$/m.exec(remaining)
-    const sectionEnd = nextHeaderMatch ? sectionStart + nextHeaderMatch.index : markdown.length
-
-    return markdown.slice(sectionStart, sectionEnd).trim()
+  type ChangelogEntry = {
+    version: string
+    normalizedVersion: string
+    section: string
   }
+
+  function parseChangelogEntries(markdown: string): ChangelogEntry[] {
+    const headers: Array<{ version: string; headerEnd: number; headerStart: number }> = []
+    const headerRegex = /^##\s+\[v?([^\]]+)\].*$/gm
+    let match: RegExpExecArray | null
+
+    while (true) {
+      match = headerRegex.exec(markdown)
+      if (!match) break
+      headers.push({
+        version: match[1]?.trim() ?? '',
+        headerStart: match.index,
+        headerEnd: headerRegex.lastIndex,
+      })
+    }
+
+    return headers.map((header, index) => {
+      const sectionEnd = index + 1 < headers.length ? headers[index + 1].headerStart : markdown.length
+      const section = markdown.slice(header.headerEnd, sectionEnd).trim()
+      return {
+        version: header.version,
+        normalizedVersion: normalizeVersionTag(header.version),
+        section,
+      }
+    })
+  }
+
+  const bundledChangelogEntries = parseChangelogEntries(bundledChangelog)
 
   function readBundledChangelogSection(version: string): string {
-    return extractChangelogSection(bundledChangelog, version)
+    const normalized = normalizeVersionTag(version)
+    return bundledChangelogEntries.find((entry) => entry.normalizedVersion === normalized)?.section ?? ''
+  }
+
+  function getLatestBundledChangelogEntry(): ChangelogEntry | null {
+    return bundledChangelogEntries[0] ?? null
+  }
+
+  function getBundledChangelogVersionsPreview(limit = 8): string {
+    return bundledChangelogEntries
+      .slice(0, limit)
+      .map((entry) => entry.normalizedVersion)
+      .join(', ')
+  }
+
+  function applyChangelog(version: string, releaseNotes: string) {
+    postUpdateVersion.value = version
+    postUpdateReleaseNotes.value = releaseNotes
+    postUpdateReleaseUrl.value = `https://github.com/CCA3370/XFast-Manager/releases/tag/v${version}`
+    showPostUpdateChangelog.value = true
   }
 
   async function checkAndShowPostUpdateChangelog() {
@@ -185,21 +237,38 @@ export const useUpdateStore = defineStore('update', () => {
       const normalizedVersion = normalizeVersionTag(currentVersion)
       const shownVersion = await getItem<string>(STORAGE_KEYS.LAST_SHOWN_CHANGELOG_VERSION)
 
+      logDebug(
+        `Post-update changelog check rawVersion='${currentVersion}' normalized='${normalizedVersion}' bundledEntries=${bundledChangelogEntries.length} bundledLength=${bundledChangelog.length}`,
+        'update'
+      )
+
       if (shownVersion && normalizeVersionTag(shownVersion) === normalizedVersion) {
         return
       }
 
       const releaseNotes = readBundledChangelogSection(normalizedVersion)
       if (!releaseNotes) {
-        logDebug(`No bundled changelog section found for v${normalizedVersion}`, 'update')
+        const latestEntry = getLatestBundledChangelogEntry()
+        logDebug(
+          `No bundled changelog section for v${normalizedVersion}; available=[${getBundledChangelogVersionsPreview()}]`,
+          'update'
+        )
+
+        if (!latestEntry?.section) {
+          await setItem(STORAGE_KEYS.LAST_SHOWN_CHANGELOG_VERSION, normalizedVersion)
+          return
+        }
+
+        applyChangelog(latestEntry.normalizedVersion, latestEntry.section)
+        logBasic(
+          `Falling back to latest bundled changelog v${latestEntry.normalizedVersion} for current v${normalizedVersion}`,
+          'update'
+        )
         await setItem(STORAGE_KEYS.LAST_SHOWN_CHANGELOG_VERSION, normalizedVersion)
         return
       }
 
-      postUpdateVersion.value = normalizedVersion
-      postUpdateReleaseNotes.value = releaseNotes
-      postUpdateReleaseUrl.value = `https://github.com/CCA3370/XFast-Manager/releases/tag/v${normalizedVersion}`
-      showPostUpdateChangelog.value = true
+      applyChangelog(normalizedVersion, releaseNotes)
 
       await setItem(STORAGE_KEYS.LAST_SHOWN_CHANGELOG_VERSION, normalizedVersion)
       logBasic(`Showing post-update changelog for v${normalizedVersion}`, 'update')
@@ -216,15 +285,26 @@ export const useUpdateStore = defineStore('update', () => {
       const releaseNotes = readBundledChangelogSection(normalizedVersion)
 
       if (!releaseNotes) {
-        modal.showError(t('update.changelogNotFound', { version: normalizedVersion }))
-        return
-      }
+        const latestEntry = getLatestBundledChangelogEntry()
+        logDebug(
+          `Current-version changelog miss rawVersion='${currentVersion}' normalized='${normalizedVersion}' available=[${getBundledChangelogVersionsPreview()}]`,
+          'update'
+        )
 
-      postUpdateVersion.value = normalizedVersion
-      postUpdateReleaseNotes.value = releaseNotes
-      postUpdateReleaseUrl.value = `https://github.com/CCA3370/XFast-Manager/releases/tag/v${normalizedVersion}`
-      showPostUpdateChangelog.value = true
-      logDebug(`Showing current version changelog for v${normalizedVersion}`, 'update')
+        if (!latestEntry?.section) {
+          modal.showError(t('update.changelogNotFound', { version: normalizedVersion }))
+          return
+        }
+
+        applyChangelog(latestEntry.normalizedVersion, latestEntry.section)
+        logBasic(
+          `Falling back to latest bundled changelog v${latestEntry.normalizedVersion} for current v${normalizedVersion}`,
+          'update'
+        )
+      } else {
+        applyChangelog(normalizedVersion, releaseNotes)
+        logDebug(`Showing current version changelog for v${normalizedVersion}`, 'update')
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       logError(`Failed to show current version changelog: ${message}`, 'update')

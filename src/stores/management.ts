@@ -10,10 +10,13 @@ import type {
   ManagementData,
   ManagementTab,
   ManagementItemType,
-  SkunkUpdateOptions,
-  SkunkUpdatePlan,
-  SkunkUpdateResult,
-  SkunkUpdatableItemType,
+  AddonUpdateOptions,
+  AddonUpdatePreview,
+  AddonUpdatePlan,
+  AddonUpdateResult,
+  AddonUpdaterCredentials,
+  AddonDiskSpaceInfo,
+  AddonUpdatableItemType,
 } from '@/types'
 import { useAppStore } from './app'
 import { useToastStore } from './toast'
@@ -29,12 +32,14 @@ const UPDATE_CACHE_DURATION = 60 * 60 * 1000
 // Maximum number of entries in update cache to prevent unbounded memory growth
 const MAX_UPDATE_CACHE_SIZE = 500
 
-const DEFAULT_SKUNK_UPDATE_OPTIONS: SkunkUpdateOptions = {
+const DEFAULT_ADDON_UPDATE_OPTIONS: AddonUpdateOptions = {
   useBeta: false,
   includeLiveries: true,
   applyBlacklist: false,
   rollbackOnFailure: true,
   parallelDownloads: 4,
+  channel: 'stable',
+  freshInstall: false,
 }
 
 // Default X-Plane aircraft required for simulator startup — cannot be disabled
@@ -58,6 +63,23 @@ interface UpdateCacheEntry {
 
 // Update cache: key is updateUrl, value is cache entry
 const updateCache = new Map<string, UpdateCacheEntry>()
+
+function isXUpdaterTaggedUrl(url: string): boolean {
+  return url.trim().toLowerCase().startsWith('x-updater:')
+}
+
+function getUpdateCacheKey(item: { updateUrl?: string; folderName: string }): string | null {
+  const updateUrl = item.updateUrl?.trim()
+  if (!updateUrl) return null
+
+  // x-updater URLs are host-level and can be shared by multiple addons.
+  // Include folderName to avoid cache collisions between different aircraft/plugins.
+  if (isXUpdaterTaggedUrl(updateUrl)) {
+    return `${updateUrl.toLowerCase()}::${item.folderName.toLowerCase()}`
+  }
+
+  return updateUrl
+}
 
 // Evict expired entries and oldest entries if cache is too large
 // Uses batch eviction for O(1) amortized complexity
@@ -129,8 +151,8 @@ export const useManagementStore = defineStore('management', () => {
   const isBuildingUpdatePlan = ref(false)
   const isExecutingUpdate = ref(false)
   const error = ref<string | null>(null)
-  const skunkUpdateOptions = ref<SkunkUpdateOptions>({ ...DEFAULT_SKUNK_UPDATE_OPTIONS })
-  const skunkUpdateOptionsLoaded = ref(false)
+  const addonUpdateOptions = ref<AddonUpdateOptions>({ ...DEFAULT_ADDON_UPDATE_OPTIONS })
+  const addonUpdateOptionsLoaded = ref(false)
 
   // Counts
   const aircraftTotalCount = ref(0)
@@ -176,68 +198,112 @@ export const useManagementStore = defineStore('management', () => {
     }).length
   })
 
-  async function loadSkunkUpdateOptions() {
-    if (skunkUpdateOptionsLoaded.value) return
+  async function loadAddonUpdateOptions() {
+    if (addonUpdateOptionsLoaded.value) return
 
-    const [useBeta, includeLiveries, applyBlacklist, rollbackOnFailure, parallelDownloads] =
+    const [useBeta, includeLiveries, applyBlacklist, rollbackOnFailure, parallelDownloads, channel, freshInstall] =
       await Promise.all([
-        getItem<boolean>(STORAGE_KEYS.SKUNK_UPDATE_USE_BETA),
-        getItem<boolean>(STORAGE_KEYS.SKUNK_UPDATE_INCLUDE_LIVERIES),
-        getItem<boolean>(STORAGE_KEYS.SKUNK_UPDATE_APPLY_BLACKLIST),
-        getItem<boolean>(STORAGE_KEYS.SKUNK_UPDATE_ROLLBACK_ON_FAILURE),
-        getItem<number>(STORAGE_KEYS.SKUNK_UPDATE_PARALLEL_DOWNLOADS),
+        getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_USE_BETA),
+        getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_INCLUDE_LIVERIES),
+        getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_APPLY_BLACKLIST),
+        getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_ROLLBACK_ON_FAILURE),
+        getItem<number>(STORAGE_KEYS.ADDON_UPDATE_PARALLEL_DOWNLOADS),
+        getItem<string>(STORAGE_KEYS.ADDON_UPDATE_CHANNEL),
+        getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_FRESH_INSTALL),
       ])
 
-    skunkUpdateOptions.value = {
-      useBeta: typeof useBeta === 'boolean' ? useBeta : DEFAULT_SKUNK_UPDATE_OPTIONS.useBeta,
+    addonUpdateOptions.value = {
+      useBeta: typeof useBeta === 'boolean' ? useBeta : DEFAULT_ADDON_UPDATE_OPTIONS.useBeta,
       includeLiveries:
         typeof includeLiveries === 'boolean'
           ? includeLiveries
-          : DEFAULT_SKUNK_UPDATE_OPTIONS.includeLiveries,
+          : DEFAULT_ADDON_UPDATE_OPTIONS.includeLiveries,
       applyBlacklist:
         typeof applyBlacklist === 'boolean'
           ? applyBlacklist
-          : DEFAULT_SKUNK_UPDATE_OPTIONS.applyBlacklist,
+          : DEFAULT_ADDON_UPDATE_OPTIONS.applyBlacklist,
       rollbackOnFailure:
         typeof rollbackOnFailure === 'boolean'
           ? rollbackOnFailure
-          : DEFAULT_SKUNK_UPDATE_OPTIONS.rollbackOnFailure,
+          : DEFAULT_ADDON_UPDATE_OPTIONS.rollbackOnFailure,
       parallelDownloads:
         typeof parallelDownloads === 'number' && parallelDownloads > 0
           ? Math.min(Math.max(parallelDownloads, 1), 8)
-          : DEFAULT_SKUNK_UPDATE_OPTIONS.parallelDownloads,
+          : DEFAULT_ADDON_UPDATE_OPTIONS.parallelDownloads,
+      channel:
+        channel === 'stable' || channel === 'beta' || channel === 'alpha'
+          ? channel
+          : DEFAULT_ADDON_UPDATE_OPTIONS.channel,
+      freshInstall:
+        typeof freshInstall === 'boolean'
+          ? freshInstall
+          : DEFAULT_ADDON_UPDATE_OPTIONS.freshInstall,
     }
 
-    skunkUpdateOptionsLoaded.value = true
+    addonUpdateOptionsLoaded.value = true
   }
 
-  async function setSkunkUpdateOptions(next: Partial<SkunkUpdateOptions>) {
-    await loadSkunkUpdateOptions()
+  async function setAddonUpdateOptions(next: Partial<AddonUpdateOptions>) {
+    await loadAddonUpdateOptions()
 
-    skunkUpdateOptions.value = {
-      ...skunkUpdateOptions.value,
+    addonUpdateOptions.value = {
+      ...addonUpdateOptions.value,
       ...next,
     }
 
     await Promise.all([
-      setItem(STORAGE_KEYS.SKUNK_UPDATE_USE_BETA, skunkUpdateOptions.value.useBeta),
+      setItem(STORAGE_KEYS.ADDON_UPDATE_USE_BETA, addonUpdateOptions.value.useBeta),
       setItem(
-        STORAGE_KEYS.SKUNK_UPDATE_INCLUDE_LIVERIES,
-        skunkUpdateOptions.value.includeLiveries,
+        STORAGE_KEYS.ADDON_UPDATE_INCLUDE_LIVERIES,
+        addonUpdateOptions.value.includeLiveries,
       ),
       setItem(
-        STORAGE_KEYS.SKUNK_UPDATE_APPLY_BLACKLIST,
-        skunkUpdateOptions.value.applyBlacklist,
+        STORAGE_KEYS.ADDON_UPDATE_APPLY_BLACKLIST,
+        addonUpdateOptions.value.applyBlacklist,
       ),
       setItem(
-        STORAGE_KEYS.SKUNK_UPDATE_ROLLBACK_ON_FAILURE,
-        skunkUpdateOptions.value.rollbackOnFailure,
+        STORAGE_KEYS.ADDON_UPDATE_ROLLBACK_ON_FAILURE,
+        addonUpdateOptions.value.rollbackOnFailure,
       ),
       setItem(
-        STORAGE_KEYS.SKUNK_UPDATE_PARALLEL_DOWNLOADS,
-        skunkUpdateOptions.value.parallelDownloads ?? 4,
+        STORAGE_KEYS.ADDON_UPDATE_PARALLEL_DOWNLOADS,
+        addonUpdateOptions.value.parallelDownloads ?? 4,
       ),
+      setItem(STORAGE_KEYS.ADDON_UPDATE_CHANNEL, addonUpdateOptions.value.channel ?? 'stable'),
+      setItem(STORAGE_KEYS.ADDON_UPDATE_FRESH_INSTALL, addonUpdateOptions.value.freshInstall ?? false),
     ])
+  }
+
+  async function fetchAddonUpdatePreview(
+    itemType: AddonUpdatableItemType,
+    folderName: string,
+    login?: string,
+    licenseKey?: string,
+    optionsOverride?: Partial<AddonUpdateOptions>,
+  ): Promise<AddonUpdatePreview> {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value)
+    }
+
+    await loadAddonUpdateOptions()
+    const options = {
+      ...addonUpdateOptions.value,
+      ...optionsOverride,
+    }
+
+    try {
+      return await invoke<AddonUpdatePreview>('fetch_addon_update_preview', {
+        xplanePath: appStore.xplanePath,
+        itemType,
+        folderName,
+        options,
+        login: login?.trim() || null,
+        licenseKey: licenseKey?.trim() || null,
+      })
+    } catch (e) {
+      logError(`Failed to fetch addon update preview for ${itemType}:${folderName}: ${e}`, 'management')
+      throw e
+    }
   }
 
   // ========================================
@@ -259,8 +325,10 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   // Helper function to check if cache is valid
-  function isCacheValid(url: string): boolean {
-    const cached = updateCache.get(url)
+  function isCacheValid(item: { updateUrl?: string; folderName: string }): boolean {
+    const key = getUpdateCacheKey(item)
+    if (!key) return false
+    const cached = updateCache.get(key)
     if (!cached) return false
     return Date.now() - cached.timestamp < UPDATE_CACHE_DURATION
   }
@@ -269,8 +337,9 @@ export const useManagementStore = defineStore('management', () => {
   // hasUpdate is recalculated based on current local version vs cached remote version
   function applyCachedUpdates<T extends UpdatableItem>(items: T[]): T[] {
     return items.map((item) => {
-      if (item.updateUrl && isCacheValid(item.updateUrl)) {
-        const cached = updateCache.get(item.updateUrl)!
+      const key = getUpdateCacheKey(item)
+      if (key && isCacheValid(item)) {
+        const cached = updateCache.get(key)!
         const latestVersion = cached.latestVersion ?? undefined
         // Recalculate hasUpdate based on current local version
         const hasUpdate = latestVersion != null && latestVersion !== (item.version || '')
@@ -292,7 +361,7 @@ export const useManagementStore = defineStore('management', () => {
     const lockStore = useLockStore()
     return items.filter((item) => {
       if (!item.updateUrl) return false
-      if (isCacheValid(item.updateUrl)) return false
+      if (isCacheValid(item)) return false
       // Skip locked items - they shouldn't be checked for updates
       if (lockStore.isLocked(itemType, item.folderName)) return false
       return true
@@ -356,6 +425,7 @@ export const useManagementStore = defineStore('management', () => {
     checkParamName: string
     logName: string
     itemType: 'aircraft' | 'plugin'
+    extraArgs?: Record<string, unknown>
   }
 
   interface UpdateCheckResult {
@@ -383,13 +453,15 @@ export const useManagementStore = defineStore('management', () => {
     try {
       // Send only items needing check to backend
       const updated = await invoke<T[]>(config.checkCommand, {
+        ...(config.extraArgs || {}),
         [config.checkParamName]: itemsToCheck,
       })
 
       // Update cache with results (only store latestVersion, not hasUpdate)
       for (const item of updated) {
-        if (item.updateUrl) {
-          setCacheEntry(item.updateUrl, {
+        const key = getUpdateCacheKey(item)
+        if (key) {
+          setCacheEntry(key, {
             latestVersion: item.latestVersion ?? null,
             timestamp: Date.now(),
           })
@@ -448,8 +520,9 @@ export const useManagementStore = defineStore('management', () => {
     if (forceRefresh) {
       // Clear update cache
       for (const item of aircraft.value) {
-        if (item.updateUrl) {
-          updateCache.delete(item.updateUrl)
+        const key = getUpdateCacheKey(item)
+        if (key) {
+          updateCache.delete(key)
         }
       }
       // Rescan to get latest cfg state (without triggering another update check)
@@ -474,6 +547,7 @@ export const useManagementStore = defineStore('management', () => {
       checkParamName: 'aircraft',
       logName: 'aircraft',
       itemType: 'aircraft',
+      extraArgs: { xplanePath: appStore.xplanePath },
     })
     // Show toast when check was actually performed and no updates found
     if (result.checked && result.updateCount === 0) {
@@ -503,8 +577,9 @@ export const useManagementStore = defineStore('management', () => {
     if (forceRefresh) {
       // Clear update cache
       for (const item of plugins.value) {
-        if (item.updateUrl) {
-          updateCache.delete(item.updateUrl)
+        const key = getUpdateCacheKey(item)
+        if (key) {
+          updateCache.delete(key)
         }
       }
       // Rescan to get latest cfg state (without triggering another update check)
@@ -536,23 +611,29 @@ export const useManagementStore = defineStore('management', () => {
     }
   }
 
-  async function buildSkunkUpdatePlan(
-    itemType: SkunkUpdatableItemType,
+  async function buildAddonUpdatePlan(
+    itemType: AddonUpdatableItemType,
     folderName: string,
-  ): Promise<SkunkUpdatePlan> {
+    optionsOverride?: Partial<AddonUpdateOptions>,
+  ): Promise<AddonUpdatePlan> {
     if (!validateXPlanePath(error)) {
       throw new Error(error.value)
     }
 
-    await loadSkunkUpdateOptions()
+    await loadAddonUpdateOptions()
+
+    const options = {
+      ...addonUpdateOptions.value,
+      ...optionsOverride,
+    }
 
     isBuildingUpdatePlan.value = true
     try {
-      return await invoke<SkunkUpdatePlan>('build_skunk_update_plan', {
+      return await invoke<AddonUpdatePlan>('build_addon_update_plan', {
         xplanePath: appStore.xplanePath,
         itemType,
         folderName,
-        options: skunkUpdateOptions.value,
+        options,
       })
     } catch (e) {
       logError(`Failed to build addon update plan for ${itemType}:${folderName}: ${e}`, 'management')
@@ -562,23 +643,29 @@ export const useManagementStore = defineStore('management', () => {
     }
   }
 
-  async function executeSkunkUpdate(
-    itemType: SkunkUpdatableItemType,
+  async function executeAddonUpdate(
+    itemType: AddonUpdatableItemType,
     folderName: string,
-  ): Promise<SkunkUpdateResult> {
+    optionsOverride?: Partial<AddonUpdateOptions>,
+  ): Promise<AddonUpdateResult> {
     if (!validateXPlanePath(error)) {
       throw new Error(error.value)
     }
 
-    await loadSkunkUpdateOptions()
+    await loadAddonUpdateOptions()
+
+    const options = {
+      ...addonUpdateOptions.value,
+      ...optionsOverride,
+    }
 
     isExecutingUpdate.value = true
     try {
-      const result = await invoke<SkunkUpdateResult>('execute_skunk_update', {
+      const result = await invoke<AddonUpdateResult>('execute_addon_update', {
         xplanePath: appStore.xplanePath,
         itemType,
         folderName,
-        options: skunkUpdateOptions.value,
+        options,
       })
 
       if (itemType === 'aircraft') {
@@ -593,6 +680,85 @@ export const useManagementStore = defineStore('management', () => {
       throw e
     } finally {
       isExecutingUpdate.value = false
+    }
+  }
+
+  async function setAddonUpdaterCredentials(
+    itemType: AddonUpdatableItemType,
+    folderName: string,
+    login: string,
+    licenseKey: string,
+  ) {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value)
+    }
+
+    const trimmedLogin = login.trim()
+    const trimmedKey = licenseKey.trim()
+    if (!trimmedLogin || !trimmedKey) {
+      throw new Error('Missing account or activation key')
+    }
+
+    try {
+      await invoke('set_addon_updater_credentials', {
+        xplanePath: appStore.xplanePath,
+        itemType,
+        folderName,
+        login: trimmedLogin,
+        licenseKey: trimmedKey,
+      })
+    } catch (e) {
+      logError(
+        `Failed to save addon updater credentials for ${itemType}:${folderName}: ${e}`,
+        'management',
+      )
+      throw e
+    }
+  }
+
+  async function getAddonUpdaterCredentials(
+    itemType: AddonUpdatableItemType,
+    folderName: string,
+  ): Promise<AddonUpdaterCredentials | null> {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value)
+    }
+
+    try {
+      return await invoke<AddonUpdaterCredentials | null>('get_addon_updater_credentials', {
+        xplanePath: appStore.xplanePath,
+        itemType,
+        folderName,
+      })
+    } catch (e) {
+      logError(
+        `Failed to read addon updater credentials for ${itemType}:${folderName}: ${e}`,
+        'management',
+      )
+      throw e
+    }
+  }
+
+  async function getAddonUpdateDiskSpace(
+    itemType: AddonUpdatableItemType,
+    folderName: string,
+  ): Promise<AddonDiskSpaceInfo> {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value)
+    }
+
+    try {
+      return await invoke<AddonDiskSpaceInfo>('get_addon_update_disk_space', {
+        xplanePath: appStore.xplanePath,
+        itemType,
+        folderName,
+      })
+    } catch (e) {
+      logError(
+        `Failed to read addon update disk space for ${itemType}:${folderName}: ${e}`,
+        'management',
+      )
+      throw e
     }
   }
 
@@ -912,7 +1078,7 @@ export const useManagementStore = defineStore('management', () => {
     isBuildingUpdatePlan,
     isExecutingUpdate,
     error,
-    skunkUpdateOptions,
+    addonUpdateOptions,
 
     // Counts
     aircraftTotalCount,
@@ -935,10 +1101,14 @@ export const useManagementStore = defineStore('management', () => {
     checkAircraftUpdates,
     loadPlugins,
     checkPluginsUpdates,
-    loadSkunkUpdateOptions,
-    setSkunkUpdateOptions,
-    buildSkunkUpdatePlan,
-    executeSkunkUpdate,
+    loadAddonUpdateOptions,
+    setAddonUpdateOptions,
+    fetchAddonUpdatePreview,
+    buildAddonUpdatePlan,
+    executeAddonUpdate,
+    setAddonUpdaterCredentials,
+    getAddonUpdaterCredentials,
+    getAddonUpdateDiskSpace,
     loadNavdata,
     loadNavdataBackups,
     restoreNavdataBackup,

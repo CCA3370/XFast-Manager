@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "preinstall": "node scripts/install-rollup-native.js",
+    "predev": "node scripts/generate-changelog-bundle.mjs",
+    "prebuild": "node scripts/generate-changelog-bundle.mjs",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint src/",

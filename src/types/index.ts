@@ -352,17 +352,31 @@ export interface PluginInfo {
   scriptCount: number
 }
 
-export type SkunkUpdatableItemType = 'aircraft' | 'plugin' | 'scenery' | 'livery'
+export type AddonUpdatableItemType = 'aircraft' | 'plugin' | 'scenery' | 'livery'
 
-export interface SkunkUpdateOptions {
+export interface AddonUpdateOptions {
   useBeta: boolean
   includeLiveries: boolean
   applyBlacklist: boolean
   rollbackOnFailure: boolean
   parallelDownloads?: number
+  channel?: 'stable' | 'beta' | 'alpha'
+  freshInstall?: boolean
 }
 
-export interface SkunkUpdatePlan {
+export interface AddonUpdatePreview {
+  provider?: string
+  itemType: string
+  folderName: string
+  localVersion?: string
+  targetVersion?: string
+  selectedChannel: 'stable' | 'beta' | 'alpha' | string
+  availableChannels: string[]
+  changelog?: string
+}
+
+export interface AddonUpdatePlan {
+  provider?: string
   itemType: string
   folderName: string
   localVersion?: string
@@ -378,7 +392,8 @@ export interface SkunkUpdatePlan {
   warnings: string[]
 }
 
-export interface SkunkUpdateResult {
+export interface AddonUpdateResult {
+  provider?: string
   success: boolean
   message: string
   itemType: string
@@ -389,6 +404,16 @@ export interface SkunkUpdateResult {
   deletedFiles: number
   skippedFiles: number
   rollbackUsed: boolean
+}
+
+export interface AddonUpdaterCredentials {
+  login: string
+  licenseKey: string
+}
+
+export interface AddonDiskSpaceInfo {
+  freeBytes: number
+  totalBytes: number
 }
 
 export interface LuaScriptInfo {
