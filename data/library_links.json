@@ -1,8 +1,9 @@
 {
 	"version": 1,
-	"updated": "2026-02-14",
+	"updated": "2026-03-01",
 	"libraries": {
 		"3d_people": "https://forums.x-plane.org/index.php?/files/file/26611-3d-people-library/",
+		"3d_people_library": "https://forums.x-plane.org/files/file/26611-3d-people-library/",
 		"adsparks_library": "https://forums.x-plane.org/files/file/47600-parking-stands-signs/",
 		"ales_dev_lib": "https://forums.x-plane.org/files/file/53427-ales-developer-library/",
 		"ar_library": "https://forums.x-plane.org/files/file/44586-ar_library-librer%C3%ADa-de-objetos-argentinos/",
