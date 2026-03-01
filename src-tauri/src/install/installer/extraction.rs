@@ -123,7 +123,37 @@ impl Installer {
                 password,
                 expected_hashes,
             )?,
-            "7z" => self.extract_7z_with_progress(archive, target, internal_root, ctx, password)?,
+            "7z" => {
+                let primary_result =
+                    self.extract_7z_with_progress(archive, target, internal_root, ctx, password);
+                if let Err(primary_err) = primary_result {
+                    if Self::is_7z_checksum_error(&primary_err) {
+                        logger::log_error(
+                            &format!(
+                                "Built-in 7z extractor hit checksum verification error, trying external 7z fallback: {}",
+                                primary_err
+                            ),
+                            Some("installer"),
+                        );
+                        self.extract_7z_with_external_fallback(
+                            archive,
+                            target,
+                            internal_root,
+                            ctx,
+                            password,
+                        )
+                        .map_err(|fallback_err| {
+                            anyhow::anyhow!(
+                                "Failed to extract 7z: {} (fallback failed: {})",
+                                primary_err,
+                                fallback_err
+                            )
+                        })?;
+                    } else {
+                        return Err(primary_err);
+                    }
+                }
+            }
             "rar" => {
                 self.extract_rar_with_progress(archive, target, internal_root, ctx, password)?
             }
@@ -509,6 +539,181 @@ impl Installer {
         Ok(())
     }
 
+    fn is_7z_checksum_error(error: &anyhow::Error) -> bool {
+        let text = format!("{:#}", error).to_ascii_lowercase();
+        text.contains("checksumverificationfailed")
+            || text.contains("checksum verification failed")
+            || text.contains("nextheadercrcmismatch")
+            || text.contains("next header crc mismatch")
+    }
+
+    fn extract_7z_with_external_fallback(
+        &self,
+        archive: &Path,
+        target: &Path,
+        internal_root: Option<&str>,
+        ctx: &ProgressContext,
+        password: Option<&str>,
+    ) -> Result<()> {
+        let temp_dir = tempfile::Builder::new()
+            .prefix("xfastmanager_7z_fallback_")
+            .tempdir()
+            .context("Failed to create temp directory for 7z fallback")?;
+
+        let extracted_root = temp_dir.path();
+        self.run_external_7z_extract(archive, extracted_root, password)?;
+
+        let source_path = if let Some(root) = internal_root {
+            let normalized = root.replace('\\', "/").trim_matches('/').to_string();
+            let candidate = extracted_root.join(normalized.replace('/', std::path::MAIN_SEPARATOR_STR));
+            if !candidate.exists() {
+                return Err(anyhow::anyhow!(
+                    "7z fallback extracted successfully, but internal root not found: {}",
+                    root
+                ));
+            }
+            candidate
+        } else {
+            extracted_root.to_path_buf()
+        };
+
+        if source_path.is_file() {
+            let final_target = if target.exists() && target.is_dir() {
+                let file_name = source_path
+                    .file_name()
+                    .ok_or_else(|| anyhow::anyhow!("Source file has no filename"))?;
+                target.join(file_name)
+            } else {
+                target.to_path_buf()
+            };
+
+            if let Some(parent) = final_target.parent() {
+                fs::create_dir_all(parent).context(format!(
+                    "Failed to create target directory for 7z fallback file copy: {:?}",
+                    parent
+                ))?;
+            }
+
+            let file_size = fs::metadata(&source_path)?.len();
+            let display_name = final_target
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+
+            let mut source_file = fs::File::open(&source_path).context(format!(
+                "Failed to open source file for 7z fallback copy: {:?}",
+                source_path
+            ))?;
+            let mut target_file = fs::File::create(&final_target).context(format!(
+                "Failed to create target file for 7z fallback copy: {:?}",
+                final_target
+            ))?;
+            copy_file_optimized(&mut source_file, &mut target_file)?;
+
+            let _ = remove_readonly_attribute(&final_target);
+            ctx.add_bytes(file_size);
+            ctx.emit_progress(Some(display_name), InstallPhase::Installing);
+        } else {
+            self.copy_directory_with_progress(&source_path, target, ctx)?;
+        }
+
+        logger::log_info(
+            "External 7z fallback extraction completed",
+            Some("installer"),
+        );
+        Ok(())
+    }
+
+    fn run_external_7z_extract(
+        &self,
+        archive: &Path,
+        out_dir: &Path,
+        password: Option<&str>,
+    ) -> Result<()> {
+        std::fs::create_dir_all(out_dir)?;
+
+        let mut candidates = Vec::<PathBuf>::new();
+
+        if let Ok(custom) = std::env::var("XFAST_7Z_PATH") {
+            if !custom.trim().is_empty() {
+                candidates.push(PathBuf::from(custom));
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            if let Ok(program_files) = std::env::var("ProgramFiles") {
+                candidates.push(PathBuf::from(program_files).join("7-Zip").join("7z.exe"));
+            }
+            if let Ok(program_files_x86) = std::env::var("ProgramFiles(x86)") {
+                candidates.push(PathBuf::from(program_files_x86).join("7-Zip").join("7z.exe"));
+            }
+        }
+
+        candidates.push(PathBuf::from("7z"));
+        candidates.push(PathBuf::from("7za"));
+        candidates.push(PathBuf::from("7zr"));
+
+        let mut attempted = Vec::<String>::new();
+        let mut failed = Vec::<String>::new();
+
+        for exe in candidates {
+            let key = exe.to_string_lossy().to_string();
+            if attempted.iter().any(|v| v == &key) {
+                continue;
+            }
+            attempted.push(key.clone());
+
+            let mut cmd = std::process::Command::new(&exe);
+            cmd.arg("x")
+                .arg(archive.as_os_str())
+                .arg("-y")
+                .arg("-aoa")
+                .arg(format!("-o{}", out_dir.display()))
+                .arg("-bb0")
+                .arg("-bso0")
+                .arg("-bsp0");
+
+            if let Some(pwd) = password {
+                cmd.arg(format!("-p{}", pwd));
+            } else {
+                // Prevent interactive password prompt in non-interactive execution.
+                cmd.arg("-p");
+            }
+
+            match cmd.output() {
+                Ok(output) => {
+                    if output.status.success() {
+                        logger::log_info(
+                            &format!("7z fallback succeeded with executable: {}", key),
+                            Some("installer"),
+                        );
+                        return Ok(());
+                    }
+
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    failed.push(format!(
+                        "{} -> exit {} stderr='{}' stdout='{}'",
+                        key,
+                        output.status,
+                        truncate_for_log(stderr.as_ref(), 240),
+                        truncate_for_log(stdout.as_ref(), 240)
+                    ));
+                }
+                Err(err) => {
+                    failed.push(format!("{} -> {}", key, err));
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "No usable external 7z extractor succeeded. Attempts: {}",
+            failed.join(" | ")
+        ))
+    }
+
     /// Compute SHA256 hashes for all files in installed directory
     /// Used for 7z archives where hashes aren't available from metadata
     #[allow(dead_code)]
@@ -665,4 +870,12 @@ impl Installer {
         // TempDir automatically cleans up when dropped
         Ok(())
     }
+}
+
+fn truncate_for_log(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let truncated: String = text.chars().take(max_chars).collect();
+    format!("{}...", truncated)
 }

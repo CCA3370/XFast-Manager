@@ -1340,7 +1340,35 @@ impl Installer {
         // Phase 3: Finalize
         let finalize_start = Instant::now();
         ctx.emit_final(InstallPhase::Finalizing);
-        logger::log_info(&tr(LogMsg::InstallationCompleted), Some("installer"));
+        let total_failed = failed + skipped + cancelled;
+        if total_failed == 0 {
+            logger::log_info(&tr(LogMsg::InstallationCompleted), Some("installer"));
+        } else if successful > 0 {
+            logger::log_info(
+                &format!(
+                    "Installation completed with partial failures: {}/{} successful, {} failed (failed={}, skipped={}, cancelled={})",
+                    successful,
+                    tasks.len(),
+                    total_failed,
+                    failed,
+                    skipped,
+                    cancelled
+                ),
+                Some("installer"),
+            );
+        } else {
+            logger::log_error(
+                &format!(
+                    "{}: 0/{} successful (failed={}, skipped={}, cancelled={})",
+                    tr(LogMsg::InstallationFailed),
+                    tasks.len(),
+                    failed,
+                    skipped,
+                    cancelled
+                ),
+                Some("installer"),
+            );
+        }
         crate::log_debug!(
             &format!(
                 "[TIMING] Finalization completed in {:.2}ms",
@@ -1736,7 +1764,29 @@ impl Installer {
             "installer_timing"
         );
 
-        logger::log_info(&tr(LogMsg::InstallationCompleted), Some("installer"));
+        if failed == 0 {
+            logger::log_info(&tr(LogMsg::InstallationCompleted), Some("installer"));
+        } else if successful > 0 {
+            logger::log_info(
+                &format!(
+                    "Installation completed with partial failures: {}/{} successful, {} failed",
+                    successful,
+                    task_results.len(),
+                    failed
+                ),
+                Some("installer"),
+            );
+        } else {
+            logger::log_error(
+                &format!(
+                    "{}: 0/{} successful, {} failed",
+                    tr(LogMsg::InstallationFailed),
+                    task_results.len(),
+                    failed
+                ),
+                Some("installer"),
+            );
+        }
 
         Ok(InstallResult {
             total_tasks: task_results.len(),

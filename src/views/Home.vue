@@ -1003,8 +1003,16 @@ async function handleInstall() {
     })
 
     // Log results
-    logBasic(t('log.installationCompleted'), 'installation')
-    logOperation(`${result.successfulTasks}/${result.totalTasks} tasks completed successfully`)
+    if (result.failedTasks === 0) {
+      logBasic(t('log.installationCompleted'), 'installation')
+    } else if (result.successfulTasks > 0) {
+      logBasic(t('completion.partialSuccess'), 'installation')
+    } else {
+      logError(t('completion.allFailed'), 'installation')
+    }
+    logOperation(
+      `${result.successfulTasks}/${result.totalTasks} tasks completed successfully (failed: ${result.failedTasks})`,
+    )
 
     // Log failed tasks if any
     if (result.failedTasks > 0) {

@@ -66,7 +66,6 @@ const showUpdateDrawer = ref(false)
 const updateTargetType = ref<AddonUpdatableItemType>('aircraft')
 const updateTargetFolder = ref('')
 const updateTargetDisplayName = ref('')
-const updateTargetIsXUpdater = ref(false)
 const updateTargetCurrentVersion = ref('')
 const updateTargetLatestVersion = ref('')
 
@@ -361,14 +360,12 @@ function handleOpenUpdate(
   itemType: AddonUpdatableItemType,
   folderName: string,
   displayName: string,
-  updateUrl?: string,
   currentVersion?: string,
   latestVersion?: string,
 ) {
   updateTargetType.value = itemType
   updateTargetFolder.value = folderName
   updateTargetDisplayName.value = displayName
-  updateTargetIsXUpdater.value = (updateUrl || '').toLowerCase().startsWith('x-updater:')
   updateTargetCurrentVersion.value = currentVersion || ''
   updateTargetLatestVersion.value = latestVersion || ''
   showUpdateDrawer.value = true
@@ -876,7 +873,7 @@ const isLoading = computed(() => {
                   @open-folder="(fn) => handleOpenFolder('aircraft', fn)"
                   @view-liveries="handleViewLiveries"
                   @toggle-select="toggleSelect"
-                  @update="(fn) => handleOpenUpdate('aircraft', fn, item.displayName, item.updateUrl, item.version, item.latestVersion)"
+                  @update="(fn) => handleOpenUpdate('aircraft', fn, item.displayName, item.version, item.latestVersion)"
                 />
               </div>
             </template>
@@ -904,7 +901,7 @@ const isLoading = computed(() => {
                   @open-folder="(fn) => handleOpenFolder('plugin', fn)"
                   @view-scripts="handleViewScripts"
                   @toggle-select="toggleSelect"
-                  @update="(fn) => handleOpenUpdate('plugin', fn, item.displayName, item.updateUrl, item.version, item.latestVersion)"
+                  @update="(fn) => handleOpenUpdate('plugin', fn, item.displayName, item.version, item.latestVersion)"
                 />
               </div>
             </template>
@@ -943,7 +940,6 @@ const isLoading = computed(() => {
       :item-type="updateTargetType"
       :folder-name="updateTargetFolder"
       :display-name="updateTargetDisplayName"
-      :is-x-updater-target="updateTargetIsXUpdater"
       :initial-local-version="updateTargetCurrentVersion"
       :initial-target-version="updateTargetLatestVersion"
       @updated="loadTabData(activeTab)"

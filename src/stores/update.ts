@@ -103,8 +103,21 @@ export const useUpdateStore = defineStore('update', () => {
         return
       }
 
-      // Log the error
-      logError(`Update check failed: ${errorMessage}`, 'update')
+      const isRateLimited =
+        /403\s*forbidden/i.test(errorMessage) ||
+        /rate.?limit/i.test(errorMessage) ||
+        /api rate limit/i.test(errorMessage)
+
+      if (isRateLimited && !manual) {
+        logDebug('Update check skipped (GitHub API rate limit)', 'update')
+        return
+      }
+
+      if (manual) {
+        logError(`Update check failed: ${errorMessage}`, 'update')
+      } else {
+        logDebug(`Auto update check failed: ${errorMessage}`, 'update')
+      }
 
       if (manual) {
         // Show error on manual check
