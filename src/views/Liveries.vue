@@ -7,8 +7,8 @@ import { useManagementStore } from '@/stores/management'
 import { useAppStore } from '@/stores/app'
 import { useToastStore } from '@/stores/toast'
 import { useModalStore } from '@/stores/modal'
+import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import LiveryCard from '@/components/LiveryCard.vue'
-import AddonUpdateDrawer from '@/components/AddonUpdateDrawer.vue'
 import type { LiveryInfo } from '@/types'
 
 const { t } = useI18n()
@@ -18,6 +18,7 @@ const managementStore = useManagementStore()
 const appStore = useAppStore()
 const toastStore = useToastStore()
 const modalStore = useModalStore()
+const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
 
 const aircraftFolder = computed(() => (route.query.aircraft as string) || '')
 const liveries = ref<LiveryInfo[]>([])
@@ -29,9 +30,6 @@ const previewScale = ref(1)
 const previewX = ref(0)
 const previewY = ref(0)
 const isDragging = ref(false)
-const showUpdateDrawer = ref(false)
-const updateTargetFolder = ref('')
-const updateTargetDisplayName = ref('')
 let dragStartX = 0
 let dragStartY = 0
 let dragStartPanX = 0
@@ -183,14 +181,11 @@ function buildLiveryUpdateTarget(folderName: string): string {
 
 function handleOpenLiveryUpdate(folderName: string) {
   const livery = liveries.value.find((item) => item.folderName === folderName)
-  updateTargetFolder.value = buildLiveryUpdateTarget(folderName)
-  updateTargetDisplayName.value = livery?.displayName || folderName
-  showUpdateDrawer.value = true
-}
-
-async function handleLiveryUpdated() {
-  await loadLiveries()
-  await managementStore.loadAircraft()
+  addonUpdateDrawerStore.openTask({
+    itemType: 'livery',
+    folderName: buildLiveryUpdateTarget(folderName),
+    displayName: livery?.displayName || folderName,
+  })
 }
 
 onMounted(() => {
@@ -264,14 +259,6 @@ onMounted(() => {
         />
       </div>
     </div>
-
-    <AddonUpdateDrawer
-      v-model:show="showUpdateDrawer"
-      item-type="livery"
-      :folder-name="updateTargetFolder"
-      :display-name="updateTargetDisplayName"
-      @updated="handleLiveryUpdated"
-    />
 
     <!-- Lightbox overlay -->
     <Teleport to="body">

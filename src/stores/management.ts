@@ -36,7 +36,7 @@ const DEFAULT_ADDON_UPDATE_OPTIONS: AddonUpdateOptions = {
   useBeta: false,
   includeLiveries: true,
   applyBlacklist: false,
-  rollbackOnFailure: true,
+  rollbackOnFailure: false,
   parallelDownloads: 4,
   channel: 'stable',
   freshInstall: false,
@@ -199,12 +199,11 @@ export const useManagementStore = defineStore('management', () => {
   async function loadAddonUpdateOptions() {
     if (addonUpdateOptionsLoaded.value) return
 
-    const [useBeta, includeLiveries, applyBlacklist, rollbackOnFailure, parallelDownloads, channel, freshInstall] =
+    const [useBeta, includeLiveries, applyBlacklist, parallelDownloads, channel, freshInstall] =
       await Promise.all([
         getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_USE_BETA),
         getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_INCLUDE_LIVERIES),
         getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_APPLY_BLACKLIST),
-        getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_ROLLBACK_ON_FAILURE),
         getItem<number>(STORAGE_KEYS.ADDON_UPDATE_PARALLEL_DOWNLOADS),
         getItem<string>(STORAGE_KEYS.ADDON_UPDATE_CHANNEL),
         getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_FRESH_INSTALL),
@@ -220,10 +219,8 @@ export const useManagementStore = defineStore('management', () => {
         typeof applyBlacklist === 'boolean'
           ? applyBlacklist
           : DEFAULT_ADDON_UPDATE_OPTIONS.applyBlacklist,
-      rollbackOnFailure:
-        typeof rollbackOnFailure === 'boolean'
-          ? rollbackOnFailure
-          : DEFAULT_ADDON_UPDATE_OPTIONS.rollbackOnFailure,
+      // UI no longer exposes this toggle; keep backend capability but default to no rollback.
+      rollbackOnFailure: DEFAULT_ADDON_UPDATE_OPTIONS.rollbackOnFailure,
       parallelDownloads:
         typeof parallelDownloads === 'number' && parallelDownloads > 0
           ? Math.min(Math.max(parallelDownloads, 1), 8)
@@ -239,6 +236,12 @@ export const useManagementStore = defineStore('management', () => {
     }
 
     addonUpdateOptionsLoaded.value = true
+
+    // Force persisted value to current UI default so old sessions (true) won't keep rolling back.
+    await setItem(
+      STORAGE_KEYS.ADDON_UPDATE_ROLLBACK_ON_FAILURE,
+      DEFAULT_ADDON_UPDATE_OPTIONS.rollbackOnFailure,
+    )
   }
 
   async function setAddonUpdateOptions(next: Partial<AddonUpdateOptions>) {
@@ -515,7 +518,7 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   // Check for aircraft updates
-  async function checkAircraftUpdates(forceRefresh: boolean = false) {
+  async function checkAircraftUpdates(forceRefresh: boolean = false, showUpToDateToast: boolean = false) {
     // If force refresh, rescan to get latest cfg state first
     if (forceRefresh) {
       // Clear update cache
@@ -550,7 +553,7 @@ export const useManagementStore = defineStore('management', () => {
       extraArgs: { xplanePath: appStore.xplanePath },
     })
     // Show toast when check was actually performed and no updates found
-    if (result.checked && result.updateCount === 0) {
+    if (showUpToDateToast && result.checked && result.updateCount === 0) {
       toast.info(t('management.allUpToDate'))
     }
   }
@@ -572,7 +575,7 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   // Check for plugin updates
-  async function checkPluginsUpdates(forceRefresh: boolean = false) {
+  async function checkPluginsUpdates(forceRefresh: boolean = false, showUpToDateToast: boolean = false) {
     // If force refresh, rescan to get latest cfg state first
     if (forceRefresh) {
       // Clear update cache
@@ -606,7 +609,7 @@ export const useManagementStore = defineStore('management', () => {
       itemType: 'plugin',
     })
     // Show toast when check was actually performed and no updates found
-    if (result.checked && result.updateCount === 0) {
+    if (showUpToDateToast && result.checked && result.updateCount === 0) {
       toast.info(t('management.allUpToDate'))
     }
   }

@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
-use futures::StreamExt;
 use flate2::read::GzDecoder;
+use futures::StreamExt;
 use md5::Context as Md5Context;
 use rayon::prelude::*;
 use reqwest::header::HeaderMap;
@@ -422,10 +422,7 @@ pub async fn build_update_plan(
         options.parallel_downloads
     ));
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
-    log_addon_debug(format!(
-        "resolved target path {}",
-        target_path.display()
-    ));
+    log_addon_debug(format!("resolved target path {}", target_path.display()));
     enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
     emit_progress_event(
@@ -447,8 +444,13 @@ pub async fn build_update_plan(
 
     if target_path.join(SKUNK_CFG_FILE).exists() {
         log_addon_info("detected legacy updater metadata; delegating to legacy updater flow");
-        return crate::skunk_updater::build_update_plan(xplane_path, item_type, folder_name, options)
-            .await;
+        return crate::skunk_updater::build_update_plan(
+            xplane_path,
+            item_type,
+            folder_name,
+            options,
+        )
+        .await;
     }
 
     let context = prepare_xupdater_context(
@@ -544,14 +546,8 @@ pub async fn fetch_update_preview(
 
     let host = profile.host.clone();
     let client = build_http_client(20)?;
-    let auth = xup_authenticate(
-        &client,
-        &host,
-        &login,
-        &license_key,
-        task_control.as_ref(),
-    )
-    .await?;
+    let auth =
+        xup_authenticate(&client, &host, &login, &license_key, task_control.as_ref()).await?;
     let products = xup_fetch_products(&client, &host, &auth, task_control.as_ref()).await?;
     let selected_products = select_products_for_target(&target_path, &products);
     if selected_products.is_empty() {
@@ -647,28 +643,32 @@ pub async fn execute_update(
     ensure_not_cancelled(task_control.as_ref(), "install")?;
 
     if target_path.join(SKUNK_CFG_FILE).exists() {
-        log_addon_info("detected legacy updater metadata; delegating to legacy updater execution flow");
+        log_addon_info(
+            "detected legacy updater metadata; delegating to legacy updater execution flow",
+        );
         let mapped_progress_callback: Option<crate::skunk_updater::SkunkUpdateProgressCallback> =
             progress_callback.as_ref().map(|cb| {
                 let addon_cb = Arc::clone(cb);
                 let item_type = item_type.to_string();
                 let folder_name = folder_name.to_string();
-                Arc::new(move |event: crate::skunk_updater::SkunkUpdateProgressEvent| {
-                    addon_cb(AddonUpdateProgressEvent {
-                        item_type: item_type.clone(),
-                        folder_name: folder_name.clone(),
-                        stage: event.stage,
-                        status: event.status,
-                        percentage: event.percentage,
-                        processed_units: event.processed_units,
-                        total_units: event.total_units,
-                        processed_bytes: event.processed_bytes,
-                        total_bytes: event.total_bytes,
-                        speed_bytes_per_sec: event.speed_bytes_per_sec,
-                        current_file: event.current_file,
-                        message: event.message,
-                    });
-                }) as crate::skunk_updater::SkunkUpdateProgressCallback
+                Arc::new(
+                    move |event: crate::skunk_updater::SkunkUpdateProgressEvent| {
+                        addon_cb(AddonUpdateProgressEvent {
+                            item_type: item_type.clone(),
+                            folder_name: folder_name.clone(),
+                            stage: event.stage,
+                            status: event.status,
+                            percentage: event.percentage,
+                            processed_units: event.processed_units,
+                            total_units: event.total_units,
+                            processed_bytes: event.processed_bytes,
+                            total_bytes: event.total_bytes,
+                            speed_bytes_per_sec: event.speed_bytes_per_sec,
+                            current_file: event.current_file,
+                            message: event.message,
+                        });
+                    },
+                ) as crate::skunk_updater::SkunkUpdateProgressCallback
             });
         return crate::skunk_updater::execute_update(
             xplane_path,
@@ -750,10 +750,7 @@ pub async fn execute_update(
                     .ok_or_else(|| anyhow!("Missing download link for '{}'", action.rel_path))?;
                 log_addon_debug(format!(
                     "download file url={} relPath={} expectedMd5={:?} expectedSize={:?}",
-                    download.url,
-                    download.rel_path,
-                    download.expected_md5,
-                    download.expected_size
+                    download.url, download.rel_path, download.expected_md5, download.expected_size
                 ));
                 let chunk_callback: Arc<dyn Fn(u64) + Send + Sync> = {
                     let processed_bytes = Arc::clone(&processed_bytes);
@@ -823,7 +820,10 @@ pub async fn execute_update(
             }
         };
         if let Err(e) = step {
-            log_addon_info(format!("apply action failed path={} error={}", action.rel_path, e));
+            log_addon_info(format!(
+                "apply action failed path={} error={}",
+                action.rel_path, e
+            ));
             apply_result = Err(e);
             break;
         }
@@ -862,7 +862,11 @@ pub async fn execute_update(
             item_type,
             folder_name,
             "install",
-            if is_cancelled_error(&e) { "cancelled" } else { "failed" },
+            if is_cancelled_error(&e) {
+                "cancelled"
+            } else {
+                "failed"
+            },
             0.0,
             processed_units,
             total_units,
@@ -962,7 +966,9 @@ pub fn get_updater_credentials(
     };
 
     match (profile.login, profile.license_key) {
-        (Some(login), Some(license_key)) if !login.trim().is_empty() && !license_key.trim().is_empty() => {
+        (Some(login), Some(license_key))
+            if !login.trim().is_empty() && !license_key.trim().is_empty() =>
+        {
             Ok(Some(AddonUpdaterCredentials { login, license_key }))
         }
         _ => Ok(None),
@@ -975,14 +981,18 @@ pub fn get_target_disk_space(
     folder_name: &str,
 ) -> Result<AddonDiskSpaceInfo> {
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
-    let free_bytes =
-        fs2::available_space(&target_path).with_context(|| {
-            format!("Failed to read free disk space for '{}'", target_path.display())
-        })?;
-    let total_bytes =
-        fs2::total_space(&target_path).with_context(|| {
-            format!("Failed to read total disk space for '{}'", target_path.display())
-        })?;
+    let free_bytes = fs2::available_space(&target_path).with_context(|| {
+        format!(
+            "Failed to read free disk space for '{}'",
+            target_path.display()
+        )
+    })?;
+    let total_bytes = fs2::total_space(&target_path).with_context(|| {
+        format!(
+            "Failed to read total disk space for '{}'",
+            target_path.display()
+        )
+    })?;
 
     Ok(AddonDiskSpaceInfo {
         free_bytes,
@@ -1124,8 +1134,12 @@ async fn prepare_xupdater_context(
         ensure_not_cancelled(task_control, "scan")?;
         log_addon_debug(format!("processing product '{}'", product_name(product)));
         let snapshot_type = channel_to_snapshot_type(&selected_channel);
-        let snapshot = select_snapshot(product, &snapshot_type, true)
-            .ok_or_else(|| anyhow!("No usable snapshot found for selected product '{}'", product_name(product)))?;
+        let snapshot = select_snapshot(product, &snapshot_type, true).ok_or_else(|| {
+            anyhow!(
+                "No usable snapshot found for selected product '{}'",
+                product_name(product)
+            )
+        })?;
         log_addon_debug(format!(
             "snapshot selected product='{}' requestedType={} resolvedType={:?} number={:?}",
             product_name(product),
@@ -1395,7 +1409,11 @@ fn resolve_product_dir(root: &Path, product: &Value) -> Option<PathBuf> {
     Some(root.to_path_buf())
 }
 
-fn select_snapshot<'a>(product: &'a Value, preferred: &str, allow_fallback: bool) -> Option<&'a Value> {
+fn select_snapshot<'a>(
+    product: &'a Value,
+    preferred: &str,
+    allow_fallback: bool,
+) -> Option<&'a Value> {
     let preferred = preferred.trim().to_lowercase();
     let release = "release".to_string();
 
@@ -1508,9 +1526,21 @@ fn normalize_semver_token(raw: &str) -> Option<String> {
         let major_raw = core[0..2].trim_start_matches('0').to_string();
         let minor_raw = core[2..4].trim_start_matches('0').to_string();
         let patch_raw = core[4..6].trim_start_matches('0').to_string();
-        let major = if major_raw.is_empty() { "0" } else { &major_raw };
-        let minor = if minor_raw.is_empty() { "0" } else { &minor_raw };
-        let patch = if patch_raw.is_empty() { "0" } else { &patch_raw };
+        let major = if major_raw.is_empty() {
+            "0"
+        } else {
+            &major_raw
+        };
+        let minor = if minor_raw.is_empty() {
+            "0"
+        } else {
+            &minor_raw
+        };
+        let patch = if patch_raw.is_empty() {
+            "0"
+        } else {
+            &patch_raw
+        };
         return Some(format!("{}.{}.{}", major, minor, patch));
     }
 
@@ -1544,8 +1574,7 @@ fn extract_version_from_text(text: &str) -> Option<String> {
         ch.is_whitespace()
             || matches!(
                 ch,
-                ',' | ';' | ':' | '|' | '(' | ')' | '[' | ']' | '{' | '}' | '/' | '\\' | '"'
-                    | '\''
+                ',' | ';' | ':' | '|' | '(' | ')' | '[' | ']' | '{' | '}' | '/' | '\\' | '"' | '\''
             )
     }) {
         if let Some(version) = normalize_semver_token(token) {
@@ -1815,10 +1844,7 @@ fn build_action_from_file(
 
     let expected_md5 = file
         .get("hash")
-        .and_then(|v| {
-            v.as_str()
-                .or_else(|| v.get("md5").and_then(|x| x.as_str()))
-        })
+        .and_then(|v| v.as_str().or_else(|| v.get("md5").and_then(|x| x.as_str())))
         .or_else(|| file.get("md5").and_then(|v| v.as_str()))
         .or_else(|| file.get("mHash").and_then(|v| v.as_str()))
         .or_else(|| file.get("file_md5").and_then(|v| v.as_str()))
@@ -1850,9 +1876,18 @@ fn build_action_from_file(
                     .or_else(|| v.get("mHref").and_then(|x| x.as_str()))
             })
         })
-        .or_else(|| links.get("download").and_then(|v| v.get("href").and_then(|x| x.as_str())))
+        .or_else(|| {
+            links
+                .get("download")
+                .and_then(|v| v.get("href").and_then(|x| x.as_str()))
+        })
         .or_else(|| file.get("href").and_then(|v| v.as_str()))
-        .ok_or_else(|| anyhow!("x-updater file entry '{}' is missing download link", rel_path))?;
+        .ok_or_else(|| {
+            anyhow!(
+                "x-updater file entry '{}' is missing download link",
+                rel_path
+            )
+        })?;
 
     let url = resolve_link(host, data_link)?;
     let compressed_size = file
@@ -1891,7 +1926,11 @@ fn build_action_from_file(
 fn should_ignore_path(rel_path: &str, ignore_list: &[String]) -> bool {
     let normalized = rel_path.to_lowercase();
     ignore_list.iter().any(|item| {
-        let path = item.replace('\\', "/").trim().trim_start_matches('/').to_lowercase();
+        let path = item
+            .replace('\\', "/")
+            .trim()
+            .trim_start_matches('/')
+            .to_lowercase();
         !path.is_empty() && (normalized == path || normalized.starts_with(&(path + "/")))
     })
 }
@@ -2001,7 +2040,8 @@ async fn xup_authenticate(
 
         if status.is_success() && status != reqwest::StatusCode::ACCEPTED {
             let mode = parse_xup_auth_mode(&headers, &raw_body);
-            let auth_header_candidates = collect_xup_auth_candidates(host, &headers, &raw_body, &mode);
+            let auth_header_candidates =
+                collect_xup_auth_candidates(host, &headers, &raw_body, &mode);
             log_addon_info(format!(
                 "auth completed attempt={} status={} mode={} candidateCount={}",
                 attempt,
@@ -2017,7 +2057,9 @@ async fn xup_authenticate(
             });
         }
 
-        if status == reqwest::StatusCode::ACCEPTED || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        if status == reqwest::StatusCode::ACCEPTED
+            || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+        {
             if attempt < max_attempts {
                 let retry_after_secs = headers
                     .get("retry-after")
@@ -2403,26 +2445,35 @@ async fn xup_fetch_products(
                 ));
                 if let Some(arr) = body.as_array() {
                     if !arr.is_empty() {
-                        log_addon_info(format!("fetch products success url={} count={}", url, arr.len()));
+                        log_addon_info(format!(
+                            "fetch products success url={} count={}",
+                            url,
+                            arr.len()
+                        ));
                         return Ok(arr.clone());
                     }
                 }
                 if let Some(arr) = body.get("products").and_then(|v| v.as_array()) {
                     if !arr.is_empty() {
-                        log_addon_info(format!("fetch products success url={} count={}", url, arr.len()));
+                        log_addon_info(format!(
+                            "fetch products success url={} count={}",
+                            url,
+                            arr.len()
+                        ));
                         return Ok(arr.clone());
                     }
                 }
                 if let Some(arr) = body.get("mProductsInfo").and_then(|v| v.as_array()) {
                     if !arr.is_empty() {
-                        log_addon_info(format!("fetch products success url={} count={}", url, arr.len()));
+                        log_addon_info(format!(
+                            "fetch products success url={} count={}",
+                            url,
+                            arr.len()
+                        ));
                         return Ok(arr.clone());
                     }
                 }
-                errors.push(format!(
-                    "{} -> empty products payload",
-                    url
-                ));
+                errors.push(format!("{} -> empty products payload", url));
             }
             Err(e) => errors.push(format!("{} -> {}", url, e)),
         }
@@ -2448,23 +2499,38 @@ async fn xup_fetch_file_list(
     log_addon_info(format!("fetch file list start url={}", url));
     let body = xup_request_json(client, url, auth, task_control).await?;
     if let Some(arr) = body.as_array() {
-        log_addon_info(format!("fetch file list success shape=array count={}", arr.len()));
+        log_addon_info(format!(
+            "fetch file list success shape=array count={}",
+            arr.len()
+        ));
         return Ok(arr.clone());
     }
     if let Some(arr) = body.get("body").and_then(|v| v.as_array()) {
-        log_addon_info(format!("fetch file list success shape=body count={}", arr.len()));
+        log_addon_info(format!(
+            "fetch file list success shape=body count={}",
+            arr.len()
+        ));
         return Ok(arr.clone());
     }
     if let Some(arr) = body.get("files").and_then(|v| v.as_array()) {
-        log_addon_info(format!("fetch file list success shape=files count={}", arr.len()));
+        log_addon_info(format!(
+            "fetch file list success shape=files count={}",
+            arr.len()
+        ));
         return Ok(arr.clone());
     }
     if let Some(arr) = body.get("items").and_then(|v| v.as_array()) {
-        log_addon_info(format!("fetch file list success shape=items count={}", arr.len()));
+        log_addon_info(format!(
+            "fetch file list success shape=items count={}",
+            arr.len()
+        ));
         return Ok(arr.clone());
     }
     if let Some(arr) = body.get("mFiles").and_then(|v| v.as_array()) {
-        log_addon_info(format!("fetch file list success shape=mFiles count={}", arr.len()));
+        log_addon_info(format!(
+            "fetch file list success shape=mFiles count={}",
+            arr.len()
+        ));
         return Ok(arr.clone());
     }
     log_addon_debug(format!(
@@ -2768,11 +2834,7 @@ async fn download_xupdater_file(
                     strategy_log_label(&strategy),
                     err
                 ));
-                last_error = Some(anyhow!(
-                    "Failed to download '{}': {}",
-                    task.url,
-                    err
-                ));
+                last_error = Some(anyhow!("Failed to download '{}': {}", task.url, err));
                 continue;
             }
         };
@@ -3137,7 +3199,9 @@ fn ensure_since_parameter(url: &str, since: i64) -> Result<String> {
     let mut parsed = Url::parse(url).with_context(|| format!("Invalid URL '{}'", url))?;
     let has_since = parsed.query_pairs().any(|(k, _)| k == "since");
     if !has_since {
-        parsed.query_pairs_mut().append_pair("since", &since.to_string());
+        parsed
+            .query_pairs_mut()
+            .append_pair("since", &since.to_string());
     }
     Ok(parsed.to_string())
 }

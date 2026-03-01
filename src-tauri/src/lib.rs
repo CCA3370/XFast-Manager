@@ -43,10 +43,10 @@ mod installer;
 mod verifier;
 
 // Management
-#[path = "management/management_index.rs"]
-mod management_index;
 #[path = "management/addon_updater.rs"]
 mod addon_updater;
+#[path = "management/management_index.rs"]
+mod management_index;
 #[path = "management/skunk_updater.rs"]
 mod skunk_updater;
 #[path = "management/x_updater_profile.rs"]
@@ -416,7 +416,10 @@ struct IssueCommentPostResult {
 }
 
 #[tauri::command]
-async fn post_issue_comment(issue_number: u64, comment_body: String) -> Result<IssueCommentPostResult, String> {
+async fn post_issue_comment(
+    issue_number: u64,
+    comment_body: String,
+) -> Result<IssueCommentPostResult, String> {
     if issue_number == 0 {
         return Err("issue_number must be greater than 0".to_string());
     }
@@ -449,7 +452,10 @@ async fn post_issue_comment(issue_number: u64, comment_body: String) -> Result<I
     if !response.status().is_success() {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
-        return Err(format!("Issue comment API error {}: {}", status, error_text));
+        return Err(format!(
+            "Issue comment API error {}: {}",
+            status, error_text
+        ));
     }
 
     Ok(IssueCommentPostResult { ok: true })
@@ -2017,10 +2023,9 @@ async fn build_addon_update_plan(
         return Err(message);
     }
     let event_handle = app_handle.clone();
-    let progress_callback: addon_updater::AddonUpdateProgressCallback =
-        Arc::new(move |event| {
-            let _ = event_handle.emit("addon-update-progress", event);
-        });
+    let progress_callback: addon_updater::AddonUpdateProgressCallback = Arc::new(move |event| {
+        let _ = event_handle.emit("addon-update-progress", event);
+    });
     let xplane_path = std::path::Path::new(&xplane_path);
     match addon_updater::build_update_plan(
         xplane_path,
@@ -2076,10 +2081,9 @@ async fn fetch_addon_update_preview(
         return Err(message);
     }
     let event_handle = app_handle.clone();
-    let progress_callback: addon_updater::AddonUpdateProgressCallback =
-        Arc::new(move |event| {
-            let _ = event_handle.emit("addon-update-progress", event);
-        });
+    let progress_callback: addon_updater::AddonUpdateProgressCallback = Arc::new(move |event| {
+        let _ = event_handle.emit("addon-update-progress", event);
+    });
     let xplane_path = std::path::Path::new(&xplane_path);
     match addon_updater::fetch_update_preview(
         xplane_path,
@@ -2135,10 +2139,9 @@ async fn execute_addon_update(
         return Err(message);
     }
     let event_handle = app_handle.clone();
-    let progress_callback: addon_updater::AddonUpdateProgressCallback =
-        Arc::new(move |event| {
-            let _ = event_handle.emit("addon-update-progress", event);
-        });
+    let progress_callback: addon_updater::AddonUpdateProgressCallback = Arc::new(move |event| {
+        let _ = event_handle.emit("addon-update-progress", event);
+    });
     let xplane_path = std::path::Path::new(&xplane_path);
     match addon_updater::execute_update(
         xplane_path,

@@ -565,7 +565,8 @@ impl Installer {
 
         let source_path = if let Some(root) = internal_root {
             let normalized = root.replace('\\', "/").trim_matches('/').to_string();
-            let candidate = extracted_root.join(normalized.replace('/', std::path::MAIN_SEPARATOR_STR));
+            let candidate =
+                extracted_root.join(normalized.replace('/', std::path::MAIN_SEPARATOR_STR));
             if !candidate.exists() {
                 return Err(anyhow::anyhow!(
                     "7z fallback extracted successfully, but internal root not found: {}",
@@ -647,7 +648,11 @@ impl Installer {
                 candidates.push(PathBuf::from(program_files).join("7-Zip").join("7z.exe"));
             }
             if let Ok(program_files_x86) = std::env::var("ProgramFiles(x86)") {
-                candidates.push(PathBuf::from(program_files_x86).join("7-Zip").join("7z.exe"));
+                candidates.push(
+                    PathBuf::from(program_files_x86)
+                        .join("7-Zip")
+                        .join("7z.exe"),
+                );
             }
         }
 

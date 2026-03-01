@@ -14,10 +14,10 @@ import { useToastStore } from '@/stores/toast'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useIssueTrackerStore } from '@/stores/issueTracker'
+import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
 import ConfirmModal from '@/components/ConfirmModal.vue'
-import AddonUpdateDrawer from '@/components/AddonUpdateDrawer.vue'
 import type { SceneryManagerEntry, SceneryCategory, SceneryIndexScanResult } from '@/types'
 import { parseApiError, getErrorMessage } from '@/types'
 
@@ -34,6 +34,7 @@ const toastStore = useToastStore()
 const appStore = useAppStore()
 const modalStore = useModalStore()
 const issueTrackerStore = useIssueTrackerStore()
+const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
 
 // Scenery-specific state (migrated from SceneryManager.vue)
 const drag = ref(false)
@@ -71,8 +72,6 @@ const contributingLibName = ref('')
 const contributingLibUrl = ref('')
 const isSubmittingContributeLink = ref(false)
 const isDeletingEntry = ref(false)
-const showUpdateDrawer = ref(false)
-const updateTargetFolder = ref('')
 
 // 拖拽自动滚动状态 (非响应式，无需触发渲染)
 let dragAutoScrollRafId: number | null = null
@@ -802,13 +801,11 @@ async function handleShowMissingLibs(entry: SceneryManagerEntry) {
 }
 
 function handleOpenSceneryUpdate(folderName: string) {
-  updateTargetFolder.value = folderName
-  showUpdateDrawer.value = true
-}
-
-async function handleSceneryUpdated() {
-  await sceneryStore.loadData()
-  syncLocalEntries()
+  addonUpdateDrawerStore.openTask({
+    itemType: 'scenery',
+    folderName,
+    displayName: folderName,
+  })
 }
 
 function handleShowDuplicateTiles(entry: SceneryManagerEntry) {
@@ -2566,14 +2563,6 @@ onBeforeUnmount(() => {
         </template>
       </div>
     </div>
-
-    <AddonUpdateDrawer
-      v-model:show="showUpdateDrawer"
-      item-type="scenery"
-      :folder-name="updateTargetFolder"
-      :display-name="updateTargetFolder"
-      @updated="handleSceneryUpdated"
-    />
 
     <!-- Shared Missing Libraries Modal -->
     <Teleport to="body">

@@ -294,6 +294,7 @@ export interface SceneryManagerEntry {
   subPriority: number
   enabled: boolean
   sortOrder: number
+  updateUrl?: string
   missingLibraries: string[]
   requiredLibraries: string[]
   continent?: string
@@ -353,6 +354,14 @@ export interface PluginInfo {
 }
 
 export type AddonUpdatableItemType = 'aircraft' | 'plugin' | 'scenery' | 'livery'
+
+export interface AddonUpdateDrawerTask {
+  itemType: AddonUpdatableItemType
+  folderName: string
+  displayName: string
+  initialLocalVersion?: string
+  initialTargetVersion?: string
+}
 
 export interface AddonUpdateOptions {
   useBeta: boolean

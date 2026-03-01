@@ -147,7 +147,10 @@ impl UpdateChecker {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            return Err(format!("Update API returned status: {} ({})", status, error_text));
+            return Err(format!(
+                "Update API returned status: {} ({})",
+                status, error_text
+            ));
         }
 
         response
