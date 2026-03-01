@@ -1803,7 +1803,8 @@ impl Scanner {
     ) -> Option<(Option<String>, Vec<String>)> {
         use std::io::Read;
 
-        let file = fs::File::open(archive_path).ok()?;
+        let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::Zip).ok()?;
+        let file = fs::File::open(prepared.read_path()).ok()?;
         let mut archive = ::zip::ZipArchive::new(file).ok()?;
 
         let mut updater_cfg_content: Option<String> = None;
@@ -1906,7 +1907,8 @@ impl Scanner {
     ) -> Option<(Option<String>, Vec<String>)> {
         use sevenz_rust2::{ArchiveReader, Password};
 
-        let mut reader = ArchiveReader::open(archive_path, Password::empty()).ok()?;
+        let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::SevenZ).ok()?;
+        let mut reader = ArchiveReader::open(prepared.read_path(), Password::empty()).ok()?;
 
         let mut updater_cfg_content: Option<String> = None;
         let mut version_files_by_depth: Vec<(usize, String)> = Vec::new();
@@ -2011,7 +2013,8 @@ impl Scanner {
         // Create temp directory for extraction
         let temp_dir = Builder::new().prefix("xfi_version_").tempdir().ok()?;
 
-        let mut archive = Archive::new(archive_path).open_for_processing().ok()?;
+        let normalized_archive = crate::archive_input::normalize_archive_entry_path(archive_path);
+        let mut archive = Archive::new(&normalized_archive).open_for_processing().ok()?;
 
         let search_prefix = internal_root.map(|r| {
             if r.ends_with('/') {

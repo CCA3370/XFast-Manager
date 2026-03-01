@@ -1890,11 +1890,7 @@ impl Installer {
 
     /// Calculate Lua bundle size from archive metadata only (no extraction).
     fn get_lua_bundle_size_in_archive(&self, task: &InstallTask, archive: &Path) -> Result<u64> {
-        let source_ext = archive
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
+        let source_format = crate::archive_input::detect_archive_format(archive);
 
         if task.extraction_chain.is_some() {
             return self.get_archive_size(archive, task.archive_internal_root.as_deref());
@@ -1902,7 +1898,9 @@ impl Installer {
 
         // For 7z fast-scan fallback (solid archives), companion_paths may be empty at scan time.
         // Use internal_root size to avoid underestimating progress bytes.
-        if source_ext == "7z" && task.companion_paths.is_empty() {
+        if source_format == Some(crate::archive_input::ArchiveFormat::SevenZ)
+            && task.companion_paths.is_empty()
+        {
             return self.get_archive_size(archive, task.archive_internal_root.as_deref());
         }
 
@@ -1927,10 +1925,14 @@ impl Installer {
 
         let mut total = 0u64;
 
-        match source_ext.as_str() {
-            "zip" => {
+        match source_format {
+            Some(crate::archive_input::ArchiveFormat::Zip) => {
                 use zip::ZipArchive;
-                let file = fs::File::open(archive)?;
+                let prepared = crate::archive_input::prepare_archive_for_read(
+                    archive,
+                    crate::archive_input::ArchiveFormat::Zip,
+                )?;
+                let file = fs::File::open(prepared.read_path())?;
                 let mut archive_reader = ZipArchive::new(file)?;
                 for i in 0..archive_reader.len() {
                     let file = match archive_reader.by_index_raw(i) {
@@ -1951,8 +1953,12 @@ impl Installer {
                     }
                 }
             }
-            "7z" => {
-                let archive_meta = sevenz_rust2::Archive::open(archive)?;
+            Some(crate::archive_input::ArchiveFormat::SevenZ) => {
+                let prepared = crate::archive_input::prepare_archive_for_read(
+                    archive,
+                    crate::archive_input::ArchiveFormat::SevenZ,
+                )?;
+                let archive_meta = sevenz_rust2::Archive::open(prepared.read_path())?;
                 for entry in &archive_meta.files {
                     if entry.is_directory() || !entry.has_stream() {
                         continue;
@@ -2044,14 +2050,14 @@ impl Installer {
 
     /// Get uncompressed size of archive
     fn get_archive_size(&self, archive: &Path, internal_root: Option<&str>) -> Result<u64> {
-        let ext = archive
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_ascii_lowercase());
-        match ext.as_deref() {
-            Some("zip") => self.get_zip_size(archive, internal_root),
-            Some("7z") => self.get_7z_size(archive, internal_root),
-            Some("rar") => self.get_rar_size(archive),
+        match crate::archive_input::detect_archive_format(archive) {
+            Some(crate::archive_input::ArchiveFormat::Zip) => {
+                self.get_zip_size(archive, internal_root)
+            }
+            Some(crate::archive_input::ArchiveFormat::SevenZ) => {
+                self.get_7z_size(archive, internal_root)
+            }
+            Some(crate::archive_input::ArchiveFormat::Rar) => self.get_rar_size(archive),
             // Non-archive files (e.g. standalone Lua scripts) are installed by direct copy.
             _ => Ok(fs::metadata(archive)?.len()),
         }
@@ -2060,7 +2066,11 @@ impl Installer {
     /// Get uncompressed size of ZIP archive
     fn get_zip_size(&self, archive: &Path, internal_root: Option<&str>) -> Result<u64> {
         use zip::ZipArchive;
-        let file = fs::File::open(archive)?;
+        let prepared = crate::archive_input::prepare_archive_for_read(
+            archive,
+            crate::archive_input::ArchiveFormat::Zip,
+        )?;
+        let file = fs::File::open(prepared.read_path())?;
         let mut archive_reader = ZipArchive::new(file)?;
         let prefix = internal_root.map(|s| {
             let normalized = s.replace('\\', "/").trim_matches('/').to_string();
@@ -2089,9 +2099,15 @@ impl Installer {
     /// Get uncompressed size of 7z archive.
     /// Uses archive metadata directly and supports internal_root filtering.
     fn get_7z_size(&self, archive: &Path, internal_root: Option<&str>) -> Result<u64> {
+        let prepared = crate::archive_input::prepare_archive_for_read(
+            archive,
+            crate::archive_input::ArchiveFormat::SevenZ,
+        )?;
+        let read_archive = prepared.read_path();
+
         // For full-archive queries, use cache when available.
         if internal_root.is_none() {
-            if let Some(cached) = crate::cache::get_cached_metadata(archive) {
+            if let Some(cached) = crate::cache::get_cached_metadata(read_archive) {
                 return Ok(cached.uncompressed_size);
             }
         }
@@ -2105,12 +2121,12 @@ impl Installer {
             }
         });
 
-        let archive_meta = match sevenz_rust2::Archive::open(archive) {
+        let archive_meta = match sevenz_rust2::Archive::open(read_archive) {
             Ok(a) => a,
             Err(_) => {
                 // Fallback for corrupted/unsupported 7z metadata:
                 // keep previous conservative behavior.
-                let meta = fs::metadata(archive)?;
+                let meta = fs::metadata(read_archive)?;
                 return Ok(meta.len() * 3);
             }
         };
@@ -2135,7 +2151,7 @@ impl Installer {
         }
 
         if internal_root.is_none() && total > 0 {
-            crate::cache::cache_metadata(archive, total, file_count);
+            crate::cache::cache_metadata(read_archive, total, file_count);
         }
 
         Ok(total)
@@ -2143,7 +2159,8 @@ impl Installer {
 
     /// Get uncompressed size of RAR archive
     fn get_rar_size(&self, archive: &Path) -> Result<u64> {
-        let arch = unrar::Archive::new(archive)
+        let normalized = crate::archive_input::normalize_archive_entry_path(archive);
+        let arch = unrar::Archive::new(&normalized)
             .open_for_listing()
             .map_err(|e| anyhow::anyhow!("Failed to open RAR for size query: {:?}", e))?;
 
