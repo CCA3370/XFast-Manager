@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useLockStore } from '@/stores/lock'
+import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import type { SceneryManagerEntry } from '@/types'
 import { SceneryCategory, getErrorMessage } from '@/types'
 import { useContextMenu } from '@/composables/useContextMenu'
@@ -316,16 +317,13 @@ function handleContextMenu(event: MouseEvent) {
     </div>
 
     <!-- Enable/Disable toggle -->
-    <button
-      class="flex-shrink-0 w-9 h-5 rounded-full relative transition-colors"
-      :class="entry.enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'"
-      @click="emit('toggle-enabled', entry.folderName)"
-    >
-      <span
-        class="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-        :class="entry.enabled ? 'left-4.5' : 'left-0.5'"
-      />
-    </button>
+    <ToggleSwitch
+      :model-value="entry.enabled"
+      active-class="bg-blue-500"
+      inactive-class="bg-gray-300 dark:bg-gray-600"
+      :aria-label="entry.enabled ? t('contextMenu.disable') : t('contextMenu.enable')"
+      @update:model-value="emit('toggle-enabled', entry.folderName)"
+    />
 
     <!-- Folder name -->
     <div class="flex-1 min-w-0">

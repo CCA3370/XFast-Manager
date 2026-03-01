@@ -110,10 +110,10 @@
               />
               <button
                 type="button"
-                class="px-4 py-1.5 m-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-xs font-medium rounded-md transition-colors duration-200 flex items-center space-x-1.5 flex-shrink-0 border border-gray-300 dark:border-gray-600"
+                class="px-4 py-2 m-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-md transition-colors duration-200 flex items-center space-x-1.5 flex-shrink-0 border border-gray-300 dark:border-gray-600"
                 @click.stop.prevent="selectFolder"
               >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -194,19 +194,14 @@
                 </div>
 
                 <div class="flex items-center space-x-3">
-                  <button
+                  <ToggleSwitch
+                    size="lg"
+                    :model-value="store.isContextMenuRegistered"
+                    active-class="bg-blue-600"
+                    inactive-class="bg-gray-300 dark:bg-gray-700"
                     :disabled="isProcessing"
-                    class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-gray-900"
-                    :class="
-                      store.isContextMenuRegistered ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'
-                    "
-                    @click.stop="toggleContextMenu"
-                  >
-                    <span
-                      class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-300 shadow-sm"
-                      :class="store.isContextMenuRegistered ? 'translate-x-4.5' : 'translate-x-0.5'"
-                    />
-                  </button>
+                    @update:model-value="toggleContextMenu"
+                  />
 
                   <!-- Expand/Collapse indicator -->
                   <svg
@@ -359,18 +354,13 @@
 
               <!-- Toggle Switch -->
               <div class="flex items-center space-x-3">
-                <button
-                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-                  :class="
-                    store.atomicInstallEnabled ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'
-                  "
-                  @click.stop="store.toggleAtomicInstall()"
-                >
-                  <span
-                    class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                    :class="store.atomicInstallEnabled ? 'translate-x-4.5' : 'translate-x-0.5'"
-                  ></span>
-                </button>
+                <ToggleSwitch
+                  size="lg"
+                  :model-value="store.atomicInstallEnabled"
+                  active-class="bg-indigo-500"
+                  inactive-class="bg-gray-300 dark:bg-gray-600"
+                  @update:model-value="store.toggleAtomicInstall()"
+                />
 
                 <!-- Expand/Collapse indicator -->
                 <svg
@@ -528,18 +518,13 @@
 
               <!-- Toggle Switch -->
               <div class="flex items-center space-x-3">
-                <button
-                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-                  :class="
-                    store.deleteSourceAfterInstall ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'
-                  "
-                  @click.stop="store.toggleDeleteSourceAfterInstall()"
-                >
-                  <span
-                    class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                    :class="store.deleteSourceAfterInstall ? 'translate-x-4.5' : 'translate-x-0.5'"
-                  ></span>
-                </button>
+                <ToggleSwitch
+                  size="lg"
+                  :model-value="store.deleteSourceAfterInstall"
+                  active-class="bg-red-500"
+                  inactive-class="bg-gray-300 dark:bg-gray-600"
+                  @update:model-value="store.toggleDeleteSourceAfterInstall()"
+                />
 
                 <!-- Expand/Collapse indicator -->
                 <svg
@@ -694,16 +679,13 @@
 
             <!-- Toggle Switch -->
             <div class="flex items-center space-x-3">
-              <button
-                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-                :class="store.autoSortScenery ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-600'"
-                @click.stop="handleToggleAutoSortScenery"
-              >
-                <span
-                  class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                  :class="store.autoSortScenery ? 'translate-x-4.5' : 'translate-x-0.5'"
-                ></span>
-              </button>
+              <ToggleSwitch
+                size="lg"
+                :model-value="store.autoSortScenery"
+                active-class="bg-cyan-500"
+                inactive-class="bg-gray-300 dark:bg-gray-600"
+                @update:model-value="handleToggleAutoSortScenery"
+              />
 
               <!-- Expand/Collapse indicator -->
               <svg
@@ -800,7 +782,7 @@
               <!-- Rebuild Index Button -->
               <button
                 :disabled="isRebuildingIndex || !store.xplanePath"
-                class="w-full px-4 py-2 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+                class="w-full px-4 py-2.5 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-base font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
                 :title="
                   indexExists
                     ? $t('settings.rebuildIndexTooltip')
@@ -901,18 +883,13 @@
 
             <!-- Toggle -->
             <div class="flex items-center space-x-2 flex-shrink-0" @click.stop>
-              <button
-                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none"
-                :class="
-                  store.parallelInstallEnabled ? 'bg-violet-500' : 'bg-gray-300 dark:bg-gray-600'
-                "
-                @click="store.toggleParallelInstall()"
-              >
-                <span
-                  class="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200"
-                  :class="store.parallelInstallEnabled ? 'translate-x-4.5' : 'translate-x-0.5'"
-                ></span>
-              </button>
+              <ToggleSwitch
+                size="lg"
+                :model-value="store.parallelInstallEnabled"
+                active-class="bg-violet-500"
+                inactive-class="bg-gray-300 dark:bg-gray-600"
+                @update:model-value="store.toggleParallelInstall()"
+              />
             </div>
 
             <!-- Expand/Collapse indicator -->
@@ -999,7 +976,7 @@
                 </span>
                 <div class="flex items-center space-x-2">
                   <button
-                    class="w-6 h-6 rounded flex items-center justify-center text-xs font-bold transition-colors"
+                    class="w-7 h-7 rounded flex items-center justify-center text-sm font-bold transition-colors"
                     :class="
                       store.maxParallelTasks <= 2
                         ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
@@ -1016,7 +993,7 @@
                     {{ store.maxParallelTasks }}
                   </span>
                   <button
-                    class="w-6 h-6 rounded flex items-center justify-center text-xs font-bold transition-colors"
+                    class="w-7 h-7 rounded flex items-center justify-center text-sm font-bold transition-colors"
                     :class="
                       store.maxParallelTasks >= 10
                         ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
@@ -1088,18 +1065,13 @@
             </div>
 
             <div class="flex items-center space-x-2 flex-shrink-0" @click.stop>
-              <button
-                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none"
-                :class="
-                  store.crashAnalysisDmpEnabled ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600'
-                "
-                @click="store.toggleCrashAnalysisDmpEnabled()"
-              >
-                <span
-                  class="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200"
-                  :class="store.crashAnalysisDmpEnabled ? 'translate-x-4.5' : 'translate-x-0.5'"
-                ></span>
-              </button>
+              <ToggleSwitch
+                size="lg"
+                :model-value="store.crashAnalysisDmpEnabled"
+                active-class="bg-amber-500"
+                inactive-class="bg-gray-300 dark:bg-gray-600"
+                @update:model-value="store.toggleCrashAnalysisDmpEnabled()"
+              />
 
               <svg
                 class="w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform duration-200"
@@ -1142,25 +1114,16 @@
                     </AnimatedText>
                   </p>
                 </div>
-                <button
-                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                  :class="
+                <ToggleSwitch
+                  size="lg"
+                  :model-value="
                     store.crashAnalysisDmpEnabled && store.crashAnalysisIgnoreDateCheck
-                      ? 'bg-amber-500'
-                      : 'bg-gray-300 dark:bg-gray-600'
                   "
+                  active-class="bg-amber-500"
+                  inactive-class="bg-gray-300 dark:bg-gray-600"
                   :disabled="!store.crashAnalysisDmpEnabled"
-                  @click.stop="store.toggleCrashAnalysisIgnoreDateCheck()"
-                >
-                  <span
-                    class="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200"
-                    :class="
-                      store.crashAnalysisDmpEnabled && store.crashAnalysisIgnoreDateCheck
-                        ? 'translate-x-4.5'
-                        : 'translate-x-0.5'
-                    "
-                  />
-                </button>
+                  @update:model-value="store.toggleCrashAnalysisIgnoreDateCheck()"
+                />
               </div>
             </div>
           </transition>
@@ -1225,16 +1188,13 @@
                 <span class="text-xs font-medium text-gray-700 dark:text-gray-300"
                   ><AnimatedText>{{ $t('settings.toggleAll') }}</AnimatedText></span
                 >
-                <button
-                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                  :class="allPreferencesEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
-                  @click="toggleAllPreferences"
-                >
-                  <span
-                    class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                    :class="allPreferencesEnabled ? 'translate-x-4.5' : 'translate-x-0.5'"
-                  />
-                </button>
+                <ToggleSwitch
+                  size="lg"
+                  :model-value="allPreferencesEnabled"
+                  active-class="bg-green-500"
+                  inactive-class="bg-gray-300 dark:bg-gray-600"
+                  @update:model-value="toggleAllPreferences"
+                />
               </div>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1249,22 +1209,13 @@
                   >
                     <AnimatedText>{{ getTypeName(type) }}</AnimatedText>
                   </span>
-                  <button
-                    class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="
-                      store.installPreferences[type]
-                        ? 'bg-green-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="store.togglePreference(type)"
-                  >
-                    <span
-                      class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="
-                        store.installPreferences[type] ? 'translate-x-3.5' : 'translate-x-0.5'
-                      "
-                    />
-                  </button>
+                  <ToggleSwitch
+                    size="md"
+                    :model-value="store.installPreferences[type]"
+                    active-class="bg-green-500"
+                    inactive-class="bg-gray-300 dark:bg-gray-600"
+                    @update:model-value="store.togglePreference(type)"
+                  />
                 </div>
               </div>
             </div>
@@ -1331,22 +1282,13 @@
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2">
                     <AnimatedText>{{ $t('settings.verifyZip') }}</AnimatedText>
                   </span>
-                  <button
-                    class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="
-                      store.verificationPreferences['zip']
-                        ? 'bg-purple-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="store.toggleVerificationPreference('zip')"
-                  >
-                    <span
-                      class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="
-                        store.verificationPreferences['zip'] ? 'translate-x-3.5' : 'translate-x-0.5'
-                      "
-                    />
-                  </button>
+                  <ToggleSwitch
+                    size="md"
+                    :model-value="store.verificationPreferences['zip']"
+                    active-class="bg-purple-500"
+                    inactive-class="bg-gray-300 dark:bg-gray-600"
+                    @update:model-value="store.toggleVerificationPreference('zip')"
+                  />
                 </div>
 
                 <!-- 7z -->
@@ -1356,22 +1298,13 @@
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2">
                     <AnimatedText>{{ $t('settings.verify7z') }}</AnimatedText>
                   </span>
-                  <button
-                    class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="
-                      store.verificationPreferences['7z']
-                        ? 'bg-purple-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="store.toggleVerificationPreference('7z')"
-                  >
-                    <span
-                      class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="
-                        store.verificationPreferences['7z'] ? 'translate-x-3.5' : 'translate-x-0.5'
-                      "
-                    />
-                  </button>
+                  <ToggleSwitch
+                    size="md"
+                    :model-value="store.verificationPreferences['7z']"
+                    active-class="bg-purple-500"
+                    inactive-class="bg-gray-300 dark:bg-gray-600"
+                    @update:model-value="store.toggleVerificationPreference('7z')"
+                  />
                 </div>
 
                 <!-- RAR (with note) -->
@@ -1381,23 +1314,14 @@
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2">
                     <AnimatedText>{{ $t('settings.verifyRar') }}</AnimatedText>
                   </span>
-                  <button
-                    class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="
-                      store.verificationPreferences['rar']
-                        ? 'bg-purple-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
+                  <ToggleSwitch
+                    size="md"
+                    :model-value="store.verificationPreferences['rar']"
+                    active-class="bg-purple-500"
+                    inactive-class="bg-gray-300 dark:bg-gray-600"
                     disabled
-                    @click="store.toggleVerificationPreference('rar')"
-                  >
-                    <span
-                      class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="
-                        store.verificationPreferences['rar'] ? 'translate-x-3.5' : 'translate-x-0.5'
-                      "
-                    />
-                  </button>
+                    @update:model-value="store.toggleVerificationPreference('rar')"
+                  />
                 </div>
 
                 <!-- Directory -->
@@ -1407,24 +1331,13 @@
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2">
                     <AnimatedText>{{ $t('settings.verifyDirectory') }}</AnimatedText>
                   </span>
-                  <button
-                    class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="
-                      store.verificationPreferences['directory']
-                        ? 'bg-purple-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="store.toggleVerificationPreference('directory')"
-                  >
-                    <span
-                      class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="
-                        store.verificationPreferences['directory']
-                          ? 'translate-x-3.5'
-                          : 'translate-x-0.5'
-                      "
-                    />
-                  </button>
+                  <ToggleSwitch
+                    size="md"
+                    :model-value="store.verificationPreferences['directory']"
+                    active-class="bg-purple-500"
+                    inactive-class="bg-gray-300 dark:bg-gray-600"
+                    @update:model-value="store.toggleVerificationPreference('directory')"
+                  />
                 </div>
               </div>
 
@@ -1563,7 +1476,7 @@
                       @blur="handlePatternBlur"
                     />
                     <button
-                      class="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors"
+                      class="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors"
                       :title="$t('common.delete')"
                       @click="removePattern(index)"
                     >
@@ -1587,10 +1500,10 @@
               </div>
 
               <button
-                class="w-full px-3 py-1.5 text-xs bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg transition-colors border border-blue-200 dark:border-blue-500/20 flex items-center justify-center gap-1"
+                class="w-full px-4 py-2 text-sm bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg transition-colors border border-blue-200 dark:border-blue-500/20 flex items-center justify-center gap-1.5"
                 @click="addPattern"
               >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -1643,18 +1556,13 @@
 
           <!-- Toggle Switch -->
           <div class="flex items-center space-x-3">
-            <button
-              class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-              :class="
-                updateStore.autoCheckEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
-              "
-              @click.stop="updateStore.toggleAutoCheck()"
-            >
-              <span
-                class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                :class="updateStore.autoCheckEnabled ? 'translate-x-4.5' : 'translate-x-0.5'"
-              ></span>
-            </button>
+            <ToggleSwitch
+              size="lg"
+              :model-value="updateStore.autoCheckEnabled"
+              active-class="bg-green-500"
+              inactive-class="bg-gray-300 dark:bg-gray-600"
+              @update:model-value="updateStore.toggleAutoCheck()"
+            />
 
             <!-- Expand/Collapse indicator -->
             <svg
@@ -1754,24 +1662,20 @@
                   <AnimatedText>{{ $t('update.includePreReleaseDesc') }}</AnimatedText>
                 </p>
               </div>
-              <button
-                class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0 ml-3"
-                :class="
-                  updateStore.includePreRelease ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
-                "
-                @click="updateStore.toggleIncludePreRelease()"
-              >
-                <span
-                  class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                  :class="updateStore.includePreRelease ? 'translate-x-3.5' : 'translate-x-0.5'"
-                />
-              </button>
+              <ToggleSwitch
+                size="md"
+                class="ml-3"
+                :model-value="updateStore.includePreRelease"
+                active-class="bg-green-500"
+                inactive-class="bg-gray-300 dark:bg-gray-600"
+                @update:model-value="updateStore.toggleIncludePreRelease()"
+              />
             </div>
 
             <!-- 手动检查按钮 -->
             <button
               :disabled="updateStore.checkInProgress"
-              class="w-full px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+              class="w-full px-4 py-2.5 bg-green-500 hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-base font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
               @click="handleCheckUpdate"
             >
               <svg
@@ -1810,7 +1714,7 @@
             </button>
 
             <button
-              class="w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+              class="w-full px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white text-base font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
               @click="handleViewCurrentVersionChangelog"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1899,7 +1803,7 @@
                 <button
                   v-for="level in ['basic', 'full', 'debug'] as const"
                   :key="level"
-                  class="px-3 py-1 text-xs rounded-md transition-all duration-200 border"
+                  class="px-3.5 py-1.5 text-sm rounded-md transition-all duration-200 border"
                   :class="
                     store.logLevel === level
                       ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
@@ -1917,19 +1821,19 @@
             <!-- Action buttons -->
             <div class="flex items-center justify-end space-x-2">
               <button
-                class="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
+                class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
                 @click.stop="refreshLogs"
               >
                 <AnimatedText>{{ $t('settings.refreshLogs') }}</AnimatedText>
               </button>
               <button
-                class="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
+                class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
                 @click.stop="handleOpenLogFolder"
               >
                 <AnimatedText>{{ $t('settings.openLogFolder') }}</AnimatedText>
               </button>
               <button
-                class="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
+                class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
                 @click.stop="handleCopyLogs"
               >
                 <AnimatedText>{{ $t('settings.copyLogs') }}</AnimatedText>
@@ -2016,10 +1920,10 @@
                 </h4>
                 <div class="flex flex-wrap gap-2">
                   <button
-                    class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-500/30 transition-colors cursor-pointer"
+                    class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-500/30 transition-colors cursor-pointer"
                     @click="openDeveloperProfile"
                   >
-                    <svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
+                    <svg class="w-4 h-4 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
                       <path
                         fill-rule="evenodd"
                         d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z"
@@ -2133,6 +2037,7 @@ import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import AnimatedText from '@/components/AnimatedText.vue'
+import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import { AddonType, getErrorMessage } from '@/types'
 import { logger, logError, logDebug } from '@/services/logger'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'

@@ -61,7 +61,7 @@ const selectionMode = ref(false)
 const selectedAircraft = ref<Set<string>>(new Set())
 const selectedPlugins = ref<Set<string>>(new Set())
 
-// SkunkCrafts updater drawer state
+// Addon update drawer state
 const showUpdateDrawer = ref(false)
 const updateTargetType = ref<SkunkUpdatableItemType>('aircraft')
 const updateTargetFolder = ref('')
