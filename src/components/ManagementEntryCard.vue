@@ -176,6 +176,9 @@ const canOpenUpdater = computed(() => {
   if (!(isAircraft(props.entry) || isPlugin(props.entry))) return false
   const updateUrl = (props.entry.updateUrl || '').toLowerCase()
   if (updateUrl.startsWith('x-updater:')) return false
+  if (props.itemType === 'aircraft') {
+    return !!updateUrl
+  }
   return props.entry.hasUpdate
 })
 
