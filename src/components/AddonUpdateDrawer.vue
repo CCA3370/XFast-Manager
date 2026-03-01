@@ -15,6 +15,7 @@ import type {
 } from '@/types'
 
 type XChannel = 'stable' | 'beta' | 'alpha'
+type XUpdaterStep = 'credentials' | 'options' | 'scan' | 'install' | 'done'
 
 interface AddonUpdateProgressEvent {
   itemType: string
@@ -61,6 +62,7 @@ const checkingPreview = ref(false)
 const scanning = ref(false)
 const installing = ref(false)
 const isCollapsed = ref(false)
+const xStep = ref<XUpdaterStep>('credentials')
 
 const credentialsLogin = ref('')
 const credentialsKey = ref('')
@@ -168,6 +170,25 @@ const canStartScan = computed(() => detectedXUpdater.value && !!preview.value &&
 const canInstall = computed(
   () => !!plan.value && hasPendingFileChanges.value && !plan.value.remoteLocked && !isBusy.value,
 )
+const canGoBack = computed(
+  () => detectedXUpdater.value && !isBusy.value && xStep.value !== 'credentials',
+)
+const xStepLabel = computed(() => {
+  switch (xStep.value) {
+    case 'credentials':
+      return '步骤 1/4：账户凭据'
+    case 'options':
+      return '步骤 2/4：更新信息与选项'
+    case 'scan':
+      return '步骤 3/4：扫描本地文件'
+    case 'install':
+      return '步骤 4/4：下载安装'
+    case 'done':
+      return '步骤 4/4：完成'
+    default:
+      return 'Addon Update'
+  }
+})
 
 const availableChannels = computed<XChannel[]>(() => {
   if (!preview.value?.availableChannels?.length) {
@@ -270,6 +291,7 @@ function applyAddonProgressEvent(event: AddonUpdateProgressEvent) {
 }
 
 function resetState() {
+  xStep.value = 'credentials'
   preview.value = null
   previewError.value = ''
   plan.value = null
@@ -322,6 +344,19 @@ function closeDrawer() {
     return
   }
   emit('update:show', false)
+}
+
+function goToPreviousStep() {
+  if (!canGoBack.value) return
+
+  if (xStep.value === 'options') {
+    xStep.value = 'credentials'
+    return
+  }
+
+  if (xStep.value === 'scan' || xStep.value === 'install' || xStep.value === 'done') {
+    xStep.value = 'options'
+  }
 }
 
 async function initializePanel() {
@@ -394,6 +429,7 @@ async function checkUpdates() {
 
     preview.value = data
     selectedChannel.value = normalizeChannel(data.selectedChannel)
+    xStep.value = 'options'
     await managementStore.setAddonUpdateOptions(optionsOverride())
     await managementStore.setAddonUpdaterCredentials(
       props.itemType,
@@ -429,6 +465,7 @@ function cancelCheck() {
 async function scanLocal() {
   if (!canStartScan.value) return
   const token = ++scanToken
+  xStep.value = 'scan'
   scanning.value = true
   plan.value = null
   planError.value = ''
@@ -446,14 +483,17 @@ async function scanLocal() {
 
     plan.value = nextPlan
     diskInfo.value = await managementStore.getAddonUpdateDiskSpace(props.itemType, props.folderName)
+    xStep.value = noUpdateAfterScan.value ? 'done' : 'install'
     scanProgress.value = 100
   } catch (e) {
     if (token === scanToken) {
       if (isCancelledError(e)) {
         planError.value = ''
+        xStep.value = 'options'
       } else {
         planError.value = String(e)
         toast.error('扫描失败: ' + String(e))
+        xStep.value = 'scan'
       }
       scanProgress.value = 0
     }
@@ -473,10 +513,12 @@ async function cancelScan() {
   }
   scanProgress.value = 0
   scanning.value = false
+  xStep.value = 'options'
 }
 
 async function installUpdate() {
   if (!canInstall.value || !plan.value) return
+  xStep.value = 'install'
   installing.value = true
   installProgress.value = 0
   installSpeedBytes.value = 0
@@ -623,7 +665,10 @@ watch(
 
             <div v-else class="flex-1 overflow-y-auto px-4 py-4 space-y-3">
               <div
-                v-if="(!detectedXUpdater || preview || plan) && !(detectedXUpdater && noUpdateAfterScan)"
+                v-if="
+                  (!detectedXUpdater || preview || plan) &&
+                  !(detectedXUpdater && (xStep === 'credentials' || (xStep === 'done' && noUpdateAfterScan)))
+                "
                 class="rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-white/70 dark:bg-slate-800/40"
               >
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -639,34 +684,47 @@ watch(
               </div>
 
               <template v-if="detectedXUpdater">
-                <div v-if="noUpdateAfterScan" class="rounded-xl border border-emerald-200 dark:border-emerald-700 p-6 bg-emerald-50/80 dark:bg-emerald-900/20 text-center">
-                  <p class="text-base font-semibold text-emerald-700 dark:text-emerald-300">无需更新</p>
+                <div
+                  v-if="xStep !== 'credentials'"
+                  class="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 bg-white/70 dark:bg-slate-800/40 flex items-center justify-between gap-3"
+                >
+                  <p class="text-xs text-slate-600 dark:text-slate-300">{{ xStepLabel }}</p>
+                  <button
+                    class="px-3 py-1.5 rounded-lg text-xs text-slate-700 dark:text-slate-200 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-50"
+                    :disabled="!canGoBack"
+                    @click="goToPreviousStep"
+                  >
+                    上一步
+                  </button>
                 </div>
 
-                <template v-else>
-                  <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-white/70 dark:bg-slate-800/40">
-                    <p class="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-3">账户凭据</p>
-                    <form class="space-y-2.5" @submit.prevent="checkUpdates">
-                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        <input v-model="credentialsLogin" type="text" autocomplete="username" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 px-3 py-2 text-xs" placeholder="账号" :disabled="isBusy" />
-                        <input v-model="credentialsKey" type="password" autocomplete="current-password" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 px-3 py-2 text-xs" placeholder="激活码" :disabled="isBusy" />
-                      </div>
-                      <div class="flex justify-end gap-2">
-                        <button v-if="checkingPreview" type="button" class="px-4 py-2 rounded-lg text-xs text-white bg-rose-600 hover:bg-rose-700" @click="cancelCheck">取消</button>
-                        <button type="submit" class="px-4 py-2 rounded-lg text-xs text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-50" :disabled="!canCheckUpdates">
-                          {{ checkingPreview ? '检查中...' : '检查更新' }}
-                        </button>
-                      </div>
-                    </form>
-                    <p v-if="previewError" class="mt-2 text-xs text-rose-600 dark:text-rose-300">{{ previewError }}</p>
-                  </div>
+                <div
+                  v-if="xStep === 'credentials'"
+                  class="rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-white/70 dark:bg-slate-800/40"
+                >
+                  <p class="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-3">账户凭据</p>
+                  <form class="space-y-2.5" @submit.prevent="checkUpdates">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <input v-model="credentialsLogin" type="text" autocomplete="username" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 px-3 py-2 text-xs" placeholder="账号" :disabled="isBusy" />
+                      <input v-model="credentialsKey" type="password" autocomplete="current-password" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 px-3 py-2 text-xs" placeholder="激活码" :disabled="isBusy" />
+                    </div>
+                    <div class="flex justify-end gap-2">
+                      <button v-if="checkingPreview" type="button" class="px-4 py-2 rounded-lg text-xs text-white bg-rose-600 hover:bg-rose-700" @click="cancelCheck">取消</button>
+                      <button type="submit" class="px-4 py-2 rounded-lg text-xs text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-50" :disabled="!canCheckUpdates">
+                        {{ checkingPreview ? '检查中...' : '检查更新' }}
+                      </button>
+                    </div>
+                  </form>
+                  <p v-if="previewError" class="mt-2 text-xs text-rose-600 dark:text-rose-300">{{ previewError }}</p>
+                </div>
 
+                <template v-else-if="xStep === 'options'">
                   <div v-if="preview" class="rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-white/70 dark:bg-slate-800/40">
                     <p class="text-xs font-semibold text-slate-900 dark:text-slate-100">版本变更</p>
                     <pre class="mt-2 max-h-44 overflow-auto rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 p-2 text-[11px] whitespace-pre-wrap leading-5 text-slate-700 dark:text-slate-200">{{ preview.changelog || '暂无更新说明' }}</pre>
                   </div>
 
-                  <div v-if="preview" class="rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-white/70 dark:bg-slate-800/40">
+                  <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-white/70 dark:bg-slate-800/40">
                     <p class="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-2.5">更新选项</p>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                       <select v-model="selectedChannel" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 px-2.5 py-2 text-xs" :disabled="isBusy">
@@ -689,8 +747,10 @@ watch(
                       </button>
                     </div>
                   </div>
+                </template>
 
-                  <div v-if="scanning || scanProgress > 0" class="rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-white/70 dark:bg-slate-800/40">
+                <template v-else-if="xStep === 'scan'">
+                  <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-white/70 dark:bg-slate-800/40">
                     <div class="flex items-center justify-between gap-2">
                       <p class="text-xs font-semibold text-slate-900 dark:text-slate-100">扫描本地文件</p>
                       <button v-if="scanning" class="px-3 py-1.5 rounded-lg text-xs text-white bg-rose-600 hover:bg-rose-700" @click="cancelScan">取消</button>
@@ -701,7 +761,9 @@ watch(
                     <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ Math.round(scanProgress) }}%</p>
                     <p v-if="planError" class="mt-1 text-xs text-rose-600 dark:text-rose-300">{{ planError }}</p>
                   </div>
+                </template>
 
+                <template v-else-if="xStep === 'install'">
                   <div v-if="plan && hasPendingFileChanges" class="rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-white/70 dark:bg-slate-800/40">
                     <p class="text-xs font-semibold text-slate-900 dark:text-slate-100">安装准备</p>
                     <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -730,6 +792,17 @@ watch(
                         {{ installing ? '安装中...' : '安装' }}
                       </button>
                     </div>
+                  </div>
+                  <div v-else class="rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-white/70 dark:bg-slate-800/40">
+                    <p class="text-xs text-slate-600 dark:text-slate-300">未检测到可安装内容，请返回上一步重新扫描。</p>
+                  </div>
+                </template>
+
+                <template v-else-if="xStep === 'done'">
+                  <div
+                    class="rounded-xl border border-emerald-200 dark:border-emerald-700 p-6 bg-emerald-50/80 dark:bg-emerald-900/20 text-center"
+                  >
+                    <p class="text-base font-semibold text-emerald-700 dark:text-emerald-300">无需更新</p>
                   </div>
                 </template>
               </template>
