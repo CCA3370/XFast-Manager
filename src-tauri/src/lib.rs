@@ -54,6 +54,10 @@ mod skunk_updater;
 #[path = "management/x_updater_profile.rs"]
 mod x_updater_profile;
 
+// Screenshot
+#[path = "screenshot/mod.rs"]
+mod screenshot;
+
 // Scenery
 #[path = "scenery/geo_regions.rs"]
 mod geo_regions;
@@ -82,6 +86,9 @@ use models::{
     AircraftInfo, AnalysisResult, InstallResult, InstallTask, LiveryInfo, LuaScriptInfo,
     ManagementData, NavdataBackupInfo, NavdataManagerInfo, PluginInfo, SceneryIndexScanResult,
     SceneryIndexStats, SceneryIndexStatus, SceneryManagerData, SceneryPackageInfo,
+};
+use screenshot::{
+    SaveEditedImageRequest, ScreenshotMediaItem, ScreenshotOperationResult,
 };
 use scenery_index::SceneryIndexManager;
 use scenery_packs_manager::SceneryPacksManager;
@@ -2425,6 +2432,98 @@ async fn delete_lua_script(xplane_path: String, file_name: String) -> Result<(),
     .to_tauri_error()
 }
 
+#[tauri::command]
+async fn list_screenshot_media(xplane_path: String) -> Result<Vec<ScreenshotMediaItem>, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::list_screenshot_media(xplane_path)
+            .map_err(|e| format!("Failed to list screenshot media: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn delete_screenshot_media(
+    xplane_path: String,
+    file_name: String,
+    prefer_trash: bool,
+) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::delete_screenshot_media(xplane_path, &file_name, prefer_trash)
+            .map_err(|e| format!("Failed to delete screenshot media: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn save_screenshot_media_as(
+    xplane_path: String,
+    file_name: String,
+    target_path: String,
+) -> Result<ScreenshotOperationResult, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::save_screenshot_media_as(xplane_path, &file_name, std::path::Path::new(&target_path))
+            .map_err(|e| format!("Failed to save screenshot media as: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn read_screenshot_media_bytes(
+    xplane_path: String,
+    file_name: String,
+) -> Result<Vec<u8>, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::read_screenshot_media_bytes(xplane_path, &file_name)
+            .map_err(|e| format!("Failed to read screenshot media bytes: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn save_edited_screenshot_image(
+    xplane_path: String,
+    file_name: String,
+    bytes: Vec<u8>,
+    target_path: Option<String>,
+) -> Result<ScreenshotOperationResult, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::save_edited_screenshot_image(
+            xplane_path,
+            &file_name,
+            &bytes,
+            SaveEditedImageRequest { target_path },
+        )
+        .map_err(|e| format!("Failed to save edited screenshot image: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn build_reddit_share_url(
+    xplane_path: String,
+    file_name: String,
+    title: Option<String>,
+    mode: Option<String>,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::build_reddit_share_url(xplane_path, &file_name, title, mode)
+            .map_err(|e| format!("Failed to build Reddit share URL: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2537,7 +2636,13 @@ pub fn run() {
             set_cfg_disabled,
             get_lua_scripts,
             toggle_lua_script,
-            delete_lua_script
+            delete_lua_script,
+            list_screenshot_media,
+            delete_screenshot_media,
+            save_screenshot_media_as,
+            read_screenshot_media_bytes,
+            save_edited_screenshot_image,
+            build_reddit_share_url
         ])
         .setup(|app| {
             // Initialize TaskControl state

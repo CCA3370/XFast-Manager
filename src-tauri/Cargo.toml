@@ -46,6 +46,8 @@ flate2 = "1"
 fs2 = "0.4"
 sea-orm = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio-native-tls"] }
 sea-orm-migration = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio-native-tls"] }
+trash = "5"
+image = { version = "0.25", default-features = true, features = ["jpeg", "png", "webp", "gif", "bmp", "tiff", "ico", "qoi", "pnm", "rayon"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

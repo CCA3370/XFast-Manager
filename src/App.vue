@@ -433,8 +433,9 @@ const routeOrder: Record<string, number> = {
   '/management': 1,
   '/management/liveries': 1,
   '/log-analysis': 2,
-  '/feedback': 3,
-  '/settings': 4,
+  '/screenshots': 3,
+  '/feedback': 4,
+  '/settings': 5,
   '/onboarding': -1,
 }
 

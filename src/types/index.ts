@@ -468,3 +468,41 @@ export interface ManagementData<T> {
 export type ManagementTab = 'aircraft' | 'plugin' | 'navdata' | 'scenery'
 
 export type ManagementItemType = 'aircraft' | 'plugin' | 'navdata'
+
+export type ScreenshotMediaType = 'image' | 'video'
+
+export interface ScreenshotMediaItem {
+  id: string
+  name: string
+  fileName: string
+  path: string
+  mediaType: ScreenshotMediaType
+  ext: string
+  size: number
+  modifiedAt: number
+  width?: number | null
+  height?: number | null
+  duration?: number | null
+  editable: boolean
+  previewable: boolean
+}
+
+export interface ScreenshotCrop {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface ScreenshotEditParams {
+  crop: ScreenshotCrop | null
+  rotate: 0 | 90 | 180 | 270
+  exposure: number
+  contrast: number
+  saturation: number
+  temperature: number
+  highlights: number
+  shadows: number
+  sharpness: number
+  denoise: number
+}

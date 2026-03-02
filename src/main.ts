@@ -198,6 +198,7 @@ const router = createRouter({
     { path: '/management/liveries', component: () => import('./views/Liveries.vue') },
     { path: '/management/scripts', component: () => import('./views/Scripts.vue') },
     { path: '/log-analysis', component: () => import('./views/LogAnalysis.vue') },
+    { path: '/screenshots', component: () => import('./views/ScreenshotManager.vue') },
     { path: '/feedback', component: () => import('./views/FeedbackCenter.vue') },
     { path: '/scenery', redirect: '/management?tab=scenery' },
     { path: '/settings', component: preloadSettings },
