@@ -133,6 +133,13 @@ export const STORAGE_KEYS = {
   ADDON_UPDATE_PARALLEL_DOWNLOADS: 'addonUpdateParallelDownloads',
   ADDON_UPDATE_CHANNEL: 'addonUpdateChannel',
   ADDON_UPDATE_FRESH_INSTALL: 'addonUpdateFreshInstall',
+  MAP_STYLE_URL: 'mapStyleUrl',
+  MAP_NAV_RADIUS_NM: 'mapNavRadiusNm',
+  MAP_VATSIM_REFRESH_INTERVAL: 'mapVatsimRefreshInterval',
+  MAP_LAYER_VISIBILITY: 'mapLayerVisibility',
+  MAP_AIRPORT_FILTERS: 'mapAirportFilters',
+  MAP_SIMBRIEF_PILOT_ID: 'mapSimbriefPilotId',
+  MAP_FOLLOW_PLANE: 'mapFollowPlane',
 } as const
 
 export type TrackedIssueSource = 'feedback' | 'auto-report' | 'library-link'

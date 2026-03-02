@@ -103,6 +103,36 @@
             </div>
 
             <router-link
+              to="/map"
+              class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
+              :class="
+                $route.path === '/map'
+                  ? 'text-blue-600 dark:text-white'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+              "
+            >
+              <div
+                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                :class="
+                  $route.path === '/map'
+                    ? 'scale-x-100 opacity-100'
+                    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
+                "
+              ></div>
+              <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 01.553-.894L9 2m0 18l6-3m-6 3V2m6 15l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                  />
+                </svg>
+                <AnimatedText>{{ $t('map.navTitle') }}</AnimatedText>
+              </span>
+            </router-link>
+
+            <router-link
               ref="logAnalysisLink"
               to="/log-analysis"
               class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
@@ -432,10 +462,11 @@ const routeOrder: Record<string, number> = {
   '/': 0,
   '/management': 1,
   '/management/liveries': 1,
-  '/log-analysis': 2,
-  '/screenshots': 3,
-  '/feedback': 4,
-  '/settings': 5,
+  '/map': 2,
+  '/log-analysis': 3,
+  '/screenshots': 4,
+  '/feedback': 5,
+  '/settings': 6,
   '/onboarding': -1,
 }
 

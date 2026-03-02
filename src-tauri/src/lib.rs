@@ -58,6 +58,10 @@ mod x_updater_profile;
 #[path = "screenshot/mod.rs"]
 mod screenshot;
 
+// Map
+#[path = "map/mod.rs"]
+mod map;
+
 // Scenery
 #[path = "scenery/geo_regions.rs"]
 mod geo_regions;
@@ -2608,6 +2612,24 @@ pub fn run() {
             get_scenery_index_status,
             quick_scan_scenery_index,
             sync_scenery_packs_with_folder,
+            // Map commands
+            map::map_prepare_data_index,
+            map::map_get_data_status,
+            map::map_search_airports,
+            map::map_get_airports_in_bounds,
+            map::map_get_airport_detail,
+            map::map_get_nav_snapshot,
+            map::map_fetch_metar,
+            map::map_fetch_taf,
+            map::map_fetch_vatsim_data,
+            map::map_fetch_vatsim_events,
+            map::map_fetch_vatsim_metar,
+            map::map_fetch_rainviewer_manifest,
+            map::map_fetch_simbrief_latest,
+            map::map_fetch_gateway_airport,
+            map::map_start_plane_stream,
+            map::map_stop_plane_stream,
+            map::map_get_plane_stream_status,
             // Scenery manager commands
             get_scenery_manager_data,
             update_scenery_entry,

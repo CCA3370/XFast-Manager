@@ -188,6 +188,7 @@ function escapeHtml(text: string): string {
 // Preload functions for lazy-loaded views
 const preloadManagement = () => import('./views/Management.vue')
 const preloadSettings = () => import('./views/Settings.vue')
+const preloadMap = () => import('./views/MapView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -197,6 +198,7 @@ const router = createRouter({
     { path: '/management', component: preloadManagement },
     { path: '/management/liveries', component: () => import('./views/Liveries.vue') },
     { path: '/management/scripts', component: () => import('./views/Scripts.vue') },
+    { path: '/map', component: preloadMap },
     { path: '/log-analysis', component: () => import('./views/LogAnalysis.vue') },
     { path: '/screenshots', component: () => import('./views/ScreenshotManager.vue') },
     { path: '/feedback', component: () => import('./views/FeedbackCenter.vue') },
@@ -212,6 +214,7 @@ function preloadViews() {
   schedulePreload(() => {
     preloadManagement()
     preloadSettings()
+    preloadMap()
   })
 }
 
