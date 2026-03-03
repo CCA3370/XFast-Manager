@@ -2,6 +2,7 @@ import { invokeCommand } from '@/services/api'
 import type {
   MapAirport,
   MapAirportDetail,
+  MapAirportProcedures,
   MapBounds,
   MapDataStatus,
   MapLayerRequest,
@@ -52,6 +53,16 @@ export async function mapGetAirportDetail(
   })
 }
 
+export async function mapGetAirportProcedures(
+  xplanePath: string,
+  icao: string,
+): Promise<MapAirportProcedures> {
+  return invokeCommand<MapAirportProcedures>('map_get_airport_procedures', {
+    xplanePath,
+    icao,
+  })
+}
+
 export async function mapGetNavSnapshot(
   xplanePath: string,
   request: MapLayerRequest,
@@ -92,6 +103,10 @@ export async function mapFetchSimbriefLatest(pilotId: string): Promise<Record<st
 
 export async function mapFetchGatewayAirport(icao: string): Promise<Record<string, unknown>> {
   return invokeCommand<Record<string, unknown>>('map_fetch_gateway_airport', { icao })
+}
+
+export async function mapFetchGatewayScenery(sceneryId: number): Promise<Record<string, unknown>> {
+  return invokeCommand<Record<string, unknown>>('map_fetch_gateway_scenery', { sceneryId })
 }
 
 export async function mapStartPlaneStream(port = 8086): Promise<boolean> {

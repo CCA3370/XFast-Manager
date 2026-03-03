@@ -96,12 +96,25 @@ pub struct MapAirportDetailRunway {
     pub width_m: Option<f64>,
     pub surface_code: Option<i32>,
     pub surface_type: Option<String>,
+    pub shoulder_surface_code: Option<i32>,
+    pub shoulder_surface_type: Option<String>,
+    pub shoulder_width_m: Option<f64>,
+    pub centerline_lights: bool,
+    pub edge_lights: bool,
     pub end1_name: String,
     pub end1_lat: f64,
     pub end1_lon: f64,
+    pub end1_marking: Option<i32>,
+    pub end1_lighting: Option<i32>,
+    pub end1_tdz_lighting: bool,
+    pub end1_reil: Option<i32>,
     pub end2_name: String,
     pub end2_lat: f64,
     pub end2_lon: f64,
+    pub end2_marking: Option<i32>,
+    pub end2_lighting: Option<i32>,
+    pub end2_tdz_lighting: bool,
+    pub end2_reil: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,6 +189,35 @@ pub struct MapAirportDetailTaxiway {
     pub from_lon: f64,
     pub to_lat: f64,
     pub to_lon: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MapProcedureWaypoint {
+    pub fix_id: String,
+    pub fix_region: String,
+    pub fix_type: String,
+    pub path_terminator: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MapProcedure {
+    pub procedure_type: String,
+    pub name: String,
+    pub runway: Option<String>,
+    pub transition: Option<String>,
+    pub waypoint_count: usize,
+    pub waypoints: Vec<MapProcedureWaypoint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct MapAirportProcedures {
+    pub icao: String,
+    pub sids: Vec<MapProcedure>,
+    pub stars: Vec<MapProcedure>,
+    pub approaches: Vec<MapProcedure>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -321,6 +363,7 @@ struct MapIndexState {
     airports: Vec<MapAirport>,
     airport_sources: HashMap<String, MapAirportSource>,
     airport_details: HashMap<String, MapAirportDetail>,
+    airport_procedures: HashMap<String, MapAirportProcedures>,
     navaids: Vec<MapNavaid>,
     waypoints: Vec<MapWaypoint>,
     airways: Vec<MapAirwaySegment>,
@@ -871,18 +914,69 @@ fn parse_airport_detail_runway(rest: &str, airport: &mut AirportDetailBuilder) {
         .parse::<f64>()
         .ok()
         .filter(|v| v.is_finite() && *v > 0.0);
+    let centerline_lights = parts
+        .get(4)
+        .and_then(|v| v.parse::<i32>().ok())
+        .map(|v| v > 0)
+        .unwrap_or(false);
+    let edge_lights = parts
+        .get(5)
+        .and_then(|v| v.parse::<i32>().ok())
+        .map(|v| v > 0)
+        .unwrap_or(false);
+
+    let shoulder_token = parts.get(2).and_then(|v| v.parse::<i32>().ok());
+    let (mut shoulder_surface_code, mut shoulder_width_m) = match shoulder_token {
+        Some(v) if v >= 100 => (Some(v % 100), Some((v / 100) as f64)),
+        Some(v) => (Some(v), None),
+        None => (None, None),
+    };
+
+    shoulder_surface_code = shoulder_surface_code.filter(|v| *v > 0);
+    shoulder_width_m = shoulder_width_m.filter(|v| v.is_finite() && *v > 0.0);
+
+    let end1_marking = parts.get(12).and_then(|v| v.parse::<i32>().ok());
+    let end1_lighting = parts.get(13).and_then(|v| v.parse::<i32>().ok());
+    let end1_tdz_lighting = parts
+        .get(14)
+        .and_then(|v| v.parse::<i32>().ok())
+        .map(|v| v > 0)
+        .unwrap_or(false);
+    let end1_reil = parts.get(15).and_then(|v| v.parse::<i32>().ok());
+
+    let end2_marking = parts.get(21).and_then(|v| v.parse::<i32>().ok());
+    let end2_lighting = parts.get(22).and_then(|v| v.parse::<i32>().ok());
+    let end2_tdz_lighting = parts
+        .get(23)
+        .and_then(|v| v.parse::<i32>().ok())
+        .map(|v| v > 0)
+        .unwrap_or(false);
+    let end2_reil = parts.get(24).and_then(|v| v.parse::<i32>().ok());
 
     airport.runways.push(MapAirportDetailRunway {
         name,
         width_m,
         surface_code,
         surface_type: surface_code.and_then(surface_code_to_name),
+        shoulder_surface_code,
+        shoulder_surface_type: shoulder_surface_code.and_then(surface_code_to_name),
+        shoulder_width_m,
+        centerline_lights,
+        edge_lights,
         end1_name,
         end1_lat,
         end1_lon,
+        end1_marking,
+        end1_lighting,
+        end1_tdz_lighting,
+        end1_reil,
         end2_name,
         end2_lat,
         end2_lon,
+        end2_marking,
+        end2_lighting,
+        end2_tdz_lighting,
+        end2_reil,
     });
 }
 
@@ -922,12 +1016,25 @@ fn parse_airport_detail_water_runway(rest: &str, airport: &mut AirportDetailBuil
             .filter(|v| v.is_finite() && *v > 0.0),
         surface_code: Some(13),
         surface_type: surface_code_to_name(13),
+        shoulder_surface_code: None,
+        shoulder_surface_type: None,
+        shoulder_width_m: None,
+        centerline_lights: false,
+        edge_lights: false,
         end1_name,
         end1_lat,
         end1_lon,
+        end1_marking: None,
+        end1_lighting: None,
+        end1_tdz_lighting: false,
+        end1_reil: None,
         end2_name,
         end2_lat,
         end2_lon,
+        end2_marking: None,
+        end2_lighting: None,
+        end2_tdz_lighting: false,
+        end2_reil: None,
     });
 }
 
@@ -1387,6 +1494,289 @@ fn load_airport_detail_sync(xplane_path: &str, icao: &str) -> Result<Option<MapA
     }
 
     Ok(detail)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum ProcedureCategory {
+    Sid,
+    Star,
+    Approach,
+}
+
+impl ProcedureCategory {
+    fn as_str(&self) -> &'static str {
+        match self {
+            ProcedureCategory::Sid => "SID",
+            ProcedureCategory::Star => "STAR",
+            ProcedureCategory::Approach => "APPROACH",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ProcedureKey {
+    category: ProcedureCategory,
+    name: String,
+    runway: Option<String>,
+    transition: Option<String>,
+}
+
+fn normalize_upper(input: &str) -> String {
+    input.trim().to_uppercase()
+}
+
+fn normalize_optional(input: &str) -> Option<String> {
+    let value = normalize_upper(input);
+    if value.is_empty() || value == "ALL" {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn normalize_runway(input: &str) -> Option<String> {
+    normalize_optional(input).map(|value| {
+        if value.starts_with("RW") && value.len() > 2 {
+            value[2..].to_string()
+        } else {
+            value
+        }
+    })
+}
+
+fn parse_cifp_line(line: &str) -> Option<(String, Vec<String>)> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let colon = trimmed.find(':')?;
+    let row_type = normalize_upper(&trimmed[..colon]);
+    if row_type.is_empty() {
+        return None;
+    }
+
+    let fields = trimmed[colon + 1..]
+        .split(',')
+        .map(|v| v.trim().to_string())
+        .collect::<Vec<_>>();
+
+    if fields.len() < 5 {
+        return None;
+    }
+
+    Some((row_type, fields))
+}
+
+fn classify_procedure(
+    row_type: &str,
+    route_type: &str,
+    field3: &str,
+) -> Option<(ProcedureCategory, Option<String>, Option<String>)> {
+    match row_type {
+        "SID" => {
+            let route = route_type.trim();
+            let runway = if route == "1" {
+                normalize_runway(field3)
+            } else {
+                None
+            };
+            let transition = if matches!(route, "4" | "5" | "6") {
+                normalize_optional(field3)
+            } else {
+                None
+            };
+            Some((ProcedureCategory::Sid, runway, transition))
+        }
+        "STAR" => {
+            let route = route_type.trim();
+            let runway = if route == "6" || route == "1" {
+                normalize_runway(field3)
+            } else {
+                None
+            };
+            let transition = if route == "4" {
+                normalize_optional(field3)
+            } else {
+                None
+            };
+            Some((ProcedureCategory::Star, runway, transition))
+        }
+        "APPCH" | "FINAL" => {
+            let transition = if route_type.trim() == "A" {
+                normalize_optional(field3)
+            } else {
+                None
+            };
+            Some((ProcedureCategory::Approach, None, transition))
+        }
+        _ if row_type.starts_with("RWY") => {
+            let runway = normalize_runway(row_type.trim_start_matches("RWY"));
+            Some((ProcedureCategory::Approach, runway, None))
+        }
+        _ => None,
+    }
+}
+
+fn resolve_cifp_path(xplane_path: &Path, icao: &str) -> Option<PathBuf> {
+    let icao_upper = normalize_upper(icao);
+    if icao_upper.is_empty() {
+        return None;
+    }
+
+    let custom = xplane_path
+        .join("Custom Data")
+        .join("CIFP")
+        .join(format!("{}.dat", icao_upper));
+    if path_exists(&custom) {
+        return Some(custom);
+    }
+
+    let default_data = xplane_path
+        .join("Resources")
+        .join("default data")
+        .join("CIFP")
+        .join(format!("{}.dat", icao_upper));
+    if path_exists(&default_data) {
+        return Some(default_data);
+    }
+
+    None
+}
+
+fn parse_cifp_file(path: &Path, icao: &str) -> Result<MapAirportProcedures, String> {
+    let file = File::open(path).map_err(|e| format!("Failed to open {}: {}", path.display(), e))?;
+    let reader = BufReader::new(file);
+    let target_icao = normalize_upper(icao);
+
+    let mut grouped: HashMap<ProcedureKey, Vec<(i32, MapProcedureWaypoint)>> = HashMap::new();
+
+    for line in reader.lines() {
+        let line = match line {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let Some((row_type, fields)) = parse_cifp_line(&line) else {
+            continue;
+        };
+
+        let route_type = fields.get(1).map(|v| v.as_str()).unwrap_or("");
+        let name = fields.get(2).map(|v| normalize_upper(v)).unwrap_or_default();
+        if name.is_empty() {
+            continue;
+        }
+
+        let field3 = fields.get(3).map(|v| v.as_str()).unwrap_or("");
+        let Some((category, runway, transition)) = classify_procedure(&row_type, route_type, field3)
+        else {
+            continue;
+        };
+
+        let fix_id = fields.get(4).map(|v| normalize_upper(v)).unwrap_or_default();
+        if fix_id.is_empty() {
+            continue;
+        }
+
+        let seq = fields
+            .first()
+            .and_then(|v| v.trim().parse::<i32>().ok())
+            .unwrap_or(0);
+
+        let waypoint = MapProcedureWaypoint {
+            fix_id,
+            fix_region: fields.get(5).map(|v| normalize_upper(v)).unwrap_or_default(),
+            fix_type: fields
+                .get(6)
+                .map(|v| normalize_upper(v))
+                .and_then(|v| v.chars().next().map(|c| c.to_string()))
+                .unwrap_or_else(|| "E".to_string()),
+            path_terminator: fields
+                .get(11)
+                .map(|v| normalize_upper(v))
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| "TF".to_string()),
+        };
+
+        let key = ProcedureKey {
+            category,
+            name,
+            runway,
+            transition,
+        };
+        grouped.entry(key).or_default().push((seq, waypoint));
+    }
+
+    let mut procedures = MapAirportProcedures {
+        icao: target_icao,
+        sids: Vec::new(),
+        stars: Vec::new(),
+        approaches: Vec::new(),
+    };
+
+    for (key, mut points) in grouped {
+        points.sort_by(|a, b| a.0.cmp(&b.0));
+        let waypoints = points.into_iter().map(|(_, wp)| wp).collect::<Vec<_>>();
+        if waypoints.is_empty() {
+            continue;
+        }
+
+        let procedure = MapProcedure {
+            procedure_type: key.category.as_str().to_string(),
+            name: key.name,
+            runway: key.runway,
+            transition: key.transition,
+            waypoint_count: waypoints.len(),
+            waypoints,
+        };
+
+        match key.category {
+            ProcedureCategory::Sid => procedures.sids.push(procedure),
+            ProcedureCategory::Star => procedures.stars.push(procedure),
+            ProcedureCategory::Approach => procedures.approaches.push(procedure),
+        }
+    }
+
+    let sorter = |a: &MapProcedure, b: &MapProcedure| {
+        a.name
+            .cmp(&b.name)
+            .then_with(|| a.runway.as_deref().unwrap_or("").cmp(b.runway.as_deref().unwrap_or("")))
+            .then_with(|| {
+                a.transition
+                    .as_deref()
+                    .unwrap_or("")
+                    .cmp(b.transition.as_deref().unwrap_or(""))
+            })
+    };
+
+    procedures.sids.sort_by(sorter);
+    procedures.stars.sort_by(sorter);
+    procedures.approaches.sort_by(sorter);
+
+    Ok(procedures)
+}
+
+fn load_airport_procedures_sync(xplane_path: &str, icao: &str) -> Result<MapAirportProcedures, String> {
+    let root = PathBuf::from(xplane_path);
+    if !path_exists(&root) {
+        return Err(format!("X-Plane path does not exist: {}", xplane_path));
+    }
+
+    let target_icao = normalize_upper(icao);
+    if target_icao.is_empty() {
+        return Err("ICAO is required".to_string());
+    }
+
+    let Some(cifp_path) = resolve_cifp_path(&root, &target_icao) else {
+        return Ok(MapAirportProcedures {
+            icao: target_icao,
+            sids: Vec::new(),
+            stars: Vec::new(),
+            approaches: Vec::new(),
+        });
+    };
+
+    parse_cifp_file(&cifp_path, &target_icao)
 }
 
 fn parse_nav_file(
@@ -1980,6 +2370,7 @@ fn ensure_index_loaded_sync(xplane_path: &str) -> Result<(), String> {
     state.airports = parsed.airports;
     state.airport_sources = parsed.airport_sources;
     state.airport_details = HashMap::new();
+    state.airport_procedures = HashMap::new();
     state.navaids = parsed.navaids;
     state.waypoints = parsed.waypoints;
     state.airways = parsed.airways;
@@ -2417,6 +2808,43 @@ pub async fn map_get_airport_detail(
 }
 
 #[tauri::command]
+pub async fn map_get_airport_procedures(
+    xplane_path: String,
+    icao: String,
+) -> Result<MapAirportProcedures, String> {
+    ensure_index_loaded(&xplane_path).await?;
+
+    let icao = normalize_upper(&icao);
+    if icao.is_empty() {
+        return Err("ICAO is required".to_string());
+    }
+
+    {
+        let state = MAP_INDEX_STATE
+            .read()
+            .map_err(|_| "Map index state read lock poisoned".to_string())?;
+        if let Some(cached) = state.airport_procedures.get(&icao) {
+            return Ok(cached.clone());
+        }
+    }
+
+    let xplane_path_clone = xplane_path.clone();
+    let icao_clone = icao.clone();
+    let procedures = tokio::task::spawn_blocking(move || {
+        load_airport_procedures_sync(&xplane_path_clone, &icao_clone)
+    })
+    .await
+    .map_err(|e| format!("Airport procedures task join failed: {}", e))??;
+
+    let mut state = MAP_INDEX_STATE
+        .write()
+        .map_err(|_| "Map index state write lock poisoned".to_string())?;
+    state.airport_procedures.insert(icao, procedures.clone());
+
+    Ok(procedures)
+}
+
+#[tauri::command]
 pub async fn map_get_nav_snapshot(
     xplane_path: String,
     request: MapLayerRequest,
@@ -2585,6 +3013,15 @@ pub async fn map_fetch_gateway_airport(icao: String) -> Result<Value, String> {
         return Err("ICAO is required".to_string());
     }
     let url = format!("https://gateway.x-plane.com/apiv1/airport/{}", icao);
+    fetch_json(&url).await
+}
+
+#[tauri::command]
+pub async fn map_fetch_gateway_scenery(scenery_id: i64) -> Result<Value, String> {
+    if scenery_id <= 0 {
+        return Err("Scenery ID must be a positive integer".to_string());
+    }
+    let url = format!("https://gateway.x-plane.com/apiv1/scenery/{}", scenery_id);
     fetch_json(&url).await
 }
 

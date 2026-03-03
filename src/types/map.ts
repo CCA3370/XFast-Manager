@@ -24,12 +24,25 @@ export interface MapAirportDetailRunway {
   widthM?: number
   surfaceCode?: number
   surfaceType?: string
+  shoulderSurfaceCode?: number
+  shoulderSurfaceType?: string
+  shoulderWidthM?: number
+  centerlineLights?: boolean
+  edgeLights?: boolean
   end1Name: string
   end1Lat: number
   end1Lon: number
+  end1Marking?: number
+  end1Lighting?: number
+  end1TdzLighting?: boolean
+  end1Reil?: number
   end2Name: string
   end2Lat: number
   end2Lon: number
+  end2Marking?: number
+  end2Lighting?: number
+  end2TdzLighting?: boolean
+  end2Reil?: number
 }
 
 export interface MapAirportDetailHelipad {
@@ -105,6 +118,29 @@ export interface MapAirportDetail {
   windsocks: MapAirportDetailWindsock[]
   signs: MapAirportDetailSign[]
   taxiways: MapAirportDetailTaxiway[]
+}
+
+export interface MapProcedureWaypoint {
+  fixId: string
+  fixRegion: string
+  fixType: string
+  pathTerminator: string
+}
+
+export interface MapProcedure {
+  procedureType: string
+  name: string
+  runway?: string | null
+  transition?: string | null
+  waypointCount: number
+  waypoints: MapProcedureWaypoint[]
+}
+
+export interface MapAirportProcedures {
+  icao: string
+  sids: MapProcedure[]
+  stars: MapProcedure[]
+  approaches: MapProcedure[]
 }
 
 export interface MapNavaid {

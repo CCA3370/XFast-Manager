@@ -199,8 +199,126 @@
             <div>{{ metarText || t('map.noMetar') }}</div>
             <div class="mt-1 text-gray-400">{{ tafText || t('map.noTaf') }}</div>
           </div>
+          <div class="mt-2 border-t border-gray-700/70 pt-2 text-[11px] leading-5">
+            <div class="mb-1 flex items-center justify-between gap-2 text-gray-400">
+              <span>{{ t('map.gateway.title') }}</span>
+              <button
+                class="rounded border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-300 hover:bg-slate-700/70 disabled:opacity-50"
+                :disabled="gatewayLoading"
+                @click="refreshGatewayDataForSelected"
+              >
+                {{ t('map.gateway.refresh') }}
+              </button>
+            </div>
+            <div v-if="gatewayLoading" class="text-gray-500">
+              {{ t('map.gateway.loading') }}
+            </div>
+            <template v-else-if="gatewaySummary">
+              <div class="text-gray-200">
+                {{ t('map.gateway.recommended') }}:
+                <span class="ml-1 font-mono text-cyan-300">
+                  {{ gatewaySummary.recommendedSceneryId ?? '-' }}
+                </span>
+              </div>
+              <div v-if="gatewaySummary.sceneryCount !== null" class="text-gray-400">
+                {{ t('map.gateway.submissions', { count: gatewaySummary.sceneryCount }) }}
+              </div>
+              <div v-if="gatewaySummary.recommendedArtist" class="text-gray-400">
+                {{ t('map.gateway.artist') }}: {{ gatewaySummary.recommendedArtist }}
+              </div>
+              <div v-if="gatewaySummary.recommendedAcceptedAt" class="text-gray-500">
+                {{ t('map.gateway.acceptedAt') }}:
+                {{ formatGatewayDate(gatewaySummary.recommendedAcceptedAt) }}
+              </div>
+              <div v-if="gatewaySceneryLoading" class="mt-1 text-gray-500">
+                {{ t('map.gateway.sceneryLoading') }}
+              </div>
+              <template v-else-if="gatewayScenery">
+                <div v-if="gatewayScenery.status" class="text-gray-400">
+                  {{ t('map.gateway.status') }}: {{ gatewayScenery.status }}
+                </div>
+                <div v-if="gatewayScenery.features.length > 0" class="text-gray-400">
+                  {{ t('map.gateway.features') }}: {{ gatewayScenery.features.join(' · ') }}
+                </div>
+                <div v-if="gatewayScenery.comment" class="mt-1 line-clamp-2 text-gray-500">
+                  {{ t('map.gateway.comments') }}: {{ gatewayScenery.comment }}
+                </div>
+              </template>
+            </template>
+            <div v-else class="text-gray-500">{{ t('map.gateway.unavailable') }}</div>
+          </div>
         </template>
         <div v-else class="mt-1 text-sm text-gray-500">{{ t('map.noAirportSelected') }}</div>
+      </div>
+
+      <div
+        v-if="mapStore.selectedAirport"
+        class="rounded-xl border border-gray-700/70 bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-300"
+      >
+        <div class="mb-2 flex items-center justify-between text-gray-400">
+          <span>{{ t('map.procedures.title') }}</span>
+          <button
+            class="rounded border border-gray-600 px-2 py-0.5 text-[11px] hover:bg-slate-700/70 disabled:opacity-50"
+            :disabled="proceduresLoading"
+            @click="refreshProceduresForSelected"
+          >
+            {{ t('map.refresh') }}
+          </button>
+        </div>
+
+        <div v-if="proceduresLoading" class="text-[11px] text-gray-500">
+          {{ t('map.procedures.loading') }}
+        </div>
+        <template v-else>
+          <div class="mb-2 grid grid-cols-3 gap-1">
+            <button
+              v-for="tab in procedureTabs"
+              :key="tab.key"
+              class="rounded border px-2 py-1 text-[11px] transition-colors"
+              :class="activeProcedureTab === tab.key
+                ? 'border-blue-500/50 bg-blue-500/20 text-blue-200'
+                : 'border-gray-700 bg-slate-800 text-gray-300 hover:bg-slate-700/70'"
+              @click="setActiveProcedureTab(tab.key)"
+            >
+              {{ t(tab.label) }} ({{ procedureCounts[tab.key] }})
+            </button>
+          </div>
+
+          <div v-if="activeProcedureGroups.length === 0" class="text-[11px] text-gray-500">
+            {{ t('map.procedures.empty') }}
+          </div>
+          <div v-else class="max-h-44 space-y-1 overflow-y-auto pr-1">
+            <div
+              v-for="group in activeProcedureGroups"
+              :key="`${activeProcedureTab}-${group.name}`"
+              class="rounded border border-gray-700/70 bg-slate-800/70"
+            >
+              <button
+                class="flex w-full items-center justify-between px-2 py-1.5 text-left"
+                @click="toggleProcedureGroup(group.name)"
+              >
+                <span class="font-mono text-[11px] text-blue-200">{{ group.name }}</span>
+                <span class="text-[10px] text-gray-400">{{ group.variants.length }}</span>
+              </button>
+
+              <div
+                v-if="expandedProcedureGroup === group.name"
+                class="space-y-1 border-t border-gray-700/70 px-2 py-1.5"
+              >
+                <div
+                  v-for="(variant, idx) in group.variants"
+                  :key="`${group.name}-${idx}-${variant.runway || ''}-${variant.transition || ''}`"
+                  class="rounded border border-gray-700/70 bg-slate-900/60 px-2 py-1"
+                >
+                  <div class="flex items-center justify-between gap-2 text-[10px] text-gray-300">
+                    <span class="truncate">{{ formatProcedureVariant(variant) }}</span>
+                    <span class="shrink-0 text-gray-500">{{ variant.waypointCount }} {{ t('map.procedures.legs') }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
       </div>
 
       <div class="rounded-xl border border-gray-700/70 bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-300">
@@ -307,6 +425,9 @@ import { useMapStore } from '@/stores/map'
 import { useToastStore } from '@/stores/toast'
 import {
   mapGetAirportDetail,
+  mapGetAirportProcedures,
+  mapFetchGatewayAirport,
+  mapFetchGatewayScenery,
   mapFetchMetar,
   mapFetchRainviewerManifest,
   mapFetchSimbriefLatest,
@@ -325,11 +446,13 @@ import {
 import type {
   MapAirport,
   MapAirportDetail,
+  MapAirportProcedures,
   MapAirportFilters,
   MapLayerVisibility,
   MapNavSnapshot,
   MapPlaneState,
   MapPlaneStreamStatus,
+  MapProcedure,
   MapVatsimEvent,
   MapVatsimPilot,
   RainViewerManifest,
@@ -359,6 +482,10 @@ const searchQuery = ref('')
 const searchResults = ref<MapAirport[]>([])
 const rawAirports = ref<MapAirport[]>([])
 const airports = ref<MapAirport[]>([])
+const airportProcedures = ref<MapAirportProcedures | null>(null)
+const proceduresLoading = ref(false)
+const activeProcedureTab = ref<'sids' | 'stars' | 'approaches'>('sids')
+const expandedProcedureGroup = ref<string | null>(null)
 const navSnapshot = ref<MapNavSnapshot>({
   navaids: [],
   waypoints: [],
@@ -373,6 +500,10 @@ const simbriefRouteCoordinates = ref<Array<[number, number]>>([])
 
 const metarText = ref('')
 const tafText = ref('')
+const gatewayLoading = ref(false)
+const gatewaySummary = ref<GatewaySummary | null>(null)
+const gatewaySceneryLoading = ref(false)
+const gatewayScenery = ref<GatewaySceneryDetail | null>(null)
 const planeStreamStatus = ref<MapPlaneStreamStatus>({
   running: false,
   connected: false,
@@ -423,6 +554,40 @@ const busiestAirports = computed(() => {
     .slice(0, 5)
 })
 
+const procedureTabs: Array<{ key: ProcedureTabKey; label: string }> = [
+  { key: 'sids', label: 'map.procedures.tabs.sid' },
+  { key: 'stars', label: 'map.procedures.tabs.star' },
+  { key: 'approaches', label: 'map.procedures.tabs.approach' },
+]
+
+const procedureCounts = computed(() => ({
+  sids: airportProcedures.value?.sids.length || 0,
+  stars: airportProcedures.value?.stars.length || 0,
+  approaches: airportProcedures.value?.approaches.length || 0,
+}))
+
+const activeProcedureGroups = computed<ProcedureGroup[]>(() => {
+  const source = airportProcedures.value?.[activeProcedureTab.value] || []
+  const grouped = new Map<string, MapProcedure[]>()
+
+  for (const procedure of source) {
+    const list = grouped.get(procedure.name) || []
+    list.push(procedure)
+    grouped.set(procedure.name, list)
+  }
+
+  return Array.from(grouped.entries())
+    .map(([name, variants]) => ({
+      name,
+      variants: [...variants].sort((a, b) =>
+        (a.runway || '')
+          .localeCompare(b.runway || '')
+          || (a.transition || '').localeCompare(b.transition || ''),
+      ),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+})
+
 const layerItems: Array<{ key: keyof MapLayerVisibility; label: string }> = [
   { key: 'airports', label: 'map.layers.airports' },
   { key: 'navaids', label: 'map.layers.navaids' },
@@ -444,6 +609,9 @@ let vatsimRefreshTimer: ReturnType<typeof setInterval> | null = null
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let requestSeq = 0
 let airportDetailSeq = 0
+let proceduresSeq = 0
+let gatewaySeq = 0
+let gatewayScenerySeq = 0
 let searchRequestSeq = 0
 let refreshInFlight = false
 let refreshQueued = false
@@ -464,6 +632,31 @@ const EMPTY_NAV_SNAPSHOT: MapNavSnapshot = {
 type FeatureCollection = {
   type: 'FeatureCollection'
   features: Array<Record<string, unknown>>
+}
+
+type GatewaySummary = {
+  icao: string
+  airportName: string | null
+  sceneryCount: number | null
+  recommendedSceneryId: number | null
+  recommendedArtist: string | null
+  recommendedAcceptedAt: string | null
+}
+
+type ProcedureTabKey = 'sids' | 'stars' | 'approaches'
+
+type ProcedureGroup = {
+  name: string
+  variants: MapProcedure[]
+}
+
+type GatewaySceneryDetail = {
+  sceneryId: number
+  status: string | null
+  artist: string | null
+  approvedDate: string | null
+  comment: string | null
+  features: string[]
 }
 
 function normalizeAirportType(type: string | undefined): string {
@@ -508,37 +701,884 @@ function toAirportFeatureCollection(items: MapAirport[]): FeatureCollection {
   }
 }
 
+const EARTH_RADIUS_M = 6_371_000
+const RUNWAY_MARKING_VISUAL = 1
+const RUNWAY_MARKING_NON_PRECISION = 2
+const RUNWAY_MARKING_PRECISION = 3
+
+const SURFACE_COLOR_BY_CODE: Record<number, string> = {
+  1: '#2a2a2a',
+  2: '#a0a0a0',
+  3: '#3d6b35',
+  4: '#8b6914',
+  5: '#9e9e9e',
+  12: '#c4a35a',
+  13: '#1e5799',
+  14: '#e8e8e8',
+  15: '#cbd5e1',
+  20: '#252525',
+  21: '#2f2f2f',
+  22: '#3a3a3a',
+  23: '#5e5e5e',
+  24: '#707070',
+  25: '#7a7a7a',
+  26: '#3d6b35',
+  27: '#4a7d40',
+  28: '#5c8f4c',
+  29: '#7a5c3a',
+  30: '#8b6914',
+  31: '#a8a8a8',
+  32: '#8e8e8e',
+  33: '#787878',
+  34: '#c4a35a',
+  35: '#b39550',
+  36: '#d4d4d4',
+  37: '#c0c0c0',
+  38: '#b8d4e8',
+  50: '#2a2a2a',
+  51: '#6a6a6a',
+  52: '#2a2a2a',
+  53: '#333333',
+  54: '#5a5a5a',
+  55: '#4a4a4a',
+  56: '#656565',
+  57: '#2e2e2e',
+}
+
+type RunwayLike = MapAirportDetail['runways'][number]
+
+function toRadians(value: number): number {
+  return (value * Math.PI) / 180
+}
+
+function toDegrees(value: number): number {
+  return (value * 180) / Math.PI
+}
+
+function normalizeHeading(value: number): number {
+  const normalized = value % 360
+  return normalized < 0 ? normalized + 360 : normalized
+}
+
+function isFiniteLatLon(lat: number, lon: number): boolean {
+  return Number.isFinite(lat)
+    && Number.isFinite(lon)
+    && lat >= -90
+    && lat <= 90
+    && lon >= -180
+    && lon <= 180
+}
+
+function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const phi1 = toRadians(lat1)
+  const phi2 = toRadians(lat2)
+  const deltaPhi = toRadians(lat2 - lat1)
+  const deltaLambda = toRadians(lon2 - lon1)
+
+  const a = Math.sin(deltaPhi / 2) ** 2
+    + Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return EARTH_RADIUS_M * c
+}
+
+function calculateBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const phi1 = toRadians(lat1)
+  const phi2 = toRadians(lat2)
+  const deltaLambda = toRadians(lon2 - lon1)
+
+  const y = Math.sin(deltaLambda) * Math.cos(phi2)
+  const x = Math.cos(phi1) * Math.sin(phi2)
+    - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda)
+
+  return normalizeHeading(toDegrees(Math.atan2(y, x)))
+}
+
+function destinationPoint(lat: number, lon: number, distanceMeters: number, bearing: number): [number, number] {
+  const angularDistance = distanceMeters / EARTH_RADIUS_M
+  const theta = toRadians(normalizeHeading(bearing))
+  const phi1 = toRadians(lat)
+  const lambda1 = toRadians(lon)
+
+  const phi2 = Math.asin(
+    Math.sin(phi1) * Math.cos(angularDistance)
+      + Math.cos(phi1) * Math.sin(angularDistance) * Math.cos(theta),
+  )
+
+  const lambda2 = lambda1 + Math.atan2(
+    Math.sin(theta) * Math.sin(angularDistance) * Math.cos(phi1),
+    Math.cos(angularDistance) - Math.sin(phi1) * Math.sin(phi2),
+  )
+
+  return [toDegrees(lambda2), toDegrees(phi2)]
+}
+
+function createRectPolygon(
+  centerLat: number,
+  centerLon: number,
+  lengthMeters: number,
+  widthMeters: number,
+  heading: number,
+): Array<[number, number]> {
+  const head = normalizeHeading(heading)
+  const halfLength = Math.max(0, lengthMeters / 2)
+  const halfWidth = Math.max(0, widthMeters / 2)
+
+  const frontCenter = destinationPoint(centerLat, centerLon, halfLength, head)
+  const backCenter = destinationPoint(centerLat, centerLon, halfLength, head + 180)
+
+  const frontLeft = destinationPoint(frontCenter[1], frontCenter[0], halfWidth, head - 90)
+  const frontRight = destinationPoint(frontCenter[1], frontCenter[0], halfWidth, head + 90)
+  const backRight = destinationPoint(backCenter[1], backCenter[0], halfWidth, head + 90)
+  const backLeft = destinationPoint(backCenter[1], backCenter[0], halfWidth, head - 90)
+
+  return [frontLeft, frontRight, backRight, backLeft, frontLeft]
+}
+
+function parseRunwayHeadingFromName(name: string): number | null {
+  const numberText = name.trim().toUpperCase().replace(/[LCR]$/, '')
+  const number = Number.parseInt(numberText, 10)
+  if (!Number.isFinite(number) || number <= 0 || number > 36) return null
+  return normalizeHeading(number * 10)
+}
+
+function getRunwayHeading(runway: RunwayLike): number {
+  if (
+    isFiniteLatLon(runway.end1Lat, runway.end1Lon)
+    && isFiniteLatLon(runway.end2Lat, runway.end2Lon)
+  ) {
+    return calculateBearing(runway.end1Lat, runway.end1Lon, runway.end2Lat, runway.end2Lon)
+  }
+  return parseRunwayHeadingFromName(runway.end1Name)
+    ?? parseRunwayHeadingFromName(runway.end2Name)
+    ?? 0
+}
+
+function runwayWidthMeters(runway: RunwayLike): number {
+  const width = Number(runway.widthM || 0)
+  if (!Number.isFinite(width) || width <= 0) {
+    return 45
+  }
+  return Math.max(8, width)
+}
+
+function defaultShoulderWidth(runwayWidth: number): number {
+  if (runwayWidth < 30) return 3
+  if (runwayWidth <= 45) return 4
+  return 5
+}
+
+function createRunwayPolygon(
+  runway: RunwayLike,
+  extraWidthMeters = 0,
+): Array<[number, number]> | null {
+  if (
+    !isFiniteLatLon(runway.end1Lat, runway.end1Lon)
+    || !isFiniteLatLon(runway.end2Lat, runway.end2Lon)
+  ) {
+    return null
+  }
+
+  const heading = getRunwayHeading(runway)
+  const halfWidth = runwayWidthMeters(runway) / 2 + Math.max(0, extraWidthMeters)
+
+  const left1 = destinationPoint(runway.end1Lat, runway.end1Lon, halfWidth, heading - 90)
+  const right1 = destinationPoint(runway.end1Lat, runway.end1Lon, halfWidth, heading + 90)
+  const right2 = destinationPoint(runway.end2Lat, runway.end2Lon, halfWidth, heading + 90)
+  const left2 = destinationPoint(runway.end2Lat, runway.end2Lon, halfWidth, heading - 90)
+
+  return [left1, right1, right2, left2, left1]
+}
+
+function formatRunwayNumberLabel(name: string): string {
+  const normalized = name.trim().toUpperCase()
+  if (!normalized) return ''
+
+  const suffix = normalized.match(/[LCR]$/)?.[0] || ''
+  const numberText = normalized.replace(/[LCR]$/, '')
+  const number = Number.parseInt(numberText, 10)
+  const normalizedNumber = Number.isFinite(number) ? String(number) : numberText
+
+  return suffix ? `${normalizedNumber}\n${suffix}` : normalizedNumber
+}
+
+function buildSurfaceColorExpression(propertyName: string): maplibregl.ExpressionSpecification {
+  const expression: Array<string | number | unknown[]> = ['match', ['to-number', ['get', propertyName]]]
+  Object.entries(SURFACE_COLOR_BY_CODE).forEach(([surfaceCode, color]) => {
+    expression.push(Number(surfaceCode), color)
+  })
+  expression.push('#3a3a3a')
+  return expression as maplibregl.ExpressionSpecification
+}
+
+function pushThresholdBars(
+  features: Array<Record<string, unknown>>,
+  lat: number,
+  lon: number,
+  heading: number,
+  runwayWidth: number,
+) {
+  const numBars = 8
+  const barLength = Math.min(45, runwayWidth * 0.4)
+  const barWidth = 1.8
+  const barSpacing = 1.8
+  const startOffset = 6
+
+  for (let i = 0; i < numBars; i += 1) {
+    const sideOffset = i < numBars / 2
+      ? -(barSpacing * (numBars / 4 - i - 0.5) + barWidth / 2)
+      : barSpacing * (i - numBars / 2 + 0.5) - barWidth / 2
+
+    const barCenter = destinationPoint(lat, lon, startOffset + barLength / 2, heading)
+    const centerOffset = destinationPoint(
+      barCenter[1],
+      barCenter[0],
+      Math.abs(sideOffset),
+      sideOffset < 0 ? heading - 90 : heading + 90,
+    )
+
+    features.push({
+      type: 'Feature',
+      properties: { type: 'threshold' },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [createRectPolygon(centerOffset[1], centerOffset[0], barLength, barWidth, heading)],
+      },
+    })
+  }
+}
+
+function pushAimingPoints(
+  features: Array<Record<string, unknown>>,
+  lat: number,
+  lon: number,
+  heading: number,
+  runwayWidth: number,
+) {
+  const distance = 300
+  const length = 45
+  const width = 10
+  const sideOffset = runwayWidth * 0.25
+
+  for (const side of [-1, 1]) {
+    const center = destinationPoint(lat, lon, distance, heading)
+    const offsetCenter = destinationPoint(center[1], center[0], sideOffset, heading + side * 90)
+    features.push({
+      type: 'Feature',
+      properties: { type: 'aiming' },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [createRectPolygon(offsetCenter[1], offsetCenter[0], length, width, heading)],
+      },
+    })
+  }
+}
+
+function pushTouchdownZoneMarks(
+  features: Array<Record<string, unknown>>,
+  lat: number,
+  lon: number,
+  heading: number,
+  runwayWidth: number,
+) {
+  const distances = [150, 300, 450, 600, 750, 900]
+  const pairCounts = [3, 3, 2, 2, 1, 1]
+  const markLength = 22.5
+  const markWidth = 3
+  const sideOffset = runwayWidth * 0.15
+
+  distances.forEach((distance, index) => {
+    const pairs = pairCounts[index] ?? 1
+    for (let pair = 0; pair < pairs; pair += 1) {
+      const pairOffset = pair * 1.5
+      for (const side of [-1, 1]) {
+        const center = destinationPoint(lat, lon, distance, heading)
+        const offsetCenter = destinationPoint(
+          center[1],
+          center[0],
+          sideOffset + pairOffset,
+          heading + side * 90,
+        )
+        features.push({
+          type: 'Feature',
+          properties: { type: 'tdz' },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [createRectPolygon(offsetCenter[1], offsetCenter[0], markLength, markWidth, heading)],
+          },
+        })
+      }
+    }
+  })
+}
+
+function getApproachBarIndex(distance: number): number {
+  return Math.min(29, Math.max(0, Math.floor(distance / 30) - 1))
+}
+
+function pushApproachLight(
+  features: Array<Record<string, unknown>>,
+  lon: number,
+  lat: number,
+  distance: number,
+  isRed: boolean,
+  intensity = 1,
+) {
+  features.push({
+    type: 'Feature',
+    geometry: {
+      type: 'Point',
+      coordinates: [lon, lat],
+    },
+    properties: {
+      type: 'approach',
+      dist: distance,
+      isRed,
+      intensity,
+      barIndex: getApproachBarIndex(distance),
+    },
+  })
+}
+
+function pushRAILLights(
+  features: Array<Record<string, unknown>>,
+  lat: number,
+  lon: number,
+  heading: number,
+  startDistance = 450,
+  endDistance = 730,
+) {
+  const spacing = (endDistance - startDistance) / 4
+  for (let i = 0; i < 5; i += 1) {
+    const distance = startDistance + i * spacing
+    const point = destinationPoint(lat, lon, distance, heading)
+    pushApproachLight(features, point[0], point[1], distance, false, 1)
+  }
+}
+
+function pushALSFLights(
+  features: Array<Record<string, unknown>>,
+  lat: number,
+  lon: number,
+  heading: number,
+  withRedSidebars: boolean,
+) {
+  const totalLength = 730
+
+  for (let distance = 30; distance <= totalLength; distance += 30) {
+    const center = destinationPoint(lat, lon, distance, heading)
+    const isRed = distance <= 60
+    for (let offset = -6; offset <= 6; offset += 3) {
+      const point = offset === 0
+        ? center
+        : destinationPoint(center[1], center[0], Math.abs(offset), offset < 0 ? heading - 90 : heading + 90)
+      pushApproachLight(features, point[0], point[1], distance, isRed, 1)
+    }
+  }
+
+  for (const distance of [60, 150, 240, 330, 450]) {
+    const center = destinationPoint(lat, lon, distance, heading)
+    const width = distance <= 150 ? 10 : 15
+    for (let offset = -width; offset <= width; offset += 2.5) {
+      if (Math.abs(offset) < 4) continue
+      const point = destinationPoint(center[1], center[0], Math.abs(offset), offset < 0 ? heading - 90 : heading + 90)
+      pushApproachLight(features, point[0], point[1], distance, distance <= 60, 0.95)
+    }
+  }
+
+  if (withRedSidebars) {
+    for (let distance = 30; distance <= 300; distance += 30) {
+      const center = destinationPoint(lat, lon, distance, heading)
+      for (const side of [-1, 1]) {
+        const point = destinationPoint(center[1], center[0], 7, heading + side * 90)
+        pushApproachLight(features, point[0], point[1], distance, true, 0.9)
+      }
+    }
+  }
+
+  pushRAILLights(features, lat, lon, heading, 450, 730)
+}
+
+function pushCalvertLights(
+  features: Array<Record<string, unknown>>,
+  lat: number,
+  lon: number,
+  heading: number,
+  isCalvert2: boolean,
+) {
+  const totalLength = 900
+  for (let distance = 30; distance <= totalLength; distance += 30) {
+    const point = destinationPoint(lat, lon, distance, heading)
+    pushApproachLight(features, point[0], point[1], distance, distance <= 90, 1)
+  }
+
+  const crossbars = isCalvert2
+    ? [90, 150, 300, 450, 600, 750]
+    : [150, 300, 450, 600]
+
+  for (const distance of crossbars) {
+    const center = destinationPoint(lat, lon, distance, heading)
+    const width = Math.min(distance / 10, 25)
+    for (let offset = -width; offset <= width; offset += 3) {
+      if (Math.abs(offset) < 3) continue
+      const point = destinationPoint(center[1], center[0], Math.abs(offset), offset < 0 ? heading - 90 : heading + 90)
+      pushApproachLight(features, point[0], point[1], distance, false, 0.9)
+    }
+  }
+}
+
+function pushSSALLights(
+  features: Array<Record<string, unknown>>,
+  lat: number,
+  lon: number,
+  heading: number,
+  hasRail: boolean,
+) {
+  const totalLength = 425
+  for (let distance = 60; distance <= totalLength; distance += 60) {
+    const center = destinationPoint(lat, lon, distance, heading)
+    for (let offset = -3; offset <= 3; offset += 3) {
+      const point = offset === 0
+        ? center
+        : destinationPoint(center[1], center[0], Math.abs(offset), offset < 0 ? heading - 90 : heading + 90)
+      pushApproachLight(features, point[0], point[1], distance, distance <= 60, 1)
+    }
+  }
+
+  const thresholdBar = destinationPoint(lat, lon, 30, heading)
+  for (let offset = -12; offset <= 12; offset += 3) {
+    const point = destinationPoint(
+      thresholdBar[1],
+      thresholdBar[0],
+      Math.abs(offset),
+      offset < 0 ? heading - 90 : heading + 90,
+    )
+    pushApproachLight(features, point[0], point[1], 30, true, 1)
+  }
+
+  if (hasRail) {
+    pushRAILLights(features, lat, lon, heading, 425, 730)
+  }
+}
+
+function pushMALSLights(
+  features: Array<Record<string, unknown>>,
+  lat: number,
+  lon: number,
+  heading: number,
+  hasRail: boolean,
+) {
+  const totalLength = 425
+  for (let distance = 60; distance <= totalLength; distance += 60) {
+    const center = destinationPoint(lat, lon, distance, heading)
+    for (let offset = -3; offset <= 3; offset += 3) {
+      const point = offset === 0
+        ? center
+        : destinationPoint(center[1], center[0], Math.abs(offset), offset < 0 ? heading - 90 : heading + 90)
+      pushApproachLight(features, point[0], point[1], distance, false, 0.9)
+    }
+  }
+
+  for (const distance of [60, 180, 300]) {
+    const center = destinationPoint(lat, lon, distance, heading)
+    for (let offset = -12; offset <= 12; offset += 3) {
+      if (Math.abs(offset) < 4) continue
+      const point = destinationPoint(center[1], center[0], Math.abs(offset), offset < 0 ? heading - 90 : heading + 90)
+      pushApproachLight(features, point[0], point[1], distance, false, 0.85)
+    }
+  }
+
+  if (hasRail) {
+    pushRAILLights(features, lat, lon, heading, 425, 730)
+  }
+}
+
+function pushODALSLights(features: Array<Record<string, unknown>>, lat: number, lon: number, heading: number) {
+  for (let i = 0; i < 5; i += 1) {
+    const distance = 90 + i * 90
+    const point = destinationPoint(lat, lon, distance, heading)
+    pushApproachLight(features, point[0], point[1], distance, false, 1)
+  }
+}
+
+function pushGenericApproachLights(
+  features: Array<Record<string, unknown>>,
+  lat: number,
+  lon: number,
+  heading: number,
+) {
+  for (let distance = 60; distance <= 300; distance += 60) {
+    const point = destinationPoint(lat, lon, distance, heading)
+    pushApproachLight(features, point[0], point[1], distance, distance <= 60, 0.8)
+  }
+}
+
+function pushApproachLightsByType(
+  features: Array<Record<string, unknown>>,
+  lat: number,
+  lon: number,
+  heading: number,
+  lightingType: number,
+) {
+  switch (lightingType) {
+    case 1:
+    case 2:
+      pushALSFLights(features, lat, lon, heading, lightingType === 2)
+      break
+    case 3:
+    case 4:
+      pushCalvertLights(features, lat, lon, heading, lightingType === 4)
+      break
+    case 5:
+    case 6:
+    case 7:
+      pushSSALLights(features, lat, lon, heading, lightingType === 5)
+      break
+    case 8:
+    case 9:
+    case 10:
+      pushMALSLights(features, lat, lon, heading, lightingType === 8)
+      break
+    case 11:
+      pushODALSLights(features, lat, lon, heading)
+      break
+    case 12:
+      pushRAILLights(features, lat, lon, heading)
+      break
+    default:
+      pushGenericApproachLights(features, lat, lon, heading)
+      break
+  }
+}
+
+function toAirportRunwayShoulderFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
+  if (!detail) {
+    return { type: 'FeatureCollection', features: [] }
+  }
+
+  const features = detail.runways
+    .map((runway) => {
+      const shoulderCode = Number(runway.shoulderSurfaceCode || 0)
+      if (!Number.isFinite(shoulderCode) || shoulderCode <= 0) return null
+
+      const shoulderWidth = runway.shoulderWidthM && runway.shoulderWidthM > 0
+        ? runway.shoulderWidthM
+        : defaultShoulderWidth(runwayWidthMeters(runway))
+
+      const polygon = createRunwayPolygon(runway, shoulderWidth)
+      if (!polygon) return null
+
+      return {
+        type: 'Feature',
+        properties: {
+          surfaceCode: shoulderCode,
+          runwayName: runway.name,
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [polygon],
+        },
+      }
+    })
+    .filter((item): item is Record<string, unknown> => Boolean(item))
+
+  return { type: 'FeatureCollection', features }
+}
+
 function toAirportRunwayFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
   if (!detail) {
     return { type: 'FeatureCollection', features: [] }
   }
 
-  return {
-    type: 'FeatureCollection',
-    features: detail.runways
-      .filter((runway) =>
-        Number.isFinite(runway.end1Lat)
-        && Number.isFinite(runway.end1Lon)
-        && Number.isFinite(runway.end2Lat)
-        && Number.isFinite(runway.end2Lon),
-      )
-      .map((runway) => ({
+  const features = detail.runways
+    .map((runway) => {
+      const polygon = createRunwayPolygon(runway)
+      if (!polygon) return null
+
+      return {
         type: 'Feature',
         properties: {
           name: runway.name,
-          widthM: runway.widthM || 0,
+          surfaceCode: Number(runway.surfaceCode || 0),
           surfaceType: runway.surfaceType || '',
-          end1Name: runway.end1Name || '',
-          end2Name: runway.end2Name || '',
+          widthM: runwayWidthMeters(runway),
+          heading: getRunwayHeading(runway),
         },
         geometry: {
-          type: 'LineString',
-          coordinates: [
-            [runway.end1Lon, runway.end1Lat],
-            [runway.end2Lon, runway.end2Lat],
-          ],
+          type: 'Polygon',
+          coordinates: [polygon],
         },
-      })),
+      }
+    })
+    .filter((item): item is Record<string, unknown> => Boolean(item))
+
+  return { type: 'FeatureCollection', features }
+}
+
+function toAirportRunwayCenterlineFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
+  if (!detail) {
+    return { type: 'FeatureCollection', features: [] }
+  }
+
+  const features = detail.runways
+    .filter((runway) =>
+      isFiniteLatLon(runway.end1Lat, runway.end1Lon)
+      && isFiniteLatLon(runway.end2Lat, runway.end2Lon),
+    )
+    .map((runway) => ({
+      type: 'Feature',
+      properties: {
+        name: runway.name,
+      },
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [runway.end1Lon, runway.end1Lat],
+          [runway.end2Lon, runway.end2Lat],
+        ],
+      },
+    }))
+
+  return { type: 'FeatureCollection', features }
+}
+
+function toAirportRunwayMarkingFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
+  if (!detail) {
+    return { type: 'FeatureCollection', features: [] }
+  }
+
+  const features: Array<Record<string, unknown>> = []
+  for (const runway of detail.runways) {
+    if (Number(runway.surfaceCode || 0) === 13) {
+      continue
+    }
+
+    if (
+      !isFiniteLatLon(runway.end1Lat, runway.end1Lon)
+      || !isFiniteLatLon(runway.end2Lat, runway.end2Lon)
+    ) {
+      continue
+    }
+
+    const heading1 = getRunwayHeading(runway)
+    const heading2 = normalizeHeading(heading1 + 180)
+    const width = runwayWidthMeters(runway)
+
+    const marking1 = Number(runway.end1Marking ?? 0)
+    if (marking1 >= RUNWAY_MARKING_VISUAL) {
+      pushThresholdBars(features, runway.end1Lat, runway.end1Lon, heading1, width)
+    }
+    if (marking1 >= RUNWAY_MARKING_NON_PRECISION) {
+      pushAimingPoints(features, runway.end1Lat, runway.end1Lon, heading1, width)
+    }
+    if (marking1 >= RUNWAY_MARKING_PRECISION) {
+      pushTouchdownZoneMarks(features, runway.end1Lat, runway.end1Lon, heading1, width)
+    }
+
+    const marking2 = Number(runway.end2Marking ?? 0)
+    if (marking2 >= RUNWAY_MARKING_VISUAL) {
+      pushThresholdBars(features, runway.end2Lat, runway.end2Lon, heading2, width)
+    }
+    if (marking2 >= RUNWAY_MARKING_NON_PRECISION) {
+      pushAimingPoints(features, runway.end2Lat, runway.end2Lon, heading2, width)
+    }
+    if (marking2 >= RUNWAY_MARKING_PRECISION) {
+      pushTouchdownZoneMarks(features, runway.end2Lat, runway.end2Lon, heading2, width)
+    }
+  }
+
+  return { type: 'FeatureCollection', features }
+}
+
+function toAirportRunwayNumberFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
+  if (!detail) {
+    return { type: 'FeatureCollection', features: [] }
+  }
+
+  const features: Array<Record<string, unknown>> = []
+  for (const runway of detail.runways) {
+    if (Number(runway.surfaceCode || 0) === 13) {
+      continue
+    }
+
+    if (
+      !isFiniteLatLon(runway.end1Lat, runway.end1Lon)
+      || !isFiniteLatLon(runway.end2Lat, runway.end2Lon)
+    ) {
+      continue
+    }
+
+    const heading1 = getRunwayHeading(runway)
+    const heading2 = normalizeHeading(heading1 + 180)
+    const pos1 = destinationPoint(runway.end1Lat, runway.end1Lon, 300, heading1)
+    const pos2 = destinationPoint(runway.end2Lat, runway.end2Lon, 300, heading2)
+
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: pos1,
+      },
+      properties: {
+        number: formatRunwayNumberLabel(runway.end1Name || ''),
+        rotation: heading1,
+        name: runway.end1Name || '',
+      },
+    })
+
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: pos2,
+      },
+      properties: {
+        number: formatRunwayNumberLabel(runway.end2Name || ''),
+        rotation: heading2,
+        name: runway.end2Name || '',
+      },
+    })
+  }
+
+  return { type: 'FeatureCollection', features }
+}
+
+function toAirportRunwayLightFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
+  if (!detail) {
+    return { type: 'FeatureCollection', features: [] }
+  }
+
+  const features: Array<Record<string, unknown>> = []
+  for (const runway of detail.runways) {
+    if (
+      !isFiniteLatLon(runway.end1Lat, runway.end1Lon)
+      || !isFiniteLatLon(runway.end2Lat, runway.end2Lon)
+    ) {
+      continue
+    }
+
+    const heading1 = getRunwayHeading(runway)
+    const heading2 = normalizeHeading(heading1 + 180)
+    const width = runwayWidthMeters(runway)
+    const length = haversineDistanceMeters(runway.end1Lat, runway.end1Lon, runway.end2Lat, runway.end2Lon)
+
+    if (runway.edgeLights) {
+      for (let distance = 0; distance <= length; distance += 60) {
+        const ratio = length > 0 ? distance / length : 0
+        const lat = runway.end1Lat + ratio * (runway.end2Lat - runway.end1Lat)
+        const lon = runway.end1Lon + ratio * (runway.end2Lon - runway.end1Lon)
+
+        const left = destinationPoint(lat, lon, width / 2, heading1 - 90)
+        const right = destinationPoint(lat, lon, width / 2, heading1 + 90)
+        const isYellowZone = distance < 600 || distance > length - 600
+
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: left },
+          properties: {
+            type: 'edge',
+            isYellowZone,
+          },
+        })
+
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: right },
+          properties: {
+            type: 'edge',
+            isYellowZone,
+          },
+        })
+      }
+    }
+
+    for (let offset = -width / 2; offset <= width / 2; offset += 3) {
+      const threshold1 = destinationPoint(
+        runway.end1Lat,
+        runway.end1Lon,
+        Math.abs(offset),
+        offset < 0 ? heading1 - 90 : heading1 + 90,
+      )
+      const threshold2 = destinationPoint(
+        runway.end2Lat,
+        runway.end2Lon,
+        Math.abs(offset),
+        offset < 0 ? heading2 - 90 : heading2 + 90,
+      )
+
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: threshold1 },
+        properties: { type: 'threshold' },
+      })
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: threshold2 },
+        properties: { type: 'threshold' },
+      })
+
+      const end1 = destinationPoint(threshold1[1], threshold1[0], 4, heading1 + 180)
+      const end2 = destinationPoint(threshold2[1], threshold2[0], 4, heading2 + 180)
+
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: end1 },
+        properties: { type: 'end' },
+      })
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: end2 },
+        properties: { type: 'end' },
+      })
+    }
+
+    if (runway.centerlineLights) {
+      for (let distance = 30; distance < length - 30; distance += 15) {
+        const ratio = length > 0 ? distance / length : 0
+        const lat = runway.end1Lat + ratio * (runway.end2Lat - runway.end1Lat)
+        const lon = runway.end1Lon + ratio * (runway.end2Lon - runway.end1Lon)
+        const distFromEnd = Math.min(distance, length - distance)
+
+        features.push({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [lon, lat],
+          },
+          properties: {
+            type: 'centerline',
+            isRedZone: distFromEnd < 300,
+            isYellowZone: distFromEnd >= 300 && distFromEnd < 900,
+          },
+        })
+      }
+    }
+
+    const end1Lighting = Number(runway.end1Lighting || 0)
+    if (end1Lighting > 0) {
+      pushApproachLightsByType(
+        features,
+        runway.end1Lat,
+        runway.end1Lon,
+        heading2,
+        end1Lighting,
+      )
+    }
+
+    const end2Lighting = Number(runway.end2Lighting || 0)
+    if (end2Lighting > 0) {
+      pushApproachLightsByType(
+        features,
+        runway.end2Lat,
+        runway.end2Lon,
+        heading1,
+        end2Lighting,
+      )
+    }
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features,
   }
 }
 
@@ -549,7 +1589,7 @@ function toAirportRunwayEndFeatureCollection(detail: MapAirportDetail | null): F
 
   const features: Array<Record<string, unknown>> = []
   detail.runways.forEach((runway) => {
-    if (Number.isFinite(runway.end1Lat) && Number.isFinite(runway.end1Lon)) {
+    if (isFiniteLatLon(runway.end1Lat, runway.end1Lon)) {
       features.push({
         type: 'Feature',
         properties: {
@@ -562,7 +1602,7 @@ function toAirportRunwayEndFeatureCollection(detail: MapAirportDetail | null): F
         },
       })
     }
-    if (Number.isFinite(runway.end2Lat) && Number.isFinite(runway.end2Lon)) {
+    if (isFiniteLatLon(runway.end2Lat, runway.end2Lon)) {
       features.push({
         type: 'Feature',
         properties: {
@@ -591,12 +1631,14 @@ function toAirportHelipadFeatureCollection(detail: MapAirportDetail | null): Fea
   return {
     type: 'FeatureCollection',
     features: detail.helipads
-      .filter((helipad) => Number.isFinite(helipad.lat) && Number.isFinite(helipad.lon))
+      .filter((helipad) => isFiniteLatLon(helipad.lat, helipad.lon))
       .map((helipad) => ({
         type: 'Feature',
         properties: {
           name: helipad.name,
           heading: helipad.heading || 0,
+          widthM: helipad.widthM || 20,
+          lengthM: helipad.lengthM || helipad.widthM || 20,
         },
         geometry: {
           type: 'Point',
@@ -614,13 +1656,15 @@ function toAirportGateFeatureCollection(detail: MapAirportDetail | null): Featur
   return {
     type: 'FeatureCollection',
     features: detail.gates
-      .filter((gate) => Number.isFinite(gate.lat) && Number.isFinite(gate.lon))
+      .filter((gate) => isFiniteLatLon(gate.lat, gate.lon))
       .map((gate) => ({
         type: 'Feature',
         properties: {
           name: gate.name,
+          heading: gate.heading || 0,
           locationType: gate.locationType || '',
           operationType: gate.operationType || '',
+          widthCode: gate.widthCode || '',
           isLegacy: gate.isLegacy,
         },
         geometry: {
@@ -958,6 +2002,86 @@ async function resetAirportFilters() {
   await mapStore.resetAirportFilters()
 }
 
+function setActiveProcedureTab(tab: ProcedureTabKey) {
+  activeProcedureTab.value = tab
+  expandedProcedureGroup.value = null
+}
+
+function toggleProcedureGroup(name: string) {
+  expandedProcedureGroup.value = expandedProcedureGroup.value === name ? null : name
+}
+
+function formatProcedureVariant(procedure: MapProcedure): string {
+  const parts: string[] = []
+  if (procedure.runway) {
+    parts.push(`${t('map.procedures.runway')}: ${procedure.runway}`)
+  }
+  if (procedure.transition) {
+    parts.push(`${t('map.procedures.transition')}: ${procedure.transition}`)
+  }
+  return parts.length > 0 ? parts.join(' · ') : t('map.procedures.common')
+}
+
+function resetAirportProceduresState() {
+  proceduresSeq += 1
+  proceduresLoading.value = false
+  airportProcedures.value = null
+  activeProcedureTab.value = 'sids'
+  expandedProcedureGroup.value = null
+}
+
+async function refreshAirportProcedures(airport: MapAirport) {
+  const xplanePath = appStore.xplanePath
+  if (!xplanePath) return
+
+  const seq = ++proceduresSeq
+  proceduresLoading.value = true
+  airportProcedures.value = null
+  expandedProcedureGroup.value = null
+
+  try {
+    const procedures = await mapGetAirportProcedures(xplanePath, airport.icao)
+    if (seq !== proceduresSeq) return
+
+    airportProcedures.value = procedures
+
+    if ((procedures.sids || []).length > 0) {
+      activeProcedureTab.value = 'sids'
+    } else if ((procedures.stars || []).length > 0) {
+      activeProcedureTab.value = 'stars'
+    } else if ((procedures.approaches || []).length > 0) {
+      activeProcedureTab.value = 'approaches'
+    } else {
+      activeProcedureTab.value = 'sids'
+    }
+  } catch (error) {
+    if (seq !== proceduresSeq) return
+    airportProcedures.value = {
+      icao: airport.icao,
+      sids: [],
+      stars: [],
+      approaches: [],
+    }
+    logError(`Failed to fetch airport procedures for ${airport.icao}: ${error}`, 'map')
+  } finally {
+    if (seq === proceduresSeq) {
+      proceduresLoading.value = false
+    }
+  }
+}
+
+async function refreshProceduresForSelected() {
+  const airport = mapStore.selectedAirport
+  if (!airport) return
+  await refreshAirportProcedures(airport)
+}
+
+async function refreshGatewayDataForSelected() {
+  const airport = mapStore.selectedAirport
+  if (!airport) return
+  await refreshGatewayAirport(airport)
+}
+
 async function focusAirportByIcao(icao: string) {
   const match = airports.value.find((item) => item.icao === icao)
   if (match) {
@@ -1020,6 +2144,244 @@ async function refreshVatsimAndEvents() {
 function onSimbriefPilotInput(event: Event) {
   const target = event.target as HTMLInputElement
   void mapStore.setSimbriefPilotId(target.value.trim())
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function pickString(record: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const raw = record[key]
+    if (typeof raw !== 'string') continue
+    const text = raw.trim()
+    if (text) return text
+  }
+  return null
+}
+
+function pickNumber(record: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const raw = record[key]
+    if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+    if (typeof raw === 'string') {
+      const parsed = Number(raw.trim())
+      if (Number.isFinite(parsed)) return parsed
+    }
+  }
+  return null
+}
+
+function pickRecord(record: Record<string, unknown>, keys: string[]): Record<string, unknown> | null {
+  for (const key of keys) {
+    const child = asRecord(record[key])
+    if (child) return child
+  }
+  return null
+}
+
+function pickArray(record: Record<string, unknown>, keys: string[]): unknown[] | null {
+  for (const key of keys) {
+    const child = record[key]
+    if (Array.isArray(child)) return child
+  }
+  return null
+}
+
+function pickArrayLength(record: Record<string, unknown>, keys: string[]): number | null {
+  const list = pickArray(record, keys)
+  return list ? list.length : null
+}
+
+function parseGatewaySummary(payload: unknown, fallbackIcao: string): GatewaySummary | null {
+  const root = asRecord(payload)
+  if (!root) return null
+
+  const airport = pickRecord(root, ['airport', 'Airport', 'data']) ?? root
+  const airportCode = (
+    pickString(airport, ['icao', 'ICAO', 'airportCode', 'AirportCode', 'code', 'ident'])
+    || pickString(root, ['icao', 'ICAO', 'airportCode', 'AirportCode'])
+    || fallbackIcao
+  )
+    .trim()
+    .toUpperCase()
+
+  if (!airportCode) return null
+
+  const airportName = pickString(airport, ['name', 'airportName', 'AirportName', 'Name'])
+  const sceneryList = pickArray(root, ['sceneries', 'Sceneries', 'scenery', 'results', 'items']) ?? []
+
+  const rootRecommended = pickRecord(root, ['recommendedScenery', 'RecommendedScenery'])
+  const airportRecommended = pickRecord(airport, ['recommendedScenery', 'RecommendedScenery'])
+
+  const recommendedSceneryId = (
+    pickNumber(
+      airport,
+      ['recommendedSceneryId', 'RecommendedSceneryId', 'recommended_scenery_id'],
+    )
+    ?? pickNumber(
+      root,
+      ['recommendedSceneryId', 'RecommendedSceneryId', 'recommended_scenery_id'],
+    )
+    ?? (rootRecommended
+      ? pickNumber(rootRecommended, ['id', 'sceneryId', 'SceneryId'])
+      : null)
+    ?? (airportRecommended
+      ? pickNumber(airportRecommended, ['id', 'sceneryId', 'SceneryId'])
+      : null)
+  )
+
+  let recommended = rootRecommended ?? airportRecommended
+  if (!recommended && sceneryList.length > 0) {
+    if (recommendedSceneryId !== null) {
+      recommended = sceneryList
+        .map((entry) => asRecord(entry))
+        .find((entry) => entry && pickNumber(entry, ['id', 'sceneryId', 'SceneryId']) === recommendedSceneryId)
+        ?? null
+    }
+    if (!recommended) {
+      recommended = asRecord(sceneryList[0])
+    }
+  }
+
+  const sceneryCount = (
+    pickNumber(airport, ['sceneryCount', 'SceneryCount', 'totalSceneries'])
+    ?? pickNumber(root, ['sceneryCount', 'SceneryCount', 'totalSceneries'])
+    ?? (sceneryList.length > 0 ? sceneryList.length : null)
+  )
+
+  let recommendedArtist = recommended
+    ? pickString(recommended, ['userName', 'username', 'authorName', 'author', 'artist', 'submittedBy'])
+    : null
+  if (!recommendedArtist && recommended) {
+    const user = pickRecord(recommended, ['user', 'User'])
+    if (user) {
+      recommendedArtist = pickString(user, ['name', 'username', 'displayName', 'userName'])
+    }
+  }
+
+  const recommendedAcceptedAt = recommended
+    ? pickString(
+      recommended,
+      [
+        'dateAccepted',
+        'acceptedAt',
+        'accepted',
+        'approvalDate',
+        'approvedAt',
+        'date',
+        'updatedAt',
+      ],
+    )
+    : null
+
+  if (
+    recommendedSceneryId === null
+    && sceneryCount === null
+    && !airportName
+    && !recommendedArtist
+    && !recommendedAcceptedAt
+  ) {
+    return null
+  }
+
+  return {
+    icao: airportCode,
+    airportName,
+    sceneryCount,
+    recommendedSceneryId,
+    recommendedArtist,
+    recommendedAcceptedAt,
+  }
+}
+
+function parseGatewaySceneryDetail(payload: unknown, fallbackSceneryId: number): GatewaySceneryDetail | null {
+  const root = asRecord(payload)
+  if (!root) return null
+
+  const detail = pickRecord(root, ['scenery', 'Scenery', 'data']) ?? root
+  const sceneryId = pickNumber(detail, ['id', 'sceneryId', 'SceneryId']) ?? fallbackSceneryId
+
+  let artist = pickString(
+    detail,
+    ['artist', 'artistName', 'author', 'authorName', 'userName', 'username', 'submittedBy'],
+  )
+  const user = pickRecord(detail, ['user', 'User'])
+  if (!artist && user) {
+    artist = pickString(user, ['name', 'username', 'displayName', 'userName'])
+  }
+
+  const status = pickString(
+    detail,
+    ['status', 'approvalStatus', 'submissionStatus', 'state', 'gatewayStatus'],
+  )
+  const approvedDate = pickString(
+    detail,
+    ['dateAccepted', 'acceptedAt', 'approvedDate', 'approvalDate', 'updatedAt'],
+  )
+  const comment = pickString(
+    detail,
+    ['artistComments', 'comments', 'comment', 'description', 'notes'],
+  )
+
+  const runwayCount = (
+    pickNumber(detail, ['runwayCount', 'runwaysCount'])
+    ?? pickArrayLength(detail, ['runways', 'Runways'])
+  )
+  const gateCount = (
+    pickNumber(detail, ['gateCount', 'gatesCount', 'startupCount'])
+    ?? pickArrayLength(detail, ['gates', 'startupLocations', 'ramps'])
+  )
+  const taxiwayCount = (
+    pickNumber(detail, ['taxiwayCount', 'taxiwaysCount'])
+    ?? pickArrayLength(detail, ['taxiways', 'taxiwayEdges'])
+  )
+
+  const rawFeatures = pickArray(detail, ['features', 'featureFlags', 'tags']) ?? []
+  const tagFeatures = rawFeatures
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter((item) => item.length > 0)
+    .slice(0, 5)
+
+  const countFeatures: string[] = []
+  if (runwayCount !== null) countFeatures.push(`RWY ${runwayCount}`)
+  if (gateCount !== null) countFeatures.push(`Gates ${gateCount}`)
+  if (taxiwayCount !== null) countFeatures.push(`Taxiway ${taxiwayCount}`)
+
+  const features = [...countFeatures, ...tagFeatures]
+  if (
+    !status
+    && !artist
+    && !approvedDate
+    && !comment
+    && features.length === 0
+    && sceneryId <= 0
+  ) {
+    return null
+  }
+
+  return {
+    sceneryId,
+    status,
+    artist,
+    approvedDate,
+    comment,
+    features,
+  }
+}
+
+function formatGatewayDate(input: string): string {
+  const timestamp = Date.parse(input)
+  if (Number.isNaN(timestamp)) {
+    return input
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(timestamp))
 }
 
 function parseCoordinateValue(value: unknown): number | null {
@@ -1176,12 +2538,24 @@ function applyLayerVisibility() {
   if (!map) return
 
   const list: Array<{ id: string; visible: boolean }> = [
-    { id: 'airport-runways-line', visible: mapStore.layerVisibility.airports },
-    { id: 'airport-runways-centerline', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-runway-shoulders', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-runways-fill', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-runway-centerline', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-runway-labels', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-runway-threshold-bars', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-runway-aiming-points', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-runway-tdz-marks', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-runway-numbers', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-runway-edge-lights', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-runway-threshold-lights', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-runway-centerline-lights', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-runway-end-lights', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-approach-lights', visible: mapStore.layerVisibility.airports },
     { id: 'airport-runway-ends-circle', visible: mapStore.layerVisibility.airports },
     { id: 'airport-runway-ends-label', visible: mapStore.layerVisibility.airports },
     { id: 'airport-helipads-circle', visible: mapStore.layerVisibility.airports },
     { id: 'airport-gates-circle', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-gates-label', visible: mapStore.layerVisibility.airports },
     { id: 'airport-taxiways-line', visible: mapStore.layerVisibility.airports },
     { id: 'airport-taxiways-label', visible: mapStore.layerVisibility.airports },
     { id: 'airport-tower-circle', visible: mapStore.layerVisibility.airports },
@@ -1212,131 +2586,40 @@ function applyLayerVisibility() {
 }
 
 function setupMapSourcesAndLayers(map: maplibregl.Map) {
-  if (!map.getSource('airports')) {
-    map.addSource('airports', {
+  const addGeoJsonSource = (id: string) => {
+    if (map.getSource(id)) return
+    map.addSource(id, {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] },
     })
   }
 
-  if (!map.getSource('navaids')) {
-    map.addSource('navaids', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('waypoints')) {
-    map.addSource('waypoints', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('airways')) {
-    map.addSource('airways', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('ils')) {
-    map.addSource('ils', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('airspaces')) {
-    map.addSource('airspaces', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('plane')) {
-    map.addSource('plane', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('vatsim')) {
-    map.addSource('vatsim', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('airport-runways')) {
-    map.addSource('airport-runways', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('airport-runway-ends')) {
-    map.addSource('airport-runway-ends', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('airport-helipads')) {
-    map.addSource('airport-helipads', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('airport-gates')) {
-    map.addSource('airport-gates', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('airport-taxiways')) {
-    map.addSource('airport-taxiways', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('airport-tower')) {
-    map.addSource('airport-tower', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('airport-beacon')) {
-    map.addSource('airport-beacon', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('airport-windsocks')) {
-    map.addSource('airport-windsocks', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('airport-signs')) {
-    map.addSource('airport-signs', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
-
-  if (!map.getSource('simbrief-route')) {
-    map.addSource('simbrief-route', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-  }
+  const sourceIds = [
+    'airports',
+    'navaids',
+    'waypoints',
+    'airways',
+    'ils',
+    'airspaces',
+    'plane',
+    'vatsim',
+    'airport-runway-shoulders',
+    'airport-runways',
+    'airport-runway-centerlines',
+    'airport-runway-markings',
+    'airport-runway-numbers',
+    'airport-runway-lights',
+    'airport-runway-ends',
+    'airport-helipads',
+    'airport-gates',
+    'airport-taxiways',
+    'airport-tower',
+    'airport-beacon',
+    'airport-windsocks',
+    'airport-signs',
+    'simbrief-route',
+  ]
+  sourceIds.forEach((id) => addGeoJsonSource(id))
 
   if (!map.getLayer('airspaces-fill')) {
     map.addLayer({
@@ -1369,15 +2652,7 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       source: 'airways',
       paint: {
         'line-color': '#e2e8f0',
-        'line-width': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          4,
-          0.4,
-          9,
-          1.2,
-        ],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.4, 9, 1.2],
         'line-opacity': 0.7,
       },
     })
@@ -1402,61 +2677,222 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       source: 'simbrief-route',
       paint: {
         'line-color': '#facc15',
-        'line-width': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          4,
-          1,
-          10,
-          2.5,
-        ],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1, 10, 2.5],
         'line-opacity': 0.75,
       },
     })
   }
 
-  if (!map.getLayer('airport-runways-line')) {
+  if (!map.getLayer('airport-runway-shoulders')) {
     map.addLayer({
-      id: 'airport-runways-line',
-      type: 'line',
-      source: 'airport-runways',
-      minzoom: 9,
+      id: 'airport-runway-shoulders',
+      type: 'fill',
+      source: 'airport-runway-shoulders',
+      minzoom: 10,
       paint: {
-        'line-color': '#f8fafc',
-        'line-width': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          9,
-          1,
-          13,
-          4,
-        ],
-        'line-opacity': 0.85,
+        'fill-color': buildSurfaceColorExpression('surfaceCode'),
+        'fill-opacity': 1,
       },
     })
   }
 
-  if (!map.getLayer('airport-runways-centerline')) {
+  if (!map.getLayer('airport-runways-fill')) {
     map.addLayer({
-      id: 'airport-runways-centerline',
-      type: 'line',
+      id: 'airport-runways-fill',
+      type: 'fill',
       source: 'airport-runways',
-      minzoom: 11,
+      minzoom: 10,
       paint: {
-        'line-color': '#0f172a',
-        'line-width': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          11,
-          0.5,
-          15,
-          1.2,
+        'fill-color': buildSurfaceColorExpression('surfaceCode'),
+        'fill-opacity': 1,
+      },
+    })
+  }
+
+  if (!map.getLayer('airport-runway-centerline')) {
+    map.addLayer({
+      id: 'airport-runway-centerline',
+      type: 'line',
+      source: 'airport-runway-centerlines',
+      minzoom: 12,
+      paint: {
+        'line-color': '#ffffff',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1, 16, 3, 20, 5],
+        'line-dasharray': [10, 10],
+        'line-opacity': 0.9,
+      },
+    })
+  }
+
+  if (!map.getLayer('airport-runway-labels')) {
+    map.addLayer({
+      id: 'airport-runway-labels',
+      type: 'symbol',
+      source: 'airport-runways',
+      minzoom: 14,
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 14, 11, 18, 18],
+        'text-font': ['Noto Sans Bold'],
+      },
+      paint: {
+        'text-color': '#FFFFFF',
+        'text-halo-color': '#000000',
+        'text-halo-width': 1.8,
+      },
+    })
+  }
+
+  if (!map.getLayer('airport-runway-threshold-bars')) {
+    map.addLayer({
+      id: 'airport-runway-threshold-bars',
+      type: 'fill',
+      source: 'airport-runway-markings',
+      filter: ['==', ['get', 'type'], 'threshold'],
+      minzoom: 14,
+      paint: {
+        'fill-color': '#FFFFFF',
+        'fill-opacity': 0.95,
+      },
+    })
+  }
+
+  if (!map.getLayer('airport-runway-aiming-points')) {
+    map.addLayer({
+      id: 'airport-runway-aiming-points',
+      type: 'fill',
+      source: 'airport-runway-markings',
+      filter: ['==', ['get', 'type'], 'aiming'],
+      minzoom: 14,
+      paint: {
+        'fill-color': '#FFFFFF',
+        'fill-opacity': 0.95,
+      },
+    })
+  }
+
+  if (!map.getLayer('airport-runway-tdz-marks')) {
+    map.addLayer({
+      id: 'airport-runway-tdz-marks',
+      type: 'fill',
+      source: 'airport-runway-markings',
+      filter: ['==', ['get', 'type'], 'tdz'],
+      minzoom: 15,
+      paint: {
+        'fill-color': '#FFFFFF',
+        'fill-opacity': 0.9,
+      },
+    })
+  }
+
+  if (!map.getLayer('airport-runway-numbers')) {
+    map.addLayer({
+      id: 'airport-runway-numbers',
+      type: 'symbol',
+      source: 'airport-runway-numbers',
+      minzoom: 13,
+      layout: {
+        'text-field': ['get', 'number'],
+        'text-font': ['Noto Sans Bold'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 13, 16, 15, 28, 17, 48, 19, 72],
+        'text-rotate': ['get', 'rotation'],
+        'text-rotation-alignment': 'map',
+        'text-pitch-alignment': 'map',
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: {
+        'text-color': '#FFFFFF',
+        'text-halo-color': '#000000',
+        'text-halo-width': 1,
+        'text-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0.7, 15, 1],
+      },
+    })
+  }
+
+  if (!map.getLayer('airport-runway-edge-lights')) {
+    map.addLayer({
+      id: 'airport-runway-edge-lights',
+      type: 'circle',
+      source: 'airport-runway-lights',
+      filter: ['==', ['get', 'type'], 'edge'],
+      minzoom: 15,
+      paint: {
+        'circle-color': ['case', ['get', 'isYellowZone'], '#FFD700', '#FFFFFF'],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 15, 0.8, 17, 1.5, 20, 2.5],
+        'circle-blur': 0.2,
+        'circle-opacity': 0.85,
+      },
+    })
+  }
+
+  if (!map.getLayer('airport-runway-threshold-lights')) {
+    map.addLayer({
+      id: 'airport-runway-threshold-lights',
+      type: 'circle',
+      source: 'airport-runway-lights',
+      filter: ['==', ['get', 'type'], 'threshold'],
+      minzoom: 15,
+      paint: {
+        'circle-color': '#00FF00',
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 15, 1, 17, 2, 20, 3],
+        'circle-blur': 0.3,
+        'circle-opacity': 0.9,
+      },
+    })
+  }
+
+  if (!map.getLayer('airport-runway-end-lights')) {
+    map.addLayer({
+      id: 'airport-runway-end-lights',
+      type: 'circle',
+      source: 'airport-runway-lights',
+      filter: ['==', ['get', 'type'], 'end'],
+      minzoom: 15,
+      paint: {
+        'circle-color': '#FF0000',
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 15, 1, 17, 2, 20, 3],
+        'circle-blur': 0.3,
+        'circle-opacity': 0.9,
+      },
+    })
+  }
+
+  if (!map.getLayer('airport-runway-centerline-lights')) {
+    map.addLayer({
+      id: 'airport-runway-centerline-lights',
+      type: 'circle',
+      source: 'airport-runway-lights',
+      filter: ['==', ['get', 'type'], 'centerline'],
+      minzoom: 16,
+      paint: {
+        'circle-color': [
+          'case',
+          ['get', 'isRedZone'],
+          '#FF0000',
+          ['get', 'isYellowZone'],
+          '#FFD700',
+          '#FFFFFF',
         ],
-        'line-opacity': 0.8,
-        'line-dasharray': [1.4, 1.1],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 16, 0.5, 18, 1.5, 20, 2],
+        'circle-blur': 0.2,
+        'circle-opacity': 0.75,
+      },
+    })
+  }
+
+  if (!map.getLayer('airport-approach-lights')) {
+    map.addLayer({
+      id: 'airport-approach-lights',
+      type: 'circle',
+      source: 'airport-runway-lights',
+      filter: ['==', ['get', 'type'], 'approach'],
+      minzoom: 13,
+      paint: {
+        'circle-color': ['case', ['get', 'isRed'], '#FF0000', '#FFFFFF'],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 0.8, 16, 1.5, 18, 2.5],
+        'circle-blur': 0.2,
+        'circle-opacity': 0.9,
       },
     })
   }
@@ -1466,20 +2902,13 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       id: 'airport-runway-ends-circle',
       type: 'circle',
       source: 'airport-runway-ends',
-      minzoom: 10,
+      minzoom: 13,
       paint: {
-        'circle-color': '#fde68a',
-        'circle-radius': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          10,
-          2,
-          14,
-          4,
-        ],
-        'circle-stroke-color': '#020617',
-        'circle-stroke-width': 1,
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 4, 15, 6, 17, 10, 19, 14],
+        'circle-color': '#3b82f6',
+        'circle-opacity': 0.85,
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#ffffff',
       },
     })
   }
@@ -1489,17 +2918,17 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       id: 'airport-runway-ends-label',
       type: 'symbol',
       source: 'airport-runway-ends',
-      minzoom: 11,
+      minzoom: 14,
       layout: {
         'text-field': ['get', 'name'],
-        'text-size': 10,
-        'text-font': ['Noto Sans Regular'],
-        'text-offset': [0, 0.9],
+        'text-font': ['Noto Sans Bold'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 14, 10, 17, 14],
+        'text-anchor': 'center',
       },
       paint: {
-        'text-color': '#fef3c7',
-        'text-halo-color': '#020617',
-        'text-halo-width': 1,
+        'text-color': '#ffffff',
+        'text-halo-color': '#3b82f6',
+        'text-halo-width': 0,
       },
     })
   }
@@ -1509,20 +2938,12 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       id: 'airport-helipads-circle',
       type: 'circle',
       source: 'airport-helipads',
-      minzoom: 10,
+      minzoom: 11,
       paint: {
-        'circle-color': '#c084fc',
-        'circle-radius': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          10,
-          2,
-          14,
-          5,
-        ],
-        'circle-stroke-color': '#020617',
-        'circle-stroke-width': 1,
+        'circle-color': '#334155',
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 4, 14, 8],
+        'circle-stroke-color': '#cbd5e1',
+        'circle-stroke-width': 1.2,
       },
     })
   }
@@ -1532,20 +2953,34 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       id: 'airport-gates-circle',
       type: 'circle',
       source: 'airport-gates',
-      minzoom: 11,
+      minzoom: 14,
       paint: {
-        'circle-color': '#34d399',
-        'circle-radius': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          11,
-          1.5,
-          15,
-          3.2,
-        ],
-        'circle-stroke-color': '#020617',
-        'circle-stroke-width': 0.8,
+        'circle-color': '#64748b',
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 14, 3, 18, 7],
+        'circle-stroke-color': '#e2e8f0',
+        'circle-stroke-width': 1,
+        'circle-opacity': 0.75,
+      },
+    })
+  }
+
+  if (!map.getLayer('airport-gates-label')) {
+    map.addLayer({
+      id: 'airport-gates-label',
+      type: 'symbol',
+      source: 'airport-gates',
+      minzoom: 14,
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-font': ['Noto Sans Bold'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 14, 9, 18, 13],
+        'text-offset': [0, 1.5],
+        'text-anchor': 'top',
+      },
+      paint: {
+        'text-color': '#e2e8f0',
+        'text-halo-color': '#0f172a',
+        'text-halo-width': 1.5,
       },
     })
   }
@@ -1555,18 +2990,10 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       id: 'airport-taxiways-line',
       type: 'line',
       source: 'airport-taxiways',
-      minzoom: 11,
+      minzoom: 12,
       paint: {
         'line-color': '#fbbf24',
-        'line-width': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          11,
-          0.8,
-          15,
-          2,
-        ],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.8, 16, 2],
         'line-opacity': 0.8,
         'line-dasharray': [1.2, 1.4],
       },
@@ -1578,12 +3005,12 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       id: 'airport-taxiways-label',
       type: 'symbol',
       source: 'airport-taxiways',
-      minzoom: 13,
+      minzoom: 14,
       layout: {
         'symbol-placement': 'line-center',
         'text-field': ['get', 'name'],
-        'text-size': 9,
-        'text-font': ['Noto Sans Regular'],
+        'text-size': 10,
+        'text-font': ['Noto Sans Bold'],
       },
       paint: {
         'text-color': '#fef3c7',
@@ -1598,7 +3025,7 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       id: 'airport-tower-circle',
       type: 'circle',
       source: 'airport-tower',
-      minzoom: 10,
+      minzoom: 13,
       paint: {
         'circle-color': '#f59e0b',
         'circle-radius': 4,
@@ -1613,11 +3040,11 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       id: 'airport-tower-label',
       type: 'symbol',
       source: 'airport-tower',
-      minzoom: 11,
+      minzoom: 14,
       layout: {
         'text-field': ['get', 'name'],
         'text-size': 10,
-        'text-font': ['Noto Sans Regular'],
+        'text-font': ['Noto Sans Bold'],
         'text-offset': [0, 1],
       },
       paint: {
@@ -1633,9 +3060,9 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       id: 'airport-beacon-circle',
       type: 'circle',
       source: 'airport-beacon',
-      minzoom: 10,
+      minzoom: 12,
       paint: {
-        'circle-color': '#fb7185',
+        'circle-color': '#facc15',
         'circle-radius': 3.2,
         'circle-stroke-color': '#020617',
         'circle-stroke-width': 1,
@@ -1648,17 +3075,13 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       id: 'airport-windsocks-circle',
       type: 'circle',
       source: 'airport-windsocks',
-      minzoom: 10,
+      minzoom: 14,
       paint: {
-        'circle-color': [
-          'case',
-          ['to-boolean', ['get', 'illuminated']],
-          '#22d3ee',
-          '#0ea5e9',
-        ],
-        'circle-radius': 2.6,
-        'circle-stroke-color': '#020617',
-        'circle-stroke-width': 0.8,
+        'circle-color': ['case', ['to-boolean', ['get', 'illuminated']], '#00FF88', '#FF8800'],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 14, 4, 18, 8],
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#FFFFFF',
+        'circle-blur': ['case', ['to-boolean', ['get', 'illuminated']], 0.3, 0],
       },
     })
   }
@@ -1668,7 +3091,7 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       id: 'airport-signs-circle',
       type: 'circle',
       source: 'airport-signs',
-      minzoom: 12,
+      minzoom: 16,
       paint: {
         'circle-color': '#f97316',
         'circle-radius': 2.2,
@@ -1683,11 +3106,11 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       id: 'airport-signs-label',
       type: 'symbol',
       source: 'airport-signs',
-      minzoom: 13,
+      minzoom: 16,
       layout: {
         'text-field': ['get', 'text'],
         'text-size': 9,
-        'text-font': ['Noto Sans Regular'],
+        'text-font': ['Noto Sans Bold'],
         'text-offset': [0, 0.9],
       },
       paint: {
@@ -1705,17 +3128,7 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       source: 'airports',
       paint: {
         'circle-color': '#60a5fa',
-        'circle-radius': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          3,
-          1.5,
-          7,
-          4,
-          12,
-          7,
-        ],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 1.5, 7, 4, 12, 7],
         'circle-stroke-color': '#0f172a',
         'circle-stroke-width': 1,
       },
@@ -1749,15 +3162,7 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       source: 'navaids',
       paint: {
         'circle-color': '#22d3ee',
-        'circle-radius': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          4,
-          1,
-          10,
-          3,
-        ],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 1, 10, 3],
       },
     })
   }
@@ -1840,6 +3245,69 @@ async function refreshAirportWeather(airport: MapAirport) {
   }
 }
 
+function resetGatewaySceneryState() {
+  gatewayScenerySeq += 1
+  gatewaySceneryLoading.value = false
+  gatewayScenery.value = null
+}
+
+async function refreshGatewayScenery(
+  sceneryId: number,
+  airportIcao: string,
+  airportGatewaySeq: number,
+) {
+  if (!Number.isFinite(sceneryId) || sceneryId <= 0) {
+    resetGatewaySceneryState()
+    return
+  }
+
+  const scenerySeq = ++gatewayScenerySeq
+  gatewaySceneryLoading.value = true
+  gatewayScenery.value = null
+
+  try {
+    const payload = await mapFetchGatewayScenery(sceneryId)
+    if (airportGatewaySeq !== gatewaySeq || scenerySeq !== gatewayScenerySeq) return
+    gatewayScenery.value = parseGatewaySceneryDetail(payload, sceneryId)
+  } catch (error) {
+    if (airportGatewaySeq !== gatewaySeq || scenerySeq !== gatewayScenerySeq) return
+    gatewayScenery.value = null
+    logError(`Failed to fetch Gateway scenery ${sceneryId} for ${airportIcao}: ${error}`, 'map')
+  } finally {
+    if (airportGatewaySeq === gatewaySeq && scenerySeq === gatewayScenerySeq) {
+      gatewaySceneryLoading.value = false
+    }
+  }
+}
+
+async function refreshGatewayAirport(airport: MapAirport) {
+  const seq = ++gatewaySeq
+  gatewayLoading.value = true
+  gatewaySummary.value = null
+  resetGatewaySceneryState()
+
+  try {
+    const payload = await mapFetchGatewayAirport(airport.icao)
+    if (seq !== gatewaySeq) return
+    const summary = parseGatewaySummary(payload, airport.icao)
+    gatewaySummary.value = summary
+
+    const recommendedId = summary?.recommendedSceneryId
+    if (recommendedId && recommendedId > 0) {
+      await refreshGatewayScenery(recommendedId, airport.icao, seq)
+    }
+  } catch (error) {
+    if (seq !== gatewaySeq) return
+    gatewaySummary.value = null
+    resetGatewaySceneryState()
+    logError(`Failed to fetch Gateway data for ${airport.icao}: ${error}`, 'map')
+  } finally {
+    if (seq === gatewaySeq) {
+      gatewayLoading.value = false
+    }
+  }
+}
+
 async function refreshAirportDetail(airport: MapAirport) {
   const xplanePath = appStore.xplanePath
   if (!xplanePath) return
@@ -1875,6 +3343,10 @@ async function selectAirport(airport: MapAirport) {
   searchResults.value = []
   searchQuery.value = airport.icao
   clearAirportDetailFeatures()
+  resetAirportProceduresState()
+  gatewaySummary.value = null
+  gatewayLoading.value = false
+  resetGatewaySceneryState()
 
   const map = mapRef.value
   if (map) {
@@ -1885,7 +3357,12 @@ async function selectAirport(airport: MapAirport) {
     })
   }
 
-  await Promise.allSettled([refreshAirportWeather(airport), refreshAirportDetail(airport)])
+  await Promise.allSettled([
+    refreshAirportWeather(airport),
+    refreshAirportDetail(airport),
+    refreshAirportProcedures(airport),
+    refreshGatewayAirport(airport),
+  ])
 }
 
 async function updateWeatherRadar(manifest?: RainViewerManifest) {
@@ -1940,7 +3417,12 @@ function updateVatsimFeature(items: MapVatsimPilot[]) {
 }
 
 function updateAirportDetailFeatures(detail: MapAirportDetail | null) {
+  updateGeoJsonSource('airport-runway-shoulders', toAirportRunwayShoulderFeatureCollection(detail))
   updateGeoJsonSource('airport-runways', toAirportRunwayFeatureCollection(detail))
+  updateGeoJsonSource('airport-runway-centerlines', toAirportRunwayCenterlineFeatureCollection(detail))
+  updateGeoJsonSource('airport-runway-markings', toAirportRunwayMarkingFeatureCollection(detail))
+  updateGeoJsonSource('airport-runway-numbers', toAirportRunwayNumberFeatureCollection(detail))
+  updateGeoJsonSource('airport-runway-lights', toAirportRunwayLightFeatureCollection(detail))
   updateGeoJsonSource('airport-runway-ends', toAirportRunwayEndFeatureCollection(detail))
   updateGeoJsonSource('airport-helipads', toAirportHelipadFeatureCollection(detail))
   updateGeoJsonSource('airport-gates', toAirportGateFeatureCollection(detail))
@@ -2380,6 +3862,11 @@ onBeforeUnmount(async () => {
   }
   refreshInFlight = false
   refreshQueued = false
+  resetAirportProceduresState()
+  gatewaySeq += 1
+  gatewayLoading.value = false
+  gatewaySummary.value = null
+  resetGatewaySceneryState()
   mapInteractionsBound = false
   airportDetailCache.clear()
   detailCachePath = ''
