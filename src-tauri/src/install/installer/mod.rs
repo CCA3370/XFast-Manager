@@ -57,6 +57,20 @@ impl CompiledPatterns {
     }
 }
 
+#[derive(Clone)]
+struct SourceCleanupCandidate {
+    task_id: String,
+    original_input_path: String,
+    source_path: String,
+}
+
+struct SourceCleanupGroup {
+    original_input_path: String,
+    source_path: String,
+    total_tasks: usize,
+    successful_tasks: usize,
+}
+
 /// Generate a fixed-length folder name from a provider name using SHA-256.
 /// Produces a 16-character hex string (first 8 bytes of hash) that is
 /// deterministic: the same provider name always yields the same result.
@@ -954,6 +968,86 @@ impl Installer {
         }
     }
 
+    fn collect_source_cleanup_candidates(tasks: &[InstallTask]) -> Vec<SourceCleanupCandidate> {
+        tasks
+            .iter()
+            .filter_map(|task| {
+                task.original_input_path
+                    .as_ref()
+                    .map(|original_input_path| SourceCleanupCandidate {
+                        task_id: task.id.clone(),
+                        original_input_path: original_input_path.clone(),
+                        source_path: task.source_path.clone(),
+                    })
+            })
+            .collect()
+    }
+
+    fn cleanup_sources_after_install(
+        &self,
+        candidates: &[SourceCleanupCandidate],
+        task_results: &[TaskResult],
+        delete_source_after_install: bool,
+    ) {
+        if !delete_source_after_install || candidates.is_empty() {
+            return;
+        }
+
+        let success_by_task_id: HashMap<&str, bool> = task_results
+            .iter()
+            .map(|result| (result.task_id.as_str(), result.success))
+            .collect();
+
+        let mut groups: HashMap<(String, String), SourceCleanupGroup> = HashMap::new();
+
+        for candidate in candidates {
+            let entry = groups
+                .entry((
+                    candidate.original_input_path.clone(),
+                    candidate.source_path.clone(),
+                ))
+                .or_insert_with(|| SourceCleanupGroup {
+                    original_input_path: candidate.original_input_path.clone(),
+                    source_path: candidate.source_path.clone(),
+                    total_tasks: 0,
+                    successful_tasks: 0,
+                });
+
+            entry.total_tasks += 1;
+            if success_by_task_id
+                .get(candidate.task_id.as_str())
+                .copied()
+                .unwrap_or(false)
+            {
+                entry.successful_tasks += 1;
+            }
+        }
+
+        for group in groups.values() {
+            if group.successful_tasks == group.total_tasks {
+                if let Err(e) =
+                    self.delete_source_file(&group.original_input_path, &group.source_path)
+                {
+                    logger::log_error(
+                        &format!(
+                            "Failed to delete source file {}: {}",
+                            group.original_input_path, e
+                        ),
+                        Some("installer"),
+                    );
+                }
+            } else {
+                logger::log_info(
+                    &format!(
+                        "Skipping source deletion because only {}/{} related task(s) succeeded: {}",
+                        group.successful_tasks, group.total_tasks, group.original_input_path
+                    ),
+                    Some("installer"),
+                );
+            }
+        }
+    }
+
     /// Install a list of tasks with progress reporting
     pub async fn install(
         &self,
@@ -992,6 +1086,7 @@ impl Installer {
         let mut failed = 0;
         let mut cancelled = 0;
         let mut skipped = 0;
+        let source_cleanup_candidates = Self::collect_source_cleanup_candidates(&tasks);
 
         // Phase 1: Calculate total size
         let calc_start = Instant::now();
@@ -1191,23 +1286,6 @@ impl Installer {
                                 verification_stats,
                             });
 
-                            // Delete source file after successful installation if enabled
-                            if delete_source_after_install {
-                                if let Some(original_path) = &task.original_input_path {
-                                    if let Err(e) =
-                                        self.delete_source_file(original_path, &task.source_path)
-                                    {
-                                        logger::log_error(
-                                            &format!(
-                                                "Failed to delete source file {}: {}",
-                                                original_path, e
-                                            ),
-                                            Some("installer"),
-                                        );
-                                    }
-                                }
-                            }
-
                             // Auto-sort scenery if enabled and this is a scenery task
                             if auto_sort_scenery
                                 && (task.addon_type == AddonType::Scenery
@@ -1335,6 +1413,12 @@ impl Installer {
                 cancelled
             ),
             "installer_timing"
+        );
+
+        self.cleanup_sources_after_install(
+            &source_cleanup_candidates,
+            &task_results,
+            delete_source_after_install,
         );
 
         // Phase 3: Finalize
@@ -1497,6 +1581,7 @@ impl Installer {
                 target_path: t.target_path.clone(),
             })
             .collect();
+        let source_cleanup_candidates = Self::collect_source_cleanup_candidates(&tasks);
 
         for (index, task) in tasks.into_iter().enumerate() {
             let sem = semaphore.clone();
@@ -1505,7 +1590,6 @@ impl Installer {
             let ah = app_handle.clone();
             let xp = xplane_path.clone();
             let atomic = atomic_install_enabled;
-            let delete_source = delete_source_after_install;
 
             let handle = tokio::spawn(async move {
                 // Acquire semaphore permit asynchronously
@@ -1588,23 +1672,6 @@ impl Installer {
                                         ),
                                         Some("installer"),
                                     );
-
-                                    if delete_source {
-                                        if let Some(original_path) = &task.original_input_path {
-                                            if let Err(e) = installer.delete_source_file(
-                                                original_path,
-                                                &task.source_path,
-                                            ) {
-                                                logger::log_error(
-                                                    &format!(
-                                                        "Failed to delete source file {}: {}",
-                                                        original_path, e
-                                                    ),
-                                                    Some("installer"),
-                                                );
-                                            }
-                                        }
-                                    }
 
                                     TaskResult {
                                         task_id: task.id.clone(),
@@ -1690,6 +1757,12 @@ impl Installer {
                 }
             }
         }
+
+        self.cleanup_sources_after_install(
+            &source_cleanup_candidates,
+            &task_results,
+            delete_source_after_install,
+        );
 
         // Phase 3: Finalize
         ctx.emit_final();
