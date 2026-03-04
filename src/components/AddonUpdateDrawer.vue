@@ -922,7 +922,6 @@ watch(
                             <li v-for="file in stateFor(task).plan?.deleteFiles || []" :key="`delete-${file}`">{{ file }}</li>
                           </ul>
                         </div>
-
                       </div>
 
                       <div
@@ -985,9 +984,9 @@ watch(
               class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/45 px-3 py-2.5 text-sm text-slate-700 dark:text-slate-300 transition-all hover:border-amber-300/70 dark:hover:border-amber-600/60"
             >
               <input
+                v-model="freshInstallPreserveLiveries"
                 type="checkbox"
                 class="peer sr-only"
-                v-model="freshInstallPreserveLiveries"
               />
               <span
                 class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-amber-500 peer-checked:bg-amber-500 peer-checked:after:translate-x-4"
@@ -999,9 +998,9 @@ watch(
               class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/45 px-3 py-2.5 text-sm text-slate-700 dark:text-slate-300 transition-all hover:border-amber-300/70 dark:hover:border-amber-600/60"
             >
               <input
+                v-model="freshInstallPreserveConfigFiles"
                 type="checkbox"
                 class="peer sr-only"
-                v-model="freshInstallPreserveConfigFiles"
               />
               <span
                 class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-amber-500 peer-checked:bg-amber-500 peer-checked:after:translate-x-4"

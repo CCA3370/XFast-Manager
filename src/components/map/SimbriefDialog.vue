@@ -245,10 +245,10 @@ const yAxisLabels = computed(() => {
             {{ isLbs ? 'LBS' : 'KG' }}
           </button>
           <button class="text-gray-400 hover:text-white" @click="emit('close')">
-          <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-          </svg>
-        </button>
+            <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+            </svg>
+          </button>
       </div>
 
       <!-- No data state -->
@@ -304,7 +304,6 @@ const yAxisLabels = computed(() => {
 
         <!-- Body -->
         <div class="flex-1 overflow-y-auto p-4">
-
           <!-- Flight Tab -->
           <div v-if="activeTab === 'flight'" class="space-y-4">
             <!-- Route -->
@@ -388,7 +387,6 @@ const yAxisLabels = computed(() => {
                 <span class="ml-auto">Total: {{ Math.round(totalDistance) }} nm</span>
               </div>
             </div>
-
             <!-- Summary cards -->
             <div class="grid grid-cols-3 gap-3">
               <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3">
@@ -644,8 +642,7 @@ const yAxisLabels = computed(() => {
               </div>
             </div>
           </div>
-
-        </div>
+</div>
       </template>
 
       <!-- Footer -->
@@ -659,4 +656,5 @@ const yAxisLabels = computed(() => {
       </div>
     </div>
   </div>
+</div>
 </template>

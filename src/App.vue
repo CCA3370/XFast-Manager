@@ -10,7 +10,6 @@
       ></div>
 
       <div class="relative container mx-auto px-6 h-12 flex justify-center items-center">
-
         <!-- Navigation -->
         <div class="flex items-center">
           <div v-if="!isOnboardingRoute" class="flex items-center space-x-1">

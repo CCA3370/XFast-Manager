@@ -396,7 +396,7 @@ async function load() {
 }
 
 async function copyImageBlob(blob: Blob, fallbackText: string) {
-  const ctor = (window as any).ClipboardItem
+  const ctor = (window as unknown as Record<string, typeof ClipboardItem>).ClipboardItem
   if (ctor && navigator.clipboard?.write) {
     await navigator.clipboard.write([new ctor({ [blob.type || 'image/png']: blob })])
     return
