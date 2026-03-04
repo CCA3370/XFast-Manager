@@ -644,6 +644,7 @@ async fn install_addons(
     xplane_path: String,
     delete_source_after_install: Option<bool>,
     auto_sort_scenery: Option<bool>,
+    locked_scenery_folder_names: Option<Vec<String>>,
     parallel_enabled: Option<bool>,
     max_parallel: Option<usize>,
 ) -> Result<InstallResult, String> {
@@ -672,6 +673,7 @@ async fn install_addons(
                 xplane_path,
                 delete_source_after_install.unwrap_or(false),
                 auto_sort_scenery.unwrap_or(false),
+                locked_scenery_folder_names.unwrap_or_default(),
             )
             .await
             .map_err(|e| format!("Installation failed: {}", e))
@@ -683,6 +685,7 @@ async fn install_addons(
                 xplane_path,
                 delete_source_after_install.unwrap_or(false),
                 auto_sort_scenery.unwrap_or(false),
+                locked_scenery_folder_names.unwrap_or_default(),
             )
             .await
             .map_err(|e| format!("Installation failed: {}", e))
@@ -1691,6 +1694,7 @@ async fn get_scenery_classification(
 async fn sort_scenery_packs(
     db: State<'_, DatabaseState>,
     xplane_path: String,
+    locked_folder_names: Option<Vec<String>>,
 ) -> Result<bool, String> {
     let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
@@ -1698,10 +1702,17 @@ async fn sort_scenery_packs(
 
     logger::log_info("Resetting scenery index sort order", Some("scenery"));
 
-    let has_changes = index_manager
-        .reset_sort_order()
-        .await
-        .map_err(|e| format!("Failed to reset sort order: {}", e))?;
+    let has_changes = if let Some(locked_folder_names) = locked_folder_names {
+        index_manager
+            .reset_sort_order_with_locked_entries(locked_folder_names)
+            .await
+            .map_err(|e| format!("Failed to reset sort order: {}", e))?
+    } else {
+        index_manager
+            .reset_sort_order()
+            .await
+            .map_err(|e| format!("Failed to reset sort order: {}", e))?
+    };
 
     logger::log_info(
         "Scenery index sort order reset successfully",
@@ -1816,15 +1827,25 @@ async fn get_scenery_index_status(
 async fn quick_scan_scenery_index(
     db: State<'_, DatabaseState>,
     xplane_path: String,
+    locked_folder_names: Option<Vec<String>>,
 ) -> Result<SceneryIndexScanResult, String> {
     let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
-    index_manager
-        .quick_scan_and_update()
-        .await
-        .map_err(|e| format!("Failed to quick scan scenery index: {}", e))
+    let result = if let Some(locked_folder_names) = locked_folder_names {
+        index_manager
+            .quick_scan_and_update_with_locked_entries(locked_folder_names)
+            .await
+            .map_err(|e| format!("Failed to quick scan scenery index: {}", e))?
+    } else {
+        index_manager
+            .quick_scan_and_update()
+            .await
+            .map_err(|e| format!("Failed to quick scan scenery index: {}", e))?
+    };
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -2649,6 +2670,13 @@ pub fn run() {
             map::map_start_plane_stream,
             map::map_stop_plane_stream,
             map::map_get_plane_stream_status,
+            map::xplane_is_api_available,
+            map::xplane_get_dataref,
+            map::xplane_set_dataref,
+            map::xplane_activate_command,
+            map::map_scan_aircraft,
+            map::map_get_aircraft_image,
+            map::map_launch_flight,
             // Scenery manager commands
             get_scenery_manager_data,
             update_scenery_entry,

@@ -40,6 +40,9 @@ const DEFAULT_ADDON_UPDATE_OPTIONS: AddonUpdateOptions = {
   parallelDownloads: 4,
   channel: 'stable',
   freshInstall: false,
+  chunkedDownloadEnabled: true,
+  threadsPerTask: 6,
+  totalThreads: 32,
 }
 
 // Default X-Plane aircraft required for simulator startup — cannot be disabled
@@ -199,7 +202,7 @@ export const useManagementStore = defineStore('management', () => {
   async function loadAddonUpdateOptions() {
     if (addonUpdateOptionsLoaded.value) return
 
-    const [useBeta, includeLiveries, applyBlacklist, parallelDownloads, channel, freshInstall] =
+    const [useBeta, includeLiveries, applyBlacklist, parallelDownloads, channel, freshInstall, chunkedDownloadEnabled, threadsPerTask, totalThreads] =
       await Promise.all([
         getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_USE_BETA),
         getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_INCLUDE_LIVERIES),
@@ -207,6 +210,9 @@ export const useManagementStore = defineStore('management', () => {
         getItem<number>(STORAGE_KEYS.ADDON_UPDATE_PARALLEL_DOWNLOADS),
         getItem<string>(STORAGE_KEYS.ADDON_UPDATE_CHANNEL),
         getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_FRESH_INSTALL),
+        getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_CHUNKED_DOWNLOAD_ENABLED),
+        getItem<number>(STORAGE_KEYS.ADDON_UPDATE_THREADS_PER_TASK),
+        getItem<number>(STORAGE_KEYS.ADDON_UPDATE_TOTAL_THREADS),
       ])
 
     addonUpdateOptions.value = {
@@ -233,6 +239,18 @@ export const useManagementStore = defineStore('management', () => {
         typeof freshInstall === 'boolean'
           ? freshInstall
           : DEFAULT_ADDON_UPDATE_OPTIONS.freshInstall,
+      chunkedDownloadEnabled:
+        typeof chunkedDownloadEnabled === 'boolean'
+          ? chunkedDownloadEnabled
+          : DEFAULT_ADDON_UPDATE_OPTIONS.chunkedDownloadEnabled,
+      threadsPerTask:
+        typeof threadsPerTask === 'number' && threadsPerTask > 0
+          ? Math.min(Math.max(threadsPerTask, 1), 32)
+          : DEFAULT_ADDON_UPDATE_OPTIONS.threadsPerTask,
+      totalThreads:
+        typeof totalThreads === 'number' && totalThreads > 0
+          ? Math.min(Math.max(totalThreads, 1), 64)
+          : DEFAULT_ADDON_UPDATE_OPTIONS.totalThreads,
     }
 
     addonUpdateOptionsLoaded.value = true
@@ -272,6 +290,9 @@ export const useManagementStore = defineStore('management', () => {
       ),
       setItem(STORAGE_KEYS.ADDON_UPDATE_CHANNEL, addonUpdateOptions.value.channel ?? 'stable'),
       setItem(STORAGE_KEYS.ADDON_UPDATE_FRESH_INSTALL, addonUpdateOptions.value.freshInstall ?? false),
+      setItem(STORAGE_KEYS.ADDON_UPDATE_CHUNKED_DOWNLOAD_ENABLED, addonUpdateOptions.value.chunkedDownloadEnabled ?? true),
+      setItem(STORAGE_KEYS.ADDON_UPDATE_THREADS_PER_TASK, addonUpdateOptions.value.threadsPerTask ?? 6),
+      setItem(STORAGE_KEYS.ADDON_UPDATE_TOTAL_THREADS, addonUpdateOptions.value.totalThreads ?? 32),
     ])
   }
 

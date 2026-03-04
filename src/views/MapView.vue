@@ -179,6 +179,19 @@
     </div>
 
     <div class="absolute top-3 right-3 z-20 w-[330px] max-w-[calc(100%-1.5rem)] space-y-2">
+      <!-- Airport Info Panel with Start Position selector -->
+      <AirportInfoPanel
+        v-if="mapStore.selectedAirport"
+        :detail="selectedAirportDetail"
+        :metar-text="metarText"
+        :taf-text="tafText"
+        :collapsed="airportPanelCollapsed"
+        @toggle-collapse="airportPanelCollapsed = !airportPanelCollapsed"
+        @select-gate="(gate) => { if (mapRef && gate.lat && gate.lon) mapRef.easeTo({ center: [gate.lon, gate.lat], zoom: Math.max(mapRef.getZoom(), 16) }) }"
+        @select-runway-end="(rwy, end) => { const lat = end === 'end1' ? rwy.end1Lat : rwy.end2Lat; const lon = end === 'end1' ? rwy.end1Lon : rwy.end2Lon; if (mapRef && lat && lon) mapRef.easeTo({ center: [lon, lat], zoom: Math.max(mapRef.getZoom(), 15) }) }"
+        @select-helipad="(hp) => { if (mapRef && hp.lat && hp.lon) mapRef.easeTo({ center: [hp.lon, hp.lat], zoom: Math.max(mapRef.getZoom(), 16) }) }"
+      />
+
       <div class="rounded-xl border border-gray-700/70 bg-slate-900/90 backdrop-blur-md p-3 shadow-xl">
         <div class="text-xs text-gray-400">{{ t('map.selectedAirport') }}</div>
         <template v-if="mapStore.selectedAirport">
@@ -194,6 +207,9 @@
             · {{ t('map.stats.taxiways') }}: {{ selectedAirportDetail.taxiways.length }}
             · {{ t('map.stats.windsocks') }}: {{ selectedAirportDetail.windsocks.length }}
             · {{ t('map.stats.signs') }}: {{ selectedAirportDetail.signs.length }}
+            <template v-if="selectedAirportDetail.pavements?.length">· Pavements: {{ selectedAirportDetail.pavements.length }}</template>
+            <template v-if="selectedAirportDetail.linearFeatures?.length">· Lines: {{ selectedAirportDetail.linearFeatures.length }}</template>
+            <template v-if="selectedAirportDetail.boundaries?.length">· Boundaries: {{ selectedAirportDetail.boundaries.length }}</template>
           </div>
           <div class="mt-2 text-xs text-gray-300 leading-5">
             <div>{{ metarText || t('map.noMetar') }}</div>
@@ -406,11 +422,72 @@
           <div class="font-mono text-blue-300">{{ simbriefSummary.callsign || '-' }}</div>
           <div class="mt-1">{{ simbriefSummary.from }} -> {{ simbriefSummary.to }}</div>
           <div class="mt-0.5 text-gray-400">{{ simbriefSummary.altitude }} / {{ simbriefSummary.distance }}</div>
+          <button
+            class="mt-1.5 w-full rounded bg-blue-600/80 px-2 py-1 text-[10px] text-white hover:bg-blue-500 transition-colors"
+            @click="showSimbriefDialog = true"
+          >
+            View OFP
+          </button>
         </div>
       </div>
     </div>
 
     <div ref="mapContainer" class="h-full w-full"></div>
+
+    <!-- Flight info bar - shown when plane is connected -->
+    <div
+      v-if="mapStore.planeConnected && mapStore.planeState"
+      class="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-4 rounded-lg border border-gray-700/70 bg-slate-900/90 backdrop-blur-md px-4 py-2 shadow-xl text-[11px] font-mono"
+    >
+      <div class="flex items-center gap-1">
+        <span class="text-gray-500">IAS</span>
+        <span class="text-gray-100">{{ mapStore.planeState.indicatedAirspeed != null ? Math.round(mapStore.planeState.indicatedAirspeed) : '-' }}</span>
+        <span class="text-gray-500">kt</span>
+      </div>
+      <div class="flex items-center gap-1">
+        <span class="text-gray-500">GS</span>
+        <span class="text-gray-100">{{ mapStore.planeState.groundspeed != null ? Math.round(mapStore.planeState.groundspeed) : '-' }}</span>
+        <span class="text-gray-500">kt</span>
+      </div>
+      <div class="w-px h-4 bg-gray-700"></div>
+      <div class="flex items-center gap-1">
+        <span class="text-gray-500">ALT</span>
+        <span class="text-gray-100">{{ mapStore.planeState.altitudeMSL != null ? Math.round(mapStore.planeState.altitudeMSL).toLocaleString() : '-' }}</span>
+        <span class="text-gray-500">ft</span>
+      </div>
+      <div class="flex items-center gap-1">
+        <span class="text-gray-500">AGL</span>
+        <span class="text-gray-100">{{ mapStore.planeState.altitudeAGL != null ? Math.round(mapStore.planeState.altitudeAGL).toLocaleString() : '-' }}</span>
+        <span class="text-gray-500">ft</span>
+      </div>
+      <div class="w-px h-4 bg-gray-700"></div>
+      <div class="flex items-center gap-1">
+        <span class="text-gray-500">VS</span>
+        <span :class="(mapStore.planeState.verticalSpeed ?? 0) > 100 ? 'text-emerald-300' : (mapStore.planeState.verticalSpeed ?? 0) < -100 ? 'text-amber-300' : 'text-gray-100'">
+          {{ mapStore.planeState.verticalSpeed != null ? Math.round(mapStore.planeState.verticalSpeed) : '-' }}
+        </span>
+        <span class="text-gray-500">fpm</span>
+      </div>
+      <div class="flex items-center gap-1">
+        <span class="text-gray-500">HDG</span>
+        <span class="text-gray-100">{{ mapStore.planeState.heading != null ? Math.round(mapStore.planeState.heading).toString().padStart(3, '0') : '-' }}°</span>
+      </div>
+      <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+    </div>
+
+    <!-- Launch Flight button -->
+    <button
+      class="absolute bottom-4 left-4 z-20 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white shadow-lg hover:bg-blue-500 transition-colors"
+      @click="showLaunchDialog = true"
+    >
+      Launch Flight
+    </button>
+
+    <!-- Launch Dialog -->
+    <LaunchDialog v-if="showLaunchDialog" @close="showLaunchDialog = false" />
+
+    <!-- SimBrief OFP Dialog -->
+    <SimbriefDialog v-if="showSimbriefDialog" @close="showSimbriefDialog = false" />
   </div>
 </template>
 
@@ -422,7 +499,11 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useAppStore } from '@/stores/app'
 import { useMapStore } from '@/stores/map'
+import AirportInfoPanel from '@/components/map/AirportInfoPanel.vue'
+import LaunchDialog from '@/components/map/LaunchDialog.vue'
+import SimbriefDialog from '@/components/map/SimbriefDialog.vue'
 import { useToastStore } from '@/stores/toast'
+import { useFlightPlanStore } from '@/stores/flightPlan'
 import {
   mapGetAirportDetail,
   mapGetAirportProcedures,
@@ -464,6 +545,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const mapStore = useMapStore()
 const toast = useToastStore()
+const flightPlanStore = useFlightPlanStore()
 
 const mapContainer = ref<HTMLDivElement | null>(null)
 const mapRef = ref<maplibregl.Map | null>(null)
@@ -497,6 +579,7 @@ const vatsimPilots = ref<MapVatsimPilot[]>([])
 const vatsimEvents = ref<MapVatsimEvent[]>([])
 const selectedAirportDetail = ref<MapAirportDetail | null>(null)
 const simbriefRouteCoordinates = ref<Array<[number, number]>>([])
+const simbriefRouteStages = ref<string[]>([])
 
 const metarText = ref('')
 const tafText = ref('')
@@ -517,6 +600,9 @@ const simbriefSummary = ref<{
   altitude: string
   distance: string
 } | null>(null)
+const airportPanelCollapsed = ref(false)
+const showLaunchDialog = ref(false)
+const showSimbriefDialog = ref(false)
 
 const mapStyleOptions: Array<{ label: string; value: string }> = [
   { label: 'Dark Matter', value: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json' },
@@ -1705,6 +1791,88 @@ function toAirportTaxiwayFeatureCollection(detail: MapAirportDetail | null): Fea
   }
 }
 
+function toAirportPavementFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
+  if (!detail || !detail.pavements) {
+    return { type: 'FeatureCollection', features: [] }
+  }
+
+  const features: Array<Record<string, unknown>> = []
+  for (const pavement of detail.pavements) {
+    if (pavement.coordinates.length < 3) continue
+    // Build GeoJSON Polygon with optional holes
+    const rings: number[][][] = [pavement.coordinates]
+    if (pavement.holes) {
+      for (const hole of pavement.holes) {
+        if (hole.length >= 3) rings.push(hole)
+      }
+    }
+    features.push({
+      type: 'Feature',
+      properties: {
+        surfaceType: pavement.surfaceType,
+        name: pavement.name || '',
+      },
+      geometry: {
+        type: 'Polygon',
+        coordinates: rings,
+      },
+    })
+  }
+
+  return { type: 'FeatureCollection', features }
+}
+
+function toAirportLinearFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
+  if (!detail || !detail.linearFeatures) {
+    return { type: 'FeatureCollection', features: [] }
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features: detail.linearFeatures
+      .filter((f) => f.coordinates.length >= 2 && f.lineType > 0)
+      .map((f) => ({
+        type: 'Feature',
+        properties: {
+          lineType: f.lineType,
+          lightType: f.lightType,
+          name: f.name || '',
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: f.coordinates,
+        },
+      })),
+  }
+}
+
+function toAirportBoundaryFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
+  if (!detail || !detail.boundaries) {
+    return { type: 'FeatureCollection', features: [] }
+  }
+
+  const features: Array<Record<string, unknown>> = []
+  for (const boundary of detail.boundaries) {
+    if (boundary.coordinates.length < 3) continue
+    const rings: number[][][] = [boundary.coordinates]
+    if (boundary.holes) {
+      for (const hole of boundary.holes) {
+        if (hole.length >= 3) rings.push(hole)
+      }
+    }
+    features.push({
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'Polygon',
+        coordinates: rings,
+      },
+    })
+  }
+
+  return { type: 'FeatureCollection', features }
+}
+
 function toAirportTowerFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
   if (!detail || !detail.tower || !Number.isFinite(detail.tower.lat) || !Number.isFinite(detail.tower.lon)) {
     return { type: 'FeatureCollection', features: [] }
@@ -1798,9 +1966,25 @@ function toAirportSignFeatureCollection(detail: MapAirportDetail | null): Featur
   }
 }
 
-function toSimbriefRouteFeatureCollection(coordinates: Array<[number, number]>): FeatureCollection {
+function toSimbriefRouteFeatureCollection(coordinates: Array<[number, number]>, stages?: string[]): FeatureCollection {
   if (coordinates.length < 2) {
     return { type: 'FeatureCollection', features: [] }
+  }
+
+  // If we have stage data, split into per-segment features for phase coloring
+  if (stages && stages.length >= coordinates.length) {
+    const features: Array<Record<string, unknown>> = []
+    for (let i = 0; i < coordinates.length - 1; i++) {
+      features.push({
+        type: 'Feature',
+        properties: { stage: stages[i] || '' },
+        geometry: {
+          type: 'LineString',
+          coordinates: [coordinates[i], coordinates[i + 1]],
+        },
+      })
+    }
+    return { type: 'FeatureCollection', features }
   }
 
   return {
@@ -1808,7 +1992,7 @@ function toSimbriefRouteFeatureCollection(coordinates: Array<[number, number]>):
     features: [
       {
         type: 'Feature',
-        properties: {},
+        properties: { stage: '' },
         geometry: {
           type: 'LineString',
           coordinates,
@@ -1818,21 +2002,46 @@ function toSimbriefRouteFeatureCollection(coordinates: Array<[number, number]>):
   }
 }
 
+/** Map navaid type code to color */
+function navaidColor(navaidType: string | undefined): string {
+  switch (navaidType) {
+    case 'VOR': return '#0066CC'
+    case 'VOR-DME': case 'VORDME': return '#0088FF'
+    case 'VORTAC': return '#0044AA'
+    case 'NDB': return '#9933CC'
+    case 'DME': return '#0099CC'
+    case 'TACAN': return '#0099CC'
+    case 'ILS': case 'LOC': case 'GS': return '#FF8800'
+    default: return '#22d3ee'
+  }
+}
+
 function toNavaidFeatureCollection(items: MapNavSnapshot['navaids']): FeatureCollection {
   return {
     type: 'FeatureCollection',
-    features: items.map((item) => ({
-      type: 'Feature',
-      properties: {
-        id: item.id,
-        name: item.name,
-        navaidType: item.navaidType,
-      },
-      geometry: {
-        type: 'Point',
-        coordinates: [item.lon, item.lat],
-      },
-    })),
+    features: items.map((item) => {
+      const freq = item.frequency
+        ? (Number(item.frequency) >= 100000
+            ? (Number(item.frequency) / 1000).toFixed(2)
+            : item.navaidType === 'NDB'
+              ? `${item.frequency} kHz`
+              : String(item.frequency))
+        : ''
+      return {
+        type: 'Feature',
+        properties: {
+          id: item.id,
+          name: item.name,
+          navaidType: item.navaidType || '',
+          color: navaidColor(item.navaidType),
+          label: freq ? `${item.id}\n${freq}` : item.id,
+        },
+        geometry: {
+          type: 'Point',
+          coordinates: [item.lon, item.lat],
+        },
+      }
+    }),
   }
 }
 
@@ -1899,6 +2108,72 @@ function toIlsFeatureCollection(items: MapNavSnapshot['ils']): FeatureCollection
       }
     }),
   }
+}
+
+/** ILS localizer cone polygons (triangle from transmitter, ±2.5° wide, 18 NM long) */
+function toIlsConeFeatureCollection(items: MapNavSnapshot['ils']): FeatureCollection {
+  const NM_TO_METERS = 1852
+  const coneLength = 18 * NM_TO_METERS
+  const halfAngle = 2.5
+
+  return {
+    type: 'FeatureCollection',
+    features: items
+      .filter((item) => item.course != null && Number.isFinite(item.lat) && Number.isFinite(item.lon))
+      .map((item) => {
+        const course = ((Number(item.course) || 0) + 180) % 360
+        const leftBearing = (course - halfAngle + 360) % 360
+        const rightBearing = (course + halfAngle) % 360
+
+        const left = destinationPoint(item.lat, item.lon, coneLength, leftBearing)
+        const right = destinationPoint(item.lat, item.lon, coneLength, rightBearing)
+
+        return {
+          type: 'Feature',
+          properties: {
+            id: item.id,
+            airport: item.airport,
+            runway: item.runway,
+          },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[item.lon, item.lat], [left[0], left[1]], [right[0], right[1]], [item.lon, item.lat]]],
+          },
+        }
+      }),
+  }
+}
+
+/** VATSIM pilot trails (short LineString behind each pilot based on heading/speed) */
+function toVatsimTrailFeatureCollection(pilots: MapVatsimPilot[]): FeatureCollection {
+  const features: Array<Record<string, unknown>> = []
+  for (const pilot of pilots) {
+    const speed = pilot.groundspeed || 0
+    if (speed < 30) continue
+    const heading = pilot.heading || 0
+    const lat = pilot.latitude
+    const lon = pilot.longitude
+    const len = Math.min(0.12, Math.max(0.02, speed / 4000))
+    const rad = ((heading + 180) % 360) * (Math.PI / 180)
+    const cosLat = Math.cos((lat * Math.PI) / 180)
+
+    const points: [number, number][] = [[lon, lat]]
+    for (let i = 1; i <= 4; i++) {
+      const t = i / 4
+      const segLen = len * t
+      points.push([
+        lon + (segLen * Math.sin(rad)) / cosLat,
+        lat + segLen * Math.cos(rad),
+      ])
+    }
+
+    features.push({
+      type: 'Feature',
+      properties: { callsign: pilot.callsign },
+      geometry: { type: 'LineString', coordinates: points },
+    })
+  }
+  return { type: 'FeatureCollection', features }
 }
 
 function toAirspaceFeatureCollection(items: MapNavSnapshot['airspaces']): FeatureCollection {
@@ -2414,8 +2689,9 @@ function buildSimbriefRouteCoordinates(
   payload: Record<string, unknown>,
   fromIcao: string,
   toIcao: string,
-): Array<[number, number]> {
+): { coordinates: Array<[number, number]>; stages: string[] } {
   const routeCoordinates: Array<[number, number]> = []
+  const routeStages: string[] = []
   const navlogRaw = payload.navlog
   const navlog = navlogRaw && typeof navlogRaw === 'object'
     ? navlogRaw as Record<string, unknown>
@@ -2438,25 +2714,40 @@ function buildSimbriefRouteCoordinates(
     if (lat === null || lon === null) continue
     if (lat < -90 || lat > 90 || lon < -180 || lon > 180) continue
     routeCoordinates.push([lon, lat])
+    // Extract stage: CLB, CRZ, DSC from fix data
+    const stage = String(fix.stage ?? fix.phase ?? '').toUpperCase()
+    routeStages.push(stage)
   }
 
   const fromCoordinate = findAirportCoordinate(fromIcao)
   const toCoordinate = findAirportCoordinate(toIcao)
 
   const merged: Array<[number, number]> = []
-  if (fromCoordinate) merged.push(fromCoordinate)
-  merged.push(...routeCoordinates)
-  if (toCoordinate) merged.push(toCoordinate)
+  const mergedStages: string[] = []
+  if (fromCoordinate) {
+    merged.push(fromCoordinate)
+    mergedStages.push(routeStages[0] || 'CLB')
+  }
+  for (let i = 0; i < routeCoordinates.length; i++) {
+    merged.push(routeCoordinates[i])
+    mergedStages.push(routeStages[i] || '')
+  }
+  if (toCoordinate) {
+    merged.push(toCoordinate)
+    mergedStages.push(routeStages[routeStages.length - 1] || 'DSC')
+  }
 
   const deduped: Array<[number, number]> = []
-  for (const point of merged) {
+  const dedupedStages: string[] = []
+  for (let i = 0; i < merged.length; i++) {
     const last = deduped.at(-1)
-    if (!last || last[0] !== point[0] || last[1] !== point[1]) {
-      deduped.push(point)
+    if (!last || last[0] !== merged[i][0] || last[1] !== merged[i][1]) {
+      deduped.push(merged[i])
+      dedupedStages.push(mergedStages[i])
     }
   }
 
-  return deduped
+  return { coordinates: deduped, stages: dedupedStages }
 }
 
 async function fetchSimbrief() {
@@ -2464,6 +2755,8 @@ async function fetchSimbrief() {
   if (!pilotId) {
     simbriefSummary.value = null
     simbriefRouteCoordinates.value = []
+    simbriefRouteStages.value = []
+    flightPlanStore.clear()
     updateSimbriefRouteFeature()
     applyLayerVisibility()
     return
@@ -2501,12 +2794,19 @@ async function fetchSimbrief() {
       distance: String(general.air_distance || general.route_distance || '-'),
     }
 
-    simbriefRouteCoordinates.value = buildSimbriefRouteCoordinates(p, from, to)
+    const routeResult = buildSimbriefRouteCoordinates(p, from, to)
+    simbriefRouteCoordinates.value = routeResult.coordinates
+    simbriefRouteStages.value = routeResult.stages
+
+    // Populate flight plan store for OFP dialog
+    flightPlanStore.setFromSimBrief(p)
+
     updateSimbriefRouteFeature()
     applyLayerVisibility()
   } catch (error) {
     logError(`Failed to fetch SimBrief: ${error}`, 'map')
     simbriefRouteCoordinates.value = []
+    simbriefRouteStages.value = []
     updateSimbriefRouteFeature()
     applyLayerVisibility()
     toast.warning(t('map.simbriefFetchFailed'))
@@ -2538,6 +2838,8 @@ function applyLayerVisibility() {
   if (!map) return
 
   const list: Array<{ id: string; visible: boolean }> = [
+    { id: 'airport-pavements-fill', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-boundaries-line', visible: mapStore.layerVisibility.airports },
     { id: 'airport-runway-shoulders', visible: mapStore.layerVisibility.airports },
     { id: 'airport-runways-fill', visible: mapStore.layerVisibility.airports },
     { id: 'airport-runway-centerline', visible: mapStore.layerVisibility.airports },
@@ -2558,6 +2860,8 @@ function applyLayerVisibility() {
     { id: 'airport-gates-label', visible: mapStore.layerVisibility.airports },
     { id: 'airport-taxiways-line', visible: mapStore.layerVisibility.airports },
     { id: 'airport-taxiways-label', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-linear-features-border', visible: mapStore.layerVisibility.airports },
+    { id: 'airport-linear-features-main', visible: mapStore.layerVisibility.airports },
     { id: 'airport-tower-circle', visible: mapStore.layerVisibility.airports },
     { id: 'airport-tower-label', visible: mapStore.layerVisibility.airports },
     { id: 'airport-beacon-circle', visible: mapStore.layerVisibility.airports },
@@ -2567,12 +2871,16 @@ function applyLayerVisibility() {
     { id: 'airports-circle', visible: mapStore.layerVisibility.airports },
     { id: 'airports-label', visible: mapStore.layerVisibility.airports },
     { id: 'navaids-circle', visible: mapStore.layerVisibility.navaids },
+    { id: 'navaids-label', visible: mapStore.layerVisibility.navaids },
     { id: 'waypoints-circle', visible: mapStore.layerVisibility.waypoints },
     { id: 'airways-line', visible: mapStore.layerVisibility.airways },
     { id: 'ils-line', visible: mapStore.layerVisibility.ils },
+    { id: 'ils-cone-fill', visible: mapStore.layerVisibility.ils },
     { id: 'airspaces-fill', visible: mapStore.layerVisibility.airspaces },
     { id: 'airspaces-line', visible: mapStore.layerVisibility.airspaces },
     { id: 'plane-circle', visible: mapStore.layerVisibility.plane },
+    { id: 'vatsim-trails-line', visible: mapStore.layerVisibility.vatsim },
+    { id: 'vatsim-glow', visible: mapStore.layerVisibility.vatsim },
     { id: 'vatsim-circle', visible: mapStore.layerVisibility.vatsim },
     { id: 'simbrief-route-line', visible: simbriefRouteCoordinates.value.length > 1 },
     { id: 'rainviewer-layer', visible: mapStore.layerVisibility.weatherRadar },
@@ -2600,9 +2908,11 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
     'waypoints',
     'airways',
     'ils',
+    'ils-cones',
     'airspaces',
     'plane',
     'vatsim',
+    'vatsim-trails',
     'airport-runway-shoulders',
     'airport-runways',
     'airport-runway-centerlines',
@@ -2617,6 +2927,9 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
     'airport-beacon',
     'airport-windsocks',
     'airport-signs',
+    'airport-pavements',
+    'airport-linear-features',
+    'airport-boundaries',
     'simbrief-route',
   ]
   sourceIds.forEach((id) => addGeoJsonSource(id))
@@ -2670,15 +2983,64 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
     })
   }
 
+  // ILS localizer cone (translucent triangle)
+  if (!map.getLayer('ils-cone-fill')) {
+    map.addLayer({
+      id: 'ils-cone-fill',
+      type: 'fill',
+      source: 'ils-cones',
+      paint: {
+        'fill-color': '#FF8800',
+        'fill-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0.04, 12, 0.08, 16, 0.12],
+      },
+    })
+  }
+
   if (!map.getLayer('simbrief-route-line')) {
     map.addLayer({
       id: 'simbrief-route-line',
       type: 'line',
       source: 'simbrief-route',
       paint: {
-        'line-color': '#facc15',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1, 10, 2.5],
-        'line-opacity': 0.75,
+        'line-color': [
+          'match', ['get', 'stage'],
+          'CLB', '#22C55E',
+          'CRZ', '#06B6D4',
+          'DSC', '#F59E0B',
+          '#8B5CF6',
+        ] as unknown as maplibregl.ExpressionSpecification,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.5, 10, 3],
+        'line-opacity': 0.8,
+      },
+    })
+  }
+
+  // --- Pavements / Apron (rendered first, below everything) ---
+  if (!map.getLayer('airport-pavements-fill')) {
+    map.addLayer({
+      id: 'airport-pavements-fill',
+      type: 'fill',
+      source: 'airport-pavements',
+      minzoom: 12,
+      paint: {
+        'fill-color': buildSurfaceColorExpression('surfaceType'),
+        'fill-opacity': 0.85,
+      },
+    })
+  }
+
+  // --- Airport boundary (dashed white outline) ---
+  if (!map.getLayer('airport-boundaries-line')) {
+    map.addLayer({
+      id: 'airport-boundaries-line',
+      type: 'line',
+      source: 'airport-boundaries',
+      minzoom: 10,
+      paint: {
+        'line-color': '#e2e8f0',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.8, 14, 1.5],
+        'line-dasharray': [4, 3],
+        'line-opacity': 0.6,
       },
     })
   }
@@ -3020,6 +3382,60 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
     })
   }
 
+  // --- Linear features: border layer (thicker, darker) ---
+  if (!map.getLayer('airport-linear-features-border')) {
+    map.addLayer({
+      id: 'airport-linear-features-border',
+      type: 'line',
+      source: 'airport-linear-features',
+      minzoom: 14,
+      paint: {
+        'line-color': [
+          'match', ['get', 'lineType'],
+          // Hold lines (type 4-8) = red border
+          4, '#660000', 5, '#660000', 6, '#660000', 7, '#660000', 8, '#660000',
+          // ILS hold (type 20-22) = red border
+          20, '#660000', 21, '#660000', 22, '#660000',
+          // Centerlines (type 1-3) = yellow/dark yellow border
+          1, '#6b5900', 2, '#6b5900', 3, '#6b5900',
+          // Boundary lines (type 51-56) = light gray border
+          51, '#555555', 52, '#555555', 53, '#555555', 54, '#555555', 55, '#555555', 56, '#555555',
+          // Default border
+          '#444444',
+        ] as unknown as maplibregl.ExpressionSpecification,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 14, 1.8, 17, 3.5, 20, 5],
+        'line-opacity': 0.7,
+      },
+    })
+  }
+
+  // --- Linear features: main line (thinner, brighter) ---
+  if (!map.getLayer('airport-linear-features-main')) {
+    map.addLayer({
+      id: 'airport-linear-features-main',
+      type: 'line',
+      source: 'airport-linear-features',
+      minzoom: 14,
+      paint: {
+        'line-color': [
+          'match', ['get', 'lineType'],
+          // Hold lines (type 4-8) = amber/red
+          4, '#FF4444', 5, '#FF4444', 6, '#FF4444', 7, '#FF4444', 8, '#FF4444',
+          // ILS hold (type 20-22) = amber
+          20, '#FF6600', 21, '#FF6600', 22, '#FF6600',
+          // Centerlines (type 1-3) = yellow
+          1, '#FFCC00', 2, '#FFCC00', 3, '#FFCC00',
+          // Boundary lines (type 51-56) = light gray
+          51, '#aaaaaa', 52, '#aaaaaa', 53, '#aaaaaa', 54, '#aaaaaa', 55, '#aaaaaa', 56, '#aaaaaa',
+          // Default
+          '#888888',
+        ] as unknown as maplibregl.ExpressionSpecification,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 14, 0.8, 17, 2, 20, 3],
+        'line-opacity': 0.9,
+      },
+    })
+  }
+
   if (!map.getLayer('airport-tower-circle')) {
     map.addLayer({
       id: 'airport-tower-circle',
@@ -3161,8 +3577,31 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       type: 'circle',
       source: 'navaids',
       paint: {
-        'circle-color': '#22d3ee',
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 1, 10, 3],
+        'circle-color': ['get', 'color'],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 1, 10, 3.5],
+        'circle-stroke-color': '#000000',
+        'circle-stroke-width': 0.5,
+      },
+    })
+  }
+
+  if (!map.getLayer('navaids-label')) {
+    map.addLayer({
+      id: 'navaids-label',
+      type: 'symbol',
+      source: 'navaids',
+      minzoom: 8,
+      layout: {
+        'text-field': ['get', 'label'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 8, 9, 12, 11],
+        'text-font': ['Noto Sans Bold'],
+        'text-offset': [0, 1.4],
+        'text-anchor': 'top',
+      },
+      paint: {
+        'text-color': ['get', 'color'],
+        'text-halo-color': '#000000',
+        'text-halo-width': 1.5,
       },
     })
   }
@@ -3193,14 +3632,46 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
     })
   }
 
+  // VATSIM trails (behind aircraft)
+  if (!map.getLayer('vatsim-trails-line')) {
+    map.addLayer({
+      id: 'vatsim-trails-line',
+      type: 'line',
+      source: 'vatsim-trails',
+      paint: {
+        'line-color': '#22c55e',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.5, 8, 2.5, 12, 3],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 3, 0.3, 8, 0.5, 12, 0.6],
+        'line-blur': 1,
+      },
+    })
+  }
+
+  // VATSIM glow (under pilot icon)
+  if (!map.getLayer('vatsim-glow')) {
+    map.addLayer({
+      id: 'vatsim-glow',
+      type: 'circle',
+      source: 'vatsim',
+      paint: {
+        'circle-color': '#16a34a',
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 4, 8, 6, 12, 8],
+        'circle-blur': 0.8,
+        'circle-opacity': 0.4,
+      },
+    })
+  }
+
   if (!map.getLayer('vatsim-circle')) {
     map.addLayer({
       id: 'vatsim-circle',
       type: 'circle',
       source: 'vatsim',
       paint: {
-        'circle-color': '#f43f5e',
+        'circle-color': '#22c55e',
         'circle-radius': 3,
+        'circle-stroke-color': '#000000',
+        'circle-stroke-width': 0.5,
       },
     })
   }
@@ -3417,6 +3888,8 @@ function updateVatsimFeature(items: MapVatsimPilot[]) {
 }
 
 function updateAirportDetailFeatures(detail: MapAirportDetail | null) {
+  updateGeoJsonSource('airport-pavements', toAirportPavementFeatureCollection(detail))
+  updateGeoJsonSource('airport-boundaries', toAirportBoundaryFeatureCollection(detail))
   updateGeoJsonSource('airport-runway-shoulders', toAirportRunwayShoulderFeatureCollection(detail))
   updateGeoJsonSource('airport-runways', toAirportRunwayFeatureCollection(detail))
   updateGeoJsonSource('airport-runway-centerlines', toAirportRunwayCenterlineFeatureCollection(detail))
@@ -3427,6 +3900,7 @@ function updateAirportDetailFeatures(detail: MapAirportDetail | null) {
   updateGeoJsonSource('airport-helipads', toAirportHelipadFeatureCollection(detail))
   updateGeoJsonSource('airport-gates', toAirportGateFeatureCollection(detail))
   updateGeoJsonSource('airport-taxiways', toAirportTaxiwayFeatureCollection(detail))
+  updateGeoJsonSource('airport-linear-features', toAirportLinearFeatureCollection(detail))
   updateGeoJsonSource('airport-tower', toAirportTowerFeatureCollection(detail))
   updateGeoJsonSource('airport-beacon', toAirportBeaconFeatureCollection(detail))
   updateGeoJsonSource('airport-windsocks', toAirportWindsockFeatureCollection(detail))
@@ -3439,13 +3913,17 @@ function clearAirportDetailFeatures() {
 }
 
 function updateSimbriefRouteFeature() {
-  updateGeoJsonSource('simbrief-route', toSimbriefRouteFeatureCollection(simbriefRouteCoordinates.value))
+  updateGeoJsonSource('simbrief-route', toSimbriefRouteFeatureCollection(
+    simbriefRouteCoordinates.value,
+    simbriefRouteStages.value.length > 0 ? simbriefRouteStages.value : undefined,
+  ))
 }
 
 async function refreshVatsim() {
   if (!mapStore.layerVisibility.vatsim) {
     vatsimPilots.value = []
     updateVatsimFeature([])
+    updateGeoJsonSource('vatsim-trails', toVatsimTrailFeatureCollection([]))
     return
   }
 
@@ -3473,6 +3951,7 @@ async function refreshVatsim() {
 
     vatsimPilots.value = parsed
     updateVatsimFeature(parsed)
+    updateGeoJsonSource('vatsim-trails', toVatsimTrailFeatureCollection(parsed))
   } catch (error) {
     logError(`Failed to fetch VATSIM data: ${error}`, 'map')
   }
@@ -3566,6 +4045,7 @@ async function refreshMapData() {
     updateGeoJsonSource('waypoints', toWaypointFeatureCollection(navResult.waypoints))
     updateGeoJsonSource('airways', toAirwayFeatureCollection(navResult.airways))
     updateGeoJsonSource('ils', toIlsFeatureCollection(navResult.ils))
+    updateGeoJsonSource('ils-cones', toIlsConeFeatureCollection(navResult.ils))
     updateGeoJsonSource('airspaces', toAirspaceFeatureCollection(navResult.airspaces))
   } catch (error) {
     logError(`Failed to refresh map data: ${error}`, 'map')
@@ -3769,9 +4249,11 @@ watch(
       updateGeoJsonSource('waypoints', toWaypointFeatureCollection(navSnapshot.value.waypoints))
       updateGeoJsonSource('airways', toAirwayFeatureCollection(navSnapshot.value.airways))
       updateGeoJsonSource('ils', toIlsFeatureCollection(navSnapshot.value.ils))
+      updateGeoJsonSource('ils-cones', toIlsConeFeatureCollection(navSnapshot.value.ils))
       updateGeoJsonSource('airspaces', toAirspaceFeatureCollection(navSnapshot.value.airspaces))
       updatePlaneFeature(mapStore.planeState)
       updateVatsimFeature(vatsimPilots.value)
+      updateGeoJsonSource('vatsim-trails', toVatsimTrailFeatureCollection(vatsimPilots.value))
       updateAirportDetailFeatures(selectedAirportDetail.value)
       updateSimbriefRouteFeature()
       applyLayerVisibility()

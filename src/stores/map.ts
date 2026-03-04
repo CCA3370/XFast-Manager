@@ -38,6 +38,7 @@ export const useMapStore = defineStore('map', () => {
   const vatsimRefreshInterval = ref(15)
   const simbriefPilotId = ref('')
   const followPlane = ref(true)
+  const weightUnit = ref<'kg' | 'lbs'>('kg')
 
   const layerVisibility = ref<MapLayerVisibility>({ ...DEFAULT_LAYER_VISIBILITY })
   const airportFilters = ref<MapAirportFilters>({ ...DEFAULT_AIRPORT_FILTERS })
@@ -57,6 +58,7 @@ export const useMapStore = defineStore('map', () => {
       savedFollowPlane,
       savedSimbriefPilotId,
       savedAirportFilters,
+      savedWeightUnit,
     ] = await Promise.all([
       getItem<string>(STORAGE_KEYS.MAP_STYLE_URL),
       getItem<number>(STORAGE_KEYS.MAP_NAV_RADIUS_NM),
@@ -65,6 +67,7 @@ export const useMapStore = defineStore('map', () => {
       getItem<boolean>(STORAGE_KEYS.MAP_FOLLOW_PLANE),
       getItem<string>(STORAGE_KEYS.MAP_SIMBRIEF_PILOT_ID),
       getItem<MapAirportFilters>(STORAGE_KEYS.MAP_AIRPORT_FILTERS),
+      getItem<string>(STORAGE_KEYS.MAP_WEIGHT_UNIT),
     ])
 
     if (savedStyle && typeof savedStyle === 'string') {
@@ -100,6 +103,10 @@ export const useMapStore = defineStore('map', () => {
         ...savedAirportFilters,
         minRunwayCount: Math.max(0, Number(savedAirportFilters.minRunwayCount || 0)),
       }
+    }
+
+    if (savedWeightUnit === 'kg' || savedWeightUnit === 'lbs') {
+      weightUnit.value = savedWeightUnit
     }
 
     isInitialized.value = true
@@ -142,6 +149,11 @@ export const useMapStore = defineStore('map', () => {
     await setItem(STORAGE_KEYS.MAP_SIMBRIEF_PILOT_ID, value)
   }
 
+  async function setWeightUnit(value: 'kg' | 'lbs') {
+    weightUnit.value = value
+    await setItem(STORAGE_KEYS.MAP_WEIGHT_UNIT, value)
+  }
+
   async function setAirportFilters(next: Partial<MapAirportFilters>) {
     airportFilters.value = {
       ...airportFilters.value,
@@ -179,6 +191,7 @@ export const useMapStore = defineStore('map', () => {
     vatsimRefreshInterval,
     simbriefPilotId,
     followPlane,
+    weightUnit,
     layerVisibility,
     airportFilters,
     selectedAirport,
@@ -193,6 +206,7 @@ export const useMapStore = defineStore('map', () => {
     toggleLayer,
     setFollowPlane,
     setSimbriefPilotId,
+    setWeightUnit,
     setAirportFilters,
     resetAirportFilters,
     setSelectedAirport,

@@ -9,6 +9,7 @@ import type {
   MapNavSnapshot,
   MapPlaneStreamStatus,
   RainViewerManifest,
+  ScannedAircraft,
 } from '@/types/map'
 
 export async function mapPrepareDataIndex(xplanePath: string): Promise<MapDataStatus> {
@@ -119,4 +120,44 @@ export async function mapStopPlaneStream(): Promise<boolean> {
 
 export async function mapGetPlaneStreamStatus(): Promise<MapPlaneStreamStatus> {
   return invokeCommand<MapPlaneStreamStatus>('map_get_plane_stream_status')
+}
+
+export async function mapScanAircraft(xplanePath: string): Promise<ScannedAircraft[]> {
+  return invokeCommand<ScannedAircraft[]>('map_scan_aircraft', { xplanePath })
+}
+
+export async function mapGetAircraftImage(imagePath: string): Promise<string> {
+  return invokeCommand<string>('map_get_aircraft_image', { imagePath })
+}
+
+export async function mapLaunchFlight(request: {
+  xplanePath: string
+  aircraftPath: string
+  liveryFolder?: string
+  airportIcao: string
+  startPosition?: string
+  startIsRunway: boolean
+  fuelWeightsKg: number[]
+  payloadWeightsKg: number[]
+  timeHours?: number
+  dayOfYear?: number
+  weatherPreset?: string
+}): Promise<boolean> {
+  return invokeCommand<boolean>('map_launch_flight', { request })
+}
+
+export async function xplaneIsApiAvailable(port?: number): Promise<boolean> {
+  return invokeCommand<boolean>('xplane_is_api_available', { port: port ?? null })
+}
+
+export async function xplaneGetDataref(name: string, port?: number, index?: number): Promise<unknown> {
+  return invokeCommand<unknown>('xplane_get_dataref', { name, port: port ?? null, index: index ?? null })
+}
+
+export async function xplaneSetDataref(name: string, value: unknown, port?: number, index?: number): Promise<boolean> {
+  return invokeCommand<boolean>('xplane_set_dataref', { name, value, port: port ?? null, index: index ?? null })
+}
+
+export async function xplaneActivateCommand(name: string, port?: number, duration?: number): Promise<boolean> {
+  return invokeCommand<boolean>('xplane_activate_command', { name, port: port ?? null, duration: duration ?? null })
 }

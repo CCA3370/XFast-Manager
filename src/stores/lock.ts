@@ -86,6 +86,11 @@ export const useLockStore = defineStore('lock', () => {
     return getSetForType(type).has(folderName.toLowerCase())
   }
 
+  // Get all locked item names for a specific type
+  function getLockedItems(type: LockItemType): string[] {
+    return Array.from(getSetForType(type))
+  }
+
   // Toggle lock state
   async function toggleLock(type: LockItemType, folderName: string): Promise<boolean> {
     const set = getSetForType(type)
@@ -221,6 +226,7 @@ export const useLockStore = defineStore('lock', () => {
     // Actions
     initStore,
     isLocked,
+    getLockedItems,
     toggleLock,
     setLocked,
     isPathLocked,

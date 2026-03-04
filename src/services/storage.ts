@@ -133,6 +133,9 @@ export const STORAGE_KEYS = {
   ADDON_UPDATE_PARALLEL_DOWNLOADS: 'addonUpdateParallelDownloads',
   ADDON_UPDATE_CHANNEL: 'addonUpdateChannel',
   ADDON_UPDATE_FRESH_INSTALL: 'addonUpdateFreshInstall',
+  ADDON_UPDATE_CHUNKED_DOWNLOAD_ENABLED: 'addonUpdateChunkedDownloadEnabled',
+  ADDON_UPDATE_THREADS_PER_TASK: 'addonUpdateThreadsPerTask',
+  ADDON_UPDATE_TOTAL_THREADS: 'addonUpdateTotalThreads',
   MAP_STYLE_URL: 'mapStyleUrl',
   MAP_NAV_RADIUS_NM: 'mapNavRadiusNm',
   MAP_VATSIM_REFRESH_INTERVAL: 'mapVatsimRefreshInterval',
@@ -140,6 +143,7 @@ export const STORAGE_KEYS = {
   MAP_AIRPORT_FILTERS: 'mapAirportFilters',
   MAP_SIMBRIEF_PILOT_ID: 'mapSimbriefPilotId',
   MAP_FOLLOW_PLANE: 'mapFollowPlane',
+  MAP_WEIGHT_UNIT: 'mapWeightUnit',
 } as const
 
 export type TrackedIssueSource = 'feedback' | 'auto-report' | 'library-link'

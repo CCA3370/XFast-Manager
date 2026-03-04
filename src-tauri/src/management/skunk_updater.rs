@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::LazyLock;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
+use tokio::sync::Semaphore;
 
 use crate::task_control::TaskControl;
 
@@ -27,6 +28,7 @@ const REMOTE_SIZESLIST_FILE: &str = "skunkcrafts_updater_sizeslist.txt";
 const REMOTE_BLACKLIST_FILE: &str = "skunkcrafts_updater_blacklist.txt";
 const LOCAL_CRC_CACHE_TTL: Duration = Duration::from_secs(300);
 const LOCAL_CRC_CACHE_MAX_SIZE: usize = 20_000;
+const CHUNKED_DOWNLOAD_MIN_SIZE: u64 = 512 * 1024;
 
 #[derive(Debug, Clone)]
 struct LocalCrcCacheEntry {
@@ -51,6 +53,16 @@ pub struct SkunkUpdateOptions {
     pub channel: Option<String>,
     #[serde(default)]
     pub fresh_install: bool,
+    #[serde(default)]
+    pub preserve_liveries: bool,
+    #[serde(default)]
+    pub preserve_config_files: bool,
+    #[serde(default)]
+    pub chunked_download_enabled: Option<bool>,
+    #[serde(default)]
+    pub threads_per_task: Option<usize>,
+    #[serde(default)]
+    pub total_threads: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +83,8 @@ pub struct SkunkUpdatePlan {
     pub delete_files: Vec<String>,
     pub skip_files: Vec<String>,
     pub warnings: Vec<String>,
+    #[serde(default)]
+    pub has_beta_config: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -468,6 +482,9 @@ pub async fn execute_update(
         });
 
     let parallel = options.parallel_downloads.unwrap_or(4).clamp(1, 8);
+    let chunked_enabled = options.chunked_download_enabled.unwrap_or(true);
+    let threads_per_task = options.threads_per_task.unwrap_or(6).clamp(1, 32);
+    let total_threads = options.total_threads.unwrap_or(32).clamp(1, 64);
     let downloaded = match download_files(
         &prepared.module_url,
         &download_targets,
@@ -476,6 +493,10 @@ pub async fn execute_update(
         task_control.clone(),
         chunk_progress_callback,
         file_completed_callback,
+        &prepared.manifest.sizes,
+        chunked_enabled,
+        threads_per_task,
+        total_threads,
     )
     .await
     {
@@ -725,6 +746,7 @@ fn build_plan_internal(
     }
 
     let include_liveries = options.include_liveries && prepared.local.liveries;
+    let force_all = options.fresh_install;
 
     for entry in &prepared.manifest.whitelist {
         let rel_path = &entry.path;
@@ -736,6 +758,16 @@ fn build_plan_internal(
 
         if prepared.manifest.ignorelist.contains(rel_path) {
             skip_files.push(rel_path.clone());
+            continue;
+        }
+
+        if force_all {
+            let local_path = resolve_entry_path(&prepared.target_path, rel_path)?;
+            if local_path.exists() {
+                replace_files.push(rel_path.clone());
+            } else {
+                add_files.push(rel_path.clone());
+            }
             continue;
         }
 
@@ -832,6 +864,7 @@ fn build_plan_internal(
         delete_files,
         skip_files,
         warnings,
+        has_beta_config: prepared.local.beta_zone.is_some() || prepared.local.beta_module.is_some(),
     })
 }
 
@@ -1052,6 +1085,177 @@ async fn fetch_remote_manifest(client: &reqwest::Client, base_url: &str) -> Resu
     })
 }
 
+/// Probe whether the server supports HTTP Range requests.
+/// Returns `Some(content_length)` if supported, `None` otherwise.
+async fn probe_range_support(client: &reqwest::Client, url: &str) -> Result<Option<u64>> {
+    let resp = client
+        .head(url)
+        .send()
+        .await
+        .with_context(|| format!("HEAD request failed for '{}'", url))?;
+
+    if !resp.status().is_success() {
+        return Ok(None);
+    }
+
+    let accepts_ranges = resp
+        .headers()
+        .get("accept-ranges")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.to_lowercase())
+        .unwrap_or_default();
+
+    if accepts_ranges.contains("bytes") {
+        let content_length = resp
+            .headers()
+            .get("content-length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok());
+        Ok(content_length)
+    } else {
+        Ok(None)
+    }
+}
+
+/// Download a single file using multiple concurrent HTTP Range connections.
+/// Each chunk acquires a permit from the semaphore before downloading.
+async fn download_file_chunked(
+    client: &reqwest::Client,
+    url: &str,
+    file_size: u64,
+    num_chunks: usize,
+    semaphore: &Arc<Semaphore>,
+    task_control: &Option<TaskControl>,
+    chunk_progress_callback: &Option<Arc<dyn Fn(String, u64) + Send + Sync>>,
+    rel_path: &str,
+) -> Result<Vec<u8>> {
+    let chunk_size = file_size / num_chunks as u64;
+    let mut ranges: Vec<(u64, u64)> = Vec::with_capacity(num_chunks);
+    for i in 0..num_chunks {
+        let start = i as u64 * chunk_size;
+        let end = if i == num_chunks - 1 {
+            file_size - 1
+        } else {
+            (i as u64 + 1) * chunk_size - 1
+        };
+        ranges.push((start, end));
+    }
+
+    let mut handles = Vec::with_capacity(num_chunks);
+    for (idx, (start, end)) in ranges.iter().enumerate() {
+        let client = client.clone();
+        let url = url.to_string();
+        let semaphore = Arc::clone(semaphore);
+        let task_control = task_control.clone();
+        let chunk_progress_callback = chunk_progress_callback.clone();
+        let rel_path = rel_path.to_string();
+        let start = *start;
+        let end = *end;
+
+        let handle = tokio::spawn(async move {
+            let _permit = semaphore
+                .acquire()
+                .await
+                .map_err(|_| anyhow!("Semaphore closed"))?;
+
+            ensure_not_cancelled(task_control.as_ref(), "install")?;
+
+            let range_header = format!("bytes={}-{}", start, end);
+            let response = client
+                .get(&url)
+                .header("Range", &range_header)
+                .send()
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to download chunk {} of '{}'",
+                        idx, url
+                    )
+                })?;
+
+            let status = response.status();
+            // If server returns 200 instead of 206, it doesn't support Range for this request
+            if status == reqwest::StatusCode::OK && idx == 0 {
+                // First chunk gets full body - consume it all
+                let mut data = Vec::new();
+                let mut stream = response.bytes_stream();
+                while let Some(next_chunk) = stream.next().await {
+                    ensure_not_cancelled(task_control.as_ref(), "install")?;
+                    let chunk = next_chunk.with_context(|| {
+                        format!("Failed to stream response body for '{}'", url)
+                    })?;
+                    data.extend_from_slice(&chunk);
+                    if let Some(cb) = chunk_progress_callback.as_ref() {
+                        cb(rel_path.clone(), chunk.len() as u64);
+                    }
+                }
+                return Ok::<(usize, Vec<u8>, bool), anyhow::Error>((idx, data, true));
+            } else if status == reqwest::StatusCode::OK && idx > 0 {
+                // Non-first chunk got 200 - skip since first chunk has full data
+                return Ok((idx, Vec::new(), true));
+            }
+
+            if !status.is_success() {
+                return Err(anyhow!(
+                    "Download failed for '{}' chunk {}: HTTP {}",
+                    url,
+                    idx,
+                    status
+                ));
+            }
+
+            let mut data = Vec::with_capacity((end - start + 1) as usize);
+            let mut stream = response.bytes_stream();
+            while let Some(next_chunk) = stream.next().await {
+                ensure_not_cancelled(task_control.as_ref(), "install")?;
+                let chunk = next_chunk.with_context(|| {
+                    format!("Failed to stream chunk {} for '{}'", idx, url)
+                })?;
+                data.extend_from_slice(&chunk);
+                if let Some(cb) = chunk_progress_callback.as_ref() {
+                    cb(rel_path.clone(), chunk.len() as u64);
+                }
+            }
+
+            Ok((idx, data, false))
+        });
+
+        handles.push(handle);
+    }
+
+    let mut chunks: Vec<(usize, Vec<u8>)> = Vec::with_capacity(num_chunks);
+    let mut full_body_fallback = false;
+
+    for handle in handles {
+        let (idx, data, is_fallback) = handle
+            .await
+            .map_err(|e| anyhow!("Chunk download task panicked: {}", e))??;
+        if is_fallback {
+            full_body_fallback = true;
+        }
+        chunks.push((idx, data));
+    }
+
+    if full_body_fallback {
+        // Find the first chunk's data (which has the complete body)
+        chunks.sort_by_key(|(idx, _)| *idx);
+        if let Some((_, data)) = chunks.into_iter().find(|(idx, data)| *idx == 0 && !data.is_empty()) {
+            return Ok(data);
+        }
+        return Err(anyhow!("Range fallback failed: no data from first chunk"));
+    }
+
+    // Concatenate chunks in order
+    chunks.sort_by_key(|(idx, _)| *idx);
+    let total_size = chunks.iter().map(|(_, d)| d.len()).sum();
+    let mut result = Vec::with_capacity(total_size);
+    for (_, data) in chunks {
+        result.extend_from_slice(&data);
+    }
+
+    Ok(result)
+}
+
 async fn download_files(
     base_url: &str,
     paths: &[String],
@@ -1060,6 +1264,10 @@ async fn download_files(
     task_control: Option<TaskControl>,
     chunk_progress_callback: Option<Arc<dyn Fn(String, u64) + Send + Sync>>,
     file_completed_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
+    file_sizes: &HashMap<String, u64>,
+    chunked_enabled: bool,
+    threads_per_task: usize,
+    total_threads: usize,
 ) -> Result<HashMap<String, Vec<u8>>> {
     if paths.is_empty() {
         return Ok(HashMap::new());
@@ -1074,6 +1282,24 @@ async fn download_files(
     let base = base_url.trim_end_matches('/').to_string();
     let expected_crc = Arc::new(expected_crc.clone());
 
+    // Probe Range support once using first file URL
+    let range_supported = if chunked_enabled && threads_per_task > 1 {
+        if let Some(first_path) = paths.first() {
+            let probe_url = join_url(&base, first_path)?;
+            match probe_range_support(&client, probe_url.as_str()).await {
+                Ok(Some(_)) => true,
+                _ => false,
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    let semaphore = Arc::new(Semaphore::new(total_threads));
+    let file_sizes = Arc::new(file_sizes.clone());
+
     let stream = stream::iter(paths.iter().cloned()).map(|rel_path| {
         let client = client.clone();
         let base = base.clone();
@@ -1081,34 +1307,64 @@ async fn download_files(
         let task_control = task_control.clone();
         let chunk_progress_callback = chunk_progress_callback.clone();
         let file_completed_callback = file_completed_callback.clone();
+        let semaphore = Arc::clone(&semaphore);
+        let file_sizes = Arc::clone(&file_sizes);
         async move {
             ensure_not_cancelled(task_control.as_ref(), "install")?;
             let url = join_url(&base, &rel_path)?;
-            let response = client
-                .get(url.clone())
-                .send()
-                .await
-                .with_context(|| format!("Failed to download '{}'", url))?;
 
-            if !response.status().is_success() {
-                return Err(anyhow!(
-                    "Download failed for '{}': HTTP {}",
-                    url,
-                    response.status()
-                ));
-            }
+            let file_size = file_sizes.get(&rel_path).copied().unwrap_or(0);
+            let use_chunked = chunked_enabled
+                && range_supported
+                && threads_per_task > 1
+                && file_size >= CHUNKED_DOWNLOAD_MIN_SIZE;
 
-            let mut data = Vec::new();
-            let mut stream = response.bytes_stream();
-            while let Some(next_chunk) = stream.next().await {
-                ensure_not_cancelled(task_control.as_ref(), "install")?;
-                let chunk = next_chunk
-                    .with_context(|| format!("Failed to stream response body for '{}'", url))?;
-                data.extend_from_slice(&chunk);
-                if let Some(cb) = chunk_progress_callback.as_ref() {
-                    cb(rel_path.clone(), chunk.len() as u64);
+            let data = if use_chunked {
+                download_file_chunked(
+                    &client,
+                    url.as_str(),
+                    file_size,
+                    threads_per_task,
+                    &semaphore,
+                    &task_control,
+                    &chunk_progress_callback,
+                    &rel_path,
+                )
+                .await?
+            } else {
+                // Single-connection download with semaphore permit
+                let _permit = semaphore
+                    .acquire()
+                    .await
+                    .map_err(|_| anyhow!("Semaphore closed"))?;
+
+                let response = client
+                    .get(url.clone())
+                    .send()
+                    .await
+                    .with_context(|| format!("Failed to download '{}'", url))?;
+
+                if !response.status().is_success() {
+                    return Err(anyhow!(
+                        "Download failed for '{}': HTTP {}",
+                        url,
+                        response.status()
+                    ));
                 }
-            }
+
+                let mut data = Vec::new();
+                let mut stream = response.bytes_stream();
+                while let Some(next_chunk) = stream.next().await {
+                    ensure_not_cancelled(task_control.as_ref(), "install")?;
+                    let chunk = next_chunk
+                        .with_context(|| format!("Failed to stream response body for '{}'", url))?;
+                    data.extend_from_slice(&chunk);
+                    if let Some(cb) = chunk_progress_callback.as_ref() {
+                        cb(rel_path.clone(), chunk.len() as u64);
+                    }
+                }
+                data
+            };
 
             if let Some(expected) = expected_crc.get(&rel_path) {
                 if *expected >= 0 {

@@ -87,6 +87,9 @@ pub struct MapAirportDetail {
     pub windsocks: Vec<MapAirportDetailWindsock>,
     pub signs: Vec<MapAirportDetailSign>,
     pub taxiways: Vec<MapAirportDetailTaxiway>,
+    pub pavements: Vec<MapPavement>,
+    pub linear_features: Vec<MapLinearFeature>,
+    pub boundaries: Vec<MapBoundary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -189,6 +192,41 @@ pub struct MapAirportDetailTaxiway {
     pub from_lon: f64,
     pub to_lat: f64,
     pub to_lon: f64,
+}
+
+/// A pavement / apron polygon parsed from apt.dat row codes 110 + 111-116
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MapPavement {
+    pub surface_type: i32,
+    pub smoothness: f64,
+    pub texture_orientation: f64,
+    pub name: String,
+    /// Outer ring as [[lon, lat], ...]
+    pub coordinates: Vec<[f64; 2]>,
+    /// Hole rings, each as [[lon, lat], ...]
+    pub holes: Vec<Vec<[f64; 2]>>,
+}
+
+/// A linear feature (painted line / taxiway marking) from apt.dat row code 120 + 111-116
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MapLinearFeature {
+    pub name: String,
+    pub line_type: i32,
+    pub light_type: i32,
+    /// Coordinates as [[lon, lat], ...]
+    pub coordinates: Vec<[f64; 2]>,
+}
+
+/// Airport boundary from apt.dat row code 130 + 111-116
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MapBoundary {
+    /// Outer ring as [[lon, lat], ...]
+    pub coordinates: Vec<[f64; 2]>,
+    /// Hole rings
+    pub holes: Vec<Vec<[f64; 2]>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -437,6 +475,9 @@ struct AirportDetailBuilder {
     signs: Vec<MapAirportDetailSign>,
     taxi_nodes: HashMap<i32, [f64; 2]>,
     taxi_edges: Vec<(i32, i32, String)>,
+    pavements: Vec<MapPavement>,
+    linear_features: Vec<MapLinearFeature>,
+    boundaries: Vec<MapBoundary>,
 }
 
 impl AirportBuilder {
@@ -478,6 +519,9 @@ impl AirportDetailBuilder {
             signs: Vec::new(),
             taxi_nodes: HashMap::new(),
             taxi_edges: Vec::new(),
+            pavements: Vec::new(),
+            linear_features: Vec::new(),
+            boundaries: Vec::new(),
         }
     }
 
@@ -496,6 +540,9 @@ impl AirportDetailBuilder {
             signs,
             taxi_nodes,
             taxi_edges,
+            pavements,
+            linear_features,
+            boundaries,
         } = self;
 
         let mut taxiways = Vec::with_capacity(taxi_edges.len());
@@ -528,6 +575,9 @@ impl AirportDetailBuilder {
             windsocks,
             signs,
             taxiways,
+            pavements,
+            linear_features,
+            boundaries,
         }
     }
 }
@@ -1360,6 +1410,433 @@ fn parse_airport_detail_taxi_edge(rest: &str, airport: &mut AirportDetailBuilder
     airport.taxi_edges.push((from_id, to_id, name));
 }
 
+// ---------------------------------------------------------------------------
+// Bezier curve helpers for apt.dat geometry (row codes 111-116)
+// ---------------------------------------------------------------------------
+
+const BEZIER_RESOLUTION: usize = 20;
+
+/// Quadratic bezier: B(t) = (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
+fn bezier_quadratic(p0: [f64; 2], p1: [f64; 2], p2: [f64; 2], steps: usize) -> Vec<[f64; 2]> {
+    let mut pts = Vec::with_capacity(steps);
+    for i in 1..=steps {
+        let t = i as f64 / steps as f64;
+        let u = 1.0 - t;
+        let lon = u * u * p0[0] + 2.0 * u * t * p1[0] + t * t * p2[0];
+        let lat = u * u * p0[1] + 2.0 * u * t * p1[1] + t * t * p2[1];
+        pts.push([lon, lat]);
+    }
+    pts
+}
+
+/// Cubic bezier: B(t) = (1-t)^3 * P0 + 3(1-t)^2 t * P1 + 3(1-t)t^2 * P2 + t^3 * P3
+fn bezier_cubic(p0: [f64; 2], p1: [f64; 2], p2: [f64; 2], p3: [f64; 2], steps: usize) -> Vec<[f64; 2]> {
+    let mut pts = Vec::with_capacity(steps);
+    for i in 1..=steps {
+        let t = i as f64 / steps as f64;
+        let u = 1.0 - t;
+        let lon = u*u*u * p0[0] + 3.0*u*u*t * p1[0] + 3.0*u*t*t * p2[0] + t*t*t * p3[0];
+        let lat = u*u*u * p0[1] + 3.0*u*u*t * p1[1] + 3.0*u*t*t * p2[1] + t*t*t * p3[1];
+        pts.push([lon, lat]);
+    }
+    pts
+}
+
+/// Mirror a control point through its vertex: reflected = 2*vertex - control
+fn mirror_control(vertex: [f64; 2], control: [f64; 2]) -> [f64; 2] {
+    [2.0 * vertex[0] - control[0], 2.0 * vertex[1] - control[1]]
+}
+
+/// Represents a parsed node from row codes 111-116
+#[derive(Debug, Clone)]
+struct AptNode {
+    lat: f64,
+    lon: f64,
+    /// Bezier control point (for row codes 112/114/116)
+    ctrl_lat: Option<f64>,
+    ctrl_lon: Option<f64>,
+    /// Painted line type (from optional fields)
+    line_type: i32,
+    /// Lighting type (from optional fields)
+    light_type: i32,
+    /// Whether this node closes a ring (113/114)
+    closes_ring: bool,
+    /// Whether this node ends the path (115/116)
+    ends_path: bool,
+}
+
+/// A single ring/path extracted from a sequence of apt.dat nodes
+#[derive(Debug, Clone)]
+struct ParsedRing {
+    /// Coordinates as [lon, lat] pairs (GeoJSON order)
+    coords: Vec<[f64; 2]>,
+    /// Per-node line type info (parallel to the original nodes)
+    node_line_types: Vec<(i32, i32)>,
+    /// Whether this ring was detected as a hole (clockwise winding)
+    is_hole: bool,
+}
+
+/// Check if a ring has clockwise winding (= hole in GeoJSON convention)
+fn is_clockwise(coords: &[[f64; 2]]) -> bool {
+    if coords.len() < 3 {
+        return false;
+    }
+    let mut sum = 0.0;
+    for i in 0..coords.len() {
+        let j = (i + 1) % coords.len();
+        sum += (coords[j][0] - coords[i][0]) * (coords[j][1] + coords[i][1]);
+    }
+    sum > 0.0
+}
+
+/// Parse apt.dat node lines (111-116) starting from the given line iterator.
+/// Returns (parsed rings, number of lines consumed).
+/// `mode` = "polygon" for closed shapes (110/130), "line" for open paths (120).
+fn parse_apt_path_nodes(lines: &[&str], mode: &str) -> (Vec<ParsedRing>, usize) {
+    let mut rings: Vec<ParsedRing> = Vec::new();
+    let mut nodes: Vec<AptNode> = Vec::new();
+    let mut consumed = 0;
+
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            consumed += 1;
+            continue;
+        }
+
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.is_empty() {
+            consumed += 1;
+            continue;
+        }
+
+        let row_code: i32 = match parts[0].parse() {
+            Ok(v) => v,
+            Err(_) => break, // Not a node line, stop consuming
+        };
+
+        // Only process node row codes
+        if !matches!(row_code, 111 | 112 | 113 | 114 | 115 | 116) {
+            break;
+        }
+
+        consumed += 1;
+
+        if parts.len() < 3 {
+            continue;
+        }
+
+        let lat = match parts[1].parse::<f64>() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let lon = match parts[2].parse::<f64>() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let is_bezier = matches!(row_code, 112 | 114 | 116);
+        let closes_ring = matches!(row_code, 113 | 114);
+        let ends_path = matches!(row_code, 115 | 116);
+
+        let (ctrl_lat, ctrl_lon, line_type, light_type) = if is_bezier {
+            // Bezier: parts[3]=ctrl_lat, parts[4]=ctrl_lon, parts[5]=line_type?, parts[6]=light_type?
+            let cl = parts.get(3).and_then(|v| v.parse::<f64>().ok());
+            let co = parts.get(4).and_then(|v| v.parse::<f64>().ok());
+            let lt = parts.get(5).and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+            let lgt = parts.get(6).and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+            (cl, co, lt, lgt)
+        } else {
+            // Plain node: parts[3]=line_type?, parts[4]=light_type?
+            // Disambiguation: single value >= 100 is light_type, < 100 is line_type
+            let v3 = parts.get(3).and_then(|v| v.parse::<i32>().ok());
+            let v4 = parts.get(4).and_then(|v| v.parse::<i32>().ok());
+            let (lt, lgt) = match (v3, v4) {
+                (Some(a), Some(b)) => (a, b),
+                (Some(a), None) => {
+                    if a >= 100 { (0, a) } else { (a, 0) }
+                }
+                _ => (0, 0),
+            };
+            (None, None, lt, lgt)
+        };
+
+        nodes.push(AptNode {
+            lat,
+            lon,
+            ctrl_lat,
+            ctrl_lon,
+            line_type,
+            light_type,
+            closes_ring,
+            ends_path,
+        });
+
+        // If this node closes a ring, finalize it
+        if closes_ring || ends_path {
+            if !nodes.is_empty() {
+                let ring = resolve_nodes_to_ring(&nodes, mode == "polygon" && closes_ring);
+                rings.push(ring);
+                nodes.clear();
+            }
+        }
+    }
+
+    // Flush remaining nodes
+    if !nodes.is_empty() {
+        let ring = resolve_nodes_to_ring(&nodes, false);
+        rings.push(ring);
+    }
+
+    (rings, consumed)
+}
+
+/// Convert a sequence of AptNodes into a ParsedRing with bezier interpolation
+fn resolve_nodes_to_ring(nodes: &[AptNode], close: bool) -> ParsedRing {
+    let mut coords: Vec<[f64; 2]> = Vec::new();
+    let mut node_line_types: Vec<(i32, i32)> = Vec::new();
+
+    if nodes.is_empty() {
+        return ParsedRing { coords, node_line_types, is_hole: false };
+    }
+
+    // First node always added as-is
+    coords.push([nodes[0].lon, nodes[0].lat]);
+    node_line_types.push((nodes[0].line_type, nodes[0].light_type));
+
+    for i in 1..nodes.len() {
+        let prev = &nodes[i - 1];
+        let curr = &nodes[i];
+
+        let prev_has_ctrl = prev.ctrl_lat.is_some() && prev.ctrl_lon.is_some();
+        let curr_has_ctrl = curr.ctrl_lat.is_some() && curr.ctrl_lon.is_some();
+
+        let p0 = [prev.lon, prev.lat];
+        let p_end = [curr.lon, curr.lat];
+
+        if prev_has_ctrl && curr_has_ctrl {
+            // Cubic bezier: prev vertex -> prev outgoing control -> curr mirrored incoming control -> curr vertex
+            let ctrl_out = [prev.ctrl_lon.unwrap(), prev.ctrl_lat.unwrap()];
+            let ctrl_in_raw = [curr.ctrl_lon.unwrap(), curr.ctrl_lat.unwrap()];
+            let ctrl_in = mirror_control(p_end, ctrl_in_raw);
+            let pts = bezier_cubic(p0, ctrl_out, ctrl_in, p_end, BEZIER_RESOLUTION);
+            for pt in pts {
+                coords.push(pt);
+                node_line_types.push((curr.line_type, curr.light_type));
+            }
+        } else if prev_has_ctrl && !curr_has_ctrl {
+            // Quadratic bezier: prev outgoing control
+            let ctrl_out = [prev.ctrl_lon.unwrap(), prev.ctrl_lat.unwrap()];
+            let pts = bezier_quadratic(p0, ctrl_out, p_end, BEZIER_RESOLUTION);
+            for pt in pts {
+                coords.push(pt);
+                node_line_types.push((curr.line_type, curr.light_type));
+            }
+        } else if !prev_has_ctrl && curr_has_ctrl {
+            // Quadratic bezier: curr incoming control (mirrored)
+            let ctrl_in_raw = [curr.ctrl_lon.unwrap(), curr.ctrl_lat.unwrap()];
+            let ctrl_in = mirror_control(p_end, ctrl_in_raw);
+            let pts = bezier_quadratic(p0, ctrl_in, p_end, BEZIER_RESOLUTION);
+            for pt in pts {
+                coords.push(pt);
+                node_line_types.push((curr.line_type, curr.light_type));
+            }
+        } else {
+            // Straight segment
+            coords.push(p_end);
+            node_line_types.push((curr.line_type, curr.light_type));
+        }
+    }
+
+    // Close the ring if needed (connect last point back to first, handling bezier)
+    if close && coords.len() >= 3 {
+        let first = coords[0];
+        let last = *coords.last().unwrap();
+        if (first[0] - last[0]).abs() > 1e-9 || (first[1] - last[1]).abs() > 1e-9 {
+            // Check if last node has bezier that should connect back to first
+            let last_node = &nodes[nodes.len() - 1];
+            let first_node = &nodes[0];
+            if last_node.ctrl_lat.is_some() && first_node.ctrl_lat.is_some() {
+                let ctrl_out = [last_node.ctrl_lon.unwrap(), last_node.ctrl_lat.unwrap()];
+                let ctrl_in_raw = [first_node.ctrl_lon.unwrap(), first_node.ctrl_lat.unwrap()];
+                let ctrl_in = mirror_control(first, ctrl_in_raw);
+                let pts = bezier_cubic(last, ctrl_out, ctrl_in, first, BEZIER_RESOLUTION);
+                for pt in pts {
+                    coords.push(pt);
+                    node_line_types.push((first_node.line_type, first_node.light_type));
+                }
+            } else if last_node.ctrl_lat.is_some() {
+                let ctrl_out = [last_node.ctrl_lon.unwrap(), last_node.ctrl_lat.unwrap()];
+                let pts = bezier_quadratic(last, ctrl_out, first, BEZIER_RESOLUTION);
+                for pt in pts {
+                    coords.push(pt);
+                    node_line_types.push((first_node.line_type, first_node.light_type));
+                }
+            } else {
+                coords.push(first);
+                node_line_types.push((first_node.line_type, first_node.light_type));
+            }
+        }
+    }
+
+    let is_hole = if close { is_clockwise(&coords) } else { false };
+
+    ParsedRing { coords, node_line_types, is_hole }
+}
+
+/// Parse a pavement block (row code 110 header + subsequent node lines)
+fn parse_pavement_block(header_rest: &str, following_lines: &[&str], airport: &mut AirportDetailBuilder) -> usize {
+    let parts: Vec<&str> = header_rest.split_whitespace().collect();
+    let surface_type = parts.first().and_then(|v| v.parse::<i32>().ok()).unwrap_or(1);
+    let smoothness = parts.get(1).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.25);
+    let orientation = parts.get(2).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+    let name = if parts.len() > 3 { parts[3..].join(" ") } else { String::new() };
+
+    let (rings, consumed) = parse_apt_path_nodes(following_lines, "polygon");
+    if rings.is_empty() {
+        return consumed;
+    }
+
+    // Find outer ring (first non-hole) and holes
+    let mut outer_coords: Vec<[f64; 2]> = Vec::new();
+    let mut holes: Vec<Vec<[f64; 2]>> = Vec::new();
+
+    for ring in &rings {
+        if ring.is_hole {
+            holes.push(ring.coords.clone());
+        } else if outer_coords.is_empty() {
+            outer_coords = ring.coords.clone();
+        } else {
+            // Additional non-hole rings - treat as separate pavement
+            airport.pavements.push(MapPavement {
+                surface_type,
+                smoothness,
+                texture_orientation: orientation,
+                name: name.clone(),
+                coordinates: ring.coords.clone(),
+                holes: Vec::new(),
+            });
+        }
+    }
+
+    if !outer_coords.is_empty() {
+        airport.pavements.push(MapPavement {
+            surface_type,
+            smoothness,
+            texture_orientation: orientation,
+            name: name.clone(),
+            coordinates: outer_coords,
+            holes,
+        });
+    }
+
+    // Extract linear features from node line types (edge markings)
+    for ring in &rings {
+        extract_linear_features_from_ring(&name, ring, &mut airport.linear_features);
+    }
+
+    consumed
+}
+
+/// Parse a linear feature block (row code 120 header + subsequent node lines)
+fn parse_linear_feature_block(header_rest: &str, following_lines: &[&str], airport: &mut AirportDetailBuilder) -> usize {
+    let name = header_rest.trim().to_string();
+
+    let (rings, consumed) = parse_apt_path_nodes(following_lines, "line");
+
+    for ring in &rings {
+        // Split by line_type changes into separate segments
+        split_linear_features(&name, ring, &mut airport.linear_features);
+    }
+
+    consumed
+}
+
+/// Parse a boundary block (row code 130 header + subsequent node lines)
+fn parse_boundary_block(following_lines: &[&str], airport: &mut AirportDetailBuilder) -> usize {
+    let (rings, consumed) = parse_apt_path_nodes(following_lines, "polygon");
+    if rings.is_empty() {
+        return consumed;
+    }
+
+    let mut outer_coords: Vec<[f64; 2]> = Vec::new();
+    let mut holes: Vec<Vec<[f64; 2]>> = Vec::new();
+
+    for ring in &rings {
+        if ring.is_hole {
+            holes.push(ring.coords.clone());
+        } else if outer_coords.is_empty() {
+            outer_coords = ring.coords.clone();
+        }
+    }
+
+    if !outer_coords.is_empty() {
+        airport.boundaries.push(MapBoundary {
+            coordinates: outer_coords,
+            holes,
+        });
+    }
+
+    consumed
+}
+
+/// Extract linear features from pavement edge markings where nodes have non-zero line types
+fn extract_linear_features_from_ring(name: &str, ring: &ParsedRing, features: &mut Vec<MapLinearFeature>) {
+    if ring.node_line_types.is_empty() || ring.coords.is_empty() {
+        return;
+    }
+    split_linear_features(name, ring, features);
+}
+
+/// Split a ring/path into linear feature segments by line_type changes
+fn split_linear_features(name: &str, ring: &ParsedRing, features: &mut Vec<MapLinearFeature>) {
+    if ring.coords.len() < 2 || ring.node_line_types.is_empty() {
+        return;
+    }
+
+    let mut current_coords: Vec<[f64; 2]> = vec![ring.coords[0]];
+    let mut current_lt = ring.node_line_types[0].0;
+    let mut current_lgt = ring.node_line_types[0].1;
+
+    for i in 1..ring.coords.len() {
+        let (lt, lgt) = if i < ring.node_line_types.len() {
+            ring.node_line_types[i]
+        } else {
+            (current_lt, current_lgt)
+        };
+
+        if lt != current_lt || lgt != current_lgt {
+            // Emit previous segment
+            if current_lt > 0 || current_lgt > 0 {
+                if current_coords.len() >= 2 {
+                    features.push(MapLinearFeature {
+                        name: name.to_string(),
+                        line_type: current_lt,
+                        light_type: current_lgt,
+                        coordinates: current_coords.clone(),
+                    });
+                }
+            }
+            // Start new segment from the last point of the previous segment
+            current_coords = vec![ring.coords[i - 1]];
+            current_lt = lt;
+            current_lgt = lgt;
+        }
+
+        current_coords.push(ring.coords[i]);
+    }
+
+    // Emit final segment
+    if (current_lt > 0 || current_lgt > 0) && current_coords.len() >= 2 {
+        features.push(MapLinearFeature {
+            name: name.to_string(),
+            line_type: current_lt,
+            light_type: current_lgt,
+            coordinates: current_coords,
+        });
+    }
+}
+
 fn parse_airport_detail_from_apt(
     path: &Path,
     target_icao: &str,
@@ -1372,15 +1849,19 @@ fn parse_airport_detail_from_apt(
     let file = File::open(path).map_err(|e| format!("Failed to open {}: {}", path.display(), e))?;
     let reader = BufReader::new(file);
 
-    let mut current: Option<AirportDetailBuilder> = None;
+    // Collect all lines first so we can do look-ahead for multi-line blocks (110/120/130)
+    let all_lines: Vec<String> = reader
+        .lines()
+        .filter_map(|l| l.ok())
+        .collect();
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        let trimmed = line.trim();
+    let mut current: Option<AirportDetailBuilder> = None;
+    let mut i = 0;
+
+    while i < all_lines.len() {
+        let trimmed = all_lines[i].trim();
         if trimmed.is_empty() {
+            i += 1;
             continue;
         }
 
@@ -1398,72 +1879,112 @@ fn parse_airport_detail_from_apt(
                     current = Some(AirportDetailBuilder::from_header(header));
                 }
             }
+            i += 1;
             continue;
         }
 
         let Some(airport) = current.as_mut() else {
+            i += 1;
             continue;
         };
 
         if let Some(rest) = trimmed.strip_prefix("100 ") {
             parse_airport_detail_runway(rest, airport);
+            i += 1;
             continue;
         }
 
         if let Some(rest) = trimmed.strip_prefix("101 ") {
             parse_airport_detail_water_runway(rest, airport);
+            i += 1;
             continue;
         }
 
         if let Some(rest) = trimmed.strip_prefix("102 ") {
             parse_airport_detail_helipad(rest, airport);
+            i += 1;
+            continue;
+        }
+
+        // Row code 110: Pavement/taxiway area (multi-line block)
+        if let Some(rest) = trimmed.strip_prefix("110 ") {
+            let following: Vec<&str> = all_lines[i + 1..].iter().map(|s| s.as_str()).collect();
+            let consumed = parse_pavement_block(rest, &following, airport);
+            i += 1 + consumed;
+            continue;
+        }
+
+        // Row code 120: Linear feature (multi-line block)
+        if let Some(rest) = trimmed.strip_prefix("120 ") {
+            let following: Vec<&str> = all_lines[i + 1..].iter().map(|s| s.as_str()).collect();
+            let consumed = parse_linear_feature_block(rest, &following, airport);
+            i += 1 + consumed;
+            continue;
+        }
+
+        // Row code 130: Airport boundary (multi-line block)
+        if trimmed.starts_with("130 ") || trimmed == "130" {
+            let following: Vec<&str> = all_lines[i + 1..].iter().map(|s| s.as_str()).collect();
+            let consumed = parse_boundary_block(&following, airport);
+            i += 1 + consumed;
             continue;
         }
 
         if let Some(rest) = trimmed.strip_prefix("1300 ") {
             parse_airport_detail_start_new(rest, airport);
+            i += 1;
             continue;
         }
 
         if let Some(rest) = trimmed.strip_prefix("1301 ") {
             parse_airport_detail_start_metadata(rest, airport);
+            i += 1;
             continue;
         }
 
         if let Some(rest) = trimmed.strip_prefix("15 ") {
             parse_airport_detail_start_legacy(rest, airport);
+            i += 1;
             continue;
         }
 
         if let Some(rest) = trimmed.strip_prefix("14 ") {
             parse_airport_detail_tower(rest, airport);
+            i += 1;
             continue;
         }
 
         if let Some(rest) = trimmed.strip_prefix("18 ") {
             parse_airport_detail_beacon(rest, airport);
+            i += 1;
             continue;
         }
 
         if let Some(rest) = trimmed.strip_prefix("19 ") {
             parse_airport_detail_windsock(rest, airport);
+            i += 1;
             continue;
         }
 
         if let Some(rest) = trimmed.strip_prefix("20 ") {
             parse_airport_detail_sign(rest, airport);
+            i += 1;
             continue;
         }
 
         if let Some(rest) = trimmed.strip_prefix("1201 ") {
             parse_airport_detail_taxi_node(rest, airport);
+            i += 1;
             continue;
         }
 
         if let Some(rest) = trimmed.strip_prefix("1202 ") {
             parse_airport_detail_taxi_edge(rest, airport);
+            i += 1;
             continue;
         }
+
+        i += 1;
     }
 
     Ok(current.take().map(|airport| airport.finalize()))
@@ -3090,4 +3611,532 @@ pub fn map_get_plane_stream_status() -> Result<MapPlaneStreamStatus, String> {
         connected: guard.connected,
         port: guard.port,
     })
+}
+
+// ---------------------------------------------------------------------------
+// X-Plane REST API: dataref read/write and command execution
+// ---------------------------------------------------------------------------
+
+/// Check if the X-Plane REST API is reachable.
+#[tauri::command]
+pub async fn xplane_is_api_available(port: Option<u16>) -> Result<bool, String> {
+    let p = port.unwrap_or(8086);
+    let url = format!("http://localhost:{}/api/v3/datarefs?limit=1", p);
+    match HTTP_CLIENT
+        .get(&url)
+        .timeout(Duration::from_secs(2))
+        .send()
+        .await
+    {
+        Ok(resp) => Ok(resp.status().is_success()),
+        Err(_) => Ok(false),
+    }
+}
+
+/// Resolve a single dataref name to its numeric ID.
+async fn resolve_single_dataref_id(port: u16, name: &str) -> Result<u32, String> {
+    let url = format!("http://localhost:{}/api/v3/datarefs", port);
+    let response = HTTP_CLIENT
+        .get(&url)
+        .query(&[("filter[name]", name), ("fields", "id,name"), ("limit", "1")])
+        .send()
+        .await
+        .map_err(|e| format!("Failed to resolve dataref '{}': {}", name, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Dataref resolve HTTP {}: {}",
+            response.status(),
+            name
+        ));
+    }
+
+    let payload = response
+        .json::<DatarefCatalogResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse dataref resolve response: {}", e))?;
+
+    payload
+        .data
+        .and_then(|v| v.into_iter().next())
+        .map(|entry| entry.id)
+        .ok_or_else(|| format!("Dataref not found: {}", name))
+}
+
+/// Resolve a single command name to its numeric ID.
+async fn resolve_command_id(port: u16, name: &str) -> Result<u32, String> {
+    let url = format!("http://localhost:{}/api/v3/commands", port);
+    let response = HTTP_CLIENT
+        .get(&url)
+        .query(&[("filter[name]", name), ("fields", "id,name"), ("limit", "1")])
+        .send()
+        .await
+        .map_err(|e| format!("Failed to resolve command '{}': {}", name, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Command resolve HTTP {}: {}",
+            response.status(),
+            name
+        ));
+    }
+
+    let payload = response
+        .json::<DatarefCatalogResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse command resolve response: {}", e))?;
+
+    payload
+        .data
+        .and_then(|v| v.into_iter().next())
+        .map(|entry| entry.id)
+        .ok_or_else(|| format!("Command not found: {}", name))
+}
+
+/// Get a dataref value by name. Returns JSON value (number, array, or string).
+#[tauri::command]
+pub async fn xplane_get_dataref(
+    port: Option<u16>,
+    name: String,
+    index: Option<u32>,
+) -> Result<Value, String> {
+    let p = port.unwrap_or(8086);
+    let id = resolve_single_dataref_id(p, &name).await?;
+
+    let mut url = format!("http://localhost:{}/api/v3/datarefs/{}/value", p, id);
+    if let Some(idx) = index {
+        url = format!("{}?index={}", url, idx);
+    }
+
+    let response = HTTP_CLIENT
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get dataref '{}': {}", name, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Get dataref '{}' HTTP {}",
+            name,
+            response.status()
+        ));
+    }
+
+    let payload = response
+        .json::<DatarefValueResponse>()
+        .await
+        .map_err(|e| format!("Failed to decode dataref '{}': {}", name, e))?;
+
+    Ok(payload.data.unwrap_or(Value::Null))
+}
+
+/// Set a dataref value by name.
+#[tauri::command]
+pub async fn xplane_set_dataref(
+    port: Option<u16>,
+    name: String,
+    value: Value,
+    index: Option<u32>,
+) -> Result<bool, String> {
+    let p = port.unwrap_or(8086);
+    let id = resolve_single_dataref_id(p, &name).await?;
+
+    let mut url = format!("http://localhost:{}/api/v3/datarefs/{}/value", p, id);
+    if let Some(idx) = index {
+        url = format!("{}?index={}", url, idx);
+    }
+
+    let body = serde_json::json!({ "data": value });
+    let response = HTTP_CLIENT
+        .patch(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to set dataref '{}': {}", name, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Set dataref '{}' HTTP {}",
+            name,
+            response.status()
+        ));
+    }
+
+    Ok(true)
+}
+
+/// Execute an X-Plane command by name.
+#[tauri::command]
+pub async fn xplane_activate_command(
+    port: Option<u16>,
+    name: String,
+    duration: Option<f64>,
+) -> Result<bool, String> {
+    let p = port.unwrap_or(8086);
+    let id = resolve_command_id(p, &name).await?;
+
+    let url = format!("http://localhost:{}/api/v3/commands/{}/activate", p, id);
+    let body = serde_json::json!({ "duration": duration.unwrap_or(0.0) });
+
+    let response = HTTP_CLIENT
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to activate command '{}': {}", name, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Activate command '{}' HTTP {}",
+            name,
+            response.status()
+        ));
+    }
+
+    Ok(true)
+}
+
+// ---------------------------------------------------------------------------
+// Aircraft scanning & flight launch
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScannedLivery {
+    pub name: String,
+    pub folder: String,
+    pub preview_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScannedAircraft {
+    pub path: String,
+    pub name: String,
+    pub icao: String,
+    pub description: String,
+    pub manufacturer: String,
+    pub studio: String,
+    pub author: String,
+    pub tail_number: String,
+    pub empty_weight_lbs: f64,
+    pub max_weight_lbs: f64,
+    pub max_fuel_lbs: f64,
+    pub tank_count: usize,
+    pub tank_names: Vec<String>,
+    pub tank_ratios: Vec<f64>,
+    pub payload_stations: Vec<PayloadStation>,
+    pub is_helicopter: bool,
+    pub engine_count: u32,
+    pub preview_image: Option<String>,
+    pub liveries: Vec<ScannedLivery>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PayloadStation {
+    pub name: String,
+    pub max_weight_lbs: f64,
+}
+
+fn parse_acf_file(acf_path: &Path, xplane_root: &Path) -> Option<ScannedAircraft> {
+    let file = File::open(acf_path).ok()?;
+    let reader = BufReader::new(file);
+    let mut props: HashMap<String, String> = HashMap::new();
+
+    for line in reader.lines() {
+        let line = match line {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let trimmed = line.trim();
+        if !trimmed.starts_with("P acf/") {
+            continue;
+        }
+        // P acf/_name My Aircraft Name
+        if let Some(rest) = trimmed.strip_prefix("P ") {
+            let mut parts = rest.splitn(2, char::is_whitespace);
+            if let (Some(key), Some(val)) = (parts.next(), parts.next()) {
+                props.insert(key.to_string(), val.trim().to_string());
+            }
+        }
+    }
+
+    let name = props.get("acf/_name").cloned().unwrap_or_default();
+    if name.is_empty() {
+        return None;
+    }
+
+    let rel_path = acf_path
+        .strip_prefix(xplane_root)
+        .ok()?
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    // Parse tank names/ratios (up to 9)
+    let mut tank_names = Vec::new();
+    let mut tank_ratios = Vec::new();
+    for i in 0..9 {
+        let tn = props.get(&format!("acf/_tank_name/{}", i)).cloned().unwrap_or_default();
+        let tr = props.get(&format!("acf/_tank_rat/{}", i)).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+        if tr > 0.0 || !tn.is_empty() {
+            tank_names.push(if tn.is_empty() { format!("Tank {}", i + 1) } else { tn });
+            tank_ratios.push(tr);
+        }
+    }
+
+    // Parse payload stations (up to 9)
+    let mut payload_stations = Vec::new();
+    for i in 0..9 {
+        let pn = props.get(&format!("acf/_fixed_name/{}", i)).cloned().unwrap_or_default();
+        let pm = props.get(&format!("acf/_fixed_max/{}", i)).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+        if pm > 0.0 || !pn.is_empty() {
+            payload_stations.push(PayloadStation {
+                name: if pn.is_empty() { format!("Station {}", i + 1) } else { pn },
+                max_weight_lbs: pm,
+            });
+        }
+    }
+
+    // Scan liveries
+    let acf_dir = acf_path.parent()?;
+    let liveries_dir = acf_dir.join("liveries");
+    let mut liveries = vec![ScannedLivery {
+        name: "Default".to_string(),
+        folder: String::new(),
+        preview_path: None,
+    }];
+
+    if liveries_dir.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&liveries_dir) {
+            let mut dirs: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
+                .collect();
+            dirs.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+            for entry in dirs {
+                let folder = entry.file_name().to_string_lossy().to_string();
+                if folder.starts_with('.') {
+                    continue;
+                }
+                // Look for preview image
+                let preview = find_preview_in_dir(&entry.path());
+                liveries.push(ScannedLivery {
+                    name: folder.clone(),
+                    folder,
+                    preview_path: preview,
+                });
+            }
+        }
+    }
+
+    // Find preview for default livery
+    let default_preview = find_preview_in_dir(acf_dir);
+    if let Some(p) = default_preview {
+        liveries[0].preview_path = Some(p);
+    }
+
+    Some(ScannedAircraft {
+        path: rel_path,
+        name,
+        icao: props.get("acf/_ICAO").cloned().unwrap_or_default(),
+        description: props.get("acf/_descrip").cloned().unwrap_or_default(),
+        manufacturer: props.get("acf/_manufacturer").cloned().unwrap_or_default(),
+        studio: props.get("acf/_studio").cloned().unwrap_or_default(),
+        author: props.get("acf/_author").cloned().unwrap_or_default(),
+        tail_number: props.get("acf/_tailnum").cloned().unwrap_or_default(),
+        empty_weight_lbs: props.get("acf/_m_empty").and_then(|v| v.parse().ok()).unwrap_or(0.0),
+        max_weight_lbs: props.get("acf/_m_max").and_then(|v| v.parse().ok()).unwrap_or(0.0),
+        max_fuel_lbs: props.get("acf/_m_fuel_max_tot").and_then(|v| v.parse().ok()).unwrap_or(0.0),
+        tank_count: tank_ratios.len(),
+        tank_names,
+        tank_ratios,
+        payload_stations,
+        is_helicopter: props.get("acf/_is_helicopter").map(|v| v == "1").unwrap_or(false),
+        engine_count: props.get("acf/_num_engn").and_then(|v| v.parse().ok()).unwrap_or(0),
+        preview_image: liveries.first().and_then(|l| l.preview_path.clone()),
+        liveries,
+    })
+}
+
+fn find_preview_in_dir(dir: &Path) -> Option<String> {
+    // Look for _icon11.png first, then any _icon*.png
+    let candidates = ["_icon11.png", "_icon.png"];
+    for name in &candidates {
+        let path = dir.join(name);
+        if path.exists() {
+            return Some(path.to_string_lossy().to_string());
+        }
+    }
+    // Fallback: find any PNG that contains "icon"
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let fname = entry.file_name().to_string_lossy().to_lowercase();
+            if fname.contains("icon") && fname.ends_with(".png") && !fname.contains("thumb") {
+                return Some(entry.path().to_string_lossy().to_string());
+            }
+        }
+    }
+    None
+}
+
+fn scan_aircraft_sync(xplane_path: &str) -> Result<Vec<ScannedAircraft>, String> {
+    let root = PathBuf::from(xplane_path);
+    let aircraft_dir = root.join("Aircraft");
+    if !aircraft_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut results = Vec::new();
+
+    fn walk_dir(dir: &Path, xplane_root: &Path, results: &mut Vec<ScannedAircraft>, depth: u32) {
+        if depth > 5 {
+            return;
+        }
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        for entry in entries.filter_map(|e| e.ok()) {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with('.') || name_str.to_lowercase() == "liveries" {
+                continue;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                walk_dir(&path, xplane_root, results, depth + 1);
+            } else if name_str.to_lowercase().ends_with(".acf") {
+                if let Some(aircraft) = parse_acf_file(&path, xplane_root) {
+                    results.push(aircraft);
+                }
+            }
+        }
+    }
+
+    walk_dir(&aircraft_dir, &root, &mut results, 0);
+    results.sort_by(|a, b| {
+        a.manufacturer.cmp(&b.manufacturer).then_with(|| a.name.cmp(&b.name))
+    });
+
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn map_scan_aircraft(xplane_path: String) -> Result<Vec<ScannedAircraft>, String> {
+    tokio::task::spawn_blocking(move || scan_aircraft_sync(&xplane_path))
+        .await
+        .map_err(|e| format!("Scan aircraft task failed: {}", e))?
+}
+
+#[tauri::command]
+pub async fn map_get_aircraft_image(image_path: String) -> Result<String, String> {
+    let path = PathBuf::from(&image_path);
+    if !path.exists() {
+        return Err("Image file not found".to_string());
+    }
+
+    let data = tokio::fs::read(&path)
+        .await
+        .map_err(|e| format!("Failed to read image: {}", e))?;
+
+    use base64::Engine;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
+    Ok(format!("data:image/png;base64,{}", encoded))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchFlightRequest {
+    pub xplane_path: String,
+    pub aircraft_path: String,
+    pub livery_folder: Option<String>,
+    pub airport_icao: String,
+    pub start_position: Option<String>,
+    pub start_is_runway: bool,
+    pub fuel_weights_kg: Vec<f64>,
+    pub payload_weights_kg: Vec<f64>,
+    pub time_hours: Option<f64>,
+    pub day_of_year: Option<u32>,
+    pub weather_preset: Option<String>,
+}
+
+#[tauri::command]
+pub async fn map_launch_flight(request: LaunchFlightRequest) -> Result<bool, String> {
+    let root = PathBuf::from(&request.xplane_path);
+    if !root.is_dir() {
+        return Err("X-Plane path not found".to_string());
+    }
+
+    // Build start position JSON
+    let start_json = if request.start_is_runway {
+        format!(
+            r#"{{"runway_start":{{"airport_id":"{}","runway":"{}"}}}}"#,
+            request.airport_icao,
+            request.start_position.as_deref().unwrap_or("")
+        )
+    } else {
+        format!(
+            r#"{{"ramp_start":{{"airport_id":"{}","ramp":"{}"}}}}"#,
+            request.airport_icao,
+            request.start_position.as_deref().unwrap_or("")
+        )
+    };
+
+    // Build fuel array (always 9 slots)
+    let mut fuel_slots = vec![0.0f64; 9];
+    for (i, &w) in request.fuel_weights_kg.iter().enumerate() {
+        if i < 9 {
+            fuel_slots[i] = w;
+        }
+    }
+
+    // Build payload array
+    let payload_slots: Vec<f64> = request.payload_weights_kg.clone();
+
+    // Build the flight JSON for --new_flight_json
+    let flight_json = serde_json::json!({
+        "aircraft": request.aircraft_path,
+        "livery": request.livery_folder.as_deref().unwrap_or(""),
+        "departure_airport": request.airport_icao,
+        "start": serde_json::from_str::<Value>(&start_json).unwrap_or(Value::Null),
+        "weight": {
+            "fueltank_weight_in_kilograms": fuel_slots,
+            "payload_weight_in_kilograms": payload_slots,
+        },
+    });
+
+    // Write to temp file
+    let temp_dir = std::env::temp_dir();
+    let json_path = temp_dir.join("xfast-manager-flight.json");
+    let json_str = serde_json::to_string_pretty(&flight_json)
+        .map_err(|e| format!("Failed to serialize flight JSON: {}", e))?;
+
+    tokio::fs::write(&json_path, json_str)
+        .await
+        .map_err(|e| format!("Failed to write flight JSON: {}", e))?;
+
+    // Find X-Plane executable
+    let exe_path = if cfg!(target_os = "windows") {
+        root.join("X-Plane.exe")
+    } else if cfg!(target_os = "macos") {
+        root.join("X-Plane.app/Contents/MacOS/X-Plane")
+    } else {
+        root.join("X-Plane-x86_64")
+    };
+
+    if !exe_path.exists() {
+        return Err(format!("X-Plane executable not found at: {}", exe_path.display()));
+    }
+
+    // Launch X-Plane with --new_flight_json flag
+    std::process::Command::new(&exe_path)
+        .arg(format!("--new_flight_json={}", json_path.display()))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to launch X-Plane: {}", e))?;
+
+    Ok(true)
 }

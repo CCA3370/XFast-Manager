@@ -199,6 +199,17 @@ impl SceneryPacksManager {
 
     /// Add a new entry to scenery_packs.ini (used after installation)
     pub async fn add_entry(&self, folder_name: &str, category: &SceneryCategory) -> Result<()> {
+        self.add_entry_with_locked_entries(folder_name, category, &[])
+            .await
+    }
+
+    /// Add a new entry to scenery_packs.ini while preserving locked scenery sort positions.
+    pub async fn add_entry_with_locked_entries(
+        &self,
+        folder_name: &str,
+        category: &SceneryCategory,
+        locked_folder_names: &[String],
+    ) -> Result<()> {
         let index_manager = SceneryIndexManager::new(&self.xplane_path, self.db.clone());
 
         // If index hasn't been created yet, don't add to index or sort
@@ -223,7 +234,9 @@ impl SceneryPacksManager {
                 .await?;
         }
 
-        let _ = index_manager.reset_sort_order().await?;
+        let _ = index_manager
+            .reset_sort_order_with_locked_entries(locked_folder_names.to_vec())
+            .await?;
         self.auto_sort_from_index().await
     }
 

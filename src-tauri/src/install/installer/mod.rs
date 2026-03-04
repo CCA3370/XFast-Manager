@@ -1056,6 +1056,7 @@ impl Installer {
         xplane_path: String,
         delete_source_after_install: bool,
         auto_sort_scenery: bool,
+        locked_scenery_folder_names: Vec<String>,
     ) -> Result<InstallResult> {
         let install_start = Instant::now();
         crate::log_debug!(
@@ -1310,7 +1311,11 @@ impl Installer {
                                                 self.db.clone(),
                                             );
                                             if let Err(e) = manager
-                                                .add_entry(folder_name, &scenery_info.category)
+                                                .add_entry_with_locked_entries(
+                                                    folder_name,
+                                                    &scenery_info.category,
+                                                    &locked_scenery_folder_names,
+                                                )
                                                 .await
                                             {
                                                 logger::log_error(
@@ -1490,6 +1495,7 @@ impl Installer {
         xplane_path: String,
         delete_source_after_install: bool,
         auto_sort_scenery: bool,
+        locked_scenery_folder_names: Vec<String>,
     ) -> Result<InstallResult> {
         let install_start = Instant::now();
         let max_concurrent = max_concurrent.clamp(2, 10);
@@ -1789,7 +1795,13 @@ impl Installer {
                                     let manager =
                                         SceneryPacksManager::new(&xplane_path_buf, self.db.clone());
                                     if let Err(e) =
-                                        manager.add_entry(folder_name, &scenery_info.category).await
+                                        manager
+                                            .add_entry_with_locked_entries(
+                                                folder_name,
+                                                &scenery_info.category,
+                                                &locked_scenery_folder_names,
+                                            )
+                                            .await
                                     {
                                         logger::log_error(
                                             &format!(

@@ -391,6 +391,7 @@ import { useModalStore } from '@/stores/modal'
 import { useProgressStore } from '@/stores/progress'
 import { useUpdateStore } from '@/stores/update'
 import { useSceneryStore } from '@/stores/scenery'
+import { useLockStore } from '@/stores/lock'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -417,6 +418,7 @@ const modal = useModalStore()
 const updateStore = useUpdateStore()
 const progressStore = useProgressStore()
 const sceneryStore = useSceneryStore()
+const lockStore = useLockStore()
 const isDragging = ref(false)
 const showConfirmation = ref(false)
 const showLaunchConfirmDialog = ref(false)
@@ -991,6 +993,10 @@ async function handleInstall() {
   )
 
   try {
+    if (!lockStore.isInitialized) {
+      await lockStore.initStore()
+    }
+
     // Prepare enabled tasks with overwrite and backup settings
     const allTasksWithSettings = store.getTasksWithOverwrite()
     const tasksWithOverwrite = allTasksWithSettings.filter((task) => store.getTaskEnabled(task.id))
@@ -1006,6 +1012,7 @@ async function handleInstall() {
       xplanePath: store.xplanePath,
       deleteSourceAfterInstall: store.deleteSourceAfterInstall,
       autoSortScenery: store.autoSortScenery,
+      lockedSceneryFolderNames: lockStore.getLockedItems('scenery'),
       parallelEnabled: store.parallelInstallEnabled,
       maxParallel: store.maxParallelTasks,
     })

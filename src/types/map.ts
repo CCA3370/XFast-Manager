@@ -105,6 +105,35 @@ export interface MapAirportDetailTaxiway {
   toLon: number
 }
 
+/** Pavement / apron polygon from apt.dat row code 110 */
+export interface MapPavement {
+  surfaceType: number
+  smoothness: number
+  textureOrientation: number
+  name: string
+  /** Outer ring as [lon, lat][] */
+  coordinates: [number, number][]
+  /** Hole rings */
+  holes: [number, number][][]
+}
+
+/** Linear feature (painted line / taxiway marking) from apt.dat row code 120 */
+export interface MapLinearFeature {
+  name: string
+  lineType: number
+  lightType: number
+  /** Coordinates as [lon, lat][] */
+  coordinates: [number, number][]
+}
+
+/** Airport boundary from apt.dat row code 130 */
+export interface MapBoundary {
+  /** Outer ring as [lon, lat][] */
+  coordinates: [number, number][]
+  /** Hole rings */
+  holes: [number, number][][]
+}
+
 export interface MapAirportDetail {
   icao: string
   name: string
@@ -118,6 +147,9 @@ export interface MapAirportDetail {
   windsocks: MapAirportDetailWindsock[]
   signs: MapAirportDetailSign[]
   taxiways: MapAirportDetailTaxiway[]
+  pavements: MapPavement[]
+  linearFeatures: MapLinearFeature[]
+  boundaries: MapBoundary[]
 }
 
 export interface MapProcedureWaypoint {
@@ -294,4 +326,40 @@ export interface MapVatsimEvent {
   startTime: string
   endTime: string
   routes: MapVatsimEventRoute[]
+}
+
+/** Scanned livery from X-Plane Aircraft directory */
+export interface ScannedLivery {
+  name: string
+  folder: string
+  previewPath?: string
+}
+
+/** Payload station from ACF file */
+export interface PayloadStation {
+  name: string
+  maxWeightLbs: number
+}
+
+/** Scanned aircraft from X-Plane Aircraft directory */
+export interface ScannedAircraft {
+  path: string
+  name: string
+  icao: string
+  description: string
+  manufacturer: string
+  studio: string
+  author: string
+  tailNumber: string
+  emptyWeightLbs: number
+  maxWeightLbs: number
+  maxFuelLbs: number
+  tankCount: number
+  tankNames: string[]
+  tankRatios: number[]
+  payloadStations: PayloadStation[]
+  isHelicopter: boolean
+  engineCount: number
+  previewImage?: string
+  liveries: ScannedLivery[]
 }

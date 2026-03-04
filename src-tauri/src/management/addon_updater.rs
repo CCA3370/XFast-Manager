@@ -1034,6 +1034,7 @@ fn build_xupdater_plan(
         delete_files,
         skip_files: Vec::new(),
         warnings: context.warnings.clone(),
+        has_beta_config: false,
     })
 }
 

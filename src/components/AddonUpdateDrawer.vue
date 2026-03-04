@@ -73,6 +73,9 @@ const expandedTaskKey = ref('')
 const taskStateMap = ref<Record<string, TaskUiState>>({})
 const preferenceSaving = ref(false)
 const preferenceRefreshPending = ref(false)
+const freshInstallDialogTask = ref<AddonUpdateDrawerTask | null>(null)
+const freshInstallPreserveLiveries = ref(true)
+const freshInstallPreserveConfigFiles = ref(true)
 let preferenceMutationToken = 0
 let preferenceRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let unlistenAddonUpdateProgress: UnlistenFn | null = null
@@ -476,6 +479,65 @@ async function cancelTask(task: AddonUpdateDrawerTask) {
   state.speedBytes = 0
 }
 
+function showFreshInstallDialog(task: AddonUpdateDrawerTask) {
+  freshInstallDialogTask.value = task
+  freshInstallPreserveLiveries.value = true
+  freshInstallPreserveConfigFiles.value = true
+}
+
+function cancelFreshInstall() {
+  freshInstallDialogTask.value = null
+}
+
+async function confirmFreshInstall() {
+  const task = freshInstallDialogTask.value
+  if (!task) return
+  freshInstallDialogTask.value = null
+
+  const key = taskKeyOf(task)
+  const state = ensureTaskState(key)
+  if (state.installing || managementStore.isExecutingUpdate) return
+
+  state.installing = true
+  state.status = 'installing'
+  state.planError = ''
+  state.progress = 0
+  state.speedBytes = 0
+  state.message = ''
+
+  try {
+    const isAircraft = task.itemType === 'aircraft'
+    const result = await managementStore.executeAddonUpdate(task.itemType, task.folderName, {
+      freshInstall: true,
+      ...(isAircraft && {
+        preserveLiveries: freshInstallPreserveLiveries.value,
+        preserveConfigFiles: freshInstallPreserveConfigFiles.value,
+      }),
+    })
+    state.progress = 100
+    state.installing = false
+    state.status = 'completed'
+    state.speedBytes = 0
+    toast.success(
+      t('management.updateSuccessSummary', {
+        updated: result.updatedFiles,
+        deleted: result.deletedFiles,
+      }),
+    )
+    emit('updated')
+    await loadPlanForTask(task, true)
+  } catch (e) {
+    state.installing = false
+    if (String(e).toLowerCase().includes('cancelled')) {
+      state.status = 'cancelled'
+      return
+    }
+    state.status = 'failed'
+    state.planError = String(e)
+    toast.error(t('management.updateFailed') + ': ' + String(e))
+  }
+}
+
 function applyAddonProgressEvent(event: AddonUpdateProgressEvent) {
   const key = `${event.itemType}:${event.folderName}`
   if (!taskKeySet.value.has(key)) return
@@ -673,6 +735,24 @@ watch(
                         </button>
                         <button
                           v-if="
+                            !stateFor(task).installing &&
+                            stateFor(task).plan &&
+                            !stateFor(task).plan?.remoteLocked
+                          "
+                          class="px-3 py-1.5 rounded-lg text-xs text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50"
+                          :disabled="
+                            stateFor(task).loadingPlan ||
+                            stateFor(task).installing ||
+                            managementStore.isExecutingUpdate ||
+                            preferenceSaving ||
+                            preferenceRefreshPending
+                          "
+                          @click.stop="showFreshInstallDialog(task)"
+                        >
+                          {{ t('management.freshInstallToggle') }}
+                        </button>
+                        <button
+                          v-if="
                             !stateFor(task).loadingPlan &&
                             (!stateFor(task).plan || planNeedsAction(stateFor(task).plan))
                           "
@@ -766,12 +846,13 @@ watch(
                             {{ formatBytes(stateFor(task).plan?.estimatedDownloadBytes || 0) }}
                           </p>
                         </div>
-                        <div class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/70 dark:to-slate-900/50 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:shadow-none">
+                        <div v-if="task.itemType === 'aircraft' || stateFor(task).plan?.hasBetaConfig" class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/70 dark:to-slate-900/50 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:shadow-none">
                           <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
                             {{ t('management.updateOptions') }}
                           </p>
                           <div class="mt-2 space-y-2">
                             <label
+                              v-if="stateFor(task).plan?.hasBetaConfig"
                               class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300 transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60"
                             >
                               <input
@@ -786,6 +867,7 @@ watch(
                               <span class="font-semibold">{{ t('management.useBeta') }}</span>
                             </label>
                             <label
+                              v-if="task.itemType === 'aircraft'"
                               class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300 transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60"
                             >
                               <input
@@ -873,6 +955,74 @@ watch(
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <Teleport to="body">
+    <Transition name="drawer-overlay">
+      <div
+        v-if="freshInstallDialogTask"
+        class="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+        @click.self="cancelFreshInstall"
+      >
+        <div class="w-full max-w-sm mx-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xl p-5">
+          <h3 class="text-base font-semibold text-slate-900 dark:text-slate-100">
+            {{ t('management.freshInstallDialogTitle') }}
+          </h3>
+          <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">
+            {{
+              freshInstallDialogTask?.itemType === 'aircraft'
+                ? t('management.freshInstallDialogMessage')
+                : t('management.freshInstallDialogMessageGeneric')
+            }}
+          </p>
+
+          <div v-if="freshInstallDialogTask?.itemType === 'aircraft'" class="mt-4 space-y-3">
+            <label
+              class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/45 px-3 py-2.5 text-sm text-slate-700 dark:text-slate-300 transition-all hover:border-amber-300/70 dark:hover:border-amber-600/60"
+            >
+              <input
+                type="checkbox"
+                class="peer sr-only"
+                v-model="freshInstallPreserveLiveries"
+              />
+              <span
+                class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-amber-500 peer-checked:bg-amber-500 peer-checked:after:translate-x-4"
+              ></span>
+              <span class="font-medium">{{ t('management.preserveLiveries') }}</span>
+            </label>
+
+            <label
+              class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/45 px-3 py-2.5 text-sm text-slate-700 dark:text-slate-300 transition-all hover:border-amber-300/70 dark:hover:border-amber-600/60"
+            >
+              <input
+                type="checkbox"
+                class="peer sr-only"
+                v-model="freshInstallPreserveConfigFiles"
+              />
+              <span
+                class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-amber-500 peer-checked:bg-amber-500 peer-checked:after:translate-x-4"
+              ></span>
+              <span class="font-medium">{{ t('management.preserveConfigFiles') }}</span>
+            </label>
+          </div>
+
+          <div class="mt-5 flex items-center justify-end gap-2">
+            <button
+              class="px-4 py-2 rounded-lg text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              @click="cancelFreshInstall"
+            >
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 transition-colors"
+              @click="confirmFreshInstall"
+            >
+              {{ t('management.confirmFreshInstall') }}
+            </button>
           </div>
         </div>
       </div>

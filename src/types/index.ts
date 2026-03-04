@@ -371,6 +371,11 @@ export interface AddonUpdateOptions {
   parallelDownloads?: number
   channel?: 'stable' | 'beta' | 'alpha'
   freshInstall?: boolean
+  preserveLiveries?: boolean
+  preserveConfigFiles?: boolean
+  chunkedDownloadEnabled?: boolean
+  threadsPerTask?: number
+  totalThreads?: number
 }
 
 export interface AddonUpdatePreview {
@@ -399,6 +404,7 @@ export interface AddonUpdatePlan {
   deleteFiles: string[]
   skipFiles: string[]
   warnings: string[]
+  hasBetaConfig: boolean
 }
 
 export interface AddonUpdateResult {

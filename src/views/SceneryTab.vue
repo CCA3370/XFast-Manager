@@ -15,6 +15,7 @@ import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useIssueTrackerStore } from '@/stores/issueTracker'
 import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
+import { useLockStore } from '@/stores/lock'
 import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
 import ConfirmModal from '@/components/ConfirmModal.vue'
@@ -35,6 +36,7 @@ const appStore = useAppStore()
 const modalStore = useModalStore()
 const issueTrackerStore = useIssueTrackerStore()
 const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
+const lockStore = useLockStore()
 
 // Scenery-specific state (migrated from SceneryManager.vue)
 const drag = ref(false)
@@ -177,8 +179,14 @@ async function runSceneryIndexScan() {
 
   isUpdatingIndex.value = true
   try {
+    if (!lockStore.isInitialized) {
+      await lockStore.initStore()
+    }
+    const lockedFolderNames = lockStore.getLockedItems('scenery')
+
     const result = await invoke<SceneryIndexScanResult>('quick_scan_scenery_index', {
       xplanePath: appStore.xplanePath,
+      lockedFolderNames,
     })
 
     if (!result.indexExists) return
@@ -1055,8 +1063,14 @@ async function performAutoSort() {
   if (!sceneryStore.indexExists) return
   isSortingScenery.value = true
   try {
+    if (!lockStore.isInitialized) {
+      await lockStore.initStore()
+    }
+    const lockedFolderNames = lockStore.getLockedItems('scenery')
+
     const hasChanges = await invoke<boolean>('sort_scenery_packs', {
       xplanePath: appStore.xplanePath,
+      lockedFolderNames,
     })
     await sceneryStore.loadData()
     syncLocalEntries()
