@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"updated": "2026-03-01",
+	"updated": "2026-03-04",
 	"libraries": {
 		"3d_people": "https://forums.x-plane.org/index.php?/files/file/26611-3d-people-library/",
 		"3d_people_library": "https://forums.x-plane.org/files/file/26611-3d-people-library/",
@@ -21,6 +21,7 @@
 		"handyobjects": "https://forums.x-plane.org/index.php?/files/file/24261-the-handy-objects-library/",
 		"jb_library": "https://forums.x-plane.org/files/file/26531-jb_libraryzip/",
 		"misterx_library": "https://forums.x-plane.org/index.php?/files/file/28167-misterx-library-and-static-aircraft-extension/",
+		"my_jetways": "https://github.com/hotbso/openSam.git",
 		"naps_library": "https://forum.thresholdx.net/files/file/690-naps_library/",
 		"opensam": "https://github.com/hotbso/openSAM/releases/latest",
 		"opensceneryx": "https://www.opensceneryx.com/",
