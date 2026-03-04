@@ -1612,6 +1612,22 @@ fn validate_xplane_path(path: String) -> Result<bool, String> {
     }
 }
 
+fn validate_xplane_root_path(path: &std::path::Path) -> Result<(), String> {
+    if !path.is_absolute() {
+        return Err(format!("X-Plane path must be absolute: {}", path.display()));
+    }
+
+    if !path.exists() {
+        return Err(format!("X-Plane path does not exist: {}", path.display()));
+    }
+
+    if !path.is_dir() {
+        return Err(format!("X-Plane path is not a directory: {}", path.display()));
+    }
+
+    Ok(())
+}
+
 // ========== Update Commands ==========
 
 #[tauri::command]
@@ -1885,6 +1901,7 @@ async fn apply_scenery_changes(
 ) -> Result<(), String> {
     let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
+    validate_xplane_root_path(xplane_path)?;
     let index_manager = SceneryIndexManager::new(xplane_path, db.clone());
 
     logger::log_info("Applying scenery changes to index and ini", Some("scenery"));
