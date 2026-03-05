@@ -47,10 +47,7 @@ impl SceneryPacksManager {
     }
 
     fn write_ini_at_path(ini_path: &Path, entries: &[SceneryPackEntry]) -> Result<()> {
-        // Create parent directory if needed
-        if let Some(parent) = ini_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
+        Self::ensure_ini_parent_dir(ini_path)?;
 
         // Build content in memory first so we can retry with a fallback strategy
         let mut content: Vec<u8> = Vec::new();
@@ -100,6 +97,26 @@ impl SceneryPacksManager {
         }
 
         Ok(())
+    }
+
+    fn ensure_ini_parent_dir(ini_path: &Path) -> Result<()> {
+        let parent = ini_path
+            .parent()
+            .ok_or_else(|| anyhow!("Invalid ini path: no parent directory ({})", ini_path.display()))?;
+
+        fs::create_dir_all(parent).map_err(|e| {
+            let hint = if e.to_string().contains("failed to create whole tree") {
+                " This usually means the configured X-Plane path is invalid (for example drive-relative like 'E:'), or the drive is unavailable."
+            } else {
+                ""
+            };
+            anyhow!(
+                "Failed to prepare Custom Scenery directory '{}': {}{}",
+                parent.display(),
+                e,
+                hint
+            )
+        })
     }
 
     /// Write sorted entries back to scenery_packs.ini
@@ -182,6 +199,17 @@ impl SceneryPacksManager {
 
     /// Add a new entry to scenery_packs.ini (used after installation)
     pub async fn add_entry(&self, folder_name: &str, category: &SceneryCategory) -> Result<()> {
+        self.add_entry_with_locked_entries(folder_name, category, &[])
+            .await
+    }
+
+    /// Add a new entry to scenery_packs.ini while preserving locked scenery sort positions.
+    pub async fn add_entry_with_locked_entries(
+        &self,
+        folder_name: &str,
+        category: &SceneryCategory,
+        locked_folder_names: &[String],
+    ) -> Result<()> {
         let index_manager = SceneryIndexManager::new(&self.xplane_path, self.db.clone());
 
         // If index hasn't been created yet, don't add to index or sort
@@ -206,7 +234,9 @@ impl SceneryPacksManager {
                 .await?;
         }
 
-        let _ = index_manager.reset_sort_order().await?;
+        let _ = index_manager
+            .reset_sort_order_with_locked_entries(locked_folder_names.to_vec())
+            .await?;
         self.auto_sort_from_index().await
     }
 

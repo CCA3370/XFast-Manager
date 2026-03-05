@@ -5,6 +5,7 @@
 
 use crate::database::{SceneryQueries, CURRENT_SCHEMA_VERSION};
 use crate::logger;
+use crate::management_index::read_version_from_paths;
 use crate::models::{
     SceneryCategory, SceneryIndex, SceneryIndexScanResult, SceneryIndexStats, SceneryIndexStatus,
     SceneryManagerData, SceneryManagerEntry, SceneryPackageInfo,
@@ -265,6 +266,16 @@ fn should_promote_to_fixed_high_priority(folder_name: &str, info: &SceneryPackag
         && info.has_library_txt
         && !info.has_dsf
         && !info.has_apt_dat
+}
+
+fn read_scenery_update_url(folder_path: &Path) -> Option<String> {
+    let cfg_path = folder_path.join("skunkcrafts_updater.cfg");
+    if !cfg_path.is_file() {
+        return None;
+    }
+
+    let (_version, update_url, _cfg_disabled) = read_version_from_paths(Some(&cfg_path), &[]);
+    update_url
 }
 
 /// Common sorting comparison for non-FixedHighPriority scenery packages
@@ -701,6 +712,14 @@ impl SceneryIndexManager {
 
     /// Update index incrementally - only re-classify modified packages
     pub async fn update_index(&self) -> Result<SceneryIndex> {
+        self.update_index_with_locked_entries(Vec::new()).await
+    }
+
+    /// Update index incrementally while preserving locked scenery sort positions.
+    pub async fn update_index_with_locked_entries(
+        &self,
+        locked_folder_names: Vec<String>,
+    ) -> Result<SceneryIndex> {
         let custom_scenery_path = self.xplane_path.join("Custom Scenery");
         if !custom_scenery_path.exists() {
             return Err(anyhow!("Custom Scenery folder not found"));
@@ -709,6 +728,12 @@ impl SceneryIndexManager {
         let index = self.load_index().await?;
         let xplane_path = self.xplane_path.clone();
         let custom_scenery_path = custom_scenery_path.clone();
+        let locked_folder_names_for_sort = locked_folder_names.clone();
+        let locked_name_set: HashSet<String> = locked_folder_names
+            .iter()
+            .map(|name| name.trim().to_lowercase())
+            .filter(|name| !name.is_empty())
+            .collect();
 
         let index = tokio::task::spawn_blocking(move || -> Result<SceneryIndex> {
             let mut index = index;
@@ -817,6 +842,14 @@ impl SceneryIndexManager {
                     Some("scenery_index"),
                 );
 
+                // Keep current sort slots for locked entries before recalculation.
+                let locked_anchor_orders: HashMap<String, usize> = index
+                    .packages
+                    .iter()
+                    .filter(|(name, _)| locked_name_set.contains(&name.to_lowercase()))
+                    .map(|(name, info)| (name.to_lowercase(), info.sort_order as usize))
+                    .collect();
+
                 // Classify updated packages
                 // Track which path each package came from to correctly handle shortcuts
                 // Use sequential processing in debug log mode for ordered logs, parallel otherwise
@@ -865,6 +898,37 @@ impl SceneryIndexManager {
                 // After adding new packages, recalculate sort_order using the same logic as rebuild_index
                 // This ensures incremental updates produce the same ordering as full rebuilds
                 Self::recalculate_sort_order(&mut index);
+
+                if !locked_anchor_orders.is_empty() {
+                    let mut sorted_entries: Vec<(&String, &SceneryPackageInfo)> =
+                        index.packages.iter().collect();
+                    sorted_entries.sort_by(|(name_a, info_a), (name_b, info_b)| {
+                        info_a
+                            .sort_order
+                            .cmp(&info_b.sort_order)
+                            .then_with(|| name_a.to_lowercase().cmp(&name_b.to_lowercase()))
+                    });
+                    let sorted_names: Vec<String> = sorted_entries
+                        .into_iter()
+                        .map(|(name, _)| name.clone())
+                        .collect();
+
+                    let (_, locked_applied) = Self::apply_sort_order_with_locked_slots(
+                        &mut index,
+                        &sorted_names,
+                        &locked_folder_names_for_sort,
+                        Some(&locked_anchor_orders),
+                    );
+                    if locked_applied > 0 {
+                        logger::log_info(
+                            &format!(
+                                "Incremental update preserved {} locked scenery positions",
+                                locked_applied
+                            ),
+                            Some("scenery_index"),
+                        );
+                    }
+                }
             }
 
             // Also update actual_path for existing entries that are shortcuts
@@ -959,6 +1023,14 @@ impl SceneryIndexManager {
     }
 
     pub async fn quick_scan_and_update(&self) -> Result<SceneryIndexScanResult> {
+        self.quick_scan_and_update_with_locked_entries(Vec::new())
+            .await
+    }
+
+    pub async fn quick_scan_and_update_with_locked_entries(
+        &self,
+        locked_folder_names: Vec<String>,
+    ) -> Result<SceneryIndexScanResult> {
         let has_packages = SceneryQueries::has_packages(&self.db)
             .await
             .map_err(|e| anyhow!("{}", e))?;
@@ -975,7 +1047,9 @@ impl SceneryIndexManager {
         let before_index = self.load_index().await?;
         let before_keys: HashSet<String> = before_index.packages.keys().cloned().collect();
 
-        let after_index = self.update_index().await?;
+        let after_index = self
+            .update_index_with_locked_entries(locked_folder_names)
+            .await?;
         let after_keys: HashSet<String> = after_index.packages.keys().cloned().collect();
 
         let mut added: Vec<String> = after_keys.difference(&before_keys).cloned().collect();
@@ -1144,6 +1218,15 @@ impl SceneryIndexManager {
     /// without writing to the ini file
     /// Returns true if the sort order was changed, false if it was already correct
     pub async fn reset_sort_order(&self) -> Result<bool> {
+        self.reset_sort_order_with_locked_entries(Vec::new()).await
+    }
+
+    /// Reset sort_order while preserving the current sort slots of locked scenery entries.
+    /// Locked entries are identified by folder name (case-insensitive).
+    pub async fn reset_sort_order_with_locked_entries(
+        &self,
+        locked_folder_names: Vec<String>,
+    ) -> Result<bool> {
         let mut index = self.load_index().await?;
 
         if index.packages.is_empty() {
@@ -1206,26 +1289,33 @@ impl SceneryIndexManager {
             .map(|(name, _)| (*name).clone())
             .chain(other_packages.iter().map(|(name, _)| (*name).clone()))
             .collect();
-        let mut has_changes = category_changed;
-
-        for (new_order, folder_name) in sorted_names.iter().enumerate() {
-            if let Some(info) = index.packages.get_mut(folder_name) {
-                let new_order_u32 = new_order as u32;
-                if info.sort_order != new_order_u32 {
-                    has_changes = true;
-                    info.sort_order = new_order_u32;
-                }
-            }
-        }
+        let (sort_changed, locked_applied) = Self::apply_sort_order_with_locked_slots(
+            &mut index,
+            &sorted_names,
+            &locked_folder_names,
+            None,
+        );
+        let has_changes = category_changed || sort_changed;
 
         if has_changes {
             index.last_updated = SystemTime::now();
             self.save_index(&index).await?;
 
-            logger::log_info(
-                &format!("Reset sort order for {} packages", sorted_names.len()),
-                Some("scenery_index"),
-            );
+            if locked_applied > 0 {
+                logger::log_info(
+                    &format!(
+                        "Reset sort order for {} packages (preserved {} locked positions)",
+                        sorted_names.len(),
+                        locked_applied
+                    ),
+                    Some("scenery_index"),
+                );
+            } else {
+                logger::log_info(
+                    &format!("Reset sort order for {} packages", sorted_names.len()),
+                    Some("scenery_index"),
+                );
+            }
         } else {
             logger::log_info(
                 "Sort order is already correct, no changes needed",
@@ -1234,6 +1324,134 @@ impl SceneryIndexManager {
         }
 
         Ok(has_changes)
+    }
+
+    fn find_nearest_free_slot(occupied: &[bool], desired: usize) -> Option<usize> {
+        let len = occupied.len();
+        if len == 0 {
+            return None;
+        }
+
+        let desired = desired.min(len - 1);
+        if !occupied[desired] {
+            return Some(desired);
+        }
+
+        for offset in 1..len {
+            let forward = desired + offset;
+            if forward < len && !occupied[forward] {
+                return Some(forward);
+            }
+
+            if desired >= offset {
+                let backward = desired - offset;
+                if !occupied[backward] {
+                    return Some(backward);
+                }
+            }
+        }
+
+        None
+    }
+
+    fn apply_sort_order_with_locked_slots(
+        index: &mut SceneryIndex,
+        sorted_names: &[String],
+        locked_folder_names: &[String],
+        locked_anchor_orders: Option<&HashMap<String, usize>>,
+    ) -> (bool, usize) {
+        if sorted_names.is_empty() {
+            return (false, 0);
+        }
+
+        let assign_sequential =
+            |index: &mut SceneryIndex, sorted_names: &[String]| -> (bool, usize) {
+                let mut has_changes = false;
+                for (new_order, folder_name) in sorted_names.iter().enumerate() {
+                    if let Some(info) = index.packages.get_mut(folder_name) {
+                        let new_order_u32 = new_order as u32;
+                        if info.sort_order != new_order_u32 {
+                            info.sort_order = new_order_u32;
+                            has_changes = true;
+                        }
+                    }
+                }
+                (has_changes, 0)
+            };
+
+        let locked_names: HashSet<String> = locked_folder_names
+            .iter()
+            .map(|name| name.trim().to_lowercase())
+            .filter(|name| !name.is_empty())
+            .collect();
+
+        if locked_names.is_empty() {
+            return assign_sequential(index, sorted_names);
+        }
+
+        let total = sorted_names.len();
+        let mut locked_candidates: Vec<(String, usize)> = sorted_names
+            .iter()
+            .filter(|name| locked_names.contains(&name.to_lowercase()))
+            .filter_map(|name| {
+                index.packages.get(name).map(|info| {
+                    let normalized_name = name.to_lowercase();
+                    let desired_slot = locked_anchor_orders
+                        .and_then(|anchors| anchors.get(&normalized_name).copied())
+                        .unwrap_or(info.sort_order as usize)
+                        .min(total - 1);
+                    (name.clone(), desired_slot)
+                })
+            })
+            .collect();
+
+        if locked_candidates.is_empty() {
+            return assign_sequential(index, sorted_names);
+        }
+
+        locked_candidates.sort_by(|(name_a, order_a), (name_b, order_b)| {
+            order_a
+                .cmp(order_b)
+                .then_with(|| name_a.to_lowercase().cmp(&name_b.to_lowercase()))
+        });
+
+        let mut occupied = vec![false; total];
+        let mut final_order: Vec<Option<String>> = vec![None; total];
+        let mut locked_applied: HashSet<String> = HashSet::new();
+
+        for (name, desired_slot) in locked_candidates {
+            if let Some(slot) = Self::find_nearest_free_slot(&occupied, desired_slot) {
+                occupied[slot] = true;
+                final_order[slot] = Some(name.clone());
+                locked_applied.insert(name);
+            }
+        }
+
+        let mut unlocked_iter = sorted_names
+            .iter()
+            .filter(|name| !locked_applied.contains(*name))
+            .cloned();
+
+        for slot in 0..total {
+            if final_order[slot].is_none() {
+                final_order[slot] = unlocked_iter.next();
+            }
+        }
+
+        let mut has_changes = false;
+        for (new_order, folder_name_opt) in final_order.into_iter().enumerate() {
+            if let Some(folder_name) = folder_name_opt {
+                if let Some(info) = index.packages.get_mut(&folder_name) {
+                    let new_order_u32 = new_order as u32;
+                    if info.sort_order != new_order_u32 {
+                        info.sort_order = new_order_u32;
+                        has_changes = true;
+                    }
+                }
+            }
+        }
+
+        (has_changes, locked_applied.len())
     }
 
     /// Get scenery manager data for UI
@@ -1266,6 +1484,7 @@ impl SceneryIndexManager {
                 sub_priority: info.sub_priority,
                 enabled: info.enabled,
                 sort_order: info.sort_order,
+                update_url: read_scenery_update_url(&custom_scenery_path.join(&info.folder_name)),
                 missing_libraries: info.missing_libraries.clone(),
                 required_libraries: info.required_libraries.clone(),
                 continent: info.continent.clone(),
@@ -1922,6 +2141,8 @@ mod tests {
         assert!(is_lines3d_folder_name("Lines3D"));
         assert!(is_lines3d_folder_name("lines3d"));
         assert!(!is_lines3d_folder_name("Lines3D_expanded_documentation"));
-        assert!(!is_lines3d_folder_name("Simple_Ground_Equipment_and_Services"));
+        assert!(!is_lines3d_folder_name(
+            "Simple_Ground_Equipment_and_Services"
+        ));
     }
 }

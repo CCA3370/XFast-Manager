@@ -13,6 +13,9 @@ import { useSceneryStore } from '@/stores/scenery'
 import { useToastStore } from '@/stores/toast'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
+import { useIssueTrackerStore } from '@/stores/issueTracker'
+import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
+import { useLockStore } from '@/stores/lock'
 import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
 import ConfirmModal from '@/components/ConfirmModal.vue'
@@ -31,6 +34,9 @@ const sceneryStore = useSceneryStore()
 const toastStore = useToastStore()
 const appStore = useAppStore()
 const modalStore = useModalStore()
+const issueTrackerStore = useIssueTrackerStore()
+const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
+const lockStore = useLockStore()
 
 // Scenery-specific state (migrated from SceneryManager.vue)
 const drag = ref(false)
@@ -173,8 +179,14 @@ async function runSceneryIndexScan() {
 
   isUpdatingIndex.value = true
   try {
+    if (!lockStore.isInitialized) {
+      await lockStore.initStore()
+    }
+    const lockedFolderNames = lockStore.getLockedItems('scenery')
+
     const result = await invoke<SceneryIndexScanResult>('quick_scan_scenery_index', {
       xplanePath: appStore.xplanePath,
+      lockedFolderNames,
     })
 
     if (!result.indexExists) return
@@ -796,6 +808,14 @@ async function handleShowMissingLibs(entry: SceneryManagerEntry) {
     })
 }
 
+function handleOpenSceneryUpdate(folderName: string) {
+  addonUpdateDrawerStore.openTask({
+    itemType: 'scenery',
+    folderName,
+    displayName: folderName,
+  })
+}
+
 function handleShowDuplicateTiles(entry: SceneryManagerEntry) {
   selectedModalEntry.value = entry
   showDuplicateTilesModal.value = true
@@ -869,6 +889,23 @@ function isValidHttpUrl(value: string): boolean {
   }
 }
 
+function parseIssueNumberFromUrl(url: string): number {
+  const trimmed = url.trim()
+  if (!trimmed) return 0
+
+  try {
+    const parsed = new URL(trimmed)
+    const queryNumber = Number(parsed.searchParams.get('number') || parsed.searchParams.get('issueNumber') || 0)
+    if (Number.isFinite(queryNumber) && queryNumber > 0) return queryNumber
+  } catch {
+    // ignore and fallback to tail parsing
+  }
+
+  const issueTail = trimmed.split('/').pop() ?? ''
+  const issueNumber = Number(issueTail)
+  return Number.isFinite(issueNumber) && issueNumber > 0 ? issueNumber : 0
+}
+
 async function handleSubmitContributeLink() {
   if (isSubmittingContributeLink.value) return
 
@@ -893,7 +930,9 @@ async function handleSubmitContributeLink() {
     'Please review this link. If valid, add the `approved-link` label to trigger auto-update for `data/library_links.json` on `dev`.',
   ].join('\n')
 
-  const issueUrl = `https://github.com/CCA3370/XFast-Manager/issues/new?template=library_link_submission.yml&labels=${encodeURIComponent('library-link')}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
+  const issueDraftApiBase =
+    import.meta.env.VITE_XFAST_ISSUE_DRAFT_API_URL || 'https://x-fast-manager.vercel.app/api/issue-draft'
+  const issueUrl = `${issueDraftApiBase}?template=${encodeURIComponent('library_link_submission.yml')}&labels=${encodeURIComponent('library-link')}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
 
   isSubmittingContributeLink.value = true
   appStore.setLibraryLinkSubmitting(true)
@@ -915,10 +954,20 @@ async function handleSubmitContributeLink() {
     toastStore.success(t('sceneryManager.contributionCreated'))
     closeContributeLinkModal()
 
+    const issueNumber = parseIssueNumberFromUrl(createdIssueUrl)
+    if (issueNumber > 0) {
+      await issueTrackerStore.appendTrackedIssue({
+        issueNumber,
+        issueTitle: title,
+        issueUrl: createdIssueUrl,
+        source: 'library-link',
+      })
+    }
+
     // Open created issue for user visibility
     await invoke('open_url', { url: createdIssueUrl })
   } catch (error) {
-    // Fallback: open prefilled GitHub issue page if direct API creation is unavailable
+    // Fallback: open prefilled issue page via proxy if API creation is unavailable
     try {
       await invoke('open_url', { url: issueUrl })
       toastStore.success(t('sceneryManager.contributionOpened'))
@@ -1014,8 +1063,14 @@ async function performAutoSort() {
   if (!sceneryStore.indexExists) return
   isSortingScenery.value = true
   try {
+    if (!lockStore.isInitialized) {
+      await lockStore.initStore()
+    }
+    const lockedFolderNames = lockStore.getLockedItems('scenery')
+
     const hasChanges = await invoke<boolean>('sort_scenery_packs', {
       xplanePath: appStore.xplanePath,
+      lockedFolderNames,
     })
     await sceneryStore.loadData()
     syncLocalEntries()
@@ -2281,6 +2336,7 @@ onBeforeUnmount(() => {
                               @show-missing-libs="handleShowMissingLibs"
                               @show-duplicate-tiles="handleShowDuplicateTiles"
                               @show-delete-confirm="handleShowDeleteConfirm"
+                              @update="handleOpenSceneryUpdate"
                             />
                           </div>
                         </div>
@@ -2386,6 +2442,7 @@ onBeforeUnmount(() => {
                       @show-missing-libs="handleShowMissingLibs"
                       @show-duplicate-tiles="handleShowDuplicateTiles"
                       @show-delete-confirm="handleShowDeleteConfirm"
+                      @update="handleOpenSceneryUpdate"
                     />
                   </div>
                 </div>
@@ -2508,6 +2565,7 @@ onBeforeUnmount(() => {
                           @show-missing-libs="handleShowMissingLibs"
                           @show-duplicate-tiles="handleShowDuplicateTiles"
                           @show-delete-confirm="handleShowDeleteConfirm"
+                          @update="handleOpenSceneryUpdate"
                         />
                       </div>
                     </div>

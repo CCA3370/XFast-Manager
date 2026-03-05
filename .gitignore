@@ -61,5 +61,7 @@ AI.md
 .copilot/
 .github/copilot-instructions.md
 
+temp/
+*.docx
 # Forum post
 FORUM_POST.md

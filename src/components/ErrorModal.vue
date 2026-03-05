@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <Transition name="modal" :css="false" @enter="onEnter" @leave="onLeave">
+    <Transition name="modal" :css="false" @enter="onEnter" @leave="onLeave" @enter-cancelled="onEnterCancelled" @leave-cancelled="onLeaveCancelled">
       <div
         v-if="modal.errorModal.visible"
         class="fixed inset-0 z-[1100] flex items-center justify-center"
@@ -170,6 +170,10 @@ const CARD_SHOW_DELAY_MS = 50 // Delay before showing card after backdrop
 const ENTER_ANIMATION_DURATION_MS = 450 // Total enter animation time
 const LEAVE_ANIMATION_DURATION_MS = 350 // Total leave animation time
 
+// Timer tracking to prevent stale done() calls on rapid toggle
+let enterTimer: ReturnType<typeof setTimeout> | null = null
+let leaveTimer: ReturnType<typeof setTimeout> | null = null
+
 function close() {
   modal.closeError()
 }
@@ -209,6 +213,10 @@ async function submitBugReport() {
 
 // JavaScript-based animations
 function onEnter(el: Element, done: () => void) {
+  // Cancel any pending timers from a previous animation cycle
+  if (enterTimer) { clearTimeout(enterTimer); enterTimer = null }
+  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+
   const element = el as HTMLElement
   const backdropEl = backdrop.value
   const cardEl = card.value
@@ -246,10 +254,17 @@ function onEnter(el: Element, done: () => void) {
     }, CARD_SHOW_DELAY_MS)
   })
 
-  setTimeout(done, ENTER_ANIMATION_DURATION_MS)
+  enterTimer = setTimeout(() => {
+    enterTimer = null
+    done()
+  }, ENTER_ANIMATION_DURATION_MS)
 }
 
 function onLeave(el: Element, done: () => void) {
+  // Cancel any pending enter timer to prevent stale done() calls
+  if (enterTimer) { clearTimeout(enterTimer); enterTimer = null }
+  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+
   const element = el as HTMLElement
   const backdropEl = element.querySelector('.modal-backdrop') as HTMLElement
   const cardEl = element.querySelector('.modal-card') as HTMLElement
@@ -259,29 +274,10 @@ function onLeave(el: Element, done: () => void) {
     return
   }
 
-  // Set transition properties first
+  // Set transition properties
   element.style.transition = 'opacity 0.3s ease-in'
   backdropEl.style.transition = 'opacity 0.3s ease-in'
   cardEl.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.6, 1)'
-
-  // Fallback timeout in case transitionend doesn't fire
-  let fallbackTimeout: ReturnType<typeof setTimeout> | null = null
-
-  // Listen for transition end on the card element
-  const handleTransitionEnd = () => {
-    cardEl.removeEventListener('transitionend', handleTransitionEnd)
-    if (fallbackTimeout) {
-      clearTimeout(fallbackTimeout)
-      fallbackTimeout = null
-    }
-    done()
-  }
-  cardEl.addEventListener('transitionend', handleTransitionEnd)
-
-  fallbackTimeout = setTimeout(() => {
-    cardEl.removeEventListener('transitionend', handleTransitionEnd)
-    done()
-  }, LEAVE_ANIMATION_DURATION_MS)
 
   // Use double requestAnimationFrame to ensure transition is applied
   requestAnimationFrame(() => {
@@ -292,6 +288,19 @@ function onLeave(el: Element, done: () => void) {
       cardEl.style.transform = 'scale(0.9) translateY(10px)'
     })
   })
+
+  leaveTimer = setTimeout(() => {
+    leaveTimer = null
+    done()
+  }, LEAVE_ANIMATION_DURATION_MS)
+}
+
+function onEnterCancelled() {
+  if (enterTimer) { clearTimeout(enterTimer); enterTimer = null }
+}
+
+function onLeaveCancelled() {
+  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
 }
 
 function onKey(e: KeyboardEvent) {
@@ -313,6 +322,8 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  if (enterTimer) { clearTimeout(enterTimer); enterTimer = null }
+  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
   window.removeEventListener('keydown', onKey)
 })
 

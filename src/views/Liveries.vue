@@ -7,6 +7,7 @@ import { useManagementStore } from '@/stores/management'
 import { useAppStore } from '@/stores/app'
 import { useToastStore } from '@/stores/toast'
 import { useModalStore } from '@/stores/modal'
+import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import LiveryCard from '@/components/LiveryCard.vue'
 import type { LiveryInfo } from '@/types'
 
@@ -17,6 +18,7 @@ const managementStore = useManagementStore()
 const appStore = useAppStore()
 const toastStore = useToastStore()
 const modalStore = useModalStore()
+const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
 
 const aircraftFolder = computed(() => (route.query.aircraft as string) || '')
 const liveries = ref<LiveryInfo[]>([])
@@ -171,6 +173,21 @@ async function handleOpenLiveryFolder(folderName: string) {
   }
 }
 
+function buildLiveryUpdateTarget(folderName: string): string {
+  const aircraft = aircraftFolder.value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  const livery = folderName.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  return aircraft ? `${aircraft}/liveries/${livery}` : `liveries/${livery}`
+}
+
+function handleOpenLiveryUpdate(folderName: string) {
+  const livery = liveries.value.find((item) => item.folderName === folderName)
+  addonUpdateDrawerStore.openTask({
+    itemType: 'livery',
+    folderName: buildLiveryUpdateTarget(folderName),
+    displayName: livery?.displayName || folderName,
+  })
+}
+
 onMounted(() => {
   loadLiveries()
 })
@@ -238,6 +255,7 @@ onMounted(() => {
           @delete="handleDeleteLivery"
           @preview="(src: string) => handlePreview(src, livery.displayName)"
           @open-folder="handleOpenLiveryFolder"
+          @update="handleOpenLiveryUpdate"
         />
       </div>
     </div>

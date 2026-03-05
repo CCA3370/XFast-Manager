@@ -57,6 +57,20 @@ impl CompiledPatterns {
     }
 }
 
+#[derive(Clone)]
+struct SourceCleanupCandidate {
+    task_id: String,
+    original_input_path: String,
+    source_path: String,
+}
+
+struct SourceCleanupGroup {
+    original_input_path: String,
+    source_path: String,
+    total_tasks: usize,
+    successful_tasks: usize,
+}
+
 /// Generate a fixed-length folder name from a provider name using SHA-256.
 /// Produces a 16-character hex string (first 8 bytes of hash) that is
 /// deterministic: the same provider name always yields the same result.
@@ -954,6 +968,86 @@ impl Installer {
         }
     }
 
+    fn collect_source_cleanup_candidates(tasks: &[InstallTask]) -> Vec<SourceCleanupCandidate> {
+        tasks
+            .iter()
+            .filter_map(|task| {
+                task.original_input_path
+                    .as_ref()
+                    .map(|original_input_path| SourceCleanupCandidate {
+                        task_id: task.id.clone(),
+                        original_input_path: original_input_path.clone(),
+                        source_path: task.source_path.clone(),
+                    })
+            })
+            .collect()
+    }
+
+    fn cleanup_sources_after_install(
+        &self,
+        candidates: &[SourceCleanupCandidate],
+        task_results: &[TaskResult],
+        delete_source_after_install: bool,
+    ) {
+        if !delete_source_after_install || candidates.is_empty() {
+            return;
+        }
+
+        let success_by_task_id: HashMap<&str, bool> = task_results
+            .iter()
+            .map(|result| (result.task_id.as_str(), result.success))
+            .collect();
+
+        let mut groups: HashMap<(String, String), SourceCleanupGroup> = HashMap::new();
+
+        for candidate in candidates {
+            let entry = groups
+                .entry((
+                    candidate.original_input_path.clone(),
+                    candidate.source_path.clone(),
+                ))
+                .or_insert_with(|| SourceCleanupGroup {
+                    original_input_path: candidate.original_input_path.clone(),
+                    source_path: candidate.source_path.clone(),
+                    total_tasks: 0,
+                    successful_tasks: 0,
+                });
+
+            entry.total_tasks += 1;
+            if success_by_task_id
+                .get(candidate.task_id.as_str())
+                .copied()
+                .unwrap_or(false)
+            {
+                entry.successful_tasks += 1;
+            }
+        }
+
+        for group in groups.values() {
+            if group.successful_tasks == group.total_tasks {
+                if let Err(e) =
+                    self.delete_source_file(&group.original_input_path, &group.source_path)
+                {
+                    logger::log_error(
+                        &format!(
+                            "Failed to delete source file {}: {}",
+                            group.original_input_path, e
+                        ),
+                        Some("installer"),
+                    );
+                }
+            } else {
+                logger::log_info(
+                    &format!(
+                        "Skipping source deletion because only {}/{} related task(s) succeeded: {}",
+                        group.successful_tasks, group.total_tasks, group.original_input_path
+                    ),
+                    Some("installer"),
+                );
+            }
+        }
+    }
+
     /// Install a list of tasks with progress reporting
     pub async fn install(
         &self,
@@ -962,6 +1056,7 @@ impl Installer {
         xplane_path: String,
         delete_source_after_install: bool,
         auto_sort_scenery: bool,
+        locked_scenery_folder_names: Vec<String>,
     ) -> Result<InstallResult> {
         let install_start = Instant::now();
         crate::log_debug!(
@@ -992,6 +1087,7 @@ impl Installer {
         let mut failed = 0;
         let mut cancelled = 0;
         let mut skipped = 0;
+        let source_cleanup_candidates = Self::collect_source_cleanup_candidates(&tasks);
 
         // Phase 1: Calculate total size
         let calc_start = Instant::now();
@@ -1191,23 +1287,6 @@ impl Installer {
                                 verification_stats,
                             });
 
-                            // Delete source file after successful installation if enabled
-                            if delete_source_after_install {
-                                if let Some(original_path) = &task.original_input_path {
-                                    if let Err(e) =
-                                        self.delete_source_file(original_path, &task.source_path)
-                                    {
-                                        logger::log_error(
-                                            &format!(
-                                                "Failed to delete source file {}: {}",
-                                                original_path, e
-                                            ),
-                                            Some("installer"),
-                                        );
-                                    }
-                                }
-                            }
-
                             // Auto-sort scenery if enabled and this is a scenery task
                             if auto_sort_scenery
                                 && (task.addon_type == AddonType::Scenery
@@ -1232,7 +1311,11 @@ impl Installer {
                                                 self.db.clone(),
                                             );
                                             if let Err(e) = manager
-                                                .add_entry(folder_name, &scenery_info.category)
+                                                .add_entry_with_locked_entries(
+                                                    folder_name,
+                                                    &scenery_info.category,
+                                                    &locked_scenery_folder_names,
+                                                )
                                                 .await
                                             {
                                                 logger::log_error(
@@ -1337,10 +1420,44 @@ impl Installer {
             "installer_timing"
         );
 
+        self.cleanup_sources_after_install(
+            &source_cleanup_candidates,
+            &task_results,
+            delete_source_after_install,
+        );
+
         // Phase 3: Finalize
         let finalize_start = Instant::now();
         ctx.emit_final(InstallPhase::Finalizing);
-        logger::log_info(&tr(LogMsg::InstallationCompleted), Some("installer"));
+        let total_failed = failed + skipped + cancelled;
+        if total_failed == 0 {
+            logger::log_info(&tr(LogMsg::InstallationCompleted), Some("installer"));
+        } else if successful > 0 {
+            logger::log_info(
+                &format!(
+                    "Installation completed with partial failures: {}/{} successful, {} failed (failed={}, skipped={}, cancelled={})",
+                    successful,
+                    tasks.len(),
+                    total_failed,
+                    failed,
+                    skipped,
+                    cancelled
+                ),
+                Some("installer"),
+            );
+        } else {
+            logger::log_error(
+                &format!(
+                    "{}: 0/{} successful (failed={}, skipped={}, cancelled={})",
+                    tr(LogMsg::InstallationFailed),
+                    tasks.len(),
+                    failed,
+                    skipped,
+                    cancelled
+                ),
+                Some("installer"),
+            );
+        }
         crate::log_debug!(
             &format!(
                 "[TIMING] Finalization completed in {:.2}ms",
@@ -1378,6 +1495,7 @@ impl Installer {
         xplane_path: String,
         delete_source_after_install: bool,
         auto_sort_scenery: bool,
+        locked_scenery_folder_names: Vec<String>,
     ) -> Result<InstallResult> {
         let install_start = Instant::now();
         let max_concurrent = max_concurrent.clamp(2, 10);
@@ -1469,6 +1587,7 @@ impl Installer {
                 target_path: t.target_path.clone(),
             })
             .collect();
+        let source_cleanup_candidates = Self::collect_source_cleanup_candidates(&tasks);
 
         for (index, task) in tasks.into_iter().enumerate() {
             let sem = semaphore.clone();
@@ -1477,7 +1596,6 @@ impl Installer {
             let ah = app_handle.clone();
             let xp = xplane_path.clone();
             let atomic = atomic_install_enabled;
-            let delete_source = delete_source_after_install;
 
             let handle = tokio::spawn(async move {
                 // Acquire semaphore permit asynchronously
@@ -1560,23 +1678,6 @@ impl Installer {
                                         ),
                                         Some("installer"),
                                     );
-
-                                    if delete_source {
-                                        if let Some(original_path) = &task.original_input_path {
-                                            if let Err(e) = installer.delete_source_file(
-                                                original_path,
-                                                &task.source_path,
-                                            ) {
-                                                logger::log_error(
-                                                    &format!(
-                                                        "Failed to delete source file {}: {}",
-                                                        original_path, e
-                                                    ),
-                                                    Some("installer"),
-                                                );
-                                            }
-                                        }
-                                    }
 
                                     TaskResult {
                                         task_id: task.id.clone(),
@@ -1663,6 +1764,12 @@ impl Installer {
             }
         }
 
+        self.cleanup_sources_after_install(
+            &source_cleanup_candidates,
+            &task_results,
+            delete_source_after_install,
+        );
+
         // Phase 3: Finalize
         ctx.emit_final();
 
@@ -1688,7 +1795,13 @@ impl Installer {
                                     let manager =
                                         SceneryPacksManager::new(&xplane_path_buf, self.db.clone());
                                     if let Err(e) =
-                                        manager.add_entry(folder_name, &scenery_info.category).await
+                                        manager
+                                            .add_entry_with_locked_entries(
+                                                folder_name,
+                                                &scenery_info.category,
+                                                &locked_scenery_folder_names,
+                                            )
+                                            .await
                                     {
                                         logger::log_error(
                                             &format!(
@@ -1736,7 +1849,29 @@ impl Installer {
             "installer_timing"
         );
 
-        logger::log_info(&tr(LogMsg::InstallationCompleted), Some("installer"));
+        if failed == 0 {
+            logger::log_info(&tr(LogMsg::InstallationCompleted), Some("installer"));
+        } else if successful > 0 {
+            logger::log_info(
+                &format!(
+                    "Installation completed with partial failures: {}/{} successful, {} failed",
+                    successful,
+                    task_results.len(),
+                    failed
+                ),
+                Some("installer"),
+            );
+        } else {
+            logger::log_error(
+                &format!(
+                    "{}: 0/{} successful, {} failed",
+                    tr(LogMsg::InstallationFailed),
+                    task_results.len(),
+                    failed
+                ),
+                Some("installer"),
+            );
+        }
 
         Ok(InstallResult {
             total_tasks: task_results.len(),
@@ -1760,13 +1895,7 @@ impl Installer {
 
             // LuaScript from direct file source may include companion files/folders.
             // Include those sizes so progress remains accurate.
-            let source_ext = source
-                .extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .to_ascii_lowercase();
-            let source_is_archive =
-                matches!(source_ext.as_str(), "zip" | "7z" | "rar");
+            let source_is_archive = crate::archive_input::detect_archive_format(source).is_some();
 
             if task.addon_type == AddonType::LuaScript && source.is_file() {
                 if source_is_archive {
@@ -1816,7 +1945,11 @@ impl Installer {
     }
 
     /// Calculate Lua bundle size from an on-disk source directory.
-    fn get_lua_bundle_size_from_directory(&self, task: &InstallTask, source_dir: &Path) -> Result<u64> {
+    fn get_lua_bundle_size_from_directory(
+        &self,
+        task: &InstallTask,
+        source_dir: &Path,
+    ) -> Result<u64> {
         let mut total = 0u64;
         for entry in self.get_lua_bundle_entries_for_size(task) {
             total = total.saturating_add(self.get_path_size(&source_dir.join(entry))?);
@@ -1842,11 +1975,7 @@ impl Installer {
 
     /// Calculate Lua bundle size from archive metadata only (no extraction).
     fn get_lua_bundle_size_in_archive(&self, task: &InstallTask, archive: &Path) -> Result<u64> {
-        let source_ext = archive
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
+        let source_format = crate::archive_input::detect_archive_format(archive);
 
         if task.extraction_chain.is_some() {
             return self.get_archive_size(archive, task.archive_internal_root.as_deref());
@@ -1854,7 +1983,9 @@ impl Installer {
 
         // For 7z fast-scan fallback (solid archives), companion_paths may be empty at scan time.
         // Use internal_root size to avoid underestimating progress bytes.
-        if source_ext == "7z" && task.companion_paths.is_empty() {
+        if source_format == Some(crate::archive_input::ArchiveFormat::SevenZ)
+            && task.companion_paths.is_empty()
+        {
             return self.get_archive_size(archive, task.archive_internal_root.as_deref());
         }
 
@@ -1879,10 +2010,14 @@ impl Installer {
 
         let mut total = 0u64;
 
-        match source_ext.as_str() {
-            "zip" => {
+        match source_format {
+            Some(crate::archive_input::ArchiveFormat::Zip) => {
                 use zip::ZipArchive;
-                let file = fs::File::open(archive)?;
+                let prepared = crate::archive_input::prepare_archive_for_read(
+                    archive,
+                    crate::archive_input::ArchiveFormat::Zip,
+                )?;
+                let file = fs::File::open(prepared.read_path())?;
                 let mut archive_reader = ZipArchive::new(file)?;
                 for i in 0..archive_reader.len() {
                     let file = match archive_reader.by_index_raw(i) {
@@ -1903,8 +2038,12 @@ impl Installer {
                     }
                 }
             }
-            "7z" => {
-                let archive_meta = sevenz_rust2::Archive::open(archive)?;
+            Some(crate::archive_input::ArchiveFormat::SevenZ) => {
+                let prepared = crate::archive_input::prepare_archive_for_read(
+                    archive,
+                    crate::archive_input::ArchiveFormat::SevenZ,
+                )?;
+                let archive_meta = sevenz_rust2::Archive::open(prepared.read_path())?;
                 for entry in &archive_meta.files {
                     if entry.is_directory() || !entry.has_stream() {
                         continue;
@@ -1996,14 +2135,14 @@ impl Installer {
 
     /// Get uncompressed size of archive
     fn get_archive_size(&self, archive: &Path, internal_root: Option<&str>) -> Result<u64> {
-        let ext = archive
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_ascii_lowercase());
-        match ext.as_deref() {
-            Some("zip") => self.get_zip_size(archive, internal_root),
-            Some("7z") => self.get_7z_size(archive, internal_root),
-            Some("rar") => self.get_rar_size(archive),
+        match crate::archive_input::detect_archive_format(archive) {
+            Some(crate::archive_input::ArchiveFormat::Zip) => {
+                self.get_zip_size(archive, internal_root)
+            }
+            Some(crate::archive_input::ArchiveFormat::SevenZ) => {
+                self.get_7z_size(archive, internal_root)
+            }
+            Some(crate::archive_input::ArchiveFormat::Rar) => self.get_rar_size(archive),
             // Non-archive files (e.g. standalone Lua scripts) are installed by direct copy.
             _ => Ok(fs::metadata(archive)?.len()),
         }
@@ -2012,7 +2151,11 @@ impl Installer {
     /// Get uncompressed size of ZIP archive
     fn get_zip_size(&self, archive: &Path, internal_root: Option<&str>) -> Result<u64> {
         use zip::ZipArchive;
-        let file = fs::File::open(archive)?;
+        let prepared = crate::archive_input::prepare_archive_for_read(
+            archive,
+            crate::archive_input::ArchiveFormat::Zip,
+        )?;
+        let file = fs::File::open(prepared.read_path())?;
         let mut archive_reader = ZipArchive::new(file)?;
         let prefix = internal_root.map(|s| {
             let normalized = s.replace('\\', "/").trim_matches('/').to_string();
@@ -2041,9 +2184,15 @@ impl Installer {
     /// Get uncompressed size of 7z archive.
     /// Uses archive metadata directly and supports internal_root filtering.
     fn get_7z_size(&self, archive: &Path, internal_root: Option<&str>) -> Result<u64> {
+        let prepared = crate::archive_input::prepare_archive_for_read(
+            archive,
+            crate::archive_input::ArchiveFormat::SevenZ,
+        )?;
+        let read_archive = prepared.read_path();
+
         // For full-archive queries, use cache when available.
         if internal_root.is_none() {
-            if let Some(cached) = crate::cache::get_cached_metadata(archive) {
+            if let Some(cached) = crate::cache::get_cached_metadata(read_archive) {
                 return Ok(cached.uncompressed_size);
             }
         }
@@ -2057,12 +2206,12 @@ impl Installer {
             }
         });
 
-        let archive_meta = match sevenz_rust2::Archive::open(archive) {
+        let archive_meta = match sevenz_rust2::Archive::open(read_archive) {
             Ok(a) => a,
             Err(_) => {
                 // Fallback for corrupted/unsupported 7z metadata:
                 // keep previous conservative behavior.
-                let meta = fs::metadata(archive)?;
+                let meta = fs::metadata(read_archive)?;
                 return Ok(meta.len() * 3);
             }
         };
@@ -2087,7 +2236,7 @@ impl Installer {
         }
 
         if internal_root.is_none() && total > 0 {
-            crate::cache::cache_metadata(archive, total, file_count);
+            crate::cache::cache_metadata(read_archive, total, file_count);
         }
 
         Ok(total)
@@ -2095,7 +2244,8 @@ impl Installer {
 
     /// Get uncompressed size of RAR archive
     fn get_rar_size(&self, archive: &Path) -> Result<u64> {
-        let arch = unrar::Archive::new(archive)
+        let normalized = crate::archive_input::normalize_archive_entry_path(archive);
+        let arch = unrar::Archive::new(&normalized)
             .open_for_listing()
             .map_err(|e| anyhow::anyhow!("Failed to open RAR for size query: {:?}", e))?;
 

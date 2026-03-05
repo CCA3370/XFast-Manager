@@ -1,10 +1,12 @@
 {
   "name": "xfast-manager",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "XFast Manager - X-Plane Addon Auto Manager",
   "type": "module",
   "scripts": {
     "preinstall": "node scripts/install-rollup-native.js",
+    "predev": "node scripts/generate-changelog-bundle.mjs",
+    "prebuild": "node scripts/generate-changelog-bundle.mjs",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint src/",
@@ -47,6 +49,7 @@
     "@tauri-apps/plugin-store": "^2",
     "@vueuse/core": "^14.1.0",
     "gsap": "^3.12.5",
+    "maplibre-gl": "^5.19.0",
     "marked": "^17.0.3",
     "pinia": "^3.0.4",
     "vue-i18n": "^11.2.2",

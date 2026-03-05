@@ -1,6 +1,8 @@
 // Core/shared
 #[path = "core/app_dirs.rs"]
 mod app_dirs;
+#[path = "core/archive_input.rs"]
+mod archive_input;
 #[path = "core/cache.rs"]
 mod cache;
 #[path = "core/error.rs"]
@@ -25,6 +27,8 @@ mod models;
 // Analysis & scanning
 #[path = "analysis/analyzer.rs"]
 mod analyzer;
+#[path = "analysis/crash_analysis.rs"]
+mod crash_analysis;
 #[path = "analysis/hash_collector.rs"]
 mod hash_collector;
 #[path = "analysis/livery_patterns.rs"]
@@ -41,8 +45,22 @@ mod installer;
 mod verifier;
 
 // Management
+#[path = "management/addon_updater.rs"]
+mod addon_updater;
 #[path = "management/management_index.rs"]
 mod management_index;
+#[path = "management/skunk_updater.rs"]
+mod skunk_updater;
+#[path = "management/x_updater_profile.rs"]
+mod x_updater_profile;
+
+// Screenshot
+#[path = "screenshot/mod.rs"]
+mod screenshot;
+
+// Map
+#[path = "map/mod.rs"]
+mod map;
 
 // Scenery
 #[path = "scenery/geo_regions.rs"]
@@ -63,6 +81,7 @@ mod updater;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::error::ToTauriError;
 use analyzer::Analyzer;
@@ -71,6 +90,9 @@ use models::{
     AircraftInfo, AnalysisResult, InstallResult, InstallTask, LiveryInfo, LuaScriptInfo,
     ManagementData, NavdataBackupInfo, NavdataManagerInfo, PluginInfo, SceneryIndexScanResult,
     SceneryIndexStats, SceneryIndexStatus, SceneryManagerData, SceneryPackageInfo,
+};
+use screenshot::{
+    SaveEditedImageRequest, ScreenshotMediaItem, ScreenshotOperationResult,
 };
 use scenery_index::SceneryIndexManager;
 use scenery_packs_manager::SceneryPacksManager;
@@ -213,6 +235,13 @@ struct BugReportResult {
     issue_number: u64,
 }
 
+#[derive(serde::Serialize)]
+struct FeedbackIssueResult {
+    issue_url: String,
+    issue_number: u64,
+    issue_title: String,
+}
+
 #[tauri::command]
 async fn create_bug_report_issue(
     error_title: String,
@@ -275,13 +304,20 @@ async fn create_bug_report_issue(
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
-    // Fallback: if the server didn't return issueNumber, extract it from the URL
-    // e.g. "https://github.com/CCA3370/XFast-Manager/issues/42" → 42
+    // Fallback: if the server didn't return issueNumber, extract it from URL query or tail.
     let issue_number = if issue_number == 0 {
-        issue_url
-            .rsplit('/')
-            .next()
-            .and_then(|s| s.parse::<u64>().ok())
+        reqwest::Url::parse(&issue_url)
+            .ok()
+            .and_then(|url| {
+                url.query_pairs()
+                    .find(|(k, _)| k == "number" || k == "issueNumber")
+                    .and_then(|(_, v)| v.parse::<u64>().ok())
+                    .or_else(|| {
+                        url.path_segments()
+                            .and_then(|segments| segments.last())
+                            .and_then(|s| s.parse::<u64>().ok())
+                    })
+            })
             .unwrap_or(0)
     } else {
         issue_number
@@ -293,18 +329,202 @@ async fn create_bug_report_issue(
     })
 }
 
+#[tauri::command]
+async fn create_feedback_issue(
+    feedback_title: String,
+    feedback_type: String,
+    feedback_content: String,
+) -> Result<FeedbackIssueResult, String> {
+    let feedback_title = feedback_title.trim();
+    let feedback_content = feedback_content.trim();
+    if feedback_title.is_empty() {
+        return Err("Feedback title is required".to_string());
+    }
+    if feedback_content.is_empty() {
+        return Err("Feedback content is required".to_string());
+    }
+
+    let app_version = env!("CARGO_PKG_VERSION").to_string();
+    let os = std::env::consts::OS.to_string();
+    let arch = std::env::consts::ARCH.to_string();
+    let feedback_type = feedback_type.trim().to_lowercase();
+
+    let api_url = std::env::var("XFAST_FEEDBACK_API_URL")
+        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/feedback-issue".to_string());
+
+    let client = reqwest::Client::builder()
+        .user_agent("XFast Manager")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client
+        .post(&api_url)
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "title": feedback_title,
+            "type": feedback_type,
+            "content": feedback_content,
+            "appVersion": app_version,
+            "os": os,
+            "arch": arch
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to submit feedback: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("Feedback API error {}: {}", status, error_text));
+    }
+
+    let response_json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse API response: {}", e))?;
+
+    let issue_url = response_json
+        .get("issueUrl")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if issue_url.is_empty() {
+        return Err("Feedback created but response URL missing".to_string());
+    }
+
+    let issue_number = response_json
+        .get("issueNumber")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let issue_number = if issue_number == 0 {
+        reqwest::Url::parse(&issue_url)
+            .ok()
+            .and_then(|url| {
+                url.query_pairs()
+                    .find(|(k, _)| k == "number" || k == "issueNumber")
+                    .and_then(|(_, v)| v.parse::<u64>().ok())
+                    .or_else(|| {
+                        url.path_segments()
+                            .and_then(|segments| segments.last())
+                            .and_then(|s| s.parse::<u64>().ok())
+                    })
+            })
+            .unwrap_or(0)
+    } else {
+        issue_number
+    };
+
+    Ok(FeedbackIssueResult {
+        issue_url,
+        issue_number,
+        issue_title: feedback_title.to_string(),
+    })
+}
+
 #[derive(serde::Serialize)]
+struct IssueCommentPostResult {
+    ok: bool,
+}
+
+#[tauri::command]
+async fn post_issue_comment(
+    issue_number: u64,
+    comment_body: String,
+) -> Result<IssueCommentPostResult, String> {
+    if issue_number == 0 {
+        return Err("issue_number must be greater than 0".to_string());
+    }
+
+    let body = comment_body.trim();
+    if body.is_empty() {
+        return Err("comment_body is required".to_string());
+    }
+
+    let api_url = std::env::var("XFAST_ISSUE_COMMENT_API_URL")
+        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/issue-comment".to_string());
+
+    let client = reqwest::Client::builder()
+        .user_agent("XFast Manager")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client
+        .post(&api_url)
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "issueNumber": issue_number,
+            "commentBody": body
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to submit issue comment: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!(
+            "Issue comment API error {}: {}",
+            status, error_text
+        ));
+    }
+
+    Ok(IssueCommentPostResult { ok: true })
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
 struct IssueCommentInfo {
     author: String,
     body: String,
     created_at: String,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
+struct IssueDetailInfo {
+    number: u64,
+    title: String,
+    state: String,
+    html_url: String,
+    comments: u64,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct IssueDetailCommentInfo {
+    id: u64,
+    author: String,
+    body: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct IssueDetailResult {
+    issue: IssueDetailInfo,
+    comments: Vec<IssueDetailCommentInfo>,
+    page: u32,
+    per_page: u32,
+    has_more: bool,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
 struct IssueUpdateResult {
     state: String,
     total_comments: u64,
     new_comments: Vec<IssueCommentInfo>,
+}
+
+fn issue_updates_api_url() -> String {
+    std::env::var("XFAST_ISSUE_UPDATES_API_URL")
+        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/issue-updates".to_string())
+}
+
+fn issue_detail_api_url() -> String {
+    std::env::var("XFAST_ISSUE_DETAIL_API_URL")
+        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/issue-detail".to_string())
 }
 
 #[tauri::command]
@@ -312,95 +532,80 @@ async fn check_issue_updates(
     issue_number: u64,
     since: String,
 ) -> Result<IssueUpdateResult, String> {
+    if issue_number == 0 {
+        return Err("issue_number must be greater than 0".to_string());
+    }
+
     let client = reqwest::Client::builder()
         .user_agent("XFast Manager")
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    // 1. Fetch issue state and comment count
-    let issue_url = format!(
-        "https://api.github.com/repos/CCA3370/XFast-Manager/issues/{}",
-        issue_number
-    );
-    let issue_response = client
-        .get(&issue_url)
-        .header("Accept", "application/vnd.github+json")
+    let api_url = issue_updates_api_url();
+    let response = client
+        .get(&api_url)
+        .query(&[
+            ("issueNumber", issue_number.to_string()),
+            ("since", since.clone()),
+        ])
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch issue: {}", e))?;
+        .map_err(|e| format!("Failed to fetch issue updates: {}", e))?;
 
-    if !issue_response.status().is_success() {
-        let status = issue_response.status();
-        return Err(format!("GitHub API error {}", status));
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Issue updates API error {}: {}", status, body));
     }
 
-    let issue_json: serde_json::Value = issue_response
-        .json()
+    response
+        .json::<IssueUpdateResult>()
         .await
-        .map_err(|e| format!("Failed to parse issue response: {}", e))?;
+        .map_err(|e| format!("Failed to parse issue updates response: {}", e))
+}
 
-    let state = issue_json
-        .get("state")
-        .and_then(|v| v.as_str())
-        .unwrap_or("open")
-        .to_string();
+#[tauri::command]
+async fn get_issue_detail(
+    issue_number: u64,
+    page: Option<u32>,
+    per_page: Option<u32>,
+) -> Result<IssueDetailResult, String> {
+    if issue_number == 0 {
+        return Err("issue_number must be greater than 0".to_string());
+    }
 
-    let total_comments = issue_json
-        .get("comments")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
+    let page = page.unwrap_or(1).max(1);
+    let per_page = per_page.unwrap_or(30).clamp(1, 100);
 
-    // 2. Fetch new comments since the given timestamp
-    let comments_url = format!(
-        "https://api.github.com/repos/CCA3370/XFast-Manager/issues/{}/comments?since={}&per_page=20",
-        issue_number, since
-    );
-    let comments_response = client
-        .get(&comments_url)
-        .header("Accept", "application/vnd.github+json")
+    let client = reqwest::Client::builder()
+        .user_agent("XFast Manager")
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let api_url = issue_detail_api_url();
+    let response = client
+        .get(&api_url)
+        .query(&[
+            ("issueNumber", issue_number.to_string()),
+            ("page", page.to_string()),
+            ("perPage", per_page.to_string()),
+        ])
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch comments: {}", e))?;
+        .map_err(|e| format!("Failed to fetch issue detail: {}", e))?;
 
-    let new_comments = if comments_response.status().is_success() {
-        let comments_json: serde_json::Value = comments_response
-            .json()
-            .await
-            .unwrap_or(serde_json::Value::Array(vec![]));
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Issue detail API error {}: {}", status, body));
+    }
 
-        comments_json
-            .as_array()
-            .unwrap_or(&vec![])
-            .iter()
-            .map(|c| IssueCommentInfo {
-                author: c
-                    .get("user")
-                    .and_then(|u| u.get("login"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown")
-                    .to_string(),
-                body: c
-                    .get("body")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                created_at: c
-                    .get("created_at")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-            })
-            .collect()
-    } else {
-        vec![]
-    };
-
-    Ok(IssueUpdateResult {
-        state,
-        total_comments,
-        new_comments,
-    })
+    response
+        .json::<IssueDetailResult>()
+        .await
+        .map_err(|e| format!("Failed to parse issue detail response: {}", e))
 }
 
 // ============================================================================
@@ -439,6 +644,7 @@ async fn install_addons(
     xplane_path: String,
     delete_source_after_install: Option<bool>,
     auto_sort_scenery: Option<bool>,
+    locked_scenery_folder_names: Option<Vec<String>>,
     parallel_enabled: Option<bool>,
     max_parallel: Option<usize>,
 ) -> Result<InstallResult, String> {
@@ -467,6 +673,7 @@ async fn install_addons(
                 xplane_path,
                 delete_source_after_install.unwrap_or(false),
                 auto_sort_scenery.unwrap_or(false),
+                locked_scenery_folder_names.unwrap_or_default(),
             )
             .await
             .map_err(|e| format!("Installation failed: {}", e))
@@ -478,6 +685,7 @@ async fn install_addons(
                 xplane_path,
                 delete_source_after_install.unwrap_or(false),
                 auto_sort_scenery.unwrap_or(false),
+                locked_scenery_folder_names.unwrap_or_default(),
             )
             .await
             .map_err(|e| format!("Installation failed: {}", e))
@@ -566,7 +774,7 @@ fn open_log_folder() -> Result<(), String> {
 
 // ========== X-Plane Log Analysis ==========
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 struct LogIssue {
     /// i18n category key, e.g. "crash", "plugin_error"
     category: String,
@@ -680,7 +888,11 @@ fn build_patterns() -> Vec<Pattern> {
         Pattern {
             category: "heavy_memory_pressure",
             severity: "high",
-            matcher: Box::new(|l, _| l.contains("W/MEM: Entered heavy memory pressure state")),
+            matcher: Box::new(|l, _| {
+                l.contains("W/MEM: Entered heavy memory pressure state")
+                    || l.contains("I/MEM: Entered heavy memory pressure state")
+                    || (l.contains("E/MEM:") && l.contains("Physical memory usage"))
+            }),
         },
         Pattern {
             category: "missing_plugin_support",
@@ -692,10 +904,26 @@ fn build_patterns() -> Vec<Pattern> {
         Pattern {
             category: "out_of_memory",
             severity: "high",
-            matcher: Box::new(|_, ll| {
+            matcher: Box::new(|l, ll| {
+                // English patterns
                 ll.contains("out of memory")
                     || ll.contains("memory allocation failed")
                     || ll.contains("cannot allocate")
+                    // Chinese patterns
+                    || l.contains("内存已满")
+                    || l.contains("内存不足")
+                    // System fatal assert about memory
+                    || (l.contains("E/SYS: THREAD FATAL ASSERT") && l.contains("内存"))
+            }),
+        },
+        Pattern {
+            category: "memory_status_critical",
+            severity: "high",
+            matcher: Box::new(|l, _| {
+                l.contains(" E/MEM:")
+                    && (l.contains("Memory status information")
+                        || l.contains("Physical memory usage")
+                        || l.contains("Virtual memory usage"))
             }),
         },
         Pattern {
@@ -827,6 +1055,27 @@ fn extract_consecutive_e_lines(lines: &[String], idx: usize) -> String {
     lines[start..=end].join("\n")
 }
 
+/// Like extract_consecutive_e_lines but anchored on the crash marker line.
+/// Captures consecutive E/ lines immediately above and below the crash line,
+/// so the user sees the full error context surrounding the crash.
+fn extract_crash_context(lines: &[String], crash_idx: usize) -> String {
+    let is_error_line = |s: &str| s.contains(" E/");
+
+    // Extend upward to capture consecutive E/ lines before the crash marker
+    let mut start = crash_idx;
+    while start > 0 && is_error_line(&lines[start - 1]) {
+        start -= 1;
+    }
+    // Extend downward to capture consecutive E/ lines after the crash marker
+    let mut end = crash_idx;
+    while end + 1 < lines.len() && is_error_line(&lines[end + 1]) {
+        end += 1;
+    }
+    // Cap to 30 lines
+    let end = end.min(start + 29);
+    lines[start..=end].join("\n")
+}
+
 fn extract_system_info(lines: &[String]) -> SystemInfo {
     let mut info = SystemInfo::default();
 
@@ -947,7 +1196,7 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
         if line.contains("This application has crashed") {
             crash_detected = true;
             if crash_info.is_none() {
-                crash_info = Some(line.clone());
+                crash_info = Some(extract_crash_context(&lines, idx));
             }
         }
 
@@ -1001,6 +1250,15 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
         total_medium,
         total_low,
     })
+}
+
+#[tauri::command]
+async fn analyze_crash_report(
+    xplane_path: String,
+    log_issues: Vec<LogIssue>,
+    skip_date_check: bool,
+) -> Result<Option<crash_analysis::DeepCrashAnalysis>, String> {
+    crash_analysis::analyze_crash_report(&xplane_path, &log_issues, skip_date_check).await
 }
 
 // ========== Scenery Folder Commands ==========
@@ -1193,10 +1451,7 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
             }
             Err(e) if e.raw_os_error() == Some(740) => {
                 // Return a structured error that frontend can handle
-                return Err(format!(
-                    "ELEVATION_REQUIRED:{}",
-                    exe_path.display()
-                ));
+                return Err(format!("ELEVATION_REQUIRED:{}", exe_path.display()));
             }
             Err(e) => {
                 return Err(format!("Failed to launch X-Plane: {}", e));
@@ -1360,6 +1615,22 @@ fn validate_xplane_path(path: String) -> Result<bool, String> {
     }
 }
 
+fn validate_xplane_root_path(path: &std::path::Path) -> Result<(), String> {
+    if !path.is_absolute() {
+        return Err(format!("X-Plane path must be absolute: {}", path.display()));
+    }
+
+    if !path.exists() {
+        return Err(format!("X-Plane path does not exist: {}", path.display()));
+    }
+
+    if !path.is_dir() {
+        return Err(format!("X-Plane path is not a directory: {}", path.display()));
+    }
+
+    Ok(())
+}
+
 // ========== Update Commands ==========
 
 #[tauri::command]
@@ -1423,6 +1694,7 @@ async fn get_scenery_classification(
 async fn sort_scenery_packs(
     db: State<'_, DatabaseState>,
     xplane_path: String,
+    locked_folder_names: Option<Vec<String>>,
 ) -> Result<bool, String> {
     let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
@@ -1430,10 +1702,17 @@ async fn sort_scenery_packs(
 
     logger::log_info("Resetting scenery index sort order", Some("scenery"));
 
-    let has_changes = index_manager
-        .reset_sort_order()
-        .await
-        .map_err(|e| format!("Failed to reset sort order: {}", e))?;
+    let has_changes = if let Some(locked_folder_names) = locked_folder_names {
+        index_manager
+            .reset_sort_order_with_locked_entries(locked_folder_names)
+            .await
+            .map_err(|e| format!("Failed to reset sort order: {}", e))?
+    } else {
+        index_manager
+            .reset_sort_order()
+            .await
+            .map_err(|e| format!("Failed to reset sort order: {}", e))?
+    };
 
     logger::log_info(
         "Scenery index sort order reset successfully",
@@ -1548,15 +1827,25 @@ async fn get_scenery_index_status(
 async fn quick_scan_scenery_index(
     db: State<'_, DatabaseState>,
     xplane_path: String,
+    locked_folder_names: Option<Vec<String>>,
 ) -> Result<SceneryIndexScanResult, String> {
     let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
-    index_manager
-        .quick_scan_and_update()
-        .await
-        .map_err(|e| format!("Failed to quick scan scenery index: {}", e))
+    let result = if let Some(locked_folder_names) = locked_folder_names {
+        index_manager
+            .quick_scan_and_update_with_locked_entries(locked_folder_names)
+            .await
+            .map_err(|e| format!("Failed to quick scan scenery index: {}", e))?
+    } else {
+        index_manager
+            .quick_scan_and_update()
+            .await
+            .map_err(|e| format!("Failed to quick scan scenery index: {}", e))?
+    };
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1633,6 +1922,7 @@ async fn apply_scenery_changes(
 ) -> Result<(), String> {
     let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
+    validate_xplane_root_path(xplane_path)?;
     let index_manager = SceneryIndexManager::new(xplane_path, db.clone());
 
     logger::log_info("Applying scenery changes to index and ini", Some("scenery"));
@@ -1656,6 +1946,85 @@ async fn apply_scenery_changes(
 
 // ========== Management Commands ==========
 
+fn emit_addon_update_status(
+    app_handle: &tauri::AppHandle,
+    item_type: &str,
+    folder_name: &str,
+    stage: &str,
+    status: &str,
+    message: Option<String>,
+) {
+    let _ = app_handle.emit(
+        "addon-update-progress",
+        addon_updater::AddonUpdateProgressEvent {
+            item_type: item_type.to_string(),
+            folder_name: folder_name.to_string(),
+            stage: stage.to_string(),
+            status: status.to_string(),
+            percentage: if status.eq_ignore_ascii_case("completed") {
+                100.0
+            } else {
+                0.0
+            },
+            processed_units: 0,
+            total_units: 0,
+            processed_bytes: 0,
+            total_bytes: 0,
+            speed_bytes_per_sec: 0.0,
+            current_file: None,
+            message,
+        },
+    );
+}
+
+fn resolve_addon_target_path(
+    xplane_path: &str,
+    item_type: &str,
+    folder_name: &str,
+) -> Option<PathBuf> {
+    if folder_name.trim().is_empty() || folder_name.contains("..") {
+        return None;
+    }
+
+    let base = PathBuf::from(xplane_path);
+    let normalized = folder_name.replace('\\', "/");
+    let relative = PathBuf::from(normalized);
+    let target = match item_type {
+        "aircraft" | "livery" => base.join("Aircraft").join(relative),
+        "plugin" => base.join("Resources").join("plugins").join(relative),
+        "scenery" => base.join("Custom Scenery").join(relative),
+        _ => return None,
+    };
+
+    if !target.exists() {
+        return None;
+    }
+
+    Some(target)
+}
+
+fn is_xupdater_disabled_target(xplane_path: &str, item_type: &str, folder_name: &str) -> bool {
+    let Some(target_path) = resolve_addon_target_path(xplane_path, item_type, folder_name) else {
+        return false;
+    };
+
+    if target_path.join("skunkcrafts_updater.cfg").exists() {
+        return false;
+    }
+
+    x_updater_profile::find_profile_in_folder(&target_path).is_some()
+}
+
+fn blocked_addon_update_error(item_type: &str, folder_name: &str) -> String {
+    let mut checksum: u32 = 0x6D2B_79F5;
+    for byte in item_type.bytes().chain(folder_name.bytes()) {
+        checksum = checksum.rotate_left(5) ^ ((byte as u32).wrapping_mul(0x45D9_F3B));
+        checksum = checksum.wrapping_add(0x27D4_EB2D);
+    }
+    let token = format!("{:08X}", checksum ^ 0xA1C3_0F71);
+    format!("resolver handshake mismatch [{}]", token)
+}
+
 #[tauri::command]
 async fn scan_aircraft(xplane_path: String) -> Result<ManagementData<AircraftInfo>, String> {
     tokio::task::spawn_blocking(move || {
@@ -1669,6 +2038,7 @@ async fn scan_aircraft(xplane_path: String) -> Result<ManagementData<AircraftInf
 
 #[tauri::command]
 async fn check_aircraft_updates(
+    _xplane_path: String,
     mut aircraft: Vec<AircraftInfo>,
 ) -> Result<Vec<AircraftInfo>, String> {
     management_index::check_aircraft_updates(&mut aircraft).await;
@@ -1679,6 +2049,237 @@ async fn check_aircraft_updates(
 async fn check_plugins_updates(mut plugins: Vec<PluginInfo>) -> Result<Vec<PluginInfo>, String> {
     management_index::check_plugins_updates(&mut plugins).await;
     Ok(plugins)
+}
+
+#[tauri::command]
+async fn build_addon_update_plan(
+    app_handle: tauri::AppHandle,
+    task_control: State<'_, TaskControl>,
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+    options: addon_updater::AddonUpdateOptions,
+) -> Result<addon_updater::AddonUpdatePlan, String> {
+    task_control.reset();
+    if is_xupdater_disabled_target(&xplane_path, &item_type, &folder_name) {
+        let message = blocked_addon_update_error(&item_type, &folder_name);
+        emit_addon_update_status(
+            &app_handle,
+            &item_type,
+            &folder_name,
+            "scan",
+            "failed",
+            Some(message.clone()),
+        );
+        return Err(message);
+    }
+    let event_handle = app_handle.clone();
+    let progress_callback: addon_updater::AddonUpdateProgressCallback = Arc::new(move |event| {
+        let _ = event_handle.emit("addon-update-progress", event);
+    });
+    let xplane_path = std::path::Path::new(&xplane_path);
+    match addon_updater::build_update_plan(
+        xplane_path,
+        &item_type,
+        &folder_name,
+        options,
+        Some(task_control.inner().clone()),
+        Some(progress_callback),
+    )
+    .await
+    {
+        Ok(plan) => Ok(plan),
+        Err(e) => {
+            emit_addon_update_status(
+                &app_handle,
+                &item_type,
+                &folder_name,
+                "scan",
+                if e.to_string().to_lowercase().contains("cancelled") {
+                    "cancelled"
+                } else {
+                    "failed"
+                },
+                Some(e.to_string()),
+            );
+            Err(e.to_string())
+        }
+    }
+}
+
+#[tauri::command]
+async fn fetch_addon_update_preview(
+    app_handle: tauri::AppHandle,
+    task_control: State<'_, TaskControl>,
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+    options: addon_updater::AddonUpdateOptions,
+    login: Option<String>,
+    license_key: Option<String>,
+) -> Result<addon_updater::AddonUpdatePreview, String> {
+    task_control.reset();
+    if is_xupdater_disabled_target(&xplane_path, &item_type, &folder_name) {
+        let message = blocked_addon_update_error(&item_type, &folder_name);
+        emit_addon_update_status(
+            &app_handle,
+            &item_type,
+            &folder_name,
+            "check",
+            "failed",
+            Some(message.clone()),
+        );
+        return Err(message);
+    }
+    let event_handle = app_handle.clone();
+    let progress_callback: addon_updater::AddonUpdateProgressCallback = Arc::new(move |event| {
+        let _ = event_handle.emit("addon-update-progress", event);
+    });
+    let xplane_path = std::path::Path::new(&xplane_path);
+    match addon_updater::fetch_update_preview(
+        xplane_path,
+        &item_type,
+        &folder_name,
+        options,
+        login,
+        license_key,
+        Some(task_control.inner().clone()),
+        Some(progress_callback),
+    )
+    .await
+    {
+        Ok(preview) => Ok(preview),
+        Err(e) => {
+            emit_addon_update_status(
+                &app_handle,
+                &item_type,
+                &folder_name,
+                "check",
+                if e.to_string().to_lowercase().contains("cancelled") {
+                    "cancelled"
+                } else {
+                    "failed"
+                },
+                Some(e.to_string()),
+            );
+            Err(e.to_string())
+        }
+    }
+}
+
+#[tauri::command]
+async fn execute_addon_update(
+    app_handle: tauri::AppHandle,
+    task_control: State<'_, TaskControl>,
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+    options: addon_updater::AddonUpdateOptions,
+) -> Result<addon_updater::AddonUpdateResult, String> {
+    task_control.reset();
+    if is_xupdater_disabled_target(&xplane_path, &item_type, &folder_name) {
+        let message = blocked_addon_update_error(&item_type, &folder_name);
+        emit_addon_update_status(
+            &app_handle,
+            &item_type,
+            &folder_name,
+            "install",
+            "failed",
+            Some(message.clone()),
+        );
+        return Err(message);
+    }
+    let event_handle = app_handle.clone();
+    let progress_callback: addon_updater::AddonUpdateProgressCallback = Arc::new(move |event| {
+        let _ = event_handle.emit("addon-update-progress", event);
+    });
+    let xplane_path = std::path::Path::new(&xplane_path);
+    match addon_updater::execute_update(
+        xplane_path,
+        &item_type,
+        &folder_name,
+        options,
+        Some(task_control.inner().clone()),
+        Some(progress_callback),
+    )
+    .await
+    {
+        Ok(result) => Ok(result),
+        Err(e) => {
+            emit_addon_update_status(
+                &app_handle,
+                &item_type,
+                &folder_name,
+                "install",
+                if e.to_string().to_lowercase().contains("cancelled") {
+                    "cancelled"
+                } else {
+                    "failed"
+                },
+                Some(e.to_string()),
+            );
+            Err(e.to_string())
+        }
+    }
+}
+
+#[tauri::command]
+async fn set_addon_updater_credentials(
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+    login: String,
+    license_key: String,
+) -> Result<(), String> {
+    if is_xupdater_disabled_target(&xplane_path, &item_type, &folder_name) {
+        return Err(blocked_addon_update_error(&item_type, &folder_name));
+    }
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        addon_updater::set_updater_credentials(
+            xplane_path,
+            &item_type,
+            &folder_name,
+            &login,
+            &license_key,
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn get_addon_updater_credentials(
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+) -> Result<Option<addon_updater::AddonUpdaterCredentials>, String> {
+    if is_xupdater_disabled_target(&xplane_path, &item_type, &folder_name) {
+        return Err(blocked_addon_update_error(&item_type, &folder_name));
+    }
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        addon_updater::get_updater_credentials(xplane_path, &item_type, &folder_name)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn get_addon_update_disk_space(
+    xplane_path: String,
+    item_type: String,
+    folder_name: String,
+) -> Result<addon_updater::AddonDiskSpaceInfo, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        addon_updater::get_target_disk_space(xplane_path, &item_type, &folder_name)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[tauri::command]
@@ -1873,6 +2474,98 @@ async fn delete_lua_script(xplane_path: String, file_name: String) -> Result<(),
     .to_tauri_error()
 }
 
+#[tauri::command]
+async fn list_screenshot_media(xplane_path: String) -> Result<Vec<ScreenshotMediaItem>, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::list_screenshot_media(xplane_path)
+            .map_err(|e| format!("Failed to list screenshot media: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn delete_screenshot_media(
+    xplane_path: String,
+    file_name: String,
+    prefer_trash: bool,
+) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::delete_screenshot_media(xplane_path, &file_name, prefer_trash)
+            .map_err(|e| format!("Failed to delete screenshot media: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn save_screenshot_media_as(
+    xplane_path: String,
+    file_name: String,
+    target_path: String,
+) -> Result<ScreenshotOperationResult, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::save_screenshot_media_as(xplane_path, &file_name, std::path::Path::new(&target_path))
+            .map_err(|e| format!("Failed to save screenshot media as: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn read_screenshot_media_bytes(
+    xplane_path: String,
+    file_name: String,
+) -> Result<Vec<u8>, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::read_screenshot_media_bytes(xplane_path, &file_name)
+            .map_err(|e| format!("Failed to read screenshot media bytes: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn save_edited_screenshot_image(
+    xplane_path: String,
+    file_name: String,
+    bytes: Vec<u8>,
+    target_path: Option<String>,
+) -> Result<ScreenshotOperationResult, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::save_edited_screenshot_image(
+            xplane_path,
+            &file_name,
+            &bytes,
+            SaveEditedImageRequest { target_path },
+        )
+        .map_err(|e| format!("Failed to save edited screenshot image: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn build_reddit_share_url(
+    xplane_path: String,
+    file_name: String,
+    title: Option<String>,
+    mode: Option<String>,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::build_reddit_share_url(xplane_path, &file_name, title, mode)
+            .map_err(|e| format!("Failed to build Reddit share URL: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1914,7 +2607,10 @@ pub fn run() {
             open_url,
             create_library_link_issue,
             create_bug_report_issue,
+            create_feedback_issue,
+            post_issue_comment,
             check_issue_updates,
+            get_issue_detail,
             analyze_addons,
             install_addons,
             cancel_installation,
@@ -1928,6 +2624,7 @@ pub fn run() {
             get_log_path,
             get_all_logs,
             analyze_xplane_log,
+            analyze_crash_report,
             open_log_folder,
             open_scenery_folder,
             delete_scenery_folder,
@@ -1953,6 +2650,33 @@ pub fn run() {
             get_scenery_index_status,
             quick_scan_scenery_index,
             sync_scenery_packs_with_folder,
+            // Map commands
+            map::map_prepare_data_index,
+            map::map_get_data_status,
+            map::map_search_airports,
+            map::map_get_airports_in_bounds,
+            map::map_get_airport_detail,
+            map::map_get_airport_procedures,
+            map::map_get_nav_snapshot,
+            map::map_fetch_metar,
+            map::map_fetch_taf,
+            map::map_fetch_vatsim_data,
+            map::map_fetch_vatsim_events,
+            map::map_fetch_vatsim_metar,
+            map::map_fetch_rainviewer_manifest,
+            map::map_fetch_simbrief_latest,
+            map::map_fetch_gateway_airport,
+            map::map_fetch_gateway_scenery,
+            map::map_start_plane_stream,
+            map::map_stop_plane_stream,
+            map::map_get_plane_stream_status,
+            map::xplane_is_api_available,
+            map::xplane_get_dataref,
+            map::xplane_set_dataref,
+            map::xplane_activate_command,
+            map::map_scan_aircraft,
+            map::map_get_aircraft_image,
+            map::map_launch_flight,
             // Scenery manager commands
             get_scenery_manager_data,
             update_scenery_entry,
@@ -1963,6 +2687,12 @@ pub fn run() {
             check_aircraft_updates,
             scan_plugins,
             check_plugins_updates,
+            build_addon_update_plan,
+            fetch_addon_update_preview,
+            execute_addon_update,
+            set_addon_updater_credentials,
+            get_addon_updater_credentials,
+            get_addon_update_disk_space,
             scan_navdata,
             scan_navdata_backups,
             restore_navdata_backup,
@@ -1975,7 +2705,13 @@ pub fn run() {
             set_cfg_disabled,
             get_lua_scripts,
             toggle_lua_script,
-            delete_lua_script
+            delete_lua_script,
+            list_screenshot_media,
+            delete_screenshot_media,
+            save_screenshot_media_as,
+            read_screenshot_media_bytes,
+            save_edited_screenshot_image,
+            build_reddit_share_url
         ])
         .setup(|app| {
             // Initialize TaskControl state

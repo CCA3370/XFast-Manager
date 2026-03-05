@@ -9,17 +9,9 @@
         class="absolute inset-0 bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl border-b border-gray-200/50 dark:border-white/5 shadow-sm dark:shadow-2xl transition-colors duration-300"
       ></div>
 
-      <div class="relative container mx-auto px-6 h-12 flex justify-between items-center">
-        <!-- Logo -->
-        <div class="flex items-center space-x-3 group cursor-default">
-          <h1 class="text-lg font-bold tracking-wide">
-            <span class="text-gray-900 dark:text-white transition-colors">XFast</span
-            ><span class="text-blue-600 dark:text-blue-400 transition-colors">Manager</span>
-          </h1>
-        </div>
-
+      <div class="relative container mx-auto px-6 h-12 flex justify-center items-center">
         <!-- Navigation -->
-        <div class="flex items-center space-x-2">
+        <div class="flex items-center whitespace-nowrap">
           <div v-if="!isOnboardingRoute" class="flex items-center space-x-1">
             <router-link
               to="/"
@@ -110,6 +102,42 @@
             </div>
 
             <router-link
+              to="/screenshots"
+              class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
+              :class="
+                $route.path === '/screenshots'
+                  ? 'text-blue-600 dark:text-white'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+              "
+            >
+              <div
+                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                :class="
+                  $route.path === '/screenshots'
+                    ? 'scale-x-100 opacity-100'
+                    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
+                "
+              ></div>
+              <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                  />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+                <AnimatedText>{{ $t('screenshot.navTitle') }}</AnimatedText>
+              </span>
+            </router-link>
+
+            <router-link
               ref="logAnalysisLink"
               to="/log-analysis"
               class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
@@ -177,9 +205,41 @@
             </router-link>
           </div>
 
-          <div class="h-6 w-px bg-gray-200 dark:bg-white/10 transition-colors"></div>
+          <div
+            v-if="!isOnboardingRoute"
+            class="mx-[clamp(1.25rem,5vw,4.5rem)] h-6 w-px bg-gray-200 dark:bg-white/10 transition-colors"
+          ></div>
 
           <div class="flex items-center space-x-1">
+            <button
+              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
+              :class="
+                $route.path === '/feedback'
+                  ? 'text-blue-600 dark:text-white'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+              "
+              :title="$t('feedback.navTitle')"
+              @click="handleFeedbackClick"
+            >
+              <div
+                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-center"
+                :class="
+                  $route.path === '/feedback'
+                    ? 'scale-100 opacity-100'
+                    : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50'
+                "
+              ></div>
+              <span class="relative flex items-center z-10">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 10h8M8 14h5M7 3h10a2 2 0 012 2v14l-4-2-4 2-4-2-4 2V5a2 2 0 012-2z"
+                  />
+                </svg>
+              </span>
+            </button>
             <!-- Sponsor button (Chinese locale only) -->
             <button
               v-if="locale === 'zh'"
@@ -277,6 +337,18 @@
     <SponsorModal :show="showSponsor" @close="showSponsor = false" />
     <IssueUpdateModal />
     <UpdateChangelogModal />
+    <FeedbackModal
+      v-model:show="feedbackStore.showSubmitModal"
+      @dirty-change="handleFeedbackDirtyChange"
+      @submitted="handleFeedbackSubmitted"
+    />
+    <AddonUpdateDrawer
+      v-model:show="addonDrawerVisible"
+      :tasks="addonUpdateDrawerStore.tasks"
+      :active-task-key="addonUpdateDrawerStore.activeTaskKey"
+      @select-task="addonUpdateDrawerStore.selectTask"
+      @updated="handleGlobalAddonUpdated"
+    />
 
     <!-- Log Analysis First-time Hint -->
     <Teleport to="body">
@@ -328,6 +400,9 @@ import { useUpdateStore } from '@/stores/update'
 import { useSceneryStore } from '@/stores/scenery'
 import { useModalStore } from '@/stores/modal'
 import { useIssueTrackerStore } from '@/stores/issueTracker'
+import { useFeedbackStore } from '@/stores/feedback'
+import { useManagementStore } from '@/stores/management'
+import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -343,6 +418,8 @@ import ContextMenu from '@/components/ContextMenu.vue'
 import SponsorModal from '@/components/SponsorModal.vue'
 import IssueUpdateModal from '@/components/IssueUpdateModal.vue'
 import UpdateChangelogModal from '@/components/UpdateChangelogModal.vue'
+import FeedbackModal from '@/components/FeedbackModal.vue'
+import AddonUpdateDrawer from '@/components/AddonUpdateDrawer.vue'
 
 const { t, locale } = useI18n()
 const store = useAppStore()
@@ -350,9 +427,22 @@ const updateStore = useUpdateStore()
 const sceneryStore = useSceneryStore()
 const modalStore = useModalStore()
 const issueTrackerStore = useIssueTrackerStore()
+const feedbackStore = useFeedbackStore()
+const managementStore = useManagementStore()
+const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
 const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
+const addonDrawerVisible = computed({
+  get: () => addonUpdateDrawerStore.show,
+  set: (visible: boolean) => {
+    if (visible) {
+      addonUpdateDrawerStore.show = true
+      return
+    }
+    addonUpdateDrawerStore.clearTasks()
+  },
+})
 
 // Always on top state
 const isAlwaysOnTop = ref(false)
@@ -377,8 +467,10 @@ const routeOrder: Record<string, number> = {
   '/': 0,
   '/management': 1,
   '/management/liveries': 1,
-  '/log-analysis': 2,
-  '/settings': 3,
+  '/screenshots': 2,
+  '/log-analysis': 3,
+  '/feedback': 5,
+  '/settings': 6,
   '/onboarding': -1,
 }
 
@@ -395,6 +487,49 @@ watch(
     transitionName.value = newOrder > oldOrder ? 'page-left' : 'page-right'
   },
 )
+
+watch(
+  () => feedbackStore.showSubmitModal,
+  (visible) => {
+    if (!visible) {
+      feedbackStore.setModalDirty(false)
+    }
+  },
+)
+
+function handleFeedbackDirtyChange(isDirty: boolean) {
+  feedbackStore.setModalDirty(isDirty)
+}
+
+async function handleFeedbackSubmitted(issueNumber: number) {
+  feedbackStore.setModalDirty(false)
+  await router.push({
+    path: '/feedback',
+    query: {
+      issue: String(issueNumber),
+    },
+  })
+}
+
+async function handleFeedbackClick() {
+  await issueTrackerStore.initStore()
+  if (issueTrackerStore.hasSubmittedFeedback) {
+    await router.push('/feedback')
+    return
+  }
+
+  feedbackStore.openSubmitModal()
+}
+
+async function handleGlobalAddonUpdated() {
+  const refreshJobs: Promise<unknown>[] = [managementStore.loadAircraft(), managementStore.loadPlugins()]
+
+  if (route.path.startsWith('/management') && String(route.query.tab || '') === 'scenery') {
+    refreshJobs.push(sceneryStore.loadData())
+  }
+
+  await Promise.allSettled(refreshJobs)
+}
 
 onMounted(async () => {
   // Log app startup (basic level - always logged)
@@ -550,10 +685,43 @@ onMounted(async () => {
           onConfirm: async () => await appWindow.destroy(),
           onCancel: () => {},
         })
+      } else if (managementStore.isExecutingUpdate) {
+        // Addon update installation in progress
+        event.preventDefault()
+        modalStore.showConfirm({
+          title: t('management.updateCloseRunningTitle'),
+          message: t('management.updateCloseRunningMessage'),
+          warning: t('management.updateCloseRunningWarning'),
+          confirmText: t('management.updateCloseRunningConfirm'),
+          cancelText: t('management.updateCloseRunningCancel'),
+          type: 'warning',
+          onConfirm: async () => {
+            try {
+              await invoke('cancel_installation')
+            } catch {
+              // Ignore cancellation errors; window close will terminate remaining work.
+            } finally {
+              await appWindow.destroy()
+            }
+          },
+          onCancel: () => {},
+        })
       } else if (store.isLibraryLinkSubmitting) {
         // Library link submission in progress
         event.preventDefault()
         modalStore.showError(t('sceneryManager.submissionInProgressCloseBlocked'))
+      } else if (feedbackStore.showSubmitModal && feedbackStore.feedbackModalDirty) {
+        event.preventDefault()
+        modalStore.showConfirm({
+          title: t('feedback.discardTitle'),
+          message: t('feedback.closeAppDiscardMessage'),
+          warning: t('feedback.discardWarning'),
+          confirmText: t('feedback.discardConfirm'),
+          cancelText: t('feedback.discardCancel'),
+          type: 'warning',
+          onConfirm: async () => await appWindow.destroy(),
+          onCancel: () => {},
+        })
       } else if (store.isConfirmationOpen) {
         // Confirmation modal is open - pending installation
         event.preventDefault()

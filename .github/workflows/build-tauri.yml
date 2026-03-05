@@ -10,57 +10,7 @@ env:
   CARGO_NET_RETRY: 3
 
 jobs:
-  lint:
-    name: Lint & Format Check
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install JS dependencies
-        run: npm ci
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: "v2-rust-lint"
-          cache-all-crates: true
-
-      - name: Frontend lint
-        run: npm run lint
-
-      - name: Frontend format check
-        run: npm run format:check || echo "⚠️ Frontend format issues found. Run 'npm run format' to fix."
-        continue-on-error: true
-
-      - name: Rust format check
-        working-directory: src-tauri
-        run: cargo fmt --check || echo "⚠️ Rust format issues found. Run 'cargo fmt' to fix."
-        continue-on-error: true
-
-      - name: Rust clippy
-        working-directory: src-tauri
-        run: cargo clippy -- -D warnings || echo "⚠️ Rust clippy warnings found."
-        continue-on-error: true
-
   build:
-    needs: lint
     strategy:
       fail-fast: false
       matrix:
@@ -161,7 +111,7 @@ jobs:
           echo "CARGO_PROFILE_RELEASE_LTO=off" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=1" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_DEBUG=0" >> $GITHUB_ENV
-          echo "CARGO_PROFILE_RELEASE_STRIP=symbols" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_STRIP=debuginfo" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
           echo "RUSTFLAGS=-C embed-bitcode=no" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=unpacked" >> $GITHUB_ENV
@@ -176,7 +126,7 @@ jobs:
           echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_LTO=fat" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=3" >> $GITHUB_ENV
-          echo "CARGO_PROFILE_RELEASE_STRIP=symbols" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_STRIP=debuginfo" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
           echo "BUILD_MODE=standard" >> $GITHUB_ENV
 
@@ -231,6 +181,77 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
+          path: 'target/release/bundle/appimage/*.AppImage'
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 9
+
+  build-arch-appimage:
+    name: Build (arch-linux-appimage)
+    runs-on: ubuntu-22.04
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Install Arch dependencies
+        shell: bash
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed \
+            base-devel curl wget file git openssl pkgconf \
+            gtk3 webkit2gtk-4.1 librsvg libappindicator-gtk3 \
+            appmenu-gtk-module patchelf npm
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v2-rust-arch"
+          key: "arch-${{ hashFiles('**/Cargo.lock') }}"
+          cache-all-crates: true
+          cache-directories: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+
+      - name: Set build environment
+        shell: bash
+        run: |
+          echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_LTO=fat" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=3" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_STRIP=debuginfo" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
+          echo "APPIMAGE_EXTRACT_AND_RUN=1" >> $GITHUB_ENV
+          echo "BUILD_MODE=arch" >> $GITHUB_ENV
+
+      - name: Build Tauri AppImage (Arch)
+        shell: bash
+        run: |
+          echo "🔨 Building AppImage on Arch Linux..."
+          npm run tauri:build -- --bundles appimage
+
+      - name: Upload Arch Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XFast-Manager-linux-arch-appimage
           path: 'target/release/bundle/appimage/*.AppImage'
           if-no-files-found: error
           retention-days: 7

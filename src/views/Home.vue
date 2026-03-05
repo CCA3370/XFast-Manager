@@ -391,6 +391,7 @@ import { useModalStore } from '@/stores/modal'
 import { useProgressStore } from '@/stores/progress'
 import { useUpdateStore } from '@/stores/update'
 import { useSceneryStore } from '@/stores/scenery'
+import { useLockStore } from '@/stores/lock'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -417,6 +418,7 @@ const modal = useModalStore()
 const updateStore = useUpdateStore()
 const progressStore = useProgressStore()
 const sceneryStore = useSceneryStore()
+const lockStore = useLockStore()
 const isDragging = ref(false)
 const showConfirmation = ref(false)
 const showLaunchConfirmDialog = ref(false)
@@ -819,8 +821,16 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
         return
       }
 
-      // Show errors as a modal popup; keep other notifications as toasts
-      modal.showError(result.errors.join('\n'))
+      if (result.tasks.length > 0) {
+        // Non-blocking warning: keep valid tasks and continue install flow.
+        const warningSummary = t('home.partialAnalysisWarning', { count: result.errors.length })
+        logOperation(warningSummary, result.errors.join(' | '))
+        toast.warning(`${warningSummary} ${t('home.partialAnalysisHint')}`)
+      } else {
+        // Blocking only when nothing usable was detected.
+        modal.showError(result.errors.join('\n'))
+        return
+      }
     }
 
     if (result.tasks.length > 0) {
@@ -983,6 +993,10 @@ async function handleInstall() {
   )
 
   try {
+    if (!lockStore.isInitialized) {
+      await lockStore.initStore()
+    }
+
     // Prepare enabled tasks with overwrite and backup settings
     const allTasksWithSettings = store.getTasksWithOverwrite()
     const tasksWithOverwrite = allTasksWithSettings.filter((task) => store.getTaskEnabled(task.id))
@@ -998,13 +1012,22 @@ async function handleInstall() {
       xplanePath: store.xplanePath,
       deleteSourceAfterInstall: store.deleteSourceAfterInstall,
       autoSortScenery: store.autoSortScenery,
+      lockedSceneryFolderNames: lockStore.getLockedItems('scenery'),
       parallelEnabled: store.parallelInstallEnabled,
       maxParallel: store.maxParallelTasks,
     })
 
     // Log results
-    logBasic(t('log.installationCompleted'), 'installation')
-    logOperation(`${result.successfulTasks}/${result.totalTasks} tasks completed successfully`)
+    if (result.failedTasks === 0) {
+      logBasic(t('log.installationCompleted'), 'installation')
+    } else if (result.successfulTasks > 0) {
+      logBasic(t('completion.partialSuccess'), 'installation')
+    } else {
+      logError(t('completion.allFailed'), 'installation')
+    }
+    logOperation(
+      `${result.successfulTasks}/${result.totalTasks} tasks completed successfully (failed: ${result.failedTasks})`,
+    )
 
     // Log failed tasks if any
     if (result.failedTasks > 0) {

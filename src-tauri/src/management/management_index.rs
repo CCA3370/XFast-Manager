@@ -13,8 +13,12 @@ use crate::models::{
     NavdataBackupVerification, NavdataManagerInfo, PluginInfo,
 };
 use crate::path_utils;
+use crate::x_updater_profile::{
+    find_profile_in_folder, is_profile_file_name, tag_host_as_update_url, XUPDATER_URL_PREFIX,
+};
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
+use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -112,7 +116,12 @@ fn resolve_management_path(
     // folder_name can be a relative path for nested items (e.g. "LevelUp\737NG"
     // for aircraft, "navigraph\navdata" for navdata). Only reject empty names
     // and ".." components; the canonical path check below prevents traversal.
-    if folder_name.is_empty() || folder_name.contains("..") {
+    // Exception: navdata folder_name can be empty when cycle.json is directly
+    // in Custom Data/ (e.g. X-Plane 12 native navdata).
+    if folder_name.contains("..") {
+        return Err(anyhow!("Invalid folder name"));
+    }
+    if folder_name.is_empty() && item_type != "navdata" {
         return Err(anyhow!("Invalid folder name"));
     }
 
@@ -123,9 +132,17 @@ fn resolve_management_path(
         _ => return Err(anyhow!("Unknown item type: {}", item_type)),
     };
 
-    let target_path = base_path.join(folder_name);
+    let target_path = if folder_name.is_empty() {
+        base_path.clone()
+    } else {
+        base_path.join(folder_name)
+    };
     if !target_path.exists() {
         return Err(anyhow!("Folder not found: {}", folder_name));
+    }
+
+    if folder_name.is_empty() {
+        return Ok(target_path);
     }
 
     path_utils::validate_child_path(&base_path, &target_path)
@@ -213,17 +230,33 @@ fn scan_aircraft_recursive(
         .collect();
 
     // Collect results and recurse for non-aircraft folders
-    let mut recurse_dirs: Vec<&std::path::PathBuf> = Vec::new();
+    let mut recurse_dirs: Vec<std::path::PathBuf> = Vec::new();
     for (i, result) in results.into_iter().enumerate() {
         if let Some(info) = result {
             entries.push(info);
         } else {
-            recurse_dirs.push(&subdirs[i].0);
+            recurse_dirs.push(subdirs[i].0.clone());
         }
     }
 
-    for dir in recurse_dirs {
-        scan_aircraft_recursive(base_path, dir, depth + 1, max_depth, entries)?;
+    // Recurse in parallel to reduce scan latency for nested aircraft collections.
+    let nested_results: Result<Vec<Vec<AircraftInfo>>> = recurse_dirs
+        .par_iter()
+        .map(|dir| {
+            let mut nested_entries = Vec::new();
+            scan_aircraft_recursive(
+                base_path,
+                dir.as_path(),
+                depth + 1,
+                max_depth,
+                &mut nested_entries,
+            )?;
+            Ok(nested_entries)
+        })
+        .collect();
+
+    for mut nested in nested_results? {
+        entries.append(&mut nested);
     }
 
     Ok(())
@@ -244,6 +277,7 @@ fn scan_single_aircraft_folder(
     let mut livery_count = 0;
     let mut updater_cfg_path: Option<std::path::PathBuf> = None;
     let mut version_file_paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut has_xupdater_hints = false;
 
     for entry in read_dir.flatten() {
         let ft = match entry.file_type() {
@@ -272,6 +306,9 @@ fn scan_single_aircraft_folder(
             {
                 version_file_paths.push(entry.path());
             }
+            if !has_xupdater_hints && is_xupdater_hint_file_name(&name_lower) {
+                has_xupdater_hints = true;
+            }
         } else if ft.is_dir() && name_lower == "liveries" {
             // Count liveries
             if let Ok(liveries_rd) = fs::read_dir(entry.path()) {
@@ -282,6 +319,8 @@ fn scan_single_aircraft_folder(
                 }
             }
             has_liveries = livery_count > 0;
+        } else if ft.is_dir() && !has_xupdater_hints && is_xupdater_hint_dir_name(&name_lower) {
+            has_xupdater_hints = true;
         }
     }
 
@@ -295,8 +334,16 @@ fn scan_single_aircraft_folder(
     };
 
     // Read version info (priority: skunkcrafts_updater.cfg > version files)
-    let (version, update_url, cfg_disabled) =
+    let (mut version, mut update_url, cfg_disabled) =
         read_version_from_paths(updater_cfg_path.as_deref(), &version_file_paths);
+    if update_url.is_none() && has_xupdater_hints {
+        if let Some(profile) = find_profile_in_folder(folder) {
+            update_url = Some(tag_host_as_update_url(&profile.host));
+            if version.is_none() {
+                version = profile.version_label.clone();
+            }
+        }
+    }
 
     let relative_path = folder
         .strip_prefix(base_path)
@@ -335,29 +382,21 @@ pub fn read_version_from_paths(
 
             for line in content.lines() {
                 let line = line.trim();
-                let line_lower = line.to_lowercase();
-
-                if line_lower.starts_with("version|") {
-                    let parts: Vec<&str> = line.splitn(2, '|').collect();
-                    if parts.len() == 2 {
-                        let version = parts[1].trim();
-                        if !version.is_empty() {
-                            cfg_version = Some(version.to_string());
+                if line.is_empty() {
+                    continue;
+                }
+                if let Some((key, value_raw)) = line.split_once('|') {
+                    let value = value_raw.trim();
+                    if key.eq_ignore_ascii_case("version") {
+                        if !value.is_empty() {
+                            cfg_version = Some(value.to_string());
                         }
-                    }
-                } else if line_lower.starts_with("module|") {
-                    let parts: Vec<&str> = line.splitn(2, '|').collect();
-                    if parts.len() == 2 {
-                        let url = parts[1].trim();
-                        if !url.is_empty() {
-                            update_url = Some(url.to_string());
+                    } else if key.eq_ignore_ascii_case("module") {
+                        if !value.is_empty() {
+                            update_url = Some(value.to_string());
                         }
-                    }
-                } else if line_lower.starts_with("disabled|") {
-                    let parts: Vec<&str> = line.splitn(2, '|').collect();
-                    if parts.len() == 2 {
-                        let value = parts[1].trim().to_lowercase();
-                        cfg_disabled = Some(value == "true" || value == "1");
+                    } else if key.eq_ignore_ascii_case("disabled") {
+                        cfg_disabled = Some(value.eq_ignore_ascii_case("true") || value == "1");
                     }
                 }
             }
@@ -370,6 +409,7 @@ pub fn read_version_from_paths(
 
     // Fall back to version files
     let mut version_tokens: Vec<String> = Vec::new();
+    let mut seen_tokens: HashSet<String> = HashSet::new();
     let mut first_line_fallback: Option<String> = None;
 
     for path in version_files {
@@ -389,8 +429,11 @@ pub fn read_version_from_paths(
                     continue;
                 }
                 for token in line.split_whitespace() {
-                    if has_version_pattern(token) && !version_tokens.contains(&token.to_string()) {
-                        version_tokens.push(token.to_string());
+                    if has_version_pattern(token) {
+                        let token_owned = token.to_string();
+                        if seen_tokens.insert(token_owned.clone()) {
+                            version_tokens.push(token_owned);
+                        }
                     }
                 }
             }
@@ -422,19 +465,28 @@ pub fn read_version_info_with_url(folder: &Path) -> (Option<String>, Option<Stri
 
     let mut updater_cfg_path: Option<std::path::PathBuf> = None;
     let mut version_file_paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut has_xupdater_hints = false;
 
     for entry in read_dir.flatten() {
         let ft = match entry.file_type() {
             Ok(ft) => ft,
             Err(_) => continue,
         };
-        if !ft.is_file() {
-            continue;
-        }
         let name = match entry.file_name().into_string() {
             Ok(n) => n,
             Err(_) => continue,
         };
+
+        if ft.is_dir() {
+            if !has_xupdater_hints && is_xupdater_hint_dir_name(&name) {
+                has_xupdater_hints = true;
+            }
+            continue;
+        }
+        if !ft.is_file() {
+            continue;
+        }
+
         let name_lower = name.to_lowercase();
         if name_lower == "skunkcrafts_updater.cfg" {
             updater_cfg_path = Some(entry.path());
@@ -444,9 +496,24 @@ pub fn read_version_info_with_url(folder: &Path) -> (Option<String>, Option<Stri
         {
             version_file_paths.push(entry.path());
         }
+        if !has_xupdater_hints && is_xupdater_hint_file_name(&name_lower) {
+            has_xupdater_hints = true;
+        }
     }
 
-    read_version_from_paths(updater_cfg_path.as_deref(), &version_file_paths)
+    let (mut version, mut update_url, cfg_disabled) =
+        read_version_from_paths(updater_cfg_path.as_deref(), &version_file_paths);
+
+    if update_url.is_none() && has_xupdater_hints {
+        if let Some(profile) = find_profile_in_folder(folder) {
+            update_url = Some(tag_host_as_update_url(&profile.host));
+            if version.is_none() {
+                version = profile.version_label.clone();
+            }
+        }
+    }
+
+    (version, update_url, cfg_disabled)
 }
 
 /// Check if a string contains a version-like pattern (digit(s).digit(s))
@@ -574,9 +641,8 @@ fn scan_single_plugin_folder(path: &Path, folder_name: &str) -> Option<PluginInf
     // Enabled if there are any .xpl files
     let enabled = !xpl_files.is_empty();
 
-    // Combine all files for display
-    let all_files: Vec<String> = if enabled {
-        xpl_files.clone()
+    let xfmp_as_xpl_files: Vec<String> = if enabled {
+        Vec::new()
     } else {
         xfmp_files
             .iter()
@@ -585,7 +651,19 @@ fn scan_single_plugin_folder(path: &Path, folder_name: &str) -> Option<PluginInf
     };
 
     // Determine platform from xpl file locations
-    let platform = detect_plugin_platform(path, &all_files);
+    let platform_source = if enabled {
+        &xpl_files
+    } else {
+        &xfmp_as_xpl_files
+    };
+    let platform = detect_plugin_platform(path, platform_source);
+
+    // Combine all files for display
+    let all_files: Vec<String> = if enabled {
+        xpl_files
+    } else {
+        xfmp_as_xpl_files
+    };
 
     // Read version info with update URL
     let (version, update_url, cfg_disabled) = read_version_info_with_url(path);
@@ -644,7 +722,15 @@ fn find_xpl_and_xfmp_files(folder: &Path) -> (Vec<String>, Vec<String>) {
 
     for entry in WalkDir::new(folder)
         .max_depth(3)
+        .follow_links(false)
         .into_iter()
+        .filter_entry(|entry| {
+            if entry.depth() == 0 || !entry.file_type().is_dir() {
+                return true;
+            }
+            let name = entry.file_name().to_string_lossy();
+            !(name.starts_with('.') || name.as_ref().eq_ignore_ascii_case("__macosx"))
+        })
         .filter_map(|e| e.ok())
     {
         if !entry.file_type().is_file() {
@@ -653,21 +739,50 @@ fn find_xpl_and_xfmp_files(folder: &Path) -> (Vec<String>, Vec<String>) {
 
         let path = entry.path();
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            let is_xpl = ext.eq_ignore_ascii_case("xpl");
+            let is_xfmp = ext.eq_ignore_ascii_case("xfmp");
+            if !is_xpl && !is_xfmp {
+                continue;
+            }
+
             let relative_path = path
                 .strip_prefix(folder)
                 .unwrap_or(path)
                 .to_string_lossy()
                 .to_string();
 
-            if ext.eq_ignore_ascii_case("xpl") {
+            if is_xpl {
                 xpl_files.push(relative_path);
-            } else if ext.eq_ignore_ascii_case("xfmp") {
+            } else if is_xfmp {
                 xfmp_files.push(relative_path);
             }
         }
     }
 
     (xpl_files, xfmp_files)
+}
+
+fn is_xupdater_hint_dir_name(name: &str) -> bool {
+    matches!(
+        name.to_lowercase().as_str(),
+        "x-updater" | "x_updater" | "xupdater"
+    )
+}
+
+fn is_xupdater_hint_file_name(name: &str) -> bool {
+    if is_profile_file_name(name) {
+        return true;
+    }
+    matches!(
+        name,
+        "client-configuration"
+            | "productid"
+            | "xupdignore"
+            | "description.txt"
+            | "x-updater.log"
+            | "x-updater.log.1"
+            | "x-updater.log.2"
+    )
 }
 
 fn detect_plugin_platform(folder: &Path, xpl_files: &[String]) -> String {
@@ -1069,7 +1184,15 @@ pub async fn check_aircraft_updates(aircraft: &mut [AircraftInfo]) {
     let update_tasks: Vec<_> = aircraft
         .iter()
         .enumerate()
-        .filter_map(|(idx, a)| a.update_url.as_ref().map(|url| (idx, url.clone())))
+        .filter_map(|(idx, a)| {
+            a.update_url.as_ref().and_then(|url| {
+                if is_x_updater_url(url) {
+                    None
+                } else {
+                    Some((idx, url.clone()))
+                }
+            })
+        })
         .collect();
 
     if update_tasks.is_empty() {
@@ -1103,7 +1226,15 @@ pub async fn check_plugins_updates(plugins: &mut [PluginInfo]) {
     let update_tasks: Vec<_> = plugins
         .iter()
         .enumerate()
-        .filter_map(|(idx, p)| p.update_url.as_ref().map(|url| (idx, url.clone())))
+        .filter_map(|(idx, p)| {
+            p.update_url.as_ref().and_then(|url| {
+                if is_x_updater_url(url) {
+                    None
+                } else {
+                    Some((idx, url.clone()))
+                }
+            })
+        })
         .collect();
 
     if update_tasks.is_empty() {
@@ -1170,6 +1301,11 @@ async fn fetch_remote_version(base_url: String) -> Option<String> {
     }
 
     None
+}
+
+fn is_x_updater_url(url: &str) -> bool {
+    url.to_lowercase()
+        .starts_with(&XUPDATER_URL_PREFIX.to_lowercase())
 }
 
 /// Set the disabled| field in skunkcrafts_updater.cfg for an aircraft or plugin

@@ -189,7 +189,7 @@ jobs:
           echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_LTO=fat" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=3" >> $GITHUB_ENV
-          echo "CARGO_PROFILE_RELEASE_STRIP=symbols" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_STRIP=debuginfo" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
           echo "BUILD_MODE=production" >> $GITHUB_ENV
           echo "✅ Production build environment configured"
@@ -275,9 +275,91 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  build-arch-appimage:
+    name: Build (arch-linux-appimage)
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should_release == 'true'
+    runs-on: ubuntu-22.04
+    container:
+      image: archlinux:latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Install Arch dependencies
+        shell: bash
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed \
+            base-devel curl wget file git openssl pkgconf \
+            gtk3 webkit2gtk-4.1 librsvg libappindicator-gtk3 \
+            appmenu-gtk-module patchelf npm
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v2-rust-release-arch"
+          key: "release-arch-${{ hashFiles('**/Cargo.lock') }}"
+          cache-all-crates: true
+
+      - name: Set production build environment
+        shell: bash
+        run: |
+          echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_LTO=fat" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=3" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_STRIP=debuginfo" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
+          echo "APPIMAGE_EXTRACT_AND_RUN=1" >> $GITHUB_ENV
+          echo "BUILD_MODE=production-arch" >> $GITHUB_ENV
+
+      - name: Build Tauri AppImage (Arch)
+        shell: bash
+        run: |
+          echo "🔨 Building XFast-Manager ${{ needs.prepare-release.outputs.version }} AppImage on Arch Linux..."
+          npm run tauri:build -- --bundles appimage
+
+      - name: Prepare Arch Linux artifact
+        shell: bash
+        run: |
+          version="${{ needs.prepare-release.outputs.version }}"
+          appimage_file=$(ls target/release/bundle/appimage/*.AppImage 2>/dev/null || true)
+          if [ -z "$appimage_file" ]; then
+            echo "❌ No AppImage found after Arch build"
+            exit 1
+          fi
+          mv "$appimage_file" "target/release/bundle/appimage/XFast-Manager-${version}-linux-arch.AppImage"
+          echo "✅ Arch AppImage prepared"
+
+      - name: Upload Arch Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-arch-linux-appimage
+          path: target/release/bundle/appimage/XFast-Manager-*-linux-arch.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
   release:
     name: Create Release
-    needs: [prepare-release, build]
+    needs: [prepare-release, build, build-arch-appimage]
     if: needs.prepare-release.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -337,6 +419,12 @@ jobs:
             rm "XFast-Manager-${version}-linux-x64.AppImage"
           fi
 
+          # Zip Arch Linux AppImage
+          if [ -f "XFast-Manager-${version}-linux-arch.AppImage" ]; then
+            zip "XFast-Manager-${version}-linux-arch-AppImage.zip" "XFast-Manager-${version}-linux-arch.AppImage"
+            rm "XFast-Manager-${version}-linux-arch.AppImage"
+          fi
+
           # Zip Linux deb
           if [ -f "XFast-Manager-${version}-linux-x64.deb" ]; then
             zip "XFast-Manager-${version}-linux-x64-deb.zip" "XFast-Manager-${version}-linux-x64.deb"
@@ -380,6 +468,7 @@ jobs:
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-setup.zip
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-macos-universal.zip
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-AppImage.zip
+            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-arch-AppImage.zip
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-deb.zip
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-rpm.zip
             release-files/checksums.txt
@@ -403,6 +492,7 @@ jobs:
           echo "  - Windows (installer): XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-setup.zip"
           echo "  - macOS:   XFast-Manager-${{ needs.prepare-release.outputs.version }}-macos-universal.zip"
           echo "  - Linux (AppImage): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-AppImage.zip"
+          echo "  - Arch Linux (AppImage): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-arch-AppImage.zip"
           echo "  - Linux (deb): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-deb.zip"
           echo "  - Linux (rpm): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-rpm.zip"
           echo ""

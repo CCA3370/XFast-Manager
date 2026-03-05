@@ -294,6 +294,7 @@ export interface SceneryManagerEntry {
   subPriority: number
   enabled: boolean
   sortOrder: number
+  updateUrl?: string
   missingLibraries: string[]
   requiredLibraries: string[]
   continent?: string
@@ -352,6 +353,84 @@ export interface PluginInfo {
   scriptCount: number
 }
 
+export type AddonUpdatableItemType = 'aircraft' | 'plugin' | 'scenery' | 'livery'
+
+export interface AddonUpdateDrawerTask {
+  itemType: AddonUpdatableItemType
+  folderName: string
+  displayName: string
+  initialLocalVersion?: string
+  initialTargetVersion?: string
+}
+
+export interface AddonUpdateOptions {
+  useBeta: boolean
+  includeLiveries: boolean
+  applyBlacklist: boolean
+  rollbackOnFailure: boolean
+  parallelDownloads?: number
+  channel?: 'stable' | 'beta' | 'alpha'
+  freshInstall?: boolean
+  preserveLiveries?: boolean
+  preserveConfigFiles?: boolean
+  chunkedDownloadEnabled?: boolean
+  threadsPerTask?: number
+  totalThreads?: number
+}
+
+export interface AddonUpdatePreview {
+  provider?: string
+  itemType: string
+  folderName: string
+  localVersion?: string
+  targetVersion?: string
+  selectedChannel: 'stable' | 'beta' | 'alpha' | string
+  availableChannels: string[]
+  changelog?: string
+}
+
+export interface AddonUpdatePlan {
+  provider?: string
+  itemType: string
+  folderName: string
+  localVersion?: string
+  remoteVersion?: string
+  remoteModule?: string
+  remoteLocked: boolean
+  hasUpdate: boolean
+  estimatedDownloadBytes: number
+  addFiles: string[]
+  replaceFiles: string[]
+  deleteFiles: string[]
+  skipFiles: string[]
+  warnings: string[]
+  hasBetaConfig: boolean
+}
+
+export interface AddonUpdateResult {
+  provider?: string
+  success: boolean
+  message: string
+  itemType: string
+  folderName: string
+  localVersion?: string
+  remoteVersion?: string
+  updatedFiles: number
+  deletedFiles: number
+  skippedFiles: number
+  rollbackUsed: boolean
+}
+
+export interface AddonUpdaterCredentials {
+  login: string
+  licenseKey: string
+}
+
+export interface AddonDiskSpaceInfo {
+  freeBytes: number
+  totalBytes: number
+}
+
 export interface LuaScriptInfo {
   fileName: string
   displayName: string
@@ -395,3 +474,41 @@ export interface ManagementData<T> {
 export type ManagementTab = 'aircraft' | 'plugin' | 'navdata' | 'scenery'
 
 export type ManagementItemType = 'aircraft' | 'plugin' | 'navdata'
+
+export type ScreenshotMediaType = 'image' | 'video'
+
+export interface ScreenshotMediaItem {
+  id: string
+  name: string
+  fileName: string
+  path: string
+  mediaType: ScreenshotMediaType
+  ext: string
+  size: number
+  modifiedAt: number
+  width?: number | null
+  height?: number | null
+  duration?: number | null
+  editable: boolean
+  previewable: boolean
+}
+
+export interface ScreenshotCrop {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface ScreenshotEditParams {
+  crop: ScreenshotCrop | null
+  rotate: number
+  exposure: number
+  contrast: number
+  saturation: number
+  temperature: number
+  highlights: number
+  shadows: number
+  sharpness: number
+  denoise: number
+}

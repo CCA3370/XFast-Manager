@@ -1,5 +1,5 @@
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -32,19 +32,52 @@ impl Analyzer {
         passwords: Option<HashMap<String, String>>,
         verification_preferences: Option<HashMap<String, bool>>,
     ) -> AnalysisResult {
+        // Normalize split-volume inputs (e.g. .z01/.zip.001/part2.rar) to a stable
+        // archive entry path and deduplicate equivalent paths.
+        let mut normalized_paths: Vec<String> = Vec::new();
+        let mut seen_paths: HashSet<String> = HashSet::new();
+        for path_str in paths {
+            let normalized =
+                crate::archive_input::normalize_archive_entry_path(Path::new(&path_str));
+            let normalized_str = normalized.to_string_lossy().to_string();
+            if seen_paths.insert(normalized_str.clone()) {
+                normalized_paths.push(normalized_str);
+            }
+        }
+
+        // Keep original password map entries, but also add normalized aliases for
+        // filesystem-backed keys so split-volume retries can resolve correctly.
+        let normalized_passwords = passwords.as_ref().map(|raw| {
+            let mut merged = raw.clone();
+            for (key, value) in raw {
+                let key_path = Path::new(key);
+                if key_path.exists() {
+                    let normalized = crate::archive_input::normalize_archive_entry_path(key_path)
+                        .to_string_lossy()
+                        .to_string();
+                    merged.entry(normalized).or_insert_with(|| value.clone());
+                }
+            }
+            merged
+        });
+
         logger::log_info(
-            &format!("{}: {} path(s)", tr(LogMsg::AnalysisStarted), paths.len()),
+            &format!(
+                "{}: {} path(s)",
+                tr(LogMsg::AnalysisStarted),
+                normalized_paths.len()
+            ),
             Some("analyzer"),
         );
 
-        crate::log_debug!(&format!("Analyzing paths: {:?}", paths), "analysis");
+        crate::log_debug!(&format!("Analyzing paths: {:?}", normalized_paths), "analysis");
         crate::log_debug!(&format!("X-Plane path: {}", xplane_path), "analysis");
 
-        let passwords_ref = passwords.as_ref();
+        let passwords_ref = normalized_passwords.as_ref();
         let xplane_root = Path::new(xplane_path);
 
         // Parallel scan all paths using rayon for better performance
-        let results: Vec<_> = paths
+        let results: Vec<_> = normalized_paths
             .par_iter()
             .map(|path_str| {
                 let path = Path::new(path_str);
@@ -147,7 +180,8 @@ impl Analyzer {
                         logger::log_error(&error_msg, Some("analyzer"));
 
                         // For frontend display, use a cleaner format
-                        let display_msg = format!("{}: {}", tr(LogMsg::ScanFailed), e);
+                        let display_msg =
+                            format!("{} ({}): {}", tr(LogMsg::ScanFailed), path_str, e);
                         errors.push(display_msg);
                     }
                 }
@@ -364,8 +398,11 @@ impl Analyzer {
         result
     }
 
-    /// Filter items by priority: plugins/lua scripts inside aircraft/scenery are removed
+    /// Filter items by priority and containment rules.
     /// Priority: Aircraft, Scenery, SceneryLibrary, Navdata > Plugin, Livery > LuaScript
+    ///
+    /// Extra containment rule:
+    /// - If Aircraft/SceneryLibrary is nested inside Scenery (same source), drop the nested item.
     fn filter_by_priority(&self, items: Vec<DetectedItem>) -> Vec<DetectedItem> {
         let high_priority_types = [
             AddonType::Aircraft,
@@ -385,6 +422,8 @@ impl Analyzer {
             .into_iter()
             .partition(|item| medium_priority_types.contains(&item.addon_type));
 
+        let filtered_high_priority = self.filter_high_priority_nested_in_scenery(high_priority);
+
         // Filter medium-priority items: remove if nested inside any high-priority item
         let filtered_medium_priority: Vec<DetectedItem> = medium_priority
             .into_iter()
@@ -392,7 +431,7 @@ impl Analyzer {
                 let med_path = self.get_effective_path(med_item);
 
                 // Check if this medium-priority item is inside any high-priority item
-                !high_priority.iter().any(|high_item| {
+                !filtered_high_priority.iter().any(|high_item| {
                     // Must be from the same source (same archive or same directory tree)
                     if !self.same_source(med_item, high_item) {
                         return false;
@@ -413,7 +452,7 @@ impl Analyzer {
                 let low_path = self.get_effective_path(low_item);
 
                 // Check if this low-priority item is inside any high-priority item
-                let inside_high = high_priority.iter().any(|high_item| {
+                let inside_high = filtered_high_priority.iter().any(|high_item| {
                     if !self.same_source(low_item, high_item) {
                         return false;
                     }
@@ -437,10 +476,77 @@ impl Analyzer {
             .collect();
 
         // Merge results
-        let mut result = high_priority;
+        let mut result = filtered_high_priority;
         result.extend(filtered_medium_priority);
         result.extend(filtered_low_priority);
         result
+    }
+
+    fn filter_high_priority_nested_in_scenery(
+        &self,
+        high_priority: Vec<DetectedItem>,
+    ) -> Vec<DetectedItem> {
+        let scenery_anchors: Vec<(String, PathBuf, bool, PathBuf)> = high_priority
+            .iter()
+            .filter(|item| item.addon_type == AddonType::Scenery)
+            .map(|item| {
+                (
+                    item.path.clone(),
+                    PathBuf::from(&item.path),
+                    item.archive_internal_root.is_some(),
+                    self.get_effective_path(item),
+                )
+            })
+            .collect();
+
+        if scenery_anchors.is_empty() {
+            return high_priority;
+        }
+
+        high_priority
+            .into_iter()
+            .filter(|candidate| {
+                if !matches!(
+                    candidate.addon_type,
+                    AddonType::Aircraft | AddonType::SceneryLibrary
+                ) {
+                    return true;
+                }
+
+                let candidate_path = self.get_effective_path(candidate);
+                let candidate_source_path = PathBuf::from(&candidate.path);
+                let candidate_has_internal_root = candidate.archive_internal_root.is_some();
+
+                !scenery_anchors.iter().any(
+                    |(scenery_source, scenery_source_path, scenery_has_internal_root, scenery_path)| {
+                        let same_source =
+                            if candidate_has_internal_root || *scenery_has_internal_root {
+                                candidate.path == *scenery_source
+                            } else if candidate_source_path == *scenery_source_path {
+                                true
+                            } else if candidate_source_path.starts_with(scenery_source_path) {
+                                candidate_source_path
+                                    .strip_prefix(scenery_source_path)
+                                    .map(|rel| rel.components().count() > 0)
+                                    .unwrap_or(false)
+                            } else if scenery_source_path.starts_with(&candidate_source_path) {
+                                scenery_source_path
+                                    .strip_prefix(&candidate_source_path)
+                                    .map(|rel| rel.components().count() > 0)
+                                    .unwrap_or(false)
+                            } else {
+                                false
+                            };
+
+                        if !same_source {
+                            return false;
+                        }
+
+                        candidate_path.starts_with(scenery_path) && candidate_path != *scenery_path
+                    },
+                )
+            })
+            .collect()
     }
 
     /// Normalize a path for password lookup
@@ -1495,6 +1601,53 @@ mod tests {
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].addon_type, AddonType::Scenery);
+    }
+
+    #[test]
+    fn test_scenery_library_inside_scenery_filtered() {
+        let analyzer = Analyzer::new();
+
+        let items = vec![
+            create_detected_item(AddonType::Scenery, "/test/KSEA", "KSEA", None),
+            create_detected_item(
+                AddonType::SceneryLibrary,
+                "/test/KSEA/library_objects",
+                "KSEA Lib",
+                None,
+            ),
+        ];
+
+        let result = analyzer.deduplicate(items);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].addon_type, AddonType::Scenery);
+        assert_eq!(result[0].display_name, "KSEA");
+    }
+
+    #[test]
+    fn test_aircraft_inside_scenery_filtered_in_archive() {
+        let analyzer = Analyzer::new();
+
+        let items = vec![
+            create_detected_item(
+                AddonType::Scenery,
+                "/test/pack.zip",
+                "KSEA",
+                Some("KSEA".to_string()),
+            ),
+            create_detected_item(
+                AddonType::Aircraft,
+                "/test/pack.zip",
+                "B737",
+                Some("KSEA/Aircraft/B737".to_string()),
+            ),
+        ];
+
+        let result = analyzer.deduplicate(items);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].addon_type, AddonType::Scenery);
+        assert_eq!(result[0].display_name, "KSEA");
     }
 
     #[test]

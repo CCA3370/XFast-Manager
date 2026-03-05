@@ -10,6 +10,13 @@ import type {
   ManagementData,
   ManagementTab,
   ManagementItemType,
+  AddonUpdateOptions,
+  AddonUpdatePreview,
+  AddonUpdatePlan,
+  AddonUpdateResult,
+  AddonUpdaterCredentials,
+  AddonDiskSpaceInfo,
+  AddonUpdatableItemType,
 } from '@/types'
 import { useAppStore } from './app'
 import { useToastStore } from './toast'
@@ -17,12 +24,26 @@ import { useLockStore } from './lock'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import { logError } from '@/services/logger'
 import { validateXPlanePath } from '@/utils/validation'
+import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
 
 // Cache duration: 1 hour in milliseconds
 const UPDATE_CACHE_DURATION = 60 * 60 * 1000
 
 // Maximum number of entries in update cache to prevent unbounded memory growth
 const MAX_UPDATE_CACHE_SIZE = 500
+
+const DEFAULT_ADDON_UPDATE_OPTIONS: AddonUpdateOptions = {
+  useBeta: false,
+  includeLiveries: true,
+  applyBlacklist: false,
+  rollbackOnFailure: false,
+  parallelDownloads: 4,
+  channel: 'stable',
+  freshInstall: false,
+  chunkedDownloadEnabled: true,
+  threadsPerTask: 6,
+  totalThreads: 32,
+}
 
 // Default X-Plane aircraft required for simulator startup — cannot be disabled
 const PROTECTED_AIRCRAFT_NAMES = new Set([
@@ -45,6 +66,21 @@ interface UpdateCacheEntry {
 
 // Update cache: key is updateUrl, value is cache entry
 const updateCache = new Map<string, UpdateCacheEntry>()
+
+function isXUpdaterTaggedUrl(url: string): boolean {
+  return url.trim().toLowerCase().startsWith('x-updater:')
+}
+
+function getUpdateCacheKey(item: { updateUrl?: string; folderName: string }): string | null {
+  const updateUrl = item.updateUrl?.trim()
+  if (!updateUrl) return null
+
+  if (isXUpdaterTaggedUrl(updateUrl)) {
+    return null
+  }
+
+  return updateUrl
+}
 
 // Evict expired entries and oldest entries if cache is too large
 // Uses batch eviction for O(1) amortized complexity
@@ -113,7 +149,11 @@ export const useManagementStore = defineStore('management', () => {
   const isLoading = ref(false)
   const isCheckingUpdates = ref(false)
   const isRestoringBackup = ref(false)
+  const isBuildingUpdatePlan = ref(false)
+  const isExecutingUpdate = ref(false)
   const error = ref<string | null>(null)
+  const addonUpdateOptions = ref<AddonUpdateOptions>({ ...DEFAULT_ADDON_UPDATE_OPTIONS })
+  const addonUpdateOptionsLoaded = ref(false)
 
   // Counts
   const aircraftTotalCount = ref(0)
@@ -159,6 +199,135 @@ export const useManagementStore = defineStore('management', () => {
     }).length
   })
 
+  async function loadAddonUpdateOptions() {
+    if (addonUpdateOptionsLoaded.value) return
+
+    const [useBeta, includeLiveries, applyBlacklist, parallelDownloads, channel, freshInstall, chunkedDownloadEnabled, threadsPerTask, totalThreads] =
+      await Promise.all([
+        getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_USE_BETA),
+        getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_INCLUDE_LIVERIES),
+        getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_APPLY_BLACKLIST),
+        getItem<number>(STORAGE_KEYS.ADDON_UPDATE_PARALLEL_DOWNLOADS),
+        getItem<string>(STORAGE_KEYS.ADDON_UPDATE_CHANNEL),
+        getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_FRESH_INSTALL),
+        getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_CHUNKED_DOWNLOAD_ENABLED),
+        getItem<number>(STORAGE_KEYS.ADDON_UPDATE_THREADS_PER_TASK),
+        getItem<number>(STORAGE_KEYS.ADDON_UPDATE_TOTAL_THREADS),
+      ])
+
+    addonUpdateOptions.value = {
+      useBeta: typeof useBeta === 'boolean' ? useBeta : DEFAULT_ADDON_UPDATE_OPTIONS.useBeta,
+      includeLiveries:
+        typeof includeLiveries === 'boolean'
+          ? includeLiveries
+          : DEFAULT_ADDON_UPDATE_OPTIONS.includeLiveries,
+      applyBlacklist:
+        typeof applyBlacklist === 'boolean'
+          ? applyBlacklist
+          : DEFAULT_ADDON_UPDATE_OPTIONS.applyBlacklist,
+      // UI no longer exposes this toggle; keep backend capability but default to no rollback.
+      rollbackOnFailure: DEFAULT_ADDON_UPDATE_OPTIONS.rollbackOnFailure,
+      parallelDownloads:
+        typeof parallelDownloads === 'number' && parallelDownloads > 0
+          ? Math.min(Math.max(parallelDownloads, 1), 8)
+          : DEFAULT_ADDON_UPDATE_OPTIONS.parallelDownloads,
+      channel:
+        channel === 'stable' || channel === 'beta' || channel === 'alpha'
+          ? channel
+          : DEFAULT_ADDON_UPDATE_OPTIONS.channel,
+      freshInstall:
+        typeof freshInstall === 'boolean'
+          ? freshInstall
+          : DEFAULT_ADDON_UPDATE_OPTIONS.freshInstall,
+      chunkedDownloadEnabled:
+        typeof chunkedDownloadEnabled === 'boolean'
+          ? chunkedDownloadEnabled
+          : DEFAULT_ADDON_UPDATE_OPTIONS.chunkedDownloadEnabled,
+      threadsPerTask:
+        typeof threadsPerTask === 'number' && threadsPerTask > 0
+          ? Math.min(Math.max(threadsPerTask, 1), 32)
+          : DEFAULT_ADDON_UPDATE_OPTIONS.threadsPerTask,
+      totalThreads:
+        typeof totalThreads === 'number' && totalThreads > 0
+          ? Math.min(Math.max(totalThreads, 1), 64)
+          : DEFAULT_ADDON_UPDATE_OPTIONS.totalThreads,
+    }
+
+    addonUpdateOptionsLoaded.value = true
+
+    // Force persisted value to current UI default so old sessions (true) won't keep rolling back.
+    await setItem(
+      STORAGE_KEYS.ADDON_UPDATE_ROLLBACK_ON_FAILURE,
+      DEFAULT_ADDON_UPDATE_OPTIONS.rollbackOnFailure,
+    )
+  }
+
+  async function setAddonUpdateOptions(next: Partial<AddonUpdateOptions>) {
+    await loadAddonUpdateOptions()
+
+    addonUpdateOptions.value = {
+      ...addonUpdateOptions.value,
+      ...next,
+    }
+
+    await Promise.all([
+      setItem(STORAGE_KEYS.ADDON_UPDATE_USE_BETA, addonUpdateOptions.value.useBeta),
+      setItem(
+        STORAGE_KEYS.ADDON_UPDATE_INCLUDE_LIVERIES,
+        addonUpdateOptions.value.includeLiveries,
+      ),
+      setItem(
+        STORAGE_KEYS.ADDON_UPDATE_APPLY_BLACKLIST,
+        addonUpdateOptions.value.applyBlacklist,
+      ),
+      setItem(
+        STORAGE_KEYS.ADDON_UPDATE_ROLLBACK_ON_FAILURE,
+        addonUpdateOptions.value.rollbackOnFailure,
+      ),
+      setItem(
+        STORAGE_KEYS.ADDON_UPDATE_PARALLEL_DOWNLOADS,
+        addonUpdateOptions.value.parallelDownloads ?? 4,
+      ),
+      setItem(STORAGE_KEYS.ADDON_UPDATE_CHANNEL, addonUpdateOptions.value.channel ?? 'stable'),
+      setItem(STORAGE_KEYS.ADDON_UPDATE_FRESH_INSTALL, addonUpdateOptions.value.freshInstall ?? false),
+      setItem(STORAGE_KEYS.ADDON_UPDATE_CHUNKED_DOWNLOAD_ENABLED, addonUpdateOptions.value.chunkedDownloadEnabled ?? true),
+      setItem(STORAGE_KEYS.ADDON_UPDATE_THREADS_PER_TASK, addonUpdateOptions.value.threadsPerTask ?? 6),
+      setItem(STORAGE_KEYS.ADDON_UPDATE_TOTAL_THREADS, addonUpdateOptions.value.totalThreads ?? 32),
+    ])
+  }
+
+  async function fetchAddonUpdatePreview(
+    itemType: AddonUpdatableItemType,
+    folderName: string,
+    login?: string,
+    licenseKey?: string,
+    optionsOverride?: Partial<AddonUpdateOptions>,
+  ): Promise<AddonUpdatePreview> {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value)
+    }
+
+    await loadAddonUpdateOptions()
+    const options = {
+      ...addonUpdateOptions.value,
+      ...optionsOverride,
+    }
+
+    try {
+      return await invoke<AddonUpdatePreview>('fetch_addon_update_preview', {
+        xplanePath: appStore.xplanePath,
+        itemType,
+        folderName,
+        options,
+        login: login?.trim() || null,
+        licenseKey: licenseKey?.trim() || null,
+      })
+    } catch (e) {
+      logError(`Failed to fetch addon update preview for ${itemType}:${folderName}: ${e}`, 'management')
+      throw e
+    }
+  }
+
   // ========================================
   // Generic helper functions to reduce code duplication
   // ========================================
@@ -178,8 +347,10 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   // Helper function to check if cache is valid
-  function isCacheValid(url: string): boolean {
-    const cached = updateCache.get(url)
+  function isCacheValid(item: { updateUrl?: string; folderName: string }): boolean {
+    const key = getUpdateCacheKey(item)
+    if (!key) return false
+    const cached = updateCache.get(key)
     if (!cached) return false
     return Date.now() - cached.timestamp < UPDATE_CACHE_DURATION
   }
@@ -188,8 +359,9 @@ export const useManagementStore = defineStore('management', () => {
   // hasUpdate is recalculated based on current local version vs cached remote version
   function applyCachedUpdates<T extends UpdatableItem>(items: T[]): T[] {
     return items.map((item) => {
-      if (item.updateUrl && isCacheValid(item.updateUrl)) {
-        const cached = updateCache.get(item.updateUrl)!
+      const key = getUpdateCacheKey(item)
+      if (key && isCacheValid(item)) {
+        const cached = updateCache.get(key)!
         const latestVersion = cached.latestVersion ?? undefined
         // Recalculate hasUpdate based on current local version
         const hasUpdate = latestVersion != null && latestVersion !== (item.version || '')
@@ -210,8 +382,10 @@ export const useManagementStore = defineStore('management', () => {
   ): T[] {
     const lockStore = useLockStore()
     return items.filter((item) => {
-      if (!item.updateUrl) return false
-      if (isCacheValid(item.updateUrl)) return false
+      const updateUrl = item.updateUrl?.trim()
+      if (!updateUrl) return false
+      if (isXUpdaterTaggedUrl(updateUrl)) return false
+      if (isCacheValid(item)) return false
       // Skip locked items - they shouldn't be checked for updates
       if (lockStore.isLocked(itemType, item.folderName)) return false
       return true
@@ -275,6 +449,7 @@ export const useManagementStore = defineStore('management', () => {
     checkParamName: string
     logName: string
     itemType: 'aircraft' | 'plugin'
+    extraArgs?: Record<string, unknown>
   }
 
   interface UpdateCheckResult {
@@ -302,13 +477,15 @@ export const useManagementStore = defineStore('management', () => {
     try {
       // Send only items needing check to backend
       const updated = await invoke<T[]>(config.checkCommand, {
+        ...(config.extraArgs || {}),
         [config.checkParamName]: itemsToCheck,
       })
 
       // Update cache with results (only store latestVersion, not hasUpdate)
       for (const item of updated) {
-        if (item.updateUrl) {
-          setCacheEntry(item.updateUrl, {
+        const key = getUpdateCacheKey(item)
+        if (key) {
+          setCacheEntry(key, {
             latestVersion: item.latestVersion ?? null,
             timestamp: Date.now(),
           })
@@ -362,13 +539,14 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   // Check for aircraft updates
-  async function checkAircraftUpdates(forceRefresh: boolean = false) {
+  async function checkAircraftUpdates(forceRefresh: boolean = false, showUpToDateToast: boolean = false) {
     // If force refresh, rescan to get latest cfg state first
     if (forceRefresh) {
       // Clear update cache
       for (const item of aircraft.value) {
-        if (item.updateUrl) {
-          updateCache.delete(item.updateUrl)
+        const key = getUpdateCacheKey(item)
+        if (key) {
+          updateCache.delete(key)
         }
       }
       // Rescan to get latest cfg state (without triggering another update check)
@@ -393,9 +571,10 @@ export const useManagementStore = defineStore('management', () => {
       checkParamName: 'aircraft',
       logName: 'aircraft',
       itemType: 'aircraft',
+      extraArgs: { xplanePath: appStore.xplanePath },
     })
     // Show toast when check was actually performed and no updates found
-    if (result.checked && result.updateCount === 0) {
+    if (showUpToDateToast && result.checked && result.updateCount === 0) {
       toast.info(t('management.allUpToDate'))
     }
   }
@@ -417,13 +596,14 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   // Check for plugin updates
-  async function checkPluginsUpdates(forceRefresh: boolean = false) {
+  async function checkPluginsUpdates(forceRefresh: boolean = false, showUpToDateToast: boolean = false) {
     // If force refresh, rescan to get latest cfg state first
     if (forceRefresh) {
       // Clear update cache
       for (const item of plugins.value) {
-        if (item.updateUrl) {
-          updateCache.delete(item.updateUrl)
+        const key = getUpdateCacheKey(item)
+        if (key) {
+          updateCache.delete(key)
         }
       }
       // Rescan to get latest cfg state (without triggering another update check)
@@ -450,8 +630,159 @@ export const useManagementStore = defineStore('management', () => {
       itemType: 'plugin',
     })
     // Show toast when check was actually performed and no updates found
-    if (result.checked && result.updateCount === 0) {
+    if (showUpToDateToast && result.checked && result.updateCount === 0) {
       toast.info(t('management.allUpToDate'))
+    }
+  }
+
+  async function buildAddonUpdatePlan(
+    itemType: AddonUpdatableItemType,
+    folderName: string,
+    optionsOverride?: Partial<AddonUpdateOptions>,
+  ): Promise<AddonUpdatePlan> {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value)
+    }
+
+    await loadAddonUpdateOptions()
+
+    const options = {
+      ...addonUpdateOptions.value,
+      ...optionsOverride,
+    }
+
+    isBuildingUpdatePlan.value = true
+    try {
+      return await invoke<AddonUpdatePlan>('build_addon_update_plan', {
+        xplanePath: appStore.xplanePath,
+        itemType,
+        folderName,
+        options,
+      })
+    } catch (e) {
+      logError(`Failed to build addon update plan for ${itemType}:${folderName}: ${e}`, 'management')
+      throw e
+    } finally {
+      isBuildingUpdatePlan.value = false
+    }
+  }
+
+  async function executeAddonUpdate(
+    itemType: AddonUpdatableItemType,
+    folderName: string,
+    optionsOverride?: Partial<AddonUpdateOptions>,
+  ): Promise<AddonUpdateResult> {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value)
+    }
+
+    await loadAddonUpdateOptions()
+
+    const options = {
+      ...addonUpdateOptions.value,
+      ...optionsOverride,
+    }
+
+    isExecutingUpdate.value = true
+    try {
+      const result = await invoke<AddonUpdateResult>('execute_addon_update', {
+        xplanePath: appStore.xplanePath,
+        itemType,
+        folderName,
+        options,
+      })
+
+      if (itemType === 'aircraft') {
+        await loadAircraft()
+      } else if (itemType === 'plugin') {
+        await loadPlugins()
+      }
+
+      return result
+    } catch (e) {
+      logError(`Failed to execute addon update for ${itemType}:${folderName}: ${e}`, 'management')
+      throw e
+    } finally {
+      isExecutingUpdate.value = false
+    }
+  }
+
+  async function setAddonUpdaterCredentials(
+    itemType: AddonUpdatableItemType,
+    folderName: string,
+    login: string,
+    licenseKey: string,
+  ) {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value)
+    }
+
+    const trimmedLogin = login.trim()
+    const trimmedKey = licenseKey.trim()
+    if (!trimmedLogin || !trimmedKey) {
+      throw new Error('Missing account or activation key')
+    }
+
+    try {
+      await invoke('set_addon_updater_credentials', {
+        xplanePath: appStore.xplanePath,
+        itemType,
+        folderName,
+        login: trimmedLogin,
+        licenseKey: trimmedKey,
+      })
+    } catch (e) {
+      logError(
+        `Failed to save addon updater credentials for ${itemType}:${folderName}: ${e}`,
+        'management',
+      )
+      throw e
+    }
+  }
+
+  async function getAddonUpdaterCredentials(
+    itemType: AddonUpdatableItemType,
+    folderName: string,
+  ): Promise<AddonUpdaterCredentials | null> {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value)
+    }
+
+    try {
+      return await invoke<AddonUpdaterCredentials | null>('get_addon_updater_credentials', {
+        xplanePath: appStore.xplanePath,
+        itemType,
+        folderName,
+      })
+    } catch (e) {
+      logError(
+        `Failed to read addon updater credentials for ${itemType}:${folderName}: ${e}`,
+        'management',
+      )
+      throw e
+    }
+  }
+
+  async function getAddonUpdateDiskSpace(
+    itemType: AddonUpdatableItemType,
+    folderName: string,
+  ): Promise<AddonDiskSpaceInfo> {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value)
+    }
+
+    try {
+      return await invoke<AddonDiskSpaceInfo>('get_addon_update_disk_space', {
+        xplanePath: appStore.xplanePath,
+        itemType,
+        folderName,
+      })
+    } catch (e) {
+      logError(
+        `Failed to read addon update disk space for ${itemType}:${folderName}: ${e}`,
+        'management',
+      )
+      throw e
     }
   }
 
@@ -768,7 +1099,10 @@ export const useManagementStore = defineStore('management', () => {
     isLoading,
     isCheckingUpdates,
     isRestoringBackup,
+    isBuildingUpdatePlan,
+    isExecutingUpdate,
     error,
+    addonUpdateOptions,
 
     // Counts
     aircraftTotalCount,
@@ -791,6 +1125,14 @@ export const useManagementStore = defineStore('management', () => {
     checkAircraftUpdates,
     loadPlugins,
     checkPluginsUpdates,
+    loadAddonUpdateOptions,
+    setAddonUpdateOptions,
+    fetchAddonUpdatePreview,
+    buildAddonUpdatePlan,
+    executeAddonUpdate,
+    setAddonUpdaterCredentials,
+    getAddonUpdaterCredentials,
+    getAddonUpdateDiskSpace,
     loadNavdata,
     loadNavdataBackups,
     restoreNavdataBackup,

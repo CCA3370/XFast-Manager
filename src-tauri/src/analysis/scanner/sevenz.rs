@@ -5,10 +5,9 @@ impl Scanner {
     /// Avoids probing archive streams during scan.
     fn archive_has_encrypted_blocks(archive: &sevenz_rust2::Archive) -> bool {
         archive.blocks.iter().any(|block| {
-            block
-                .coders
-                .iter()
-                .any(|coder| coder.encoder_method_id() == sevenz_rust2::EncoderMethod::ID_AES256_SHA256)
+            block.coders.iter().any(|coder| {
+                coder.encoder_method_id() == sevenz_rust2::EncoderMethod::ID_AES256_SHA256
+            })
         })
     }
 
@@ -26,9 +25,15 @@ impl Scanner {
             "scanner_timing"
         );
 
+        let prepared_archive = crate::archive_input::prepare_archive_for_read(
+            archive_path,
+            crate::archive_input::ArchiveFormat::SevenZ,
+        )?;
+        let read_archive_path = prepared_archive.read_path();
+
         // Open archive to read file list (fast, no decompression)
         let open_start = std::time::Instant::now();
-        let archive = match sevenz_rust2::Archive::open(archive_path) {
+        let archive = match sevenz_rust2::Archive::open(read_archive_path) {
             Ok(a) => a,
             Err(e) => {
                 let err_str = format!("{:?}", e);
@@ -235,7 +240,8 @@ impl Scanner {
                                 Some(pwd) => sevenz_rust2::Password::from(pwd),
                                 None => sevenz_rust2::Password::empty(),
                             };
-                            text_reader = sevenz_rust2::ArchiveReader::open(archive_path, pwd).ok();
+                            text_reader =
+                                sevenz_rust2::ArchiveReader::open(read_archive_path, pwd).ok();
                         }
 
                         let read_result = if let Some(reader) = text_reader.as_mut() {
@@ -247,8 +253,10 @@ impl Scanner {
                             None
                         };
 
-                        let final_content =
-                            read_result.or_else(|| self.read_file_from_7z(archive_path, &file_path, password).ok());
+                        let final_content = read_result.or_else(|| {
+                            self.read_file_from_7z(archive_path, &file_path, password)
+                                .ok()
+                        });
                         if let Some(ref content) = final_content {
                             marker_text_cache.insert(file_path.clone(), content.clone());
                         }
@@ -274,7 +282,8 @@ impl Scanner {
                                 Some(pwd) => sevenz_rust2::Password::from(pwd),
                                 None => sevenz_rust2::Password::empty(),
                             };
-                            text_reader = sevenz_rust2::ArchiveReader::open(archive_path, pwd).ok();
+                            text_reader =
+                                sevenz_rust2::ArchiveReader::open(read_archive_path, pwd).ok();
                         }
 
                         let read_result = if let Some(reader) = text_reader.as_mut() {
@@ -286,8 +295,10 @@ impl Scanner {
                             None
                         };
 
-                        let final_content =
-                            read_result.or_else(|| self.read_file_from_7z(archive_path, &file_path, password).ok());
+                        let final_content = read_result.or_else(|| {
+                            self.read_file_from_7z(archive_path, &file_path, password)
+                                .ok()
+                        });
                         if let Some(ref content) = final_content {
                             marker_text_cache.insert(file_path.clone(), content.clone());
                         }
@@ -445,6 +456,12 @@ impl Scanner {
             fs::create_dir_all(parent)?;
         }
 
+        let prepared_parent = crate::archive_input::prepare_archive_for_read(
+            parent_path,
+            crate::archive_input::ArchiveFormat::SevenZ,
+        )?;
+        let read_parent_path = prepared_parent.read_path().to_path_buf();
+
         let read_nested_entry = |entry_name: &str| -> Result<Vec<u8>> {
             let pwd = match parent_password {
                 Some(pwd) => sevenz_rust2::Password::from(pwd),
@@ -452,24 +469,24 @@ impl Scanner {
             };
 
             let mut reader =
-                sevenz_rust2::ArchiveReader::open(parent_path, pwd).map_err(|e| {
-                    let err_str = format!("{:?}", e);
-                    if err_str.contains("password")
-                        || err_str.contains("Password")
-                        || err_str.contains("encrypted")
-                        || err_str.contains("WrongPassword")
-                    {
-                        if parent_password.is_some() {
-                            anyhow::anyhow!("Wrong password for archive: {}", parent_path.display())
-                        } else {
-                            anyhow::anyhow!(PasswordRequiredError {
-                                archive_path: parent_path.to_string_lossy().to_string(),
-                            })
-                        }
+                sevenz_rust2::ArchiveReader::open(&read_parent_path, pwd).map_err(|e| {
+                let err_str = format!("{:?}", e);
+                if err_str.contains("password")
+                    || err_str.contains("Password")
+                    || err_str.contains("encrypted")
+                    || err_str.contains("WrongPassword")
+                {
+                    if parent_password.is_some() {
+                        anyhow::anyhow!("Wrong password for archive: {}", parent_path.display())
                     } else {
-                        anyhow::anyhow!("Failed to open 7z archive: {}", e)
+                        anyhow::anyhow!(PasswordRequiredError {
+                            archive_path: parent_path.to_string_lossy().to_string(),
+                        })
                     }
-                })?;
+                } else {
+                    anyhow::anyhow!("Failed to open 7z archive: {}", e)
+                }
+            })?;
 
             reader.read_file(entry_name).map_err(|e| {
                 let err_str = format!("{:?}", e);
@@ -585,8 +602,14 @@ impl Scanner {
         archive_path: &Path,
         password: Option<&str>,
     ) -> Result<Vec<DetectedItem>> {
+        let prepared_archive = crate::archive_input::prepare_archive_for_read(
+            archive_path,
+            crate::archive_input::ArchiveFormat::SevenZ,
+        )?;
+        let read_archive_path = prepared_archive.read_path();
+
         // Open archive to read file list (fast, no decompression)
-        let archive = match sevenz_rust2::Archive::open(archive_path) {
+        let archive = match sevenz_rust2::Archive::open(read_archive_path) {
             Ok(a) => a,
             Err(e) => {
                 let err_str = format!("{:?}", e);
@@ -630,7 +653,7 @@ impl Scanner {
                 .map(|f| f.name().to_string())
             {
                 let mut reader = sevenz_rust2::ArchiveReader::open(
-                    archive_path,
+                    read_archive_path,
                     sevenz_rust2::Password::from(password.unwrap_or_default()),
                 )
                 .map_err(|_| {
@@ -818,6 +841,12 @@ impl Scanner {
     ) -> Result<String> {
         use sevenz_rust2::{ArchiveReader, Password};
 
+        let prepared_archive = crate::archive_input::prepare_archive_for_read(
+            archive_path,
+            crate::archive_input::ArchiveFormat::SevenZ,
+        )?;
+        let read_archive_path = prepared_archive.read_path().to_path_buf();
+
         // Sanitize target path to avoid traversal-like patterns
         let safe_path = crate::installer::sanitize_path(Path::new(file_path))
             .ok_or_else(|| anyhow::anyhow!("Unsafe path in 7z archive: {}", file_path))?;
@@ -830,7 +859,7 @@ impl Scanner {
                 Some(pwd) => Password::from(pwd),
                 None => Password::empty(),
             };
-            ArchiveReader::open(archive_path, pwd)
+            ArchiveReader::open(&read_archive_path, pwd)
                 .map_err(|e| anyhow::anyhow!("Failed to open 7z archive: {}", e))
         };
 
@@ -851,6 +880,7 @@ impl Scanner {
             }
         };
 
-        String::from_utf8(bytes).map_err(|e| anyhow::anyhow!("Failed to decode UTF-8 file from 7z: {}", e))
+        String::from_utf8(bytes)
+            .map_err(|e| anyhow::anyhow!("Failed to decode UTF-8 file from 7z: {}", e))
     }
 }

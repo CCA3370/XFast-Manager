@@ -10,6 +10,7 @@ import type {
 } from '@/types'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import ConfirmModal from '@/components/ConfirmModal.vue'
+import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import { useLockStore } from '@/stores/lock'
 import { useContextMenu } from '@/composables/useContextMenu'
 import type { ContextMenuItem } from '@/composables/useContextMenu'
@@ -43,6 +44,7 @@ const emit = defineEmits<{
   (e: 'view-liveries', folderName: string): void
   (e: 'view-scripts', folderName: string): void
   (e: 'toggle-select', folderName: string): void
+  (e: 'update', folderName: string): void
 }>()
 
 const { t } = useI18n()
@@ -170,13 +172,25 @@ const latestVersion = computed(() => {
   return null
 })
 
+const canOpenUpdater = computed(() => {
+  if (!(isAircraft(props.entry) || isPlugin(props.entry))) return false
+  const updateUrl = (props.entry.updateUrl || '').toLowerCase()
+  if (updateUrl.startsWith('x-updater:')) return false
+  return !!updateUrl
+})
+
 function handleDoubleClick() {
   emit('open-folder', props.entry.folderName)
 }
 
-function handleClick() {
-  if (isAircraft(props.entry) && props.entry.hasLiveries) {
-    emit('view-liveries', props.entry.folderName)
+function handleClick(event: MouseEvent) {
+  if (props.showCheckbox) return
+
+  const target = event.target as HTMLElement
+  if (target.closest('button')) return
+
+  if (isAircraft(props.entry) && canOpenUpdater.value) {
+    emit('update', props.entry.folderName)
   } else if (isPlugin(props.entry) && props.entry.hasScripts) {
     emit('view-scripts', props.entry.folderName)
   }
@@ -227,6 +241,14 @@ function handleContextMenu(event: MouseEvent) {
     })
   }
 
+  if (canOpenUpdater.value) {
+    menuItems.push({
+      id: 'update',
+      label: t('management.startUpdate'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>',
+    })
+  }
+
   if (isNavdata(props.entry) && props.backupInfo) {
     menuItems.push({
       id: 'restore-backup',
@@ -269,6 +291,9 @@ function handleContextMenu(event: MouseEvent) {
       case 'view-scripts':
         emit('view-scripts', props.entry.folderName)
         break
+      case 'update':
+        emit('update', props.entry.folderName)
+        break
       case 'restore-backup':
         if (props.backupInfo) emit('restore-backup', props.backupInfo)
         break
@@ -290,7 +315,7 @@ function handleContextMenu(event: MouseEvent) {
       isNavdata(entry) || entry.enabled
         ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
         : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200/50 dark:border-gray-700/50 opacity-60',
-      (isAircraft(entry) && entry.hasLiveries) || (isPlugin(entry) && entry.hasScripts)
+      (isAircraft(entry) && canOpenUpdater) || (isPlugin(entry) && entry.hasScripts)
         ? 'cursor-pointer'
         : '',
     ]"
@@ -326,15 +351,20 @@ function handleContextMenu(event: MouseEvent) {
     </button>
 
     <!-- Enable/Disable toggle (not for navdata) -->
-    <button
+    <div
       v-if="!isNavdata(entry)"
-      :disabled="isToggling || (isProtected && entry.enabled)"
-      class="flex-shrink-0 w-9 h-5 rounded-full relative transition-colors disabled:opacity-70"
-      :class="entry.enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'"
+      class="flex-shrink-0 relative"
       :title="isProtected && entry.enabled ? t('management.protectedAircraft') : undefined"
-      @click.stop="emit('toggle-enabled', entry.folderName)"
     >
-      <span v-if="isToggling" class="absolute inset-0 flex items-center justify-center">
+      <ToggleSwitch
+        :model-value="entry.enabled"
+        active-class="bg-blue-500"
+        inactive-class="bg-gray-300 dark:bg-gray-600"
+        :disabled="isToggling || (isProtected && entry.enabled)"
+        :aria-label="entry.enabled ? t('contextMenu.disable') : t('contextMenu.enable')"
+        @update:model-value="emit('toggle-enabled', entry.folderName)"
+      />
+      <span v-if="isToggling" class="absolute inset-0 flex items-center justify-center pointer-events-none">
         <svg class="w-3 h-3 animate-spin text-white" fill="none" viewBox="0 0 24 24">
           <circle
             class="opacity-25"
@@ -351,12 +381,7 @@ function handleContextMenu(event: MouseEvent) {
           ></path>
         </svg>
       </span>
-      <span
-        v-else
-        class="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-        :class="entry.enabled ? 'left-4.5' : 'left-0.5'"
-      />
-    </button>
+    </div>
 
     <!-- Display name -->
     <div class="flex-1 min-w-0">
@@ -377,15 +402,33 @@ function handleContextMenu(event: MouseEvent) {
           ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30'
           : 'text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700'
       "
-      :title="updateAvailable ? `${versionInfo} → ${latestVersion}` : versionInfo"
+      :title="updateAvailable && latestVersion ? `${versionInfo} → ${latestVersion}` : versionInfo"
     >
       {{ versionInfo }}
-      <template v-if="updateAvailable"> → {{ latestVersion }} </template>
+      <template v-if="updateAvailable && latestVersion"> → {{ latestVersion }} </template>
     </span>
 
+    <button
+      v-if="canOpenUpdater"
+      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-white bg-emerald-500 hover:bg-emerald-600 transition-colors"
+      :title="t('management.startUpdate')"
+      @click.stop="emit('update', entry.folderName)"
+    >
+      {{ t('management.startUpdate') }}
+    </button>
+
     <!-- Badge (liveries count / platform / cycle) -->
+    <button
+      v-if="isAircraft(entry) && entry.hasLiveries && badgeInfo"
+      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium hover:opacity-90 transition-opacity"
+      :class="[badgeInfo.color, badgeInfo.bgColor]"
+      :title="t('contextMenu.viewLiveries')"
+      @click.stop="emit('view-liveries', entry.folderName)"
+    >
+      {{ badgeInfo.text }}
+    </button>
     <span
-      v-if="badgeInfo"
+      v-else-if="badgeInfo"
       class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium"
       :class="[badgeInfo.color, badgeInfo.bgColor]"
     >

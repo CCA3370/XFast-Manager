@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <Transition :css="false" @enter="onEnter" @leave="onLeave">
+    <Transition :css="false" @enter="onEnter" @leave="onLeave" @enter-cancelled="onEnterCancelled" @leave-cancelled="onLeaveCancelled">
       <div
         v-if="issueTracker.pendingUpdates.length > 0"
         class="fixed inset-0 z-[1200] flex items-center justify-center"
@@ -51,7 +51,7 @@
           </div>
 
           <!-- Body (scrollable) -->
-          <div class="overflow-y-auto flex-1 p-5 space-y-5">
+          <div class="overflow-y-auto flex-1 p-5 space-y-5 will-change-transform">
             <div
               v-for="(update, index) in issueTracker.pendingUpdates"
               :key="update.issue.issueNumber"
@@ -188,6 +188,10 @@ const issueTracker = useIssueTrackerStore()
 const backdropRef = ref<HTMLElement | null>(null)
 const cardRef = ref<HTMLElement | null>(null)
 
+// Timer tracking to prevent stale done() calls on rapid toggle
+let enterTimer: ReturnType<typeof setTimeout> | null = null
+let leaveTimer: ReturnType<typeof setTimeout> | null = null
+
 async function confirm() {
   await issueTracker.confirmUpdates()
 }
@@ -215,6 +219,10 @@ function formatDate(iso: string): string {
 }
 
 function onEnter(el: Element, done: () => void) {
+  // Cancel any pending timers from a previous animation cycle
+  if (enterTimer) { clearTimeout(enterTimer); enterTimer = null }
+  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+
   const container = el as HTMLElement
   const backdrop = backdropRef.value
   const card = cardRef.value
@@ -243,10 +251,17 @@ function onEnter(el: Element, done: () => void) {
     }, 40)
   })
 
-  setTimeout(done, 400)
+  enterTimer = setTimeout(() => {
+    enterTimer = null
+    done()
+  }, 400)
 }
 
 function onLeave(el: Element, done: () => void) {
+  // Cancel any pending enter timer to prevent stale done() calls
+  if (enterTimer) { clearTimeout(enterTimer); enterTimer = null }
+  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+
   const container = el as HTMLElement
   const backdrop = container.querySelector('.absolute.inset-0') as HTMLElement
   const card = container.querySelector('[role="dialog"]') as HTMLElement
@@ -268,6 +283,17 @@ function onLeave(el: Element, done: () => void) {
     })
   })
 
-  setTimeout(done, 280)
+  leaveTimer = setTimeout(() => {
+    leaveTimer = null
+    done()
+  }, 280)
+}
+
+function onEnterCancelled() {
+  if (enterTimer) { clearTimeout(enterTimer); enterTimer = null }
+}
+
+function onLeaveCancelled() {
+  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
 }
 </script>

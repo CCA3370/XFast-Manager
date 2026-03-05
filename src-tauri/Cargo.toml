@@ -1,6 +1,6 @@
 [package]
 name = "xfastmanager"
-version = "1.1.1"
+version = "1.1.2"
 description = "X-Plane Addon Auto Manager"
 authors = ["3370Tech"]
 edition = "2021"
@@ -28,17 +28,27 @@ rayon = "1.10"
 unrar = "0.5.8"
 tempfile = "3"
 dashmap = "6"
-tokio = { version = "1", features = ["rt-multi-thread"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync"] }
 glob = "0.3"
 crc32fast = "1.4"
 sha2 = "0.10"
 semver = "1.0"
 regex = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls-vendored"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "native-tls-vendored"] }
 futures = "0.3"
 opener = "0.8"
+minidump = "0.22"
+minidump-processor = "0.22"
+minidump-unwind = "0.22"
+async-trait = "0.1"
+md5 = "0.7"
+flate2 = "1"
+fs2 = "0.4"
 sea-orm = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio-native-tls"] }
 sea-orm-migration = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio-native-tls"] }
+trash = "5"
+image = { version = "0.25", default-features = true, features = ["jpeg", "png", "webp", "gif", "bmp", "tiff", "ico", "qoi", "pnm", "rayon"] }
+base64 = "0.22.1"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

@@ -110,10 +110,10 @@
               />
               <button
                 type="button"
-                class="px-4 py-1.5 m-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-xs font-medium rounded-md transition-colors duration-200 flex items-center space-x-1.5 flex-shrink-0 border border-gray-300 dark:border-gray-600"
+                class="px-4 py-2 m-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-md transition-colors duration-200 flex items-center space-x-1.5 flex-shrink-0 border border-gray-300 dark:border-gray-600"
                 @click.stop.prevent="selectFolder"
               >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -194,19 +194,14 @@
                 </div>
 
                 <div class="flex items-center space-x-3">
-                  <button
+                  <ToggleSwitch
+                    size="lg"
+                    :model-value="store.isContextMenuRegistered"
+                    active-class="bg-blue-600"
+                    inactive-class="bg-gray-300 dark:bg-gray-700"
                     :disabled="isProcessing"
-                    class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-gray-900"
-                    :class="
-                      store.isContextMenuRegistered ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'
-                    "
-                    @click.stop="toggleContextMenu"
-                  >
-                    <span
-                      class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-300 shadow-sm"
-                      :class="store.isContextMenuRegistered ? 'translate-x-4.5' : 'translate-x-0.5'"
-                    />
-                  </button>
+                    @update:model-value="toggleContextMenu"
+                  />
 
                   <!-- Expand/Collapse indicator -->
                   <svg
@@ -359,18 +354,13 @@
 
               <!-- Toggle Switch -->
               <div class="flex items-center space-x-3">
-                <button
-                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-                  :class="
-                    store.atomicInstallEnabled ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'
-                  "
-                  @click.stop="store.toggleAtomicInstall()"
-                >
-                  <span
-                    class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                    :class="store.atomicInstallEnabled ? 'translate-x-4.5' : 'translate-x-0.5'"
-                  ></span>
-                </button>
+                <ToggleSwitch
+                  size="lg"
+                  :model-value="store.atomicInstallEnabled"
+                  active-class="bg-indigo-500"
+                  inactive-class="bg-gray-300 dark:bg-gray-600"
+                  @update:model-value="store.toggleAtomicInstall()"
+                />
 
                 <!-- Expand/Collapse indicator -->
                 <svg
@@ -528,18 +518,13 @@
 
               <!-- Toggle Switch -->
               <div class="flex items-center space-x-3">
-                <button
-                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-                  :class="
-                    store.deleteSourceAfterInstall ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'
-                  "
-                  @click.stop="store.toggleDeleteSourceAfterInstall()"
-                >
-                  <span
-                    class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                    :class="store.deleteSourceAfterInstall ? 'translate-x-4.5' : 'translate-x-0.5'"
-                  ></span>
-                </button>
+                <ToggleSwitch
+                  size="lg"
+                  :model-value="store.deleteSourceAfterInstall"
+                  active-class="bg-red-500"
+                  inactive-class="bg-gray-300 dark:bg-gray-600"
+                  @update:model-value="store.toggleDeleteSourceAfterInstall()"
+                />
 
                 <!-- Expand/Collapse indicator -->
                 <svg
@@ -694,16 +679,13 @@
 
             <!-- Toggle Switch -->
             <div class="flex items-center space-x-3">
-              <button
-                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-                :class="store.autoSortScenery ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-600'"
-                @click.stop="handleToggleAutoSortScenery"
-              >
-                <span
-                  class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                  :class="store.autoSortScenery ? 'translate-x-4.5' : 'translate-x-0.5'"
-                ></span>
-              </button>
+              <ToggleSwitch
+                size="lg"
+                :model-value="store.autoSortScenery"
+                active-class="bg-cyan-500"
+                inactive-class="bg-gray-300 dark:bg-gray-600"
+                @update:model-value="handleToggleAutoSortScenery"
+              />
 
               <!-- Expand/Collapse indicator -->
               <svg
@@ -800,7 +782,7 @@
               <!-- Rebuild Index Button -->
               <button
                 :disabled="isRebuildingIndex || !store.xplanePath"
-                class="w-full px-4 py-2 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+                class="w-full px-4 py-2.5 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-base font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
                 :title="
                   indexExists
                     ? $t('settings.rebuildIndexTooltip')
@@ -862,7 +844,7 @@
 
         <!-- Parallel Installation (Experimental) -->
         <section
-          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-dashed border-amber-300 dark:border-amber-400/40 ring-1 ring-inset ring-amber-300/50 dark:ring-amber-400/30 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2 experimental-parallel-highlight"
+          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-dashed border-amber-300 dark:border-amber-400/40 ring-1 ring-inset ring-amber-300/50 dark:ring-amber-400/30 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2 experimental-highlight"
         >
           <div
             class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
@@ -888,7 +870,7 @@
                     <AnimatedText>{{ $t('settings.parallelInstallTitle') }}</AnimatedText>
                   </h3>
                   <span
-                    class="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 rounded"
+                    class="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded"
                   >
                     {{ $t('settings.parallelInstallExperimental') }}
                   </span>
@@ -901,18 +883,13 @@
 
             <!-- Toggle -->
             <div class="flex items-center space-x-2 flex-shrink-0" @click.stop>
-              <button
-                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none"
-                :class="
-                  store.parallelInstallEnabled ? 'bg-violet-500' : 'bg-gray-300 dark:bg-gray-600'
-                "
-                @click="store.toggleParallelInstall()"
-              >
-                <span
-                  class="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200"
-                  :class="store.parallelInstallEnabled ? 'translate-x-4.5' : 'translate-x-0.5'"
-                ></span>
-              </button>
+              <ToggleSwitch
+                size="lg"
+                :model-value="store.parallelInstallEnabled"
+                active-class="bg-violet-500"
+                inactive-class="bg-gray-300 dark:bg-gray-600"
+                @update:model-value="store.toggleParallelInstall()"
+              />
             </div>
 
             <!-- Expand/Collapse indicator -->
@@ -999,7 +976,7 @@
                 </span>
                 <div class="flex items-center space-x-2">
                   <button
-                    class="w-6 h-6 rounded flex items-center justify-center text-xs font-bold transition-colors"
+                    class="w-7 h-7 rounded flex items-center justify-center text-sm font-bold transition-colors"
                     :class="
                       store.maxParallelTasks <= 2
                         ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
@@ -1016,7 +993,7 @@
                     {{ store.maxParallelTasks }}
                   </span>
                   <button
-                    class="w-6 h-6 rounded flex items-center justify-center text-xs font-bold transition-colors"
+                    class="w-7 h-7 rounded flex items-center justify-center text-sm font-bold transition-colors"
                     :class="
                       store.maxParallelTasks >= 10
                         ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
@@ -1047,6 +1024,349 @@
                 </svg>
                 <AnimatedText>{{ $t('settings.parallelInstallNote') }}</AnimatedText>
               </p>
+            </div>
+          </transition>
+        </section>
+
+        <!-- Multi-Threaded Download (Experimental) -->
+        <section
+          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-dashed border-amber-300 dark:border-amber-400/40 ring-1 ring-inset ring-amber-300/50 dark:ring-amber-400/30 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2 experimental-highlight"
+        >
+          <div
+            class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
+            @click="chunkedDownloadExpanded = !chunkedDownloadExpanded"
+          >
+            <div class="flex items-center space-x-3 flex-1">
+              <div
+                class="w-8 h-8 bg-cyan-100 dark:bg-cyan-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-cyan-600 dark:text-cyan-400"
+              >
+                <!-- Download icon -->
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  ></path>
+                </svg>
+              </div>
+              <div class="flex-1">
+                <div class="flex items-center gap-2">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                    <AnimatedText>{{ $t('settings.chunkedDownloadTitle') }}</AnimatedText>
+                  </h3>
+                  <span
+                    class="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded"
+                  >
+                    {{ $t('settings.parallelInstallExperimental') }}
+                  </span>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  <AnimatedText>{{ $t('settings.chunkedDownloadDesc') }}</AnimatedText>
+                </p>
+              </div>
+            </div>
+
+            <!-- Toggle -->
+            <div class="flex items-center space-x-2 flex-shrink-0" @click.stop>
+              <ToggleSwitch
+                size="lg"
+                :model-value="managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true"
+                active-class="bg-cyan-500"
+                inactive-class="bg-gray-300 dark:bg-gray-600"
+                @update:model-value="
+                  managementStore.setAddonUpdateOptions({
+                    chunkedDownloadEnabled: !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true),
+                  })
+                "
+              />
+            </div>
+
+            <!-- Expand/Collapse indicator -->
+            <svg
+              class="w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform duration-200 ml-2"
+              :class="{ 'rotate-180': chunkedDownloadExpanded }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              ></path>
+            </svg>
+          </div>
+
+          <!-- Collapsible details -->
+          <transition name="collapse">
+            <div v-if="chunkedDownloadExpanded" class="px-4 pb-4 space-y-3">
+              <!-- How it works -->
+              <div
+                class="bg-cyan-50 dark:bg-cyan-500/5 rounded-lg p-3 border border-cyan-100 dark:border-cyan-500/10"
+              >
+                <h4
+                  class="text-xs font-semibold text-cyan-700 dark:text-cyan-300 mb-2 flex items-center space-x-1.5"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    ></path>
+                  </svg>
+                  <AnimatedText>{{ $t('settings.chunkedDownloadExplain') }}</AnimatedText>
+                </h4>
+                <ul class="space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
+                  <li class="flex items-center space-x-2">
+                    <svg
+                      class="w-3 h-3 text-cyan-500 flex-shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clip-rule="evenodd"
+                      ></path>
+                    </svg>
+                    <AnimatedText>{{ $t('settings.chunkedDownloadBenefit1') }}</AnimatedText>
+                  </li>
+                  <li class="flex items-center space-x-2">
+                    <svg
+                      class="w-3 h-3 text-cyan-500 flex-shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clip-rule="evenodd"
+                      ></path>
+                    </svg>
+                    <AnimatedText>{{ $t('settings.chunkedDownloadBenefit2') }}</AnimatedText>
+                  </li>
+                </ul>
+              </div>
+
+              <!-- Connections per file stepper -->
+              <div
+                class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5"
+                :class="{ 'opacity-50': !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true) }"
+              >
+                <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                  <AnimatedText>{{ $t('settings.threadsPerTask') }}</AnimatedText>
+                </label>
+                <div class="flex items-center space-x-2">
+                  <button
+                    class="w-7 h-7 rounded flex items-center justify-center text-sm font-bold transition-colors"
+                    :class="
+                      (managementStore.addonUpdateOptions.threadsPerTask ?? 6) <= 1
+                        ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500'
+                    "
+                    :disabled="(managementStore.addonUpdateOptions.threadsPerTask ?? 6) <= 1 || !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true)"
+                    @click="
+                      managementStore.setAddonUpdateOptions({
+                        threadsPerTask: Math.max(1, (managementStore.addonUpdateOptions.threadsPerTask ?? 6) - 1),
+                      })
+                    "
+                  >
+                    -
+                  </button>
+                  <span
+                    class="w-8 text-center text-sm font-semibold text-gray-900 dark:text-white tabular-nums"
+                  >
+                    {{ managementStore.addonUpdateOptions.threadsPerTask ?? 6 }}
+                  </span>
+                  <button
+                    class="w-7 h-7 rounded flex items-center justify-center text-sm font-bold transition-colors"
+                    :class="
+                      (managementStore.addonUpdateOptions.threadsPerTask ?? 6) >= 32
+                        ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500'
+                    "
+                    :disabled="(managementStore.addonUpdateOptions.threadsPerTask ?? 6) >= 32 || !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true)"
+                    @click="
+                      managementStore.setAddonUpdateOptions({
+                        threadsPerTask: Math.min(32, (managementStore.addonUpdateOptions.threadsPerTask ?? 6) + 1),
+                      })
+                    "
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <!-- Max total connections stepper -->
+              <div
+                class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5"
+                :class="{ 'opacity-50': !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true) }"
+              >
+                <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                  <AnimatedText>{{ $t('settings.totalThreads') }}</AnimatedText>
+                </label>
+                <div class="flex items-center space-x-2">
+                  <button
+                    class="w-7 h-7 rounded flex items-center justify-center text-sm font-bold transition-colors"
+                    :class="
+                      (managementStore.addonUpdateOptions.totalThreads ?? 32) <= 1
+                        ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500'
+                    "
+                    :disabled="(managementStore.addonUpdateOptions.totalThreads ?? 32) <= 1 || !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true)"
+                    @click="
+                      managementStore.setAddonUpdateOptions({
+                        totalThreads: Math.max(1, (managementStore.addonUpdateOptions.totalThreads ?? 32) - 1),
+                      })
+                    "
+                  >
+                    -
+                  </button>
+                  <span
+                    class="w-8 text-center text-sm font-semibold text-gray-900 dark:text-white tabular-nums"
+                  >
+                    {{ managementStore.addonUpdateOptions.totalThreads ?? 32 }}
+                  </span>
+                  <button
+                    class="w-7 h-7 rounded flex items-center justify-center text-sm font-bold transition-colors"
+                    :class="
+                      (managementStore.addonUpdateOptions.totalThreads ?? 32) >= 64
+                        ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500'
+                    "
+                    :disabled="(managementStore.addonUpdateOptions.totalThreads ?? 32) >= 64 || !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true)"
+                    @click="
+                      managementStore.setAddonUpdateOptions({
+                        totalThreads: Math.min(64, (managementStore.addonUpdateOptions.totalThreads ?? 32) + 1),
+                      })
+                    "
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <!-- Warning note -->
+              <p class="text-xs text-amber-600 dark:text-amber-400 flex items-center space-x-1">
+                <svg
+                  class="w-3 h-3 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                  ></path>
+                </svg>
+                <AnimatedText>{{ $t('settings.chunkedDownloadNote') }}</AnimatedText>
+              </p>
+            </div>
+          </transition>
+        </section>
+
+        <!-- DMP Crash Analysis (Experimental) -->
+        <section
+          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-dashed border-amber-300 dark:border-amber-400/40 ring-1 ring-inset ring-amber-300/50 dark:ring-amber-400/30 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2 experimental-highlight"
+        >
+          <div
+            class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors"
+            :class="crashAnalysisDmpExpanded ? 'rounded-t-xl' : 'rounded-xl'"
+            @click="crashAnalysisDmpExpanded = !crashAnalysisDmpExpanded"
+          >
+            <div class="flex items-center space-x-3 flex-1 min-w-0">
+              <div
+                class="w-8 h-8 bg-amber-100 dark:bg-amber-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-amber-600 dark:text-amber-400"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M6 20h12a2 2 0 002-2V8l-6-6H6a2 2 0 00-2 2v14a2 2 0 002 2z"
+                  ></path>
+                </svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                    <AnimatedText>{{ $t('settings.crashAnalysisDmpEnabled') }}</AnimatedText>
+                  </h3>
+                  <span
+                    class="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded"
+                  >
+                    {{ $t('settings.experimental') }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center space-x-2 flex-shrink-0" @click.stop>
+              <ToggleSwitch
+                size="lg"
+                :model-value="store.crashAnalysisDmpEnabled"
+                active-class="bg-amber-500"
+                inactive-class="bg-gray-300 dark:bg-gray-600"
+                @update:model-value="store.toggleCrashAnalysisDmpEnabled()"
+              />
+
+              <svg
+                class="w-5 h-5 text-gray-400 dark:text-gray-500 transition-transform duration-200"
+                :class="{ 'rotate-180': crashAnalysisDmpExpanded }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 9l-7 7-7-7"
+                ></path>
+              </svg>
+            </div>
+          </div>
+
+          <transition name="collapse">
+            <div v-if="crashAnalysisDmpExpanded" class="px-4 pb-4 space-y-3">
+              <div
+                class="bg-amber-50 dark:bg-amber-500/10 rounded-lg p-3 border border-amber-200 dark:border-amber-500/20"
+              >
+                <p class="text-xs text-gray-700 dark:text-gray-300">
+                  <AnimatedText>{{ $t('settings.crashAnalysisDmpEnabledDesc') }}</AnimatedText>
+                </p>
+              </div>
+
+              <div
+                class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5"
+                :class="{ 'opacity-50': !store.crashAnalysisDmpEnabled }"
+              >
+                <div class="flex-1 min-w-0 mr-3">
+                  <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    <AnimatedText>{{ $t('settings.crashAnalysisIgnoreDateCheck') }}</AnimatedText>
+                  </label>
+                  <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                    <AnimatedText>
+                      {{ $t('settings.crashAnalysisIgnoreDateCheckDesc') }}
+                    </AnimatedText>
+                  </p>
+                </div>
+                <ToggleSwitch
+                  size="lg"
+                  :model-value="
+                    store.crashAnalysisDmpEnabled && store.crashAnalysisIgnoreDateCheck
+                  "
+                  active-class="bg-amber-500"
+                  inactive-class="bg-gray-300 dark:bg-gray-600"
+                  :disabled="!store.crashAnalysisDmpEnabled"
+                  @update:model-value="store.toggleCrashAnalysisIgnoreDateCheck()"
+                />
+              </div>
             </div>
           </transition>
         </section>
@@ -1110,16 +1430,13 @@
                 <span class="text-xs font-medium text-gray-700 dark:text-gray-300"
                   ><AnimatedText>{{ $t('settings.toggleAll') }}</AnimatedText></span
                 >
-                <button
-                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                  :class="allPreferencesEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
-                  @click="toggleAllPreferences"
-                >
-                  <span
-                    class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                    :class="allPreferencesEnabled ? 'translate-x-4.5' : 'translate-x-0.5'"
-                  />
-                </button>
+                <ToggleSwitch
+                  size="lg"
+                  :model-value="allPreferencesEnabled"
+                  active-class="bg-green-500"
+                  inactive-class="bg-gray-300 dark:bg-gray-600"
+                  @update:model-value="toggleAllPreferences"
+                />
               </div>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1134,22 +1451,13 @@
                   >
                     <AnimatedText>{{ getTypeName(type) }}</AnimatedText>
                   </span>
-                  <button
-                    class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="
-                      store.installPreferences[type]
-                        ? 'bg-green-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="store.togglePreference(type)"
-                  >
-                    <span
-                      class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="
-                        store.installPreferences[type] ? 'translate-x-3.5' : 'translate-x-0.5'
-                      "
-                    />
-                  </button>
+                  <ToggleSwitch
+                    size="md"
+                    :model-value="store.installPreferences[type]"
+                    active-class="bg-green-500"
+                    inactive-class="bg-gray-300 dark:bg-gray-600"
+                    @update:model-value="store.togglePreference(type)"
+                  />
                 </div>
               </div>
             </div>
@@ -1216,22 +1524,13 @@
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2">
                     <AnimatedText>{{ $t('settings.verifyZip') }}</AnimatedText>
                   </span>
-                  <button
-                    class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="
-                      store.verificationPreferences['zip']
-                        ? 'bg-purple-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="store.toggleVerificationPreference('zip')"
-                  >
-                    <span
-                      class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="
-                        store.verificationPreferences['zip'] ? 'translate-x-3.5' : 'translate-x-0.5'
-                      "
-                    />
-                  </button>
+                  <ToggleSwitch
+                    size="md"
+                    :model-value="store.verificationPreferences['zip']"
+                    active-class="bg-purple-500"
+                    inactive-class="bg-gray-300 dark:bg-gray-600"
+                    @update:model-value="store.toggleVerificationPreference('zip')"
+                  />
                 </div>
 
                 <!-- 7z -->
@@ -1241,22 +1540,13 @@
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2">
                     <AnimatedText>{{ $t('settings.verify7z') }}</AnimatedText>
                   </span>
-                  <button
-                    class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="
-                      store.verificationPreferences['7z']
-                        ? 'bg-purple-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="store.toggleVerificationPreference('7z')"
-                  >
-                    <span
-                      class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="
-                        store.verificationPreferences['7z'] ? 'translate-x-3.5' : 'translate-x-0.5'
-                      "
-                    />
-                  </button>
+                  <ToggleSwitch
+                    size="md"
+                    :model-value="store.verificationPreferences['7z']"
+                    active-class="bg-purple-500"
+                    inactive-class="bg-gray-300 dark:bg-gray-600"
+                    @update:model-value="store.toggleVerificationPreference('7z')"
+                  />
                 </div>
 
                 <!-- RAR (with note) -->
@@ -1266,23 +1556,14 @@
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2">
                     <AnimatedText>{{ $t('settings.verifyRar') }}</AnimatedText>
                   </span>
-                  <button
-                    class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="
-                      store.verificationPreferences['rar']
-                        ? 'bg-purple-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
+                  <ToggleSwitch
+                    size="md"
+                    :model-value="store.verificationPreferences['rar']"
+                    active-class="bg-purple-500"
+                    inactive-class="bg-gray-300 dark:bg-gray-600"
                     disabled
-                    @click="store.toggleVerificationPreference('rar')"
-                  >
-                    <span
-                      class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="
-                        store.verificationPreferences['rar'] ? 'translate-x-3.5' : 'translate-x-0.5'
-                      "
-                    />
-                  </button>
+                    @update:model-value="store.toggleVerificationPreference('rar')"
+                  />
                 </div>
 
                 <!-- Directory -->
@@ -1292,24 +1573,13 @@
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate mr-2">
                     <AnimatedText>{{ $t('settings.verifyDirectory') }}</AnimatedText>
                   </span>
-                  <button
-                    class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0"
-                    :class="
-                      store.verificationPreferences['directory']
-                        ? 'bg-purple-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="store.toggleVerificationPreference('directory')"
-                  >
-                    <span
-                      class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                      :class="
-                        store.verificationPreferences['directory']
-                          ? 'translate-x-3.5'
-                          : 'translate-x-0.5'
-                      "
-                    />
-                  </button>
+                  <ToggleSwitch
+                    size="md"
+                    :model-value="store.verificationPreferences['directory']"
+                    active-class="bg-purple-500"
+                    inactive-class="bg-gray-300 dark:bg-gray-600"
+                    @update:model-value="store.toggleVerificationPreference('directory')"
+                  />
                 </div>
               </div>
 
@@ -1323,6 +1593,192 @@
           </transition>
         </section>
       </div>
+
+      <!-- 2.7. SimBrief Integration -->
+      <section
+        class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+      >
+        <div
+          class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors"
+          :class="simbriefExpanded ? 'rounded-t-xl' : 'rounded-xl'"
+          @click="simbriefExpanded = !simbriefExpanded"
+        >
+          <div class="flex items-center space-x-3 flex-1">
+            <div
+              class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              :class="
+                simbriefPilotId
+                  ? 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+              "
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
+                ></path>
+              </svg>
+            </div>
+            <div class="flex-1">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                <AnimatedText>SimBrief Integration</AnimatedText>
+              </h3>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                <AnimatedText>Import flight plans from SimBrief</AnimatedText>
+              </p>
+            </div>
+          </div>
+
+          <!-- Expand/Collapse indicator -->
+          <svg
+            class="w-5 h-5 text-gray-400 transition-transform duration-200 flex-shrink-0"
+            :class="{ 'rotate-180': simbriefExpanded }"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 9l-7 7-7-7"
+            ></path>
+          </svg>
+        </div>
+
+        <!-- Expanded content -->
+        <transition name="collapse">
+          <div v-if="simbriefExpanded" class="px-4 pb-4 space-y-4">
+
+          <!-- Pilot ID Input -->
+          <div class="space-y-2">
+            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+              Pilot ID
+            </label>
+            <div class="flex gap-2">
+              <input
+                v-model="simbriefPilotIdInput"
+                type="text"
+                placeholder="1234567"
+                maxlength="10"
+                class="flex-1 px-4 py-2 bg-gray-50 dark:bg-gray-900/50 border rounded-lg text-sm text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-500 transition-colors duration-200 font-mono"
+                :class="
+                  simbriefTestError
+                    ? 'border-red-500 dark:border-red-500'
+                    : 'border-gray-200 dark:border-gray-700/50'
+                "
+                @input="handleSimbriefInput"
+                @blur="handleSimbriefBlur"
+              />
+              <button
+                type="button"
+                class="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg transition-colors duration-200 flex items-center space-x-1.5 border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                :disabled="!simbriefPilotIdInput || simbriefTesting"
+                @click="testSimbriefConnection"
+              >
+                <svg
+                  v-if="simbriefTesting"
+                  class="w-4 h-4 animate-spin"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  ></path>
+                </svg>
+                <svg
+                  v-else-if="simbriefTestSuccess"
+                  class="w-4 h-4 text-green-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 13l4 4L19 7"
+                  ></path>
+                </svg>
+                <svg
+                  v-else-if="simbriefTestError"
+                  class="w-4 h-4 text-red-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  ></path>
+                </svg>
+                <span>Test</span>
+              </button>
+            </div>
+
+            <!-- Test Result Messages -->
+            <transition name="fade">
+              <div
+                v-if="simbriefTestSuccess"
+                class="rounded-lg bg-green-500/10 p-3 text-sm text-green-600 dark:text-green-400"
+              >
+                Found flight plan: {{ simbriefTestSuccess }}
+              </div>
+            </transition>
+
+            <transition name="fade">
+              <div
+                v-if="simbriefTestError"
+                class="rounded-lg bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-400"
+              >
+                {{ simbriefTestError }}
+              </div>
+            </transition>
+
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              Your Pilot ID is a numeric identifier found in your SimBrief account settings.
+            </p>
+          </div>
+
+            <!-- Help Link -->
+            <div
+              class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700/50"
+            >
+              <div class="space-y-0.5">
+                <p class="text-sm font-medium text-gray-900 dark:text-white">
+                  Don't have a SimBrief account?
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  SimBrief is a free flight planning service
+                </p>
+              </div>
+              <button
+                type="button"
+                class="px-3 py-1.5 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs font-medium rounded-md transition-colors duration-200 flex items-center space-x-1.5 border border-gray-300 dark:border-gray-600"
+                @click="openSimbriefWebsite"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                  ></path>
+                </svg>
+                <span>simbrief.com</span>
+              </button>
+            </div>
+          </div>
+        </transition>
+      </section>
 
       <!-- 3. Aircraft Backup Configuration -->
       <section
@@ -1448,7 +1904,7 @@
                       @blur="handlePatternBlur"
                     />
                     <button
-                      class="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors"
+                      class="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors"
                       :title="$t('common.delete')"
                       @click="removePattern(index)"
                     >
@@ -1472,10 +1928,10 @@
               </div>
 
               <button
-                class="w-full px-3 py-1.5 text-xs bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg transition-colors border border-blue-200 dark:border-blue-500/20 flex items-center justify-center gap-1"
+                class="w-full px-4 py-2 text-sm bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg transition-colors border border-blue-200 dark:border-blue-500/20 flex items-center justify-center gap-1.5"
                 @click="addPattern"
               >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -1528,18 +1984,13 @@
 
           <!-- Toggle Switch -->
           <div class="flex items-center space-x-3">
-            <button
-              class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-              :class="
-                updateStore.autoCheckEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
-              "
-              @click.stop="updateStore.toggleAutoCheck()"
-            >
-              <span
-                class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                :class="updateStore.autoCheckEnabled ? 'translate-x-4.5' : 'translate-x-0.5'"
-              ></span>
-            </button>
+            <ToggleSwitch
+              size="lg"
+              :model-value="updateStore.autoCheckEnabled"
+              active-class="bg-green-500"
+              inactive-class="bg-gray-300 dark:bg-gray-600"
+              @update:model-value="updateStore.toggleAutoCheck()"
+            />
 
             <!-- Expand/Collapse indicator -->
             <svg
@@ -1639,24 +2090,20 @@
                   <AnimatedText>{{ $t('update.includePreReleaseDesc') }}</AnimatedText>
                 </p>
               </div>
-              <button
-                class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0 ml-3"
-                :class="
-                  updateStore.includePreRelease ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
-                "
-                @click="updateStore.toggleIncludePreRelease()"
-              >
-                <span
-                  class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 shadow-sm"
-                  :class="updateStore.includePreRelease ? 'translate-x-3.5' : 'translate-x-0.5'"
-                />
-              </button>
+              <ToggleSwitch
+                size="md"
+                class="ml-3"
+                :model-value="updateStore.includePreRelease"
+                active-class="bg-green-500"
+                inactive-class="bg-gray-300 dark:bg-gray-600"
+                @update:model-value="updateStore.toggleIncludePreRelease()"
+              />
             </div>
 
             <!-- 手动检查按钮 -->
             <button
               :disabled="updateStore.checkInProgress"
-              class="w-full px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+              class="w-full px-4 py-2.5 bg-green-500 hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-base font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
               @click="handleCheckUpdate"
             >
               <svg
@@ -1695,7 +2142,7 @@
             </button>
 
             <button
-              class="w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+              class="w-full px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white text-base font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
               @click="handleViewCurrentVersionChangelog"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1784,7 +2231,7 @@
                 <button
                   v-for="level in ['basic', 'full', 'debug'] as const"
                   :key="level"
-                  class="px-3 py-1 text-xs rounded-md transition-all duration-200 border"
+                  class="px-3.5 py-1.5 text-sm rounded-md transition-all duration-200 border"
                   :class="
                     store.logLevel === level
                       ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
@@ -1802,19 +2249,19 @@
             <!-- Action buttons -->
             <div class="flex items-center justify-end space-x-2">
               <button
-                class="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
+                class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
                 @click.stop="refreshLogs"
               >
                 <AnimatedText>{{ $t('settings.refreshLogs') }}</AnimatedText>
               </button>
               <button
-                class="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
+                class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
                 @click.stop="handleOpenLogFolder"
               >
                 <AnimatedText>{{ $t('settings.openLogFolder') }}</AnimatedText>
               </button>
               <button
-                class="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
+                class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-600/50 text-gray-700 dark:text-gray-300 rounded-md transition-colors border border-transparent dark:border-white/5"
                 @click.stop="handleCopyLogs"
               >
                 <AnimatedText>{{ $t('settings.copyLogs') }}</AnimatedText>
@@ -1901,10 +2348,10 @@
                 </h4>
                 <div class="flex flex-wrap gap-2">
                   <button
-                    class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-500/30 transition-colors cursor-pointer"
+                    class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-500/30 transition-colors cursor-pointer"
                     @click="openDeveloperProfile"
                   >
-                    <svg class="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
+                    <svg class="w-4 h-4 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
                       <path
                         fill-rule="evenodd"
                         d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z"
@@ -2011,24 +2458,30 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useToastStore } from '@/stores/toast'
 import { useModalStore } from '@/stores/modal'
 import { useAppStore } from '@/stores/app'
+import { useManagementStore } from '@/stores/management'
 import { useSceneryStore } from '@/stores/scenery'
 import { useUpdateStore } from '@/stores/update'
+import { useMapStore } from '@/stores/map'
 import { validateGlobPattern } from '@/utils/validation'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import AnimatedText from '@/components/AnimatedText.vue'
+import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import { AddonType, getErrorMessage } from '@/types'
 import { logger, logError, logDebug } from '@/services/logger'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
 import { setTrackedTimeout } from '@/utils/timeout'
+import { mapFetchSimbriefLatest } from '@/services/map-api'
 
 const { t } = useI18n()
 const store = useAppStore()
+const managementStore = useManagementStore()
 const sceneryStore = useSceneryStore()
 const toast = useToastStore()
 const modal = useModalStore()
 const updateStore = useUpdateStore()
+const mapStore = useMapStore()
 
 const xplanePathInput = ref('')
 const launchArgsInput = ref('')
@@ -2065,9 +2518,19 @@ const windowsIntegrationExpanded = ref(false) // Default collapsed
 const patternSaveStatus = ref<'saving' | 'saved' | null>(null)
 const sceneryAutoSortExpanded = ref(false) // Default collapsed
 const parallelInstallExpanded = ref(false) // Default collapsed
+const chunkedDownloadExpanded = ref(false) // Default collapsed
+const crashAnalysisDmpExpanded = ref(false) // Default collapsed
 const aboutExpanded = ref(false) // Default collapsed
+const simbriefExpanded = ref(false) // Default collapsed
 const isRebuildingIndex = ref(false)
 const indexExists = computed(() => sceneryStore.indexExists)
+
+// SimBrief state
+const simbriefPilotId = ref('')
+const simbriefPilotIdInput = ref('')
+const simbriefTesting = ref(false)
+const simbriefTestSuccess = ref<string | null>(null)
+const simbriefTestError = ref<string | null>(null)
 
 const addonTypes = [
   AddonType.Aircraft,
@@ -2154,6 +2617,14 @@ function getTypeName(type: AddonType): string {
 onMounted(async () => {
   xplanePathInput.value = store.xplanePath
   launchArgsInput.value = store.xplaneLaunchArgs
+
+  // Load addon update options for chunked download settings
+  managementStore.loadAddonUpdateOptions()
+
+  // Initialize map store and load SimBrief Pilot ID
+  await mapStore.initStore()
+  simbriefPilotId.value = mapStore.simbriefPilotId
+  simbriefPilotIdInput.value = mapStore.simbriefPilotId
 
   try {
     // Get app version
@@ -2504,6 +2975,81 @@ async function handleRebuildIndex() {
   }
 }
 
+// SimBrief functions
+function handleSimbriefInput(event: Event) {
+  const input = event.target as HTMLInputElement
+  // Only allow numeric input
+  input.value = input.value.replace(/\D/g, '')
+  simbriefPilotIdInput.value = input.value
+  // Clear test results when input changes
+  simbriefTestSuccess.value = null
+  simbriefTestError.value = null
+}
+
+async function handleSimbriefBlur() {
+  if (simbriefPilotIdInput.value !== simbriefPilotId.value) {
+    simbriefPilotId.value = simbriefPilotIdInput.value
+    await mapStore.setSimbriefPilotId(simbriefPilotIdInput.value)
+    if (simbriefPilotIdInput.value) {
+      toast.success('SimBrief Pilot ID saved')
+    }
+  }
+}
+
+async function testSimbriefConnection() {
+  if (!simbriefPilotIdInput.value || simbriefTesting.value) return
+
+  simbriefTesting.value = true
+  simbriefTestSuccess.value = null
+  simbriefTestError.value = null
+
+  try {
+    const data = await mapFetchSimbriefLatest(simbriefPilotIdInput.value)
+
+    // Extract flight plan info
+    interface SimbriefAirport {
+      icao_code?: string
+    }
+    interface SimbriefAircraft {
+      icao_code?: string
+    }
+    const origin = (data.origin as SimbriefAirport | undefined)?.icao_code || 'Unknown'
+    const destination = (data.destination as SimbriefAirport | undefined)?.icao_code || 'Unknown'
+    const aircraft = (data.aircraft as SimbriefAircraft | undefined)?.icao_code || ''
+
+    simbriefTestSuccess.value = `${origin} → ${destination}${aircraft ? ` (${aircraft})` : ''}`
+
+    // Auto-clear success message after 5 seconds
+    setTimeout(() => {
+      simbriefTestSuccess.value = null
+    }, 5000)
+  } catch (error) {
+    const errorMsg = getErrorMessage(error)
+    if (errorMsg.includes('404') || errorMsg.includes('not found')) {
+      simbriefTestError.value = 'No flight plan found for this Pilot ID'
+    } else if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
+      simbriefTestError.value = 'Network error - check your connection'
+    } else {
+      simbriefTestError.value = 'Failed to fetch flight plan'
+    }
+
+    // Auto-clear error message after 5 seconds
+    setTimeout(() => {
+      simbriefTestError.value = null
+    }, 5000)
+  } finally {
+    simbriefTesting.value = false
+  }
+}
+
+async function openSimbriefWebsite() {
+  try {
+    await invoke('open_url', { url: 'https://www.simbrief.com' })
+  } catch (error) {
+    logError(`Failed to open URL: ${error}`, 'settings')
+  }
+}
+
 // About section functions
 async function openDeveloperProfile() {
   try {
@@ -2533,11 +3079,11 @@ function formatLastCheckTime(timestamp: number): string {
 </script>
 
 <style scoped>
-.experimental-parallel-highlight {
+.experimental-highlight {
   box-shadow:
-    inset 0 0 0 1px rgb(251 191 36 / 0.48),
-    inset 0 0 28px rgb(250 204 21 / 0.32),
-    inset 0 0 46px rgb(234 179 8 / 0.18);
+    inset 0 0 0 1px rgb(251 191 36 / 0.34),
+    inset 0 0 18px rgb(250 204 21 / 0.2),
+    inset 0 0 30px rgb(234 179 8 / 0.12);
 }
 
 /* Collapse transition */
