@@ -757,6 +757,7 @@ export default {
     loading: 'Loading...',
     fetch: 'Fetch',
     simbriefFetchFailed: 'Failed to fetch SimBrief plan',
+    fetchingSimbriefPlan: 'Fetching SimBrief flight plan...',
     gateway: {
       title: 'Gateway',
       loading: 'Loading Gateway data...',

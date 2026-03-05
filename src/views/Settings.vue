@@ -1594,6 +1594,192 @@
         </section>
       </div>
 
+      <!-- 2.7. SimBrief Integration -->
+      <section
+        class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+      >
+        <div
+          class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors"
+          :class="simbriefExpanded ? 'rounded-t-xl' : 'rounded-xl'"
+          @click="simbriefExpanded = !simbriefExpanded"
+        >
+          <div class="flex items-center space-x-3 flex-1">
+            <div
+              class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              :class="
+                simbriefPilotId
+                  ? 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+              "
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
+                ></path>
+              </svg>
+            </div>
+            <div class="flex-1">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                <AnimatedText>SimBrief Integration</AnimatedText>
+              </h3>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                <AnimatedText>Import flight plans from SimBrief</AnimatedText>
+              </p>
+            </div>
+          </div>
+
+          <!-- Expand/Collapse indicator -->
+          <svg
+            class="w-5 h-5 text-gray-400 transition-transform duration-200 flex-shrink-0"
+            :class="{ 'rotate-180': simbriefExpanded }"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 9l-7 7-7-7"
+            ></path>
+          </svg>
+        </div>
+
+        <!-- Expanded content -->
+        <transition name="collapse">
+          <div v-if="simbriefExpanded" class="px-4 pb-4 space-y-4">
+
+          <!-- Pilot ID Input -->
+          <div class="space-y-2">
+            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+              Pilot ID
+            </label>
+            <div class="flex gap-2">
+              <input
+                v-model="simbriefPilotIdInput"
+                type="text"
+                placeholder="1234567"
+                maxlength="10"
+                class="flex-1 px-4 py-2 bg-gray-50 dark:bg-gray-900/50 border rounded-lg text-sm text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-500 transition-colors duration-200 font-mono"
+                :class="
+                  simbriefTestError
+                    ? 'border-red-500 dark:border-red-500'
+                    : 'border-gray-200 dark:border-gray-700/50'
+                "
+                @input="handleSimbriefInput"
+                @blur="handleSimbriefBlur"
+              />
+              <button
+                type="button"
+                class="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg transition-colors duration-200 flex items-center space-x-1.5 border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                :disabled="!simbriefPilotIdInput || simbriefTesting"
+                @click="testSimbriefConnection"
+              >
+                <svg
+                  v-if="simbriefTesting"
+                  class="w-4 h-4 animate-spin"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  ></path>
+                </svg>
+                <svg
+                  v-else-if="simbriefTestSuccess"
+                  class="w-4 h-4 text-green-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 13l4 4L19 7"
+                  ></path>
+                </svg>
+                <svg
+                  v-else-if="simbriefTestError"
+                  class="w-4 h-4 text-red-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  ></path>
+                </svg>
+                <span>Test</span>
+              </button>
+            </div>
+
+            <!-- Test Result Messages -->
+            <transition name="fade">
+              <div
+                v-if="simbriefTestSuccess"
+                class="rounded-lg bg-green-500/10 p-3 text-sm text-green-600 dark:text-green-400"
+              >
+                Found flight plan: {{ simbriefTestSuccess }}
+              </div>
+            </transition>
+
+            <transition name="fade">
+              <div
+                v-if="simbriefTestError"
+                class="rounded-lg bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-400"
+              >
+                {{ simbriefTestError }}
+              </div>
+            </transition>
+
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              Your Pilot ID is a numeric identifier found in your SimBrief account settings.
+            </p>
+          </div>
+
+            <!-- Help Link -->
+            <div
+              class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700/50"
+            >
+              <div class="space-y-0.5">
+                <p class="text-sm font-medium text-gray-900 dark:text-white">
+                  Don't have a SimBrief account?
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  SimBrief is a free flight planning service
+                </p>
+              </div>
+              <button
+                type="button"
+                class="px-3 py-1.5 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs font-medium rounded-md transition-colors duration-200 flex items-center space-x-1.5 border border-gray-300 dark:border-gray-600"
+                @click="openSimbriefWebsite"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                  ></path>
+                </svg>
+                <span>simbrief.com</span>
+              </button>
+            </div>
+          </div>
+        </transition>
+      </section>
+
       <!-- 3. Aircraft Backup Configuration -->
       <section
         class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
@@ -2275,6 +2461,7 @@ import { useAppStore } from '@/stores/app'
 import { useManagementStore } from '@/stores/management'
 import { useSceneryStore } from '@/stores/scenery'
 import { useUpdateStore } from '@/stores/update'
+import { useMapStore } from '@/stores/map'
 import { validateGlobPattern } from '@/utils/validation'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
@@ -2285,6 +2472,7 @@ import { AddonType, getErrorMessage } from '@/types'
 import { logger, logError, logDebug } from '@/services/logger'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
 import { setTrackedTimeout } from '@/utils/timeout'
+import { mapFetchSimbriefLatest } from '@/services/map-api'
 
 const { t } = useI18n()
 const store = useAppStore()
@@ -2293,6 +2481,7 @@ const sceneryStore = useSceneryStore()
 const toast = useToastStore()
 const modal = useModalStore()
 const updateStore = useUpdateStore()
+const mapStore = useMapStore()
 
 const xplanePathInput = ref('')
 const launchArgsInput = ref('')
@@ -2332,8 +2521,16 @@ const parallelInstallExpanded = ref(false) // Default collapsed
 const chunkedDownloadExpanded = ref(false) // Default collapsed
 const crashAnalysisDmpExpanded = ref(false) // Default collapsed
 const aboutExpanded = ref(false) // Default collapsed
+const simbriefExpanded = ref(false) // Default collapsed
 const isRebuildingIndex = ref(false)
 const indexExists = computed(() => sceneryStore.indexExists)
+
+// SimBrief state
+const simbriefPilotId = ref('')
+const simbriefPilotIdInput = ref('')
+const simbriefTesting = ref(false)
+const simbriefTestSuccess = ref<string | null>(null)
+const simbriefTestError = ref<string | null>(null)
 
 const addonTypes = [
   AddonType.Aircraft,
@@ -2423,6 +2620,11 @@ onMounted(async () => {
 
   // Load addon update options for chunked download settings
   managementStore.loadAddonUpdateOptions()
+
+  // Initialize map store and load SimBrief Pilot ID
+  await mapStore.initStore()
+  simbriefPilotId.value = mapStore.simbriefPilotId
+  simbriefPilotIdInput.value = mapStore.simbriefPilotId
 
   try {
     // Get app version
@@ -2770,6 +2972,81 @@ async function handleRebuildIndex() {
     modal.showError(t('settings.indexRebuildFailed') + ': ' + getErrorMessage(error))
   } finally {
     isRebuildingIndex.value = false
+  }
+}
+
+// SimBrief functions
+function handleSimbriefInput(event: Event) {
+  const input = event.target as HTMLInputElement
+  // Only allow numeric input
+  input.value = input.value.replace(/\D/g, '')
+  simbriefPilotIdInput.value = input.value
+  // Clear test results when input changes
+  simbriefTestSuccess.value = null
+  simbriefTestError.value = null
+}
+
+async function handleSimbriefBlur() {
+  if (simbriefPilotIdInput.value !== simbriefPilotId.value) {
+    simbriefPilotId.value = simbriefPilotIdInput.value
+    await mapStore.setSimbriefPilotId(simbriefPilotIdInput.value)
+    if (simbriefPilotIdInput.value) {
+      toast.success('SimBrief Pilot ID saved')
+    }
+  }
+}
+
+async function testSimbriefConnection() {
+  if (!simbriefPilotIdInput.value || simbriefTesting.value) return
+
+  simbriefTesting.value = true
+  simbriefTestSuccess.value = null
+  simbriefTestError.value = null
+
+  try {
+    const data = await mapFetchSimbriefLatest(simbriefPilotIdInput.value)
+
+    // Extract flight plan info
+    interface SimbriefAirport {
+      icao_code?: string
+    }
+    interface SimbriefAircraft {
+      icao_code?: string
+    }
+    const origin = (data.origin as SimbriefAirport | undefined)?.icao_code || 'Unknown'
+    const destination = (data.destination as SimbriefAirport | undefined)?.icao_code || 'Unknown'
+    const aircraft = (data.aircraft as SimbriefAircraft | undefined)?.icao_code || ''
+
+    simbriefTestSuccess.value = `${origin} → ${destination}${aircraft ? ` (${aircraft})` : ''}`
+
+    // Auto-clear success message after 5 seconds
+    setTimeout(() => {
+      simbriefTestSuccess.value = null
+    }, 5000)
+  } catch (error) {
+    const errorMsg = getErrorMessage(error)
+    if (errorMsg.includes('404') || errorMsg.includes('not found')) {
+      simbriefTestError.value = 'No flight plan found for this Pilot ID'
+    } else if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
+      simbriefTestError.value = 'Network error - check your connection'
+    } else {
+      simbriefTestError.value = 'Failed to fetch flight plan'
+    }
+
+    // Auto-clear error message after 5 seconds
+    setTimeout(() => {
+      simbriefTestError.value = null
+    }, 5000)
+  } finally {
+    simbriefTesting.value = false
+  }
+}
+
+async function openSimbriefWebsite() {
+  try {
+    await invoke('open_url', { url: 'https://www.simbrief.com' })
+  } catch (error) {
+    logError(`Failed to open URL: ${error}`, 'settings')
   }
 }
 

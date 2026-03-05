@@ -739,6 +739,7 @@ export default {
     loading: '加载中...',
     fetch: '获取',
     simbriefFetchFailed: '获取 SimBrief 计划失败',
+    fetchingSimbriefPlan: '正在获取 SimBrief 飞行计划...',
     gateway: {
       title: 'Gateway',
       loading: '正在加载 Gateway 数据...',

@@ -402,23 +402,7 @@
 
       <div class="rounded-xl border border-gray-700/70 bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-300">
         <div class="mb-2 text-gray-400">SimBrief</div>
-        <div class="flex items-center gap-2">
-          <input
-            :value="mapStore.simbriefPilotId"
-            type="text"
-            class="flex-1 rounded-md border border-gray-700 bg-slate-800 px-2 py-1 text-xs text-gray-100"
-            :placeholder="t('map.simbriefPilotPlaceholder')"
-            @change="onSimbriefPilotInput"
-          />
-          <button
-            class="rounded-md border border-gray-600 bg-slate-800 px-2 py-1 text-[11px] hover:bg-slate-700 disabled:opacity-50"
-            :disabled="isSimbriefLoading"
-            @click="fetchSimbrief"
-          >
-            {{ isSimbriefLoading ? t('map.loading') : t('map.fetch') }}
-          </button>
-        </div>
-        <div v-if="simbriefSummary" class="mt-2 rounded border border-gray-700/70 bg-slate-800/80 p-2 text-[11px]">
+        <div v-if="simbriefSummary" class="rounded border border-gray-700/70 bg-slate-800/80 p-2 text-[11px]">
           <div class="font-mono text-blue-300">{{ simbriefSummary.callsign || '-' }}</div>
           <div class="mt-1">{{ simbriefSummary.from }} -> {{ simbriefSummary.to }}</div>
           <div class="mt-0.5 text-gray-400">{{ simbriefSummary.altitude }} / {{ simbriefSummary.distance }}</div>
@@ -429,6 +413,20 @@
             View OFP
           </button>
         </div>
+        <div v-else-if="mapStore.simbriefPilotId" class="text-[11px] text-gray-500">
+          {{ isSimbriefLoading ? t('map.loading') : 'No flight plan loaded' }}
+        </div>
+        <div v-else class="text-[11px] text-gray-500">
+          Configure Pilot ID in Settings
+        </div>
+        <button
+          v-if="mapStore.simbriefPilotId"
+          class="mt-2 w-full rounded-md border border-gray-600 bg-slate-800 px-2 py-1.5 text-[11px] hover:bg-slate-700 disabled:opacity-50"
+          :disabled="isSimbriefLoading"
+          @click="fetchSimbrief"
+        >
+          {{ isSimbriefLoading ? t('map.loading') : t('map.fetch') }}
+        </button>
       </div>
     </div>
 
@@ -2416,11 +2414,6 @@ async function refreshVatsimAndEvents() {
   await Promise.allSettled([refreshVatsim(), refreshVatsimEvents()])
 }
 
-function onSimbriefPilotInput(event: Event) {
-  const target = event.target as HTMLInputElement
-  void mapStore.setSimbriefPilotId(target.value.trim())
-}
-
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -4299,7 +4292,9 @@ onMounted(async () => {
   startVatsimTimer()
   startWeatherRadarTimer()
 
-  if (mapStore.simbriefPilotId) {
+  // Auto-fetch SimBrief flight plan if Pilot ID is configured
+  if (mapStore.simbriefPilotId && !flightPlanStore.hasData) {
+    toast.info(t('map.fetchingSimbriefPlan'))
     void fetchSimbrief()
   }
 })
