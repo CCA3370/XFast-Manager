@@ -11,7 +11,7 @@
 
       <div class="relative container mx-auto px-6 h-12 flex justify-center items-center">
         <!-- Navigation -->
-        <div class="flex items-center">
+        <div class="flex items-center whitespace-nowrap">
           <div v-if="!isOnboardingRoute" class="flex items-center space-x-1">
             <router-link
               to="/"

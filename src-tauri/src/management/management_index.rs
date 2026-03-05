@@ -116,7 +116,12 @@ fn resolve_management_path(
     // folder_name can be a relative path for nested items (e.g. "LevelUp\737NG"
     // for aircraft, "navigraph\navdata" for navdata). Only reject empty names
     // and ".." components; the canonical path check below prevents traversal.
-    if folder_name.is_empty() || folder_name.contains("..") {
+    // Exception: navdata folder_name can be empty when cycle.json is directly
+    // in Custom Data/ (e.g. X-Plane 12 native navdata).
+    if folder_name.contains("..") {
+        return Err(anyhow!("Invalid folder name"));
+    }
+    if folder_name.is_empty() && item_type != "navdata" {
         return Err(anyhow!("Invalid folder name"));
     }
 
@@ -127,9 +132,17 @@ fn resolve_management_path(
         _ => return Err(anyhow!("Unknown item type: {}", item_type)),
     };
 
-    let target_path = base_path.join(folder_name);
+    let target_path = if folder_name.is_empty() {
+        base_path.clone()
+    } else {
+        base_path.join(folder_name)
+    };
     if !target_path.exists() {
         return Err(anyhow!("Folder not found: {}", folder_name));
+    }
+
+    if folder_name.is_empty() {
+        return Ok(target_path);
     }
 
     path_utils::validate_child_path(&base_path, &target_path)
