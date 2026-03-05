@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-03-06
+
+### Added
+
+- **SkunkCrafts Update Integration** - Added integrated SkunkCrafts update workflow in Addon Update, including per-item update entry points and task-based update execution.
+- **Parallel Download Support for Addon Update** - Added parallel/multi-thread download support in the update workflow to improve large addon update speed.
+- **Deep Crash Dump Analysis (Experimental)** - Log Analysis can now parse `.dmp` crash reports and show probable causes, exception/stack details (including exception flags and controlled exits), and loaded plugin modules.
+- **Feedback Center** - Added in-app feedback submission with issue tracking, issue detail view, and comment replies.
+- **Screenshot Manager** - Added a dedicated page for browsing `Output/screenshots` images and clips with search/filter/sort, preview, copy/save/delete, and Reddit sharing.
+- **Built-in Screenshot Editor** - Added image editing tools (crop, rotate, exposure, contrast, saturation, temperature, highlights, shadows, sharpness, denoise) with worker-based preview processing.
+
+### Changed
+
+- **Scenery Lock Also Locks Sort Position** - Locked scenery entries now preserve their current sort slots during index refresh and auto-sort, so lock state also protects load-order position.
+
+### Fixed
+
+- **Delete Source After Install Safety** - Source files are now deleted only after all related install tasks succeed, avoiding premature cleanup when part of a grouped install fails.
+- **Management Path Resolution** - Improved folder/path validation in management actions (including root-level navdata handling) to reduce false invalid-path failures.
+- **Scenery Path Validation** - Applying scenery changes now validates the configured X-Plane root path more strictly and ensures the parent directory of `scenery_packs.ini` exists before writing.
+
 ## [1.1.1] - 2026-02-28
 
 ### Added
