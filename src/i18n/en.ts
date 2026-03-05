@@ -16,6 +16,7 @@ export default {
     info: 'Info',
     language: 'Language',
     gotIt: 'Got it',
+    back: 'Back',
   },
   copy: {
     copy: 'Copy',
@@ -76,7 +77,8 @@ export default {
       cause2: '2. Installed in a protected system directory (e.g., Program Files)',
       cause3: '3. Incorrect file permission configuration',
       solutions: 'Suggested solutions:',
-      solution1: '• Right-click X-Plane.exe → Properties → Compatibility → Uncheck "Run this program as an administrator"',
+      solution1:
+        '• Right-click X-Plane.exe → Properties → Compatibility → Uncheck "Run this program as an administrator"',
       solution2: '• Or run XFast Manager as administrator',
       path: 'Path:',
     },
@@ -431,7 +433,8 @@ export default {
     autoUpdateCheckDesc: 'Automatically check for new versions on startup',
     autoUpdateCheckExplain: 'Automatic Update Check Explanation',
     autoUpdateCheckBenefit1: 'Automatically check for new versions on startup (once per 24 hours)',
-    autoUpdateCheckBenefit2: 'No user data collected, only sends requests to the official update proxy service',
+    autoUpdateCheckBenefit2:
+      'No user data collected, only sends requests to the official update proxy service',
     autoUpdateCheckBenefit3:
       'Shows a banner notification on the home page when a new version is found',
     includePreRelease: 'Include Pre-releases',
@@ -658,8 +661,10 @@ export default {
     rollbackOnFailure: 'Rollback On Failure',
     freshInstallToggle: 'Fresh Install',
     freshInstallDialogTitle: 'Fresh Install',
-    freshInstallDialogMessage: 'This will delete existing files and reinstall from scratch. Choose what to preserve:',
-    freshInstallDialogMessageGeneric: 'This will delete existing files and reinstall from scratch. Are you sure you want to continue?',
+    freshInstallDialogMessage:
+      'This will delete existing files and reinstall from scratch. Choose what to preserve:',
+    freshInstallDialogMessageGeneric:
+      'This will delete existing files and reinstall from scratch. Are you sure you want to continue?',
     preserveLiveries: 'Preserve Liveries',
     preserveConfigFiles: 'Preserve Config Files',
     confirmFreshInstall: 'Confirm',
@@ -725,7 +730,8 @@ export default {
   map: {
     navTitle: 'Map',
     pathRequiredTitle: 'X-Plane Path Required',
-    pathRequiredDesc: 'Please set your X-Plane installation path in Settings before using map mode.',
+    pathRequiredDesc:
+      'Please set your X-Plane installation path in Settings before using map mode.',
     searchPlaceholder: 'Search airport ICAO or name...',
     refresh: 'Refresh',
     layersTitle: 'Layers',
@@ -1135,7 +1141,7 @@ export default {
         },
         xplane_bug: {
           name: 'X-Plane Core Error',
-          description: 'The crash occurred in X-Plane\'s own code.',
+          description: "The crash occurred in X-Plane's own code.",
         },
         memory_exhaustion: {
           name: 'Out of Memory',
@@ -1208,6 +1214,10 @@ export default {
     sortTime: 'Sort by Time',
     sortName: 'Sort by Name',
     sortSize: 'Sort by Size',
+    unclassified: 'Unclassified',
+    aircraftCount: '{count} files',
+    noPreview: 'N/A',
+    videoTag: 'VIDEO',
     unsupportedPreview: 'Preview is not supported for this media format.',
     openEditor: 'Edit',
     copySuccess: 'Copied',
@@ -1237,6 +1247,7 @@ export default {
     cropY: 'Crop Y',
     cropW: 'Crop Width',
     cropH: 'Crop Height',
+    cropDragHint: 'Drag the crop box or handles on the preview to adjust',
     rotate: 'Rotate',
     exposure: 'Exposure',
     contrast: 'Contrast',

@@ -502,7 +502,7 @@ export interface ScreenshotCrop {
 
 export interface ScreenshotEditParams {
   crop: ScreenshotCrop | null
-  rotate: 0 | 90 | 180 | 270
+  rotate: number
   exposure: number
   contrast: number
   saturation: number
