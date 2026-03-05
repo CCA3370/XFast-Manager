@@ -1216,6 +1216,7 @@ export default {
     copyImageFailed: '复制图片失败',
     copyPathFailed: '复制文件路径失败',
     editNotSupported: '当前图片格式暂不支持编辑。',
+    redditClipboardHint: '图片已复制到剪贴板，请在 Reddit 发帖页面粘贴',
     redditTitle: 'X-Plane 截图分享',
   },
   errors: {

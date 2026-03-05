@@ -215,30 +215,21 @@ pub fn build_reddit_share_url(
     xplane_path: &Path,
     file_name: &str,
     title: Option<String>,
-    mode: Option<String>,
+    _mode: Option<String>,
 ) -> Result<String> {
-    let source = resolve_media_path(xplane_path, file_name)?;
+    // Validate that the media file exists
+    let _source = resolve_media_path(xplane_path, file_name)?;
 
     let post_title = title
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| format!("X-Plane Screenshot - {}", file_name));
-    let post_mode = mode
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| "screenshot".to_string());
-    let post_text = format!(
-        "Captured with X-Plane.\n\nMedia type: {}\n\nLocal file path:\n{}\n\nUpload this file in Reddit submit page.",
-        post_mode,
-        source.display(),
-    );
 
     let url = reqwest::Url::parse_with_params(
-        "https://www.reddit.com/submit",
+        "https://www.reddit.com/r/Xplane/submit",
         &[
             ("title", post_title.as_str()),
-            ("text", post_text.as_str()),
-            ("kind", "self"),
+            ("type", "IMAGE"),
         ],
     )
     .context("Failed to build Reddit share URL")?;

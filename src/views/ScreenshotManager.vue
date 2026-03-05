@@ -395,10 +395,24 @@ async function load() {
   }
 }
 
+async function blobToPng(blob: Blob): Promise<Blob> {
+  if (blob.type === 'image/png') return blob
+  const img = new Image()
+  const url = URL.createObjectURL(blob)
+  try {
+    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = url })
+    const c = document.createElement('canvas')
+    c.width = img.naturalWidth; c.height = img.naturalHeight
+    c.getContext('2d')!.drawImage(img, 0, 0)
+    return await new Promise<Blob>((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), 'image/png'))
+  } finally { URL.revokeObjectURL(url) }
+}
+
 async function copyImageBlob(blob: Blob, fallbackText: string) {
   const ctor = (window as unknown as Record<string, typeof ClipboardItem>).ClipboardItem
   if (ctor && navigator.clipboard?.write) {
-    await navigator.clipboard.write([new ctor({ [blob.type || 'image/png']: blob })])
+    const pngBlob = await blobToPng(blob)
+    await navigator.clipboard.write([new ctor({ 'image/png': pngBlob })])
     return
   }
   await navigator.clipboard.writeText(fallbackText)
@@ -532,6 +546,15 @@ async function deleteMedia(item: ScreenshotMediaItem) {
 async function share(item: ScreenshotMediaItem) {
   if (!appStore.xplanePath) return
   try {
+    // Copy image to clipboard first so user can paste in Reddit
+    if (item.mediaType === 'image') {
+      const enhanced = enhancedPreviews.get(item.fileName)
+      const blob = enhanced
+        ? bytesToBlob(enhanced.fullBytes, enhanced.mime || 'image/png')
+        : await getRawImageBlob(item)
+      await copyImageBlob(blob, item.path)
+      toastStore.success(t('screenshot.redditClipboardHint') as string)
+    }
     const url = await invoke<string>('build_reddit_share_url', {
       xplanePath: appStore.xplanePath,
       fileName: item.fileName,
@@ -1025,19 +1048,8 @@ onBeforeUnmount(() => {
         <div class="flex justify-end mb-2 gap-2">
           <div class="relative">
             <button class="round-icon-btn" :title="$t('screenshot.shareReddit')" @click.stop="toggleShareMenu">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M8 12h8m-8 4h6m-2-9.5V4a1 1 0 011-1h3"
-                />
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M7 20h10a2 2 0 002-2V9.5a1 1 0 00-.293-.707l-3.5-3.5A1 1 0 0014.5 5H7a2 2 0 00-2 2v11a2 2 0 002 2z"
-                />
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
               </svg>
             </button>
             <div
@@ -1047,17 +1059,18 @@ onBeforeUnmount(() => {
               <button class="share-menu-item" @click.stop="shareToRedditFromMenu">
                 <span class="inline-flex w-5 h-5 items-center justify-center rounded-full bg-[#ff4500]">
                   <svg class="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="8.5" cy="12" r="1.5" />
-                    <circle cx="15.5" cy="12" r="1.5" />
-                    <path d="M7.2 15.2a6.8 6.8 0 009.6 0 .8.8 0 10-1.1-1.1 5.2 5.2 0 01-7.4 0 .8.8 0 10-1.1 1.1z" />
-                    <path d="M17.4 5.2a1.8 1.8 0 100 3.6 1.8 1.8 0 000-3.6zm-1.9 3.8l-2.6-.6.4-1.7 2.6.7-.4 1.6z" />
+                    <path d="M12 0C5.373 0 0 5.373 0 12c0 3.314 1.343 6.314 3.515 8.485l-2.286 2.286C.775 23.225 1.097 24 1.738 24H12c6.627 0 12-5.373 12-12S18.627 0 12 0Zm4.388 3.199c1.104 0 1.999.895 1.999 1.999 0 1.105-.895 2-1.999 2-.946 0-1.739-.657-1.947-1.539v.002c-1.147.162-2.032 1.15-2.032 2.341v.007c1.776.067 3.4.567 4.686 1.363.473-.363 1.064-.58 1.707-.58 1.547 0 2.802 1.254 2.802 2.802 0 1.117-.655 2.081-1.601 2.531-.088 3.256-3.637 5.876-7.997 5.876-4.361 0-7.905-2.617-7.998-5.87-.954-.447-1.614-1.415-1.614-2.538 0-1.548 1.255-2.802 2.803-2.802.645 0 1.239.218 1.712.585 1.275-.79 2.881-1.291 4.64-1.365v-.01c0-1.663 1.263-3.034 2.88-3.207.188-.911.993-1.595 1.959-1.595Zm-8.085 8.376c-.784 0-1.459.78-1.506 1.797-.047 1.016.64 1.429 1.426 1.429.786 0 1.371-.369 1.418-1.385.047-1.017-.553-1.841-1.338-1.841Zm7.406 0c-.786 0-1.385.824-1.338 1.841.047 1.017.634 1.385 1.418 1.385.785 0 1.473-.413 1.426-1.429-.046-1.017-.721-1.797-1.506-1.797Zm-3.703 4.013c-.974 0-1.907.048-2.77.135-.147.015-.241.168-.183.305.483 1.154 1.622 1.964 2.953 1.964 1.33 0 2.47-.81 2.953-1.964.057-.137-.037-.29-.184-.305-.863-.087-1.795-.135-2.769-.135Z" />
                   </svg>
                 </span>
                 <span>Reddit</span>
               </button>
             </div>
           </div>
-          <button class="round-icon-btn" :title="$t('common.close')" @click="selected = null">x</button>
+          <button class="round-icon-btn" :title="$t('common.close')" @click="selected = null">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
         <div class="flex-1 min-h-0 rounded-xl bg-black/40 border border-white/10 overflow-hidden flex items-center justify-center">
           <img v-if="selected.mediaType === 'image'" :src="selectedSrc" :alt="selected.name" class="max-w-full max-h-full object-contain" />
@@ -1074,17 +1087,6 @@ onBeforeUnmount(() => {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5M16.5 3.5a2.1 2.1 0 113 3L12 14l-4 1 1-4 7.5-7.5z" />
             </svg>
             <span class="action-label">{{ $t('screenshot.openEditor') }}</span>
-          </button>
-          <button
-            v-if="selected.mediaType === 'image' && selected.editable"
-            class="action-icon action-slate"
-            :disabled="autoEnhanceBusyFile === selected.fileName"
-            @click="autoEnhance(selected)"
-          >
-            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v3m0 12v3m9-9h-3M6 12H3m14.36 6.36l-2.12-2.12M8.76 8.76L6.64 6.64m10.72 0l-2.12 2.12M8.76 15.24l-2.12 2.12" />
-            </svg>
-            <span class="action-label">{{ autoEnhanceBusyFile === selected.fileName ? $t('screenshot.autoEnhanceBusy') : $t('screenshot.autoEnhance') }}</span>
           </button>
           <button class="action-icon action-emerald" @click="copyMedia(selected)">
             <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

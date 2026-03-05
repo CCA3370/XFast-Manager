@@ -226,25 +226,25 @@ const yAxisLabels = computed(() => {
 
 <template>
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="emit('close')">
-    <div class="w-[900px] max-w-[95vw] max-h-[85vh] rounded-xl border border-gray-700/70 bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
+    <div class="w-[900px] max-w-[95vw] max-h-[85vh] rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white dark:bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
       <!-- Header -->
-      <div class="flex items-center justify-between border-b border-gray-700/70 px-4 py-3">
+      <div class="flex items-center justify-between border-b border-gray-200/50 dark:border-gray-700/70 px-4 py-3">
         <div class="flex items-center gap-3">
-          <h2 class="text-lg text-gray-100">SimBrief OFP</h2>
+          <h2 class="text-lg text-gray-900 dark:text-gray-100">SimBrief OFP</h2>
           <template v-if="ofp">
-            <span class="font-mono text-sm text-blue-300">{{ ofp.callsign || ofp.flightNumber }}</span>
+            <span class="font-mono text-sm text-blue-600 dark:text-blue-300">{{ ofp.callsign || ofp.flightNumber }}</span>
             <span class="text-sm text-gray-400">{{ ofp.departure }} → {{ ofp.arrival }}</span>
           </template>
         </div>
         <div class="flex items-center gap-2">
           <!-- Weight unit toggle -->
           <button
-            class="rounded border border-gray-700 bg-slate-800 px-2 py-1 text-[10px] text-gray-400 hover:text-gray-200 transition-colors"
+            class="rounded border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-slate-800 px-2 py-1 text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
             @click="mapStore.setWeightUnit(isLbs ? 'kg' : 'lbs')"
           >
             {{ isLbs ? 'LBS' : 'KG' }}
           </button>
-          <button class="text-gray-400 hover:text-white" @click="emit('close')">
+          <button class="text-gray-400 hover:text-gray-700 dark:hover:text-white" @click="emit('close')">
             <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
               <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
             </svg>
@@ -262,40 +262,40 @@ const yAxisLabels = computed(() => {
       <!-- Tabs + Content -->
       <template v-else>
         <!-- Quick stats bar -->
-        <div class="flex items-center gap-4 border-b border-gray-700/70 px-4 py-2 text-[11px] text-gray-400 bg-slate-800/50">
+        <div class="flex items-center gap-4 border-b border-gray-200/50 dark:border-gray-700/70 px-4 py-2 text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-800/50">
           <div>
             <span class="text-gray-500">ETE</span>
-            <span class="ml-1 font-mono text-gray-200">{{ ofp.ete || '-' }}</span>
+            <span class="ml-1 font-mono text-gray-700 dark:text-gray-200">{{ ofp.ete || '-' }}</span>
           </div>
           <div>
             <span class="text-gray-500">FL</span>
-            <span class="ml-1 font-mono text-gray-200">{{ ofp.cruiseAltitude >= 10000 ? `FL${Math.round(ofp.cruiseAltitude / 100)}` : ofp.cruiseAltitude }}</span>
+            <span class="ml-1 font-mono text-gray-700 dark:text-gray-200">{{ ofp.cruiseAltitude >= 10000 ? `FL${Math.round(ofp.cruiseAltitude / 100)}` : ofp.cruiseAltitude }}</span>
           </div>
           <div>
             <span class="text-gray-500">Mach</span>
-            <span class="ml-1 font-mono text-gray-200">{{ ofp.cruiseMach || '-' }}</span>
+            <span class="ml-1 font-mono text-gray-700 dark:text-gray-200">{{ ofp.cruiseMach || '-' }}</span>
           </div>
           <div>
             <span class="text-gray-500">CI</span>
-            <span class="ml-1 font-mono text-gray-200">{{ ofp.costIndex }}</span>
+            <span class="ml-1 font-mono text-gray-700 dark:text-gray-200">{{ ofp.costIndex }}</span>
           </div>
           <div>
             <span class="text-gray-500">Dist</span>
-            <span class="ml-1 font-mono text-gray-200">{{ Math.round(ofp.distance) }} nm</span>
+            <span class="ml-1 font-mono text-gray-700 dark:text-gray-200">{{ Math.round(ofp.distance) }} nm</span>
           </div>
           <div v-if="ofp.alternate">
             <span class="text-gray-500">Alt</span>
-            <span class="ml-1 font-mono text-gray-200">{{ ofp.alternate }}</span>
+            <span class="ml-1 font-mono text-gray-700 dark:text-gray-200">{{ ofp.alternate }}</span>
           </div>
         </div>
 
         <!-- Tabs -->
-        <div class="flex border-b border-gray-700/70 px-4">
+        <div class="flex border-b border-gray-200/50 dark:border-gray-700/70 px-4">
           <button
             v-for="tab in (['flight', 'navlog', 'performance', 'fuel', 'weights'] as const)"
             :key="tab"
             class="px-4 py-2 text-sm transition-colors"
-            :class="activeTab === tab ? 'text-blue-300 border-b-2 border-blue-400' : 'text-gray-400 hover:text-gray-200'"
+            :class="activeTab === tab ? 'text-blue-600 dark:text-blue-300 border-b-2 border-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
             @click="activeTab = tab"
           >
             {{ tab === 'flight' ? 'Flight' : tab === 'navlog' ? 'Navlog' : tab === 'performance' ? 'Performance' : tab === 'fuel' ? 'Fuel' : 'Weights' }}
@@ -307,13 +307,13 @@ const yAxisLabels = computed(() => {
           <!-- Flight Tab -->
           <div v-if="activeTab === 'flight'" class="space-y-4">
             <!-- Route -->
-            <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3">
+            <div class="rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-gray-50 dark:bg-slate-800/60 p-3">
               <div class="text-[11px] text-gray-500 mb-1">Route</div>
-              <div class="font-mono text-[11px] text-gray-200 leading-relaxed break-all">{{ ofp.route || '-' }}</div>
+              <div class="font-mono text-[11px] text-gray-700 dark:text-gray-200 leading-relaxed break-all">{{ ofp.route || '-' }}</div>
             </div>
 
             <!-- Vertical Profile -->
-            <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3">
+            <div class="rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-gray-50 dark:bg-slate-800/60 p-3">
               <div class="text-[11px] text-gray-500 mb-2">Vertical Profile</div>
               <svg
                 v-if="profileData.length >= 2"
@@ -389,25 +389,25 @@ const yAxisLabels = computed(() => {
             </div>
             <!-- Summary cards -->
             <div class="grid grid-cols-3 gap-3">
-              <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3">
+              <div class="rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-gray-50 dark:bg-slate-800/60 p-3">
                 <div class="text-[11px] text-gray-500 mb-1">Fuel Summary</div>
-                <div class="text-sm font-mono text-gray-200">{{ fmtWeight(ofp.blockFuel) }} {{ wUnit }}</div>
+                <div class="text-sm font-mono text-gray-700 dark:text-gray-200">{{ fmtWeight(ofp.blockFuel) }} {{ wUnit }}</div>
                 <div class="text-[10px] text-gray-500">Block Fuel</div>
-                <div class="mt-1 text-sm font-mono text-gray-200">{{ fmtWeight(ofp.tripFuel) }} {{ wUnit }}</div>
+                <div class="mt-1 text-sm font-mono text-gray-700 dark:text-gray-200">{{ fmtWeight(ofp.tripFuel) }} {{ wUnit }}</div>
                 <div class="text-[10px] text-gray-500">Trip Fuel</div>
               </div>
-              <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3">
+              <div class="rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-gray-50 dark:bg-slate-800/60 p-3">
                 <div class="text-[11px] text-gray-500 mb-1">Weights</div>
-                <div class="text-sm font-mono text-gray-200">{{ fmtWeight(ofp.zfw) }} {{ wUnit }}</div>
+                <div class="text-sm font-mono text-gray-700 dark:text-gray-200">{{ fmtWeight(ofp.zfw) }} {{ wUnit }}</div>
                 <div class="text-[10px] text-gray-500">ZFW</div>
-                <div class="mt-1 text-sm font-mono text-gray-200">{{ fmtWeight(ofp.tow) }} {{ wUnit }}</div>
+                <div class="mt-1 text-sm font-mono text-gray-700 dark:text-gray-200">{{ fmtWeight(ofp.tow) }} {{ wUnit }}</div>
                 <div class="text-[10px] text-gray-500">TOW</div>
               </div>
-              <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3">
+              <div class="rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-gray-50 dark:bg-slate-800/60 p-3">
                 <div class="text-[11px] text-gray-500 mb-1">Runways</div>
-                <div class="text-sm font-mono text-gray-200">{{ ofp.takeoffRunway || '-' }}</div>
+                <div class="text-sm font-mono text-gray-700 dark:text-gray-200">{{ ofp.takeoffRunway || '-' }}</div>
                 <div class="text-[10px] text-gray-500">Takeoff RWY</div>
-                <div class="mt-1 text-sm font-mono text-gray-200">{{ ofp.landingRunway || '-' }}</div>
+                <div class="mt-1 text-sm font-mono text-gray-700 dark:text-gray-200">{{ ofp.landingRunway || '-' }}</div>
                 <div class="text-[10px] text-gray-500">Landing RWY</div>
               </div>
             </div>
@@ -416,7 +416,7 @@ const yAxisLabels = computed(() => {
           <!-- Navlog Tab -->
           <div v-if="activeTab === 'navlog'">
             <!-- Header row -->
-            <div class="grid grid-cols-[1fr_80px_90px_80px_80px_80px_40px] gap-1 text-[10px] text-gray-500 border-b border-gray-700/70 pb-1 mb-1 px-1">
+            <div class="grid grid-cols-[1fr_80px_90px_80px_80px_80px_40px] gap-1 text-[10px] text-gray-500 border-b border-gray-200/50 dark:border-gray-700/70 pb-1 mb-1 px-1">
               <div>Fix</div>
               <div class="text-right">Altitude</div>
               <div class="text-right">Wind</div>
@@ -432,18 +432,18 @@ const yAxisLabels = computed(() => {
                 <!-- Main row -->
                 <button
                   class="w-full grid grid-cols-[1fr_80px_90px_80px_80px_80px_40px] gap-1 items-center text-[11px] rounded px-1 py-1 transition-colors"
-                  :class="expandedFixes.has(idx) ? 'bg-slate-800' : 'hover:bg-slate-800/50'"
+                  :class="expandedFixes.has(idx) ? 'bg-gray-100 dark:bg-slate-800' : 'hover:bg-gray-100 dark:hover:bg-slate-800/50'"
                   @click="toggleFix(idx)"
                 >
                   <div class="flex items-center gap-1.5 min-w-0">
-                    <span class="font-mono text-gray-100 truncate">{{ wp.ident }}</span>
+                    <span class="font-mono text-gray-900 dark:text-gray-100 truncate">{{ wp.ident }}</span>
                     <span v-if="idx === tocIndex" class="rounded bg-emerald-900/50 px-1 py-0 text-[9px] text-emerald-300 shrink-0">T/C</span>
                     <span v-if="idx === todIndex" class="rounded bg-amber-900/50 px-1 py-0 text-[9px] text-amber-300 shrink-0">T/D</span>
                     <span :class="stageBg(wp.stage)" class="rounded px-1 py-0 text-[9px] shrink-0">{{ wp.stage }}</span>
                   </div>
                   <div class="text-right font-mono" :class="stageColor(wp.stage)">{{ fmtAlt(wp.altitude) }}</div>
                   <div class="text-right font-mono text-gray-400">{{ windComponent(wp) }}</div>
-                  <div class="text-right font-mono text-gray-300">{{ fmtTime(wp.timeFromDep) }}</div>
+                  <div class="text-right font-mono text-gray-600 dark:text-gray-300">{{ fmtTime(wp.timeFromDep) }}</div>
                   <div class="text-right font-mono text-gray-400">{{ Math.round(wp.distFromDep) }} nm</div>
                   <div class="text-right font-mono text-cyan-300">{{ fmtFuel(wp.fuelRemaining) }}</div>
                   <div class="text-center text-gray-500">
@@ -454,29 +454,29 @@ const yAxisLabels = computed(() => {
                 </button>
 
                 <!-- Expanded details -->
-                <div v-if="expandedFixes.has(idx)" class="grid grid-cols-4 gap-2 px-3 py-2 bg-slate-800/80 rounded-b text-[10px] mb-1">
+                <div v-if="expandedFixes.has(idx)" class="grid grid-cols-4 gap-2 px-3 py-2 bg-gray-100 dark:bg-slate-800/80 rounded-b text-[10px] mb-1">
                   <div>
                     <span class="text-gray-500">Position</span>
-                    <div class="font-mono text-gray-300">{{ wp.latitude.toFixed(4) }}°, {{ wp.longitude.toFixed(4) }}°</div>
+                    <div class="font-mono text-gray-600 dark:text-gray-300">{{ wp.latitude.toFixed(4) }}°, {{ wp.longitude.toFixed(4) }}°</div>
                   </div>
                   <div>
                     <span class="text-gray-500">OAT</span>
-                    <div class="font-mono text-gray-300">{{ wp.oat }}°C</div>
+                    <div class="font-mono text-gray-600 dark:text-gray-300">{{ wp.oat }}°C</div>
                   </div>
                   <div>
                     <span class="text-gray-500">Leg Dist</span>
-                    <div class="font-mono text-gray-300">{{ Math.round(wp.distToNext) }} nm</div>
+                    <div class="font-mono text-gray-600 dark:text-gray-300">{{ Math.round(wp.distToNext) }} nm</div>
                   </div>
                   <div>
                     <span class="text-gray-500">Fuel Used</span>
-                    <div class="font-mono text-gray-300">{{ fmtFuel(wp.fuelUsed) }}</div>
+                    <div class="font-mono text-gray-600 dark:text-gray-300">{{ fmtFuel(wp.fuelUsed) }}</div>
                   </div>
                 </div>
               </div>
             </div>
 
             <!-- Footer -->
-            <div class="flex items-center justify-between border-t border-gray-700/70 pt-2 mt-2 text-[10px] text-gray-500">
+            <div class="flex items-center justify-between border-t border-gray-200/50 dark:border-gray-700/70 pt-2 mt-2 text-[10px] text-gray-500">
               <span>{{ ofp.waypoints.length }} waypoints</span>
               <span>Total: {{ Math.round(totalDistance) }} nm</span>
             </div>
@@ -486,40 +486,40 @@ const yAxisLabels = computed(() => {
           <div v-if="activeTab === 'performance'" class="space-y-4">
             <div class="grid grid-cols-2 gap-3">
               <!-- Takeoff -->
-              <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3">
+              <div class="rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-gray-50 dark:bg-slate-800/60 p-3">
                 <div class="text-[11px] text-gray-500 mb-2">Takeoff</div>
-                <div class="text-lg font-mono text-gray-200 mb-1">{{ ofp.departure }} / {{ ofp.takeoffRunway || '-' }}</div>
+                <div class="text-lg font-mono text-gray-700 dark:text-gray-200 mb-1">{{ ofp.departure }} / {{ ofp.takeoffRunway || '-' }}</div>
                 <div class="grid grid-cols-2 gap-2 text-[11px] mt-3">
                   <div>
                     <span class="text-gray-500">Altitude</span>
-                    <div class="font-mono text-gray-200">{{ fmtAlt(ofp.cruiseAltitude) }}</div>
+                    <div class="font-mono text-gray-700 dark:text-gray-200">{{ fmtAlt(ofp.cruiseAltitude) }}</div>
                   </div>
                   <div>
                     <span class="text-gray-500">Cost Index</span>
-                    <div class="font-mono text-gray-200">{{ ofp.costIndex }}</div>
+                    <div class="font-mono text-gray-700 dark:text-gray-200">{{ ofp.costIndex }}</div>
                   </div>
                 </div>
               </div>
 
               <!-- Landing -->
-              <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3">
+              <div class="rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-gray-50 dark:bg-slate-800/60 p-3">
                 <div class="text-[11px] text-gray-500 mb-2">Landing</div>
-                <div class="text-lg font-mono text-gray-200 mb-1">{{ ofp.arrival }} / {{ ofp.landingRunway || '-' }}</div>
+                <div class="text-lg font-mono text-gray-700 dark:text-gray-200 mb-1">{{ ofp.arrival }} / {{ ofp.landingRunway || '-' }}</div>
                 <div class="grid grid-cols-2 gap-2 text-[11px] mt-3">
                   <div>
                     <span class="text-gray-500">Landing Weight</span>
-                    <div class="font-mono text-gray-200">{{ fmtWeight(ofp.lw) }} {{ wUnit }}</div>
+                    <div class="font-mono text-gray-700 dark:text-gray-200">{{ fmtWeight(ofp.lw) }} {{ wUnit }}</div>
                   </div>
                   <div v-if="ofp.alternate">
                     <span class="text-gray-500">Alternate</span>
-                    <div class="font-mono text-gray-200">{{ ofp.alternate }}</div>
+                    <div class="font-mono text-gray-700 dark:text-gray-200">{{ ofp.alternate }}</div>
                   </div>
                 </div>
               </div>
             </div>
 
             <!-- Cruise performance -->
-            <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3">
+            <div class="rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-gray-50 dark:bg-slate-800/60 p-3">
               <div class="text-[11px] text-gray-500 mb-2">Cruise Performance</div>
               <div class="grid grid-cols-4 gap-3 text-[11px]">
                 <div>
@@ -528,15 +528,15 @@ const yAxisLabels = computed(() => {
                 </div>
                 <div>
                   <span class="text-gray-500">Cost Index</span>
-                  <div class="font-mono text-lg text-gray-200">{{ ofp.costIndex }}</div>
+                  <div class="font-mono text-lg text-gray-700 dark:text-gray-200">{{ ofp.costIndex }}</div>
                 </div>
                 <div>
                   <span class="text-gray-500">Cruise Mach</span>
-                  <div class="font-mono text-lg text-gray-200">{{ ofp.cruiseMach || '-' }}</div>
+                  <div class="font-mono text-lg text-gray-700 dark:text-gray-200">{{ ofp.cruiseMach || '-' }}</div>
                 </div>
                 <div>
                   <span class="text-gray-500">Distance</span>
-                  <div class="font-mono text-lg text-gray-200">{{ Math.round(ofp.distance) }} nm</div>
+                  <div class="font-mono text-lg text-gray-700 dark:text-gray-200">{{ Math.round(ofp.distance) }} nm</div>
                 </div>
               </div>
             </div>
@@ -544,36 +544,36 @@ const yAxisLabels = computed(() => {
 
           <!-- Fuel Tab -->
           <div v-if="activeTab === 'fuel'" class="space-y-4">
-            <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3">
+            <div class="rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-gray-50 dark:bg-slate-800/60 p-3">
               <div class="text-[11px] text-gray-500 mb-3">Fuel Breakdown</div>
               <div class="space-y-2.5">
                 <div v-for="item in fuelBreakdown" :key="item.label" class="flex items-center gap-3">
                   <span class="w-24 text-[11px] text-gray-400 truncate">{{ item.label }}</span>
-                  <div class="flex-1 h-4 rounded-full bg-slate-700/80 overflow-hidden">
+                  <div class="flex-1 h-4 rounded-full bg-gray-200 dark:bg-slate-700/80 overflow-hidden">
                     <div
                       class="h-full rounded-full transition-all"
                       :class="item.color"
                       :style="{ width: `${Math.min((item.value / maxFuelValue) * 100, 100)}%` }"
                     ></div>
                   </div>
-                  <span class="w-20 text-right font-mono text-[11px] text-gray-200">{{ fmtWeight(item.value) }} {{ wUnit }}</span>
+                  <span class="w-20 text-right font-mono text-[11px] text-gray-700 dark:text-gray-200">{{ fmtWeight(item.value) }} {{ wUnit }}</span>
                 </div>
               </div>
             </div>
 
             <!-- Fuel summary card -->
             <div class="grid grid-cols-3 gap-3">
-              <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3 text-center">
+              <div class="rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-gray-50 dark:bg-slate-800/60 p-3 text-center">
                 <div class="text-[10px] text-gray-500">Block Fuel</div>
                 <div class="text-lg font-mono text-blue-300">{{ fmtWeight(ofp.blockFuel) }}</div>
                 <div class="text-[10px] text-gray-500">{{ wUnit }}</div>
               </div>
-              <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3 text-center">
+              <div class="rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-gray-50 dark:bg-slate-800/60 p-3 text-center">
                 <div class="text-[10px] text-gray-500">Trip Fuel</div>
                 <div class="text-lg font-mono text-cyan-300">{{ fmtWeight(ofp.tripFuel) }}</div>
                 <div class="text-[10px] text-gray-500">{{ wUnit }}</div>
               </div>
-              <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3 text-center">
+              <div class="rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-gray-50 dark:bg-slate-800/60 p-3 text-center">
                 <div class="text-[10px] text-gray-500">Reserve + Alt</div>
                 <div class="text-lg font-mono text-amber-300">{{ fmtWeight(ofp.reserveFuel + ofp.alternateFuel) }}</div>
                 <div class="text-[10px] text-gray-500">{{ wUnit }}</div>
@@ -583,16 +583,16 @@ const yAxisLabels = computed(() => {
 
           <!-- Weights Tab -->
           <div v-if="activeTab === 'weights'" class="space-y-4">
-            <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3">
+            <div class="rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-gray-50 dark:bg-slate-800/60 p-3">
               <div class="text-[11px] text-gray-500 mb-3">Weight Summary</div>
               <div class="space-y-3">
                 <!-- ZFW -->
                 <div>
                   <div class="flex items-center justify-between text-[11px] mb-1">
                     <span class="text-gray-400">Zero Fuel Weight</span>
-                    <span class="font-mono text-gray-200">{{ fmtWeight(ofp.zfw) }} {{ wUnit }}</span>
+                    <span class="font-mono text-gray-700 dark:text-gray-200">{{ fmtWeight(ofp.zfw) }} {{ wUnit }}</span>
                   </div>
-                  <div class="h-2 rounded-full bg-slate-700/80 overflow-hidden">
+                  <div class="h-2 rounded-full bg-gray-200 dark:bg-slate-700/80 overflow-hidden">
                     <div class="h-full rounded-full bg-emerald-500" :style="{ width: ofp.tow > 0 ? `${(ofp.zfw / ofp.tow) * 100}%` : '0%' }"></div>
                   </div>
                 </div>
@@ -600,9 +600,9 @@ const yAxisLabels = computed(() => {
                 <div>
                   <div class="flex items-center justify-between text-[11px] mb-1">
                     <span class="text-gray-400">Takeoff Weight</span>
-                    <span class="font-mono text-gray-200">{{ fmtWeight(ofp.tow) }} {{ wUnit }}</span>
+                    <span class="font-mono text-gray-700 dark:text-gray-200">{{ fmtWeight(ofp.tow) }} {{ wUnit }}</span>
                   </div>
-                  <div class="h-2 rounded-full bg-slate-700/80 overflow-hidden">
+                  <div class="h-2 rounded-full bg-gray-200 dark:bg-slate-700/80 overflow-hidden">
                     <div class="h-full rounded-full bg-blue-500 w-full"></div>
                   </div>
                 </div>
@@ -610,9 +610,9 @@ const yAxisLabels = computed(() => {
                 <div>
                   <div class="flex items-center justify-between text-[11px] mb-1">
                     <span class="text-gray-400">Landing Weight</span>
-                    <span class="font-mono text-gray-200">{{ fmtWeight(ofp.lw) }} {{ wUnit }}</span>
+                    <span class="font-mono text-gray-700 dark:text-gray-200">{{ fmtWeight(ofp.lw) }} {{ wUnit }}</span>
                   </div>
-                  <div class="h-2 rounded-full bg-slate-700/80 overflow-hidden">
+                  <div class="h-2 rounded-full bg-gray-200 dark:bg-slate-700/80 overflow-hidden">
                     <div class="h-full rounded-full bg-purple-500" :style="{ width: ofp.tow > 0 ? `${(ofp.lw / ofp.tow) * 100}%` : '0%' }"></div>
                   </div>
                 </div>
@@ -620,24 +620,24 @@ const yAxisLabels = computed(() => {
             </div>
 
             <!-- Fuel weight in context -->
-            <div class="rounded-lg border border-gray-700/70 bg-slate-800/60 p-3">
+            <div class="rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-gray-50 dark:bg-slate-800/60 p-3">
               <div class="text-[11px] text-gray-500 mb-2">Weight Composition</div>
               <div class="grid grid-cols-2 gap-3 text-[11px]">
                 <div>
                   <span class="text-gray-500">Payload (TOW - ZFW - Fuel)</span>
-                  <div class="font-mono text-gray-200">{{ fmtWeight(Math.max(ofp.tow - ofp.zfw - ofp.blockFuel, 0)) }} {{ wUnit }}</div>
+                  <div class="font-mono text-gray-700 dark:text-gray-200">{{ fmtWeight(Math.max(ofp.tow - ofp.zfw - ofp.blockFuel, 0)) }} {{ wUnit }}</div>
                 </div>
                 <div>
                   <span class="text-gray-500">Block Fuel</span>
-                  <div class="font-mono text-gray-200">{{ fmtWeight(ofp.blockFuel) }} {{ wUnit }}</div>
+                  <div class="font-mono text-gray-700 dark:text-gray-200">{{ fmtWeight(ofp.blockFuel) }} {{ wUnit }}</div>
                 </div>
                 <div>
                   <span class="text-gray-500">Trip Burn</span>
-                  <div class="font-mono text-gray-200">{{ fmtWeight(ofp.tripFuel) }} {{ wUnit }}</div>
+                  <div class="font-mono text-gray-700 dark:text-gray-200">{{ fmtWeight(ofp.tripFuel) }} {{ wUnit }}</div>
                 </div>
                 <div>
                   <span class="text-gray-500">Weight at Landing</span>
-                  <div class="font-mono text-gray-200">{{ fmtWeight(ofp.lw) }} {{ wUnit }}</div>
+                  <div class="font-mono text-gray-700 dark:text-gray-200">{{ fmtWeight(ofp.lw) }} {{ wUnit }}</div>
                 </div>
               </div>
             </div>
@@ -646,9 +646,9 @@ const yAxisLabels = computed(() => {
       </template>
 
       <!-- Footer -->
-      <div class="border-t border-gray-700/70 px-4 py-3 flex items-center justify-end">
+      <div class="border-t border-gray-200/50 dark:border-gray-700/70 px-4 py-3 flex items-center justify-end">
         <button
-          class="rounded bg-slate-700 px-4 py-1.5 text-sm text-gray-200 hover:bg-slate-600"
+          class="rounded bg-gray-200 dark:bg-slate-700 px-4 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-600"
           @click="emit('close')"
         >
           Close

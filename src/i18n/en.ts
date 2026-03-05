@@ -1228,7 +1228,7 @@ export default {
     copyImage: 'Copy Image',
     copyPath: 'Copy Path',
     saveAs: 'Save As',
-    shareReddit: 'Share to Reddit',
+    shareReddit: 'Share',
     autoEnhance: 'Auto Enhance',
     autoEnhanceBusy: 'Enhancing...',
     autoEnhanceApplied: 'Auto enhance applied to preview',
@@ -1250,6 +1250,7 @@ export default {
     copyImageFailed: 'Failed to copy image',
     copyPathFailed: 'Failed to copy file path',
     editNotSupported: 'Editing is currently unavailable for this image format.',
+    redditClipboardHint: 'Image copied to clipboard — paste it on the Reddit submit page',
     redditTitle: 'X-Plane screenshot',
   },
   errors: {

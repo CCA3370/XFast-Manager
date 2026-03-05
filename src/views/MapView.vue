@@ -1,30 +1,48 @@
 <template>
-  <div class="map-page h-full relative overflow-hidden bg-slate-900 text-gray-100">
+  <div class="map-page h-full relative overflow-hidden bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-gray-100">
     <div v-if="!appStore.xplanePath" class="absolute inset-0 z-30 flex items-center justify-center p-6">
-      <div class="max-w-lg rounded-xl border border-amber-500/30 bg-amber-500/10 p-6 text-center">
-        <h2 class="text-lg font-semibold text-amber-200">{{ t('map.pathRequiredTitle') }}</h2>
-        <p class="mt-2 text-sm text-amber-100/90">{{ t('map.pathRequiredDesc') }}</p>
+      <div class="max-w-lg rounded-xl border border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-6 text-center">
+        <h2 class="text-lg font-semibold text-amber-700 dark:text-amber-200">{{ t('map.pathRequiredTitle') }}</h2>
+        <p class="mt-2 text-sm text-amber-600 dark:text-amber-100/90">{{ t('map.pathRequiredDesc') }}</p>
       </div>
     </div>
 
-    <div class="absolute top-3 left-3 z-20 w-[420px] max-w-[calc(100%-1.5rem)] space-y-2">
-      <div class="rounded-xl border border-gray-700/70 bg-slate-900/90 backdrop-blur-md p-3 shadow-xl">
+    <!-- Left panel toggle button (visible when collapsed) -->
+    <button
+      v-if="leftPanelCollapsed"
+      class="absolute top-3 left-3 z-20 rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-2 shadow-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+      @click="leftPanelCollapsed = false"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+    </button>
+
+    <transition name="slide-left">
+    <div v-if="!leftPanelCollapsed" class="absolute top-3 left-3 z-20 w-[420px] max-w-[calc(100%-1.5rem)] space-y-2">
+      <div class="flex justify-end -mb-1">
+        <button
+          class="rounded-md border border-gray-200/50 dark:border-gray-700/70 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-1.5 py-0.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+          @click="leftPanelCollapsed = true"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+        </button>
+      </div>
+      <div class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl">
         <div class="flex items-center gap-2">
           <input
             v-model="searchQuery"
             type="text"
-            class="flex-1 rounded-md border border-gray-700 bg-slate-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-400 focus:border-blue-400 focus:outline-none"
+            class="flex-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:border-blue-400 focus:outline-none"
             :placeholder="t('map.searchPlaceholder')"
           />
           <button
-            class="rounded-md border border-gray-600 bg-slate-800 px-3 py-2 text-xs hover:bg-slate-700"
+            class="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-800 px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-slate-700"
             @click="refreshMapData"
           >
             {{ t('map.refresh') }}
           </button>
           <select
             :value="mapStore.mapStyleUrl"
-            class="rounded-md border border-gray-600 bg-slate-800 px-2 py-2 text-xs text-gray-200"
+            class="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-800 px-2 py-2 text-xs text-gray-700 dark:text-gray-200"
             @change="onMapStyleChange"
           >
             <option
@@ -37,21 +55,21 @@
           </select>
         </div>
 
-        <div v-if="searchResults.length > 0" class="mt-2 max-h-56 overflow-y-auto rounded-md border border-gray-700">
+        <div v-if="searchResults.length > 0" class="mt-2 max-h-56 overflow-y-auto rounded-md border border-gray-300 dark:border-gray-700">
           <button
             v-for="airport in searchResults"
             :key="`search-${airport.icao}`"
-            class="flex w-full items-center justify-between border-b border-gray-700/70 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-slate-700/60"
+            class="flex w-full items-center justify-between border-b border-gray-200 dark:border-gray-700/70 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-gray-100 dark:hover:bg-slate-700/60"
             @click="selectAirport(airport)"
           >
-            <span class="font-mono text-blue-300">{{ airport.icao }}</span>
-            <span class="ml-2 flex-1 truncate text-gray-200">{{ airport.name }}</span>
+            <span class="font-mono text-blue-600 dark:text-blue-300">{{ airport.icao }}</span>
+            <span class="ml-2 flex-1 truncate text-gray-700 dark:text-gray-200">{{ airport.name }}</span>
           </button>
         </div>
       </div>
 
-      <div class="rounded-xl border border-gray-700/70 bg-slate-900/90 backdrop-blur-md p-3 shadow-xl">
-        <div class="mb-2 flex items-center justify-between text-xs text-gray-400">
+      <div class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl">
+        <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
           <span>{{ t('map.layersTitle') }}</span>
           <span>
             {{ dataStatus.loaded ? t('map.indexReady') : t('map.indexLoading') }}
@@ -61,7 +79,7 @@
           <label
             v-for="item in layerItems"
             :key="item.key"
-            class="flex cursor-pointer items-center gap-1.5 rounded-md border border-gray-700 bg-slate-800 px-2 py-1.5"
+            class="flex cursor-pointer items-center gap-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5"
           >
             <input
               type="checkbox"
@@ -73,7 +91,7 @@
           </label>
         </div>
 
-        <div class="mt-3 flex items-center gap-3 text-xs text-gray-300">
+        <div class="mt-3 flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300">
           <label class="flex items-center gap-2">
             <span>{{ t('map.followPlane') }}</span>
             <input
@@ -90,7 +108,7 @@
               min="10"
               max="200"
               :value="mapStore.navRadiusNm"
-              class="w-16 rounded border border-gray-700 bg-slate-800 px-2 py-1"
+              class="w-16 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-2 py-1"
               @change="onRadiusInput"
             />
           </label>
@@ -101,12 +119,12 @@
               min="5"
               max="120"
               :value="mapStore.vatsimRefreshInterval"
-              class="w-14 rounded border border-gray-700 bg-slate-800 px-2 py-1"
+              class="w-14 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-2 py-1"
               @change="onVatsimIntervalInput"
             />
           </label>
           <button
-            class="rounded-md border border-gray-600 bg-slate-800 px-2 py-1 text-[11px] hover:bg-slate-700"
+            class="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-800 px-2 py-1 text-[11px] hover:bg-gray-100 dark:hover:bg-slate-700"
             @click="reconnectPlaneStream"
           >
             {{ t('map.reconnectPlane') }}
@@ -114,19 +132,19 @@
         </div>
       </div>
 
-      <div class="rounded-xl border border-gray-700/70 bg-slate-900/90 backdrop-blur-md p-3 shadow-xl">
-        <div class="mb-2 flex items-center justify-between text-xs text-gray-400">
+      <div class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl">
+        <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
           <span>{{ t('map.filtersTitle') }}</span>
           <button
-            class="rounded border border-gray-600 px-2 py-0.5 text-[11px] hover:bg-slate-700/70"
+            class="rounded border border-gray-300 dark:border-gray-600 px-2 py-0.5 text-[11px] hover:bg-gray-100 dark:hover:bg-slate-700/70"
             @click="resetAirportFilters"
           >
             {{ t('map.resetFilters') }}
           </button>
         </div>
 
-        <div class="grid grid-cols-2 gap-2 text-xs text-gray-200">
-          <label class="flex items-center gap-2 rounded-md border border-gray-700 bg-slate-800 px-2 py-1.5">
+        <div class="grid grid-cols-2 gap-2 text-xs text-gray-700 dark:text-gray-200">
+          <label class="flex items-center gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5">
             <input
               type="checkbox"
               class="h-3.5 w-3.5"
@@ -135,7 +153,7 @@
             />
             <span>{{ t('map.filters.land') }}</span>
           </label>
-          <label class="flex items-center gap-2 rounded-md border border-gray-700 bg-slate-800 px-2 py-1.5">
+          <label class="flex items-center gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5">
             <input
               type="checkbox"
               class="h-3.5 w-3.5"
@@ -144,7 +162,7 @@
             />
             <span>{{ t('map.filters.seaplane') }}</span>
           </label>
-          <label class="flex items-center gap-2 rounded-md border border-gray-700 bg-slate-800 px-2 py-1.5">
+          <label class="flex items-center gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5">
             <input
               type="checkbox"
               class="h-3.5 w-3.5"
@@ -153,7 +171,7 @@
             />
             <span>{{ t('map.filters.heliport') }}</span>
           </label>
-          <label class="flex items-center gap-2 rounded-md border border-gray-700 bg-slate-800 px-2 py-1.5">
+          <label class="flex items-center gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5">
             <input
               type="checkbox"
               class="h-3.5 w-3.5"
@@ -164,21 +182,40 @@
           </label>
         </div>
 
-        <div class="mt-2 flex items-center gap-2 text-xs text-gray-300">
+        <div class="mt-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
           <span>{{ t('map.filters.minRunways') }}</span>
           <input
             type="number"
             min="0"
             max="8"
             :value="mapStore.airportFilters.minRunwayCount"
-            class="w-14 rounded border border-gray-700 bg-slate-800 px-2 py-1"
+            class="w-14 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-2 py-1"
             @change="onMinRunwayCountInput"
           />
         </div>
       </div>
     </div>
+    </transition>
 
-    <div class="absolute top-3 right-3 z-20 w-[330px] max-w-[calc(100%-1.5rem)] space-y-2">
+    <!-- Right panel toggle button (visible when collapsed) -->
+    <button
+      v-if="rightPanelCollapsed"
+      class="absolute top-3 right-3 z-20 rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-2 shadow-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+      @click="rightPanelCollapsed = false"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+    </button>
+
+    <transition name="slide-right">
+    <div v-if="!rightPanelCollapsed" class="absolute top-3 right-3 z-20 w-[330px] max-w-[calc(100%-1.5rem)] space-y-2">
+      <div class="flex justify-start -mb-1">
+        <button
+          class="rounded-md border border-gray-200/50 dark:border-gray-700/70 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-1.5 py-0.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+          @click="rightPanelCollapsed = true"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+        </button>
+      </div>
       <!-- Airport Info Panel with Start Position selector -->
       <AirportInfoPanel
         v-if="mapStore.selectedAirport"
@@ -192,15 +229,15 @@
         @select-helipad="(hp) => { if (mapRef && hp.lat && hp.lon) mapRef.easeTo({ center: [hp.lon, hp.lat], zoom: Math.max(mapRef.getZoom(), 16) }) }"
       />
 
-      <div class="rounded-xl border border-gray-700/70 bg-slate-900/90 backdrop-blur-md p-3 shadow-xl">
-        <div class="text-xs text-gray-400">{{ t('map.selectedAirport') }}</div>
+      <div class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl">
+        <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('map.selectedAirport') }}</div>
         <template v-if="mapStore.selectedAirport">
           <div class="mt-1 flex items-baseline justify-between">
-            <div class="font-mono text-base text-blue-300">{{ mapStore.selectedAirport.icao }}</div>
-            <div class="text-xs text-gray-400">{{ mapStore.selectedAirport.airportType }}</div>
+            <div class="font-mono text-base text-blue-600 dark:text-blue-300">{{ mapStore.selectedAirport.icao }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ mapStore.selectedAirport.airportType }}</div>
           </div>
-          <div class="text-sm text-gray-200 truncate">{{ mapStore.selectedAirport.name }}</div>
-          <div v-if="selectedAirportDetail" class="mt-1 text-[11px] text-gray-400">
+          <div class="text-sm text-gray-700 dark:text-gray-200 truncate">{{ mapStore.selectedAirport.name }}</div>
+          <div v-if="selectedAirportDetail" class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
             {{ t('map.stats.runways') }}: {{ selectedAirportDetail.runways.length }}
             · {{ t('map.stats.helipads') }}: {{ selectedAirportDetail.helipads.length }}
             · {{ t('map.stats.gates') }}: {{ selectedAirportDetail.gates.length }}
@@ -211,15 +248,15 @@
             <template v-if="selectedAirportDetail.linearFeatures?.length">· Lines: {{ selectedAirportDetail.linearFeatures.length }}</template>
             <template v-if="selectedAirportDetail.boundaries?.length">· Boundaries: {{ selectedAirportDetail.boundaries.length }}</template>
           </div>
-          <div class="mt-2 text-xs text-gray-300 leading-5">
+          <div class="mt-2 text-xs text-gray-600 dark:text-gray-300 leading-5">
             <div>{{ metarText || t('map.noMetar') }}</div>
-            <div class="mt-1 text-gray-400">{{ tafText || t('map.noTaf') }}</div>
+            <div class="mt-1 text-gray-500 dark:text-gray-400">{{ tafText || t('map.noTaf') }}</div>
           </div>
-          <div class="mt-2 border-t border-gray-700/70 pt-2 text-[11px] leading-5">
-            <div class="mb-1 flex items-center justify-between gap-2 text-gray-400">
+          <div class="mt-2 border-t border-gray-200 dark:border-gray-700/70 pt-2 text-[11px] leading-5">
+            <div class="mb-1 flex items-center justify-between gap-2 text-gray-500 dark:text-gray-400">
               <span>{{ t('map.gateway.title') }}</span>
               <button
-                class="rounded border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-300 hover:bg-slate-700/70 disabled:opacity-50"
+                class="rounded border border-gray-300 dark:border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700/70 disabled:opacity-50"
                 :disabled="gatewayLoading"
                 @click="refreshGatewayDataForSelected"
               >
@@ -269,12 +306,12 @@
 
       <div
         v-if="mapStore.selectedAirport"
-        class="rounded-xl border border-gray-700/70 bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-300"
+        class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-700 dark:text-gray-300"
       >
-        <div class="mb-2 flex items-center justify-between text-gray-400">
+        <div class="mb-2 flex items-center justify-between text-gray-500 dark:text-gray-400">
           <span>{{ t('map.procedures.title') }}</span>
           <button
-            class="rounded border border-gray-600 px-2 py-0.5 text-[11px] hover:bg-slate-700/70 disabled:opacity-50"
+            class="rounded border border-gray-300 dark:border-gray-600 px-2 py-0.5 text-[11px] hover:bg-gray-100 dark:hover:bg-slate-700/70 disabled:opacity-50"
             :disabled="proceduresLoading"
             @click="refreshProceduresForSelected"
           >
@@ -292,8 +329,8 @@
               :key="tab.key"
               class="rounded border px-2 py-1 text-[11px] transition-colors"
               :class="activeProcedureTab === tab.key
-                ? 'border-blue-500/50 bg-blue-500/20 text-blue-200'
-                : 'border-gray-700 bg-slate-800 text-gray-300 hover:bg-slate-700/70'"
+                ? 'border-blue-500/50 bg-blue-500/20 text-blue-700 dark:text-blue-200'
+                : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700/70'"
               @click="setActiveProcedureTab(tab.key)"
             >
               {{ t(tab.label) }} ({{ procedureCounts[tab.key] }})
@@ -307,26 +344,26 @@
             <div
               v-for="group in activeProcedureGroups"
               :key="`${activeProcedureTab}-${group.name}`"
-              class="rounded border border-gray-700/70 bg-slate-800/70"
+              class="rounded border border-gray-200/70 dark:border-gray-700/70 bg-gray-50/70 dark:bg-slate-800/70"
             >
               <button
                 class="flex w-full items-center justify-between px-2 py-1.5 text-left"
                 @click="toggleProcedureGroup(group.name)"
               >
-                <span class="font-mono text-[11px] text-blue-200">{{ group.name }}</span>
+                <span class="font-mono text-[11px] text-blue-600 dark:text-blue-200">{{ group.name }}</span>
                 <span class="text-[10px] text-gray-400">{{ group.variants.length }}</span>
               </button>
 
               <div
                 v-if="expandedProcedureGroup === group.name"
-                class="space-y-1 border-t border-gray-700/70 px-2 py-1.5"
+                class="space-y-1 border-t border-gray-200/70 dark:border-gray-700/70 px-2 py-1.5"
               >
                 <div
                   v-for="(variant, idx) in group.variants"
                   :key="`${group.name}-${idx}-${variant.runway || ''}-${variant.transition || ''}`"
-                  class="rounded border border-gray-700/70 bg-slate-900/60 px-2 py-1"
+                  class="rounded border border-gray-200/70 dark:border-gray-700/70 bg-white/60 dark:bg-slate-900/60 px-2 py-1"
                 >
-                  <div class="flex items-center justify-between gap-2 text-[10px] text-gray-300">
+                  <div class="flex items-center justify-between gap-2 text-[10px] text-gray-600 dark:text-gray-300">
                     <span class="truncate">{{ formatProcedureVariant(variant) }}</span>
                     <span class="shrink-0 text-gray-500">{{ variant.waypointCount }} {{ t('map.procedures.legs') }}</span>
                   </div>
@@ -337,8 +374,12 @@
         </template>
       </div>
 
-      <div class="rounded-xl border border-gray-700/70 bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-300">
-        <div class="grid grid-cols-2 gap-y-1">
+      <div class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-700 dark:text-gray-300">
+        <button class="flex w-full items-center justify-between text-gray-500 dark:text-gray-400 mb-1" @click="statsCollapsed = !statsCollapsed">
+          <span class="text-xs font-medium">{{ t('map.stats.airports').split(':')[0] || 'Stats' }}</span>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 transition-transform" :class="{ 'rotate-180': !statsCollapsed }" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+        </button>
+        <div v-show="!statsCollapsed" class="grid grid-cols-2 gap-y-1">
           <div>{{ t('map.stats.airports') }}: {{ airports.length }} / {{ rawAirports.length }}</div>
           <div>{{ t('map.stats.navaids') }}: {{ navSnapshot.navaids.length }}</div>
           <div>{{ t('map.stats.waypoints') }}: {{ navSnapshot.waypoints.length }}</div>
@@ -346,7 +387,7 @@
           <div>{{ t('map.stats.ils') }}: {{ navSnapshot.ils.length }}</div>
           <div>{{ t('map.stats.airspaces') }}: {{ navSnapshot.airspaces.length }}</div>
         </div>
-        <div class="mt-2 border-t border-gray-700 pt-2 text-[11px] text-gray-400">
+        <div class="mt-2 border-t border-gray-200 dark:border-gray-700 pt-2 text-[11px] text-gray-500 dark:text-gray-400">
           {{ t('map.planeStatus') }}:
           <span :class="mapStore.planeConnected ? 'text-emerald-300' : 'text-rose-300'">
             {{ mapStore.planeConnected ? t('map.connected') : t('map.disconnected') }}
@@ -357,9 +398,12 @@
         </div>
       </div>
 
-      <div class="rounded-xl border border-gray-700/70 bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-300">
-        <div class="mb-2 flex items-center justify-between text-gray-400">
-          <span>{{ t('map.vatsimOverview') }}</span>
+      <div class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-700 dark:text-gray-300">
+        <div class="mb-2 flex items-center justify-between text-gray-500 dark:text-gray-400">
+          <button class="flex items-center gap-1" @click="vatsimCollapsed = !vatsimCollapsed">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 transition-transform" :class="{ 'rotate-180': !vatsimCollapsed }" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+            <span>{{ t('map.vatsimOverview') }}</span>
+          </button>
           <button
             class="rounded border border-gray-600 px-2 py-0.5 text-[11px] hover:bg-slate-700/70"
             @click="refreshVatsimAndEvents"
@@ -367,11 +411,11 @@
             {{ t('map.refresh') }}
           </button>
         </div>
-        <div class="grid grid-cols-2 gap-y-1">
+        <div v-show="!vatsimCollapsed" class="grid grid-cols-2 gap-y-1">
           <div>{{ t('map.vatsimPilots') }}: {{ vatsimPilots.length }}</div>
           <div>{{ t('map.vatsimEvents') }}: {{ vatsimEvents.length }}</div>
         </div>
-        <div v-if="busiestAirports.length > 0" class="mt-2 border-t border-gray-700 pt-2">
+        <div v-if="busiestAirports.length > 0 && !vatsimCollapsed" class="mt-2 border-t border-gray-700 pt-2">
           <div class="mb-1 text-[11px] text-gray-400">{{ t('map.busiestAirports') }}</div>
           <div class="space-y-1">
             <button
@@ -385,7 +429,7 @@
             </button>
           </div>
         </div>
-        <div v-if="vatsimEvents.length > 0" class="mt-2 border-t border-gray-700 pt-2">
+        <div v-if="vatsimEvents.length > 0 && !vatsimCollapsed" class="mt-2 border-t border-gray-700 pt-2">
           <div class="mb-1 text-[11px] text-gray-400">{{ t('map.upcomingEvents') }}</div>
           <div class="space-y-1">
             <div
@@ -400,8 +444,12 @@
         </div>
       </div>
 
-      <div class="rounded-xl border border-gray-700/70 bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-300">
-        <div class="mb-2 text-gray-400">SimBrief</div>
+      <div class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-700 dark:text-gray-300">
+        <button class="flex w-full items-center justify-between text-gray-500 dark:text-gray-400 mb-2" @click="simbriefPanelCollapsed = !simbriefPanelCollapsed">
+          <span>SimBrief</span>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 transition-transform" :class="{ 'rotate-180': !simbriefPanelCollapsed }" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+        </button>
+        <template v-if="!simbriefPanelCollapsed">
         <div v-if="simbriefSummary" class="rounded border border-gray-700/70 bg-slate-800/80 p-2 text-[11px]">
           <div class="font-mono text-blue-300">{{ simbriefSummary.callsign || '-' }}</div>
           <div class="mt-1">{{ simbriefSummary.from }} -> {{ simbriefSummary.to }}</div>
@@ -427,48 +475,50 @@
         >
           {{ isSimbriefLoading ? t('map.loading') : t('map.fetch') }}
         </button>
+        </template>
       </div>
     </div>
+    </transition>
 
     <div ref="mapContainer" class="h-full w-full"></div>
 
     <!-- Flight info bar - shown when plane is connected -->
     <div
       v-if="mapStore.planeConnected && mapStore.planeState"
-      class="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-4 rounded-lg border border-gray-700/70 bg-slate-900/90 backdrop-blur-md px-4 py-2 shadow-xl text-[11px] font-mono"
+      class="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-4 rounded-lg border border-gray-200/70 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-4 py-2 shadow-xl text-[11px] font-mono"
     >
       <div class="flex items-center gap-1">
         <span class="text-gray-500">IAS</span>
-        <span class="text-gray-100">{{ mapStore.planeState.indicatedAirspeed != null ? Math.round(mapStore.planeState.indicatedAirspeed) : '-' }}</span>
+        <span class="text-gray-900 dark:text-gray-100">{{ mapStore.planeState.indicatedAirspeed != null ? Math.round(mapStore.planeState.indicatedAirspeed) : '-' }}</span>
         <span class="text-gray-500">kt</span>
       </div>
       <div class="flex items-center gap-1">
         <span class="text-gray-500">GS</span>
-        <span class="text-gray-100">{{ mapStore.planeState.groundspeed != null ? Math.round(mapStore.planeState.groundspeed) : '-' }}</span>
+        <span class="text-gray-900 dark:text-gray-100">{{ mapStore.planeState.groundspeed != null ? Math.round(mapStore.planeState.groundspeed) : '-' }}</span>
         <span class="text-gray-500">kt</span>
       </div>
-      <div class="w-px h-4 bg-gray-700"></div>
+      <div class="w-px h-4 bg-gray-300 dark:bg-gray-700"></div>
       <div class="flex items-center gap-1">
         <span class="text-gray-500">ALT</span>
-        <span class="text-gray-100">{{ mapStore.planeState.altitudeMSL != null ? Math.round(mapStore.planeState.altitudeMSL).toLocaleString() : '-' }}</span>
+        <span class="text-gray-900 dark:text-gray-100">{{ mapStore.planeState.altitudeMSL != null ? Math.round(mapStore.planeState.altitudeMSL).toLocaleString() : '-' }}</span>
         <span class="text-gray-500">ft</span>
       </div>
       <div class="flex items-center gap-1">
         <span class="text-gray-500">AGL</span>
-        <span class="text-gray-100">{{ mapStore.planeState.altitudeAGL != null ? Math.round(mapStore.planeState.altitudeAGL).toLocaleString() : '-' }}</span>
+        <span class="text-gray-900 dark:text-gray-100">{{ mapStore.planeState.altitudeAGL != null ? Math.round(mapStore.planeState.altitudeAGL).toLocaleString() : '-' }}</span>
         <span class="text-gray-500">ft</span>
       </div>
-      <div class="w-px h-4 bg-gray-700"></div>
+      <div class="w-px h-4 bg-gray-300 dark:bg-gray-700"></div>
       <div class="flex items-center gap-1">
         <span class="text-gray-500">VS</span>
-        <span :class="(mapStore.planeState.verticalSpeed ?? 0) > 100 ? 'text-emerald-300' : (mapStore.planeState.verticalSpeed ?? 0) < -100 ? 'text-amber-300' : 'text-gray-100'">
+        <span :class="(mapStore.planeState.verticalSpeed ?? 0) > 100 ? 'text-emerald-300' : (mapStore.planeState.verticalSpeed ?? 0) < -100 ? 'text-amber-300' : 'text-gray-900 dark:text-gray-100'">
           {{ mapStore.planeState.verticalSpeed != null ? Math.round(mapStore.planeState.verticalSpeed) : '-' }}
         </span>
         <span class="text-gray-500">fpm</span>
       </div>
       <div class="flex items-center gap-1">
         <span class="text-gray-500">HDG</span>
-        <span class="text-gray-100">{{ mapStore.planeState.heading != null ? Math.round(mapStore.planeState.heading).toString().padStart(3, '0') : '-' }}°</span>
+        <span class="text-gray-900 dark:text-gray-100">{{ mapStore.planeState.heading != null ? Math.round(mapStore.planeState.heading).toString().padStart(3, '0') : '-' }}°</span>
       </div>
       <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
     </div>
@@ -538,6 +588,7 @@ import type {
   MapDataStatus,
 } from '@/types/map'
 import { logError } from '@/services/logger'
+import { parseSignText } from '@/utils/signParser'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -599,6 +650,11 @@ const simbriefSummary = ref<{
   distance: string
 } | null>(null)
 const airportPanelCollapsed = ref(false)
+const leftPanelCollapsed = ref(false)
+const rightPanelCollapsed = ref(false)
+const statsCollapsed = ref(false)
+const vatsimCollapsed = ref(false)
+const simbriefPanelCollapsed = ref(false)
 const showLaunchDialog = ref(false)
 const showSimbriefDialog = ref(false)
 
@@ -1949,18 +2005,22 @@ function toAirportSignFeatureCollection(detail: MapAirportDetail | null): Featur
     type: 'FeatureCollection',
     features: detail.signs
       .filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lon) && item.text)
-      .map((item) => ({
-        type: 'Feature',
-        properties: {
-          text: item.text,
-          size: item.size || 0,
-          heading: item.heading || 0,
-        },
-        geometry: {
-          type: 'Point',
-          coordinates: [item.lon, item.lat],
-        },
-      })),
+      .map((item) => {
+        const parsed = parseSignText(item.text)
+        return {
+          type: 'Feature',
+          properties: {
+            text: parsed,
+            size: item.size || 0,
+            heading: item.heading || 0,
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [item.lon, item.lat],
+          },
+        }
+      })
+      .filter((f) => f.properties.text.length > 0),
   }
 }
 
@@ -2080,31 +2140,31 @@ function toAirwayFeatureCollection(items: MapNavSnapshot['airways']): FeatureCol
   }
 }
 
-function toIlsFeatureCollection(items: MapNavSnapshot['ils']): FeatureCollection {
+/** ILS course dashed centerline (12 NM along inbound course) */
+function toIlsCourseFeatureCollection(items: MapNavSnapshot['ils']): FeatureCollection {
+  const NM_TO_METERS = 1852
+  const courseLength = 12 * NM_TO_METERS
+
   return {
     type: 'FeatureCollection',
-    features: items.map((item) => {
-      const start: [number, number] = [item.lon, item.lat]
-      const course = Number(item.course || 0)
-      const distance = 0.2
-      const rad = (course * Math.PI) / 180
-      const end: [number, number] = [
-        item.lon + Math.sin(rad) * distance,
-        item.lat + Math.cos(rad) * distance,
-      ]
-      return {
-        type: 'Feature',
-        properties: {
-          id: item.id,
-          airport: item.airport,
-          runway: item.runway,
-        },
-        geometry: {
-          type: 'LineString',
-          coordinates: [start, end],
-        },
-      }
-    }),
+    features: items
+      .filter((item) => item.course != null && Number.isFinite(item.lat) && Number.isFinite(item.lon))
+      .map((item) => {
+        const inboundCourse = ((Number(item.course) || 0) + 180) % 360
+        const end = destinationPoint(item.lat, item.lon, courseLength, inboundCourse)
+        return {
+          type: 'Feature',
+          properties: {
+            id: item.id,
+            airport: item.airport,
+            runway: item.runway,
+          },
+          geometry: {
+            type: 'LineString',
+            coordinates: [[item.lon, item.lat], end],
+          },
+        }
+      }),
   }
 }
 
@@ -2867,8 +2927,8 @@ function applyLayerVisibility() {
     { id: 'navaids-label', visible: mapStore.layerVisibility.navaids },
     { id: 'waypoints-circle', visible: mapStore.layerVisibility.waypoints },
     { id: 'airways-line', visible: mapStore.layerVisibility.airways },
-    { id: 'ils-line', visible: mapStore.layerVisibility.ils },
     { id: 'ils-cone-fill', visible: mapStore.layerVisibility.ils },
+    { id: 'ils-course-line', visible: mapStore.layerVisibility.ils },
     { id: 'airspaces-fill', visible: mapStore.layerVisibility.airspaces },
     { id: 'airspaces-line', visible: mapStore.layerVisibility.airspaces },
     { id: 'plane-circle', visible: mapStore.layerVisibility.plane },
@@ -2900,8 +2960,8 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
     'navaids',
     'waypoints',
     'airways',
-    'ils',
     'ils-cones',
+    'ils-course',
     'airspaces',
     'plane',
     'vatsim',
@@ -2964,18 +3024,6 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
     })
   }
 
-  if (!map.getLayer('ils-line')) {
-    map.addLayer({
-      id: 'ils-line',
-      type: 'line',
-      source: 'ils',
-      paint: {
-        'line-color': '#fb923c',
-        'line-width': 1.2,
-      },
-    })
-  }
-
   // ILS localizer cone (translucent triangle)
   if (!map.getLayer('ils-cone-fill')) {
     map.addLayer({
@@ -2985,6 +3033,21 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       paint: {
         'fill-color': '#FF8800',
         'fill-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0.04, 12, 0.08, 16, 0.12],
+      },
+    })
+  }
+
+  // ILS course dashed centerline
+  if (!map.getLayer('ils-course-line')) {
+    map.addLayer({
+      id: 'ils-course-line',
+      type: 'line',
+      source: 'ils-course',
+      paint: {
+        'line-color': '#FF8800',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.8, 12, 1.2, 16, 1.8],
+        'line-dasharray': [4, 2],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0.4, 12, 0.7, 16, 0.9],
       },
     })
   }
@@ -3966,6 +4029,17 @@ function isDataLayer(layer: keyof MapLayerVisibility): boolean {
     || layer === 'airspaces'
 }
 
+function getEffectiveNavRadius(zoom: number): number {
+  const maxRadius = mapStore.navRadiusNm
+  let zoomRadius: number
+  if (zoom < 4) zoomRadius = 200
+  else if (zoom < 6) zoomRadius = 120
+  else if (zoom < 8) zoomRadius = 80
+  else if (zoom < 10) zoomRadius = 50
+  else zoomRadius = 30
+  return Math.min(zoomRadius, maxRadius)
+}
+
 async function refreshMapData() {
   const map = mapRef.value
   const xplanePath = appStore.xplanePath
@@ -4016,7 +4090,7 @@ async function refreshMapData() {
       ? mapGetNavSnapshot(xplanePath, {
         lat: center.lat,
         lon: center.lng,
-        radiusNm: mapStore.navRadiusNm,
+        radiusNm: getEffectiveNavRadius(zoom),
         includeNavaids: mapStore.layerVisibility.navaids,
         includeWaypoints: mapStore.layerVisibility.waypoints,
         includeAirways: mapStore.layerVisibility.airways,
@@ -4037,8 +4111,8 @@ async function refreshMapData() {
     updateGeoJsonSource('navaids', toNavaidFeatureCollection(navResult.navaids))
     updateGeoJsonSource('waypoints', toWaypointFeatureCollection(navResult.waypoints))
     updateGeoJsonSource('airways', toAirwayFeatureCollection(navResult.airways))
-    updateGeoJsonSource('ils', toIlsFeatureCollection(navResult.ils))
     updateGeoJsonSource('ils-cones', toIlsConeFeatureCollection(navResult.ils))
+    updateGeoJsonSource('ils-course', toIlsCourseFeatureCollection(navResult.ils))
     updateGeoJsonSource('airspaces', toAirspaceFeatureCollection(navResult.airspaces))
   } catch (error) {
     logError(`Failed to refresh map data: ${error}`, 'map')
@@ -4241,8 +4315,8 @@ watch(
       updateGeoJsonSource('navaids', toNavaidFeatureCollection(navSnapshot.value.navaids))
       updateGeoJsonSource('waypoints', toWaypointFeatureCollection(navSnapshot.value.waypoints))
       updateGeoJsonSource('airways', toAirwayFeatureCollection(navSnapshot.value.airways))
-      updateGeoJsonSource('ils', toIlsFeatureCollection(navSnapshot.value.ils))
       updateGeoJsonSource('ils-cones', toIlsConeFeatureCollection(navSnapshot.value.ils))
+      updateGeoJsonSource('ils-course', toIlsCourseFeatureCollection(navSnapshot.value.ils))
       updateGeoJsonSource('airspaces', toAirspaceFeatureCollection(navSnapshot.value.airspaces))
       updatePlaneFeature(mapStore.planeState)
       updateVatsimFeature(vatsimPilots.value)
@@ -4351,22 +4425,63 @@ onBeforeUnmount(async () => {
 </script>
 
 <style scoped>
+/* Panel slide transitions */
+.slide-left-enter-active,
+.slide-left-leave-active,
+.slide-right-enter-active,
+.slide-right-leave-active {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.slide-left-enter-from,
+.slide-left-leave-to {
+  transform: translateX(-100%);
+  opacity: 0;
+}
+
+.slide-right-enter-from,
+.slide-right-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+/* MapLibre controls — theme-aware */
 .map-page :deep(.maplibregl-ctrl-group) {
+  background-color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(209, 213, 219, 0.5);
+}
+
+:global(.dark) .map-page :deep(.maplibregl-ctrl-group) {
   background-color: rgba(15, 23, 42, 0.9);
   border: 1px solid rgba(100, 116, 139, 0.35);
 }
 
 .map-page :deep(.maplibregl-ctrl button) {
+  color: #374151;
+}
+
+:global(.dark) .map-page :deep(.maplibregl-ctrl button) {
   color: #e2e8f0;
 }
 
 .map-page :deep(.maplibregl-popup-content) {
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid rgba(209, 213, 219, 0.5);
+}
+
+:global(.dark) .map-page :deep(.maplibregl-popup-content) {
   background: #0f172a;
   color: #e2e8f0;
   border: 1px solid rgba(100, 116, 139, 0.4);
 }
 
 .map-page :deep(.maplibregl-popup-tip) {
+  border-top-color: #ffffff;
+  border-bottom-color: #ffffff;
+}
+
+:global(.dark) .map-page :deep(.maplibregl-popup-tip) {
   border-top-color: #0f172a;
   border-bottom-color: #0f172a;
 }

@@ -132,11 +132,11 @@ onMounted(() => {
 
 <template>
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="emit('close')">
-    <div class="w-[800px] max-w-[95vw] max-h-[85vh] rounded-xl border border-gray-700/70 bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
+    <div class="w-[800px] max-w-[95vw] max-h-[85vh] rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white dark:bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
       <!-- Header -->
-      <div class="flex items-center justify-between border-b border-gray-700/70 px-4 py-3">
-        <h2 class="text-lg text-gray-100">Flight Launcher</h2>
-        <button class="text-gray-400 hover:text-white" @click="emit('close')">
+      <div class="flex items-center justify-between border-b border-gray-200/50 dark:border-gray-700/70 px-4 py-3">
+        <h2 class="text-lg text-gray-900 dark:text-gray-100">Flight Launcher</h2>
+        <button class="text-gray-400 hover:text-gray-700 dark:hover:text-white" @click="emit('close')">
           <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
           </svg>
@@ -144,12 +144,12 @@ onMounted(() => {
       </div>
 
       <!-- Tabs -->
-      <div class="flex border-b border-gray-700/70 px-4">
+      <div class="flex border-b border-gray-200/50 dark:border-gray-700/70 px-4">
         <button
           v-for="tab in (['aircraft', 'fuel', 'payload', 'config'] as const)"
           :key="tab"
           class="px-4 py-2 text-sm transition-colors"
-          :class="activeTab === tab ? 'text-blue-300 border-b-2 border-blue-400' : 'text-gray-400 hover:text-gray-200'"
+          :class="activeTab === tab ? 'text-blue-600 dark:text-blue-300 border-b-2 border-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
           @click="activeTab = tab"
         >
           {{ tab === 'aircraft' ? 'Aircraft' : tab === 'fuel' ? 'Fuel' : tab === 'payload' ? 'Payload' : 'Config' }}
@@ -164,11 +164,11 @@ onMounted(() => {
             <input
               v-model="searchQuery"
               type="text"
-              class="flex-1 rounded border border-gray-700 bg-slate-800 px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 outline-none focus:border-blue-500"
+              class="flex-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 placeholder-gray-500 outline-none focus:border-blue-500"
               placeholder="Search aircraft..."
             >
             <button
-              class="rounded bg-slate-700 px-3 py-1.5 text-sm text-gray-200 hover:bg-slate-600 disabled:opacity-50"
+              class="rounded bg-gray-200 dark:bg-slate-700 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-600 disabled:opacity-50"
               :disabled="launchStore.isScanning"
               @click="scanAircraft"
             >
@@ -188,22 +188,22 @@ onMounted(() => {
               :key="acf.path"
               class="flex items-start gap-3 rounded-lg p-2 text-left transition-colors"
               :class="selectedAircraft?.path === acf.path
-                ? 'bg-blue-900/30 border border-blue-500/40'
-                : 'bg-slate-800/60 hover:bg-slate-700/60 border border-transparent'"
+                ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-500/40'
+                : 'bg-gray-100 dark:bg-slate-800/60 hover:bg-gray-200 dark:hover:bg-slate-700/60 border border-transparent'"
               @click="selectAircraft(idx)"
             >
               <div class="min-w-0 flex-1">
                 <div class="flex items-baseline gap-2">
-                  <span class="text-sm font-medium text-gray-100">{{ acf.name }}</span>
-                  <span v-if="acf.icao" class="font-mono text-[10px] text-cyan-300">{{ acf.icao }}</span>
+                  <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ acf.name }}</span>
+                  <span v-if="acf.icao" class="font-mono text-[10px] text-cyan-600 dark:text-cyan-300">{{ acf.icao }}</span>
                 </div>
                 <div class="text-[11px] text-gray-400 truncate">
                   {{ acf.manufacturer }}{{ acf.studio ? ` · ${acf.studio}` : '' }}
                 </div>
                 <div class="mt-0.5 flex flex-wrap gap-1 text-[9px]">
-                  <span v-if="acf.isHelicopter" class="rounded bg-purple-900/40 px-1 py-0.5 text-purple-300">Heli</span>
-                  <span class="rounded bg-slate-700 px-1 py-0.5 text-gray-400">{{ acf.engineCount }}eng</span>
-                  <span class="rounded bg-slate-700 px-1 py-0.5 text-gray-400">{{ acf.liveries.length }} liveries</span>
+                  <span v-if="acf.isHelicopter" class="rounded bg-purple-100 dark:bg-purple-900/40 px-1 py-0.5 text-purple-600 dark:text-purple-300">Heli</span>
+                  <span class="rounded bg-gray-200 dark:bg-slate-700 px-1 py-0.5 text-gray-500 dark:text-gray-400">{{ acf.engineCount }}eng</span>
+                  <span class="rounded bg-gray-200 dark:bg-slate-700 px-1 py-0.5 text-gray-500 dark:text-gray-400">{{ acf.liveries.length }} liveries</span>
                 </div>
               </div>
             </button>
@@ -212,8 +212,8 @@ onMounted(() => {
 
         <!-- Fuel Tab -->
         <div v-if="activeTab === 'fuel' && selectedAircraft">
-          <div class="mb-3 text-sm text-gray-300">
-            <span class="text-gray-400">Aircraft:</span> {{ selectedAircraft.name }}
+          <div class="mb-3 text-sm text-gray-600 dark:text-gray-300">
+            <span class="text-gray-500 dark:text-gray-400">Aircraft:</span> {{ selectedAircraft.name }}
             <span class="ml-2 text-gray-500">Max fuel: {{ Math.round(selectedAircraft.maxFuelLbs) }} lbs</span>
           </div>
 
@@ -222,7 +222,7 @@ onMounted(() => {
             <label class="text-[11px] text-gray-400 block mb-1">Livery</label>
             <select
               :value="launchStore.selectedLiveryIndex"
-              class="w-full rounded border border-gray-700 bg-slate-800 px-2 py-1.5 text-sm text-gray-200 outline-none"
+              class="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-gray-700 dark:text-gray-200 outline-none"
               @change="launchStore.selectedLiveryIndex = Number(($event.target as HTMLSelectElement).value)"
             >
               <option v-for="(liv, idx) in selectedAircraft.liveries" :key="liv.folder" :value="idx">
@@ -243,7 +243,7 @@ onMounted(() => {
                 class="flex-1 accent-blue-500"
                 @input="launchStore.fuelPercents[i] = Number(($event.target as HTMLInputElement).value)"
               >
-              <span class="w-12 text-right text-[11px] text-gray-300">{{ launchStore.fuelPercents[i] || 0 }}%</span>
+              <span class="w-12 text-right text-[11px] text-gray-600 dark:text-gray-300">{{ launchStore.fuelPercents[i] || 0 }}%</span>
             </div>
           </div>
 
@@ -254,9 +254,9 @@ onMounted(() => {
 
         <!-- Payload Tab -->
         <div v-if="activeTab === 'payload' && selectedAircraft">
-          <div class="mb-3 text-sm text-gray-300">
-            <span class="text-gray-400">Empty weight:</span> {{ Math.round(selectedAircraft.emptyWeightLbs) }} lbs
-            <span class="ml-2 text-gray-400">Max:</span> {{ Math.round(selectedAircraft.maxWeightLbs) }} lbs
+          <div class="mb-3 text-sm text-gray-600 dark:text-gray-300">
+            <span class="text-gray-500 dark:text-gray-400">Empty weight:</span> {{ Math.round(selectedAircraft.emptyWeightLbs) }} lbs
+            <span class="ml-2 text-gray-500 dark:text-gray-400">Max:</span> {{ Math.round(selectedAircraft.maxWeightLbs) }} lbs
           </div>
 
           <div v-if="selectedAircraft.payloadStations.length === 0" class="text-gray-500 text-sm py-4 text-center">
@@ -273,7 +273,7 @@ onMounted(() => {
                 class="flex-1 accent-emerald-500"
                 @input="launchStore.payloadWeights[i] = Number(($event.target as HTMLInputElement).value)"
               >
-              <span class="w-16 text-right text-[11px] text-gray-300">{{ launchStore.payloadWeights[i] || 0 }} kg</span>
+              <span class="w-16 text-right text-[11px] text-gray-600 dark:text-gray-300">{{ launchStore.payloadWeights[i] || 0 }} kg</span>
             </div>
           </div>
 
@@ -288,7 +288,7 @@ onMounted(() => {
             <label class="text-[11px] text-gray-400 block mb-1">Weather Preset</label>
             <select
               v-model="launchStore.weatherPreset"
-              class="w-full rounded border border-gray-700 bg-slate-800 px-2 py-1.5 text-sm text-gray-200 outline-none"
+              class="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-gray-700 dark:text-gray-200 outline-none"
             >
               <option value="real">Real Weather</option>
               <option value="clear">Clear</option>
@@ -308,7 +308,7 @@ onMounted(() => {
               max="24"
               step="0.5"
               :value="launchStore.timeHours ?? ''"
-              class="w-full rounded border border-gray-700 bg-slate-800 px-2 py-1.5 text-sm text-gray-200 outline-none"
+              class="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-sm text-gray-700 dark:text-gray-200 outline-none"
               placeholder="Default (current time)"
               @input="launchStore.timeHours = ($event.target as HTMLInputElement).value ? Number(($event.target as HTMLInputElement).value) : null"
             >
@@ -321,7 +321,7 @@ onMounted(() => {
       </div>
 
       <!-- Footer -->
-      <div class="border-t border-gray-700/70 px-4 py-3 flex items-center justify-between">
+      <div class="border-t border-gray-200/50 dark:border-gray-700/70 px-4 py-3 flex items-center justify-between">
         <div class="text-[11px] text-gray-400">
           <template v-if="selectedAircraft">
             {{ selectedAircraft.name }}
@@ -333,7 +333,7 @@ onMounted(() => {
         </div>
         <div class="flex gap-2">
           <button
-            class="rounded bg-slate-700 px-4 py-1.5 text-sm text-gray-200 hover:bg-slate-600"
+            class="rounded bg-gray-200 dark:bg-slate-700 px-4 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-slate-600"
             @click="emit('close')"
           >
             Cancel

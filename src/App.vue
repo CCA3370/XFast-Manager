@@ -102,10 +102,10 @@
             </div>
 
             <router-link
-              to="/map"
+              to="/screenshots"
               class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
               :class="
-                $route.path === '/map'
+                $route.path === '/screenshots'
                   ? 'text-blue-600 dark:text-white'
                   : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
               "
@@ -113,7 +113,7 @@
               <div
                 class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
                 :class="
-                  $route.path === '/map'
+                  $route.path === '/screenshots'
                     ? 'scale-x-100 opacity-100'
                     : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
                 "
@@ -124,10 +124,16 @@
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
-                    d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 01.553-.894L9 2m0 18l6-3m-6 3V2m6 15l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                  />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
                   />
                 </svg>
-                <AnimatedText>{{ $t('map.navTitle') }}</AnimatedText>
+                <AnimatedText>{{ $t('screenshot.navTitle') }}</AnimatedText>
               </span>
             </router-link>
 
@@ -461,9 +467,8 @@ const routeOrder: Record<string, number> = {
   '/': 0,
   '/management': 1,
   '/management/liveries': 1,
-  '/map': 2,
+  '/screenshots': 2,
   '/log-analysis': 3,
-  '/screenshots': 4,
   '/feedback': 5,
   '/settings': 6,
   '/onboarding': -1,
