@@ -13,7 +13,7 @@ const VIDEO_EXTENSIONS: &[&str] = &[
     "mp4", "mov", "m4v", "webm", "mkv", "avi", "wmv", "flv", "mpg", "mpeg", "ts", "m2ts",
 ];
 
-const PREVIEWABLE_VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "m4v", "webm"];
+const PREVIEWABLE_VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "m4v", "webm", "avi", "mkv"];
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

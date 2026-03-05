@@ -1182,6 +1182,7 @@ export default {
     noPreview: '无预览',
     videoTag: '视频',
     unsupportedPreview: '当前媒体格式不支持预览。',
+    openExternal: '外部播放',
     openEditor: '编辑',
     copySuccess: '复制成功',
     deleteConfirmTitle: '移动到回收站？',

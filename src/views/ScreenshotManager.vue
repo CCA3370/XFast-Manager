@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
@@ -101,6 +101,9 @@ let previewTimer: number | null = null
 let previewRenderSeq = 0
 let displayedPreviewSeq = 0
 let pendingHighQualityPreview = false
+
+// Track params baked into the last rendered preview for CSS-filter delta
+let renderedEditSnapshot: ScreenshotEditParams | null = null
 
 const FAST_PREVIEW_MAX_SIDE = 1100
 const DRAG_PREVIEW_MAX_SIDE = 760
@@ -365,6 +368,48 @@ const activeSlider = computed(() => {
   return sliderLookup.get(activeTool.value as SliderKey) ?? null
 })
 
+/**
+ * GPU-accelerated CSS filter approximation applied during drag.
+ * Computes the delta between current edit values and the last rendered preview,
+ * so crop/rotate/previous adjustments (already baked into the preview image) stay intact.
+ */
+const liveFilterStyle = computed(() => {
+  if (!isInteractiveAdjusting.value || !renderedEditSnapshot) return undefined
+  const cur = edit.value
+  const base = renderedEditSnapshot
+  const parts: string[] = []
+  // Exposure → brightness (multiplicative)
+  if (cur.exposure !== base.exposure) {
+    const bB = Math.pow(2, (base.exposure / 100) * 1.5)
+    const cB = Math.pow(2, (cur.exposure / 100) * 1.5)
+    parts.push(`brightness(${(cB / bB).toFixed(4)})`)
+  }
+  // Contrast (multiplicative around midtone)
+  if (cur.contrast !== base.contrast) {
+    const bC = 1 + base.contrast / 100
+    const cC = 1 + cur.contrast / 100
+    parts.push(`contrast(${(cC / Math.max(bC, 0.01)).toFixed(4)})`)
+  }
+  // Saturation (multiplicative)
+  if (cur.saturation !== base.saturation) {
+    const bS = 1 + base.saturation / 100
+    const cS = 1 + cur.saturation / 100
+    parts.push(`saturate(${(cS / Math.max(bS, 0.01)).toFixed(4)})`)
+  }
+  // Temperature: rough warm/cool tint
+  if (cur.temperature !== base.temperature) {
+    const delta = cur.temperature - base.temperature
+    if (delta > 0) parts.push(`sepia(${(delta / 100 * 0.25).toFixed(3)})`)
+    else parts.push(`hue-rotate(${(delta / 100 * 25).toFixed(1)}deg)`)
+  }
+  // Denoise → blur (additive px)
+  if (cur.denoise !== base.denoise) {
+    const delta = (cur.denoise - base.denoise) / 100 * 1.8
+    if (delta > 0) parts.push(`blur(${delta.toFixed(2)}px)`)
+  }
+  return parts.length > 0 ? { filter: parts.join(' ') } : undefined
+})
+
 const activeSliderValue = computed({
   get: () => {
     if (!activeSlider.value) return 0
@@ -403,7 +448,7 @@ function onRulerPointerDown(e: PointerEvent, isRotate = false) {
       newVal = clamp(newVal, -90, 90)
       if (edit.value.rotate !== newVal) {
         edit.value.rotate = newVal
-        schedulePreview(true, false)
+        // cropPreviewImageStyle computed handles instant visual via CSS transform
       }
     } else if (activeSlider.value) {
       const slider = activeSlider.value
@@ -413,7 +458,7 @@ function onRulerPointerDown(e: PointerEvent, isRotate = false) {
       newVal = clamp(Math.round(newVal), slider.min, slider.max)
       if (edit.value[slider.key] !== newVal) {
         edit.value[slider.key] = newVal
-        schedulePreview(true, false)
+        // CSS liveFilterStyle handles instant visual feedback; skip canvas render
       }
     }
   }
@@ -632,6 +677,26 @@ function fmtSize(bytes: number): string {
 function fmtTime(ts: number): string {
   if (!ts) return '-'
   return new Date(ts * 1000).toLocaleString()
+}
+
+const videoPlayFailed = ref<Set<string>>(new Set())
+
+function markVideoFailed(fileName: string) {
+  const next = new Set(videoPlayFailed.value)
+  next.add(fileName)
+  videoPlayFailed.value = next
+}
+
+function isVideoFailed(fileName: string): boolean {
+  return videoPlayFailed.value.has(fileName)
+}
+
+async function openFileExternally(path: string) {
+  try {
+    await invoke('open_url', { url: path })
+  } catch (e) {
+    toastStore.error(String(e))
+  }
 }
 
 function markThumbFailed(fileName: string) {
@@ -881,7 +946,17 @@ function makeCanvas(width: number, height: number): HTMLCanvasElement {
 }
 
 function applyPixelAdjustments(canvas: HTMLCanvasElement, p: ScreenshotEditParams) {
-  const ctx = canvas.getContext('2d')
+  if (
+    p.exposure === 0 &&
+    p.contrast === 0 &&
+    p.saturation === 0 &&
+    p.temperature === 0 &&
+    p.highlights === 0 &&
+    p.shadows === 0
+  ) {
+    return
+  }
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) return
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const d = imageData.data
@@ -990,7 +1065,7 @@ function processImage(
 ): HTMLCanvasElement {
   const crop = normalizeCrop(params.crop, source.naturalWidth, source.naturalHeight)
   const base = makeCanvas(crop.width, crop.height)
-  const bctx = base.getContext('2d')
+  const bctx = base.getContext('2d', { willReadFrequently: true })
   if (bctx) {
     bctx.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height)
   }
@@ -1005,7 +1080,7 @@ function processImage(
     scale *= 1.002
 
     const rot = makeCanvas(W, H)
-    const rctx = rot.getContext('2d')
+    const rctx = rot.getContext('2d', { willReadFrequently: true })
     if (rctx) {
       rctx.translate(W / 2, H / 2)
       rctx.rotate((params.rotate * Math.PI) / 180)
@@ -1099,9 +1174,19 @@ async function initPreviewWorker(blob: Blob) {
 }
 
 function cloneEditParams(params: ScreenshotEditParams): ScreenshotEditParams {
+  const raw = toRaw(params)
+  const rawCrop = raw.crop ? toRaw(raw.crop) : null
   return {
-    ...params,
-    crop: params.crop ? { ...params.crop } : null,
+    crop: rawCrop ? { x: rawCrop.x, y: rawCrop.y, width: rawCrop.width, height: rawCrop.height } : null,
+    rotate: raw.rotate,
+    exposure: raw.exposure,
+    contrast: raw.contrast,
+    saturation: raw.saturation,
+    temperature: raw.temperature,
+    highlights: raw.highlights,
+    shadows: raw.shadows,
+    sharpness: raw.sharpness,
+    denoise: raw.denoise,
   }
 }
 
@@ -1118,7 +1203,7 @@ async function renderPreviewInWorker(
     worker.postMessage({
       type: 'render',
       requestId,
-      params: cloneEditParams(params),
+      params,
       maxDimension: maxSide,
       fast: isFast,
     })
@@ -1176,35 +1261,28 @@ async function openEditor(item: ScreenshotMediaItem) {
 async function renderPreview(maxSide = FINAL_PREVIEW_MAX_SIDE) {
   if (!editorImage.value) return
   const seq = ++previewRenderSeq
-  if (maxSide === FINAL_PREVIEW_MAX_SIDE) previewBusy.value = true
+  const isFast = maxSide !== FINAL_PREVIEW_MAX_SIDE
+  if (!isFast) previewBusy.value = true
   try {
-    const isFast = maxSide !== FINAL_PREVIEW_MAX_SIDE
-    let workerBlob: Blob | null = null
-    try {
-      workerBlob = await renderPreviewInWorker(edit.value, maxSide, isFast)
-    } catch {
-      previewWorkerReady = false
-    }
-    let blob: Blob
-    if (workerBlob) {
-      blob = workerBlob
-    } else {
-      const canvas = processImage(editorImage.value, edit.value, maxSide)
-      // Use JPEG for fast previews to avoid massive PNG compression lag during dragging
-      blob = await canvasToBlob(
-        canvas,
-        isFast ? 'image/jpeg' : 'image/png',
-        isFast ? 0.8 : undefined,
-      )
-    }
-    const nextUrl = URL.createObjectURL(blob)
+    const params = cloneEditParams(edit.value)
+    const canvas = processImage(editorImage.value, params, maxSide)
+    const blob = await canvasToBlob(
+      canvas,
+      isFast ? 'image/jpeg' : 'image/png',
+      isFast ? 0.8 : undefined,
+    )
     if (seq <= displayedPreviewSeq || !editorOpen.value) {
-      URL.revokeObjectURL(nextUrl)
+      // Stale frame — a newer render already displayed; discard silently (GC frees the blob)
       return
     }
     displayedPreviewSeq = seq
-    if (editorPreviewUrl.value) URL.revokeObjectURL(editorPreviewUrl.value)
-    editorPreviewUrl.value = nextUrl
+    const prev = editorPreviewUrl.value
+    editorPreviewUrl.value = URL.createObjectURL(blob)
+    if (prev) URL.revokeObjectURL(prev)
+    // Snapshot what's baked into this preview so CSS filter can compute deltas
+    renderedEditSnapshot = params
+  } catch {
+    // silent
   } finally {
     if (seq === previewRenderSeq) {
       previewBusy.value = false
@@ -1232,7 +1310,8 @@ function schedulePreview(immediate = false, highQuality = false) {
       const useFinal = pendingHighQualityPreview
       pendingHighQualityPreview = false
       const fastSide = isInteractiveAdjusting.value ? DRAG_PREVIEW_MAX_SIDE : FAST_PREVIEW_MAX_SIDE
-      void renderPreview(useFinal ? FINAL_PREVIEW_MAX_SIDE : fastSide)
+      const side = useFinal ? FINAL_PREVIEW_MAX_SIDE : fastSide
+      void renderPreview(side)
     }
     previewRaf = requestAnimationFrame(runPreview)
     return
@@ -1254,7 +1333,8 @@ function schedulePreview(immediate = false, highQuality = false) {
     const useFinal = pendingHighQualityPreview
     pendingHighQualityPreview = false
     const fastSide = isInteractiveAdjusting.value ? DRAG_PREVIEW_MAX_SIDE : FAST_PREVIEW_MAX_SIDE
-    void renderPreview(useFinal ? FINAL_PREVIEW_MAX_SIDE : fastSide)
+    const side = useFinal ? FINAL_PREVIEW_MAX_SIDE : fastSide
+    void renderPreview(side)
   }
 
   // reduced from 90 to 10 for much snappier real-time feeling while watching edits
@@ -1464,6 +1544,7 @@ watch(
 watch(
   edit,
   () => {
+    if (isInteractiveAdjusting.value) return // CSS filter handles live feedback
     schedulePreview()
   },
   { deep: true },
@@ -1646,6 +1727,7 @@ onBeforeUnmount(() => {
                       playsinline
                       preload="metadata"
                       @loadeddata="captureVideoCover($event, group.coverItem)"
+                      @error="markVideoFailed(group.coverItem.fileName)"
                     ></video>
                     <div
                       v-else
@@ -1717,11 +1799,12 @@ onBeforeUnmount(() => {
                     @error="markThumbFailed(item.fileName)"
                   />
                   <video
-                    v-else-if="item.mediaType === 'video' && item.previewable"
+                    v-else-if="item.mediaType === 'video' && item.previewable && !isVideoFailed(item.fileName)"
                     :src="toSrc(item.path)"
                     class="w-full h-full object-cover"
                     muted
                     preload="metadata"
+                    @error="markVideoFailed(item.fileName)"
                   ></video>
                   <div
                     v-else
@@ -1826,12 +1909,25 @@ onBeforeUnmount(() => {
               class="max-w-full max-h-full object-contain"
             />
             <video
-              v-else-if="selected.previewable"
+              v-else-if="selected.previewable && !isVideoFailed(selected.fileName)"
               :src="selectedSrc"
               class="max-w-full max-h-full object-contain"
               controls
               autoplay
+              @error="markVideoFailed(selected.fileName)"
             ></video>
+            <div
+              v-else-if="selected.mediaType === 'video'"
+              class="flex flex-col items-center gap-3 text-white/70"
+            >
+              <p class="text-sm">{{ $t('screenshot.unsupportedPreview') }}</p>
+              <button
+                class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+                @click="openFileExternally(selected.path)"
+              >
+                {{ $t('screenshot.openExternal') }}
+              </button>
+            </div>
             <p v-else class="text-sm text-white/70">{{ $t('screenshot.unsupportedPreview') }}</p>
           </div>
           <div
@@ -1851,6 +1947,21 @@ onBeforeUnmount(() => {
                 />
               </svg>
               <span class="action-label">{{ $t('screenshot.openEditor') }}</span>
+            </button>
+            <button
+              v-if="selected.mediaType === 'video'"
+              class="action-icon action-blue"
+              @click="openFileExternally(selected.path)"
+            >
+              <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                />
+              </svg>
+              <span class="action-label">{{ $t('screenshot.openExternal') }}</span>
             </button>
             <button class="action-icon action-emerald" @click="copyMedia(selected)">
               <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2115,6 +2226,7 @@ onBeforeUnmount(() => {
                     :src="editorSrc"
                     :alt="$t('screenshot.editPreview')"
                     class="max-w-full max-h-full object-contain"
+                    :style="liveFilterStyle"
                   />
                   <p v-else class="text-sm text-white/70">
                     {{ editorError || $t('screenshot.editNotSupported') }}

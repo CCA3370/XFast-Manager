@@ -1219,6 +1219,7 @@ export default {
     noPreview: 'N/A',
     videoTag: 'VIDEO',
     unsupportedPreview: 'Preview is not supported for this media format.',
+    openExternal: 'Open Externally',
     openEditor: 'Edit',
     copySuccess: 'Copied',
     deleteConfirmTitle: 'Move media to recycle bin?',
