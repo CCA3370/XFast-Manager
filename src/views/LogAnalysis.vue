@@ -505,7 +505,7 @@
 
         <!-- No crash status -->
         <div
-          v-else
+          v-if="!result.crash_detected"
           class="bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 rounded-xl px-4 py-2.5 flex items-center space-x-2"
         >
           <svg
