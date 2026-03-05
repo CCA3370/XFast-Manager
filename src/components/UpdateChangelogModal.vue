@@ -40,7 +40,7 @@
           </div>
 
           <div
-            class="px-5 py-4 max-h-[55vh] overflow-y-auto text-sm leading-relaxed text-gray-700 dark:text-gray-200 markdown-content"
+            class="px-5 py-4 max-h-[55vh] overflow-y-auto text-sm leading-relaxed text-gray-700 dark:text-gray-200 markdown-content will-change-transform"
             v-html="renderedMarkdown"
           ></div>
 

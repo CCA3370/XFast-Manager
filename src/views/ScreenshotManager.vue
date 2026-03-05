@@ -2015,9 +2015,10 @@ onBeforeUnmount(() => {
     </Teleport>
 
     <Teleport to="body">
-      <div v-if="editorOpen" class="fixed inset-0 z-[120] bg-black/75 backdrop-blur-sm p-2 sm:p-4">
+      <div v-if="editorOpen" class="fixed inset-0 z-[120] p-2 sm:p-4">
+        <div class="absolute inset-0 bg-black/75 backdrop-blur-sm pointer-events-none" aria-hidden="true"></div>
         <div
-          class="h-full max-w-[1320px] mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col"
+          class="relative h-full max-w-[1320px] mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col will-change-transform"
         >
           <div
             class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"

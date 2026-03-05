@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <Transition name="modal" :css="false" @enter="onEnter" @leave="onLeave">
+    <Transition name="modal" :css="false" @enter="onEnter" @leave="onLeave" @enter-cancelled="onEnterCancelled" @leave-cancelled="onLeaveCancelled">
       <div v-if="isVisible" class="fixed inset-0 z-[1300] flex items-center justify-center">
         <!-- Backdrop -->
         <div
@@ -252,9 +252,23 @@ function handleCancel() {
   }
 }
 
+// Animation tracking to prevent stale done() calls on rapid toggle
+let enterTl: gsap.core.Timeline | null = null
+let leaveTimer: ReturnType<typeof setTimeout> | null = null
+
 // GSAP animations
 function onEnter(_el: Element, done: () => void) {
-  const tl = gsap.timeline({ onComplete: done })
+  // Cancel any pending animations from a previous cycle
+  if (enterTl) { enterTl.kill(); enterTl = null }
+  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+
+  const tl = gsap.timeline({
+    onComplete: () => {
+      enterTl = null
+      done()
+    },
+  })
+  enterTl = tl
 
   tl.fromTo(backdrop.value, { opacity: 0 }, { opacity: 1, duration: 0.2, ease: 'power2.out' })
 
@@ -267,6 +281,10 @@ function onEnter(_el: Element, done: () => void) {
 }
 
 function onLeave(el: Element, done: () => void) {
+  // Cancel any pending enter animation to prevent stale done() calls
+  if (enterTl) { enterTl.kill(); enterTl = null }
+  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+
   const element = el as HTMLElement
   const backdropEl = element.querySelector('.modal-backdrop') as HTMLElement
   const cardEl = element.querySelector('.modal-card') as HTMLElement
@@ -276,29 +294,10 @@ function onLeave(el: Element, done: () => void) {
     return
   }
 
-  // Set transition properties first
+  // Set transition properties
   element.style.transition = 'opacity 0.3s ease-in'
   backdropEl.style.transition = 'opacity 0.3s ease-in'
   cardEl.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.6, 1)'
-
-  // Fallback timeout in case transitionend doesn't fire
-  let fallbackTimeout: ReturnType<typeof setTimeout> | null = null
-
-  // Listen for transition end on the card element
-  const handleTransitionEnd = () => {
-    cardEl.removeEventListener('transitionend', handleTransitionEnd)
-    if (fallbackTimeout) {
-      clearTimeout(fallbackTimeout)
-      fallbackTimeout = null
-    }
-    done()
-  }
-  cardEl.addEventListener('transitionend', handleTransitionEnd)
-
-  fallbackTimeout = setTimeout(() => {
-    cardEl.removeEventListener('transitionend', handleTransitionEnd)
-    done()
-  }, 350)
 
   // Use double requestAnimationFrame to ensure transition is applied
   requestAnimationFrame(() => {
@@ -309,6 +308,19 @@ function onLeave(el: Element, done: () => void) {
       cardEl.style.transform = 'scale(0.9) translateY(10px)'
     })
   })
+
+  leaveTimer = setTimeout(() => {
+    leaveTimer = null
+    done()
+  }, 350)
+}
+
+function onEnterCancelled() {
+  if (enterTl) { enterTl.kill(); enterTl = null }
+}
+
+function onLeaveCancelled() {
+  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
 }
 
 // Focus management
@@ -345,6 +357,8 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  if (enterTl) { enterTl.kill(); enterTl = null }
+  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
   document.removeEventListener('keydown', handleKeydown)
 })
 </script>
