@@ -17,8 +17,14 @@
       <UpdateBanner
         :visible="updateStore.showUpdateBanner"
         :update-info="updateStore.updateInfo"
+        :is-downloading="updateStore.isDownloading"
+        :download-progress="updateStore.downloadProgress"
+        :update-phase="updateStore.updatePhase"
+        :update-error="updateStore.updateError"
         @view-release="updateStore.openReleaseUrl"
         @dismiss="updateStore.dismissUpdate"
+        @update="updateStore.performUpdate"
+        @retry="updateStore.performUpdate"
       />
 
       <!-- Warning Alert (Compact) -->

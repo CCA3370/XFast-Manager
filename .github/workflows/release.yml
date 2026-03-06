@@ -196,6 +196,9 @@ jobs:
 
       - name: Build Tauri
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           echo "🔨 Building XFast-Manager ${{ needs.prepare-release.outputs.version }} for ${{ matrix.suffix }}..."
           if [ -n "${{ matrix.args }}" ]; then
@@ -268,8 +271,14 @@ jobs:
           path: |
             target/release/XFast-Manager-*-windows-portable.exe
             target/release/bundle/msi/XFast-Manager-*-windows-setup.msi
+            target/release/bundle/msi/*.msi.zip
+            target/release/bundle/msi/*.msi.zip.sig
             target/universal-apple-darwin/release/bundle/dmg/XFast-Manager-*-macos-universal.dmg
+            target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
             target/release/bundle/appimage/XFast-Manager-*-linux-x64.AppImage
+            target/release/bundle/appimage/*.AppImage.tar.gz
+            target/release/bundle/appimage/*.AppImage.tar.gz.sig
             target/release/bundle/deb/XFast-Manager-*-linux-x64.deb
             target/release/bundle/rpm/XFast-Manager-*-linux-x64.rpm
           if-no-files-found: ignore
@@ -310,6 +319,9 @@ jobs:
 
           # Find and copy all artifacts to release-files
           find artifacts -type f -name "XFast-Manager-*" -exec cp {} release-files/ \;
+
+          # Copy updater bundles and signatures to release-files
+          find artifacts -type f \( -name "*.msi.zip" -o -name "*.msi.zip.sig" -o -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" -o -name "*.AppImage.tar.gz" -o -name "*.AppImage.tar.gz.sig" \) -exec cp {} release-files/ \;
 
           cd release-files
 
@@ -358,6 +370,68 @@ jobs:
           echo "📋 Checksums:"
           cat checksums.txt
 
+      - name: Generate latest.json for updater
+        shell: bash
+        run: |
+          version="${{ needs.prepare-release.outputs.version }}"
+          tag="${{ needs.prepare-release.outputs.tag }}"
+          changelog="${{ needs.prepare-release.outputs.changelog }}"
+          repo="CCA3370/XFast-Manager"
+          base_url="https://github.com/${repo}/releases/download/${tag}"
+
+          # Read signature files
+          win_sig=""
+          mac_sig=""
+          linux_sig=""
+
+          win_sig_file=$(find release-files -name "*.msi.zip.sig" | head -1)
+          if [ -n "$win_sig_file" ]; then
+            win_sig=$(cat "$win_sig_file")
+          fi
+
+          mac_sig_file=$(find release-files -name "*.app.tar.gz.sig" | head -1)
+          if [ -n "$mac_sig_file" ]; then
+            mac_sig=$(cat "$mac_sig_file")
+          fi
+
+          linux_sig_file=$(find release-files -name "*.AppImage.tar.gz.sig" | head -1)
+          if [ -n "$linux_sig_file" ]; then
+            linux_sig=$(cat "$linux_sig_file")
+          fi
+
+          # Find updater bundle filenames
+          win_bundle=$(find release-files -name "*.msi.zip" ! -name "*.sig" -printf "%f\n" | head -1)
+          mac_bundle=$(find release-files -name "*.app.tar.gz" ! -name "*.sig" -printf "%f\n" | head -1)
+          linux_bundle=$(find release-files -name "*.AppImage.tar.gz" ! -name "*.sig" -printf "%f\n" | head -1)
+
+          # Build latest.json using jq
+          platforms='{}'
+
+          if [ -n "$win_bundle" ] && [ -n "$win_sig" ]; then
+            platforms=$(echo "$platforms" | jq --arg url "${base_url}/${win_bundle}" --arg sig "$win_sig" '. + {"windows-x86_64": {"signature": $sig, "url": $url}}')
+          fi
+
+          if [ -n "$mac_bundle" ] && [ -n "$mac_sig" ]; then
+            platforms=$(echo "$platforms" | jq --arg url "${base_url}/${mac_bundle}" --arg sig "$mac_sig" '. + {"darwin-universal": {"signature": $sig, "url": $url}}')
+          fi
+
+          if [ -n "$linux_bundle" ] && [ -n "$linux_sig" ]; then
+            platforms=$(echo "$platforms" | jq --arg url "${base_url}/${linux_bundle}" --arg sig "$linux_sig" '. + {"linux-x86_64": {"signature": $sig, "url": $url}}')
+          fi
+
+          pub_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          jq -n \
+            --arg version "$version" \
+            --arg notes "$changelog" \
+            --arg pub_date "$pub_date" \
+            --argjson platforms "$platforms" \
+            '{version: $version, notes: $notes, pub_date: $pub_date, platforms: $platforms}' \
+            > release-files/latest.json
+
+          echo "✅ Generated latest.json:"
+          cat release-files/latest.json
+
       - name: Create Git Tag
         shell: bash
         run: |
@@ -383,6 +457,13 @@ jobs:
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-deb.zip
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-rpm.zip
             release-files/checksums.txt
+            release-files/latest.json
+            release-files/*.msi.zip
+            release-files/*.msi.zip.sig
+            release-files/*.app.tar.gz
+            release-files/*.app.tar.gz.sig
+            release-files/*.AppImage.tar.gz
+            release-files/*.AppImage.tar.gz.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

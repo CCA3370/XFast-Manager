@@ -27,7 +27,7 @@
         "enable": true,
         "scope": ["**"]
       },
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost https://*.tile.openstreetmap.org https://*.openstreetmap.org https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.arcgisonline.com https://server.arcgisonline.com https://s3.amazonaws.com https://*.rainviewer.com; media-src 'self' blob: asset: http://asset.localhost https://asset.localhost; connect-src 'self' ws://localhost:* http://localhost:* https://x-fast-manager.vercel.app https://avwx.rest https://gateway.x-plane.com https://data.vatsim.net https://my.vatsim.net https://metar.vatsim.net https://api.rainviewer.com https://*.rainviewer.com https://www.simbrief.com https://*.tile.openstreetmap.org https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.arcgisonline.com https://api.maptiler.com https://tiles.openfreemap.org https://s3.amazonaws.com"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost https://*.tile.openstreetmap.org https://*.openstreetmap.org https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.arcgisonline.com https://server.arcgisonline.com https://s3.amazonaws.com https://*.rainviewer.com; media-src 'self' blob: asset: http://asset.localhost https://asset.localhost; connect-src 'self' ws://localhost:* http://localhost:* https://x-fast-manager.vercel.app https://avwx.rest https://gateway.x-plane.com https://data.vatsim.net https://my.vatsim.net https://metar.vatsim.net https://api.rainviewer.com https://*.rainviewer.com https://www.simbrief.com https://*.tile.openstreetmap.org https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.arcgisonline.com https://api.maptiler.com https://tiles.openfreemap.org https://s3.amazonaws.com https://github.com https://*.github.com https://objects.githubusercontent.com"
     },
     "withGlobalTauri": false
   },
@@ -66,6 +66,12 @@
     }
   },
   "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/CCA3370/XFast-Manager/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlCQjYyRkZGM0EwMDE5RTgKUldUb0dRQTYveSsybTBEeG9Damt2K3dlRXVaaHErOHJCVXIxMEpEQ0Q1ZTBnVU03U3Jka1hzR0UK"
+    },
     "http": {
       "scope": [
         "https://x-fast-manager.vercel.app/*",

@@ -23,58 +23,118 @@
 
       <!-- 中间：文本内容 -->
       <div class="flex-1 min-w-0">
-        <p class="text-sm font-medium text-green-800 dark:text-green-100 truncate">
-          <AnimatedText>
-            {{ $t('update.newVersionAvailable') }} v{{ updateInfo?.latestVersion }}
-          </AnimatedText>
-        </p>
-        <p class="text-xs text-green-700 dark:text-green-200/70 truncate">
-          <AnimatedText>
-            {{ $t('update.lastChecked') }}:
-            {{ formatPublishedDate(updateInfo?.publishedAt) }}
-          </AnimatedText>
-        </p>
+        <!-- Error state -->
+        <template v-if="updateError">
+          <p class="text-sm font-medium text-red-800 dark:text-red-200 truncate">
+            {{ $t('update.updateFailed') }}
+          </p>
+          <p class="text-xs text-red-700 dark:text-red-300/70 truncate">
+            {{ updateError }}
+          </p>
+        </template>
+        <!-- Downloading / Installing / Restarting -->
+        <template v-else-if="isDownloading">
+          <p class="text-sm font-medium text-green-800 dark:text-green-100 truncate">
+            <AnimatedText>
+              {{ phaseText }}
+            </AnimatedText>
+          </p>
+          <div class="mt-1.5 flex items-center space-x-2">
+            <div
+              class="flex-1 h-1.5 bg-green-200 dark:bg-green-500/20 rounded-full overflow-hidden"
+            >
+              <div
+                class="h-full bg-green-500 dark:bg-green-400 rounded-full transition-all duration-300"
+                :style="{ width: `${downloadProgress}%` }"
+              ></div>
+            </div>
+            <span class="text-xs text-green-700 dark:text-green-200/70 flex-shrink-0 tabular-nums">
+              {{ downloadProgress }}%
+            </span>
+          </div>
+        </template>
+        <!-- Default state -->
+        <template v-else>
+          <p class="text-sm font-medium text-green-800 dark:text-green-100 truncate">
+            <AnimatedText>
+              {{ $t('update.newVersionAvailable') }} v{{ updateInfo?.latestVersion }}
+            </AnimatedText>
+          </p>
+          <p class="text-xs text-green-700 dark:text-green-200/70 truncate">
+            <AnimatedText>
+              {{ $t('update.lastChecked') }}:
+              {{ formatPublishedDate(updateInfo?.publishedAt) }}
+            </AnimatedText>
+          </p>
+        </template>
       </div>
 
       <!-- 右侧：按钮组 -->
       <div class="flex items-center space-x-2">
-        <!-- 查看详情按钮 -->
-        <button
-          class="flex-shrink-0 inline-flex items-center px-3 py-1.5 bg-green-200/50 dark:bg-green-500/20 hover:bg-green-200 dark:hover:bg-green-500/30 text-green-800 dark:text-green-200 text-xs font-medium rounded-lg transition-colors duration-200 border border-green-300 dark:border-green-500/30"
-          @click="handleViewDetails"
-        >
-          <AnimatedText>{{ $t('update.viewDetails') }}</AnimatedText>
-          <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-            ></path>
-          </svg>
-        </button>
-
-        <!-- 关闭按钮 -->
-        <button
-          class="p-1.5 hover:bg-green-200/50 dark:hover:bg-green-500/20 rounded-lg transition-colors duration-200 text-green-600 dark:text-green-400"
-          :title="$t('update.dismiss')"
-          @click="handleDismiss"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M6 18L18 6M6 6l12 12"
-            ></path>
-          </svg>
-        </button>
+        <!-- Error state buttons -->
+        <template v-if="updateError">
+          <button
+            class="flex-shrink-0 inline-flex items-center px-3 py-1.5 bg-red-200/50 dark:bg-red-500/20 hover:bg-red-200 dark:hover:bg-red-500/30 text-red-800 dark:text-red-200 text-xs font-medium rounded-lg transition-colors duration-200 border border-red-300 dark:border-red-500/30"
+            @click="handleRetry"
+          >
+            {{ $t('update.retryUpdate') }}
+          </button>
+          <button
+            class="flex-shrink-0 inline-flex items-center px-3 py-1.5 bg-gray-200/50 dark:bg-gray-500/20 hover:bg-gray-200 dark:hover:bg-gray-500/30 text-gray-800 dark:text-gray-200 text-xs font-medium rounded-lg transition-colors duration-200 border border-gray-300 dark:border-gray-500/30"
+            @click="handleViewDetails"
+          >
+            {{ $t('update.downloadManually') }}
+          </button>
+        </template>
+        <!-- Downloading state - no buttons -->
+        <template v-else-if="isDownloading" />
+        <!-- Default state buttons -->
+        <template v-else>
+          <!-- Update Now button -->
+          <button
+            class="flex-shrink-0 inline-flex items-center px-3 py-1.5 bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors duration-200 shadow-sm"
+            @click="handleUpdate"
+          >
+            <AnimatedText>{{ $t('update.updateNow') }}</AnimatedText>
+          </button>
+          <!-- Download manually button -->
+          <button
+            class="flex-shrink-0 inline-flex items-center px-3 py-1.5 bg-green-200/50 dark:bg-green-500/20 hover:bg-green-200 dark:hover:bg-green-500/30 text-green-800 dark:text-green-200 text-xs font-medium rounded-lg transition-colors duration-200 border border-green-300 dark:border-green-500/30"
+            @click="handleViewDetails"
+          >
+            <AnimatedText>{{ $t('update.viewDetails') }}</AnimatedText>
+            <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+              ></path>
+            </svg>
+          </button>
+          <!-- 关闭按钮 -->
+          <button
+            class="p-1.5 hover:bg-green-200/50 dark:hover:bg-green-500/20 rounded-lg transition-colors duration-200 text-green-600 dark:text-green-400"
+            :title="$t('update.dismiss')"
+            @click="handleDismiss"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              ></path>
+            </svg>
+          </button>
+        </template>
       </div>
     </div>
   </transition>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AnimatedText from './AnimatedText.vue'
 import type { UpdateInfo } from '@/types'
@@ -82,16 +142,40 @@ import type { UpdateInfo } from '@/types'
 interface Props {
   visible: boolean
   updateInfo: UpdateInfo | null
+  isDownloading?: boolean
+  downloadProgress?: number
+  updatePhase?: 'idle' | 'downloading' | 'installing' | 'restarting'
+  updateError?: string | null
 }
 
-defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  isDownloading: false,
+  downloadProgress: 0,
+  updatePhase: 'idle',
+  updateError: null,
+})
 
 const { t } = useI18n()
 
 const emit = defineEmits<{
   viewRelease: []
   dismiss: []
+  update: []
+  retry: []
 }>()
+
+const phaseText = computed(() => {
+  switch (props.updatePhase) {
+    case 'downloading':
+      return t('update.downloadingUpdate')
+    case 'installing':
+      return t('update.installingUpdate')
+    case 'restarting':
+      return t('update.restartingApp')
+    default:
+      return t('update.updating')
+  }
+})
 
 function handleViewDetails() {
   emit('viewRelease')
@@ -99,6 +183,14 @@ function handleViewDetails() {
 
 function handleDismiss() {
   emit('dismiss')
+}
+
+function handleUpdate() {
+  emit('update')
+}
+
+function handleRetry() {
+  emit('retry')
 }
 
 function formatPublishedDate(dateString?: string): string {

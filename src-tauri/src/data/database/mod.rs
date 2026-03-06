@@ -4,7 +4,7 @@
 //! the previous rusqlite-based access for improved portability.
 
 mod connection;
-mod entities;
+pub mod entities;
 mod migration;
 mod migrations;
 mod queries;

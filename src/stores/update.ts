@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { check } from '@tauri-apps/plugin-updater'
+import { relaunch } from '@tauri-apps/plugin-process'
 import type { UpdateInfo } from '@/types'
 import { useToastStore } from './toast'
 import { useModalStore } from './modal'
@@ -29,6 +31,14 @@ export const useUpdateStore = defineStore('update', () => {
   const postUpdateVersion = ref('')
   const postUpdateReleaseNotes = ref('')
   const postUpdateReleaseUrl = ref('')
+
+  // Auto-update state
+  const isDownloading = ref(false)
+  const downloadProgress = ref(0)
+  const downloadedBytes = ref(0)
+  const totalBytes = ref(0)
+  const updateError = ref<string | null>(null)
+  const updatePhase = ref<'idle' | 'downloading' | 'installing' | 'restarting'>('idle')
 
   // Initialization flag
   const isInitialized = ref(false)
@@ -332,6 +342,79 @@ export const useUpdateStore = defineStore('update', () => {
     showPostUpdateChangelog.value = false
   }
 
+  function resetUpdateState() {
+    isDownloading.value = false
+    downloadProgress.value = 0
+    downloadedBytes.value = 0
+    totalBytes.value = 0
+    updateError.value = null
+    updatePhase.value = 'idle'
+  }
+
+  async function performUpdate() {
+    if (isDownloading.value) return
+
+    resetUpdateState()
+    isDownloading.value = true
+    updatePhase.value = 'downloading'
+    logBasic('Starting auto-update download', 'update')
+
+    try {
+      const update = await check()
+
+      if (!update) {
+        logDebug('No update found via plugin check', 'update')
+        resetUpdateState()
+        return
+      }
+
+      let contentLength = 0
+      let downloaded = 0
+
+      await update.downloadAndInstall((event) => {
+        switch (event.event) {
+          case 'Started':
+            contentLength = event.data.contentLength ?? 0
+            totalBytes.value = contentLength
+            logDebug(`Update download started, size: ${contentLength}`, 'update')
+            break
+          case 'Progress':
+            downloaded += event.data.chunkLength
+            downloadedBytes.value = downloaded
+            if (contentLength > 0) {
+              downloadProgress.value = Math.round((downloaded / contentLength) * 100)
+            }
+            break
+          case 'Finished':
+            downloadProgress.value = 100
+            updatePhase.value = 'installing'
+            logBasic('Update download finished, installing...', 'update')
+            break
+        }
+      })
+
+      updatePhase.value = 'restarting'
+      logBasic('Update installed, restarting app...', 'update')
+      await relaunch()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logError(`Auto-update failed: ${message}`, 'update')
+      updateError.value = message
+      updatePhase.value = 'idle'
+      isDownloading.value = false
+
+      // For portable exe or other unsupported scenarios, fall back to manual download
+      if (
+        message.includes('not supported') ||
+        message.includes('permission') ||
+        message.includes('portable')
+      ) {
+        toast.warning(t('update.portableNoAutoUpdate'))
+        openReleaseUrl()
+      }
+    }
+  }
+
   return {
     updateInfo,
     showUpdateBanner,
@@ -344,6 +427,12 @@ export const useUpdateStore = defineStore('update', () => {
     postUpdateReleaseNotes,
     postUpdateReleaseUrl,
     isInitialized,
+    isDownloading,
+    downloadProgress,
+    downloadedBytes,
+    totalBytes,
+    updateError,
+    updatePhase,
     initStore,
     checkForUpdates,
     checkAndShowPostUpdateChangelog,
@@ -353,5 +442,7 @@ export const useUpdateStore = defineStore('update', () => {
     openReleaseUrl,
     toggleAutoCheck,
     toggleIncludePreRelease,
+    performUpdate,
+    resetUpdateState,
   }
 })

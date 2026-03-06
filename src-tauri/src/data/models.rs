@@ -686,6 +686,115 @@ mod systemtime_serde {
     }
 }
 
+// ========== Activity Log Data Structures ==========
+
+/// A single activity log entry returned to frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityLogEntry {
+    pub id: i64,
+    pub timestamp: i64,
+    pub operation: String,
+    pub item_type: String,
+    pub item_name: String,
+    pub details: Option<String>,
+    pub success: bool,
+}
+
+/// Paginated activity log response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityLogPage {
+    pub entries: Vec<ActivityLogEntry>,
+    pub total_count: u64,
+}
+
+// ========== Preset Data Structures ==========
+
+/// Summary of a preset for the list view
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetSummary {
+    pub id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub addon_counts: PresetAddonCounts,
+}
+
+/// Counts of enabled/total addons in a preset snapshot
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetAddonCounts {
+    pub aircraft_total: usize,
+    pub aircraft_enabled: usize,
+    pub plugins_total: usize,
+    pub plugins_enabled: usize,
+    pub scenery_total: usize,
+    pub scenery_enabled: usize,
+    pub navdata_total: usize,
+    pub navdata_enabled: usize,
+}
+
+/// The actual snapshot stored as JSON in the database
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetSnapshot {
+    #[serde(default)]
+    pub aircraft: HashMap<String, bool>,
+    #[serde(default)]
+    pub plugins: HashMap<String, bool>,
+    #[serde(default)]
+    pub scenery: HashMap<String, bool>,
+    #[serde(default)]
+    pub navdata: HashMap<String, bool>,
+}
+
+impl PresetSnapshot {
+    pub fn counts(&self) -> PresetAddonCounts {
+        fn count(map: &HashMap<String, bool>) -> (usize, usize) {
+            let total = map.len();
+            let enabled = map.values().filter(|v| **v).count();
+            (total, enabled)
+        }
+        let (at, ae) = count(&self.aircraft);
+        let (pt, pe) = count(&self.plugins);
+        let (st, se) = count(&self.scenery);
+        let (nt, ne) = count(&self.navdata);
+        PresetAddonCounts {
+            aircraft_total: at,
+            aircraft_enabled: ae,
+            plugins_total: pt,
+            plugins_enabled: pe,
+            scenery_total: st,
+            scenery_enabled: se,
+            navdata_total: nt,
+            navdata_enabled: ne,
+        }
+    }
+}
+
+/// Result of applying a preset
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetApplyResult {
+    pub changes_made: usize,
+    pub errors: Vec<String>,
+    pub missing_items: Vec<String>,
+}
+
+/// Format for importing/exporting presets
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetExportFormat {
+    pub version: u32,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: i64,
+    pub snapshot: PresetSnapshot,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

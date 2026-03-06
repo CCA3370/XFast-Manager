@@ -168,6 +168,84 @@
               </span>
             </router-link>
 
+            <!-- Activity Log -->
+            <router-link
+              to="/activity"
+              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
+              :class="
+                $route.path === '/activity'
+                  ? 'text-blue-600 dark:text-white'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+              "
+              :title="$t('activityLog.navTitle')"
+            >
+              <div
+                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                :class="
+                  $route.path === '/activity'
+                    ? 'scale-x-100 opacity-100'
+                    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
+                "
+              ></div>
+              <span class="relative flex items-center z-10">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </span>
+            </router-link>
+
+            <!-- Disk Usage -->
+            <router-link
+              to="/disk-usage"
+              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
+              :class="
+                $route.path === '/disk-usage'
+                  ? 'text-blue-600 dark:text-white'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+              "
+              :title="$t('diskUsage.navTitle')"
+            >
+              <div
+                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                :class="
+                  $route.path === '/disk-usage'
+                    ? 'scale-x-100 opacity-100'
+                    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
+                "
+              ></div>
+              <span class="relative flex items-center z-10">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                </svg>
+              </span>
+            </router-link>
+
+            <!-- Presets -->
+            <router-link
+              to="/presets"
+              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
+              :class="
+                $route.path === '/presets'
+                  ? 'text-blue-600 dark:text-white'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+              "
+              :title="$t('presets.navTitle')"
+            >
+              <div
+                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                :class="
+                  $route.path === '/presets'
+                    ? 'scale-x-100 opacity-100'
+                    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
+                "
+              ></div>
+              <span class="relative flex items-center z-10">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                </svg>
+              </span>
+            </router-link>
+
             <router-link
               to="/settings"
               class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
@@ -349,6 +427,7 @@
       @select-task="addonUpdateDrawerStore.selectTask"
       @updated="handleGlobalAddonUpdated"
     />
+    <CommandPalette ref="commandPaletteRef" />
 
     <!-- Log Analysis First-time Hint -->
     <Teleport to="body">
@@ -420,6 +499,8 @@ import IssueUpdateModal from '@/components/IssueUpdateModal.vue'
 import UpdateChangelogModal from '@/components/UpdateChangelogModal.vue'
 import FeedbackModal from '@/components/FeedbackModal.vue'
 import AddonUpdateDrawer from '@/components/AddonUpdateDrawer.vue'
+import CommandPalette from '@/components/CommandPalette.vue'
+import { registerShortcut } from '@/composables/useKeyboardShortcuts'
 
 const { t, locale } = useI18n()
 const store = useAppStore()
@@ -433,6 +514,7 @@ const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
 const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
+const commandPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null)
 const addonDrawerVisible = computed({
   get: () => addonUpdateDrawerStore.show,
   set: (visible: boolean) => {
@@ -467,8 +549,11 @@ const routeOrder: Record<string, number> = {
   '/': 0,
   '/management': 1,
   '/management/liveries': 1,
+  '/presets': 1.5,
   '/screenshots': 2,
   '/log-analysis': 3,
+  '/activity': 3.5,
+  '/disk-usage': 4,
   '/feedback': 5,
   '/settings': 6,
   '/onboarding': -1,
@@ -579,6 +664,65 @@ onMounted(async () => {
   // Non-blocking sync locale to backend (moved from i18n module top-level)
   syncLocaleToBackend()
 
+  // Register keyboard shortcuts
+  registerShortcut({
+    id: 'command-palette-open',
+    keys: 'ctrl+shift+p',
+    label: t('commandPalette.title'),
+    category: t('commandPalette.categoryGlobal'),
+    action: () => commandPaletteRef.value?.toggle(),
+  })
+  registerShortcut({
+    id: 'nav-install',
+    keys: 'ctrl+1',
+    label: t('common.home'),
+    category: t('commandPalette.categoryNav'),
+    action: () => router.push('/'),
+  })
+  registerShortcut({
+    id: 'nav-management',
+    keys: 'ctrl+2',
+    label: t('management.navTitle'),
+    category: t('commandPalette.categoryNav'),
+    action: () => router.push('/management'),
+  })
+  registerShortcut({
+    id: 'nav-screenshots',
+    keys: 'ctrl+3',
+    label: t('screenshot.navTitle'),
+    category: t('commandPalette.categoryNav'),
+    action: () => router.push('/screenshots'),
+  })
+  registerShortcut({
+    id: 'nav-log-analysis',
+    keys: 'ctrl+4',
+    label: t('logAnalysis.navTitle'),
+    category: t('commandPalette.categoryNav'),
+    action: () => router.push('/log-analysis'),
+  })
+  registerShortcut({
+    id: 'nav-map',
+    keys: 'ctrl+5',
+    label: 'Map',
+    category: t('commandPalette.categoryNav'),
+    action: () => router.push('/map'),
+  })
+  registerShortcut({
+    id: 'nav-settings',
+    keys: 'ctrl+,',
+    label: t('common.settings'),
+    category: t('commandPalette.categoryNav'),
+    action: () => router.push('/settings'),
+  })
+  registerShortcut({
+    id: 'command-palette-close',
+    keys: 'escape',
+    label: t('commandPalette.close'),
+    category: t('commandPalette.categoryGlobal'),
+    action: () => commandPaletteRef.value?.close(),
+    when: () => commandPaletteRef.value?.visible ?? false,
+  })
+
   // Check for updates (non-blocking, delayed to avoid affecting startup performance)
   setTimeout(() => {
     updateStore.checkAndShowPostUpdateChangelog()
@@ -605,6 +749,7 @@ onMounted(async () => {
     })
 
     // Disable F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U (devtools shortcuts)
+    // Note: Ctrl+Shift+P is reserved for command palette — not blocked
     document.addEventListener('keydown', (e) => {
       // F12
       if (e.key === 'F12') {
@@ -704,6 +849,18 @@ onMounted(async () => {
               await appWindow.destroy()
             }
           },
+          onCancel: () => {},
+        })
+      } else if (updateStore.isDownloading) {
+        // App update download in progress
+        event.preventDefault()
+        modalStore.showConfirm({
+          title: t('update.downloadInProgressTitle'),
+          message: t('update.downloadInProgressMessage'),
+          confirmText: t('modal.closeAnyway'),
+          cancelText: t('modal.goBack'),
+          type: 'warning',
+          onConfirm: async () => await appWindow.destroy(),
           onCancel: () => {},
         })
       } else if (store.isLibraryLinkSubmitting) {
