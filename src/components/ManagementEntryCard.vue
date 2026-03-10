@@ -189,6 +189,9 @@ function handleClick(event: MouseEvent) {
   const target = event.target as HTMLElement
   if (target.closest('button')) return
 
+  // Do not trigger actions on disabled or locked items
+  if (!props.entry.enabled || isItemLocked.value) return
+
   if (isAircraft(props.entry) && canOpenUpdater.value) {
     emit('update', props.entry.folderName)
   } else if (isPlugin(props.entry) && props.entry.hasScripts) {
@@ -410,7 +413,13 @@ function handleContextMenu(event: MouseEvent) {
 
     <button
       v-if="canOpenUpdater"
-      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-white bg-emerald-500 hover:bg-emerald-600 transition-colors"
+      :disabled="!entry.enabled || isItemLocked"
+      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors"
+      :class="
+        !entry.enabled || isItemLocked
+          ? 'text-gray-400 dark:text-gray-500 bg-gray-200 dark:bg-gray-700 cursor-not-allowed'
+          : 'text-white bg-emerald-500 hover:bg-emerald-600'
+      "
       :title="t('management.startUpdate')"
       @click.stop="emit('update', entry.folderName)"
     >

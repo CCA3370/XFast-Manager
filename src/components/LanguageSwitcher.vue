@@ -1,6 +1,6 @@
 <template>
   <button
-    class="flex items-center justify-center w-9 h-9 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-all duration-300 hover:scale-105 backdrop-blur-sm border border-white/20"
+    class="flex items-center justify-center w-8 h-8 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-all duration-300 hover:scale-105 backdrop-blur-sm border border-white/20"
     :title="$t('common.language')"
     @click="toggleLanguage"
   >

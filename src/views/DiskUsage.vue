@@ -94,6 +94,7 @@
                 </div>
               </div>
               <button
+                v-if="item.folderName"
                 class="p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
                 :title="$t('diskUsage.openFolder')"
                 @click="openFolder(item.itemType, item.folderName)"

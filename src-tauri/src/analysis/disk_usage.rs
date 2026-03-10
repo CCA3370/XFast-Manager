@@ -107,11 +107,19 @@ fn scan_category(xplane: &Path, spec: &CategorySpec) -> CategoryDiskUsage {
 
     if dir.is_dir() {
         if let Ok(entries) = std::fs::read_dir(&dir) {
-            let sub_dirs: Vec<PathBuf> = entries
-                .filter_map(|e| e.ok())
-                .filter(|e| e.path().is_dir())
-                .map(|e| e.path())
-                .collect();
+            let mut sub_dirs: Vec<PathBuf> = Vec::new();
+            let mut root_file_bytes: u64 = 0;
+            let mut root_file_count: usize = 0;
+
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if path.is_dir() {
+                    sub_dirs.push(path);
+                } else if path.is_file() {
+                    root_file_bytes += path.metadata().map(|m| m.len()).unwrap_or(0);
+                    root_file_count += 1;
+                }
+            }
 
             let results: Vec<ItemDiskUsage> = sub_dirs
                 .par_iter()
@@ -133,6 +141,17 @@ fn scan_category(xplane: &Path, spec: &CategorySpec) -> CategoryDiskUsage {
                 .collect();
 
             items = results;
+
+            // Include files at category root level (e.g. screenshots)
+            if root_file_bytes > 0 {
+                items.push(ItemDiskUsage {
+                    folder_name: String::new(),
+                    display_name: format!("({} files)", root_file_count),
+                    size_bytes: root_file_bytes,
+                    file_count: root_file_count,
+                    item_type: spec.item_type.to_string(),
+                });
+            }
         }
     }
 

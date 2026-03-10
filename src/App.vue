@@ -9,13 +9,15 @@
         class="absolute inset-0 bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl border-b border-gray-200/50 dark:border-white/5 shadow-sm dark:shadow-2xl transition-colors duration-300"
       ></div>
 
-      <div class="relative container mx-auto px-6 h-12 flex justify-center items-center">
-        <!-- Navigation -->
-        <div class="flex items-center whitespace-nowrap">
-          <div v-if="!isOnboardingRoute" class="flex items-center space-x-1">
+      <div class="relative container mx-auto px-4">
+        <!-- Primary row -->
+        <div class="h-10 flex justify-center items-center">
+          <!-- Navigation -->
+          <div class="flex items-center whitespace-nowrap">
+            <div v-if="!isOnboardingRoute" class="flex items-center space-x-1">
             <router-link
               to="/"
-              class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
+              class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
               :class="
                 $route.path === '/'
                   ? 'text-blue-600 dark:text-white'
@@ -30,7 +32,7 @@
                     : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
                 "
               ></div>
-              <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
+              <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     stroke-linecap="round"
@@ -46,7 +48,7 @@
             <div class="relative flex items-center">
               <router-link
                 to="/management"
-                class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
+                class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
                 :class="
                   $route.path.startsWith('/management')
                     ? 'text-blue-600 dark:text-white'
@@ -61,7 +63,7 @@
                       : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
                   "
                 ></div>
-                <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
+                <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       stroke-linecap="round"
@@ -103,7 +105,7 @@
 
             <router-link
               to="/screenshots"
-              class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
+              class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
               :class="
                 $route.path === '/screenshots'
                   ? 'text-blue-600 dark:text-white'
@@ -118,7 +120,7 @@
                     : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
                 "
               ></div>
-              <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
+              <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     stroke-linecap="round"
@@ -140,7 +142,7 @@
             <router-link
               ref="logAnalysisLink"
               to="/log-analysis"
-              class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
+              class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
               :class="
                 $route.path === '/log-analysis'
                   ? 'text-blue-600 dark:text-white'
@@ -155,7 +157,7 @@
                     : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
                 "
               ></div>
-              <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
+              <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     stroke-linecap="round"
@@ -168,129 +170,48 @@
               </span>
             </router-link>
 
-            <!-- Activity Log -->
-            <router-link
-              to="/activity"
-              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
-              :class="
-                $route.path === '/activity'
-                  ? 'text-blue-600 dark:text-white'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
-              "
-              :title="$t('activityLog.navTitle')"
-            >
-              <div
-                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
-                :class="
-                  $route.path === '/activity'
-                    ? 'scale-x-100 opacity-100'
-                    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
-                "
-              ></div>
-              <span class="relative flex items-center z-10">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </span>
-            </router-link>
-
-            <!-- Disk Usage -->
-            <router-link
-              to="/disk-usage"
-              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
-              :class="
-                $route.path === '/disk-usage'
-                  ? 'text-blue-600 dark:text-white'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
-              "
-              :title="$t('diskUsage.navTitle')"
-            >
-              <div
-                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
-                :class="
-                  $route.path === '/disk-usage'
-                    ? 'scale-x-100 opacity-100'
-                    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
-                "
-              ></div>
-              <span class="relative flex items-center z-10">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-                </svg>
-              </span>
-            </router-link>
-
-            <!-- Presets -->
-            <router-link
-              to="/presets"
-              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
-              :class="
-                $route.path === '/presets'
-                  ? 'text-blue-600 dark:text-white'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
-              "
-              :title="$t('presets.navTitle')"
-            >
-              <div
-                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
-                :class="
-                  $route.path === '/presets'
-                    ? 'scale-x-100 opacity-100'
-                    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
-                "
-              ></div>
-              <span class="relative flex items-center z-10">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                </svg>
-              </span>
-            </router-link>
-
-            <router-link
-              to="/settings"
-              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
-              :class="
-                $route.path === '/settings'
-                  ? 'text-blue-600 dark:text-white'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
-              "
-              :title="$t('common.settings')"
-            >
-              <div
-                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
-                :class="
-                  $route.path === '/settings'
-                    ? 'scale-x-100 opacity-100'
-                    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
-                "
-              ></div>
-              <span class="relative flex items-center z-10">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                  ></path>
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                  ></path>
-                </svg>
-              </span>
-            </router-link>
+              <!-- Expand/Collapse nav button -->
+              <button
+                class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white"
+                :title="navExpanded ? $t('common.collapseNav') : $t('common.expandNav')"
+                @click="navExpanded = !navExpanded"
+              >
+                <div
+                  class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                  :class="
+                    navExpanded
+                      ? 'scale-x-100 opacity-100'
+                      : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
+                  "
+                ></div>
+                <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
+                  <svg
+                    class="w-4 h-4 transition-transform duration-300"
+                    :class="navExpanded ? 'rotate-180' : ''"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                  <AnimatedText>{{ navExpanded ? $t('common.collapseNav') : $t('common.expandNav') }}</AnimatedText>
+                </span>
+              </button>
           </div>
 
           <div
             v-if="!isOnboardingRoute"
-            class="mx-[clamp(1.25rem,5vw,4.5rem)] h-6 w-px bg-gray-200 dark:bg-white/10 transition-colors"
+            class="mx-[clamp(0.75rem,3vw,2.5rem)] h-5 w-px bg-gray-200 dark:bg-white/10 transition-colors"
           ></div>
 
           <div class="flex items-center space-x-1">
             <button
-              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
+              class="relative p-1.5 rounded-lg group overflow-hidden transition-all duration-300"
               :class="
                 $route.path === '/feedback'
                   ? 'text-blue-600 dark:text-white'
@@ -321,7 +242,7 @@
             <!-- Sponsor button (Chinese locale only) -->
             <button
               v-if="locale === 'zh'"
-              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300 text-gray-600 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400"
+              class="relative p-1.5 rounded-lg group overflow-hidden transition-all duration-300 text-gray-600 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400"
               :title="$t('sponsor.title')"
               @click="showSponsor = true"
             >
@@ -338,7 +259,7 @@
             </button>
             <!-- Always on top button -->
             <button
-              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
+              class="relative p-1.5 rounded-lg group overflow-hidden transition-all duration-300"
               :class="
                 isAlwaysOnTop
                   ? 'text-blue-600 dark:text-blue-400'
@@ -384,6 +305,137 @@
             <LanguageSwitcher />
           </div>
         </div>
+        </div>
+
+        <!-- Expandable secondary row -->
+        <div
+          v-if="!isOnboardingRoute"
+          class="overflow-hidden transition-all duration-300 ease-in-out"
+          :style="{ maxHeight: navExpanded ? '2.5rem' : '0px' }"
+        >
+          <div class="flex justify-center items-center h-10">
+            <div class="flex items-center space-x-1">
+              <!-- Activity Log -->
+              <router-link
+                to="/activity"
+                class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
+                :class="
+                  $route.path === '/activity'
+                    ? 'text-blue-600 dark:text-white'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+                "
+                @click="navExpanded = false"
+              >
+                <div
+                  class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                  :class="
+                    $route.path === '/activity'
+                      ? 'scale-x-100 opacity-100'
+                      : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
+                  "
+                ></div>
+                <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <AnimatedText>{{ $t('activityLog.navTitle') }}</AnimatedText>
+                </span>
+              </router-link>
+
+              <!-- Disk Usage -->
+              <router-link
+                to="/disk-usage"
+                class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
+                :class="
+                  $route.path === '/disk-usage'
+                    ? 'text-blue-600 dark:text-white'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+                "
+                @click="navExpanded = false"
+              >
+                <div
+                  class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                  :class="
+                    $route.path === '/disk-usage'
+                      ? 'scale-x-100 opacity-100'
+                      : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
+                  "
+                ></div>
+                <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+                  </svg>
+                  <AnimatedText>{{ $t('diskUsage.navTitle') }}</AnimatedText>
+                </span>
+              </router-link>
+
+              <!-- Presets -->
+              <router-link
+                to="/presets"
+                class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
+                :class="
+                  $route.path === '/presets'
+                    ? 'text-blue-600 dark:text-white'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+                "
+                @click="navExpanded = false"
+              >
+                <div
+                  class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                  :class="
+                    $route.path === '/presets'
+                      ? 'scale-x-100 opacity-100'
+                      : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
+                  "
+                ></div>
+                <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                  </svg>
+                  <AnimatedText>{{ $t('presets.navTitle') }}</AnimatedText>
+                </span>
+              </router-link>
+
+              <!-- Settings -->
+              <router-link
+                to="/settings"
+                class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
+                :class="
+                  $route.path === '/settings'
+                    ? 'text-blue-600 dark:text-white'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+                "
+                @click="navExpanded = false"
+              >
+                <div
+                  class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                  :class="
+                    $route.path === '/settings'
+                      ? 'scale-x-100 opacity-100'
+                      : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
+                  "
+                ></div>
+                <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                    ></path>
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    ></path>
+                  </svg>
+                  <AnimatedText>{{ $t('common.settings') }}</AnimatedText>
+                </span>
+              </router-link>
+            </div>
+          </div>
+        </div>
       </div>
     </nav>
 
@@ -391,12 +443,12 @@
     <main
       :class="[
         'main-content',
-        'pt-12',
         'flex-1',
         'min-h-0',
         'overflow-hidden',
         { 'hide-scrollbar': $route.path === '/' },
       ]"
+      :style="{ paddingTop: navExpanded ? '5rem' : '2.5rem' }"
     >
       <div class="h-full overflow-y-auto">
         <router-view v-slot="{ Component }">
@@ -529,6 +581,9 @@ const addonDrawerVisible = computed({
 // Always on top state
 const isAlwaysOnTop = ref(false)
 const showSponsor = ref(false)
+
+// Nav expand state
+const navExpanded = ref(false)
 
 // Log analysis hint
 const logAnalysisLink = ref<HTMLElement | null>(null)
@@ -965,6 +1020,7 @@ nav {
 .main-content {
   flex: 1;
   min-height: 0;
+  transition: padding-top 0.3s ease;
   /* Do not reserve scrollbar gutter globally; we will control visual scrollbar per-route */
   scrollbar-gutter: auto;
   /* Allow inner container to manage the actual scrolling */

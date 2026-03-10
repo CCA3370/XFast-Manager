@@ -17,6 +17,8 @@ export default {
     language: '语言',
     gotIt: '知道了',
     back: '返回',
+    expandNav: '展开',
+    collapseNav: '收起',
   },
   copy: {
     copy: '复制',

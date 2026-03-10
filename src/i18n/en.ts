@@ -17,6 +17,8 @@ export default {
     language: 'Language',
     gotIt: 'Got it',
     back: 'Back',
+    expandNav: 'More',
+    collapseNav: 'Less',
   },
   copy: {
     copy: 'Copy',
