@@ -396,6 +396,33 @@
                 </span>
               </router-link>
 
+              <!-- CSL -->
+              <router-link
+                to="/csl"
+                class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
+                :class="
+                  $route.path === '/csl'
+                    ? 'text-blue-600 dark:text-white'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+                "
+                @click="navExpanded = false"
+              >
+                <div
+                  class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                  :class="
+                    $route.path === '/csl'
+                      ? 'scale-x-100 opacity-100'
+                      : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
+                  "
+                ></div>
+                <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                  <AnimatedText>{{ $t('csl.navTitle') }}</AnimatedText>
+                </span>
+              </router-link>
+
               <!-- Settings -->
               <router-link
                 to="/settings"

@@ -207,6 +207,7 @@ const router = createRouter({
     { path: '/feedback', component: () => import('./views/FeedbackCenter.vue') },
     { path: '/scenery', redirect: '/management?tab=scenery' },
     { path: '/settings', component: preloadSettings },
+    { path: '/csl', component: () => import('./views/CSLManagement.vue') },
   ],
 })
 

@@ -512,3 +512,39 @@ export interface ScreenshotEditParams {
   sharpness: number
   denoise: number
 }
+
+// ========== CSL Management Types ==========
+
+export type CslPackageStatus = 'not_installed' | 'needs_update' | 'up_to_date'
+
+export interface CslPackageInfo {
+  name: string
+  total_size_bytes: number
+  file_count: number
+  description: string
+  status: CslPackageStatus
+  files_to_update: number
+  update_size_bytes: number
+  last_updated: string
+}
+
+export interface CslPath {
+  path: string
+  source: string
+  plugin_name: string | null
+}
+
+export interface CslScanResult {
+  packages: CslPackageInfo[]
+  paths: CslPath[]
+  server_version: string
+}
+
+export interface CslProgress {
+  package_name: string
+  current_file: number
+  total_files: number
+  current_file_name: string
+  bytes_downloaded: number
+  total_bytes: number
+}

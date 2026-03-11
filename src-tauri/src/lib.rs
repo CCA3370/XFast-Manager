@@ -53,6 +53,8 @@ mod management_index;
 mod skunk_updater;
 #[path = "management/x_updater_profile.rs"]
 mod x_updater_profile;
+#[path = "management/csl_index.rs"]
+mod csl_index;
 
 // Screenshot
 #[path = "screenshot/mod.rs"]
@@ -3293,7 +3295,12 @@ pub fn run() {
             import_preset,
             // Disk usage commands
             scan_disk_usage,
-            scan_folder_disk_usage
+            scan_folder_disk_usage,
+            // CSL management commands
+            csl_index::csl_scan_packages,
+            csl_index::csl_install_package,
+            csl_index::csl_uninstall_package,
+            csl_index::csl_detect_paths
         ])
         .setup(|app| {
             // Initialize TaskControl state
