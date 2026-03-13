@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { ref, computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useLaunchStore } from '@/stores/launch'
 import { useToastStore } from '@/stores/toast'
 import { mapScanAircraft, mapGetAircraftImage, mapLaunchFlight } from '@/services/map-api'
 
-const { t } = useI18n()
 const appStore = useAppStore()
 const launchStore = useLaunchStore()
 const toast = useToastStore()

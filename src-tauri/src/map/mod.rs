@@ -1449,6 +1449,7 @@ fn mirror_control(vertex: [f64; 2], control: [f64; 2]) -> [f64; 2] {
 
 /// Represents a parsed node from row codes 111-116
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct AptNode {
     lat: f64,
     lon: f64,
@@ -4047,6 +4048,7 @@ pub async fn map_get_aircraft_image(image_path: String) -> Result<String, String
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct LaunchFlightRequest {
     pub xplane_path: String,
     pub aircraft_path: String,

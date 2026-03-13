@@ -56,6 +56,7 @@ base64 = "0.22.1"
 winreg = "0.52"
 winapi = { version = "0.3", features = ["fileapi", "minwindef", "combaseapi", "objbase", "objidl", "shlobj", "shobjidl_core", "shtypes", "wtypesbase", "unknwnbase", "wtypes", "ole2", "winerror"] }
 lnk = "0.5"
+junction = "1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

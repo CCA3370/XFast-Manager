@@ -1190,6 +1190,7 @@ function cloneEditParams(params: ScreenshotEditParams): ScreenshotEditParams {
   }
 }
 
+// @ts-ignore -- reserved for future worker-based preview
 async function renderPreviewInWorker(
   params: ScreenshotEditParams,
   maxSide: number,

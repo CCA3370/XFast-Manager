@@ -2799,7 +2799,7 @@ async fn save_preset(
                 let xplane_path = std::path::Path::new(&xp);
                 let mut aircraft = HashMap::new();
                 let mut plugins = HashMap::new();
-                let mut scenery = HashMap::new();
+                let scenery = HashMap::new();
                 let mut navdata = HashMap::new();
 
                 if let Ok(data) = management_index::scan_aircraft(xplane_path) {
@@ -3298,9 +3298,14 @@ pub fn run() {
             scan_folder_disk_usage,
             // CSL management commands
             csl_index::csl_scan_packages,
+            csl_index::csl_rescan_packages,
             csl_index::csl_install_package,
             csl_index::csl_uninstall_package,
-            csl_index::csl_detect_paths
+            csl_index::csl_detect_paths,
+            // ALTITUDE management commands
+            csl_index::altitude_scan_packages,
+            csl_index::altitude_install_package,
+            csl_index::altitude_uninstall_package
         ])
         .setup(|app| {
             // Initialize TaskControl state

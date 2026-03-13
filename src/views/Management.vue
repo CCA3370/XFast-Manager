@@ -400,7 +400,8 @@ function handleUpdateAll() {
     cancelText: t('common.cancel'),
     type: 'warning',
     onConfirm: () => {
-      runUpdateAll(activeTab.value)
+      const tab = activeTab.value as 'aircraft' | 'plugin'
+      runUpdateAll(tab)
     },
     onCancel: () => {},
   })

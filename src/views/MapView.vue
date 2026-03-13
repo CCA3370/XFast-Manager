@@ -1419,7 +1419,7 @@ function toAirportRunwayShoulderFeatureCollection(detail: MapAirportDetail | nul
         },
       }
     })
-    .filter((item): item is Record<string, unknown> => Boolean(item))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
 
   return { type: 'FeatureCollection', features }
 }
@@ -1449,7 +1449,7 @@ function toAirportRunwayFeatureCollection(detail: MapAirportDetail | null): Feat
         },
       }
     })
-    .filter((item): item is Record<string, unknown> => Boolean(item))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
 
   return { type: 'FeatureCollection', features }
 }
@@ -2793,7 +2793,7 @@ function buildSimbriefRouteCoordinates(
   const deduped: Array<[number, number]> = []
   const dedupedStages: string[] = []
   for (let i = 0; i < merged.length; i++) {
-    const last = deduped.at(-1)
+    const last = deduped[deduped.length - 1] as [number, number] | undefined
     if (!last || last[0] !== merged[i][0] || last[1] !== merged[i][1]) {
       deduped.push(merged[i])
       dedupedStages.push(mergedStages[i])
@@ -2883,7 +2883,8 @@ function updateGeoJsonSource(sourceId: string, data: FeatureCollection) {
 
   const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
   if (!source) return
-  source.setData(data)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  source.setData(data as any)
 }
 
 function applyLayerVisibility() {
@@ -3908,7 +3909,7 @@ async function updateWeatherRadar(manifest?: RainViewerManifest) {
   }
 
   const frames = [...(resolved.radar?.past || []), ...(resolved.radar?.nowcast || [])]
-  const latestFrame = frames.at(-1)
+  const latestFrame = frames[frames.length - 1]
   if (!latestFrame || !resolved.host) return
 
   const sourceUrl = `${resolved.host}${latestFrame.path}/512/{z}/{x}/{y}/2/1_1.png`
@@ -4310,6 +4311,7 @@ watch(
     if (!map) return
 
     map.once('style.load', () => {
+      // @ts-expect-error maplibre type inference issue inside .once callback
       setupMapSourcesAndLayers(map)
       updateGeoJsonSource('airports', toAirportFeatureCollection(airports.value))
       updateGeoJsonSource('navaids', toNavaidFeatureCollection(navSnapshot.value.navaids))
@@ -4343,7 +4345,7 @@ onMounted(async () => {
     style: mapStore.mapStyleUrl,
     center: [-95, 35],
     zoom: 3,
-    attributionControl: true,
+    attributionControl: {} as maplibregl.AttributionControlOptions,
   })
 
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right')

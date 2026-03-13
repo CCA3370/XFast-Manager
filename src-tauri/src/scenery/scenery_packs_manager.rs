@@ -198,6 +198,7 @@ impl SceneryPacksManager {
     }
 
     /// Add a new entry to scenery_packs.ini (used after installation)
+    #[allow(dead_code)]
     pub async fn add_entry(&self, folder_name: &str, category: &SceneryCategory) -> Result<()> {
         self.add_entry_with_locked_entries(folder_name, category, &[])
             .await

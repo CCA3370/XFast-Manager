@@ -998,7 +998,7 @@ onMounted(async () => {
   // Compute hint position after DOM is ready
   if (store.logAnalysisHintVisible) {
     setTimeout(() => {
-      const el = logAnalysisLink.value?.$el ?? logAnalysisLink.value
+      const el = (logAnalysisLink.value as any)?.$el ?? logAnalysisLink.value
       if (el) {
         const rect = (el as HTMLElement).getBoundingClientRect()
         hintPosition.value = {

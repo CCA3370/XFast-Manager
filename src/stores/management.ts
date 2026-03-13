@@ -304,7 +304,7 @@ export const useManagementStore = defineStore('management', () => {
     optionsOverride?: Partial<AddonUpdateOptions>,
   ): Promise<AddonUpdatePreview> {
     if (!validateXPlanePath(error)) {
-      throw new Error(error.value)
+      throw new Error(error.value!)
     }
 
     await loadAddonUpdateOptions()
@@ -641,7 +641,7 @@ export const useManagementStore = defineStore('management', () => {
     optionsOverride?: Partial<AddonUpdateOptions>,
   ): Promise<AddonUpdatePlan> {
     if (!validateXPlanePath(error)) {
-      throw new Error(error.value)
+      throw new Error(error.value!)
     }
 
     await loadAddonUpdateOptions()
@@ -673,7 +673,7 @@ export const useManagementStore = defineStore('management', () => {
     optionsOverride?: Partial<AddonUpdateOptions>,
   ): Promise<AddonUpdateResult> {
     if (!validateXPlanePath(error)) {
-      throw new Error(error.value)
+      throw new Error(error.value!)
     }
 
     await loadAddonUpdateOptions()
@@ -714,7 +714,7 @@ export const useManagementStore = defineStore('management', () => {
     licenseKey: string,
   ) {
     if (!validateXPlanePath(error)) {
-      throw new Error(error.value)
+      throw new Error(error.value!)
     }
 
     const trimmedLogin = login.trim()
@@ -745,7 +745,7 @@ export const useManagementStore = defineStore('management', () => {
     folderName: string,
   ): Promise<AddonUpdaterCredentials | null> {
     if (!validateXPlanePath(error)) {
-      throw new Error(error.value)
+      throw new Error(error.value!)
     }
 
     try {
@@ -768,7 +768,7 @@ export const useManagementStore = defineStore('management', () => {
     folderName: string,
   ): Promise<AddonDiskSpaceInfo> {
     if (!validateXPlanePath(error)) {
-      throw new Error(error.value)
+      throw new Error(error.value!)
     }
 
     try {
@@ -816,7 +816,7 @@ export const useManagementStore = defineStore('management', () => {
   // Restore navdata backup
   async function restoreNavdataBackup(backupFolderName: string) {
     if (!validateXPlanePath(error)) {
-      throw new Error(error.value)
+      throw new Error(error.value!)
     }
 
     isRestoringBackup.value = true
@@ -960,7 +960,7 @@ export const useManagementStore = defineStore('management', () => {
   // Delete item
   async function deleteItem(itemType: ManagementItemType, folderName: string) {
     if (!validateXPlanePath(error)) {
-      throw new Error(error.value)
+      throw new Error(error.value!)
     }
 
     try {
@@ -998,7 +998,7 @@ export const useManagementStore = defineStore('management', () => {
   // Open folder
   async function openFolder(itemType: ManagementItemType, folderName: string) {
     if (!validateXPlanePath(error)) {
-      throw new Error(error.value)
+      throw new Error(error.value!)
     }
 
     try {

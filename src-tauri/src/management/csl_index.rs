@@ -10,13 +10,26 @@ use tokio::sync::Mutex;
 
 use crate::error::{ApiError, ApiErrorCode};
 
-const CSL_SERVER: &str = "http://csl.x-air.ru/package";
+const CSL_SERVER: &str = "http://x-csl.ru/package";
+const CSL_CANONICAL_REL: &str = "Resources/plugins/IVAO_CSL/CSL";
 
-/// Cached index with TTL
-static INDEX_CACHE: std::sync::LazyLock<Mutex<Option<(std::time::Instant, String)>>> =
-    std::sync::LazyLock::new(|| Mutex::new(None));
+/// ALTITUDE files are hosted one level deeper: /package/ALTITUDE/{path}
+const ALTITUDE_SERVER: &str = "http://x-csl.ru/package/ALTITUDE";
+
+/// Cached index with TTL, keyed by server URL
+static INDEX_CACHE: std::sync::LazyLock<Mutex<HashMap<String, (std::time::Instant, String)>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 const INDEX_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(300); // 5 minutes
+
+/// Cached package descriptions (package_name → description). Long-lived — descriptions rarely change.
+static DESC_CACHE: std::sync::LazyLock<Mutex<HashMap<String, String>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Cached local MD5 hashes: file_path → (size, mtime_secs, md5).
+/// If size+mtime still match, the cached hash is reused (avoids re-reading the file).
+static MD5_CACHE: std::sync::LazyLock<std::sync::Mutex<HashMap<PathBuf, (u64, i64, String)>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
 
 // ============================================================================
 // Data Structures
@@ -233,6 +246,41 @@ fn compute_file_md5(path: &Path) -> Result<String, std::io::Error> {
     Ok(format!("{:x}", context.compute()))
 }
 
+/// Get the mtime of a file as seconds-since-epoch (platform-portable i64).
+fn mtime_secs(meta: &std::fs::Metadata) -> i64 {
+    meta.modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Compute MD5, but reuse a cached hash when file size + mtime are unchanged.
+fn compute_file_md5_cached(path: &Path, meta: &std::fs::Metadata) -> Result<String, std::io::Error> {
+    let size = meta.len();
+    let mtime = mtime_secs(meta);
+
+    // Check cache (std::sync::Mutex — fine inside spawn_blocking)
+    {
+        let cache = MD5_CACHE.lock().unwrap();
+        if let Some((cached_size, cached_mtime, ref cached_hash)) = cache.get(path) {
+            if *cached_size == size && *cached_mtime == mtime {
+                return Ok(cached_hash.clone());
+            }
+        }
+    }
+
+    let hash = compute_file_md5(path)?;
+
+    // Store in cache
+    {
+        let mut cache = MD5_CACHE.lock().unwrap();
+        cache.insert(path.to_path_buf(), (size, mtime, hash.clone()));
+    }
+
+    Ok(hash)
+}
+
 /// Find package directory across local paths
 fn find_local_package_dir(package_name: &str, local_paths: &[String]) -> Option<PathBuf> {
     for base_path in local_paths {
@@ -246,7 +294,7 @@ fn find_local_package_dir(package_name: &str, local_paths: &[String]) -> Option<
 
 /// Compare a single package against local files.
 /// Optimization: size check first, MD5 only when size matches.
-/// Uses single metadata() call instead of exists() + metadata().
+/// Uses MD5_CACHE to skip re-hashing unchanged files.
 fn compare_package_fast(
     pkg: &PackageData,
     local_dir: &Path,
@@ -269,7 +317,7 @@ fn compare_package_fast(
                 }
                 // Size matches → compute MD5 only if server provides hash
                 if let Some(ref server_hash) = file.md5_hash {
-                    match compute_file_md5(&local_file) {
+                    match compute_file_md5_cached(&local_file, &meta) {
                         Ok(local_hash) if local_hash != *server_hash => {
                             files_to_update += 1;
                             update_size += file.size_bytes;
@@ -302,20 +350,21 @@ fn compare_package_fast(
 // Network Operations
 // ============================================================================
 
-async fn fetch_remote_index(server: &str) -> Result<String, ApiError> {
-    // Check cache first
+async fn fetch_remote_index(server: &str, index_path: &str) -> Result<String, ApiError> {
+    let url = format!("{}/{}", server, index_path);
+
+    // Check cache first (keyed by full URL)
     {
         let cache = INDEX_CACHE.lock().await;
-        if let Some((fetched_at, ref content)) = *cache {
+        if let Some((fetched_at, ref content)) = cache.get(&url) {
             if fetched_at.elapsed() < INDEX_CACHE_TTL {
                 return Ok(content.clone());
             }
         }
     }
-
-    let url = format!("{}/x-csl-indexes.idx", server);
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
+        .user_agent("XFast Manager")
         .build()
         .map_err(|e| {
             ApiError::new(ApiErrorCode::NetworkError, format!("HTTP client error: {}", e))
@@ -347,12 +396,14 @@ async fn fetch_remote_index(server: &str) -> Result<String, ApiError> {
     // Update cache
     {
         let mut cache = INDEX_CACHE.lock().await;
-        *cache = Some((std::time::Instant::now(), content.clone()));
+        cache.insert(url, (std::time::Instant::now(), content.clone()));
     }
 
     Ok(content)
 }
 
+/// Download a single file with exponential backoff retry (max 5 attempts).
+/// Delays: 1s, 2s, 4s, 8s, 16s.
 async fn download_file(
     client: &reqwest::Client,
     server: &str,
@@ -360,17 +411,6 @@ async fn download_file(
     local_path: &Path,
 ) -> Result<u64, ApiError> {
     let url = format!("{}/{}", server, remote_path);
-
-    let resp = client.get(&url).send().await.map_err(|e| {
-        ApiError::new(ApiErrorCode::NetworkError, format!("Download failed: {}", e))
-    })?;
-
-    if !resp.status().is_success() {
-        return Err(ApiError::new(
-            ApiErrorCode::NetworkError,
-            format!("Download failed with status {}", resp.status()),
-        ));
-    }
 
     if let Some(parent) = local_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
@@ -381,58 +421,142 @@ async fn download_file(
         })?;
     }
 
-    let bytes = resp.bytes().await.map_err(|e| {
-        ApiError::new(
-            ApiErrorCode::NetworkError,
-            format!("Failed to read download: {}", e),
-        )
-    })?;
+    let mut last_err = None;
 
-    let size = bytes.len() as u64;
-    std::fs::write(local_path, &bytes).map_err(|e| {
-        ApiError::new(
-            ApiErrorCode::Internal,
-            format!("Failed to write file: {}", e),
-        )
-    })?;
+    for attempt in 0u32..5 {
+        if attempt > 0 {
+            let delay = std::time::Duration::from_secs(1 << (attempt - 1)); // 1, 2, 4, 8
+            tokio::time::sleep(delay).await;
+        }
 
-    Ok(size)
+        let resp = match client.get(&url).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = Some(format!("Download failed (attempt {}): {}", attempt + 1, e));
+                continue;
+            }
+        };
+
+        if !resp.status().is_success() {
+            last_err = Some(format!(
+                "Download failed with status {} (attempt {})",
+                resp.status(),
+                attempt + 1,
+            ));
+            continue;
+        }
+
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                last_err = Some(format!(
+                    "Failed to read download (attempt {}): {}",
+                    attempt + 1,
+                    e,
+                ));
+                continue;
+            }
+        };
+
+        let size = bytes.len() as u64;
+        std::fs::write(local_path, &bytes).map_err(|e| {
+            ApiError::new(
+                ApiErrorCode::Internal,
+                format!("Failed to write file: {}", e),
+            )
+        })?;
+
+        return Ok(size);
+    }
+
+    Err(ApiError::new(
+        ApiErrorCode::NetworkError,
+        last_err.unwrap_or_else(|| "Download failed after 5 attempts".to_string()),
+    ))
+}
+
+/// Fetch x-csl-info.info for each package, returning a map of package_name → first line (model name).
+/// Uses DESC_CACHE to skip re-fetching known descriptions. Failures are silently skipped.
+async fn fetch_package_descriptions(
+    server: &str,
+    package_names: Vec<String>,
+) -> HashMap<String, String> {
+    // 1. Read cache — collect already-known descriptions and the list of unknowns
+    let (mut result, to_fetch) = {
+        let cache = DESC_CACHE.lock().await;
+        let mut known = HashMap::new();
+        let mut unknown = Vec::new();
+        for name in &package_names {
+            if let Some(desc) = cache.get(name) {
+                known.insert(name.clone(), desc.clone());
+            } else {
+                unknown.push(name.clone());
+            }
+        }
+        (known, unknown)
+    };
+
+    if to_fetch.is_empty() {
+        return result;
+    }
+
+    // 2. Fetch only uncached descriptions
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .user_agent("XFast Manager")
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return result,
+    };
+
+    let server_owned = server.to_string();
+    let fetched: Vec<Option<(String, String)>> = stream::iter(to_fetch.into_iter().map(move |name| {
+        let client = client.clone();
+        let url = format!("{}/{}/x-csl-info.info", server_owned, name);
+        async move {
+            let resp = client.get(&url).send().await.ok()?;
+            if !resp.status().is_success() {
+                return None;
+            }
+            let text = resp.text().await.ok()?;
+            let first_line = text.lines().next()?.trim().to_string();
+            if first_line.is_empty() {
+                return None;
+            }
+            Some((name, first_line))
+        }
+    }))
+    .buffer_unordered(20)
+    .collect()
+    .await;
+
+    // 3. Write newly-fetched entries into cache and result
+    let new_entries: Vec<(String, String)> = fetched.into_iter().flatten().collect();
+    if !new_entries.is_empty() {
+        let mut cache = DESC_CACHE.lock().await;
+        for (name, desc) in &new_entries {
+            cache.insert(name.clone(), desc.clone());
+        }
+    }
+    for (name, desc) in new_entries {
+        result.insert(name, desc);
+    }
+
+    result
 }
 
 // ============================================================================
-// Tauri Commands
+// Internal (shared) logic
 // ============================================================================
 
-/// Scan packages: fetch remote index, compare with local, return results.
-///
-/// Optimizations vs. naive approach:
-/// 1. No per-package HTTP requests for descriptions — uses package name instead
-/// 2. File size check before MD5 — skips expensive hash for mismatched sizes
-/// 3. All package comparisons run in parallel on the blocking thread pool
-/// 4. 64KB read buffer for MD5 (8x larger)
-#[tauri::command]
-pub async fn csl_scan_packages(
-    xplane_path: String,
-    custom_paths: Vec<String>,
+async fn scan_packages_internal(
+    server: &str,
+    paths: Vec<CslPath>,
+    local_path_strings: Vec<String>,
 ) -> Result<CslScanResult, String> {
-    let xplane = Path::new(&xplane_path);
-
-    // Detect local CSL paths
-    let mut paths = detect_csl_paths(xplane);
-    for cp in &custom_paths {
-        if !paths.iter().any(|p| p.path == *cp) {
-            paths.push(CslPath {
-                path: cp.clone(),
-                source: "custom".to_string(),
-                plugin_name: None,
-            });
-        }
-    }
-
-    let local_path_strings: Vec<String> = paths.iter().map(|p| p.path.clone()).collect();
-
     // Fetch remote index (single HTTP request)
-    let index_content = fetch_remote_index(CSL_SERVER)
+    let index_content = fetch_remote_index(server, "x-csl-indexes.idx")
         .await
         .map_err(|e| e.to_string())?;
 
@@ -446,80 +570,98 @@ pub async fn csl_scan_packages(
     let entries = parse_index(&index_content);
     let pkg_data_list = group_into_packages(&entries);
 
-    // Compare all packages — pre-filter to skip spawn_blocking for not-installed
-    let local_paths_arc = std::sync::Arc::new(local_path_strings);
-    let mut packages = Vec::with_capacity(pkg_data_list.len());
-    let mut handles = Vec::new();
+    let package_names: Vec<String> = pkg_data_list.iter().map(|p| p.name.clone()).collect();
 
-    for pkg in pkg_data_list {
-        // Fast path: check if package directory exists in any local path
-        let local_dir = find_local_package_dir(&pkg.name, &local_paths_arc);
+    // Run description fetch and local comparison IN PARALLEL
+    let desc_future = fetch_package_descriptions(server, package_names);
 
-        if let Some(dir) = local_dir {
-            // Package exists locally — spawn blocking for MD5/size comparison
-            let dir = dir.clone();
-            handles.push(tokio::task::spawn_blocking(move || {
-                let (status, files_to_update, update_size) =
-                    compare_package_fast(&pkg, &dir);
+    let compare_future = {
+        let local_paths = local_path_strings;
+        async move {
+            let mut installed_results: Vec<tokio::task::JoinHandle<CslPackageInfo>> = Vec::new();
+            let mut not_installed_results: Vec<CslPackageInfo> = Vec::new();
 
-                let total_size = if pkg.header_size > 0 {
-                    pkg.header_size
+            for pkg in pkg_data_list {
+                let local_dir = find_local_package_dir(&pkg.name, &local_paths);
+
+                if let Some(dir) = local_dir {
+                    let dir = dir.clone();
+                    installed_results.push(tokio::task::spawn_blocking(move || {
+                        let (status, files_to_update, update_size) =
+                            compare_package_fast(&pkg, &dir);
+
+                        let total_size = if pkg.header_size > 0 {
+                            pkg.header_size
+                        } else {
+                            pkg.files.iter().map(|f| f.size_bytes).sum()
+                        };
+
+                        let last_updated = if !pkg.header_date.is_empty() {
+                            format!("{} {}", pkg.header_date, pkg.header_time)
+                        } else {
+                            String::new()
+                        };
+
+                        CslPackageInfo {
+                            name: pkg.name.clone(),
+                            total_size_bytes: total_size,
+                            file_count: pkg.files.len(),
+                            description: String::new(), // filled after join
+                            status,
+                            files_to_update,
+                            update_size_bytes: update_size,
+                            last_updated,
+                        }
+                    }));
                 } else {
-                    pkg.files.iter().map(|f| f.size_bytes).sum()
-                };
+                    let total_size: u64 = if pkg.header_size > 0 {
+                        pkg.header_size
+                    } else {
+                        pkg.files.iter().map(|f| f.size_bytes).sum()
+                    };
+                    let update_size: u64 = pkg.files.iter().map(|f| f.size_bytes).sum();
 
-                let last_updated = if !pkg.header_date.is_empty() {
-                    format!("{} {}", pkg.header_date, pkg.header_time)
-                } else {
-                    String::new()
-                };
+                    let last_updated = if !pkg.header_date.is_empty() {
+                        format!("{} {}", pkg.header_date, pkg.header_time)
+                    } else {
+                        String::new()
+                    };
 
-                CslPackageInfo {
-                    name: pkg.name.clone(),
-                    total_size_bytes: total_size,
-                    file_count: pkg.files.len(),
-                    description: pkg.name,
-                    status,
-                    files_to_update,
-                    update_size_bytes: update_size,
-                    last_updated,
+                    not_installed_results.push(CslPackageInfo {
+                        name: pkg.name.clone(),
+                        total_size_bytes: total_size,
+                        file_count: pkg.files.len(),
+                        description: String::new(),
+                        status: "not_installed".to_string(),
+                        files_to_update: pkg.files.len(),
+                        update_size_bytes: update_size,
+                        last_updated,
+                    });
                 }
-            }));
-        } else {
-            // Not installed — no I/O needed, create result directly
-            let total_size: u64 = if pkg.header_size > 0 {
-                pkg.header_size
-            } else {
-                pkg.files.iter().map(|f| f.size_bytes).sum()
-            };
-            let update_size: u64 = pkg.files.iter().map(|f| f.size_bytes).sum();
-
-            let last_updated = if !pkg.header_date.is_empty() {
-                format!("{} {}", pkg.header_date, pkg.header_time)
-            } else {
-                String::new()
-            };
-
-            packages.push(CslPackageInfo {
-                name: pkg.name.clone(),
-                total_size_bytes: total_size,
-                file_count: pkg.files.len(),
-                description: pkg.name,
-                status: "not_installed".to_string(),
-                files_to_update: pkg.files.len(),
-                update_size_bytes: update_size,
-                last_updated,
-            });
-        }
-    }
-
-    // Collect blocking task results
-    for handle in handles {
-        match handle.await {
-            Ok(info) => packages.push(info),
-            Err(e) => {
-                return Err(format!("Package comparison failed: {}", e));
             }
+
+            // Collect blocking task results
+            let mut all = not_installed_results;
+            for handle in installed_results {
+                match handle.await {
+                    Ok(info) => all.push(info),
+                    Err(e) => return Err(format!("Package comparison failed: {}", e)),
+                }
+            }
+            Ok(all)
+        }
+    };
+
+    let (descriptions, compare_result) = tokio::join!(desc_future, compare_future);
+    let mut packages = compare_result?;
+
+    // Fill descriptions from the (now-resolved) map
+    for pkg in &mut packages {
+        if pkg.description.is_empty() {
+            pkg.description = descriptions
+                .get(&pkg.name)
+                .cloned()
+                .unwrap_or_else(|| pkg.name.clone());
         }
     }
 
@@ -533,17 +675,15 @@ pub async fn csl_scan_packages(
     })
 }
 
-/// Install or update a specific CSL package
-#[tauri::command]
-pub async fn csl_install_package(
+async fn install_package_internal(
+    server: &str,
+    event_name: &str,
     package_name: String,
     target_path: String,
     parallel_downloads: Option<usize>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
-    let server = CSL_SERVER;
-
-    let index_content = fetch_remote_index(server)
+    let index_content = fetch_remote_index(server, "x-csl-indexes.idx")
         .await
         .map_err(|e| e.to_string())?;
 
@@ -558,6 +698,7 @@ pub async fn csl_install_package(
     let target_pkg_dir = Path::new(&target_path).join(&package_name);
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
+        .user_agent("XFast Manager")
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
 
@@ -575,7 +716,7 @@ pub async fn csl_install_package(
             if meta.len() != file.size_bytes {
                 true
             } else if let Some(ref server_hash) = file.md5_hash {
-                match compute_file_md5(&local_file) {
+                match compute_file_md5_cached(&local_file, &meta) {
                     Ok(local_hash) => local_hash != *server_hash,
                     Err(_) => true,
                 }
@@ -605,7 +746,7 @@ pub async fn csl_install_package(
             let local_path = target_pkg_dir.join(rel_path);
 
             let _ = app_handle.emit(
-                "csl-progress",
+                event_name,
                 CslProgressEvent {
                     package_name: package_name.clone(),
                     current_file: i + 1,
@@ -627,6 +768,7 @@ pub async fn csl_install_package(
         let owned_files: Vec<String> = files_to_download.iter().map(|f| f.path.clone()).collect();
         let completed = Arc::new(AtomicU64::new(0));
         let bytes_downloaded = Arc::new(AtomicU64::new(0));
+        let event_name_owned = event_name.to_string();
 
         let results: Vec<Result<(), String>> = stream::iter(
             owned_files.into_iter().map(|file_path| {
@@ -638,6 +780,7 @@ pub async fn csl_install_package(
                 let package_name = package_name.clone();
                 let completed = completed.clone();
                 let bytes_downloaded = bytes_downloaded.clone();
+                let event_name = event_name_owned.clone();
 
                 async move {
                     let rel_path = file_path
@@ -655,7 +798,7 @@ pub async fn csl_install_package(
                         bytes_downloaded.fetch_add(downloaded, Ordering::Relaxed) + downloaded;
 
                     let _ = app_handle.emit(
-                        "csl-progress",
+                        &event_name,
                         CslProgressEvent {
                             package_name: package_name.clone(),
                             current_file: done as usize,
@@ -681,7 +824,7 @@ pub async fn csl_install_package(
     }
 
     let _ = app_handle.emit(
-        "csl-progress",
+        event_name,
         CslProgressEvent {
             package_name: package_name.clone(),
             current_file: download_total,
@@ -695,14 +838,12 @@ pub async fn csl_install_package(
     Ok(())
 }
 
-/// Uninstall a CSL package
-#[tauri::command]
-pub async fn csl_uninstall_package(
-    package_name: String,
-    paths: Vec<String>,
+fn uninstall_package_internal(
+    package_name: &str,
+    paths: &[String],
 ) -> Result<(), String> {
-    for base_path in &paths {
-        let pkg_dir = Path::new(base_path).join(&package_name);
+    for base_path in paths {
+        let pkg_dir = Path::new(base_path).join(package_name);
         if pkg_dir.exists() && pkg_dir.is_dir() {
             std::fs::remove_dir_all(&pkg_dir)
                 .map_err(|e| format!("Failed to remove {}: {}", pkg_dir.display(), e))?;
@@ -716,8 +857,687 @@ pub async fn csl_uninstall_package(
     ))
 }
 
+fn collect_scan_paths(xplane_path: &str, custom_paths: &[String]) -> (Vec<CslPath>, Vec<String>) {
+    let xplane = Path::new(xplane_path);
+    let mut paths = detect_csl_paths(xplane);
+    for cp in custom_paths {
+        if !paths.iter().any(|p| p.path == *cp) {
+            paths.push(CslPath {
+                path: cp.clone(),
+                source: "custom".to_string(),
+                plugin_name: None,
+            });
+        }
+    }
+    let local_path_strings: Vec<String> = paths.iter().map(|p| p.path.clone()).collect();
+    (paths, local_path_strings)
+}
+
+// ============================================================================
+// Directory Link Helpers (Junction on Windows, Symlink on Unix)
+// ============================================================================
+
+#[cfg(windows)]
+fn create_directory_link(target: &Path, link_path: &Path) -> Result<(), String> {
+    junction::create(target, link_path)
+        .map_err(|e| format!("Failed to create junction {} -> {}: {}", link_path.display(), target.display(), e))
+}
+
+#[cfg(unix)]
+fn create_directory_link(target: &Path, link_path: &Path) -> Result<(), String> {
+    std::os::unix::fs::symlink(target, link_path)
+        .map_err(|e| format!("Failed to create symlink {} -> {}: {}", link_path.display(), target.display(), e))
+}
+
+#[cfg(windows)]
+fn is_link(path: &Path) -> bool {
+    junction::exists(path).unwrap_or(false)
+}
+
+#[cfg(unix)]
+fn is_link(path: &Path) -> bool {
+    path.symlink_metadata()
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
+#[cfg(windows)]
+fn remove_directory_link(link_path: &Path) -> Result<(), String> {
+    junction::delete(link_path)
+        .map_err(|e| format!("Failed to remove junction {}: {}", link_path.display(), e))
+}
+
+#[cfg(unix)]
+fn remove_directory_link(link_path: &Path) -> Result<(), String> {
+    std::fs::remove_file(link_path)
+        .map_err(|e| format!("Failed to remove symlink {}: {}", link_path.display(), e))
+}
+
+/// Collect all detected CSL directory paths, excluding the canonical path itself.
+fn collect_link_targets(xplane_path: &Path, custom_paths: &[String]) -> Vec<PathBuf> {
+    let canonical = xplane_path.join(CSL_CANONICAL_REL);
+    let mut targets = Vec::new();
+
+    for (rel_path, _) in CSL_PLUGIN_PATHS {
+        let full = xplane_path.join(rel_path);
+        if full == canonical {
+            continue;
+        }
+        if full.exists() {
+            targets.push(full);
+        }
+    }
+
+    for cp in custom_paths {
+        let p = PathBuf::from(cp);
+        if p == canonical {
+            continue;
+        }
+        if !targets.contains(&p) {
+            targets.push(p);
+        }
+    }
+
+    targets
+}
+
+/// Create links from each link_target/{package_name} → canonical_pkg_dir.
+/// Skips if the target is a real directory (not a link) to avoid overwriting user data.
+fn create_package_links(
+    package_name: &str,
+    canonical_pkg_dir: &Path,
+    link_targets: &[PathBuf],
+) -> Vec<String> {
+    let mut warnings = Vec::new();
+
+    for base in link_targets {
+        let link_path = base.join(package_name);
+
+        if link_path.exists() || is_link(&link_path) {
+            if is_link(&link_path) {
+                // Remove existing link and recreate
+                if let Err(e) = remove_directory_link(&link_path) {
+                    warnings.push(e);
+                    continue;
+                }
+            } else {
+                // Real directory — skip to avoid data loss
+                warnings.push(format!(
+                    "Skipped {}: real directory exists (not a link)",
+                    link_path.display()
+                ));
+                continue;
+            }
+        }
+
+        // Ensure parent exists
+        if let Some(parent) = link_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        if let Err(e) = create_directory_link(canonical_pkg_dir, &link_path) {
+            warnings.push(e);
+        }
+    }
+
+    warnings
+}
+
+/// Remove links for a package from all link targets.
+fn remove_package_links(
+    package_name: &str,
+    link_targets: &[PathBuf],
+) -> Vec<String> {
+    let mut warnings = Vec::new();
+
+    for base in link_targets {
+        let link_path = base.join(package_name);
+        if is_link(&link_path) {
+            if let Err(e) = remove_directory_link(&link_path) {
+                warnings.push(e);
+            }
+        }
+    }
+
+    warnings
+}
+
+// ============================================================================
+// Tauri Commands — CSL
+// ============================================================================
+
+/// Scan packages: fetch remote index, compare with local, return results.
+///
+/// Optimizations vs. naive approach:
+/// 1. No per-package HTTP requests for descriptions — uses package name instead
+/// 2. File size check before MD5 — skips expensive hash for mismatched sizes
+/// 3. All package comparisons run in parallel on the blocking thread pool
+/// 4. 64KB read buffer for MD5 (8x larger)
+#[tauri::command]
+pub async fn csl_scan_packages(
+    xplane_path: String,
+    custom_paths: Vec<String>,
+) -> Result<CslScanResult, String> {
+    let (paths, _) = collect_scan_paths(&xplane_path, &custom_paths);
+
+    // Scan only from canonical path for local comparison
+    let xplane = Path::new(&xplane_path);
+    let canonical = xplane.join(CSL_CANONICAL_REL);
+    let scan_paths = if canonical.exists() {
+        vec![canonical.to_string_lossy().to_string()]
+    } else {
+        vec![]
+    };
+
+    scan_packages_internal(CSL_SERVER, paths, scan_paths).await
+}
+
+/// Rescan specific packages only (uses cached index).
+/// Much faster than a full scan — skips description fetches and only compares
+/// the requested packages against the canonical CSL directory.
+#[tauri::command]
+pub async fn csl_rescan_packages(
+    xplane_path: String,
+    package_names: Vec<String>,
+) -> Result<Vec<CslPackageInfo>, String> {
+    let xplane = Path::new(&xplane_path);
+    let canonical = xplane.join(CSL_CANONICAL_REL);
+    let scan_paths = vec![canonical.to_string_lossy().to_string()];
+
+    // Fetch index (hits cache if recent scan happened)
+    let index_content = fetch_remote_index(CSL_SERVER, "x-csl-indexes.idx")
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let entries = parse_index(&index_content);
+    let pkg_data_list = group_into_packages(&entries);
+
+    // Filter to only requested packages
+    let target_set: std::collections::HashSet<&str> =
+        package_names.iter().map(|s| s.as_str()).collect();
+
+    let mut results = Vec::new();
+    let mut handles = Vec::new();
+
+    for pkg in pkg_data_list {
+        if !target_set.contains(pkg.name.as_str()) {
+            continue;
+        }
+
+        let local_dir = find_local_package_dir(&pkg.name, &scan_paths);
+
+        if let Some(dir) = local_dir {
+            let dir = dir.clone();
+            handles.push(tokio::task::spawn_blocking(move || {
+                let (status, files_to_update, update_size) =
+                    compare_package_fast(&pkg, &dir);
+
+                let total_size = if pkg.header_size > 0 {
+                    pkg.header_size
+                } else {
+                    pkg.files.iter().map(|f| f.size_bytes).sum()
+                };
+
+                let last_updated = if !pkg.header_date.is_empty() {
+                    format!("{} {}", pkg.header_date, pkg.header_time)
+                } else {
+                    String::new()
+                };
+
+                CslPackageInfo {
+                    name: pkg.name.clone(),
+                    total_size_bytes: total_size,
+                    file_count: pkg.files.len(),
+                    description: String::new(), // caller preserves original description
+                    status,
+                    files_to_update,
+                    update_size_bytes: update_size,
+                    last_updated,
+                }
+            }));
+        } else {
+            // Not installed
+            let total_size: u64 = if pkg.header_size > 0 {
+                pkg.header_size
+            } else {
+                pkg.files.iter().map(|f| f.size_bytes).sum()
+            };
+            let update_size: u64 = pkg.files.iter().map(|f| f.size_bytes).sum();
+
+            let last_updated = if !pkg.header_date.is_empty() {
+                format!("{} {}", pkg.header_date, pkg.header_time)
+            } else {
+                String::new()
+            };
+
+            results.push(CslPackageInfo {
+                name: pkg.name.clone(),
+                total_size_bytes: total_size,
+                file_count: pkg.files.len(),
+                description: String::new(),
+                status: "not_installed".to_string(),
+                files_to_update: pkg.files.len(),
+                update_size_bytes: update_size,
+                last_updated,
+            });
+        }
+    }
+
+    for handle in handles {
+        match handle.await {
+            Ok(info) => results.push(info),
+            Err(e) => {
+                return Err(format!("Package comparison failed: {}", e));
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+/// Install or update a specific CSL package.
+/// Downloads to the canonical path (Resources/plugins/IVAO_CSL/CSL) and creates
+/// junction/symlink in other detected CSL directories.
+#[tauri::command]
+pub async fn csl_install_package(
+    package_name: String,
+    xplane_path: String,
+    custom_paths: Vec<String>,
+    parallel_downloads: Option<usize>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    let xplane = Path::new(&xplane_path);
+    let canonical_base = xplane.join(CSL_CANONICAL_REL);
+    std::fs::create_dir_all(&canonical_base)
+        .map_err(|e| format!("Failed to create canonical CSL dir: {}", e))?;
+
+    let canonical_base_str = canonical_base.to_string_lossy().to_string();
+    install_package_internal(
+        CSL_SERVER,
+        "csl-progress",
+        package_name.clone(),
+        canonical_base_str,
+        parallel_downloads,
+        app_handle,
+    )
+    .await?;
+
+    // Create links in other plugin CSL directories
+    let link_targets = collect_link_targets(xplane, &custom_paths);
+    let canonical_pkg_dir = canonical_base.join(&package_name);
+    let _warnings = create_package_links(&package_name, &canonical_pkg_dir, &link_targets);
+
+    Ok(())
+}
+
+/// Uninstall a CSL package.
+/// Removes links from other plugin directories first, then deletes the canonical copy.
+#[tauri::command]
+pub async fn csl_uninstall_package(
+    package_name: String,
+    xplane_path: String,
+    custom_paths: Vec<String>,
+) -> Result<(), String> {
+    let xplane = Path::new(&xplane_path);
+    let link_targets = collect_link_targets(xplane, &custom_paths);
+
+    // Remove links first
+    let _warnings = remove_package_links(&package_name, &link_targets);
+
+    // Remove the canonical copy
+    let canonical_pkg_dir = xplane.join(CSL_CANONICAL_REL).join(&package_name);
+    if canonical_pkg_dir.exists() && canonical_pkg_dir.is_dir() {
+        std::fs::remove_dir_all(&canonical_pkg_dir)
+            .map_err(|e| format!("Failed to remove {}: {}", canonical_pkg_dir.display(), e))?;
+        return Ok(());
+    }
+
+    // Fallback: try old paths for backward compatibility
+    let (_, all_paths) = collect_scan_paths(&xplane_path, &custom_paths);
+    uninstall_package_internal(&package_name, &all_paths)
+}
+
 /// Detect CSL paths from known plugin directories
 #[tauri::command]
 pub async fn csl_detect_paths(xplane_path: String) -> Result<Vec<CslPath>, String> {
     Ok(detect_csl_paths(Path::new(&xplane_path)))
+}
+
+// ============================================================================
+// ALTITUDE — folder mapping & helpers
+// ============================================================================
+
+/// Folder mappings from client-config.ini [folders] section.
+/// Maps remote prefix (e.g. "PilotUI") to local relative path.
+const ALTITUDE_FOLDER_MAPPINGS: &[(&str, &str)] = &[
+    ("PilotUI", "Resources/plugins/ivao_pilot/PilotUI/data"),
+    ("Resources", "Resources/plugins/IVAO_CSL"),
+];
+
+/// Default local directory for ALTITUDE files that don't match any folder mapping.
+const ALTITUDE_DEFAULT_LOCAL_DIR: &str = "Resources/plugins/IVAO_CSL/CSL";
+
+/// Whether an ALTITUDE file entry is metadata (not downloadable content).
+/// These exist in the index but may not be served by the CDN.
+fn is_altitude_metadata(file_path: &str) -> bool {
+    let file_rel = file_path.strip_prefix("ALTITUDE/").unwrap_or(file_path);
+    file_rel == "x-csl-info.info" || file_rel.ends_with(".idx")
+}
+
+/// Resolve a file's local path using the ALTITUDE folder mapping.
+/// `file_rel` is the path after stripping the `ALTITUDE/` prefix,
+/// e.g. "PilotUI/mtlList.xml" or "x-csl-info.info".
+fn altitude_resolve_local_path(xplane: &Path, file_rel: &str) -> PathBuf {
+    for (prefix, local_dir) in ALTITUDE_FOLDER_MAPPINGS {
+        if let Some(rest) = file_rel.strip_prefix(prefix).and_then(|r| r.strip_prefix('/')) {
+            return xplane.join(local_dir).join(rest);
+        }
+    }
+    // No mapping matched — use default CSL dir
+    xplane.join(ALTITUDE_DEFAULT_LOCAL_DIR).join("ALTITUDE").join(file_rel)
+}
+
+/// Compare ALTITUDE files against their mapped local paths.
+fn compare_altitude_files(
+    files: &[FileEntry],
+    xplane: &Path,
+) -> (String, usize, u64) {
+    let pkg_prefix = "ALTITUDE/";
+    let mut files_to_update = 0usize;
+    let mut update_size: u64 = 0;
+    let mut content_file_count = 0usize;
+
+    for file in files {
+        if is_altitude_metadata(&file.path) {
+            continue;
+        }
+        content_file_count += 1;
+
+        let file_rel = file.path.strip_prefix(pkg_prefix).unwrap_or(&file.path);
+        let local_file = altitude_resolve_local_path(xplane, file_rel);
+
+        match std::fs::metadata(&local_file) {
+            Ok(meta) => {
+                if meta.len() != file.size_bytes {
+                    files_to_update += 1;
+                    update_size += file.size_bytes;
+                    continue;
+                }
+                if let Some(ref server_hash) = file.md5_hash {
+                    match compute_file_md5_cached(&local_file, &meta) {
+                        Ok(local_hash) if local_hash != *server_hash => {
+                            files_to_update += 1;
+                            update_size += file.size_bytes;
+                        }
+                        Err(_) => {
+                            files_to_update += 1;
+                            update_size += file.size_bytes;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Err(_) => {
+                files_to_update += 1;
+                update_size += file.size_bytes;
+            }
+        }
+    }
+
+    let status = if files_to_update == 0 {
+        "up_to_date"
+    } else if files_to_update == content_file_count {
+        "not_installed"
+    } else {
+        "needs_update"
+    };
+    (status.to_string(), files_to_update, update_size)
+}
+
+// ============================================================================
+// Tauri Commands — ALTITUDE
+// ============================================================================
+
+/// Scan ALTITUDE supplementary package
+#[tauri::command]
+pub async fn altitude_scan_packages(
+    xplane_path: String,
+) -> Result<CslScanResult, String> {
+    let xplane = PathBuf::from(&xplane_path);
+
+    let index_content = fetch_remote_index(CSL_SERVER, "ALTITUDE/files.idx")
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let server_version = index_content.lines().next().unwrap_or("").to_string();
+    let entries = parse_index(&index_content);
+    let pkg_data_list = group_into_packages(&entries);
+
+    let mut packages = Vec::new();
+    for pkg in &pkg_data_list {
+        let content_files: Vec<&FileEntry> = pkg.files.iter()
+            .filter(|f| !is_altitude_metadata(&f.path))
+            .collect();
+
+        let (status, files_to_update, update_size) =
+            compare_altitude_files(&pkg.files, &xplane);
+
+        let total_size = if pkg.header_size > 0 {
+            pkg.header_size
+        } else {
+            content_files.iter().map(|f| f.size_bytes).sum()
+        };
+
+        let last_updated = if !pkg.header_date.is_empty() {
+            format!("{} {}", pkg.header_date, pkg.header_time)
+        } else {
+            String::new()
+        };
+
+        packages.push(CslPackageInfo {
+            name: pkg.name.clone(),
+            total_size_bytes: total_size,
+            file_count: content_files.len(),
+            description: "IVAO Altitude resources".to_string(),
+            status,
+            files_to_update,
+            update_size_bytes: update_size,
+            last_updated,
+        });
+    }
+
+    Ok(CslScanResult {
+        packages,
+        paths: vec![],
+        server_version,
+    })
+}
+
+/// Install or update the ALTITUDE supplementary package
+#[tauri::command]
+pub async fn altitude_install_package(
+    xplane_path: String,
+    parallel_downloads: Option<usize>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    let xplane = PathBuf::from(&xplane_path);
+    let package_name = "ALTITUDE".to_string();
+
+    let index_content = fetch_remote_index(CSL_SERVER, "ALTITUDE/files.idx")
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let entries = parse_index(&index_content);
+    let pkg_data_list = group_into_packages(&entries);
+
+    let pkg = pkg_data_list
+        .iter()
+        .find(|p| p.name == package_name)
+        .ok_or("ALTITUDE package not found in index")?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .user_agent("XFast Manager")
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
+
+    let pkg_prefix = "ALTITUDE/";
+
+    // Determine which files need downloading
+    let mut files_to_download: Vec<(&FileEntry, PathBuf)> = Vec::new();
+
+    for file in &pkg.files {
+        if is_altitude_metadata(&file.path) {
+            continue;
+        }
+
+        let file_rel = file.path.strip_prefix(pkg_prefix).unwrap_or(&file.path);
+        let local_file = altitude_resolve_local_path(&xplane, file_rel);
+
+        let needs_download = match std::fs::metadata(&local_file) {
+            Ok(meta) => {
+                if meta.len() != file.size_bytes {
+                    true
+                } else if let Some(ref server_hash) = file.md5_hash {
+                    match compute_file_md5_cached(&local_file, &meta) {
+                        Ok(local_hash) => local_hash != *server_hash,
+                        Err(_) => true,
+                    }
+                } else {
+                    false
+                }
+            }
+            Err(_) => true,
+        };
+
+        if needs_download {
+            files_to_download.push((file, local_file));
+        }
+    }
+
+    let download_total = files_to_download.len();
+    let download_total_bytes: u64 = files_to_download.iter().map(|(f, _)| f.size_bytes).sum();
+    let concurrency = parallel_downloads.unwrap_or(1).clamp(1, 10);
+
+    if concurrency <= 1 {
+        let mut bytes_downloaded: u64 = 0;
+        for (i, (file, local_path)) in files_to_download.iter().enumerate() {
+            let display_name = file.path.strip_prefix(pkg_prefix).unwrap_or(&file.path);
+            let _ = app_handle.emit(
+                "altitude-progress",
+                CslProgressEvent {
+                    package_name: package_name.clone(),
+                    current_file: i + 1,
+                    total_files: download_total,
+                    current_file_name: display_name.to_string(),
+                    bytes_downloaded,
+                    total_bytes: download_total_bytes,
+                },
+            );
+            let downloaded = download_file(&client, ALTITUDE_SERVER, &file.path, local_path)
+                .await
+                .map_err(|e| e.to_string())?;
+            bytes_downloaded += downloaded;
+        }
+    } else {
+        let owned: Vec<(String, PathBuf)> = files_to_download
+            .iter()
+            .map(|(f, lp)| (f.path.clone(), lp.clone()))
+            .collect();
+        let completed = Arc::new(AtomicU64::new(0));
+        let bytes_downloaded = Arc::new(AtomicU64::new(0));
+        let pkg_prefix_owned = pkg_prefix.to_string();
+
+        let results: Vec<Result<(), String>> = stream::iter(
+            owned.into_iter().map(|(remote_path, local_path)| {
+                let client = client.clone();
+                let app_handle = app_handle.clone();
+                let package_name = package_name.clone();
+                let completed = completed.clone();
+                let bytes_downloaded = bytes_downloaded.clone();
+                let pkg_prefix = pkg_prefix_owned.clone();
+
+                async move {
+                    let downloaded =
+                        download_file(&client, ALTITUDE_SERVER, &remote_path, &local_path)
+                            .await
+                            .map_err(|e| e.to_string())?;
+
+                    let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                    let total_dl =
+                        bytes_downloaded.fetch_add(downloaded, Ordering::Relaxed) + downloaded;
+                    let display_name = remote_path.strip_prefix(&pkg_prefix).unwrap_or(&remote_path);
+
+                    let _ = app_handle.emit(
+                        "altitude-progress",
+                        CslProgressEvent {
+                            package_name: package_name.clone(),
+                            current_file: done as usize,
+                            total_files: download_total,
+                            current_file_name: display_name.to_string(),
+                            bytes_downloaded: total_dl,
+                            total_bytes: download_total_bytes,
+                        },
+                    );
+                    Ok(())
+                }
+            }),
+        )
+        .buffer_unordered(concurrency)
+        .collect()
+        .await;
+
+        for result in results {
+            result?;
+        }
+    }
+
+    let _ = app_handle.emit(
+        "altitude-progress",
+        CslProgressEvent {
+            package_name: package_name.clone(),
+            current_file: download_total,
+            total_files: download_total,
+            current_file_name: "Complete".to_string(),
+            bytes_downloaded: download_total_bytes,
+            total_bytes: download_total_bytes,
+        },
+    );
+
+    Ok(())
+}
+
+/// Uninstall the ALTITUDE supplementary package
+#[tauri::command]
+pub async fn altitude_uninstall_package(
+    xplane_path: String,
+) -> Result<(), String> {
+    let xplane = Path::new(&xplane_path);
+
+    let index_content = fetch_remote_index(CSL_SERVER, "ALTITUDE/files.idx")
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let entries = parse_index(&index_content);
+    let pkg_prefix = "ALTITUDE/";
+    let mut removed = 0;
+
+    // Remove individual files at their mapped locations
+    for entry in &entries {
+        if entry.entry_type != 10 {
+            continue;
+        }
+        let file_rel = entry.path.strip_prefix(pkg_prefix).unwrap_or(&entry.path);
+        let local_file = altitude_resolve_local_path(xplane, file_rel);
+        if local_file.exists() {
+            let _ = std::fs::remove_file(&local_file);
+            removed += 1;
+        }
+    }
+
+    if removed == 0 {
+        return Err("ALTITUDE package not found locally".to_string());
+    }
+
+    Ok(())
 }
