@@ -177,6 +177,70 @@ pub fn save_screenshot_media_as(
     })
 }
 
+pub fn set_screenshot_as_background(
+    xplane_path: &Path,
+    file_name: &str,
+) -> Result<ScreenshotOperationResult> {
+    let source = resolve_media_path(xplane_path, file_name)?;
+    let target_dir = xplane_path.join("Output").join("backgrounds");
+    
+    fs::create_dir_all(&target_dir)
+        .with_context(|| format!("Failed to create backgrounds folder {}", target_dir.display()))?;
+        
+    let target = target_dir.join(file_name);
+
+    if source == target {
+        return Ok(ScreenshotOperationResult {
+            output_path: target.to_string_lossy().to_string(),
+        });
+    }
+
+    fs::copy(&source, &target).with_context(|| {
+        format!(
+            "Failed to copy screenshot to backgrounds: {} -> {}",
+            source.display(),
+            target.display()
+        )
+    })?;
+
+    Ok(ScreenshotOperationResult {
+        output_path: target.to_string_lossy().to_string(),
+    })
+}
+
+pub fn get_background_images(xplane_path: &Path) -> Result<Vec<String>> {
+    let target_dir = xplane_path.join("Output").join("backgrounds");
+    if !target_dir.exists() || !target_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut images = Vec::new();
+    if let Ok(entries) = fs::read_dir(target_dir) {
+        for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_file() {
+                    if let Ok(name) = entry.file_name().into_string() {
+                        images.push(name);
+                    }
+                }
+            }
+        }
+    }
+    Ok(images)
+}
+
+pub fn unset_screenshot_as_background(
+    xplane_path: &Path,
+    file_name: &str,
+) -> Result<bool> {
+    let target = xplane_path.join("Output").join("backgrounds").join(file_name);
+    if target.exists() {
+        fs::remove_file(&target).with_context(|| format!("Failed to delete background image {}", target.display()))?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
 pub fn save_edited_screenshot_image(
     xplane_path: &Path,
     file_name: &str,

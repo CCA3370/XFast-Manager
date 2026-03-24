@@ -80,6 +80,7 @@ const thumbFailed = ref<Set<string>>(new Set())
 const videoCoverUrls = reactive(new Map<string, string>())
 const pendingVideoCovers = reactive(new Set<string>())
 const busyFile = ref<string | null>(null)
+const backgroundImages = ref<Set<string>>(new Set())
 const enhancedPreviews = reactive(new Map<string, EnhancedPreviewState>())
 
 const editorOpen = ref(false)
@@ -747,15 +748,19 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [media, aircraftData] = await Promise.all([
+    const [media, aircraftData, bgImages] = await Promise.all([
       invoke<ScreenshotMediaItem[]>('list_screenshot_media', {
         xplanePath: appStore.xplanePath,
       }),
       invoke<ManagementData<AircraftInfo>>('scan_aircraft', {
         xplanePath: appStore.xplanePath,
       }).catch(() => null),
+      invoke<string[]>('get_background_images', {
+        xplanePath: appStore.xplanePath,
+      }).catch(() => [] as string[]),
     ])
     items.value = media
+    backgroundImages.value = new Set(bgImages)
     const map: Record<string, string> = {}
     for (const entry of aircraftData?.entries ?? []) {
       const stem = entry.acfFile.replace(/\.[^.]+$/, '').trim()
@@ -860,6 +865,37 @@ async function saveAs(item: ScreenshotMediaItem) {
     toastStore.success(t('screenshot.saveAsSuccess') as string)
   } catch (e) {
     modalStore.showError(`${t('screenshot.saveAsFailed')}: ${String(e)}`)
+  } finally {
+    busyFile.value = null
+  }
+}
+
+async function setAsBackground(item: ScreenshotMediaItem) {
+  if (!appStore.xplanePath) return
+  busyFile.value = item.fileName
+  const isCurrentlyBg = backgroundImages.value.has(item.fileName)
+  try {
+    if (isCurrentlyBg) {
+      await invoke<boolean>('unset_screenshot_as_background', {
+        xplanePath: appStore.xplanePath,
+        fileName: item.fileName,
+      })
+      backgroundImages.value.delete(item.fileName)
+      toastStore.success(t('screenshot.unsetBackgroundSuccess') as string)
+    } else {
+      await invoke<ScreenshotOperationResult>('set_screenshot_as_background', {
+        xplanePath: appStore.xplanePath,
+        fileName: item.fileName,
+      })
+      backgroundImages.value.add(item.fileName)
+      toastStore.success(t('screenshot.setBackgroundSuccess') as string)
+    }
+  } catch (e) {
+    if (isCurrentlyBg) {
+      modalStore.showError(`${t('screenshot.unsetBackgroundFailed')}: ${String(e)}`)
+    } else {
+      modalStore.showError(`${t('screenshot.setBackgroundFailed')}: ${String(e)}`)
+    }
   } finally {
     busyFile.value = null
   }
@@ -1784,10 +1820,10 @@ onBeforeUnmount(() => {
               {{ $t('screenshot.empty') }}
             </div>
             <div v-else class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 pb-3">
-              <button
+              <div
                 v-for="item in groupedItems"
                 :key="item.id"
-                class="text-left rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden hover:shadow-md transition-shadow"
+                class="text-left rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden hover:shadow-md transition-shadow cursor-pointer relative group"
                 @click="selected = item"
               >
                 <div class="relative aspect-[16/10] bg-gray-100 dark:bg-gray-900">
@@ -1823,6 +1859,18 @@ onBeforeUnmount(() => {
                     class="absolute left-2 top-2 px-1.5 py-0.5 rounded bg-emerald-500/85 text-white text-[10px] tracking-wide"
                     >AI</span
                   >
+                  <button
+                    v-if="item.mediaType === 'image'"
+                    class="absolute right-2 bottom-2 px-2 py-1 text-white text-[10px] rounded transition-opacity"
+                    :class="[
+                      backgroundImages.has(item.fileName) 
+                        ? 'bg-rose-600/80 hover:bg-rose-600 opacity-100' 
+                        : 'bg-black/60 hover:bg-black/80 opacity-0 group-hover:opacity-100'
+                    ]"
+                    @click.stop="setAsBackground(item)"
+                  >
+                    {{ backgroundImages.has(item.fileName) ? $t('screenshot.unsetBackground') : $t('screenshot.setAsBackground') }}
+                  </button>
                 </div>
                 <div class="px-2.5 py-2 space-y-1">
                   <p
@@ -1835,7 +1883,7 @@ onBeforeUnmount(() => {
                     {{ fmtSize(item.size) }} · {{ fmtTime(item.modifiedAt) }}
                   </p>
                 </div>
-              </button>
+              </div>
             </div>
           </template>
         </div>

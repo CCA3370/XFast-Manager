@@ -2605,6 +2605,47 @@ async fn save_screenshot_media_as(
 }
 
 #[tauri::command]
+async fn set_screenshot_as_background(
+    xplane_path: String,
+    file_name: String,
+) -> Result<ScreenshotOperationResult, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::set_screenshot_as_background(xplane_path, &file_name)
+            .map_err(|e| format!("Failed to set screenshot as background: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn get_background_images(
+    xplane_path: String,
+) -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::get_background_images(xplane_path)
+            .map_err(|e| format!("Failed to get background images: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn unset_screenshot_as_background(
+    xplane_path: String,
+    file_name: String,
+) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        screenshot::unset_screenshot_as_background(xplane_path, &file_name)
+            .map_err(|e| format!("Failed to unset screenshot as background: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
 async fn read_screenshot_media_bytes(
     xplane_path: String,
     file_name: String,
@@ -3279,6 +3320,9 @@ pub fn run() {
             list_screenshot_media,
             delete_screenshot_media,
             save_screenshot_media_as,
+            set_screenshot_as_background,
+            get_background_images,
+            unset_screenshot_as_background,
             read_screenshot_media_bytes,
             save_edited_screenshot_image,
             build_reddit_share_url,
