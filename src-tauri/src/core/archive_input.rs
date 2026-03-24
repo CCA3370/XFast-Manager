@@ -97,15 +97,12 @@ pub fn detect_archive_format(path: &Path) -> Option<ArchiveFormat> {
     let file_name = path.file_name()?.to_str()?;
     let lower = file_name.to_ascii_lowercase();
 
-    if lower.ends_with(".zip")
-        || split_numbered_series(file_name, ".zip.").is_some()
-        || {
-            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-            ext.len() >= 2
-                && ext.to_ascii_lowercase().starts_with('z')
-                && ext[1..].chars().all(|c| c.is_ascii_digit())
-        }
-    {
+    if lower.ends_with(".zip") || split_numbered_series(file_name, ".zip.").is_some() || {
+        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+        ext.len() >= 2
+            && ext.to_ascii_lowercase().starts_with('z')
+            && ext[1..].chars().all(|c| c.is_ascii_digit())
+    } {
         return Some(ArchiveFormat::Zip);
     }
 
@@ -113,15 +110,12 @@ pub fn detect_archive_format(path: &Path) -> Option<ArchiveFormat> {
         return Some(ArchiveFormat::SevenZ);
     }
 
-    if lower.ends_with(".rar")
-        || split_rar_part(file_name).is_some()
-        || {
-            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-            ext.len() >= 2
-                && ext.to_ascii_lowercase().starts_with('r')
-                && ext[1..].chars().all(|c| c.is_ascii_digit())
-        }
-    {
+    if lower.ends_with(".rar") || split_rar_part(file_name).is_some() || {
+        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+        ext.len() >= 2
+            && ext.to_ascii_lowercase().starts_with('r')
+            && ext[1..].chars().all(|c| c.is_ascii_digit())
+    } {
         return Some(ArchiveFormat::Rar);
     }
 
@@ -239,7 +233,10 @@ fn collect_zip_split_parts(path: &Path) -> Result<Option<Vec<PathBuf>>> {
         }
 
         let final_part = find_existing_sibling(parent, file_name).ok_or_else(|| {
-            anyhow::anyhow!("Missing final ZIP volume for split archive: {}", path.display())
+            anyhow::anyhow!(
+                "Missing final ZIP volume for split archive: {}",
+                path.display()
+            )
         })?;
         parts.push(final_part);
         return Ok(Some(parts));
@@ -282,8 +279,9 @@ fn concat_parts_to_temp(parts: &[PathBuf], format: ArchiveFormat) -> Result<Prep
         let out = temp_file.as_file_mut();
         let mut writer = BufWriter::new(out);
         for part in parts {
-            let mut input = fs::File::open(part)
-                .with_context(|| format!("Failed to open split archive part: {}", part.display()))?;
+            let mut input = fs::File::open(part).with_context(|| {
+                format!("Failed to open split archive part: {}", part.display())
+            })?;
             std::io::copy(&mut input, &mut writer).with_context(|| {
                 format!("Failed to merge split archive part: {}", part.display())
             })?;

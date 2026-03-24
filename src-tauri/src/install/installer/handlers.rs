@@ -682,9 +682,8 @@ impl Installer {
         // For multi-layer chains (including single-layer nested archives),
         // check if we can use the memory-optimized path
         // IMPORTANT: Must also check that the outermost archive (source) is a ZIP file
-        let source_is_zip =
-            crate::archive_input::detect_archive_format(source)
-                == Some(crate::archive_input::ArchiveFormat::Zip);
+        let source_is_zip = crate::archive_input::detect_archive_format(source)
+            == Some(crate::archive_input::ArchiveFormat::Zip);
         let all_nested_zip = chain.archives.iter().all(|a| a.format == "zip");
 
         if source_is_zip && all_nested_zip {

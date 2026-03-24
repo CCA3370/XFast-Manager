@@ -1794,14 +1794,13 @@ impl Installer {
                                 Ok(scenery_info) => {
                                     let manager =
                                         SceneryPacksManager::new(&xplane_path_buf, self.db.clone());
-                                    if let Err(e) =
-                                        manager
-                                            .add_entry_with_locked_entries(
-                                                folder_name,
-                                                &scenery_info.category,
-                                                &locked_scenery_folder_names,
-                                            )
-                                            .await
+                                    if let Err(e) = manager
+                                        .add_entry_with_locked_entries(
+                                            folder_name,
+                                            &scenery_info.category,
+                                            &locked_scenery_folder_names,
+                                        )
+                                        .await
                                     {
                                         logger::log_error(
                                             &format!(

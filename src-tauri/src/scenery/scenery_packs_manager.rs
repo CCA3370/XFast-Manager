@@ -100,9 +100,12 @@ impl SceneryPacksManager {
     }
 
     fn ensure_ini_parent_dir(ini_path: &Path) -> Result<()> {
-        let parent = ini_path
-            .parent()
-            .ok_or_else(|| anyhow!("Invalid ini path: no parent directory ({})", ini_path.display()))?;
+        let parent = ini_path.parent().ok_or_else(|| {
+            anyhow!(
+                "Invalid ini path: no parent directory ({})",
+                ini_path.display()
+            )
+        })?;
 
         fs::create_dir_all(parent).map_err(|e| {
             let hint = if e.to_string().contains("failed to create whole tree") {

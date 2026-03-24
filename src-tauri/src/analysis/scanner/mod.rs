@@ -376,7 +376,8 @@ impl Scanner {
                     .cloned()
             });
 
-        match detect_archive_format(archive_path).or_else(|| detect_archive_format(&normalized_archive))
+        match detect_archive_format(archive_path)
+            .or_else(|| detect_archive_format(&normalized_archive))
         {
             Some(ArchiveFormat::Zip) => {
                 self.scan_zip_with_context(archive_path, ctx, password.as_deref())
@@ -1604,8 +1605,12 @@ impl Scanner {
     fn read_lua_from_archive(&self, archive_path: &Path, lua_file_path: &str) -> Result<String> {
         match detect_archive_format(archive_path) {
             Some(ArchiveFormat::Zip) => self.read_file_from_zip(archive_path, lua_file_path),
-            Some(ArchiveFormat::SevenZ) => self.read_file_from_7z_no_password(archive_path, lua_file_path),
-            Some(ArchiveFormat::Rar) => self.read_file_from_rar_no_password(archive_path, lua_file_path),
+            Some(ArchiveFormat::SevenZ) => {
+                self.read_file_from_7z_no_password(archive_path, lua_file_path)
+            }
+            Some(ArchiveFormat::Rar) => {
+                self.read_file_from_rar_no_password(archive_path, lua_file_path)
+            }
             None => Err(anyhow::anyhow!("Unsupported archive format")),
         }
     }
@@ -1629,9 +1634,15 @@ impl Scanner {
     ) -> Option<crate::models::VersionInfo> {
         // Read version file contents from the archive
         let version_files_content = match detect_archive_format(archive_path) {
-            Some(ArchiveFormat::Zip) => self.read_version_files_from_zip(archive_path, internal_root),
-            Some(ArchiveFormat::SevenZ) => self.read_version_files_from_7z(archive_path, internal_root),
-            Some(ArchiveFormat::Rar) => self.read_version_files_from_rar(archive_path, internal_root),
+            Some(ArchiveFormat::Zip) => {
+                self.read_version_files_from_zip(archive_path, internal_root)
+            }
+            Some(ArchiveFormat::SevenZ) => {
+                self.read_version_files_from_7z(archive_path, internal_root)
+            }
+            Some(ArchiveFormat::Rar) => {
+                self.read_version_files_from_rar(archive_path, internal_root)
+            }
             None => return None,
         };
 
@@ -2014,7 +2025,9 @@ impl Scanner {
         let temp_dir = Builder::new().prefix("xfi_version_").tempdir().ok()?;
 
         let normalized_archive = crate::archive_input::normalize_archive_entry_path(archive_path);
-        let mut archive = Archive::new(&normalized_archive).open_for_processing().ok()?;
+        let mut archive = Archive::new(&normalized_archive)
+            .open_for_processing()
+            .ok()?;
 
         let search_prefix = internal_root.map(|r| {
             if r.ends_with('/') {

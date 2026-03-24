@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 const IMAGE_EXTENSIONS: &[&str] = &[
-    "png", "jpg", "jpeg", "webp", "bmp", "gif", "tif", "tiff", "ico", "pnm", "ppm", "pbm",
-    "pam", "avif", "heif", "heic", "qoi",
+    "png", "jpg", "jpeg", "webp", "bmp", "gif", "tif", "tiff", "ico", "pnm", "ppm", "pbm", "pam",
+    "avif", "heif", "heic", "qoi",
 ];
 
 const VIDEO_EXTENSIONS: &[&str] = &[
@@ -183,10 +183,14 @@ pub fn set_screenshot_as_background(
 ) -> Result<ScreenshotOperationResult> {
     let source = resolve_media_path(xplane_path, file_name)?;
     let target_dir = xplane_path.join("Output").join("backgrounds");
-    
-    fs::create_dir_all(&target_dir)
-        .with_context(|| format!("Failed to create backgrounds folder {}", target_dir.display()))?;
-        
+
+    fs::create_dir_all(&target_dir).with_context(|| {
+        format!(
+            "Failed to create backgrounds folder {}",
+            target_dir.display()
+        )
+    })?;
+
     let target = target_dir.join(file_name);
 
     if source == target {
@@ -229,13 +233,14 @@ pub fn get_background_images(xplane_path: &Path) -> Result<Vec<String>> {
     Ok(images)
 }
 
-pub fn unset_screenshot_as_background(
-    xplane_path: &Path,
-    file_name: &str,
-) -> Result<bool> {
-    let target = xplane_path.join("Output").join("backgrounds").join(file_name);
+pub fn unset_screenshot_as_background(xplane_path: &Path, file_name: &str) -> Result<bool> {
+    let target = xplane_path
+        .join("Output")
+        .join("backgrounds")
+        .join(file_name);
     if target.exists() {
-        fs::remove_file(&target).with_context(|| format!("Failed to delete background image {}", target.display()))?;
+        fs::remove_file(&target)
+            .with_context(|| format!("Failed to delete background image {}", target.display()))?;
         return Ok(true);
     }
     Ok(false)
@@ -291,10 +296,7 @@ pub fn build_reddit_share_url(
 
     let url = reqwest::Url::parse_with_params(
         "https://www.reddit.com/r/Xplane/submit",
-        &[
-            ("title", post_title.as_str()),
-            ("type", "IMAGE"),
-        ],
+        &[("title", post_title.as_str()), ("type", "IMAGE")],
     )
     .context("Failed to build Reddit share URL")?;
 

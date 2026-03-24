@@ -1176,7 +1176,10 @@ fn parse_airport_detail_start_new(rest: &str, airport: &mut AirportDetailBuilder
         _ => return,
     };
 
-    let heading = parts.get(2).and_then(|v| v.parse::<f64>().ok()).map(|v| v.rem_euclid(360.0));
+    let heading = parts
+        .get(2)
+        .and_then(|v| v.parse::<f64>().ok())
+        .map(|v| v.rem_euclid(360.0));
     let location_type = parts
         .get(3)
         .map(|v| v.trim().to_string())
@@ -1391,7 +1394,10 @@ fn parse_airport_detail_taxi_edge(rest: &str, airport: &mut AirportDetailBuilder
         _ => return,
     };
 
-    let restriction = parts.get(3).map(|v| v.to_ascii_lowercase()).unwrap_or_default();
+    let restriction = parts
+        .get(3)
+        .map(|v| v.to_ascii_lowercase())
+        .unwrap_or_default();
     if restriction == "runway" {
         return;
     }
@@ -1430,13 +1436,25 @@ fn bezier_quadratic(p0: [f64; 2], p1: [f64; 2], p2: [f64; 2], steps: usize) -> V
 }
 
 /// Cubic bezier: B(t) = (1-t)^3 * P0 + 3(1-t)^2 t * P1 + 3(1-t)t^2 * P2 + t^3 * P3
-fn bezier_cubic(p0: [f64; 2], p1: [f64; 2], p2: [f64; 2], p3: [f64; 2], steps: usize) -> Vec<[f64; 2]> {
+fn bezier_cubic(
+    p0: [f64; 2],
+    p1: [f64; 2],
+    p2: [f64; 2],
+    p3: [f64; 2],
+    steps: usize,
+) -> Vec<[f64; 2]> {
     let mut pts = Vec::with_capacity(steps);
     for i in 1..=steps {
         let t = i as f64 / steps as f64;
         let u = 1.0 - t;
-        let lon = u*u*u * p0[0] + 3.0*u*u*t * p1[0] + 3.0*u*t*t * p2[0] + t*t*t * p3[0];
-        let lat = u*u*u * p0[1] + 3.0*u*u*t * p1[1] + 3.0*u*t*t * p2[1] + t*t*t * p3[1];
+        let lon = u * u * u * p0[0]
+            + 3.0 * u * u * t * p1[0]
+            + 3.0 * u * t * t * p2[0]
+            + t * t * t * p3[0];
+        let lat = u * u * u * p0[1]
+            + 3.0 * u * u * t * p1[1]
+            + 3.0 * u * t * t * p2[1]
+            + t * t * t * p3[1];
         pts.push([lon, lat]);
     }
     pts
@@ -1544,8 +1562,14 @@ fn parse_apt_path_nodes(lines: &[&str], mode: &str) -> (Vec<ParsedRing>, usize) 
             // Bezier: parts[3]=ctrl_lat, parts[4]=ctrl_lon, parts[5]=line_type?, parts[6]=light_type?
             let cl = parts.get(3).and_then(|v| v.parse::<f64>().ok());
             let co = parts.get(4).and_then(|v| v.parse::<f64>().ok());
-            let lt = parts.get(5).and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
-            let lgt = parts.get(6).and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+            let lt = parts
+                .get(5)
+                .and_then(|v| v.parse::<i32>().ok())
+                .unwrap_or(0);
+            let lgt = parts
+                .get(6)
+                .and_then(|v| v.parse::<i32>().ok())
+                .unwrap_or(0);
             (cl, co, lt, lgt)
         } else {
             // Plain node: parts[3]=line_type?, parts[4]=light_type?
@@ -1555,7 +1579,11 @@ fn parse_apt_path_nodes(lines: &[&str], mode: &str) -> (Vec<ParsedRing>, usize) 
             let (lt, lgt) = match (v3, v4) {
                 (Some(a), Some(b)) => (a, b),
                 (Some(a), None) => {
-                    if a >= 100 { (0, a) } else { (a, 0) }
+                    if a >= 100 {
+                        (0, a)
+                    } else {
+                        (a, 0)
+                    }
                 }
                 _ => (0, 0),
             };
@@ -1598,7 +1626,11 @@ fn resolve_nodes_to_ring(nodes: &[AptNode], close: bool) -> ParsedRing {
     let mut node_line_types: Vec<(i32, i32)> = Vec::new();
 
     if nodes.is_empty() {
-        return ParsedRing { coords, node_line_types, is_hole: false };
+        return ParsedRing {
+            coords,
+            node_line_types,
+            is_hole: false,
+        };
     }
 
     // First node always added as-is
@@ -1682,16 +1714,37 @@ fn resolve_nodes_to_ring(nodes: &[AptNode], close: bool) -> ParsedRing {
 
     let is_hole = if close { is_clockwise(&coords) } else { false };
 
-    ParsedRing { coords, node_line_types, is_hole }
+    ParsedRing {
+        coords,
+        node_line_types,
+        is_hole,
+    }
 }
 
 /// Parse a pavement block (row code 110 header + subsequent node lines)
-fn parse_pavement_block(header_rest: &str, following_lines: &[&str], airport: &mut AirportDetailBuilder) -> usize {
+fn parse_pavement_block(
+    header_rest: &str,
+    following_lines: &[&str],
+    airport: &mut AirportDetailBuilder,
+) -> usize {
     let parts: Vec<&str> = header_rest.split_whitespace().collect();
-    let surface_type = parts.first().and_then(|v| v.parse::<i32>().ok()).unwrap_or(1);
-    let smoothness = parts.get(1).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.25);
-    let orientation = parts.get(2).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
-    let name = if parts.len() > 3 { parts[3..].join(" ") } else { String::new() };
+    let surface_type = parts
+        .first()
+        .and_then(|v| v.parse::<i32>().ok())
+        .unwrap_or(1);
+    let smoothness = parts
+        .get(1)
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(0.25);
+    let orientation = parts
+        .get(2)
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(0.0);
+    let name = if parts.len() > 3 {
+        parts[3..].join(" ")
+    } else {
+        String::new()
+    };
 
     let (rings, consumed) = parse_apt_path_nodes(following_lines, "polygon");
     if rings.is_empty() {
@@ -1740,7 +1793,11 @@ fn parse_pavement_block(header_rest: &str, following_lines: &[&str], airport: &m
 }
 
 /// Parse a linear feature block (row code 120 header + subsequent node lines)
-fn parse_linear_feature_block(header_rest: &str, following_lines: &[&str], airport: &mut AirportDetailBuilder) -> usize {
+fn parse_linear_feature_block(
+    header_rest: &str,
+    following_lines: &[&str],
+    airport: &mut AirportDetailBuilder,
+) -> usize {
     let name = header_rest.trim().to_string();
 
     let (rings, consumed) = parse_apt_path_nodes(following_lines, "line");
@@ -1782,7 +1839,11 @@ fn parse_boundary_block(following_lines: &[&str], airport: &mut AirportDetailBui
 }
 
 /// Extract linear features from pavement edge markings where nodes have non-zero line types
-fn extract_linear_features_from_ring(name: &str, ring: &ParsedRing, features: &mut Vec<MapLinearFeature>) {
+fn extract_linear_features_from_ring(
+    name: &str,
+    ring: &ParsedRing,
+    features: &mut Vec<MapLinearFeature>,
+) {
     if ring.node_line_types.is_empty() || ring.coords.is_empty() {
         return;
     }
@@ -1851,10 +1912,7 @@ fn parse_airport_detail_from_apt(
     let reader = BufReader::new(file);
 
     // Collect all lines first so we can do look-ahead for multi-line blocks (110/120/130)
-    let all_lines: Vec<String> = reader
-        .lines()
-        .filter_map(|l| l.ok())
-        .collect();
+    let all_lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
 
     let mut current: Option<AirportDetailBuilder> = None;
     let mut i = 0;
@@ -1991,7 +2049,10 @@ fn parse_airport_detail_from_apt(
     Ok(current.take().map(|airport| airport.finalize()))
 }
 
-fn load_airport_detail_sync(xplane_path: &str, icao: &str) -> Result<Option<MapAirportDetail>, String> {
+fn load_airport_detail_sync(
+    xplane_path: &str,
+    icao: &str,
+) -> Result<Option<MapAirportDetail>, String> {
     let root = PathBuf::from(xplane_path);
     if !path_exists(&root) {
         return Err(format!("X-Plane path does not exist: {}", xplane_path));
@@ -2184,18 +2245,25 @@ fn parse_cifp_file(path: &Path, icao: &str) -> Result<MapAirportProcedures, Stri
         };
 
         let route_type = fields.get(1).map(|v| v.as_str()).unwrap_or("");
-        let name = fields.get(2).map(|v| normalize_upper(v)).unwrap_or_default();
+        let name = fields
+            .get(2)
+            .map(|v| normalize_upper(v))
+            .unwrap_or_default();
         if name.is_empty() {
             continue;
         }
 
         let field3 = fields.get(3).map(|v| v.as_str()).unwrap_or("");
-        let Some((category, runway, transition)) = classify_procedure(&row_type, route_type, field3)
+        let Some((category, runway, transition)) =
+            classify_procedure(&row_type, route_type, field3)
         else {
             continue;
         };
 
-        let fix_id = fields.get(4).map(|v| normalize_upper(v)).unwrap_or_default();
+        let fix_id = fields
+            .get(4)
+            .map(|v| normalize_upper(v))
+            .unwrap_or_default();
         if fix_id.is_empty() {
             continue;
         }
@@ -2207,7 +2275,10 @@ fn parse_cifp_file(path: &Path, icao: &str) -> Result<MapAirportProcedures, Stri
 
         let waypoint = MapProcedureWaypoint {
             fix_id,
-            fix_region: fields.get(5).map(|v| normalize_upper(v)).unwrap_or_default(),
+            fix_region: fields
+                .get(5)
+                .map(|v| normalize_upper(v))
+                .unwrap_or_default(),
             fix_type: fields
                 .get(6)
                 .map(|v| normalize_upper(v))
@@ -2262,7 +2333,12 @@ fn parse_cifp_file(path: &Path, icao: &str) -> Result<MapAirportProcedures, Stri
     let sorter = |a: &MapProcedure, b: &MapProcedure| {
         a.name
             .cmp(&b.name)
-            .then_with(|| a.runway.as_deref().unwrap_or("").cmp(b.runway.as_deref().unwrap_or("")))
+            .then_with(|| {
+                a.runway
+                    .as_deref()
+                    .unwrap_or("")
+                    .cmp(b.runway.as_deref().unwrap_or(""))
+            })
             .then_with(|| {
                 a.transition
                     .as_deref()
@@ -2278,7 +2354,10 @@ fn parse_cifp_file(path: &Path, icao: &str) -> Result<MapAirportProcedures, Stri
     Ok(procedures)
 }
 
-fn load_airport_procedures_sync(xplane_path: &str, icao: &str) -> Result<MapAirportProcedures, String> {
+fn load_airport_procedures_sync(
+    xplane_path: &str,
+    icao: &str,
+) -> Result<MapAirportProcedures, String> {
     let root = PathBuf::from(xplane_path);
     if !path_exists(&root) {
         return Err(format!("X-Plane path does not exist: {}", xplane_path));
@@ -2344,7 +2423,10 @@ fn parse_nav_file(
             Err(_) => continue,
         };
 
-        if !matches!(row_code, 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 12 | 13 | 14 | 15 | 16) {
+        if !matches!(
+            row_code,
+            2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 12 | 13 | 14 | 15 | 16
+        ) {
             continue;
         }
 
@@ -2604,7 +2686,11 @@ fn parse_awy_file(
         let from = navaids
             .get(&(from_id.clone(), from_region.clone()))
             .copied()
-            .or_else(|| waypoints.get(&(from_id.clone(), from_region.clone())).copied())
+            .or_else(|| {
+                waypoints
+                    .get(&(from_id.clone(), from_region.clone()))
+                    .copied()
+            })
             .or_else(|| id_fallback_lookup.get(&from_id).copied());
         let to = navaids
             .get(&(to_id.clone(), to_region.clone()))
@@ -2706,7 +2792,11 @@ fn parse_airspace_file(path: &Path) -> Result<Vec<MapAirspace>, String> {
             continue;
         }
 
-        let cmd = if trimmed.len() >= 2 { &trimmed[..2] } else { "" };
+        let cmd = if trimmed.len() >= 2 {
+            &trimmed[..2]
+        } else {
+            ""
+        };
         match cmd {
             "AC" => {
                 if in_block {
@@ -2935,7 +3025,11 @@ async fn fetch_text(url: &str) -> Result<String, String> {
         .map_err(|e| format!("Request failed for {}: {}", url, e))?;
 
     if !response.status().is_success() {
-        return Err(format!("Request failed for {}: HTTP {}", url, response.status()));
+        return Err(format!(
+            "Request failed for {}: HTTP {}",
+            url,
+            response.status()
+        ));
     }
 
     response
@@ -2952,7 +3046,11 @@ async fn fetch_json(url: &str) -> Result<Value, String> {
         .map_err(|e| format!("Request failed for {}: {}", url, e))?;
 
     if !response.status().is_success() {
-        return Err(format!("Request failed for {}: HTTP {}", url, response.status()));
+        return Err(format!(
+            "Request failed for {}: HTTP {}",
+            url,
+            response.status()
+        ));
     }
 
     response
@@ -3013,7 +3111,10 @@ async fn resolve_dataref_ids(port: u16) -> Result<HashMap<String, u32>, String> 
 }
 
 async fn fetch_dataref_value(port: u16, dataref_id: u32) -> Result<Option<f64>, String> {
-    let url = format!("http://localhost:{}/api/v3/datarefs/{}/value", port, dataref_id);
+    let url = format!(
+        "http://localhost:{}/api/v3/datarefs/{}/value",
+        port, dataref_id
+    );
     let response = HTTP_CLIENT
         .get(url)
         .send()
@@ -3639,7 +3740,11 @@ async fn resolve_single_dataref_id(port: u16, name: &str) -> Result<u32, String>
     let url = format!("http://localhost:{}/api/v3/datarefs", port);
     let response = HTTP_CLIENT
         .get(&url)
-        .query(&[("filter[name]", name), ("fields", "id,name"), ("limit", "1")])
+        .query(&[
+            ("filter[name]", name),
+            ("fields", "id,name"),
+            ("limit", "1"),
+        ])
         .send()
         .await
         .map_err(|e| format!("Failed to resolve dataref '{}': {}", name, e))?;
@@ -3669,7 +3774,11 @@ async fn resolve_command_id(port: u16, name: &str) -> Result<u32, String> {
     let url = format!("http://localhost:{}/api/v3/commands", port);
     let response = HTTP_CLIENT
         .get(&url)
-        .query(&[("filter[name]", name), ("fields", "id,name"), ("limit", "1")])
+        .query(&[
+            ("filter[name]", name),
+            ("fields", "id,name"),
+            ("limit", "1"),
+        ])
         .send()
         .await
         .map_err(|e| format!("Failed to resolve command '{}': {}", name, e))?;
@@ -3716,11 +3825,7 @@ pub async fn xplane_get_dataref(
         .map_err(|e| format!("Failed to get dataref '{}': {}", name, e))?;
 
     if !response.status().is_success() {
-        return Err(format!(
-            "Get dataref '{}' HTTP {}",
-            name,
-            response.status()
-        ));
+        return Err(format!("Get dataref '{}' HTTP {}", name, response.status()));
     }
 
     let payload = response
@@ -3756,11 +3861,7 @@ pub async fn xplane_set_dataref(
         .map_err(|e| format!("Failed to set dataref '{}': {}", name, e))?;
 
     if !response.status().is_success() {
-        return Err(format!(
-            "Set dataref '{}' HTTP {}",
-            name,
-            response.status()
-        ));
+        return Err(format!("Set dataref '{}' HTTP {}", name, response.status()));
     }
 
     Ok(true)
@@ -3878,10 +3979,20 @@ fn parse_acf_file(acf_path: &Path, xplane_root: &Path) -> Option<ScannedAircraft
     let mut tank_names = Vec::new();
     let mut tank_ratios = Vec::new();
     for i in 0..9 {
-        let tn = props.get(&format!("acf/_tank_name/{}", i)).cloned().unwrap_or_default();
-        let tr = props.get(&format!("acf/_tank_rat/{}", i)).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+        let tn = props
+            .get(&format!("acf/_tank_name/{}", i))
+            .cloned()
+            .unwrap_or_default();
+        let tr = props
+            .get(&format!("acf/_tank_rat/{}", i))
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(0.0);
         if tr > 0.0 || !tn.is_empty() {
-            tank_names.push(if tn.is_empty() { format!("Tank {}", i + 1) } else { tn });
+            tank_names.push(if tn.is_empty() {
+                format!("Tank {}", i + 1)
+            } else {
+                tn
+            });
             tank_ratios.push(tr);
         }
     }
@@ -3889,11 +4000,21 @@ fn parse_acf_file(acf_path: &Path, xplane_root: &Path) -> Option<ScannedAircraft
     // Parse payload stations (up to 9)
     let mut payload_stations = Vec::new();
     for i in 0..9 {
-        let pn = props.get(&format!("acf/_fixed_name/{}", i)).cloned().unwrap_or_default();
-        let pm = props.get(&format!("acf/_fixed_max/{}", i)).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+        let pn = props
+            .get(&format!("acf/_fixed_name/{}", i))
+            .cloned()
+            .unwrap_or_default();
+        let pm = props
+            .get(&format!("acf/_fixed_max/{}", i))
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(0.0);
         if pm > 0.0 || !pn.is_empty() {
             payload_stations.push(PayloadStation {
-                name: if pn.is_empty() { format!("Station {}", i + 1) } else { pn },
+                name: if pn.is_empty() {
+                    format!("Station {}", i + 1)
+                } else {
+                    pn
+                },
                 max_weight_lbs: pm,
             });
         }
@@ -3946,15 +4067,30 @@ fn parse_acf_file(acf_path: &Path, xplane_root: &Path) -> Option<ScannedAircraft
         studio: props.get("acf/_studio").cloned().unwrap_or_default(),
         author: props.get("acf/_author").cloned().unwrap_or_default(),
         tail_number: props.get("acf/_tailnum").cloned().unwrap_or_default(),
-        empty_weight_lbs: props.get("acf/_m_empty").and_then(|v| v.parse().ok()).unwrap_or(0.0),
-        max_weight_lbs: props.get("acf/_m_max").and_then(|v| v.parse().ok()).unwrap_or(0.0),
-        max_fuel_lbs: props.get("acf/_m_fuel_max_tot").and_then(|v| v.parse().ok()).unwrap_or(0.0),
+        empty_weight_lbs: props
+            .get("acf/_m_empty")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.0),
+        max_weight_lbs: props
+            .get("acf/_m_max")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.0),
+        max_fuel_lbs: props
+            .get("acf/_m_fuel_max_tot")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.0),
         tank_count: tank_ratios.len(),
         tank_names,
         tank_ratios,
         payload_stations,
-        is_helicopter: props.get("acf/_is_helicopter").map(|v| v == "1").unwrap_or(false),
-        engine_count: props.get("acf/_num_engn").and_then(|v| v.parse().ok()).unwrap_or(0),
+        is_helicopter: props
+            .get("acf/_is_helicopter")
+            .map(|v| v == "1")
+            .unwrap_or(false),
+        engine_count: props
+            .get("acf/_num_engn")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0),
         preview_image: liveries.first().and_then(|l| l.preview_path.clone()),
         liveries,
     })
@@ -4017,7 +4153,9 @@ fn scan_aircraft_sync(xplane_path: &str) -> Result<Vec<ScannedAircraft>, String>
 
     walk_dir(&aircraft_dir, &root, &mut results, 0);
     results.sort_by(|a, b| {
-        a.manufacturer.cmp(&b.manufacturer).then_with(|| a.name.cmp(&b.name))
+        a.manufacturer
+            .cmp(&b.manufacturer)
+            .then_with(|| a.name.cmp(&b.name))
     });
 
     Ok(results)
@@ -4128,7 +4266,10 @@ pub async fn map_launch_flight(request: LaunchFlightRequest) -> Result<bool, Str
     };
 
     if !exe_path.exists() {
-        return Err(format!("X-Plane executable not found at: {}", exe_path.display()));
+        return Err(format!(
+            "X-Plane executable not found at: {}",
+            exe_path.display()
+        ));
     }
 
     // Launch X-Plane with --new_flight_json flag

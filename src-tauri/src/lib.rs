@@ -47,14 +47,14 @@ mod verifier;
 // Management
 #[path = "management/addon_updater.rs"]
 mod addon_updater;
+#[path = "management/csl_index.rs"]
+mod csl_index;
 #[path = "management/management_index.rs"]
 mod management_index;
 #[path = "management/skunk_updater.rs"]
 mod skunk_updater;
 #[path = "management/x_updater_profile.rs"]
 mod x_updater_profile;
-#[path = "management/csl_index.rs"]
-mod csl_index;
 
 // Screenshot
 #[path = "screenshot/mod.rs"]
@@ -99,15 +99,13 @@ use installer::Installer;
 use models::{
     ActivityLogEntry, ActivityLogPage, AircraftInfo, AnalysisResult, InstallResult, InstallTask,
     LiveryInfo, LuaScriptInfo, ManagementData, NavdataBackupInfo, NavdataManagerInfo, PluginInfo,
-    PresetApplyResult, PresetExportFormat, PresetSnapshot, PresetSummary,
+    PresetApplyResult, PresetExportFormat, PresetLockState, PresetSnapshot, PresetSummary,
     SceneryIndexScanResult, SceneryIndexStats, SceneryIndexStatus, SceneryManagerData,
     SceneryPackageInfo,
 };
-use screenshot::{
-    SaveEditedImageRequest, ScreenshotMediaItem, ScreenshotOperationResult,
-};
 use scenery_index::SceneryIndexManager;
 use scenery_packs_manager::SceneryPacksManager;
+use screenshot::{SaveEditedImageRequest, ScreenshotMediaItem, ScreenshotOperationResult};
 use task_control::TaskControl;
 
 use sea_orm::DatabaseConnection;
@@ -678,7 +676,12 @@ async fn install_addons(
     // Capture task names for activity logging
     let task_info: Vec<(String, String)> = tasks
         .iter()
-        .map(|t| (t.display_name.clone(), format!("{:?}", t.addon_type).to_lowercase()))
+        .map(|t| {
+            (
+                t.display_name.clone(),
+                format!("{:?}", t.addon_type).to_lowercase(),
+            )
+        })
         .collect();
 
     let installer = Installer::new(app_handle);
@@ -714,7 +717,10 @@ async fn install_addons(
     if let Ok(ref install_result) = result {
         let conn = db.get();
         for (i, tr) in install_result.task_results.iter().enumerate() {
-            let item_type = task_info.get(i).map(|(_, t)| t.as_str()).unwrap_or("unknown");
+            let item_type = task_info
+                .get(i)
+                .map(|(_, t)| t.as_str())
+                .unwrap_or("unknown");
             activity::log_activity(
                 &conn,
                 "install",
@@ -1663,7 +1669,10 @@ fn validate_xplane_root_path(path: &std::path::Path) -> Result<(), String> {
     }
 
     if !path.is_dir() {
-        return Err(format!("X-Plane path is not a directory: {}", path.display()));
+        return Err(format!(
+            "X-Plane path is not a directory: {}",
+            path.display()
+        ));
     }
 
     Ok(())
@@ -1759,7 +1768,15 @@ async fn sort_scenery_packs(
     );
 
     if has_changes {
-        activity::log_activity(&db_for_log, "scenery_sort", "scenery", "scenery_packs.ini", None, true).await;
+        activity::log_activity(
+            &db_for_log,
+            "scenery_sort",
+            "scenery",
+            "scenery_packs.ini",
+            None,
+            true,
+        )
+        .await;
     }
 
     Ok(has_changes)
@@ -2267,7 +2284,15 @@ async fn execute_addon_update(
             Ok(result)
         }
         Err(e) => {
-            activity::log_activity(&db.get(), "update", &item_type, &folder_name, Some(e.to_string()), false).await;
+            activity::log_activity(
+                &db.get(),
+                "update",
+                &item_type,
+                &folder_name,
+                Some(e.to_string()),
+                false,
+            )
+            .await;
             emit_addon_update_status(
                 &app_handle,
                 &item_type,
@@ -2531,7 +2556,11 @@ async fn get_lua_scripts(xplane_path: String) -> Result<Vec<LuaScriptInfo>, Stri
 }
 
 #[tauri::command]
-async fn toggle_lua_script(db: State<'_, DatabaseState>, xplane_path: String, file_name: String) -> Result<bool, String> {
+async fn toggle_lua_script(
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+    file_name: String,
+) -> Result<bool, String> {
     let fn_ = file_name.clone();
     let result = tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
@@ -2549,7 +2578,11 @@ async fn toggle_lua_script(db: State<'_, DatabaseState>, xplane_path: String, fi
 }
 
 #[tauri::command]
-async fn delete_lua_script(db: State<'_, DatabaseState>, xplane_path: String, file_name: String) -> Result<(), String> {
+async fn delete_lua_script(
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+    file_name: String,
+) -> Result<(), String> {
     let fn_ = file_name.clone();
     let result = tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
@@ -2559,7 +2592,15 @@ async fn delete_lua_script(db: State<'_, DatabaseState>, xplane_path: String, fi
     .map_err(|e| format!("Task join error: {}", e))?
     .to_tauri_error();
 
-    activity::log_activity(&db.get(), "delete", "lua_script", &fn_, None, result.is_ok()).await;
+    activity::log_activity(
+        &db.get(),
+        "delete",
+        "lua_script",
+        &fn_,
+        None,
+        result.is_ok(),
+    )
+    .await;
     result
 }
 
@@ -2597,8 +2638,12 @@ async fn save_screenshot_media_as(
 ) -> Result<ScreenshotOperationResult, String> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
-        screenshot::save_screenshot_media_as(xplane_path, &file_name, std::path::Path::new(&target_path))
-            .map_err(|e| format!("Failed to save screenshot media as: {}", e))
+        screenshot::save_screenshot_media_as(
+            xplane_path,
+            &file_name,
+            std::path::Path::new(&target_path),
+        )
+        .map_err(|e| format!("Failed to save screenshot media as: {}", e))
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
@@ -2619,9 +2664,7 @@ async fn set_screenshot_as_background(
 }
 
 #[tauri::command]
-async fn get_background_images(
-    xplane_path: String,
-) -> Result<Vec<String>, String> {
+async fn get_background_images(xplane_path: String) -> Result<Vec<String>, String> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
         screenshot::get_background_images(xplane_path)
@@ -2714,8 +2757,7 @@ async fn get_activity_log(
     let limit = limit.unwrap_or(50);
     let offset = offset.unwrap_or(0);
 
-    let mut query = activity_log::Entity::find()
-        .order_by_desc(activity_log::Column::Timestamp);
+    let mut query = activity_log::Entity::find().order_by_desc(activity_log::Column::Timestamp);
 
     if let Some(ref it) = item_type {
         query = query.filter(activity_log::Column::ItemType.eq(it.as_str()));
@@ -2786,6 +2828,79 @@ async fn clear_activity_log(
 // Preset Commands
 // ============================================================================
 
+async fn build_preset_snapshot(
+    db: DatabaseConnection,
+    xplane_path: Option<String>,
+    lock_state: Option<PresetLockState>,
+) -> Result<PresetSnapshot, String> {
+    let Some(xplane_path) = xplane_path.filter(|path| !path.trim().is_empty()) else {
+        return Ok(PresetSnapshot {
+            lock_state,
+            ..Default::default()
+        });
+    };
+
+    let xplane_path_buf = PathBuf::from(&xplane_path);
+    validate_xplane_root_path(&xplane_path_buf)?;
+
+    let scan_path = xplane_path_buf.clone();
+    let (aircraft, plugins, navdata, lua_scripts) = tokio::task::spawn_blocking(move || {
+        let xplane_path = scan_path.as_path();
+        let mut aircraft = HashMap::new();
+        let mut plugins = HashMap::new();
+        let mut navdata = HashMap::new();
+        let mut lua_scripts = HashMap::new();
+
+        if let Ok(data) = management_index::scan_aircraft(xplane_path) {
+            for aircraft_info in data.entries {
+                aircraft.insert(aircraft_info.folder_name, aircraft_info.enabled);
+            }
+        }
+
+        if let Ok(data) = management_index::scan_plugins(xplane_path) {
+            for plugin_info in data.entries {
+                plugins.insert(plugin_info.folder_name, plugin_info.enabled);
+            }
+        }
+
+        if let Ok(data) = management_index::scan_navdata(xplane_path) {
+            for navdata_info in data.entries {
+                navdata.insert(navdata_info.folder_name, navdata_info.enabled);
+            }
+        }
+
+        if let Ok(data) = management_index::scan_lua_scripts(xplane_path) {
+            for script in data {
+                lua_scripts.insert(script.display_name, script.enabled);
+            }
+        }
+
+        (aircraft, plugins, navdata, lua_scripts)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?;
+
+    let index_manager = SceneryIndexManager::new(&xplane_path_buf, db);
+    let scenery_data = index_manager
+        .get_manager_data()
+        .await
+        .map_err(|e| format!("Failed to get scenery manager data: {}", e))?;
+    let scenery = scenery_data
+        .entries
+        .into_iter()
+        .map(|entry| (entry.folder_name, entry.enabled))
+        .collect();
+
+    Ok(PresetSnapshot {
+        aircraft,
+        plugins,
+        scenery,
+        navdata,
+        lua_scripts: Some(lua_scripts),
+        lock_state,
+    })
+}
+
 #[tauri::command]
 async fn list_presets(db: State<'_, DatabaseState>) -> Result<Vec<PresetSummary>, String> {
     use database::entities::addon_presets;
@@ -2801,12 +2916,7 @@ async fn list_presets(db: State<'_, DatabaseState>) -> Result<Vec<PresetSummary>
     let mut summaries = Vec::new();
     for row in rows {
         let snapshot: PresetSnapshot =
-            serde_json::from_str(&row.snapshot).unwrap_or(PresetSnapshot {
-                aircraft: HashMap::new(),
-                plugins: HashMap::new(),
-                scenery: HashMap::new(),
-                navdata: HashMap::new(),
-            });
+            serde_json::from_str(&row.snapshot).unwrap_or_else(|_| PresetSnapshot::default());
         summaries.push(PresetSummary {
             id: row.id,
             name: row.name,
@@ -2825,60 +2935,14 @@ async fn save_preset(
     xplane_path: Option<String>,
     name: String,
     description: Option<String>,
+    lock_state: Option<PresetLockState>,
 ) -> Result<(), String> {
     use database::entities::addon_presets;
     use sea_orm::ActiveModelTrait;
     use sea_orm::Set;
 
     let conn = db.get();
-
-    // Build snapshot by scanning current addon states
-    let snapshot = if let Some(ref xp) = xplane_path {
-        tokio::task::spawn_blocking({
-            let xp = xp.clone();
-            move || {
-                let xplane_path = std::path::Path::new(&xp);
-                let mut aircraft = HashMap::new();
-                let mut plugins = HashMap::new();
-                let scenery = HashMap::new();
-                let mut navdata = HashMap::new();
-
-                if let Ok(data) = management_index::scan_aircraft(xplane_path) {
-                    for a in data.entries {
-                        aircraft.insert(a.folder_name, a.enabled);
-                    }
-                }
-                if let Ok(data) = management_index::scan_plugins(xplane_path) {
-                    for p in data.entries {
-                        plugins.insert(p.folder_name, p.enabled);
-                    }
-                }
-                if let Ok(data) = management_index::scan_navdata(xplane_path) {
-                    for n in data.entries {
-                        navdata.insert(n.folder_name, n.enabled);
-                    }
-                }
-                // Scenery state would require DB access - leave empty for now
-                let _ = scenery;
-
-                PresetSnapshot {
-                    aircraft,
-                    plugins,
-                    scenery,
-                    navdata,
-                }
-            }
-        })
-        .await
-        .map_err(|e| format!("Task join error: {}", e))?
-    } else {
-        PresetSnapshot {
-            aircraft: HashMap::new(),
-            plugins: HashMap::new(),
-            scenery: HashMap::new(),
-            navdata: HashMap::new(),
-        }
-    };
+    let snapshot = build_preset_snapshot(conn.clone(), xplane_path, lock_state).await?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -2906,9 +2970,11 @@ async fn save_preset(
 async fn update_preset(
     db: State<'_, DatabaseState>,
     preset_id: i64,
+    xplane_path: Option<String>,
     name: Option<String>,
     description: Option<String>,
     update_snapshot: Option<bool>,
+    lock_state: Option<PresetLockState>,
 ) -> Result<(), String> {
     use database::entities::addon_presets;
     use sea_orm::{ActiveModelTrait, EntityTrait, Set};
@@ -2933,7 +2999,17 @@ async fn update_preset(
         active.description = Set(Some(d));
     }
     if update_snapshot.unwrap_or(false) {
-        // For now keep existing snapshot - full implementation needs xplane_path
+        if xplane_path
+            .as_ref()
+            .map(|path| path.trim().is_empty())
+            .unwrap_or(true)
+        {
+            return Err("X-Plane path is required to update preset snapshot".to_string());
+        }
+
+        let snapshot = build_preset_snapshot(conn.clone(), xplane_path, lock_state).await?;
+        active.snapshot = Set(serde_json::to_string(&snapshot)
+            .map_err(|e| format!("Failed to serialize snapshot: {}", e))?);
     }
     active.updated_at = Set(now);
 
@@ -2976,89 +3052,204 @@ async fn apply_preset(
     let snapshot: PresetSnapshot = serde_json::from_str(&row.snapshot)
         .map_err(|e| format!("Failed to parse preset snapshot: {}", e))?;
 
+    let xplane_path_buf = PathBuf::from(&xplane_path);
+    validate_xplane_root_path(&xplane_path_buf)?;
+
     let xp = xplane_path.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let xplane_path = std::path::Path::new(&xp);
-        let mut changes_made = 0usize;
-        let mut errors = Vec::new();
-        let mut missing_items = Vec::new();
+    let blocking_snapshot = snapshot.clone();
+    let (mut changes_made, mut errors, mut missing_items) =
+        tokio::task::spawn_blocking(move || {
+            let xplane_path = std::path::Path::new(&xp);
+            let mut changes_made = 0usize;
+            let mut errors = Vec::new();
+            let mut missing_items = Vec::new();
 
-        // Apply aircraft state
-        if let Ok(data) = management_index::scan_aircraft(xplane_path) {
-            for aircraft in &data.entries {
-                if let Some(&desired) = snapshot.aircraft.get(&aircraft.folder_name) {
-                    if aircraft.enabled != desired {
-                        match management_index::toggle_management_item(
-                            xplane_path,
-                            "aircraft",
-                            &aircraft.folder_name,
-                        ) {
-                            Ok(_) => changes_made += 1,
-                            Err(e) => errors.push(format!("Aircraft {}: {}", aircraft.folder_name, e)),
+            // Apply aircraft state
+            match management_index::scan_aircraft(xplane_path) {
+                Ok(data) => {
+                    for aircraft in &data.entries {
+                        if let Some(&desired) =
+                            blocking_snapshot.aircraft.get(&aircraft.folder_name)
+                        {
+                            if aircraft.enabled != desired {
+                                match management_index::toggle_management_item(
+                                    xplane_path,
+                                    "aircraft",
+                                    &aircraft.folder_name,
+                                ) {
+                                    Ok(_) => changes_made += 1,
+                                    Err(e) => errors
+                                        .push(format!("Aircraft {}: {}", aircraft.folder_name, e)),
+                                }
+                            }
+                        }
+                    }
+
+                    for name in blocking_snapshot.aircraft.keys() {
+                        if !data
+                            .entries
+                            .iter()
+                            .any(|aircraft| &aircraft.folder_name == name)
+                        {
+                            missing_items.push(format!("Aircraft: {}", name));
+                        }
+                    }
+                }
+                Err(e) => errors.push(format!("Aircraft scan failed: {}", e)),
+            }
+
+            // Apply plugins state
+            match management_index::scan_plugins(xplane_path) {
+                Ok(data) => {
+                    for plugin in &data.entries {
+                        if let Some(&desired) = blocking_snapshot.plugins.get(&plugin.folder_name) {
+                            if plugin.enabled != desired {
+                                match management_index::toggle_management_item(
+                                    xplane_path,
+                                    "plugin",
+                                    &plugin.folder_name,
+                                ) {
+                                    Ok(_) => changes_made += 1,
+                                    Err(e) => {
+                                        errors.push(format!("Plugin {}: {}", plugin.folder_name, e))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    for name in blocking_snapshot.plugins.keys() {
+                        if !data
+                            .entries
+                            .iter()
+                            .any(|plugin| &plugin.folder_name == name)
+                        {
+                            missing_items.push(format!("Plugin: {}", name));
+                        }
+                    }
+                }
+                Err(e) => errors.push(format!("Plugin scan failed: {}", e)),
+            }
+
+            // Navdata is snapshot-only for now. We can report missing items, but enable/disable is
+            // not currently supported by the manager.
+            match management_index::scan_navdata(xplane_path) {
+                Ok(data) => {
+                    for navdata in &data.entries {
+                        if let Some(&desired) = blocking_snapshot.navdata.get(&navdata.folder_name)
+                        {
+                            if navdata.enabled != desired {
+                                errors.push(format!(
+                                    "Navdata {}: enable/disable is not supported",
+                                    navdata.folder_name
+                                ));
+                            }
+                        }
+                    }
+
+                    for name in blocking_snapshot.navdata.keys() {
+                        if !data
+                            .entries
+                            .iter()
+                            .any(|navdata| &navdata.folder_name == name)
+                        {
+                            missing_items.push(format!("Navdata: {}", name));
+                        }
+                    }
+                }
+                Err(e) => errors.push(format!("Navdata scan failed: {}", e)),
+            }
+
+            if let Some(lua_scripts) = &blocking_snapshot.lua_scripts {
+                match management_index::scan_lua_scripts(xplane_path) {
+                    Ok(data) => {
+                        for script in &data {
+                            if let Some(&desired) = lua_scripts.get(&script.display_name) {
+                                if script.enabled != desired {
+                                    match management_index::toggle_lua_script(
+                                        xplane_path,
+                                        &script.file_name,
+                                    ) {
+                                        Ok(_) => changes_made += 1,
+                                        Err(e) => errors.push(format!(
+                                            "Lua script {}: {}",
+                                            script.display_name, e
+                                        )),
+                                    }
+                                }
+                            }
+                        }
+
+                        for name in lua_scripts.keys() {
+                            if !data.iter().any(|script| &script.display_name == name) {
+                                missing_items.push(format!("Lua: {}", name));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        if !lua_scripts.is_empty() {
+                            errors.push(format!("Lua scripts: {}", e));
+                            for name in lua_scripts.keys() {
+                                missing_items.push(format!("Lua: {}", name));
+                            }
                         }
                     }
                 }
             }
-            // Check for missing
-            for (name, _) in &snapshot.aircraft {
-                if !data.entries.iter().any(|a| &a.folder_name == name) {
-                    missing_items.push(format!("Aircraft: {}", name));
-                }
-            }
-        }
 
-        // Apply plugins state
-        if let Ok(data) = management_index::scan_plugins(xplane_path) {
-            for plugin in &data.entries {
-                if let Some(&desired) = snapshot.plugins.get(&plugin.folder_name) {
-                    if plugin.enabled != desired {
-                        match management_index::toggle_management_item(
-                            xplane_path,
-                            "plugin",
-                            &plugin.folder_name,
-                        ) {
-                            Ok(_) => changes_made += 1,
-                            Err(e) => errors.push(format!("Plugin {}: {}", plugin.folder_name, e)),
+            (changes_made, errors, missing_items)
+        })
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?;
+
+    if !snapshot.scenery.is_empty() {
+        let index_manager = SceneryIndexManager::new(&xplane_path_buf, conn.clone());
+        match index_manager.get_manager_data().await {
+            Ok(data) => {
+                let mut updates = Vec::new();
+
+                for entry in &data.entries {
+                    if let Some(&desired) = snapshot.scenery.get(&entry.folder_name) {
+                        if entry.enabled != desired {
+                            updates.push(models::SceneryEntryUpdate {
+                                folder_name: entry.folder_name.clone(),
+                                enabled: desired,
+                                sort_order: entry.sort_order,
+                            });
                         }
                     }
                 }
-            }
-            for (name, _) in &snapshot.plugins {
-                if !data.entries.iter().any(|p| &p.folder_name == name) {
-                    missing_items.push(format!("Plugin: {}", name));
-                }
-            }
-        }
 
-        // Apply navdata state
-        if let Ok(data) = management_index::scan_navdata(xplane_path) {
-            for nav in &data.entries {
-                if let Some(&desired) = snapshot.navdata.get(&nav.folder_name) {
-                    if nav.enabled != desired {
-                        match management_index::toggle_management_item(
-                            xplane_path,
-                            "navdata",
-                            &nav.folder_name,
-                        ) {
-                            Ok(_) => changes_made += 1,
-                            Err(e) => errors.push(format!("Navdata {}: {}", nav.folder_name, e)),
+                for name in snapshot.scenery.keys() {
+                    if !data.entries.iter().any(|entry| &entry.folder_name == name) {
+                        missing_items.push(format!("Scenery: {}", name));
+                    }
+                }
+
+                if !updates.is_empty() {
+                    match index_manager.batch_update_entries(&updates).await {
+                        Ok(_) => {
+                            let packs_manager =
+                                SceneryPacksManager::new(&xplane_path_buf, conn.clone());
+                            match packs_manager.apply_from_index().await {
+                                Ok(_) => changes_made += updates.len(),
+                                Err(e) => errors.push(format!("Scenery apply failed: {}", e)),
+                            }
                         }
+                        Err(e) => errors.push(format!("Scenery update failed: {}", e)),
                     }
                 }
             }
+            Err(e) => errors.push(format!("Scenery scan failed: {}", e)),
         }
+    }
 
-        // Note: scenery toggle is handled via scenery_packs.ini, more complex.
-        // For now, scenery preset state is recorded but not auto-applied.
-
-        PresetApplyResult {
-            changes_made,
-            errors,
-            missing_items,
-        }
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?;
+    let result = PresetApplyResult {
+        changes_made,
+        errors,
+        missing_items,
+        lock_state: snapshot.lock_state.clone(),
+    };
 
     // Log activity
     activity::log_activity(
@@ -3103,23 +3294,19 @@ async fn export_preset(
 
     let json = serde_json::to_string_pretty(&export)
         .map_err(|e| format!("Failed to serialize preset: {}", e))?;
-    fs::write(&export_path, json)
-        .map_err(|e| format!("Failed to write file: {}", e))?;
+    fs::write(&export_path, json).map_err(|e| format!("Failed to write file: {}", e))?;
     Ok(())
 }
 
 #[tauri::command]
-async fn import_preset(
-    db: State<'_, DatabaseState>,
-    import_path: String,
-) -> Result<(), String> {
+async fn import_preset(db: State<'_, DatabaseState>, import_path: String) -> Result<(), String> {
     use database::entities::addon_presets;
     use sea_orm::ActiveModelTrait;
     use sea_orm::Set;
 
     let conn = db.get();
-    let content = fs::read_to_string(&import_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let content =
+        fs::read_to_string(&import_path).map_err(|e| format!("Failed to read file: {}", e))?;
     let import: PresetExportFormat = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse preset file: {}", e))?;
 
@@ -3150,16 +3337,16 @@ async fn import_preset(
 // ============================================================================
 
 #[tauri::command]
-async fn scan_disk_usage(xplane_path: Option<String>) -> Result<disk_usage::DiskUsageReport, String> {
+async fn scan_disk_usage(
+    xplane_path: Option<String>,
+) -> Result<disk_usage::DiskUsageReport, String> {
     let xplane_path = xplane_path.unwrap_or_default();
     if xplane_path.is_empty() {
         return Err("X-Plane path is not set".to_string());
     }
-    tokio::task::spawn_blocking(move || {
-        Ok(disk_usage::scan_disk_usage(&xplane_path))
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    tokio::task::spawn_blocking(move || Ok(disk_usage::scan_disk_usage(&xplane_path)))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[tauri::command]

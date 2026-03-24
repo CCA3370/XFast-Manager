@@ -1,5 +1,5 @@
 <template>
-  <div class="h-full flex flex-col p-6">
+  <div class="h-full flex flex-col px-6 pt-3 pb-6">
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
       <div>
@@ -64,13 +64,20 @@
           </p>
 
           <!-- Actions -->
-          <div class="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700/50">
+          <div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700/50">
             <button
               class="flex-1 text-sm py-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors font-medium"
               :disabled="store.isApplying"
               @click="handleApply(preset)"
             >
               {{ store.isApplying ? $t('presets.applying') : $t('presets.apply') }}
+            </button>
+            <button
+              class="text-sm px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+              :disabled="store.isUpdatingSnapshot(preset.id)"
+              @click="handleUpdateSnapshot(preset)"
+            >
+              {{ store.isUpdatingSnapshot(preset.id) ? $t('presets.updatingSnapshot') : $t('presets.updateSnapshot') }}
             </button>
             <button
               class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors"
@@ -126,11 +133,13 @@ import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePresetsStore, type PresetSummary } from '@/stores/presets'
 import { useModalStore } from '@/stores/modal'
+import { useToastStore } from '@/stores/toast'
 import PresetSaveModal from '@/components/PresetSaveModal.vue'
 
 const { t } = useI18n()
 const store = usePresetsStore()
 const modalStore = useModalStore()
+const toastStore = useToastStore()
 const showSaveModal = ref(false)
 
 onMounted(() => {
@@ -160,9 +169,32 @@ function handleApply(preset: PresetSummary) {
     cancelText: t('common.cancel'),
     type: 'warning',
     onConfirm: async () => {
-      const result = await store.applyPreset(preset.id)
-      if (result.errors.length > 0) {
-        modalStore.showError(result.errors.join('\n'))
+      try {
+        const result = await store.applyPreset(preset.id)
+        if (result.errors.length > 0) {
+          modalStore.showError(result.errors.join('\n'))
+        }
+      } catch (e) {
+        modalStore.showError(String(e), t('presets.applyTitle'))
+      }
+    },
+    onCancel: () => {},
+  })
+}
+
+function handleUpdateSnapshot(preset: PresetSummary) {
+  modalStore.showConfirm({
+    title: t('presets.updateSnapshotTitle'),
+    message: t('presets.updateSnapshotMessage', { name: preset.name }),
+    confirmText: t('presets.updateSnapshot'),
+    cancelText: t('common.cancel'),
+    type: 'warning',
+    onConfirm: async () => {
+      try {
+        await store.updatePreset(preset.id, undefined, undefined, true)
+        toastStore.success(t('presets.updateSnapshotSuccess'))
+      } catch (e) {
+        modalStore.showError(String(e), t('presets.updateSnapshotFailed'))
       }
     },
     onCancel: () => {},

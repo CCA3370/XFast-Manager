@@ -127,8 +127,13 @@ impl Installer {
                 expected_hashes,
             )?,
             crate::archive_input::ArchiveFormat::SevenZ => {
-                let primary_result =
-                    self.extract_7z_with_progress(read_archive, target, internal_root, ctx, password);
+                let primary_result = self.extract_7z_with_progress(
+                    read_archive,
+                    target,
+                    internal_root,
+                    ctx,
+                    password,
+                );
                 if let Err(primary_err) = primary_result {
                     if Self::is_7z_checksum_error(&primary_err) {
                         logger::log_error(

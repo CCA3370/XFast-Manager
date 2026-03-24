@@ -470,23 +470,23 @@ impl Scanner {
 
             let mut reader =
                 sevenz_rust2::ArchiveReader::open(&read_parent_path, pwd).map_err(|e| {
-                let err_str = format!("{:?}", e);
-                if err_str.contains("password")
-                    || err_str.contains("Password")
-                    || err_str.contains("encrypted")
-                    || err_str.contains("WrongPassword")
-                {
-                    if parent_password.is_some() {
-                        anyhow::anyhow!("Wrong password for archive: {}", parent_path.display())
+                    let err_str = format!("{:?}", e);
+                    if err_str.contains("password")
+                        || err_str.contains("Password")
+                        || err_str.contains("encrypted")
+                        || err_str.contains("WrongPassword")
+                    {
+                        if parent_password.is_some() {
+                            anyhow::anyhow!("Wrong password for archive: {}", parent_path.display())
+                        } else {
+                            anyhow::anyhow!(PasswordRequiredError {
+                                archive_path: parent_path.to_string_lossy().to_string(),
+                            })
+                        }
                     } else {
-                        anyhow::anyhow!(PasswordRequiredError {
-                            archive_path: parent_path.to_string_lossy().to_string(),
-                        })
+                        anyhow::anyhow!("Failed to open 7z archive: {}", e)
                     }
-                } else {
-                    anyhow::anyhow!("Failed to open 7z archive: {}", e)
-                }
-            })?;
+                })?;
 
             reader.read_file(entry_name).map_err(|e| {
                 let err_str = format!("{:?}", e);

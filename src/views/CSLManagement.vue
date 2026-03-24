@@ -1,5 +1,5 @@
 <template>
-  <div class="h-full flex flex-col p-6">
+  <div class="h-full flex flex-col px-6 pt-3 pb-6">
     <!-- Header -->
     <div class="flex items-center justify-between mb-1">
       <h1 class="text-xl font-bold text-gray-900 dark:text-white">

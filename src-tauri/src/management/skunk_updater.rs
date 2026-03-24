@@ -1166,12 +1166,7 @@ async fn download_file_chunked(
                 .header("Range", &range_header)
                 .send()
                 .await
-                .with_context(|| {
-                    format!(
-                        "Failed to download chunk {} of '{}'",
-                        idx, url
-                    )
-                })?;
+                .with_context(|| format!("Failed to download chunk {} of '{}'", idx, url))?;
 
             let status = response.status();
             // If server returns 200 instead of 206, it doesn't support Range for this request
@@ -1181,9 +1176,8 @@ async fn download_file_chunked(
                 let mut stream = response.bytes_stream();
                 while let Some(next_chunk) = stream.next().await {
                     ensure_not_cancelled(task_control.as_ref(), "install")?;
-                    let chunk = next_chunk.with_context(|| {
-                        format!("Failed to stream response body for '{}'", url)
-                    })?;
+                    let chunk = next_chunk
+                        .with_context(|| format!("Failed to stream response body for '{}'", url))?;
                     data.extend_from_slice(&chunk);
                     if let Some(cb) = chunk_progress_callback.as_ref() {
                         cb(rel_path.clone(), chunk.len() as u64);
@@ -1208,9 +1202,8 @@ async fn download_file_chunked(
             let mut stream = response.bytes_stream();
             while let Some(next_chunk) = stream.next().await {
                 ensure_not_cancelled(task_control.as_ref(), "install")?;
-                let chunk = next_chunk.with_context(|| {
-                    format!("Failed to stream chunk {} for '{}'", idx, url)
-                })?;
+                let chunk = next_chunk
+                    .with_context(|| format!("Failed to stream chunk {} for '{}'", idx, url))?;
                 data.extend_from_slice(&chunk);
                 if let Some(cb) = chunk_progress_callback.as_ref() {
                     cb(rel_path.clone(), chunk.len() as u64);
@@ -1239,7 +1232,10 @@ async fn download_file_chunked(
     if full_body_fallback {
         // Find the first chunk's data (which has the complete body)
         chunks.sort_by_key(|(idx, _)| *idx);
-        if let Some((_, data)) = chunks.into_iter().find(|(idx, data)| *idx == 0 && !data.is_empty()) {
+        if let Some((_, data)) = chunks
+            .into_iter()
+            .find(|(idx, data)| *idx == 0 && !data.is_empty())
+        {
             return Ok(data);
         }
         return Err(anyhow!("Range fallback failed: no data from first chunk"));

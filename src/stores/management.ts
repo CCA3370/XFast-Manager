@@ -336,11 +336,11 @@ export const useManagementStore = defineStore('management', () => {
   // Items that are disabled in cfg file should be marked as locked
   function syncCfgDisabledToLockStore(
     type: 'aircraft' | 'plugin',
-    items: Array<{ folderName: string; enabled: boolean }>,
+    items: Array<{ folderName: string; cfgDisabled?: boolean }>,
   ) {
     for (const item of items) {
       // If item is disabled in cfg, mark it as locked
-      if (!item.enabled) {
+      if (item.cfgDisabled) {
         lockStore.setLocked(type, item.folderName, true)
       }
     }

@@ -55,8 +55,10 @@ impl Scanner {
             "scanner_timing"
         );
 
-        let prepared_archive =
-            crate::archive_input::prepare_archive_for_read(zip_path, crate::archive_input::ArchiveFormat::Zip)?;
+        let prepared_archive = crate::archive_input::prepare_archive_for_read(
+            zip_path,
+            crate::archive_input::ArchiveFormat::Zip,
+        )?;
 
         let open_start = std::time::Instant::now();
         let file = fs::File::open(prepared_archive.read_path())?;
@@ -795,8 +797,10 @@ impl Scanner {
     ) -> Result<Vec<DetectedItem>> {
         use ::zip::ZipArchive;
 
-        let prepared_archive =
-            crate::archive_input::prepare_archive_for_read(zip_path, crate::archive_input::ArchiveFormat::Zip)?;
+        let prepared_archive = crate::archive_input::prepare_archive_for_read(
+            zip_path,
+            crate::archive_input::ArchiveFormat::Zip,
+        )?;
         let file = fs::File::open(prepared_archive.read_path())?;
         let mut archive: ZipArchive<fs::File> = ZipArchive::new(file)?;
 

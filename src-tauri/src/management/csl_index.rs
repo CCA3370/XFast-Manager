@@ -101,10 +101,15 @@ fn install_task_key(source: &str, package_name: &str) -> String {
 }
 
 fn clamp_parallel_downloads(parallel_downloads: Option<usize>) -> usize {
-    parallel_downloads.unwrap_or(1).clamp(1, MAX_CSL_PARALLEL_DOWNLOADS)
+    parallel_downloads
+        .unwrap_or(1)
+        .clamp(1, MAX_CSL_PARALLEL_DOWNLOADS)
 }
 
-fn ensure_download_not_cancelled(cancel_flag: &AtomicBool, package_name: &str) -> Result<(), ApiError> {
+fn ensure_download_not_cancelled(
+    cancel_flag: &AtomicBool,
+    package_name: &str,
+) -> Result<(), ApiError> {
     if cancel_flag.load(Ordering::SeqCst) {
         return Err(ApiError::cancelled(format!(
             "Download cancelled for {}",
@@ -254,13 +259,15 @@ fn group_into_packages(entries: &[CslIndexEntry]) -> Vec<PackageData> {
     for entry in entries {
         match entry.entry_type {
             11 => {
-                let pkg = map.entry(entry.path.clone()).or_insert_with(|| PackageData {
-                    name: entry.path.clone(),
-                    header_size: 0,
-                    header_date: String::new(),
-                    header_time: String::new(),
-                    files: Vec::new(),
-                });
+                let pkg = map
+                    .entry(entry.path.clone())
+                    .or_insert_with(|| PackageData {
+                        name: entry.path.clone(),
+                        header_size: 0,
+                        header_date: String::new(),
+                        header_time: String::new(),
+                        files: Vec::new(),
+                    });
                 pkg.header_size = entry.size_bytes;
                 pkg.header_date = entry.date.clone();
                 pkg.header_time = entry.time.clone();
@@ -349,7 +356,10 @@ fn mtime_secs(meta: &std::fs::Metadata) -> i64 {
 }
 
 /// Compute MD5, but reuse a cached hash when file size + mtime are unchanged.
-fn compute_file_md5_cached(path: &Path, meta: &std::fs::Metadata) -> Result<String, std::io::Error> {
+fn compute_file_md5_cached(
+    path: &Path,
+    meta: &std::fs::Metadata,
+) -> Result<String, std::io::Error> {
     let size = meta.len();
     let mtime = mtime_secs(meta);
 
@@ -388,10 +398,7 @@ fn find_local_package_dir(package_name: &str, local_paths: &[String]) -> Option<
 /// Compare a single package against local files.
 /// Optimization: size check first, MD5 only when size matches.
 /// Uses MD5_CACHE to skip re-hashing unchanged files.
-fn compare_package_fast(
-    pkg: &PackageData,
-    local_dir: &Path,
-) -> (String, usize, u64) {
+fn compare_package_fast(pkg: &PackageData, local_dir: &Path) -> (String, usize, u64) {
     let prefix = format!("{}/", pkg.name);
     let mut files_to_update = 0usize;
     let mut update_size: u64 = 0;
@@ -460,7 +467,10 @@ async fn fetch_remote_index(server: &str, index_path: &str) -> Result<String, Ap
         .user_agent("XFast Manager")
         .build()
         .map_err(|e| {
-            ApiError::new(ApiErrorCode::NetworkError, format!("HTTP client error: {}", e))
+            ApiError::new(
+                ApiErrorCode::NetworkError,
+                format!("HTTP client error: {}", e),
+            )
         })?;
 
     let resp = client.get(&url).send().await.map_err(|e| {
@@ -548,7 +558,11 @@ async fn download_file(
         let mut file = match std::fs::File::create(&tmp_path) {
             Ok(file) => file,
             Err(e) => {
-                last_err = Some(format!("Failed to create file (attempt {}): {}", attempt + 1, e));
+                last_err = Some(format!(
+                    "Failed to create file (attempt {}): {}",
+                    attempt + 1,
+                    e
+                ));
                 continue;
             }
         };
@@ -669,54 +683,66 @@ async fn fetch_package_descriptions(
     };
 
     let server_owned = server.to_string();
-    let fetched: Vec<Option<(String, String)>> = stream::iter(to_fetch.into_iter().map(move |name| {
-        let client = client.clone();
-        let url = format!("{}/{}/x-csl-info.info", server_owned, name);
-        async move {
-            for attempt in 0..DESCRIPTION_FETCH_ATTEMPTS {
-                let resp = match client.get(&url).send().await {
-                    Ok(resp) => resp,
-                    Err(_) => {
+    let fetched: Vec<Option<(String, String)>> =
+        stream::iter(to_fetch.into_iter().map(move |name| {
+            let client = client.clone();
+            let url = format!("{}/{}/x-csl-info.info", server_owned, name);
+            async move {
+                for attempt in 0..DESCRIPTION_FETCH_ATTEMPTS {
+                    let resp = match client.get(&url).send().await {
+                        Ok(resp) => resp,
+                        Err(_) => {
+                            if attempt + 1 < DESCRIPTION_FETCH_ATTEMPTS {
+                                tokio::time::sleep(std::time::Duration::from_millis(
+                                    300 * (attempt + 1) as u64,
+                                ))
+                                .await;
+                                continue;
+                            }
+                            return None;
+                        }
+                    };
+
+                    if !resp.status().is_success() {
                         if attempt + 1 < DESCRIPTION_FETCH_ATTEMPTS {
-                            tokio::time::sleep(std::time::Duration::from_millis(300 * (attempt + 1) as u64)).await;
+                            tokio::time::sleep(std::time::Duration::from_millis(
+                                300 * (attempt + 1) as u64,
+                            ))
+                            .await;
                             continue;
                         }
                         return None;
                     }
-                };
 
-                if !resp.status().is_success() {
-                    if attempt + 1 < DESCRIPTION_FETCH_ATTEMPTS {
-                        tokio::time::sleep(std::time::Duration::from_millis(300 * (attempt + 1) as u64)).await;
-                        continue;
+                    let text = match resp.text().await {
+                        Ok(text) => text,
+                        Err(_) => {
+                            if attempt + 1 < DESCRIPTION_FETCH_ATTEMPTS {
+                                tokio::time::sleep(std::time::Duration::from_millis(
+                                    300 * (attempt + 1) as u64,
+                                ))
+                                .await;
+                                continue;
+                            }
+                            return None;
+                        }
+                    };
+
+                    if let Some(first_line) =
+                        text.lines().map(str::trim).find(|line| !line.is_empty())
+                    {
+                        return Some((name, first_line.to_string()));
                     }
+
                     return None;
                 }
 
-                let text = match resp.text().await {
-                    Ok(text) => text,
-                    Err(_) => {
-                        if attempt + 1 < DESCRIPTION_FETCH_ATTEMPTS {
-                            tokio::time::sleep(std::time::Duration::from_millis(300 * (attempt + 1) as u64)).await;
-                            continue;
-                        }
-                        return None;
-                    }
-                };
-
-                if let Some(first_line) = text.lines().map(str::trim).find(|line| !line.is_empty()) {
-                    return Some((name, first_line.to_string()));
-                }
-
-                return None;
+                None
             }
-
-            None
-        }
-    }))
-    .buffer_unordered(DESCRIPTION_FETCH_CONCURRENCY)
-    .collect()
-    .await;
+        }))
+        .buffer_unordered(DESCRIPTION_FETCH_CONCURRENCY)
+        .collect()
+        .await;
 
     // 3. Write newly-fetched entries into cache and result
     let new_entries: Vec<(String, String)> = fetched.into_iter().flatten().collect();
@@ -747,11 +773,7 @@ async fn scan_packages_internal(
         .await
         .map_err(|e| e.to_string())?;
 
-    let server_version = index_content
-        .lines()
-        .next()
-        .unwrap_or("")
-        .to_string();
+    let server_version = index_content.lines().next().unwrap_or("").to_string();
 
     // Parse and group — pure CPU, fast
     let entries = parse_index(&index_content);
@@ -956,8 +978,8 @@ async fn install_package_internal(
                 cancel_flag.as_ref(),
                 &package_name,
             )
-                .await
-                .map_err(|e| e.to_string())?;
+            .await
+            .map_err(|e| e.to_string())?;
 
             bytes_downloaded += downloaded;
         }
@@ -968,8 +990,8 @@ async fn install_package_internal(
         let bytes_downloaded = Arc::new(AtomicU64::new(0));
         let event_name_owned = event_name.to_string();
 
-        let results: Vec<Result<(), String>> = stream::iter(
-            owned_files.into_iter().map(|file_path| {
+        let results: Vec<Result<(), String>> =
+            stream::iter(owned_files.into_iter().map(|file_path| {
                 let client = client.clone();
                 let server = server.to_string();
                 let prefix = prefix.clone();
@@ -985,22 +1007,19 @@ async fn install_package_internal(
                     ensure_download_not_cancelled(cancel_flag.as_ref(), &package_name)
                         .map_err(|e| e.to_string())?;
 
-                    let rel_path = file_path
-                        .strip_prefix(&prefix)
-                        .unwrap_or(&file_path);
+                    let rel_path = file_path.strip_prefix(&prefix).unwrap_or(&file_path);
                     let local_path = target_pkg_dir.join(rel_path);
 
-                    let downloaded =
-                        download_file(
-                            &client,
-                            &server,
-                            &file_path,
-                            &local_path,
-                            cancel_flag.as_ref(),
-                            &package_name,
-                        )
-                            .await
-                            .map_err(|e| e.to_string())?;
+                    let downloaded = download_file(
+                        &client,
+                        &server,
+                        &file_path,
+                        &local_path,
+                        cancel_flag.as_ref(),
+                        &package_name,
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
 
                     let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
                     let total_dl =
@@ -1020,11 +1039,10 @@ async fn install_package_internal(
 
                     Ok(())
                 }
-            }),
-        )
-        .buffer_unordered(concurrency)
-        .collect()
-        .await;
+            }))
+            .buffer_unordered(concurrency)
+            .collect()
+            .await;
 
         // Check for any errors
         for result in results {
@@ -1047,10 +1065,7 @@ async fn install_package_internal(
     Ok(())
 }
 
-fn uninstall_package_internal(
-    package_name: &str,
-    paths: &[String],
-) -> Result<(), String> {
+fn uninstall_package_internal(package_name: &str, paths: &[String]) -> Result<(), String> {
     for base_path in paths {
         let pkg_dir = Path::new(base_path).join(package_name);
         if pkg_dir.exists() && pkg_dir.is_dir() {
@@ -1088,14 +1103,26 @@ fn collect_scan_paths(xplane_path: &str, custom_paths: &[String]) -> (Vec<CslPat
 
 #[cfg(windows)]
 fn create_directory_link(target: &Path, link_path: &Path) -> Result<(), String> {
-    junction::create(target, link_path)
-        .map_err(|e| format!("Failed to create junction {} -> {}: {}", link_path.display(), target.display(), e))
+    junction::create(target, link_path).map_err(|e| {
+        format!(
+            "Failed to create junction {} -> {}: {}",
+            link_path.display(),
+            target.display(),
+            e
+        )
+    })
 }
 
 #[cfg(unix)]
 fn create_directory_link(target: &Path, link_path: &Path) -> Result<(), String> {
-    std::os::unix::fs::symlink(target, link_path)
-        .map_err(|e| format!("Failed to create symlink {} -> {}: {}", link_path.display(), target.display(), e))
+    std::os::unix::fs::symlink(target, link_path).map_err(|e| {
+        format!(
+            "Failed to create symlink {} -> {}: {}",
+            link_path.display(),
+            target.display(),
+            e
+        )
+    })
 }
 
 #[cfg(windows)]
@@ -1193,10 +1220,7 @@ fn create_package_links(
 }
 
 /// Remove links for a package from all link targets.
-fn remove_package_links(
-    package_name: &str,
-    link_targets: &[PathBuf],
-) -> Vec<String> {
+fn remove_package_links(package_name: &str, link_targets: &[PathBuf]) -> Vec<String> {
     let mut warnings = Vec::new();
 
     for base in link_targets {
@@ -1217,8 +1241,13 @@ fn list_installed_canonical_packages(canonical_base: &Path) -> Result<Vec<String
     }
 
     let mut packages = Vec::new();
-    let entries = std::fs::read_dir(canonical_base)
-        .map_err(|e| format!("Failed to read canonical CSL dir {}: {}", canonical_base.display(), e))?;
+    let entries = std::fs::read_dir(canonical_base).map_err(|e| {
+        format!(
+            "Failed to read canonical CSL dir {}: {}",
+            canonical_base.display(),
+            e
+        )
+    })?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read CSL directory entry: {}", e))?;
@@ -1273,7 +1302,8 @@ fn sync_package_links_internal(
         }
 
         if canonical_pkg_dir.is_dir() {
-            let _warnings = create_package_links(&package_name, &canonical_pkg_dir, &active_targets);
+            let _warnings =
+                create_package_links(&package_name, &canonical_pkg_dir, &active_targets);
         } else if package_names.is_some() {
             let _warnings = remove_package_links(&package_name, &active_targets);
         }
@@ -1349,8 +1379,7 @@ pub async fn csl_rescan_packages(
         if let Some(dir) = local_dir {
             let dir = dir.clone();
             handles.push(tokio::task::spawn_blocking(move || {
-                let (status, files_to_update, update_size) =
-                    compare_package_fast(&pkg, &dir);
+                let (status, files_to_update, update_size) = compare_package_fast(&pkg, &dir);
 
                 let total_size = if pkg.header_size > 0 {
                     pkg.header_size
@@ -1547,19 +1576,22 @@ fn is_altitude_metadata(file_path: &str) -> bool {
 /// e.g. "PilotUI/mtlList.xml" or "x-csl-info.info".
 fn altitude_resolve_local_path(xplane: &Path, file_rel: &str) -> PathBuf {
     for (prefix, local_dir) in ALTITUDE_FOLDER_MAPPINGS {
-        if let Some(rest) = file_rel.strip_prefix(prefix).and_then(|r| r.strip_prefix('/')) {
+        if let Some(rest) = file_rel
+            .strip_prefix(prefix)
+            .and_then(|r| r.strip_prefix('/'))
+        {
             return xplane.join(local_dir).join(rest);
         }
     }
     // No mapping matched — use default CSL dir
-    xplane.join(ALTITUDE_DEFAULT_LOCAL_DIR).join("ALTITUDE").join(file_rel)
+    xplane
+        .join(ALTITUDE_DEFAULT_LOCAL_DIR)
+        .join("ALTITUDE")
+        .join(file_rel)
 }
 
 /// Compare ALTITUDE files against their mapped local paths.
-fn compare_altitude_files(
-    files: &[FileEntry],
-    xplane: &Path,
-) -> (String, usize, u64) {
+fn compare_altitude_files(files: &[FileEntry], xplane: &Path) -> (String, usize, u64) {
     let pkg_prefix = "ALTITUDE/";
     let mut files_to_update = 0usize;
     let mut update_size: u64 = 0;
@@ -1618,9 +1650,7 @@ fn compare_altitude_files(
 
 /// Scan ALTITUDE supplementary package
 #[tauri::command]
-pub async fn altitude_scan_packages(
-    xplane_path: String,
-) -> Result<CslScanResult, String> {
+pub async fn altitude_scan_packages(xplane_path: String) -> Result<CslScanResult, String> {
     let xplane = PathBuf::from(&xplane_path);
 
     let index_content = fetch_remote_index(CSL_SERVER, "ALTITUDE/files.idx")
@@ -1633,12 +1663,13 @@ pub async fn altitude_scan_packages(
 
     let mut packages = Vec::new();
     for pkg in &pkg_data_list {
-        let content_files: Vec<&FileEntry> = pkg.files.iter()
+        let content_files: Vec<&FileEntry> = pkg
+            .files
+            .iter()
             .filter(|f| !is_altitude_metadata(&f.path))
             .collect();
 
-        let (status, files_to_update, update_size) =
-            compare_altitude_files(&pkg.files, &xplane);
+        let (status, files_to_update, update_size) = compare_altitude_files(&pkg.files, &xplane);
 
         let total_size = if pkg.header_size > 0 {
             pkg.header_size
@@ -1769,8 +1800,8 @@ pub async fn altitude_install_package(
                 cancel_flag.as_ref(),
                 &package_name,
             )
-                .await
-                .map_err(|e| e.to_string())?;
+            .await
+            .map_err(|e| e.to_string())?;
             bytes_downloaded += downloaded;
         }
     } else {
@@ -1782,8 +1813,8 @@ pub async fn altitude_install_package(
         let bytes_downloaded = Arc::new(AtomicU64::new(0));
         let pkg_prefix_owned = pkg_prefix.to_string();
 
-        let results: Vec<Result<(), String>> = stream::iter(
-            owned.into_iter().map(|(remote_path, local_path)| {
+        let results: Vec<Result<(), String>> =
+            stream::iter(owned.into_iter().map(|(remote_path, local_path)| {
                 let client = client.clone();
                 let app_handle = app_handle.clone();
                 let package_name = package_name.clone();
@@ -1796,22 +1827,23 @@ pub async fn altitude_install_package(
                     ensure_download_not_cancelled(cancel_flag.as_ref(), &package_name)
                         .map_err(|e| e.to_string())?;
 
-                    let downloaded =
-                        download_file(
-                            &client,
-                            ALTITUDE_SERVER,
-                            &remote_path,
-                            &local_path,
-                            cancel_flag.as_ref(),
-                            &package_name,
-                        )
-                            .await
-                            .map_err(|e| e.to_string())?;
+                    let downloaded = download_file(
+                        &client,
+                        ALTITUDE_SERVER,
+                        &remote_path,
+                        &local_path,
+                        cancel_flag.as_ref(),
+                        &package_name,
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
 
                     let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
                     let total_dl =
                         bytes_downloaded.fetch_add(downloaded, Ordering::Relaxed) + downloaded;
-                    let display_name = remote_path.strip_prefix(&pkg_prefix).unwrap_or(&remote_path);
+                    let display_name = remote_path
+                        .strip_prefix(&pkg_prefix)
+                        .unwrap_or(&remote_path);
 
                     let _ = app_handle.emit(
                         "altitude-progress",
@@ -1826,11 +1858,10 @@ pub async fn altitude_install_package(
                     );
                     Ok(())
                 }
-            }),
-        )
-        .buffer_unordered(concurrency)
-        .collect()
-        .await;
+            }))
+            .buffer_unordered(concurrency)
+            .collect()
+            .await;
 
         for result in results {
             result?;
@@ -1854,9 +1885,7 @@ pub async fn altitude_install_package(
 
 /// Uninstall the ALTITUDE supplementary package
 #[tauri::command]
-pub async fn altitude_uninstall_package(
-    xplane_path: String,
-) -> Result<(), String> {
+pub async fn altitude_uninstall_package(xplane_path: String) -> Result<(), String> {
     let xplane = Path::new(&xplane_path);
 
     let index_content = fetch_remote_index(CSL_SERVER, "ALTITUDE/files.idx")
@@ -1903,6 +1932,9 @@ mod tests {
     #[test]
     fn install_task_key_includes_source() {
         assert_eq!(install_task_key("csl", "B738"), "csl:B738");
-        assert_eq!(install_task_key("altitude", "ALTITUDE"), "altitude:ALTITUDE");
+        assert_eq!(
+            install_task_key("altitude", "ALTITUDE"),
+            "altitude:ALTITUDE"
+        );
     }
 }

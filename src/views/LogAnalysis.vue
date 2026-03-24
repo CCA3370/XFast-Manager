@@ -1,5 +1,5 @@
 <template>
-  <div class="log-analysis-view h-full flex flex-col p-5">
+  <div class="log-analysis-view h-full flex flex-col px-5 pt-3 pb-5">
     <!-- Header -->
     <div class="flex items-center justify-between mb-4 flex-shrink-0">
       <div>

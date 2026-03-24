@@ -8,7 +8,8 @@ impl Scanner {
         ctx: &mut ScanContext,
         password: Option<&str>,
     ) -> Result<Vec<DetectedItem>> {
-        let normalized_archive_path = crate::archive_input::normalize_archive_entry_path(archive_path);
+        let normalized_archive_path =
+            crate::archive_input::normalize_archive_entry_path(archive_path);
 
         let scan_start = std::time::Instant::now();
         crate::log_debug!(
@@ -178,7 +179,8 @@ impl Scanner {
             .context("Failed to create temp directory")?;
 
         // Extract the RAR archive to temp using the typestate pattern
-        let normalized_parent_path = crate::archive_input::normalize_archive_entry_path(parent_path);
+        let normalized_parent_path =
+            crate::archive_input::normalize_archive_entry_path(parent_path);
         let archive_builder = if let Some(pwd) = parent_password {
             unrar::Archive::with_password(&normalized_parent_path, pwd)
         } else {
@@ -308,7 +310,8 @@ impl Scanner {
         archive_path: &Path,
         password: Option<&str>,
     ) -> Result<Vec<DetectedItem>> {
-        let normalized_archive_path = crate::archive_input::normalize_archive_entry_path(archive_path);
+        let normalized_archive_path =
+            crate::archive_input::normalize_archive_entry_path(archive_path);
 
         let open_start = std::time::Instant::now();
         crate::log_debug!(
@@ -560,7 +563,8 @@ impl Scanner {
         target_file: &str,
         password: Option<&str>,
     ) -> Result<String> {
-        let normalized_archive_path = crate::archive_input::normalize_archive_entry_path(archive_path);
+        let normalized_archive_path =
+            crate::archive_input::normalize_archive_entry_path(archive_path);
 
         // Create secure temp directory using tempfile crate
         let temp_dir = tempfile::Builder::new()

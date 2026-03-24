@@ -70,7 +70,10 @@ impl Analyzer {
             Some("analyzer"),
         );
 
-        crate::log_debug!(&format!("Analyzing paths: {:?}", normalized_paths), "analysis");
+        crate::log_debug!(
+            &format!("Analyzing paths: {:?}", normalized_paths),
+            "analysis"
+        );
         crate::log_debug!(&format!("X-Plane path: {}", xplane_path), "analysis");
 
         let passwords_ref = normalized_passwords.as_ref();
@@ -518,7 +521,12 @@ impl Analyzer {
                 let candidate_has_internal_root = candidate.archive_internal_root.is_some();
 
                 !scenery_anchors.iter().any(
-                    |(scenery_source, scenery_source_path, scenery_has_internal_root, scenery_path)| {
+                    |(
+                        scenery_source,
+                        scenery_source_path,
+                        scenery_has_internal_root,
+                        scenery_path,
+                    )| {
                         let same_source =
                             if candidate_has_internal_root || *scenery_has_internal_root {
                                 candidate.path == *scenery_source

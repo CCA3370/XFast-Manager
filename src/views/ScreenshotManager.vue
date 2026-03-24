@@ -1629,7 +1629,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="h-full">
-    <div class="h-full flex flex-col p-5 overflow-hidden screenshot-view">
+    <div class="h-full flex flex-col px-5 pt-3 pb-5 overflow-hidden screenshot-view">
       <div class="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 class="text-xl font-bold text-gray-900 dark:text-white">

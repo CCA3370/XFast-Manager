@@ -35,11 +35,7 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(AddonPresets::Snapshot)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(AddonPresets::Snapshot).string().not_null())
                     .to_owned(),
             )
             .await?;

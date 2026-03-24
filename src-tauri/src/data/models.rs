@@ -738,7 +738,23 @@ pub struct PresetAddonCounts {
 }
 
 /// The actual snapshot stored as JSON in the database
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetLockState {
+    #[serde(default)]
+    pub aircraft: Vec<String>,
+    #[serde(default)]
+    pub plugin: Vec<String>,
+    #[serde(default)]
+    pub navdata: Vec<String>,
+    #[serde(default)]
+    pub scenery: Vec<String>,
+    #[serde(default)]
+    pub lua: Vec<String>,
+}
+
+/// The actual snapshot stored as JSON in the database
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PresetSnapshot {
     #[serde(default)]
@@ -749,6 +765,10 @@ pub struct PresetSnapshot {
     pub scenery: HashMap<String, bool>,
     #[serde(default)]
     pub navdata: HashMap<String, bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lua_scripts: Option<HashMap<String, bool>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lock_state: Option<PresetLockState>,
 }
 
 impl PresetSnapshot {
@@ -782,6 +802,8 @@ pub struct PresetApplyResult {
     pub changes_made: usize,
     pub errors: Vec<String>,
     pub missing_items: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lock_state: Option<PresetLockState>,
 }
 
 /// Format for importing/exporting presets

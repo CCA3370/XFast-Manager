@@ -23,21 +23,9 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(ActivityLog::Operation)
-                            .string()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(ActivityLog::ItemType)
-                            .string()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(ActivityLog::ItemName)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ActivityLog::Operation).string().not_null())
+                    .col(ColumnDef::new(ActivityLog::ItemType).string().not_null())
+                    .col(ColumnDef::new(ActivityLog::ItemName).string().not_null())
                     .col(ColumnDef::new(ActivityLog::Details).string())
                     .col(
                         ColumnDef::new(ActivityLog::Success)

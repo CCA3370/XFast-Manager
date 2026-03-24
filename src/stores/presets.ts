@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { save, open } from '@tauri-apps/plugin-dialog'
 import { useAppStore } from './app'
+import { useLockStore, type LockedItemsData } from './lock'
 
 export interface PresetSummary {
   id: number
@@ -28,6 +29,7 @@ export interface PresetApplyResult {
   changesMade: number
   errors: string[]
   missingItems: string[]
+  lockState?: LockedItemsData | null
 }
 
 export const usePresetsStore = defineStore('presets', () => {
@@ -35,6 +37,7 @@ export const usePresetsStore = defineStore('presets', () => {
   const isLoading = ref(false)
   const isSaving = ref(false)
   const isApplying = ref(false)
+  const updatingSnapshotId = ref<number | null>(null)
 
   async function loadPresets() {
     isLoading.value = true
@@ -49,7 +52,13 @@ export const usePresetsStore = defineStore('presets', () => {
     isSaving.value = true
     try {
       const appStore = useAppStore()
-      await invoke('save_preset', { xplanePath: appStore.xplanePath, name, description })
+      const lockStore = useLockStore()
+      await invoke('save_preset', {
+        xplanePath: appStore.xplanePath || null,
+        name,
+        description,
+        lockState: lockStore.exportLockState(),
+      })
       await loadPresets()
     } finally {
       isSaving.value = false
@@ -62,8 +71,29 @@ export const usePresetsStore = defineStore('presets', () => {
     description?: string,
     updateSnapshot?: boolean,
   ) {
-    await invoke('update_preset', { presetId, name, description, updateSnapshot })
-    await loadPresets()
+    const appStore = useAppStore()
+    const lockStore = useLockStore()
+    const shouldUpdateSnapshot = updateSnapshot === true
+
+    if (shouldUpdateSnapshot) {
+      updatingSnapshotId.value = presetId
+    }
+
+    try {
+      await invoke('update_preset', {
+        presetId,
+        xplanePath: appStore.xplanePath || null,
+        name,
+        description,
+        updateSnapshot,
+        lockState: shouldUpdateSnapshot ? lockStore.exportLockState() : null,
+      })
+      await loadPresets()
+    } finally {
+      if (updatingSnapshotId.value === presetId) {
+        updatingSnapshotId.value = null
+      }
+    }
   }
 
   async function deletePreset(presetId: number) {
@@ -75,13 +105,26 @@ export const usePresetsStore = defineStore('presets', () => {
     isApplying.value = true
     try {
       const appStore = useAppStore()
-      return await invoke<PresetApplyResult>('apply_preset', {
+      const lockStore = useLockStore()
+      const result = await invoke<PresetApplyResult>('apply_preset', {
         xplanePath: appStore.xplanePath,
         presetId,
       })
+      if (result.lockState) {
+        try {
+          await lockStore.applyLockState(result.lockState, appStore.xplanePath || undefined)
+        } catch (e) {
+          result.errors.push(`Failed to apply lock state: ${String(e)}`)
+        }
+      }
+      return result
     } finally {
       isApplying.value = false
     }
+  }
+
+  function isUpdatingSnapshot(presetId: number): boolean {
+    return updatingSnapshotId.value === presetId
   }
 
   async function exportPreset(presetId: number) {
@@ -108,6 +151,7 @@ export const usePresetsStore = defineStore('presets', () => {
     isLoading,
     isSaving,
     isApplying,
+    updatingSnapshotId,
     loadPresets,
     savePreset,
     updatePreset,
@@ -115,5 +159,6 @@ export const usePresetsStore = defineStore('presets', () => {
     applyPreset,
     exportPreset,
     importPreset,
+    isUpdatingSnapshot,
   }
 })
