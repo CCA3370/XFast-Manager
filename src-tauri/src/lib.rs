@@ -3344,8 +3344,10 @@ pub fn run() {
             csl_index::csl_scan_packages,
             csl_index::csl_rescan_packages,
             csl_index::csl_install_package,
+            csl_index::csl_cancel_install,
             csl_index::csl_uninstall_package,
             csl_index::csl_detect_paths,
+            csl_index::csl_sync_links,
             // ALTITUDE management commands
             csl_index::altitude_scan_packages,
             csl_index::altitude_install_package,
@@ -3354,6 +3356,7 @@ pub fn run() {
         .setup(|app| {
             // Initialize TaskControl state
             app.manage(TaskControl::new());
+            app.manage(csl_index::CslDownloadControl::new());
 
             // Initialize database connection and run migrations once on startup
             let db = tauri::async_runtime::block_on(async {

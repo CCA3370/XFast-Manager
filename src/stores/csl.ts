@@ -2,11 +2,20 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
-import type { CslPackageInfo, CslPath, CslScanResult, CslProgress } from '@/types'
+import { getErrorMessage, type CslPackageInfo, type CslPath, type CslScanResult, type CslProgress } from '@/types'
 import { useAppStore } from './app'
 import { useManagementStore } from './management'
 import { useToastStore } from './toast'
 import { logError } from '@/services/logger'
+
+type InstallSource = 'csl' | 'altitude'
+
+interface QueuedInstallTask {
+  source: InstallSource
+  name: string
+}
+
+const CSL_MAX_PARALLEL_DOWNLOADS = 12
 
 export const useCslStore = defineStore('csl', () => {
   const appStore = useAppStore()
@@ -14,44 +23,29 @@ export const useCslStore = defineStore('csl', () => {
   const toast = useToastStore()
   const { t } = useI18n()
 
-  // ========== CSL State ==========
   const packages = ref<CslPackageInfo[]>([])
   const paths = ref<CslPath[]>([])
   const customPaths = ref<string[]>([])
   const serverVersion = ref('')
   const isLoading = ref(false)
-  const installingPackages = ref<string[]>([])
   const progressMap = ref<Record<string, CslProgress>>({})
   const error = ref<string | null>(null)
   const searchQuery = ref('')
 
-  // Track pending installs for deferred rescan
-  let pendingInstalls = 0
-  let recentlyInstalled: string[] = []
-
-  // ========== ALTITUDE State ==========
   const altitudePackages = ref<CslPackageInfo[]>([])
   const altitudeLoading = ref(false)
-  const altitudeInstallingPackages = ref<string[]>([])
   const altitudeProgressMap = ref<Record<string, CslProgress>>({})
 
-  // Track pending altitude installs for deferred rescan
-  let altitudePendingInstalls = 0
+  const installQueue = ref<QueuedInstallTask[]>([])
+  const activeInstallTask = ref<QueuedInstallTask | null>(null)
+  const cancellingTaskKeys = ref<string[]>([])
 
-  // ========== CSL Computed ==========
+  let installQueueRunning = false
+
   const totalPackages = computed(() => packages.value.length)
-
-  const installedCount = computed(
-    () => packages.value.filter((p) => p.status !== 'not_installed').length,
-  )
-
-  const updatesCount = computed(
-    () => packages.value.filter((p) => p.status === 'needs_update').length,
-  )
-
-  const notUpToDateCount = computed(
-    () => packages.value.filter((p) => p.status !== 'up_to_date').length,
-  )
+  const installedCount = computed(() => packages.value.filter((p) => p.status !== 'not_installed').length)
+  const updatesCount = computed(() => packages.value.filter((p) => p.status === 'needs_update').length)
+  const notUpToDateCount = computed(() => packages.value.filter((p) => p.status !== 'up_to_date').length)
 
   const allPaths = computed(() => {
     const pathStrings = paths.value.map((p) => p.path)
@@ -63,25 +57,226 @@ export const useCslStore = defineStore('csl', () => {
     return pathStrings
   })
 
-  // True when both CSL and ALTITUDE scans have finished
   const allScansDone = computed(() => !isLoading.value && !altitudeLoading.value)
 
-  // ========== ALTITUDE Computed ==========
   const altitudeTotalPackages = computed(() => altitudePackages.value.length)
-
-  const altitudeInstalledCount = computed(
-    () => altitudePackages.value.filter((p) => p.status !== 'not_installed').length,
+  const altitudeInstalledCount = computed(() =>
+    altitudePackages.value.filter((p) => p.status !== 'not_installed').length,
+  )
+  const altitudeUpdatesCount = computed(() =>
+    altitudePackages.value.filter((p) => p.status === 'needs_update').length,
+  )
+  const altitudeNotUpToDateCount = computed(() =>
+    altitudePackages.value.filter((p) => p.status !== 'up_to_date').length,
   )
 
-  const altitudeUpdatesCount = computed(
-    () => altitudePackages.value.filter((p) => p.status === 'needs_update').length,
+  const queuedPackages = computed(() =>
+    installQueue.value.filter((task) => task.source === 'csl').map((task) => task.name),
+  )
+  const queuedAltitudePackages = computed(() =>
+    installQueue.value.filter((task) => task.source === 'altitude').map((task) => task.name),
+  )
+  const installingPackages = computed(() =>
+    activeInstallTask.value?.source === 'csl' ? [activeInstallTask.value.name] : [],
+  )
+  const altitudeInstallingPackages = computed(() =>
+    activeInstallTask.value?.source === 'altitude' ? [activeInstallTask.value.name] : [],
+  )
+  const cancellingPackages = computed(() =>
+    cancellingTaskKeys.value
+      .filter((key) => key.startsWith('csl:'))
+      .map((key) => key.slice('csl:'.length)),
+  )
+  const cancellingAltitudePackages = computed(() =>
+    cancellingTaskKeys.value
+      .filter((key) => key.startsWith('altitude:'))
+      .map((key) => key.slice('altitude:'.length)),
+  )
+  const hasPendingInstalls = computed(
+    () => activeInstallTask.value !== null || installQueue.value.length > 0,
   )
 
-  const altitudeNotUpToDateCount = computed(
-    () => altitudePackages.value.filter((p) => p.status !== 'up_to_date').length,
-  )
+  function taskKey(task: QueuedInstallTask): string {
+    return `${task.source}:${task.name}`
+  }
 
-  // ========== CSL Actions ==========
+  function isTaskActive(task: QueuedInstallTask): boolean {
+    return activeInstallTask.value != null && taskKey(activeInstallTask.value) === taskKey(task)
+  }
+
+  function isTaskQueued(task: QueuedInstallTask): boolean {
+    return installQueue.value.some((queued) => taskKey(queued) === taskKey(task))
+  }
+
+  function isCancelledInstallError(error: unknown): boolean {
+    const message = getErrorMessage(error).toLowerCase()
+    return message.includes('cancelled') || message.includes('canceled')
+  }
+
+  function getParallelDownloads(): number {
+    return Math.min(managementStore.addonUpdateOptions.totalThreads ?? 32, CSL_MAX_PARALLEL_DOWNLOADS)
+  }
+
+  async function syncLinks(packageNames?: string[], cleanupPaths?: string[]) {
+    if (!appStore.xplanePath) {
+      return
+    }
+
+    try {
+      await invoke('csl_sync_links', {
+        xplanePath: appStore.xplanePath,
+        customPaths: customPaths.value,
+        packageNames: packageNames && packageNames.length > 0 ? packageNames : null,
+        cleanupPaths: cleanupPaths && cleanupPaths.length > 0 ? cleanupPaths : null,
+      })
+    } catch (e) {
+      logError(`CSL link sync failed: ${e}`, 'csl')
+    }
+  }
+
+  function clearProgressForTask(task: QueuedInstallTask) {
+    if (task.source === 'altitude') {
+      const nextMap = { ...altitudeProgressMap.value }
+      delete nextMap[task.name]
+      altitudeProgressMap.value = nextMap
+      return
+    }
+
+    const nextMap = { ...progressMap.value }
+    delete nextMap[task.name]
+    progressMap.value = nextMap
+  }
+
+  function enqueueInstallTask(task: QueuedInstallTask) {
+    if (isTaskActive(task) || isTaskQueued(task)) {
+      return
+    }
+
+    installQueue.value = [...installQueue.value, task]
+    void pumpInstallQueue()
+  }
+
+  function enqueueInstallTasks(tasks: QueuedInstallTask[]) {
+    let nextQueue = installQueue.value
+    let changed = false
+
+    for (const task of tasks) {
+      if (isTaskActive(task) || nextQueue.some((queued) => taskKey(queued) === taskKey(task))) {
+        continue
+      }
+      nextQueue = [...nextQueue, task]
+      changed = true
+    }
+
+    if (!changed) {
+      return
+    }
+
+    installQueue.value = nextQueue
+    void pumpInstallQueue()
+  }
+
+  async function runInstallTask(task: QueuedInstallTask): Promise<boolean> {
+    await managementStore.loadAddonUpdateOptions()
+
+    const parallelDownloads = getParallelDownloads()
+
+    if (task.source === 'altitude') {
+      try {
+        await invoke('altitude_install_package', {
+          xplanePath: appStore.xplanePath,
+          parallelDownloads,
+        })
+
+        toast.success(t('altitude.installSuccess', { name: task.name }))
+
+        for (const pkg of altitudePackages.value) {
+          pkg.status = 'up_to_date'
+          pkg.files_to_update = 0
+          pkg.update_size_bytes = 0
+        }
+
+        return false
+      } catch (e) {
+        if (isCancelledInstallError(e)) {
+          toast.info(t('altitude.cancelled', { name: task.name }))
+          return false
+        }
+
+        logError(`ALTITUDE install failed: ${e}`, 'altitude')
+        toast.error(t('altitude.installError', { name: task.name }))
+        return false
+      }
+    }
+
+    try {
+      await invoke('csl_install_package', {
+        packageName: task.name,
+        xplanePath: appStore.xplanePath,
+        customPaths: customPaths.value,
+        parallelDownloads,
+      })
+
+      toast.success(t('csl.installSuccess', { name: task.name }))
+
+      const pkg = packages.value.find((item) => item.name === task.name)
+      if (pkg) {
+        pkg.status = 'up_to_date'
+        pkg.files_to_update = 0
+        pkg.update_size_bytes = 0
+      }
+    } catch (e) {
+      if (isCancelledInstallError(e)) {
+        toast.info(t('csl.cancelled', { name: task.name }))
+        return true
+      }
+
+      logError(`CSL install failed for ${task.name}: ${e}`, 'csl')
+      toast.error(t('csl.installError', { name: task.name }))
+      return true
+    }
+
+    return true
+  }
+
+  async function pumpInstallQueue() {
+    if (installQueueRunning) {
+      return
+    }
+
+    installQueueRunning = true
+
+    try {
+      while (true) {
+        const nextTask = installQueue.value[0]
+
+        if (!nextTask) {
+          break
+        }
+
+        installQueue.value = installQueue.value.slice(1)
+        activeInstallTask.value = nextTask
+
+        try {
+          const shouldRescan = await runInstallTask(nextTask)
+          if (shouldRescan && nextTask.source === 'csl') {
+            await rescanPackages([nextTask.name])
+          }
+        } finally {
+          cancellingTaskKeys.value = cancellingTaskKeys.value.filter((key) => key !== taskKey(nextTask))
+          activeInstallTask.value = null
+          clearProgressForTask(nextTask)
+        }
+      }
+    } finally {
+      installQueueRunning = false
+
+      if (installQueue.value.length > 0) {
+        void pumpInstallQueue()
+      }
+    }
+  }
+
   async function scanPackages() {
     if (!appStore.xplanePath) {
       error.value = t('csl.noPathsDetected')
@@ -100,6 +295,7 @@ export const useCslStore = defineStore('csl', () => {
       packages.value = result.packages
       paths.value = result.paths
       serverVersion.value = result.server_version
+      await syncLinks()
     } catch (e) {
       error.value = String(e)
       logError(`CSL scan failed: ${e}`, 'csl')
@@ -115,70 +311,31 @@ export const useCslStore = defineStore('csl', () => {
         xplanePath: appStore.xplanePath,
         packageNames,
       })
+
       for (const upd of updated) {
-        const idx = packages.value.findIndex((p) => p.name === upd.name)
-        if (idx !== -1) {
-          // Preserve description from original (rescan doesn't re-fetch descriptions)
-          upd.description = packages.value[idx].description
-          packages.value[idx] = upd
+        const index = packages.value.findIndex((p) => p.name === upd.name)
+        if (index !== -1) {
+          upd.description = packages.value[index].description
+          packages.value[index] = upd
         }
       }
+
+      await syncLinks(packageNames)
     } catch (e) {
       logError(`CSL partial rescan failed: ${e}`, 'csl')
     }
   }
 
-  async function installPackage(packageName: string) {
-    if (installingPackages.value.includes(packageName)) return
-
-    installingPackages.value = [...installingPackages.value, packageName]
-    pendingInstalls++
-
-    const parallelDownloads = managementStore.addonUpdateOptions.totalThreads ?? 32
-
-    try {
-      await invoke('csl_install_package', {
-        packageName,
-        xplanePath: appStore.xplanePath,
-        customPaths: customPaths.value,
-        parallelDownloads,
-      })
-
-      toast.success(t('csl.installSuccess', { name: packageName }))
-
-      // Optimistically update local status so button doesn't reappear before rescan
-      const pkg = packages.value.find((p) => p.name === packageName)
-      if (pkg) {
-        pkg.status = 'up_to_date'
-        pkg.files_to_update = 0
-        pkg.update_size_bytes = 0
-      }
-
-      recentlyInstalled.push(packageName)
-    } catch (e) {
-      logError(`CSL install failed for ${packageName}: ${e}`, 'csl')
-      toast.error(t('csl.installError', { name: packageName }))
-    } finally {
-      installingPackages.value = installingPackages.value.filter((n) => n !== packageName)
-      const newMap = { ...progressMap.value }
-      delete newMap[packageName]
-      progressMap.value = newMap
-      pendingInstalls--
-
-      // Partial rescan only when all installs are done
-      if (pendingInstalls === 0 && recentlyInstalled.length > 0) {
-        const toRescan = [...recentlyInstalled]
-        recentlyInstalled = []
-        await rescanPackages(toRescan)
-      }
-    }
+  function installPackage(packageName: string) {
+    enqueueInstallTask({ source: 'csl', name: packageName })
   }
 
-  async function installAll() {
-    const toInstall = packages.value.filter((p) => p.status !== 'up_to_date')
-    for (const pkg of toInstall) {
-      installPackage(pkg.name) // fire without await — run concurrently
-    }
+  function installAll() {
+    enqueueInstallTasks(
+      packages.value
+        .filter((pkg) => pkg.status !== 'up_to_date')
+        .map((pkg) => ({ source: 'csl' as const, name: pkg.name })),
+    )
   }
 
   async function uninstallPackage(packageName: string) {
@@ -191,8 +348,7 @@ export const useCslStore = defineStore('csl', () => {
 
       toast.success(t('csl.uninstallSuccess', { name: packageName }))
 
-      // Optimistically update local state — no rescan needed
-      const pkg = packages.value.find((p) => p.name === packageName)
+      const pkg = packages.value.find((item) => item.name === packageName)
       if (pkg) {
         pkg.status = 'not_installed'
         pkg.files_to_update = pkg.file_count
@@ -204,21 +360,25 @@ export const useCslStore = defineStore('csl', () => {
     }
   }
 
-  function addCustomPath(path: string) {
+  async function addCustomPath(path: string) {
     if (!customPaths.value.includes(path)) {
       customPaths.value.push(path)
+      await syncLinks()
     }
   }
 
-  function removeCustomPath(path: string) {
-    customPaths.value = customPaths.value.filter((p) => p !== path)
+  async function removeCustomPath(path: string) {
+    const hadPath = customPaths.value.includes(path)
+    customPaths.value = customPaths.value.filter((item) => item !== path)
+    if (hadPath) {
+      await syncLinks(undefined, [path])
+    }
   }
 
   function updateProgress(prog: CslProgress) {
     progressMap.value = { ...progressMap.value, [prog.package_name]: prog }
   }
 
-  // ========== ALTITUDE Actions ==========
   async function scanAltitudePackages() {
     if (!appStore.xplanePath) return
 
@@ -238,45 +398,51 @@ export const useCslStore = defineStore('csl', () => {
     }
   }
 
-  async function installAltitudePackage() {
-    if (!appStore.xplanePath) return
-    if (altitudeInstallingPackages.value.includes('ALTITUDE')) return
+  function installAltitudePackage() {
+    enqueueInstallTask({ source: 'altitude', name: 'ALTITUDE' })
+  }
 
-    altitudeInstallingPackages.value = [...altitudeInstallingPackages.value, 'ALTITUDE']
-    altitudePendingInstalls++
-
-    const parallelDownloads = managementStore.addonUpdateOptions.totalThreads ?? 32
-
-    try {
-      await invoke('altitude_install_package', {
-        xplanePath: appStore.xplanePath,
-        parallelDownloads,
-      })
-
-      toast.success(t('altitude.installSuccess', { name: 'ALTITUDE' }))
-
-      for (const pkg of altitudePackages.value) {
-        pkg.status = 'up_to_date'
-        pkg.files_to_update = 0
-        pkg.update_size_bytes = 0
-      }
-    } catch (e) {
-      logError(`ALTITUDE install failed: ${e}`, 'altitude')
-      toast.error(t('altitude.installError', { name: 'ALTITUDE' }))
-    } finally {
-      altitudeInstallingPackages.value = altitudeInstallingPackages.value.filter((n) => n !== 'ALTITUDE')
-      const newMap = { ...altitudeProgressMap.value }
-      delete newMap['ALTITUDE']
-      altitudeProgressMap.value = newMap
-      altitudePendingInstalls--
+  function installAllAltitude() {
+    if (altitudePackages.value.some((pkg) => pkg.status !== 'up_to_date')) {
+      installAltitudePackage()
     }
   }
 
-  async function installAllAltitude() {
-    const hasNotUpToDate = altitudePackages.value.some((p) => p.status !== 'up_to_date')
-    if (hasNotUpToDate) {
-      installAltitudePackage()
+  function installAllCombined(tasks: QueuedInstallTask[]) {
+    enqueueInstallTasks(tasks)
+  }
+
+  async function cancelInstall(source: InstallSource, packageName: string) {
+    const task = { source, name: packageName }
+    const key = taskKey(task)
+
+    if (isTaskActive(task)) {
+      if (cancellingTaskKeys.value.includes(key)) {
+        return
+      }
+
+      cancellingTaskKeys.value = [...cancellingTaskKeys.value, key]
+
+      try {
+        await invoke('csl_cancel_install', {
+          source,
+          packageName,
+        })
+      } catch (e) {
+        cancellingTaskKeys.value = cancellingTaskKeys.value.filter((item) => item !== key)
+        logError(`Failed to cancel ${key}: ${e}`, 'csl')
+        toast.error(
+          source === 'altitude'
+            ? t('altitude.cancelError', { name: packageName })
+            : t('csl.cancelError', { name: packageName }),
+        )
+      }
+
+      return
     }
+
+    installQueue.value = installQueue.value.filter((queued) => taskKey(queued) !== key)
+    clearProgressForTask(task)
   }
 
   async function uninstallAltitudePackage() {
@@ -289,7 +455,6 @@ export const useCslStore = defineStore('csl', () => {
 
       toast.success(t('altitude.uninstallSuccess', { name: 'ALTITUDE' }))
 
-      // Optimistically update local state — no rescan needed
       for (const pkg of altitudePackages.value) {
         pkg.status = 'not_installed'
         pkg.files_to_update = pkg.file_count
@@ -306,47 +471,48 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   return {
-    // CSL State
     packages,
     paths,
     customPaths,
     serverVersion,
     isLoading,
     installingPackages,
+    queuedPackages,
+    cancellingPackages,
     progressMap,
     error,
     searchQuery,
 
-    // CSL Computed
     totalPackages,
     installedCount,
     updatesCount,
     notUpToDateCount,
     allPaths,
     allScansDone,
+    hasPendingInstalls,
 
-    // CSL Actions
     scanPackages,
     installPackage,
     installAll,
+    installAllCombined,
+    cancelInstall,
     uninstallPackage,
     addCustomPath,
     removeCustomPath,
     updateProgress,
 
-    // ALTITUDE State
     altitudePackages,
     altitudeLoading,
     altitudeInstallingPackages,
+    queuedAltitudePackages,
+    cancellingAltitudePackages,
     altitudeProgressMap,
 
-    // ALTITUDE Computed
     altitudeTotalPackages,
     altitudeInstalledCount,
     altitudeUpdatesCount,
     altitudeNotUpToDateCount,
 
-    // ALTITUDE Actions
     scanAltitudePackages,
     installAltitudePackage,
     installAllAltitude,

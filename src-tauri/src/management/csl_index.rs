@@ -1,11 +1,11 @@
 use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use tauri::AppHandle;
-use tauri::Emitter;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex as StdMutex};
+use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 
 use crate::error::{ApiError, ApiErrorCode};
@@ -15,6 +15,9 @@ const CSL_CANONICAL_REL: &str = "Resources/plugins/IVAO_CSL/CSL";
 
 /// ALTITUDE files are hosted one level deeper: /package/ALTITUDE/{path}
 const ALTITUDE_SERVER: &str = "http://x-csl.ru/package/ALTITUDE";
+const MAX_CSL_PARALLEL_DOWNLOADS: usize = 12;
+const DESCRIPTION_FETCH_CONCURRENCY: usize = 6;
+const DESCRIPTION_FETCH_ATTEMPTS: u32 = 3;
 
 /// Cached index with TTL, keyed by server URL
 static INDEX_CACHE: std::sync::LazyLock<Mutex<HashMap<String, (std::time::Instant, String)>>> =
@@ -30,6 +33,96 @@ static DESC_CACHE: std::sync::LazyLock<Mutex<HashMap<String, String>>> =
 /// If size+mtime still match, the cached hash is reused (avoids re-reading the file).
 static MD5_CACHE: std::sync::LazyLock<std::sync::Mutex<HashMap<PathBuf, (u64, i64, String)>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+
+#[derive(Default)]
+pub struct CslDownloadControl {
+    tasks: Arc<StdMutex<HashMap<String, Arc<AtomicBool>>>>,
+}
+
+pub struct CslDownloadRegistration {
+    key: String,
+    cancel_flag: Arc<AtomicBool>,
+    tasks: Arc<StdMutex<HashMap<String, Arc<AtomicBool>>>>,
+}
+
+impl CslDownloadRegistration {
+    fn cancel_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.cancel_flag)
+    }
+}
+
+impl Drop for CslDownloadRegistration {
+    fn drop(&mut self) {
+        if let Ok(mut tasks) = self.tasks.lock() {
+            tasks.remove(&self.key);
+        }
+    }
+}
+
+impl CslDownloadControl {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn register(&self, key: String) -> Result<CslDownloadRegistration, ApiError> {
+        let mut tasks = self
+            .tasks
+            .lock()
+            .map_err(|_| ApiError::internal("Failed to lock CSL download registry"))?;
+
+        if tasks.contains_key(&key) {
+            return Err(ApiError::conflict(format!(
+                "Download already running for {}",
+                key
+            )));
+        }
+
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        tasks.insert(key.clone(), Arc::clone(&cancel_flag));
+
+        Ok(CslDownloadRegistration {
+            key,
+            cancel_flag,
+            tasks: Arc::clone(&self.tasks),
+        })
+    }
+
+    fn cancel(&self, key: &str) {
+        if let Ok(tasks) = self.tasks.lock() {
+            if let Some(flag) = tasks.get(key) {
+                flag.store(true, Ordering::SeqCst);
+            }
+        }
+    }
+}
+
+fn install_task_key(source: &str, package_name: &str) -> String {
+    format!("{}:{}", source, package_name)
+}
+
+fn clamp_parallel_downloads(parallel_downloads: Option<usize>) -> usize {
+    parallel_downloads.unwrap_or(1).clamp(1, MAX_CSL_PARALLEL_DOWNLOADS)
+}
+
+fn ensure_download_not_cancelled(cancel_flag: &AtomicBool, package_name: &str) -> Result<(), ApiError> {
+    if cancel_flag.load(Ordering::SeqCst) {
+        return Err(ApiError::cancelled(format!(
+            "Download cancelled for {}",
+            package_name
+        )));
+    }
+
+    Ok(())
+}
+
+fn temp_download_path(local_path: &Path) -> PathBuf {
+    let file_name = local_path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "download.tmp".to_string());
+
+    local_path.with_file_name(format!("{}.xfastpart", file_name))
+}
 
 // ============================================================================
 // Data Structures
@@ -409,6 +502,8 @@ async fn download_file(
     server: &str,
     remote_path: &str,
     local_path: &Path,
+    cancel_flag: &AtomicBool,
+    package_name: &str,
 ) -> Result<u64, ApiError> {
     let url = format!("{}/{}", server, remote_path);
 
@@ -422,11 +517,15 @@ async fn download_file(
     }
 
     let mut last_err = None;
+    let tmp_path = temp_download_path(local_path);
 
     for attempt in 0u32..5 {
+        ensure_download_not_cancelled(cancel_flag, package_name)?;
+
         if attempt > 0 {
             let delay = std::time::Duration::from_secs(1 << (attempt - 1)); // 1, 2, 4, 8
             tokio::time::sleep(delay).await;
+            ensure_download_not_cancelled(cancel_flag, package_name)?;
         }
 
         let resp = match client.get(&url).send().await {
@@ -446,28 +545,87 @@ async fn download_file(
             continue;
         }
 
-        let bytes = match resp.bytes().await {
-            Ok(b) => b,
+        let mut file = match std::fs::File::create(&tmp_path) {
+            Ok(file) => file,
             Err(e) => {
-                last_err = Some(format!(
-                    "Failed to read download (attempt {}): {}",
-                    attempt + 1,
-                    e,
-                ));
+                last_err = Some(format!("Failed to create file (attempt {}): {}", attempt + 1, e));
                 continue;
             }
         };
 
-        let size = bytes.len() as u64;
-        std::fs::write(local_path, &bytes).map_err(|e| {
+        let mut stream = resp.bytes_stream();
+        let mut size = 0u64;
+        let mut failed = false;
+
+        while let Some(chunk) = stream.next().await {
+            if let Err(err) = ensure_download_not_cancelled(cancel_flag, package_name) {
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err(err);
+            }
+
+            let chunk = match chunk {
+                Ok(chunk) => chunk,
+                Err(e) => {
+                    last_err = Some(format!(
+                        "Failed to read download (attempt {}): {}",
+                        attempt + 1,
+                        e,
+                    ));
+                    failed = true;
+                    break;
+                }
+            };
+
+            if let Err(e) = file.write_all(&chunk) {
+                last_err = Some(format!(
+                    "Failed to write file (attempt {}): {}",
+                    attempt + 1,
+                    e,
+                ));
+                failed = true;
+                break;
+            }
+
+            size += chunk.len() as u64;
+        }
+
+        if failed {
+            let _ = std::fs::remove_file(&tmp_path);
+            continue;
+        }
+
+        if let Err(err) = ensure_download_not_cancelled(cancel_flag, package_name) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(err);
+        }
+
+        file.flush().map_err(|e| {
             ApiError::new(
                 ApiErrorCode::Internal,
-                format!("Failed to write file: {}", e),
+                format!("Failed to flush file: {}", e),
+            )
+        })?;
+
+        if local_path.exists() {
+            std::fs::remove_file(local_path).map_err(|e| {
+                ApiError::new(
+                    ApiErrorCode::Internal,
+                    format!("Failed to replace existing file: {}", e),
+                )
+            })?;
+        }
+
+        std::fs::rename(&tmp_path, local_path).map_err(|e| {
+            ApiError::new(
+                ApiErrorCode::Internal,
+                format!("Failed to finalize download: {}", e),
             )
         })?;
 
         return Ok(size);
     }
+
+    let _ = std::fs::remove_file(&tmp_path);
 
     Err(ApiError::new(
         ApiErrorCode::NetworkError,
@@ -515,19 +673,48 @@ async fn fetch_package_descriptions(
         let client = client.clone();
         let url = format!("{}/{}/x-csl-info.info", server_owned, name);
         async move {
-            let resp = client.get(&url).send().await.ok()?;
-            if !resp.status().is_success() {
+            for attempt in 0..DESCRIPTION_FETCH_ATTEMPTS {
+                let resp = match client.get(&url).send().await {
+                    Ok(resp) => resp,
+                    Err(_) => {
+                        if attempt + 1 < DESCRIPTION_FETCH_ATTEMPTS {
+                            tokio::time::sleep(std::time::Duration::from_millis(300 * (attempt + 1) as u64)).await;
+                            continue;
+                        }
+                        return None;
+                    }
+                };
+
+                if !resp.status().is_success() {
+                    if attempt + 1 < DESCRIPTION_FETCH_ATTEMPTS {
+                        tokio::time::sleep(std::time::Duration::from_millis(300 * (attempt + 1) as u64)).await;
+                        continue;
+                    }
+                    return None;
+                }
+
+                let text = match resp.text().await {
+                    Ok(text) => text,
+                    Err(_) => {
+                        if attempt + 1 < DESCRIPTION_FETCH_ATTEMPTS {
+                            tokio::time::sleep(std::time::Duration::from_millis(300 * (attempt + 1) as u64)).await;
+                            continue;
+                        }
+                        return None;
+                    }
+                };
+
+                if let Some(first_line) = text.lines().map(str::trim).find(|line| !line.is_empty()) {
+                    return Some((name, first_line.to_string()));
+                }
+
                 return None;
             }
-            let text = resp.text().await.ok()?;
-            let first_line = text.lines().next()?.trim().to_string();
-            if first_line.is_empty() {
-                return None;
-            }
-            Some((name, first_line))
+
+            None
         }
     }))
-    .buffer_unordered(20)
+    .buffer_unordered(DESCRIPTION_FETCH_CONCURRENCY)
     .collect()
     .await;
 
@@ -682,6 +869,7 @@ async fn install_package_internal(
     target_path: String,
     parallel_downloads: Option<usize>,
     app_handle: AppHandle,
+    cancel_flag: Arc<AtomicBool>,
 ) -> Result<(), String> {
     let index_content = fetch_remote_index(server, "x-csl-indexes.idx")
         .await
@@ -735,13 +923,16 @@ async fn install_package_internal(
     let download_total = files_to_download.len();
     let download_total_bytes: u64 = files_to_download.iter().map(|f| f.size_bytes).sum();
 
-    let concurrency = parallel_downloads.unwrap_or(1).clamp(1, 10);
+    let concurrency = clamp_parallel_downloads(parallel_downloads);
 
     if concurrency <= 1 {
         // Sequential download (original behavior)
         let mut bytes_downloaded: u64 = 0;
 
         for (i, file) in files_to_download.iter().enumerate() {
+            ensure_download_not_cancelled(cancel_flag.as_ref(), &package_name)
+                .map_err(|e| e.to_string())?;
+
             let rel_path = file.path.strip_prefix(&prefix).unwrap_or(&file.path);
             let local_path = target_pkg_dir.join(rel_path);
 
@@ -757,7 +948,14 @@ async fn install_package_internal(
                 },
             );
 
-            let downloaded = download_file(&client, server, &file.path, &local_path)
+            let downloaded = download_file(
+                &client,
+                server,
+                &file.path,
+                &local_path,
+                cancel_flag.as_ref(),
+                &package_name,
+            )
                 .await
                 .map_err(|e| e.to_string())?;
 
@@ -778,18 +976,29 @@ async fn install_package_internal(
                 let target_pkg_dir = target_pkg_dir.clone();
                 let app_handle = app_handle.clone();
                 let package_name = package_name.clone();
+                let cancel_flag = cancel_flag.clone();
                 let completed = completed.clone();
                 let bytes_downloaded = bytes_downloaded.clone();
                 let event_name = event_name_owned.clone();
 
                 async move {
+                    ensure_download_not_cancelled(cancel_flag.as_ref(), &package_name)
+                        .map_err(|e| e.to_string())?;
+
                     let rel_path = file_path
                         .strip_prefix(&prefix)
                         .unwrap_or(&file_path);
                     let local_path = target_pkg_dir.join(rel_path);
 
                     let downloaded =
-                        download_file(&client, &server, &file_path, &local_path)
+                        download_file(
+                            &client,
+                            &server,
+                            &file_path,
+                            &local_path,
+                            cancel_flag.as_ref(),
+                            &package_name,
+                        )
                             .await
                             .map_err(|e| e.to_string())?;
 
@@ -1002,6 +1211,77 @@ fn remove_package_links(
     warnings
 }
 
+fn list_installed_canonical_packages(canonical_base: &Path) -> Result<Vec<String>, String> {
+    if !canonical_base.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut packages = Vec::new();
+    let entries = std::fs::read_dir(canonical_base)
+        .map_err(|e| format!("Failed to read canonical CSL dir {}: {}", canonical_base.display(), e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read CSL directory entry: {}", e))?;
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
+                packages.push(name.to_string());
+            }
+        }
+    }
+
+    packages.sort();
+    packages.dedup();
+    Ok(packages)
+}
+
+fn sync_package_links_internal(
+    xplane_path: &str,
+    custom_paths: &[String],
+    package_names: Option<&[String]>,
+    cleanup_paths: Option<&[String]>,
+) -> Result<(), String> {
+    let xplane = Path::new(xplane_path);
+    let canonical_base = xplane.join(CSL_CANONICAL_REL);
+    if !canonical_base.exists() {
+        return Ok(());
+    }
+
+    let active_targets = collect_link_targets(xplane, custom_paths);
+    let packages = match package_names {
+        Some(names) => {
+            let mut names = names.to_vec();
+            names.sort();
+            names.dedup();
+            names
+        }
+        None => list_installed_canonical_packages(&canonical_base)?,
+    };
+
+    let cleanup_targets: Vec<PathBuf> = cleanup_paths
+        .unwrap_or(&[])
+        .iter()
+        .map(PathBuf::from)
+        .filter(|path| *path != canonical_base)
+        .collect();
+
+    for package_name in packages {
+        let canonical_pkg_dir = canonical_base.join(&package_name);
+
+        if !cleanup_targets.is_empty() {
+            let _warnings = remove_package_links(&package_name, &cleanup_targets);
+        }
+
+        if canonical_pkg_dir.is_dir() {
+            let _warnings = create_package_links(&package_name, &canonical_pkg_dir, &active_targets);
+        } else if package_names.is_some() {
+            let _warnings = remove_package_links(&package_name, &active_targets);
+        }
+    }
+
+    Ok(())
+}
+
 // ============================================================================
 // Tauri Commands — CSL
 // ============================================================================
@@ -1145,7 +1425,14 @@ pub async fn csl_install_package(
     custom_paths: Vec<String>,
     parallel_downloads: Option<usize>,
     app_handle: AppHandle,
+    download_control: State<'_, CslDownloadControl>,
 ) -> Result<(), String> {
+    let task_key = install_task_key("csl", &package_name);
+    let _registration = download_control
+        .register(task_key)
+        .map_err(|e| e.to_string())?;
+    let cancel_flag = _registration.cancel_flag();
+
     let xplane = Path::new(&xplane_path);
     let canonical_base = xplane.join(CSL_CANONICAL_REL);
     std::fs::create_dir_all(&canonical_base)
@@ -1159,6 +1446,7 @@ pub async fn csl_install_package(
         canonical_base_str,
         parallel_downloads,
         app_handle,
+        cancel_flag,
     )
     .await?;
 
@@ -1167,6 +1455,21 @@ pub async fn csl_install_package(
     let canonical_pkg_dir = canonical_base.join(&package_name);
     let _warnings = create_package_links(&package_name, &canonical_pkg_dir, &link_targets);
 
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn csl_cancel_install(
+    source: String,
+    package_name: String,
+    download_control: State<'_, CslDownloadControl>,
+) -> Result<(), String> {
+    let normalized_source = match source.as_str() {
+        "altitude" => "altitude",
+        _ => "csl",
+    };
+
+    download_control.cancel(&install_task_key(normalized_source, &package_name));
     Ok(())
 }
 
@@ -1201,6 +1504,21 @@ pub async fn csl_uninstall_package(
 #[tauri::command]
 pub async fn csl_detect_paths(xplane_path: String) -> Result<Vec<CslPath>, String> {
     Ok(detect_csl_paths(Path::new(&xplane_path)))
+}
+
+#[tauri::command]
+pub async fn csl_sync_links(
+    xplane_path: String,
+    custom_paths: Vec<String>,
+    package_names: Option<Vec<String>>,
+    cleanup_paths: Option<Vec<String>>,
+) -> Result<(), String> {
+    sync_package_links_internal(
+        &xplane_path,
+        &custom_paths,
+        package_names.as_deref(),
+        cleanup_paths.as_deref(),
+    )
 }
 
 // ============================================================================
@@ -1359,9 +1677,15 @@ pub async fn altitude_install_package(
     xplane_path: String,
     parallel_downloads: Option<usize>,
     app_handle: AppHandle,
+    download_control: State<'_, CslDownloadControl>,
 ) -> Result<(), String> {
     let xplane = PathBuf::from(&xplane_path);
     let package_name = "ALTITUDE".to_string();
+    let task_key = install_task_key("altitude", &package_name);
+    let _registration = download_control
+        .register(task_key)
+        .map_err(|e| e.to_string())?;
+    let cancel_flag = _registration.cancel_flag();
 
     let index_content = fetch_remote_index(CSL_SERVER, "ALTITUDE/files.idx")
         .await
@@ -1417,11 +1741,14 @@ pub async fn altitude_install_package(
 
     let download_total = files_to_download.len();
     let download_total_bytes: u64 = files_to_download.iter().map(|(f, _)| f.size_bytes).sum();
-    let concurrency = parallel_downloads.unwrap_or(1).clamp(1, 10);
+    let concurrency = clamp_parallel_downloads(parallel_downloads);
 
     if concurrency <= 1 {
         let mut bytes_downloaded: u64 = 0;
         for (i, (file, local_path)) in files_to_download.iter().enumerate() {
+            ensure_download_not_cancelled(cancel_flag.as_ref(), &package_name)
+                .map_err(|e| e.to_string())?;
+
             let display_name = file.path.strip_prefix(pkg_prefix).unwrap_or(&file.path);
             let _ = app_handle.emit(
                 "altitude-progress",
@@ -1434,7 +1761,14 @@ pub async fn altitude_install_package(
                     total_bytes: download_total_bytes,
                 },
             );
-            let downloaded = download_file(&client, ALTITUDE_SERVER, &file.path, local_path)
+            let downloaded = download_file(
+                &client,
+                ALTITUDE_SERVER,
+                &file.path,
+                local_path,
+                cancel_flag.as_ref(),
+                &package_name,
+            )
                 .await
                 .map_err(|e| e.to_string())?;
             bytes_downloaded += downloaded;
@@ -1453,13 +1787,24 @@ pub async fn altitude_install_package(
                 let client = client.clone();
                 let app_handle = app_handle.clone();
                 let package_name = package_name.clone();
+                let cancel_flag = cancel_flag.clone();
                 let completed = completed.clone();
                 let bytes_downloaded = bytes_downloaded.clone();
                 let pkg_prefix = pkg_prefix_owned.clone();
 
                 async move {
+                    ensure_download_not_cancelled(cancel_flag.as_ref(), &package_name)
+                        .map_err(|e| e.to_string())?;
+
                     let downloaded =
-                        download_file(&client, ALTITUDE_SERVER, &remote_path, &local_path)
+                        download_file(
+                            &client,
+                            ALTITUDE_SERVER,
+                            &remote_path,
+                            &local_path,
+                            cancel_flag.as_ref(),
+                            &package_name,
+                        )
                             .await
                             .map_err(|e| e.to_string())?;
 
@@ -1540,4 +1885,24 @@ pub async fn altitude_uninstall_package(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamp_parallel_downloads_limits_to_twelve() {
+        assert_eq!(clamp_parallel_downloads(None), 1);
+        assert_eq!(clamp_parallel_downloads(Some(0)), 1);
+        assert_eq!(clamp_parallel_downloads(Some(8)), 8);
+        assert_eq!(clamp_parallel_downloads(Some(12)), 12);
+        assert_eq!(clamp_parallel_downloads(Some(64)), 12);
+    }
+
+    #[test]
+    fn install_task_key_includes_source() {
+        assert_eq!(install_task_key("csl", "B738"), "csl:B738");
+        assert_eq!(install_task_key("altitude", "ALTITUDE"), "altitude:ALTITUDE");
+    }
 }

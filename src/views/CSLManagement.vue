@@ -7,7 +7,7 @@
       </h1>
       <button
         class="text-sm px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-        :disabled="isAnyLoading"
+        :disabled="isAnyLoading || isAnyInstalling"
         @click="scanAll"
       >
         <div
@@ -131,29 +131,37 @@
           </div>
         </div>
 
-        <!-- Progress -->
+        <!-- Active install -->
         <div
-          v-if="isInstalling(pkg) && getProgress(pkg)"
-          class="flex items-center gap-2 text-xs"
+          v-if="isInstalling(pkg)"
+          class="flex items-center gap-2 text-xs flex-shrink-0"
           :class="pkg.source === 'altitude' ? 'text-indigo-600 dark:text-indigo-400' : 'text-blue-600 dark:text-blue-400'"
         >
           <div
             class="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
             :class="pkg.source === 'altitude' ? 'border-indigo-600' : 'border-blue-600'"
           ></div>
-          <span>{{ getProgress(pkg)!.current_file }}/{{ getProgress(pkg)!.total_files }}</span>
+          <span v-if="getProgress(pkg)">{{ getProgress(pkg)!.current_file }}/{{ getProgress(pkg)!.total_files }}</span>
+          <button
+            class="px-2 py-1 rounded border text-xs transition-colors disabled:opacity-50"
+            :class="pkg.source === 'altitude'
+              ? 'border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'
+              : 'border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20'"
+            :disabled="isCancelling(pkg)"
+            @click="cancelInstall(pkg)"
+          >{{ $t('common.cancel') }}</button>
         </div>
 
-        <!-- Spinner (no progress yet) -->
+        <!-- Queued -->
         <div
-          v-else-if="isInstalling(pkg)"
-          class="flex items-center gap-2 text-xs"
-          :class="pkg.source === 'altitude' ? 'text-indigo-600 dark:text-indigo-400' : 'text-blue-600 dark:text-blue-400'"
+          v-else-if="isQueued(pkg)"
+          class="flex items-center gap-2 text-xs flex-shrink-0 text-gray-500 dark:text-gray-400"
         >
-          <div
-            class="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
-            :class="pkg.source === 'altitude' ? 'border-indigo-600' : 'border-blue-600'"
-          ></div>
+          <span class="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800">{{ $t('home.waiting') }}</span>
+          <button
+            class="px-2 py-1 rounded border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            @click="cancelInstall(pkg)"
+          >{{ $t('common.cancel') }}</button>
         </div>
 
         <!-- Actions -->
@@ -311,7 +319,7 @@ const combinedPackages = computed<DisplayPackage[]>(() => {
 
 const hasPackages = computed(() => store.allScansDone && combinedPackages.value.length > 0)
 const isAnyLoading = computed(() => store.isLoading || store.altitudeLoading)
-const isAnyInstalling = computed(() => store.installingPackages.length > 0 || store.altitudeInstallingPackages.length > 0)
+const isAnyInstalling = computed(() => store.hasPendingInstalls)
 
 const combinedTotalPackages = computed(() => store.totalPackages + store.altitudeTotalPackages)
 const combinedInstalledCount = computed(() => store.installedCount + store.altitudeInstalledCount)
@@ -384,6 +392,20 @@ function isInstalling(pkg: DisplayPackage): boolean {
   return store.installingPackages.includes(pkg.name)
 }
 
+function isQueued(pkg: DisplayPackage): boolean {
+  if (pkg.source === 'altitude') {
+    return store.queuedAltitudePackages.includes(pkg.name)
+  }
+  return store.queuedPackages.includes(pkg.name)
+}
+
+function isCancelling(pkg: DisplayPackage): boolean {
+  if (pkg.source === 'altitude') {
+    return store.cancellingAltitudePackages.includes(pkg.name)
+  }
+  return store.cancellingPackages.includes(pkg.name)
+}
+
 function getProgress(pkg: DisplayPackage): CslProgress | undefined {
   if (pkg.source === 'altitude') {
     return store.altitudeProgressMap[pkg.name]
@@ -397,6 +419,10 @@ function handleInstall(pkg: DisplayPackage) {
   } else {
     store.installPackage(pkg.name)
   }
+}
+
+function cancelInstall(pkg: DisplayPackage) {
+  void store.cancelInstall(pkg.source, pkg.name)
 }
 
 function handleUninstall(pkg: DisplayPackage) {
@@ -424,8 +450,11 @@ function scanAll() {
 }
 
 function installAll() {
-  store.installAll()
-  store.installAllAltitude()
+  store.installAllCombined(
+    combinedPackages.value
+      .filter((pkg) => pkg.status !== 'up_to_date')
+      .map((pkg) => ({ source: pkg.source, name: pkg.name })),
+  )
 }
 
 async function addCustomPath() {
