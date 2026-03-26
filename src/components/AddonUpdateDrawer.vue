@@ -284,6 +284,7 @@ function remoteVersion(task: AddonUpdateDrawerTask, state: TaskUiState): string 
 
 function planNeedsAction(plan: AddonUpdatePlan | null | undefined): boolean {
   if (!plan) return false
+  if (plan.manualDownloadUrl) return true
   if (plan.hasUpdate) return true
   if ((plan.estimatedDownloadBytes || 0) > 0) return true
   if ((plan.addFiles?.length || 0) > 0) return true
@@ -308,6 +309,16 @@ function localVersionTextClass(task: AddonUpdateDrawerTask, state: TaskUiState):
 
 function targetVersionTextClass(_task: AddonUpdateDrawerTask, _state: TaskUiState): string {
   return 'text-emerald-600 dark:text-emerald-400 font-semibold'
+}
+
+async function openManualDownload(url?: string | null) {
+  const target = String(url || '').trim()
+  if (!target) return
+  try {
+    await invoke('open_url', { url: target })
+  } catch (e) {
+    toast.error(String(e))
+  }
 }
 
 function clearPreferenceRefreshTimer() {
@@ -422,6 +433,11 @@ async function startUpdate(task: AddonUpdateDrawerTask) {
   if (!state.plan) return
   if (state.plan.remoteLocked) {
     toast.warning(t('management.remoteLocked'))
+    return
+  }
+
+  if (state.plan.manualDownloadUrl) {
+    await openManualDownload(state.plan.manualDownloadUrl)
     return
   }
 
@@ -737,7 +753,9 @@ watch(
                           v-if="
                             !stateFor(task).installing &&
                             stateFor(task).plan &&
-                            !stateFor(task).plan?.remoteLocked
+                            !stateFor(task).plan?.remoteLocked &&
+                            !stateFor(task).plan?.manualDownloadUrl &&
+                            stateFor(task).plan?.provider !== 'zibo'
                           "
                           class="px-3 py-1.5 rounded-lg text-xs text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50"
                           :disabled="
@@ -754,6 +772,18 @@ watch(
                         <button
                           v-if="
                             !stateFor(task).loadingPlan &&
+                            stateFor(task).plan?.manualDownloadUrl
+                          "
+                          class="px-3 py-1.5 rounded-lg text-xs text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-50"
+                          :disabled="stateFor(task).loadingPlan || stateFor(task).installing"
+                          @click.stop="openManualDownload(stateFor(task).plan?.manualDownloadUrl)"
+                        >
+                          {{ t('management.downloadMajorVersion') }}
+                        </button>
+                        <button
+                          v-if="
+                            !stateFor(task).loadingPlan &&
+                            !stateFor(task).plan?.manualDownloadUrl &&
                             (!stateFor(task).plan || planNeedsAction(stateFor(task).plan))
                           "
                           class="px-3 py-1.5 rounded-lg text-xs text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
@@ -846,7 +876,13 @@ watch(
                             {{ formatBytes(stateFor(task).plan?.estimatedDownloadBytes || 0) }}
                           </p>
                         </div>
-                        <div v-if="task.itemType === 'aircraft' || stateFor(task).plan?.hasBetaConfig" class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/70 dark:to-slate-900/50 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:shadow-none">
+                        <div
+                          v-if="
+                            stateFor(task).plan?.provider !== 'zibo' &&
+                            (task.itemType === 'aircraft' || stateFor(task).plan?.hasBetaConfig)
+                          "
+                          class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/70 dark:to-slate-900/50 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:shadow-none"
+                        >
                           <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
                             {{ t('management.updateOptions') }}
                           </p>
@@ -891,6 +927,20 @@ watch(
                       >
                         {{ t('management.remoteLocked') }}
                       </p>
+                      <div
+                        v-if="stateFor(task).plan?.manualDownloadUrl"
+                        class="rounded-lg border border-sky-200 dark:border-sky-700 bg-sky-50/70 dark:bg-sky-900/20 p-2 flex items-center justify-between gap-3"
+                      >
+                        <p class="text-xs text-sky-700 dark:text-sky-300">
+                          {{ t('management.ziboManualDownloadHint') }}
+                        </p>
+                        <button
+                          class="px-2.5 py-1 rounded text-xs font-medium text-white bg-sky-600 hover:bg-sky-700"
+                          @click.stop="openManualDownload(stateFor(task).plan?.manualDownloadUrl)"
+                        >
+                          {{ t('management.downloadMajorVersion') }}
+                        </button>
+                      </div>
 
                       <div class="grid grid-cols-1 lg:grid-cols-2 gap-2">
                         <div

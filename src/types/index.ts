@@ -327,6 +327,7 @@ export interface AircraftInfo {
   liveryCount: number
   version?: string
   updateUrl?: string
+  updateProvider?: 'skunkcrafts' | 'x-updater' | 'zibo'
   latestVersion?: string
   hasUpdate: boolean
   cfgDisabled?: boolean
@@ -346,6 +347,7 @@ export interface PluginInfo {
   platform: string
   version?: string
   updateUrl?: string
+  updateProvider?: 'skunkcrafts' | 'x-updater'
   latestVersion?: string
   hasUpdate: boolean
   cfgDisabled?: boolean
@@ -396,6 +398,7 @@ export interface AddonUpdatePlan {
   localVersion?: string
   remoteVersion?: string
   remoteModule?: string
+  manualDownloadUrl?: string
   remoteLocked: boolean
   hasUpdate: boolean
   estimatedDownloadBytes: number

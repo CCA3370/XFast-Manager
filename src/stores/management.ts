@@ -71,15 +71,34 @@ function isXUpdaterTaggedUrl(url: string): boolean {
   return url.trim().toLowerCase().startsWith('x-updater:')
 }
 
-function getUpdateCacheKey(item: { updateUrl?: string; folderName: string }): string | null {
+function getUpdateProvider(item: { updateProvider?: string; updateUrl?: string }): string | null {
+  const provider = item.updateProvider?.trim()
+  if (provider) return provider
+
+  const updateUrl = item.updateUrl?.trim()
+  if (!updateUrl) return null
+  return isXUpdaterTaggedUrl(updateUrl) ? 'x-updater' : 'skunkcrafts'
+}
+
+function usesRemoteUpdateCheck(item: { updateProvider?: string; updateUrl?: string }): boolean {
+  const provider = getUpdateProvider(item)
+  return provider === 'skunkcrafts' || provider === 'zibo'
+}
+
+function getUpdateCacheKey(item: {
+  updateUrl?: string
+  updateProvider?: string
+  folderName: string
+}): string | null {
   const updateUrl = item.updateUrl?.trim()
   if (!updateUrl) return null
 
-  if (isXUpdaterTaggedUrl(updateUrl)) {
+  const provider = getUpdateProvider(item)
+  if (!provider || provider === 'x-updater') {
     return null
   }
 
-  return updateUrl
+  return `${provider}:${updateUrl}`
 }
 
 // Evict expired entries and oldest entries if cache is too large
@@ -123,6 +142,7 @@ function setCacheEntry(url: string, entry: UpdateCacheEntry) {
 // Type for items that can have update info
 interface UpdatableItem {
   updateUrl?: string
+  updateProvider?: string
   version?: string
   latestVersion?: string
   hasUpdate: boolean
@@ -347,7 +367,11 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   // Helper function to check if cache is valid
-  function isCacheValid(item: { updateUrl?: string; folderName: string }): boolean {
+  function isCacheValid(item: {
+    updateUrl?: string
+    updateProvider?: string
+    folderName: string
+  }): boolean {
     const key = getUpdateCacheKey(item)
     if (!key) return false
     const cached = updateCache.get(key)
@@ -376,15 +400,15 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   // Get items that need update check (no valid cache, and not locked)
-  function getItemsNeedingUpdateCheck<T extends { updateUrl?: string; folderName: string }>(
+  function getItemsNeedingUpdateCheck<
+    T extends { updateUrl?: string; updateProvider?: string; folderName: string },
+  >(
     items: T[],
     itemType: 'aircraft' | 'plugin',
   ): T[] {
     const lockStore = useLockStore()
     return items.filter((item) => {
-      const updateUrl = item.updateUrl?.trim()
-      if (!updateUrl) return false
-      if (isXUpdaterTaggedUrl(updateUrl)) return false
+      if (!usesRemoteUpdateCheck(item)) return false
       if (isCacheValid(item)) return false
       // Skip locked items - they shouldn't be checked for updates
       if (lockStore.isLocked(itemType, item.folderName)) return false

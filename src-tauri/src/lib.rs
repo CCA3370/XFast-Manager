@@ -55,6 +55,8 @@ mod management_index;
 mod skunk_updater;
 #[path = "management/x_updater_profile.rs"]
 mod x_updater_profile;
+#[path = "management/zibo_updater.rs"]
+mod zibo_updater;
 
 // Screenshot
 #[path = "screenshot/mod.rs"]

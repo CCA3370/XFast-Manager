@@ -589,6 +589,9 @@ pub struct AircraftInfo {
     pub version: Option<String>,
     /// URL for checking updates (from skunkcrafts_updater.cfg module| field)
     pub update_url: Option<String>,
+    /// Update provider type (e.g. skunkcrafts, x-updater, zibo)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_provider: Option<String>,
     /// Latest version from remote server (populated by check_aircraft_updates)
     pub latest_version: Option<String>,
     /// Whether an update is available
@@ -618,6 +621,9 @@ pub struct PluginInfo {
     pub version: Option<String>,
     /// URL for checking updates (from skunkcrafts_updater.cfg module| field)
     pub update_url: Option<String>,
+    /// Update provider type (e.g. skunkcrafts, x-updater)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_provider: Option<String>,
     /// Latest version from remote server (populated by check_plugins_updates)
     pub latest_version: Option<String>,
     /// Whether an update is available
@@ -1037,6 +1043,7 @@ mod tests {
                 livery_count: 5,
                 version: Some("1.0".to_string()),
                 update_url: None,
+                update_provider: None,
                 latest_version: None,
                 has_update: false,
                 cfg_disabled: None,

@@ -25,6 +25,7 @@ export interface TaskState {
 
 /** Delay to batch multiple CLI file selections (500ms) */
 const CLI_ARGS_BATCH_DELAY_MS = 500
+const XCSL_DEV_FLAG = '--xcsldev'
 
 export const useAppStore = defineStore('app', () => {
   const xplanePath = ref<string>('')
@@ -38,6 +39,7 @@ export const useAppStore = defineStore('app', () => {
   // Platform detection (initialized at app startup)
   const isWindows = ref(false)
   const isContextMenuRegistered = ref(false)
+  const isXcslDev = ref(false)
 
   // Log level setting (basic, full, debug)
   const logLevel = ref<LogLevel>('full')
@@ -352,10 +354,7 @@ export const useAppStore = defineStore('app', () => {
 
   async function toggleCrashAnalysisIgnoreDateCheck() {
     crashAnalysisIgnoreDateCheck.value = !crashAnalysisIgnoreDateCheck.value
-    await setItem(
-      STORAGE_KEYS.CRASH_ANALYSIS_IGNORE_DATE_CHECK,
-      crashAnalysisIgnoreDateCheck.value,
-    )
+    await setItem(STORAGE_KEYS.CRASH_ANALYSIS_IGNORE_DATE_CHECK, crashAnalysisIgnoreDateCheck.value)
   }
 
   async function toggleCrashAnalysisDmpEnabled() {
@@ -547,14 +546,36 @@ export const useAppStore = defineStore('app', () => {
 
   // Set pending CLI args for Home.vue to process
   function setPendingCliArgs(args: string[]) {
-    pendingCliArgs.value = args
+    const fileArgs = splitCliArgs(args)
+    pendingCliArgs.value = fileArgs.length > 0 ? fileArgs : null
+  }
+
+  function splitCliArgs(args: string[]): string[] {
+    const fileArgs: string[] = []
+
+    for (const arg of args) {
+      if (arg === XCSL_DEV_FLAG) {
+        isXcslDev.value = true
+        continue
+      }
+
+      fileArgs.push(arg)
+    }
+
+    return fileArgs
   }
 
   // Add CLI args to batch (for handling multiple file selections)
   // Thread-safe: Uses Set for deduplication and reactive timer for proper cleanup
   function addCliArgsToBatch(args: string[]) {
+    const fileArgs = splitCliArgs(args)
+
+    if (fileArgs.length === 0) {
+      return []
+    }
+
     // Add new args to batch using Set for automatic deduplication
-    args.forEach((arg) => cliArgsBatch.value.add(arg))
+    fileArgs.forEach((arg) => cliArgsBatch.value.add(arg))
 
     // Clear existing timer if any
     if (cliArgsBatchTimerId.value !== null) {
@@ -580,6 +601,8 @@ export const useAppStore = defineStore('app', () => {
       }
       cliArgsBatchTimerId.value = null
     }, CLI_ARGS_BATCH_DELAY_MS)
+
+    return fileArgs
   }
 
   // Clear pending CLI args after processing
@@ -626,6 +649,7 @@ export const useAppStore = defineStore('app', () => {
     isAnalyzeInProgress,
     isWindows,
     isContextMenuRegistered,
+    isXcslDev,
     installPreferences,
     verificationPreferences,
     atomicInstallEnabled,

@@ -144,6 +144,8 @@ export const STORAGE_KEYS = {
   MAP_SIMBRIEF_PILOT_ID: 'mapSimbriefPilotId',
   MAP_FOLLOW_PLANE: 'mapFollowPlane',
   MAP_WEIGHT_UNIT: 'mapWeightUnit',
+  CSL_SERVER_BASE_URLS: 'cslServerBaseUrls',
+  CSL_ACTIVE_SERVER_BASE_URL: 'cslActiveServerBaseUrl',
 } as const
 
 export type TrackedIssueSource = 'feedback' | 'auto-report' | 'library-link'

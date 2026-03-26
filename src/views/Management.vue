@@ -268,17 +268,19 @@ function toggleSelect(folderName: string) {
 
 const isBatchProcessing = ref(false)
 
-function isSkunkUpdateUrl(url?: string): boolean {
-  const value = (url || '').trim().toLowerCase()
+function isDrawerUpdatable(item: { updateUrl?: string; updateProvider?: string }): boolean {
+  if (item.updateProvider === 'x-updater') return false
+  if (item.updateProvider === 'zibo') return true
+  const value = (item.updateUrl || '').trim().toLowerCase()
   return !!value && !value.startsWith('x-updater:')
 }
 
 const skunkUpdatableAircraftCount = computed(() => {
-  return managementStore.sortedAircraft.filter((item) => isSkunkUpdateUrl(item.updateUrl)).length
+  return managementStore.sortedAircraft.filter((item) => isDrawerUpdatable(item)).length
 })
 
 const skunkUpdatablePluginCount = computed(() => {
-  return managementStore.sortedPlugins.filter((item) => isSkunkUpdateUrl(item.updateUrl)).length
+  return managementStore.sortedPlugins.filter((item) => isDrawerUpdatable(item)).length
 })
 
 const currentSkunkUpdatableCount = computed(() => {
@@ -290,9 +292,7 @@ const currentSkunkUpdatableCount = computed(() => {
 const selectedSkunkUpdateTasks = computed<AddonUpdateDrawerTask[]>(() => {
   if (activeTab.value === 'aircraft') {
     return managementStore.sortedAircraft
-      .filter(
-        (item) => selectedAircraft.value.has(item.folderName) && isSkunkUpdateUrl(item.updateUrl),
-      )
+      .filter((item) => selectedAircraft.value.has(item.folderName) && isDrawerUpdatable(item))
       .map((item) => ({
         itemType: 'aircraft' as const,
         folderName: item.folderName,
@@ -304,9 +304,7 @@ const selectedSkunkUpdateTasks = computed<AddonUpdateDrawerTask[]>(() => {
 
   if (activeTab.value === 'plugin') {
     return managementStore.sortedPlugins
-      .filter(
-        (item) => selectedPlugins.value.has(item.folderName) && isSkunkUpdateUrl(item.updateUrl),
-      )
+      .filter((item) => selectedPlugins.value.has(item.folderName) && isDrawerUpdatable(item))
       .map((item) => ({
         itemType: 'plugin' as const,
         folderName: item.folderName,
@@ -356,7 +354,7 @@ async function batchSetEnabled(enabled: boolean) {
 function buildUpdateAllTargets(tab: 'aircraft' | 'plugin'): AddonUpdateDrawerTask[] {
   if (tab === 'aircraft') {
     return managementStore.sortedAircraft
-      .filter((item) => isSkunkUpdateUrl(item.updateUrl))
+      .filter((item) => isDrawerUpdatable(item))
       .map((item) => ({
         itemType: 'aircraft' as const,
         folderName: item.folderName,
@@ -367,7 +365,7 @@ function buildUpdateAllTargets(tab: 'aircraft' | 'plugin'): AddonUpdateDrawerTas
   }
 
   return managementStore.sortedPlugins
-    .filter((item) => isSkunkUpdateUrl(item.updateUrl))
+    .filter((item) => isDrawerUpdatable(item))
     .map((item) => ({
       itemType: 'plugin' as const,
       folderName: item.folderName,

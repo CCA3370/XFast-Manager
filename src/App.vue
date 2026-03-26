@@ -613,7 +613,8 @@ const showSponsor = ref(false)
 const navExpanded = ref(false)
 
 // Log analysis hint
-const logAnalysisLink = ref<HTMLElement | null>(null)
+type LinkRefTarget = HTMLElement | { $el?: HTMLElement | null } | null
+const logAnalysisLink = ref<LinkRefTarget>(null)
 const hintPosition = ref({ top: 0, left: 0 })
 
 async function toggleAlwaysOnTop() {
@@ -870,8 +871,10 @@ onMounted(async () => {
       if (event.payload && event.payload.length > 0) {
         // Use batch processing to handle multiple file selections
         // (Windows launches separate instances for each file)
-        store.addCliArgsToBatch(event.payload)
-        await router.push('/')
+        const fileArgs = store.addCliArgsToBatch(event.payload)
+        if (fileArgs.length > 0) {
+          await router.push('/')
+        }
       }
     })
   } catch (error) {
@@ -886,8 +889,10 @@ onMounted(async () => {
     if (args && args.length > 0) {
       logDebug(`CLI args from first launch: ${args.join(', ')}`, 'app')
       logBasic(t('log.launchedWithArgs'), 'app')
-      store.addCliArgsToBatch(args)
-      await router.push('/')
+      const fileArgs = store.addCliArgsToBatch(args)
+      if (fileArgs.length > 0) {
+        await router.push('/')
+      }
     }
   } catch (error) {
     logError(`Failed to get CLI args on startup: ${error}`, 'app')
@@ -998,9 +1003,10 @@ onMounted(async () => {
   // Compute hint position after DOM is ready
   if (store.logAnalysisHintVisible) {
     setTimeout(() => {
-      const el = (logAnalysisLink.value as any)?.$el ?? logAnalysisLink.value
+      const linkTarget = logAnalysisLink.value
+      const el = linkTarget instanceof HTMLElement ? linkTarget : linkTarget?.$el ?? null
       if (el) {
-        const rect = (el as HTMLElement).getBoundingClientRect()
+        const rect = el.getBoundingClientRect()
         hintPosition.value = {
           top: rect.bottom + 10,
           left: rect.left + rect.width / 2,

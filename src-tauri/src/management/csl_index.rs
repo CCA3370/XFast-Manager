@@ -10,11 +10,11 @@ use tokio::sync::Mutex;
 
 use crate::error::{ApiError, ApiErrorCode};
 
-const CSL_SERVER: &str = "http://x-csl.ru/package";
+const DEFAULT_SERVER_BASE_URL: &str = "http://x-csl.ru";
 const CSL_CANONICAL_REL: &str = "Resources/plugins/IVAO_CSL/CSL";
-
-/// ALTITUDE files are hosted one level deeper: /package/ALTITUDE/{path}
-const ALTITUDE_SERVER: &str = "http://x-csl.ru/package/ALTITUDE";
+const CSL_API_BASE_PATH: &str = "package";
+const CSL_INDEX_PATH: &str = "package/x-csl-indexes.idx";
+const ALTITUDE_INDEX_PATH: &str = "package/ALTITUDE/files.idx";
 const MAX_CSL_PARALLEL_DOWNLOADS: usize = 12;
 const DESCRIPTION_FETCH_CONCURRENCY: usize = 6;
 const DESCRIPTION_FETCH_ATTEMPTS: u32 = 3;
@@ -25,7 +25,7 @@ static INDEX_CACHE: std::sync::LazyLock<Mutex<HashMap<String, (std::time::Instan
 
 const INDEX_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(300); // 5 minutes
 
-/// Cached package descriptions (package_name → description). Long-lived — descriptions rarely change.
+/// Cached package descriptions, keyed by "{server}::{package_name}".
 static DESC_CACHE: std::sync::LazyLock<Mutex<HashMap<String, String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -127,6 +127,27 @@ fn temp_download_path(local_path: &Path) -> PathBuf {
         .unwrap_or_else(|| "download.tmp".to_string());
 
     local_path.with_file_name(format!("{}.xfastpart", file_name))
+}
+
+fn resolve_server_base_url(server_base_url: Option<&str>) -> String {
+    server_base_url
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .unwrap_or(DEFAULT_SERVER_BASE_URL)
+        .trim_end_matches('/')
+        .to_string()
+}
+
+fn resolve_csl_api_base(server_base_url: Option<&str>) -> String {
+    format!(
+        "{}/{}",
+        resolve_server_base_url(server_base_url),
+        CSL_API_BASE_PATH
+    )
+}
+
+fn description_cache_key(server: &str, package_name: &str) -> String {
+    format!("{}::{}", server, package_name)
 }
 
 // ============================================================================
@@ -659,7 +680,8 @@ async fn fetch_package_descriptions(
         let mut known = HashMap::new();
         let mut unknown = Vec::new();
         for name in &package_names {
-            if let Some(desc) = cache.get(name) {
+            let cache_key = description_cache_key(server, name);
+            if let Some(desc) = cache.get(&cache_key) {
                 known.insert(name.clone(), desc.clone());
             } else {
                 unknown.push(name.clone());
@@ -749,7 +771,7 @@ async fn fetch_package_descriptions(
     if !new_entries.is_empty() {
         let mut cache = DESC_CACHE.lock().await;
         for (name, desc) in &new_entries {
-            cache.insert(name.clone(), desc.clone());
+            cache.insert(description_cache_key(server, name), desc.clone());
         }
     }
     for (name, desc) in new_entries {
@@ -1327,6 +1349,7 @@ fn sync_package_links_internal(
 pub async fn csl_scan_packages(
     xplane_path: String,
     custom_paths: Vec<String>,
+    server_base_url: Option<String>,
 ) -> Result<CslScanResult, String> {
     let (paths, _) = collect_scan_paths(&xplane_path, &custom_paths);
 
@@ -1339,7 +1362,8 @@ pub async fn csl_scan_packages(
         vec![]
     };
 
-    scan_packages_internal(CSL_SERVER, paths, scan_paths).await
+    let api_base = resolve_csl_api_base(server_base_url.as_deref());
+    scan_packages_internal(&api_base, paths, scan_paths).await
 }
 
 /// Rescan specific packages only (uses cached index).
@@ -1349,13 +1373,15 @@ pub async fn csl_scan_packages(
 pub async fn csl_rescan_packages(
     xplane_path: String,
     package_names: Vec<String>,
+    server_base_url: Option<String>,
 ) -> Result<Vec<CslPackageInfo>, String> {
     let xplane = Path::new(&xplane_path);
     let canonical = xplane.join(CSL_CANONICAL_REL);
     let scan_paths = vec![canonical.to_string_lossy().to_string()];
+    let server_base_url = resolve_server_base_url(server_base_url.as_deref());
 
     // Fetch index (hits cache if recent scan happened)
-    let index_content = fetch_remote_index(CSL_SERVER, "x-csl-indexes.idx")
+    let index_content = fetch_remote_index(&server_base_url, CSL_INDEX_PATH)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1453,6 +1479,7 @@ pub async fn csl_install_package(
     xplane_path: String,
     custom_paths: Vec<String>,
     parallel_downloads: Option<usize>,
+    server_base_url: Option<String>,
     app_handle: AppHandle,
     download_control: State<'_, CslDownloadControl>,
 ) -> Result<(), String> {
@@ -1464,12 +1491,13 @@ pub async fn csl_install_package(
 
     let xplane = Path::new(&xplane_path);
     let canonical_base = xplane.join(CSL_CANONICAL_REL);
+    let api_base = resolve_csl_api_base(server_base_url.as_deref());
     std::fs::create_dir_all(&canonical_base)
         .map_err(|e| format!("Failed to create canonical CSL dir: {}", e))?;
 
     let canonical_base_str = canonical_base.to_string_lossy().to_string();
     install_package_internal(
-        CSL_SERVER,
+        &api_base,
         "csl-progress",
         package_name.clone(),
         canonical_base_str,
@@ -1650,10 +1678,14 @@ fn compare_altitude_files(files: &[FileEntry], xplane: &Path) -> (String, usize,
 
 /// Scan ALTITUDE supplementary package
 #[tauri::command]
-pub async fn altitude_scan_packages(xplane_path: String) -> Result<CslScanResult, String> {
+pub async fn altitude_scan_packages(
+    xplane_path: String,
+    server_base_url: Option<String>,
+) -> Result<CslScanResult, String> {
     let xplane = PathBuf::from(&xplane_path);
+    let server_base_url = resolve_server_base_url(server_base_url.as_deref());
 
-    let index_content = fetch_remote_index(CSL_SERVER, "ALTITUDE/files.idx")
+    let index_content = fetch_remote_index(&server_base_url, ALTITUDE_INDEX_PATH)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1707,18 +1739,21 @@ pub async fn altitude_scan_packages(xplane_path: String) -> Result<CslScanResult
 pub async fn altitude_install_package(
     xplane_path: String,
     parallel_downloads: Option<usize>,
+    server_base_url: Option<String>,
     app_handle: AppHandle,
     download_control: State<'_, CslDownloadControl>,
 ) -> Result<(), String> {
     let xplane = PathBuf::from(&xplane_path);
     let package_name = "ALTITUDE".to_string();
+    let resolved_server_base_url = resolve_server_base_url(server_base_url.as_deref());
+    let api_base = resolve_csl_api_base(server_base_url.as_deref());
     let task_key = install_task_key("altitude", &package_name);
     let _registration = download_control
         .register(task_key)
         .map_err(|e| e.to_string())?;
     let cancel_flag = _registration.cancel_flag();
 
-    let index_content = fetch_remote_index(CSL_SERVER, "ALTITUDE/files.idx")
+    let index_content = fetch_remote_index(&resolved_server_base_url, ALTITUDE_INDEX_PATH)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1794,7 +1829,7 @@ pub async fn altitude_install_package(
             );
             let downloaded = download_file(
                 &client,
-                ALTITUDE_SERVER,
+                &api_base,
                 &file.path,
                 local_path,
                 cancel_flag.as_ref(),
@@ -1818,6 +1853,7 @@ pub async fn altitude_install_package(
                 let client = client.clone();
                 let app_handle = app_handle.clone();
                 let package_name = package_name.clone();
+                let api_base = api_base.clone();
                 let cancel_flag = cancel_flag.clone();
                 let completed = completed.clone();
                 let bytes_downloaded = bytes_downloaded.clone();
@@ -1829,7 +1865,7 @@ pub async fn altitude_install_package(
 
                     let downloaded = download_file(
                         &client,
-                        ALTITUDE_SERVER,
+                        &api_base,
                         &remote_path,
                         &local_path,
                         cancel_flag.as_ref(),
@@ -1885,10 +1921,14 @@ pub async fn altitude_install_package(
 
 /// Uninstall the ALTITUDE supplementary package
 #[tauri::command]
-pub async fn altitude_uninstall_package(xplane_path: String) -> Result<(), String> {
+pub async fn altitude_uninstall_package(
+    xplane_path: String,
+    server_base_url: Option<String>,
+) -> Result<(), String> {
     let xplane = Path::new(&xplane_path);
+    let server_base_url = resolve_server_base_url(server_base_url.as_deref());
 
-    let index_content = fetch_remote_index(CSL_SERVER, "ALTITUDE/files.idx")
+    let index_content = fetch_remote_index(&server_base_url, ALTITUDE_INDEX_PATH)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1935,6 +1975,19 @@ mod tests {
         assert_eq!(
             install_task_key("altitude", "ALTITUDE"),
             "altitude:ALTITUDE"
+        );
+    }
+
+    #[test]
+    fn resolve_server_urls_trim_and_default() {
+        assert_eq!(resolve_server_base_url(None), DEFAULT_SERVER_BASE_URL);
+        assert_eq!(
+            resolve_server_base_url(Some("https://example.com///")),
+            "https://example.com"
+        );
+        assert_eq!(
+            resolve_csl_api_base(Some("https://example.com/")),
+            "https://example.com/package"
         );
     }
 }

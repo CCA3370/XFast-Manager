@@ -1226,7 +1226,6 @@ function cloneEditParams(params: ScreenshotEditParams): ScreenshotEditParams {
   }
 }
 
-// @ts-ignore -- reserved for future worker-based preview
 async function renderPreviewInWorker(
   params: ScreenshotEditParams,
   maxSide: number,
@@ -2079,8 +2078,8 @@ onBeforeUnmount(() => {
               <button
                 class="text-sm px-2 py-1 flex items-center gap-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
                 :disabled="previewBusy || saveBusy"
-                @click="resetEditor"
                 :title="$t('screenshot.reset')"
+                @click="resetEditor"
               >
                 <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -2095,8 +2094,8 @@ onBeforeUnmount(() => {
               <button
                 class="text-sm px-2 py-1 flex items-center gap-1.5 rounded hover:bg-green-50 dark:hover:bg-green-900/20 text-green-600 dark:text-green-500"
                 :disabled="saveBusy"
-                @click="saveEdited(true)"
                 :title="$t('screenshot.saveOverwrite')"
+                @click="saveEdited(true)"
               >
                 <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -2111,8 +2110,8 @@ onBeforeUnmount(() => {
               <button
                 class="text-sm px-2 py-1 flex items-center gap-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-500"
                 :disabled="saveBusy"
-                @click="saveEdited(false)"
                 :title="$t('screenshot.saveAs')"
+                @click="saveEdited(false)"
               >
                 <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -2127,8 +2126,8 @@ onBeforeUnmount(() => {
               <button
                 class="text-sm px-2 py-1 flex items-center gap-1.5 rounded hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-600 dark:text-emerald-500"
                 :disabled="saveBusy"
-                @click="copyEdited"
                 :title="$t('screenshot.copyImage')"
+                @click="copyEdited"
               >
                 <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <rect x="9" y="9" width="10" height="10" rx="2" ry="2" stroke-width="2" />

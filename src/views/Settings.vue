@@ -1651,8 +1651,7 @@
         <!-- Expanded content -->
         <transition name="collapse">
           <div v-if="simbriefExpanded" class="px-4 pb-4 space-y-4">
-
-          <!-- Pilot ID Input -->
+<!-- Pilot ID Input -->
           <div class="space-y-2">
             <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
               Pilot ID

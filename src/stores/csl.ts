@@ -2,11 +2,18 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
-import { getErrorMessage, type CslPackageInfo, type CslPath, type CslScanResult, type CslProgress } from '@/types'
+import {
+  getErrorMessage,
+  type CslPackageInfo,
+  type CslPath,
+  type CslScanResult,
+  type CslProgress,
+} from '@/types'
 import { useAppStore } from './app'
 import { useManagementStore } from './management'
 import { useToastStore } from './toast'
 import { logError } from '@/services/logger'
+import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
 
 type InstallSource = 'csl' | 'altitude'
 
@@ -16,6 +23,8 @@ interface QueuedInstallTask {
 }
 
 const CSL_MAX_PARALLEL_DOWNLOADS = 12
+const DEFAULT_CSL_SERVER_BASE_URL = 'http://x-csl.ru'
+const MAX_CSL_SERVER_BASE_URLS = 4
 
 export const useCslStore = defineStore('csl', () => {
   const appStore = useAppStore()
@@ -27,6 +36,8 @@ export const useCslStore = defineStore('csl', () => {
   const paths = ref<CslPath[]>([])
   const customPaths = ref<string[]>([])
   const serverVersion = ref('')
+  const serverBaseUrls = ref<string[]>([DEFAULT_CSL_SERVER_BASE_URL])
+  const activeServerBaseUrl = ref(DEFAULT_CSL_SERVER_BASE_URL)
   const isLoading = ref(false)
   const progressMap = ref<Record<string, CslProgress>>({})
   const error = ref<string | null>(null)
@@ -39,13 +50,20 @@ export const useCslStore = defineStore('csl', () => {
   const installQueue = ref<QueuedInstallTask[]>([])
   const activeInstallTask = ref<QueuedInstallTask | null>(null)
   const cancellingTaskKeys = ref<string[]>([])
+  const isServerConfigLoaded = ref(false)
 
   let installQueueRunning = false
 
   const totalPackages = computed(() => packages.value.length)
-  const installedCount = computed(() => packages.value.filter((p) => p.status !== 'not_installed').length)
-  const updatesCount = computed(() => packages.value.filter((p) => p.status === 'needs_update').length)
-  const notUpToDateCount = computed(() => packages.value.filter((p) => p.status !== 'up_to_date').length)
+  const installedCount = computed(
+    () => packages.value.filter((p) => p.status !== 'not_installed').length,
+  )
+  const updatesCount = computed(
+    () => packages.value.filter((p) => p.status === 'needs_update').length,
+  )
+  const notUpToDateCount = computed(
+    () => packages.value.filter((p) => p.status !== 'up_to_date').length,
+  )
 
   const allPaths = computed(() => {
     const pathStrings = paths.value.map((p) => p.path)
@@ -60,14 +78,14 @@ export const useCslStore = defineStore('csl', () => {
   const allScansDone = computed(() => !isLoading.value && !altitudeLoading.value)
 
   const altitudeTotalPackages = computed(() => altitudePackages.value.length)
-  const altitudeInstalledCount = computed(() =>
-    altitudePackages.value.filter((p) => p.status !== 'not_installed').length,
+  const altitudeInstalledCount = computed(
+    () => altitudePackages.value.filter((p) => p.status !== 'not_installed').length,
   )
-  const altitudeUpdatesCount = computed(() =>
-    altitudePackages.value.filter((p) => p.status === 'needs_update').length,
+  const altitudeUpdatesCount = computed(
+    () => altitudePackages.value.filter((p) => p.status === 'needs_update').length,
   )
-  const altitudeNotUpToDateCount = computed(() =>
-    altitudePackages.value.filter((p) => p.status !== 'up_to_date').length,
+  const altitudeNotUpToDateCount = computed(
+    () => altitudePackages.value.filter((p) => p.status !== 'up_to_date').length,
   )
 
   const queuedPackages = computed(() =>
@@ -114,7 +132,139 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   function getParallelDownloads(): number {
-    return Math.min(managementStore.addonUpdateOptions.totalThreads ?? 32, CSL_MAX_PARALLEL_DOWNLOADS)
+    return Math.min(
+      managementStore.addonUpdateOptions.totalThreads ?? 32,
+      CSL_MAX_PARALLEL_DOWNLOADS,
+    )
+  }
+
+  function normalizeServerBaseUrl(url: string): string {
+    const trimmed = url.trim()
+
+    if (!trimmed) {
+      throw new Error(t('csl.serverUrlRequired'))
+    }
+
+    let parsed: URL
+    try {
+      parsed = new URL(trimmed)
+    } catch {
+      throw new Error(t('csl.serverUrlInvalid'))
+    }
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error(t('csl.serverUrlInvalid'))
+    }
+
+    const pathname = parsed.pathname || '/'
+    const hasOnlyTrailingSlashes = /^\/+$/.test(pathname)
+
+    if (!hasOnlyTrailingSlashes || parsed.search || parsed.hash) {
+      throw new Error(t('csl.serverUrlNoPath'))
+    }
+
+    return parsed.origin
+  }
+
+  function collectServerBaseUrls(
+    urls: string[],
+    options: { ignoreInvalid?: boolean; ignoreDuplicates?: boolean } = {},
+  ): string[] {
+    const normalized: string[] = []
+
+    for (const rawUrl of urls) {
+      const trimmed = rawUrl.trim()
+      if (!trimmed) {
+        continue
+      }
+
+      try {
+        const normalizedUrl = normalizeServerBaseUrl(trimmed)
+
+        if (normalized.includes(normalizedUrl)) {
+          if (options.ignoreDuplicates) {
+            continue
+          }
+
+          throw new Error(t('csl.serverUrlDuplicate'))
+        }
+
+        normalized.push(normalizedUrl)
+      } catch (error) {
+        if (options.ignoreInvalid) {
+          continue
+        }
+
+        throw error
+      }
+    }
+
+    return normalized
+  }
+
+  async function ensureServerConfigLoaded() {
+    if (isServerConfigLoaded.value) {
+      return
+    }
+
+    const savedUrls = await getItem<string[]>(STORAGE_KEYS.CSL_SERVER_BASE_URLS)
+    const savedActiveUrl = await getItem<string>(STORAGE_KEYS.CSL_ACTIVE_SERVER_BASE_URL)
+
+    const nextUrls = Array.isArray(savedUrls)
+      ? collectServerBaseUrls(savedUrls, {
+          ignoreInvalid: true,
+          ignoreDuplicates: true,
+        }).slice(0, MAX_CSL_SERVER_BASE_URLS)
+      : []
+
+    if (nextUrls.length === 0) {
+      nextUrls.push(DEFAULT_CSL_SERVER_BASE_URL)
+    }
+
+    let nextActiveUrl = nextUrls[0]
+
+    if (typeof savedActiveUrl === 'string') {
+      try {
+        const normalizedActiveUrl = normalizeServerBaseUrl(savedActiveUrl)
+        if (nextUrls.includes(normalizedActiveUrl)) {
+          nextActiveUrl = normalizedActiveUrl
+        }
+      } catch {
+        nextActiveUrl = nextUrls[0]
+      }
+    }
+
+    serverBaseUrls.value = nextUrls
+    activeServerBaseUrl.value = nextActiveUrl
+    isServerConfigLoaded.value = true
+  }
+
+  async function saveServerConfig(urls: string[], selectedUrl: string) {
+    const nextUrls = collectServerBaseUrls(urls)
+
+    if (nextUrls.length === 0) {
+      throw new Error(t('csl.serverUrlRequired'))
+    }
+
+    if (nextUrls.length > MAX_CSL_SERVER_BASE_URLS) {
+      throw new Error(
+        t('csl.serverLimitReached', {
+          max: MAX_CSL_SERVER_BASE_URLS,
+        }),
+      )
+    }
+
+    const normalizedSelectedUrl = normalizeServerBaseUrl(selectedUrl)
+    if (!nextUrls.includes(normalizedSelectedUrl)) {
+      throw new Error(t('csl.serverSelectionRequired'))
+    }
+
+    serverBaseUrls.value = nextUrls
+    activeServerBaseUrl.value = normalizedSelectedUrl
+    isServerConfigLoaded.value = true
+
+    await setItem(STORAGE_KEYS.CSL_SERVER_BASE_URLS, nextUrls)
+    await setItem(STORAGE_KEYS.CSL_ACTIVE_SERVER_BASE_URL, normalizedSelectedUrl)
   }
 
   async function syncLinks(packageNames?: string[], cleanupPaths?: string[]) {
@@ -178,6 +328,7 @@ export const useCslStore = defineStore('csl', () => {
 
   async function runInstallTask(task: QueuedInstallTask): Promise<boolean> {
     await managementStore.loadAddonUpdateOptions()
+    await ensureServerConfigLoaded()
 
     const parallelDownloads = getParallelDownloads()
 
@@ -186,6 +337,7 @@ export const useCslStore = defineStore('csl', () => {
         await invoke('altitude_install_package', {
           xplanePath: appStore.xplanePath,
           parallelDownloads,
+          serverBaseUrl: activeServerBaseUrl.value,
         })
 
         toast.success(t('altitude.installSuccess', { name: task.name }))
@@ -215,6 +367,7 @@ export const useCslStore = defineStore('csl', () => {
         xplanePath: appStore.xplanePath,
         customPaths: customPaths.value,
         parallelDownloads,
+        serverBaseUrl: activeServerBaseUrl.value,
       })
 
       toast.success(t('csl.installSuccess', { name: task.name }))
@@ -263,7 +416,9 @@ export const useCslStore = defineStore('csl', () => {
             await rescanPackages([nextTask.name])
           }
         } finally {
-          cancellingTaskKeys.value = cancellingTaskKeys.value.filter((key) => key !== taskKey(nextTask))
+          cancellingTaskKeys.value = cancellingTaskKeys.value.filter(
+            (key) => key !== taskKey(nextTask),
+          )
           activeInstallTask.value = null
           clearProgressForTask(nextTask)
         }
@@ -283,6 +438,7 @@ export const useCslStore = defineStore('csl', () => {
       return
     }
 
+    await ensureServerConfigLoaded()
     isLoading.value = true
     error.value = null
 
@@ -290,6 +446,7 @@ export const useCslStore = defineStore('csl', () => {
       const result = await invoke<CslScanResult>('csl_scan_packages', {
         xplanePath: appStore.xplanePath,
         customPaths: customPaths.value,
+        serverBaseUrl: activeServerBaseUrl.value,
       })
 
       packages.value = result.packages
@@ -307,9 +464,11 @@ export const useCslStore = defineStore('csl', () => {
 
   async function rescanPackages(packageNames: string[]) {
     try {
+      await ensureServerConfigLoaded()
       const updated = await invoke<CslPackageInfo[]>('csl_rescan_packages', {
         xplanePath: appStore.xplanePath,
         packageNames,
+        serverBaseUrl: activeServerBaseUrl.value,
       })
 
       for (const upd of updated) {
@@ -382,11 +541,13 @@ export const useCslStore = defineStore('csl', () => {
   async function scanAltitudePackages() {
     if (!appStore.xplanePath) return
 
+    await ensureServerConfigLoaded()
     altitudeLoading.value = true
 
     try {
       const result = await invoke<CslScanResult>('altitude_scan_packages', {
         xplanePath: appStore.xplanePath,
+        serverBaseUrl: activeServerBaseUrl.value,
       })
 
       altitudePackages.value = result.packages
@@ -449,8 +610,10 @@ export const useCslStore = defineStore('csl', () => {
     if (!appStore.xplanePath) return
 
     try {
+      await ensureServerConfigLoaded()
       await invoke('altitude_uninstall_package', {
         xplanePath: appStore.xplanePath,
+        serverBaseUrl: activeServerBaseUrl.value,
       })
 
       toast.success(t('altitude.uninstallSuccess', { name: 'ALTITUDE' }))
@@ -475,6 +638,8 @@ export const useCslStore = defineStore('csl', () => {
     paths,
     customPaths,
     serverVersion,
+    serverBaseUrls,
+    activeServerBaseUrl,
     isLoading,
     installingPackages,
     queuedPackages,
@@ -492,6 +657,8 @@ export const useCslStore = defineStore('csl', () => {
     hasPendingInstalls,
 
     scanPackages,
+    ensureServerConfigLoaded,
+    saveServerConfig,
     installPackage,
     installAll,
     installAllCombined,
