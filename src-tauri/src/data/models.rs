@@ -739,8 +739,8 @@ pub struct PresetAddonCounts {
     pub plugins_enabled: usize,
     pub scenery_total: usize,
     pub scenery_enabled: usize,
-    pub navdata_total: usize,
-    pub navdata_enabled: usize,
+    pub lua_total: usize,
+    pub lua_enabled: usize,
 }
 
 /// The actual snapshot stored as JSON in the database
@@ -751,8 +751,6 @@ pub struct PresetLockState {
     pub aircraft: Vec<String>,
     #[serde(default)]
     pub plugin: Vec<String>,
-    #[serde(default)]
-    pub navdata: Vec<String>,
     #[serde(default)]
     pub scenery: Vec<String>,
     #[serde(default)]
@@ -769,8 +767,6 @@ pub struct PresetSnapshot {
     pub plugins: HashMap<String, bool>,
     #[serde(default)]
     pub scenery: HashMap<String, bool>,
-    #[serde(default)]
-    pub navdata: HashMap<String, bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lua_scripts: Option<HashMap<String, bool>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -787,7 +783,7 @@ impl PresetSnapshot {
         let (at, ae) = count(&self.aircraft);
         let (pt, pe) = count(&self.plugins);
         let (st, se) = count(&self.scenery);
-        let (nt, ne) = count(&self.navdata);
+        let (lt, le) = self.lua_scripts.as_ref().map(count).unwrap_or((0, 0));
         PresetAddonCounts {
             aircraft_total: at,
             aircraft_enabled: ae,
@@ -795,8 +791,8 @@ impl PresetSnapshot {
             plugins_enabled: pe,
             scenery_total: st,
             scenery_enabled: se,
-            navdata_total: nt,
-            navdata_enabled: ne,
+            lua_total: lt,
+            lua_enabled: le,
         }
     }
 }
@@ -849,6 +845,39 @@ mod tests {
 
         let scenery_lib: AddonType = serde_json::from_str(r#""SceneryLibrary""#).unwrap();
         assert_eq!(scenery_lib, AddonType::SceneryLibrary);
+    }
+
+    #[test]
+    fn test_preset_snapshot_ignores_legacy_navdata_fields() {
+        let json = r#"{
+            "aircraft": {"A": true},
+            "plugins": {"P": false},
+            "scenery": {"S": true},
+            "navdata": {"legacy": true},
+            "luaScripts": {"Script": true},
+            "lockState": {
+                "aircraft": ["aircraft-a"],
+                "plugin": ["plugin-a"],
+                "navdata": ["legacy-navdata"],
+                "scenery": ["scenery-a"],
+                "lua": ["lua-a"]
+            }
+        }"#;
+
+        let snapshot: PresetSnapshot = serde_json::from_str(json).unwrap();
+        let lock_state = snapshot.lock_state.clone().unwrap();
+
+        assert_eq!(snapshot.aircraft.len(), 1);
+        assert_eq!(snapshot.plugins.len(), 1);
+        assert_eq!(snapshot.scenery.len(), 1);
+        assert_eq!(snapshot.lua_scripts.as_ref().unwrap().len(), 1);
+        assert_eq!(lock_state.aircraft, vec!["aircraft-a"]);
+        assert_eq!(lock_state.plugin, vec!["plugin-a"]);
+        assert_eq!(lock_state.scenery, vec!["scenery-a"]);
+        assert_eq!(lock_state.lua, vec!["lua-a"]);
+
+        let serialized = serde_json::to_string(&snapshot).unwrap();
+        assert!(!serialized.contains("navdata"));
     }
 
     #[test]

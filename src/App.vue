@@ -10,8 +10,9 @@
       ></div>
 
       <div class="relative container mx-auto px-4">
+        <div class="mx-auto w-fit">
         <!-- Primary row -->
-        <div class="h-10 flex justify-center items-center">
+        <div class="h-10 flex items-center">
           <!-- Navigation -->
           <div class="flex items-center whitespace-nowrap">
             <div v-if="!isOnboardingRoute" class="flex items-center space-x-1">
@@ -313,7 +314,7 @@
           class="overflow-hidden transition-all duration-300 ease-in-out"
           :style="{ maxHeight: navExpanded ? '2.5rem' : '0px' }"
         >
-          <div class="flex justify-center items-center h-10">
+          <div class="flex justify-start items-center h-10">
             <div class="flex items-center space-x-1">
               <!-- Activity Log -->
               <router-link
@@ -462,6 +463,7 @@
               </router-link>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </nav>

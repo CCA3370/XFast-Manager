@@ -25,6 +25,8 @@ interface QueuedInstallTask {
 const CSL_MAX_PARALLEL_DOWNLOADS = 12
 const DEFAULT_CSL_SERVER_BASE_URL = 'http://x-csl.ru'
 const MAX_CSL_SERVER_BASE_URLS = 4
+const DESCRIPTION_LOAD_BATCH_SIZE = 12
+const DESCRIPTION_LOAD_QUEUE_DELAY_MS = 80
 
 export const useCslStore = defineStore('csl', () => {
   const appStore = useAppStore()
@@ -51,8 +53,14 @@ export const useCslStore = defineStore('csl', () => {
   const activeInstallTask = ref<QueuedInstallTask | null>(null)
   const cancellingTaskKeys = ref<string[]>([])
   const isServerConfigLoaded = ref(false)
+  const pendingDescriptionPackages = ref<string[]>([])
+  const loadingDescriptionPackages = ref<string[]>([])
 
   let installQueueRunning = false
+  let descriptionLoadTimer: ReturnType<typeof setTimeout> | null = null
+  let descriptionLoadRunning = false
+  let descriptionLoadGeneration = 0
+  const descriptionLoadQueue = new Set<string>()
 
   const totalPackages = computed(() => packages.value.length)
   const installedCount = computed(
@@ -267,6 +275,122 @@ export const useCslStore = defineStore('csl', () => {
     await setItem(STORAGE_KEYS.CSL_ACTIVE_SERVER_BASE_URL, normalizedSelectedUrl)
   }
 
+  function resetDescriptionLoadState(packageNames: string[]) {
+    descriptionLoadGeneration += 1
+    pendingDescriptionPackages.value = [...new Set(packageNames)]
+    loadingDescriptionPackages.value = []
+
+    descriptionLoadQueue.clear()
+    if (descriptionLoadTimer !== null) {
+      clearTimeout(descriptionLoadTimer)
+      descriptionLoadTimer = null
+    }
+  }
+
+  function isDescriptionPending(packageName: string): boolean {
+    return pendingDescriptionPackages.value.includes(packageName)
+  }
+
+  function isDescriptionLoading(packageName: string): boolean {
+    return loadingDescriptionPackages.value.includes(packageName)
+  }
+
+  function queuePackageDescriptions(packageNames: string[]) {
+    const nextNames = packageNames.filter(
+      (name) => isDescriptionPending(name) && !isDescriptionLoading(name),
+    )
+
+    if (nextNames.length === 0) {
+      return
+    }
+
+    for (const name of nextNames) {
+      descriptionLoadQueue.add(name)
+    }
+
+    if (descriptionLoadTimer !== null) {
+      return
+    }
+
+    descriptionLoadTimer = setTimeout(() => {
+      descriptionLoadTimer = null
+      void pumpDescriptionQueue(descriptionLoadGeneration)
+    }, DESCRIPTION_LOAD_QUEUE_DELAY_MS)
+  }
+
+  async function pumpDescriptionQueue(generation: number) {
+    if (descriptionLoadRunning || generation !== descriptionLoadGeneration) {
+      return
+    }
+
+    descriptionLoadRunning = true
+
+    try {
+      while (descriptionLoadQueue.size > 0 && generation === descriptionLoadGeneration) {
+        const batch = Array.from(descriptionLoadQueue)
+          .filter((name) => isDescriptionPending(name) && !isDescriptionLoading(name))
+          .slice(0, DESCRIPTION_LOAD_BATCH_SIZE)
+
+        if (batch.length === 0) {
+          break
+        }
+
+        for (const name of batch) {
+          descriptionLoadQueue.delete(name)
+        }
+
+        loadingDescriptionPackages.value = [
+          ...new Set([...loadingDescriptionPackages.value, ...batch]),
+        ]
+
+        let generationChanged = false
+
+        try {
+          await ensureServerConfigLoaded()
+          const descriptions = await invoke<Record<string, string>>(
+            'csl_fetch_package_descriptions',
+            {
+              packageNames: batch,
+              serverBaseUrl: activeServerBaseUrl.value,
+            },
+          )
+
+          if (generation !== descriptionLoadGeneration) {
+            generationChanged = true
+          } else {
+            for (const pkg of packages.value) {
+              const description = descriptions[pkg.name]
+              if (typeof description === 'string' && description.trim()) {
+                pkg.description = description
+              }
+            }
+          }
+        } catch (e) {
+          logError(`CSL description fetch failed: ${e}`, 'csl')
+        } finally {
+          if (!generationChanged && generation === descriptionLoadGeneration) {
+            loadingDescriptionPackages.value = loadingDescriptionPackages.value.filter(
+              (name) => !batch.includes(name),
+            )
+            pendingDescriptionPackages.value = pendingDescriptionPackages.value.filter(
+              (name) => !batch.includes(name),
+            )
+          }
+        }
+
+        if (generationChanged || generation !== descriptionLoadGeneration) {
+          break
+        }
+      }
+    } finally {
+      descriptionLoadRunning = false
+
+      if (generation === descriptionLoadGeneration && descriptionLoadQueue.size > 0) {
+        void pumpDescriptionQueue(generation)
+      }
+    }
+  }
+
   async function syncLinks(packageNames?: string[], cleanupPaths?: string[]) {
     if (!appStore.xplanePath) {
       return
@@ -452,8 +576,12 @@ export const useCslStore = defineStore('csl', () => {
       packages.value = result.packages
       paths.value = result.paths
       serverVersion.value = result.server_version
-      await syncLinks()
+      resetDescriptionLoadState(
+        result.packages.filter((pkg) => !pkg.description).map((pkg) => pkg.name),
+      )
+      void syncLinks()
     } catch (e) {
+      resetDescriptionLoadState([])
       error.value = String(e)
       logError(`CSL scan failed: ${e}`, 'csl')
       toast.error(t('csl.fetchError'))
@@ -647,6 +775,8 @@ export const useCslStore = defineStore('csl', () => {
     progressMap,
     error,
     searchQuery,
+    pendingDescriptionPackages,
+    loadingDescriptionPackages,
 
     totalPackages,
     installedCount,
@@ -659,6 +789,9 @@ export const useCslStore = defineStore('csl', () => {
     scanPackages,
     ensureServerConfigLoaded,
     saveServerConfig,
+    queuePackageDescriptions,
+    isDescriptionPending,
+    isDescriptionLoading,
     installPackage,
     installAll,
     installAllCombined,

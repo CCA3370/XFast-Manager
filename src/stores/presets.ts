@@ -21,15 +21,24 @@ export interface PresetAddonCounts {
   pluginsEnabled: number
   sceneryTotal: number
   sceneryEnabled: number
-  navdataTotal: number
-  navdataEnabled: number
+  luaTotal: number
+  luaEnabled: number
 }
 
 export interface PresetApplyResult {
   changesMade: number
   errors: string[]
   missingItems: string[]
-  lockState?: LockedItemsData | null
+  lockState?: Partial<LockedItemsData> | null
+}
+
+function buildPresetLockState(lockState: LockedItemsData) {
+  return {
+    aircraft: lockState.aircraft,
+    plugin: lockState.plugin,
+    scenery: lockState.scenery,
+    lua: lockState.lua,
+  }
 }
 
 export const usePresetsStore = defineStore('presets', () => {
@@ -57,7 +66,7 @@ export const usePresetsStore = defineStore('presets', () => {
         xplanePath: appStore.xplanePath || null,
         name,
         description,
-        lockState: lockStore.exportLockState(),
+        lockState: buildPresetLockState(lockStore.exportLockState()),
       })
       await loadPresets()
     } finally {
@@ -86,7 +95,9 @@ export const usePresetsStore = defineStore('presets', () => {
         name,
         description,
         updateSnapshot,
-        lockState: shouldUpdateSnapshot ? lockStore.exportLockState() : null,
+        lockState: shouldUpdateSnapshot
+          ? buildPresetLockState(lockStore.exportLockState())
+          : null,
       })
       await loadPresets()
     } finally {
@@ -112,7 +123,13 @@ export const usePresetsStore = defineStore('presets', () => {
       })
       if (result.lockState) {
         try {
-          await lockStore.applyLockState(result.lockState, appStore.xplanePath || undefined)
+          await lockStore.applyLockState(
+            {
+              ...result.lockState,
+              navdata: lockStore.exportLockState().navdata,
+            },
+            appStore.xplanePath || undefined,
+          )
         } catch (e) {
           result.errors.push(`Failed to apply lock state: ${String(e)}`)
         }

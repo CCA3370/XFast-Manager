@@ -801,11 +801,6 @@ async fn scan_packages_internal(
     let entries = parse_index(&index_content);
     let pkg_data_list = group_into_packages(&entries);
 
-    let package_names: Vec<String> = pkg_data_list.iter().map(|p| p.name.clone()).collect();
-
-    // Run description fetch and local comparison IN PARALLEL
-    let desc_future = fetch_package_descriptions(server, package_names);
-
     let compare_future = {
         let local_paths = local_path_strings;
         async move {
@@ -883,18 +878,7 @@ async fn scan_packages_internal(
         }
     };
 
-    let (descriptions, compare_result) = tokio::join!(desc_future, compare_future);
-    let mut packages = compare_result?;
-
-    // Fill descriptions from the (now-resolved) map
-    for pkg in &mut packages {
-        if pkg.description.is_empty() {
-            pkg.description = descriptions
-                .get(&pkg.name)
-                .cloned()
-                .unwrap_or_else(|| pkg.name.clone());
-        }
-    }
+    let mut packages = compare_future.await?;
 
     // Sort by name
     packages.sort_by(|a, b| a.name.cmp(&b.name));
@@ -1337,6 +1321,19 @@ fn sync_package_links_internal(
 // ============================================================================
 // Tauri Commands — CSL
 // ============================================================================
+
+#[tauri::command]
+pub async fn csl_fetch_package_descriptions(
+    package_names: Vec<String>,
+    server_base_url: Option<String>,
+) -> Result<HashMap<String, String>, String> {
+    if package_names.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let api_base = resolve_csl_api_base(server_base_url.as_deref());
+    Ok(fetch_package_descriptions(&api_base, package_names).await)
+}
 
 /// Scan packages: fetch remote index, compare with local, return results.
 ///

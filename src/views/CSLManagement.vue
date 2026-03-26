@@ -13,18 +13,15 @@
           @click="openServerSettingsDialog"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M11.983 5.5a1.5 1.5 0 013.034 0l.17.851a1.5 1.5 0 001.128 1.129l.85.169a1.5 1.5 0 010 3.034l-.85.17a1.5 1.5 0 00-1.129 1.128l-.169.85a1.5 1.5 0 01-3.034 0l-.17-.85a1.5 1.5 0 00-1.128-1.129l-.85-.169a1.5 1.5 0 010-3.034l.85-.17a1.5 1.5 0 001.129-1.128l.169-.851z"
-            />
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M13.5 10.5h.01"
-            />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h8" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 6h4" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 12h3" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 12h9" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 18h10" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 18h2" />
+            <circle cx="14" cy="6" r="2" stroke-width="2" />
+            <circle cx="9" cy="12" r="2" stroke-width="2" />
+            <circle cx="16" cy="18" r="2" stroke-width="2" />
           </svg>
           {{ $t('csl.serverSettings') }}
         </button>
@@ -137,10 +134,15 @@
     </div>
 
     <!-- Package list (ALTITUDE first, then CSL) -->
-    <div v-if="hasPackages" class="flex-1 overflow-y-auto space-y-1.5">
+    <div v-if="hasPackages" ref="packageListRef" class="flex-1 overflow-y-auto space-y-1.5">
       <div
         v-for="pkg in filteredPackages"
         :key="pkg.source + '-' + pkg.name"
+        :data-package-name="pkg.name"
+        :data-package-source="pkg.source"
+        :data-csl-description-pending="
+          pkg.source === 'csl' && isDescriptionPending(pkg.name) ? 'true' : 'false'
+        "
         class="flex items-center gap-3 px-4 py-2.5 rounded-lg border transition-colors"
         :class="
           pkg.source === 'altitude'
@@ -166,6 +168,15 @@
               class="text-xs text-gray-500 dark:text-gray-400 ml-1"
               >{{ pkg.description }}</span
             >
+            <span
+              v-else-if="pkg.source !== 'altitude' && isDescriptionPending(pkg.name)"
+              class="ml-1 inline-flex items-center gap-2"
+            >
+              <span class="h-3 w-20 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse"></span>
+              <span
+                class="h-3 w-3 rounded-full border-2 border-gray-300 dark:border-gray-600 border-t-transparent animate-spin"
+              ></span>
+            </span>
             <span
               class="px-1.5 py-0.5 rounded text-xs font-medium"
               :class="statusClass(pkg.status)"
@@ -377,16 +388,16 @@
     <Teleport to="body">
       <div
         v-if="showServerSettingsDialog"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm"
         @click.self="closeServerSettingsDialog"
       >
         <div
-          class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden"
+          class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden border border-gray-200/80 dark:border-gray-800"
         >
           <div
-            class="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700"
+            class="flex items-start justify-between px-4 py-4 border-b border-gray-200 dark:border-gray-800"
           >
-            <div>
+            <div class="min-w-0">
               <h3 class="text-base font-semibold text-gray-900 dark:text-white">
                 {{ $t('csl.serverSettingsTitle') }}
               </h3>
@@ -395,78 +406,80 @@
               </p>
             </div>
             <button
-              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-lg"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-lg h-8 w-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center justify-center"
               @click="closeServerSettingsDialog"
             >
               &#x2715;
             </button>
           </div>
-          <div class="px-5 py-4 space-y-3 max-h-[28rem] overflow-y-auto">
+          <div class="px-4 py-4 space-y-3 max-h-[22rem] overflow-y-auto">
             <div
               v-for="entry in serverEntries"
               :key="entry.id"
-              class="rounded-xl border border-gray-200 dark:border-gray-700 p-3"
+              class="rounded-xl border p-3 transition-all cursor-pointer"
+              :class="
+                isServerEntrySelected(entry.id)
+                  ? 'border-blue-300 bg-blue-50/60 dark:border-blue-700 dark:bg-blue-950/20'
+                  : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+              "
+              @click="selectServerEntry(entry.id)"
             >
-              <div class="flex items-start gap-3">
+              <div class="flex items-center gap-3">
                 <input
                   :id="`csl-server-${entry.id}`"
                   v-model="selectedServerEntryId"
                   type="radio"
-                  class="mt-2 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+                  class="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500 flex-shrink-0"
                   :value="entry.id"
+                  @click.stop
                 />
-                <div class="flex-1 min-w-0">
-                  <label
-                    :for="`csl-server-${entry.id}`"
-                    class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1"
-                  >
-                    {{ $t('csl.serverBaseUrl') }}
-                  </label>
-                  <input
-                    v-model="entry.url"
-                    type="url"
-                    :placeholder="$t('csl.serverBaseUrlPlaceholder')"
-                    class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
+                <input
+                  v-model="entry.url"
+                  type="url"
+                  :placeholder="$t('csl.serverBaseUrlPlaceholder')"
+                  class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  @click.stop
+                />
                 <button
-                  class="mt-7 text-xs px-3 py-2 rounded-lg border border-red-200 dark:border-red-800/60 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                  class="h-9 px-3 rounded-lg border border-red-200 dark:border-red-800/60 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50 flex items-center justify-center text-xs"
                   :disabled="serverEntries.length <= 1"
-                  @click="removeServerEntry(entry.id)"
+                  @click.stop="removeServerEntry(entry.id)"
                 >
                   {{ $t('csl.removeServer') }}
                 </button>
               </div>
             </div>
 
-            <p v-if="serverSettingsError" class="text-sm text-red-600 dark:text-red-400">
-              {{ serverSettingsError }}
-            </p>
-          </div>
-          <div
-            class="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3"
-          >
             <button
-              class="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 disabled:no-underline"
+              class="w-full rounded-xl border border-dashed border-gray-300 dark:border-gray-700 px-4 py-3 text-sm font-medium text-blue-600 dark:text-blue-400 hover:border-blue-300 hover:bg-blue-50/50 dark:hover:border-blue-700 dark:hover:bg-blue-950/20 transition-colors disabled:opacity-50"
               :disabled="serverEntries.length >= MAX_CSL_SERVER_BASE_URLS"
               @click="addServerEntry"
             >
               + {{ $t('csl.addServer') }}
             </button>
-            <div class="flex items-center gap-2">
-              <button
-                class="text-sm px-4 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                @click="closeServerSettingsDialog"
-              >
-                {{ $t('common.close') }}
-              </button>
-              <button
-                class="text-sm px-4 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-                @click="saveServerSettings"
-              >
-                {{ $t('common.save') }}
-              </button>
-            </div>
+
+            <p
+              v-if="serverSettingsError"
+              class="rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/20 px-3 py-2 text-sm text-red-600 dark:text-red-300"
+            >
+              {{ serverSettingsError }}
+            </p>
+          </div>
+          <div
+            class="px-4 py-3 border-t border-gray-200 dark:border-gray-800 flex items-center justify-end gap-2 bg-gray-50/70 dark:bg-gray-950/20"
+          >
+            <button
+              class="text-sm px-4 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              @click="closeServerSettingsDialog"
+            >
+              {{ $t('common.close') }}
+            </button>
+            <button
+              class="text-sm px-4 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/20"
+              @click="saveServerSettings"
+            >
+              {{ $t('common.save') }}
+            </button>
           </div>
         </div>
       </div>
@@ -475,7 +488,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -503,11 +516,13 @@ const modal = useModalStore()
 const activeFilter = ref<string>('all')
 const showPathsDialog = ref(false)
 const showServerSettingsDialog = ref(false)
+const packageListRef = ref<HTMLElement | null>(null)
 const serverEntries = ref<EditableServerEntry[]>([])
 const selectedServerEntryId = ref<number | null>(null)
 const serverSettingsError = ref('')
 
 let nextServerEntryId = 0
+let descriptionObserver: IntersectionObserver | null = null
 
 /** Show path relative to X-Plane root if it starts with xplanePath */
 function relativePath(fullPath: string): string {
@@ -651,6 +666,10 @@ function getProgress(pkg: DisplayPackage): CslProgress | undefined {
   return store.progressMap[pkg.name]
 }
 
+function isDescriptionPending(packageName: string): boolean {
+  return store.isDescriptionPending(packageName)
+}
+
 function handleInstall(pkg: DisplayPackage) {
   if (pkg.source === 'altitude') {
     store.installAltitudePackage()
@@ -750,6 +769,14 @@ function removeServerEntry(entryId: number) {
   serverSettingsError.value = ''
 }
 
+function selectServerEntry(entryId: number) {
+  selectedServerEntryId.value = entryId
+}
+
+function isServerEntrySelected(entryId: number): boolean {
+  return selectedServerEntryId.value === entryId
+}
+
 async function saveServerSettings() {
   const selectedEntry = serverEntries.value.find(
     (entry) => entry.id === selectedServerEntryId.value,
@@ -772,6 +799,64 @@ async function saveServerSettings() {
   }
 }
 
+function observeVisibleDescriptions() {
+  if (!descriptionObserver || !packageListRef.value) {
+    return
+  }
+
+  descriptionObserver.disconnect()
+
+  const pendingNodes = packageListRef.value.querySelectorAll<HTMLElement>(
+    '[data-csl-description-pending="true"]',
+  )
+
+  for (const node of pendingNodes) {
+    descriptionObserver.observe(node)
+  }
+}
+
+function setupDescriptionObserver() {
+  if (!packageListRef.value) {
+    return
+  }
+
+  descriptionObserver?.disconnect()
+  descriptionObserver = new IntersectionObserver(
+    (entries) => {
+      const namesToLoad = entries
+        .filter((entry) => entry.isIntersecting)
+        .map((entry) => {
+          descriptionObserver?.unobserve(entry.target)
+          return (entry.target as HTMLElement).dataset.packageName
+        })
+        .filter((name): name is string => Boolean(name))
+
+      if (namesToLoad.length > 0) {
+        store.queuePackageDescriptions(namesToLoad)
+      }
+    },
+    {
+      root: packageListRef.value,
+      threshold: 0.1,
+    },
+  )
+
+  observeVisibleDescriptions()
+}
+
+watch(
+  filteredPackages,
+  async () => {
+    await nextTick()
+    if (!descriptionObserver) {
+      setupDescriptionObserver()
+      return
+    }
+    observeVisibleDescriptions()
+  },
+  { flush: 'post' },
+)
+
 onMounted(async () => {
   await store.ensureServerConfigLoaded()
 
@@ -792,6 +877,9 @@ onMounted(async () => {
   if (store.altitudePackages.length === 0) {
     store.scanAltitudePackages()
   }
+
+  await nextTick()
+  setupDescriptionObserver()
 })
 
 onUnmounted(() => {
@@ -800,6 +888,10 @@ onUnmounted(() => {
   }
   if (unlistenAltitudeProgress) {
     unlistenAltitudeProgress()
+  }
+  if (descriptionObserver) {
+    descriptionObserver.disconnect()
+    descriptionObserver = null
   }
 })
 </script>

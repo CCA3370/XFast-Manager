@@ -56,6 +56,9 @@
             <span v-if="preset.addonCounts.sceneryTotal > 0">
               {{ $t('presets.countScenery', { enabled: preset.addonCounts.sceneryEnabled, total: preset.addonCounts.sceneryTotal }) }}
             </span>
+            <span v-if="preset.addonCounts.luaTotal > 0">
+              {{ $t('presets.countLua', { enabled: preset.addonCounts.luaEnabled, total: preset.addonCounts.luaTotal }) }}
+            </span>
           </div>
 
           <!-- Timestamps -->

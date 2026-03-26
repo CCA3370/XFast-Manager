@@ -2846,11 +2846,10 @@ async fn build_preset_snapshot(
     validate_xplane_root_path(&xplane_path_buf)?;
 
     let scan_path = xplane_path_buf.clone();
-    let (aircraft, plugins, navdata, lua_scripts) = tokio::task::spawn_blocking(move || {
+    let (aircraft, plugins, lua_scripts) = tokio::task::spawn_blocking(move || {
         let xplane_path = scan_path.as_path();
         let mut aircraft = HashMap::new();
         let mut plugins = HashMap::new();
-        let mut navdata = HashMap::new();
         let mut lua_scripts = HashMap::new();
 
         if let Ok(data) = management_index::scan_aircraft(xplane_path) {
@@ -2865,19 +2864,13 @@ async fn build_preset_snapshot(
             }
         }
 
-        if let Ok(data) = management_index::scan_navdata(xplane_path) {
-            for navdata_info in data.entries {
-                navdata.insert(navdata_info.folder_name, navdata_info.enabled);
-            }
-        }
-
         if let Ok(data) = management_index::scan_lua_scripts(xplane_path) {
             for script in data {
                 lua_scripts.insert(script.display_name, script.enabled);
             }
         }
 
-        (aircraft, plugins, navdata, lua_scripts)
+        (aircraft, plugins, lua_scripts)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?;
@@ -2897,7 +2890,6 @@ async fn build_preset_snapshot(
         aircraft,
         plugins,
         scenery,
-        navdata,
         lua_scripts: Some(lua_scripts),
         lock_state,
     })
@@ -3131,35 +3123,6 @@ async fn apply_preset(
                     }
                 }
                 Err(e) => errors.push(format!("Plugin scan failed: {}", e)),
-            }
-
-            // Navdata is snapshot-only for now. We can report missing items, but enable/disable is
-            // not currently supported by the manager.
-            match management_index::scan_navdata(xplane_path) {
-                Ok(data) => {
-                    for navdata in &data.entries {
-                        if let Some(&desired) = blocking_snapshot.navdata.get(&navdata.folder_name)
-                        {
-                            if navdata.enabled != desired {
-                                errors.push(format!(
-                                    "Navdata {}: enable/disable is not supported",
-                                    navdata.folder_name
-                                ));
-                            }
-                        }
-                    }
-
-                    for name in blocking_snapshot.navdata.keys() {
-                        if !data
-                            .entries
-                            .iter()
-                            .any(|navdata| &navdata.folder_name == name)
-                        {
-                            missing_items.push(format!("Navdata: {}", name));
-                        }
-                    }
-                }
-                Err(e) => errors.push(format!("Navdata scan failed: {}", e)),
             }
 
             if let Some(lua_scripts) = &blocking_snapshot.lua_scripts {
@@ -3530,6 +3493,7 @@ pub fn run() {
             scan_disk_usage,
             scan_folder_disk_usage,
             // CSL management commands
+            csl_index::csl_fetch_package_descriptions,
             csl_index::csl_scan_packages,
             csl_index::csl_rescan_packages,
             csl_index::csl_install_package,

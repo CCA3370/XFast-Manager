@@ -14,7 +14,7 @@
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
+    "tauri:dev": "tauri dev -- -- --xcsldev",
     "tauri:build": "tauri build",
     "generate:icon": "png-to-ico src-tauri/icons/icon.png > src-tauri/icons/icon.ico"
   },
