@@ -1,6 +1,15 @@
 @import 'tailwindcss';
 @variant dark (&:where(.dark, .dark *));
 
+@theme {
+  --color-aviation-green: #00ff41;
+  --color-aviation-cyan: #00f3ff;
+  --color-aviation-amber: #ffb000;
+  --color-aviation-red: #ff3e3e;
+  --color-aviation-dark: #0a0e1a;
+  --color-aviation-panel: #161b22;
+}
+
 @property --app-bg-from {
   syntax: '<color>';
   inherits: true;
@@ -26,10 +35,34 @@
 }
 
 .dark .app-container {
-  --app-bg-from: #111827;
+  --app-bg-from: #0a0e1a;
   --app-bg-via: #0f172a;
-  --app-bg-to: #111827;
+  --app-bg-to: #05070a;
 }
+
+/* Aviation Cockpit Utilities */
+.bezel-container {
+  @apply bg-aviation-panel border-2 border-gray-700/50 rounded-lg shadow-[inset_0_1px_1px_rgba(255,255,255,0.1),0_4px_6px_rgba(0,0,0,0.3)];
+}
+
+.lcd-screen {
+  @apply bg-[#05070a] border border-aviation-green/20 relative overflow-hidden;
+  background-image: linear-gradient(rgba(0, 255, 65, 0.03) 1px, transparent 1px);
+  background-size: 100% 3px;
+}
+
+.aviation-button {
+  @apply relative px-4 py-2 bg-gray-800 border-b-4 border-gray-950 active:border-b-0 active:translate-y-[2px] transition-all rounded font-bold text-xs uppercase tracking-widest text-gray-300;
+}
+
+.annunciator-lamp {
+  @apply w-full h-8 flex items-center justify-center text-[10px] font-black uppercase border border-black/20 rounded-sm transition-all duration-300;
+}
+
+.lamp-off { @apply bg-gray-900 text-gray-700; }
+.lamp-green { @apply bg-aviation-green/20 text-aviation-green border-aviation-green shadow-[0_0_10px_rgba(0,255,65,0.3)]; }
+.lamp-amber { @apply bg-aviation-amber/20 text-aviation-amber border-aviation-amber shadow-[0_0_10px_rgba(255,176,0,0.3)]; }
+.lamp-red { @apply bg-aviation-red/20 text-aviation-red border-aviation-red shadow-[0_0_10px_rgba(255,62,62,0.3)]; }
 
 *,
 *::before,

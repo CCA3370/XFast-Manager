@@ -1,634 +1,276 @@
 <template>
-  <div
-    class="home-view h-full flex flex-col p-4 animate-fade-in relative overflow-hidden select-none"
-  >
-    <!-- Background Decor (Dark Mode Only for deep glow) -->
-    <div
-      class="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0 opacity-0 dark:opacity-100 transition-opacity duration-500"
-    >
-      <div class="absolute top-1/4 left-1/4 w-48 h-48 bg-blue-500/5 rounded-full blur-3xl"></div>
-      <div
-        class="absolute bottom-1/4 right-1/4 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl"
-      ></div>
+  <div class="home-view h-full flex flex-col p-4 animate-cockpit-power-on relative overflow-hidden select-none bg-aviation-dark text-aviation-green font-mono">
+    <!-- CRT Overlay Effect -->
+    <div class="absolute inset-0 pointer-events-none z-50 opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%]"></div>
+    
+    <!-- Top Status Bar (PFD Style) -->
+    <div class="flex-shrink-0 h-10 bezel-container mb-3 flex items-center px-4 justify-between bg-aviation-panel border-b-aviation-cyan/30">
+      <div class="flex items-center gap-6">
+        <div class="text-[10px] uppercase tracking-tighter opacity-70">Flight Systems Manager</div>
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full" :class="isXPlaneRunning ? 'bg-aviation-green shadow-[0_0_8px_#00ff41]' : 'bg-gray-700'"></div>
+          <span class="text-xs font-black uppercase tracking-widest">{{ isXPlaneRunning ? 'XP-CONNECTED' : 'XP-DISCONNECTED' }}</span>
+        </div>
+      </div>
+
+      <!-- Center Warning Banner -->
+      <div v-if="updateStore.showUpdateBanner" class="bg-aviation-amber/20 border border-aviation-amber px-4 py-0.5 rounded animate-pulse">
+        <span class="text-[10px] font-black text-aviation-amber uppercase">System Update Available: v{{ updateStore.updateInfo?.latestVersion }}</span>
+      </div>
+      <div v-else-if="!store.xplanePath" class="bg-aviation-red/20 border border-aviation-red px-4 py-0.5 rounded">
+        <span class="text-[10px] font-black text-aviation-red uppercase underline">Critical: X-Plane Path Not Configured</span>
+      </div>
+
+      <div class="text-[10px] uppercase opacity-70">
+        {{ new Date().toLocaleTimeString([], { hour12: false }) }} Z
+      </div>
     </div>
 
-    <div
-      class="w-full z-10 flex flex-col flex-1 min-h-0 gap-3 overflow-y-auto pr-1 custom-scrollbar"
-    >
-      <!-- Update Banner -->
-      <UpdateBanner
-        :visible="updateStore.showUpdateBanner"
-        :update-info="updateStore.updateInfo"
-        :is-downloading="updateStore.isDownloading"
-        :download-progress="updateStore.downloadProgress"
-        :update-phase="updateStore.updatePhase"
-        :update-error="updateStore.updateError"
-        @view-release="updateStore.openReleaseUrl"
-        @dismiss="updateStore.dismissUpdate"
-        @update="updateStore.performUpdate"
-        @retry="updateStore.performUpdate"
-      />
-
-      <!-- Warning Alert (Compact) -->
-      <transition name="slide-down">
-        <div
-          v-if="!store.xplanePath"
-          class="flex-shrink-0 bg-yellow-50/90 dark:bg-yellow-500/10 backdrop-blur-md border border-yellow-200 dark:border-yellow-500/20 rounded-xl p-3 flex items-center space-x-3 shadow-lg shadow-yellow-500/5 transition-colors duration-300"
-        >
-          <div class="p-2 bg-yellow-100 dark:bg-yellow-500/20 rounded-lg flex-shrink-0">
-            <svg
-              class="w-5 h-5 text-yellow-600 dark:text-yellow-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
-              ></path>
-            </svg>
-          </div>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-semibold text-yellow-800 dark:text-yellow-100">
-              <AnimatedText>{{ $t('home.setPathFirst') }}</AnimatedText>
-            </p>
-            <p class="text-xs text-yellow-700 dark:text-yellow-200/70">
-              <AnimatedText>{{ $t('home.pathNotSetDesc') }}</AnimatedText>
-            </p>
-          </div>
-          <router-link
-            to="/settings"
-            class="flex-shrink-0 inline-flex items-center px-3 py-1.5 bg-yellow-200 dark:bg-yellow-500/20 hover:bg-yellow-300 dark:hover:bg-yellow-500/30 text-yellow-900 dark:text-yellow-100 text-xs font-bold rounded-xl transition-all duration-200 border border-yellow-300 dark:border-yellow-500/30 shadow-sm"
-          >
-            <AnimatedText>{{ $t('home.goToSettings') }}</AnimatedText>
-            <svg class="w-3.5 h-3.5 ml-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 5l7 7-7 7"
-              ></path>
-            </svg>
-          </router-link>
-        </div>
-      </transition>
-
-      <!-- Dashboard Content -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-3 pb-4">
-        <!-- Stats Cards -->
-        <div
-          class="bg-white/40 dark:bg-gray-800/40 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl p-3.5 shadow-sm transition-all hover:bg-white/60 dark:hover:bg-gray-800/60"
-        >
-          <div class="flex justify-between items-start">
-            <div class="p-2 bg-blue-100 dark:bg-blue-500/20 rounded-xl">
-              <svg
-                class="w-6 h-6 text-blue-600 dark:text-blue-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                />
-              </svg>
-            </div>
-            <div
-              v-if="managementStore.aircraftUpdateCount > 0"
-              class="px-2 py-0.5 bg-blue-500 text-white text-[10px] font-bold rounded-full animate-pulse"
-            >
-              {{ $t('dashboard.stats.updates', { count: managementStore.aircraftUpdateCount }) }}
-            </div>
-          </div>
-          <div class="mt-2.5">
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">
-              {{ managementStore.aircraftTotalCount }}
-            </div>
-            <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">
-              {{ $t('dashboard.stats.aircraft') }}
-            </div>
-          </div>
-        </div>
-
-        <div
-          class="bg-white/40 dark:bg-gray-800/40 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl p-3.5 shadow-sm transition-all hover:bg-white/60 dark:hover:bg-gray-800/60"
-        >
-          <div class="flex justify-between items-start">
-            <div class="p-2 bg-purple-100 dark:bg-purple-500/20 rounded-xl">
-              <svg
-                class="w-6 h-6 text-purple-600 dark:text-purple-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                />
-              </svg>
-            </div>
-            <div
-              v-if="managementStore.pluginsUpdateCount > 0"
-              class="px-2 py-0.5 bg-purple-500 text-white text-[10px] font-bold rounded-full animate-pulse"
-            >
-              {{ $t('dashboard.stats.updates', { count: managementStore.pluginsUpdateCount }) }}
-            </div>
-          </div>
-          <div class="mt-2.5">
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">
-              {{ managementStore.pluginsTotalCount }}
-            </div>
-            <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">
-              {{ $t('dashboard.stats.plugins') }}
-            </div>
-          </div>
-        </div>
-
-        <div
-          class="bg-white/40 dark:bg-gray-800/40 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl p-3.5 shadow-sm transition-all hover:bg-white/60 dark:hover:bg-gray-800/60"
-        >
-          <div class="flex justify-between items-start">
-            <div class="p-2 bg-emerald-100 dark:bg-emerald-500/20 rounded-xl">
-              <svg
-                class="w-6 h-6 text-emerald-600 dark:text-emerald-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            </div>
-            <div
-              v-if="sceneryStore.duplicatesCount > 0"
-              class="px-2 py-0.5 bg-amber-500 text-white text-[10px] font-bold rounded-full"
-            >
-              {{ $t('dashboard.stats.duplicates', { count: sceneryStore.duplicatesCount }) }}
-            </div>
-            <div
-              v-else-if="sceneryStore.missingDepsCount > 0"
-              class="px-2 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full"
-            >
-              {{ $t('dashboard.stats.missingDeps', { count: sceneryStore.missingDepsCount }) }}
-            </div>
-          </div>
-          <div class="mt-2.5">
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">
-              {{ sceneryStore.totalCount }}
-            </div>
-            <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">
-              {{ $t('dashboard.stats.scenery') }}
-            </div>
-          </div>
-        </div>
-
-        <div
-          class="bg-white/40 dark:bg-gray-800/40 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl p-3.5 shadow-sm transition-all hover:bg-white/60 dark:hover:bg-gray-800/60"
-        >
-          <div class="flex justify-between items-start">
-            <div class="p-2 bg-pink-100 dark:bg-pink-500/20 rounded-xl">
-              <svg
-                class="w-6 h-6 text-pink-600 dark:text-pink-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-            </div>
-          </div>
-          <div class="mt-2.5">
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">
-              {{ managementStore.navdataTotalCount }}
-            </div>
-            <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">
-              {{ $t('dashboard.stats.navdata') }}
-            </div>
-          </div>
-        </div>
-
-        <!-- Main Dashboard Row 2 -->
-        <!-- Disk Usage -->
-        <div
-          class="md:col-span-2 bg-white/40 dark:bg-gray-800/40 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl p-4.5 shadow-sm flex flex-col items-center justify-center min-h-[260px] transition-all hover:bg-white/60 dark:hover:bg-gray-800/60"
-        >
-          <h3
-            class="w-full text-base font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2"
-          >
-            <svg
-              class="w-4 h-4 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"
-              />
-            </svg>
-            {{ $t('dashboard.diskUsage') }}
-          </h3>
-          <div
-            v-if="diskUsageStore.isScanning"
-            class="flex flex-col items-center justify-center gap-2.5"
-          >
-            <svg class="w-7 h-7 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              ></circle>
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-            <div class="text-xs text-gray-500 dark:text-gray-400">
-              {{ $t('diskUsage.scanning') }}
-            </div>
-          </div>
-          <DiskUsageChart
-            v-else-if="diskUsageStore.report"
-            :categories="diskCategories"
-            :total-bytes="diskUsageStore.report.totalBytes"
-            :size="170"
-            :is-dark="store.theme === 'dark'"
-          />
-          <div v-else class="text-xs text-gray-500 dark:text-gray-400">
-            {{ $t('diskUsage.empty') }}
-          </div>
-        </div>
-
-        <!-- Quick Actions -->
-        <div
-          class="md:col-span-2 bg-white/40 dark:bg-gray-800/40 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl p-4.5 shadow-sm flex flex-col transition-all hover:bg-white/60 dark:hover:bg-gray-800/60"
-        >
-          <h3
-            class="text-base font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2"
-          >
-            <svg
-              class="w-4 h-4 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M13 10V3L4 14h7v7l9-11h-7z"
-              />
-            </svg>
-            {{ $t('dashboard.quickActions') }}
-          </h3>
-          <div class="grid grid-cols-2 gap-3 flex-1">
-            <button
-              :disabled="isLaunchingXPlane || isXPlaneRunning"
-              class="flex flex-col items-center justify-center gap-2.5 p-3.5 bg-white/50 dark:bg-gray-700/50 hover:bg-blue-50 dark:hover:bg-blue-500/20 rounded-2xl border border-white/40 dark:border-gray-600/50 transition-all hover:scale-[1.02] active:scale-[0.98] group disabled:opacity-50"
-              @click="handleLaunchXPlane"
-            >
-              <div
-                class="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center group-hover:scale-110 transition-transform"
-              >
-                <svg
-                  v-if="isLaunchingXPlane"
-                  class="w-5 h-5 animate-spin text-blue-600 dark:text-blue-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
+    <!-- Main Instrument Panel Grid -->
+    <div class="flex-1 min-h-0 grid grid-cols-12 gap-3 overflow-hidden">
+<!-- Left Column: Engine Gauges (Stats) -->
+      <div class="col-span-3 flex flex-col gap-3 h-full">
+        <div class="bezel-container flex-1 p-4 lcd-screen flex flex-col justify-between">
+          <div class="text-[10px] font-black uppercase text-aviation-cyan mb-4 border-b border-aviation-cyan/20 pb-1">Resources Inventory</div>
+          
+          <div class="space-y-6">
+            <!-- Aircraft Gauge -->
+            <div class="flex items-center justify-between group">
+              <div class="relative w-12 h-12">
+                <svg class="w-full h-full -rotate-90">
+                  <circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="2" class="text-gray-800" />
                   <circle
-                    class="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    stroke-width="4"
-                  ></circle>
-                  <path
-                    class="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
+cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="2" 
+                    stroke-dasharray="125.6" 
+                    :stroke-dashoffset="125.6 * (1 - Math.min(managementStore.aircraftTotalCount / 100, 1))"
+                    class="text-aviation-green transition-all duration-1000" />
                 </svg>
-                <svg
-                  v-else
-                  class="w-5 h-5 text-blue-600 dark:text-blue-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                  />
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+                <div class="absolute inset-0 flex items-center justify-center text-[10px] font-black">{{ managementStore.aircraftTotalCount }}</div>
               </div>
-              <span class="text-xs font-bold text-gray-700 dark:text-gray-200">{{
-                isXPlaneRunning ? $t('home.xplaneRunning') : $t('home.launchXPlane')
-              }}</span>
-            </button>
-
-            <button
-              class="flex flex-col items-center justify-center gap-2.5 p-3.5 bg-white/50 dark:bg-gray-700/50 hover:bg-emerald-50 dark:hover:bg-emerald-500/20 rounded-2xl border border-white/40 dark:border-gray-600/50 transition-all hover:scale-[1.02] active:scale-[0.98] group"
-              @click="handleFixScenery"
-            >
-              <div
-                class="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center group-hover:scale-110 transition-transform"
-              >
-                <svg
-                  class="w-5 h-5 text-emerald-600 dark:text-emerald-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
-                  />
-                </svg>
-              </div>
-              <span class="text-xs font-bold text-gray-700 dark:text-gray-200">{{
-                $t('dashboard.fixScenery')
-              }}</span>
-            </button>
-
-            <button
-              class="flex flex-col items-center justify-center gap-2.5 p-3.5 bg-white/50 dark:bg-gray-700/50 hover:bg-pink-50 dark:hover:bg-pink-500/20 rounded-2xl border border-white/40 dark:border-gray-600/50 transition-all hover:scale-[1.02] active:scale-[0.98] group"
-              @click="router.push('/activity')"
-            >
-              <div
-                class="w-10 h-10 rounded-full bg-pink-100 dark:bg-pink-500/20 flex items-center justify-center group-hover:scale-110 transition-transform"
-              >
-                <svg
-                  class="w-5 h-5 text-pink-600 dark:text-pink-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-              <span class="text-xs font-bold text-gray-700 dark:text-gray-200">{{
-                $t('activityLog.navTitle')
-              }}</span>
-            </button>
-
-            <button
-              class="flex flex-col items-center justify-center gap-2.5 p-3.5 bg-white/50 dark:bg-gray-700/50 hover:bg-amber-50 dark:hover:bg-amber-500/20 rounded-2xl border border-white/40 dark:border-gray-600/50 transition-all hover:scale-[1.02] active:scale-[0.98] group"
-              @click="router.push('/log-analysis')"
-            >
-              <div
-                class="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center group-hover:scale-110 transition-transform"
-              >
-                <svg
-                  class="w-5 h-5 text-amber-600 dark:text-amber-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-              </div>
-              <span class="text-xs font-bold text-gray-700 dark:text-gray-200">{{
-                $t('dashboard.openLogs')
-              }}</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Row 3: Activity & System -->
-        <!-- Recent Activity -->
-        <div
-          class="md:col-span-3 bg-white/40 dark:bg-gray-800/40 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl p-4.5 shadow-sm transition-all hover:bg-white/60 dark:hover:bg-gray-800/60"
-        >
-          <div class="flex justify-between items-center mb-4">
-            <h3 class="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <svg
-                class="w-4 h-4 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              {{ $t('dashboard.recentActivity') }}
-            </h3>
-            <button
-              class="text-xs font-bold text-blue-500 hover:text-blue-600 transition-colors"
-              @click="router.push('/activity')"
-            >
-              {{ $t('dashboard.viewAll') }}
-            </button>
-          </div>
-          <div class="space-y-2.5">
-            <div
-              v-for="entry in activityLogStore.entries.slice(0, 5)"
-              :key="entry.id"
-              class="flex items-center gap-3.5 p-2.5 rounded-2xl bg-white/50 dark:bg-gray-700/30 border border-white/40 dark:border-gray-600/30 transition-all hover:bg-white/80 dark:hover:bg-gray-700/50"
-            >
-              <div
-                class="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-                :class="
-                  entry.success
-                    ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-                    : 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400'
-                "
-              >
-                <svg
-                  v-if="entry.success"
-                  class="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-                <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </div>
-              <div class="min-w-0 flex-1">
-                <div class="text-sm font-bold text-gray-900 dark:text-white truncate">
-                  {{ entry.itemName || entry.operation }}
-                </div>
-                <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  {{ entry.operation }} • {{ entry.itemType }}
-                </div>
-              </div>
-              <div class="text-[10px] text-gray-400 dark:text-gray-500 whitespace-nowrap">
-                {{ formatRelativeTime(entry.timestamp) }}
+              <div class="flex-1 ml-3">
+                <div class="text-[9px] uppercase opacity-60">Aircraft</div>
+                <div class="text-xs font-black group-hover:text-white transition-colors uppercase">Fleet Active</div>
               </div>
             </div>
-            <div v-if="activityLogStore.entries.length === 0" class="py-12 text-center">
-              <div class="text-sm text-gray-400">{{ $t('dashboard.noActivity') }}</div>
-            </div>
-          </div>
-        </div>
 
-        <!-- System Status -->
-        <div
-          class="bg-white/40 dark:bg-gray-800/40 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 rounded-2xl p-4.5 shadow-sm transition-all hover:bg-white/60 dark:hover:bg-gray-800/60 flex flex-col"
-        >
-          <h3
-            class="text-base font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2"
-          >
-            <svg
-              class="w-4 h-4 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
-              />
-            </svg>
-            {{ $t('dashboard.systemStatus') }}
-          </h3>
-          <div class="space-y-3 flex-1">
+            <!-- Plugins Gauge -->
+            <div class="flex items-center justify-between group">
+              <div class="relative w-12 h-12">
+                <svg class="w-full h-full -rotate-90">
+                  <circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="2" class="text-gray-800" />
+                  <circle
+cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="2" 
+                    stroke-dasharray="125.6" 
+                    :stroke-dashoffset="125.6 * (1 - Math.min(managementStore.pluginsTotalCount / 50, 1))"
+                    class="text-aviation-cyan transition-all duration-1000" />
+                </svg>
+                <div class="absolute inset-0 flex items-center justify-center text-[10px] font-black">{{ managementStore.pluginsTotalCount }}</div>
+              </div>
+              <div class="flex-1 ml-3">
+                <div class="text-[9px] uppercase opacity-60">Plugins</div>
+                <div class="text-xs font-black group-hover:text-white transition-colors uppercase">Modules Loaded</div>
+              </div>
+            </div>
+
+            <!-- Scenery Tape -->
             <div class="space-y-1">
-              <div class="text-[9px] uppercase tracking-wider font-bold text-gray-400">
-                {{ $t('dashboard.xplaneStatus') }}
+              <div class="flex justify-between text-[9px] uppercase">
+                <span>Scenery Packs</span>
+                <span class="text-aviation-green">{{ sceneryStore.totalCount }}</span>
               </div>
-              <div class="flex items-center gap-2">
+              <div class="h-2 bg-gray-900 border border-aviation-green/20 overflow-hidden">
                 <div
-                  class="w-1.5 h-1.5 rounded-full"
-                  :class="isXPlaneRunning ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'"
-                ></div>
-                <div class="text-xs font-bold text-gray-700 dark:text-gray-200">
-                  {{ isXPlaneRunning ? $t('home.xplaneRunning') : $t('common.offline') }}
+class="h-full bg-aviation-green transition-all duration-1000 shadow-[0_0_10px_#00ff41]" 
+                  :style="{ width: `${Math.min(sceneryStore.totalCount / 5, 100)}%` }"></div>
+              </div>
+            </div>
+
+            <!-- Navdata Tape -->
+            <div class="space-y-1">
+              <div class="flex justify-between text-[9px] uppercase">
+                <span>Navigation Data</span>
+                <span class="text-aviation-amber">{{ managementStore.navdataTotalCount }}</span>
+              </div>
+              <div class="h-2 bg-gray-900 border border-aviation-amber/20 overflow-hidden">
+                <div
+class="h-full bg-aviation-amber transition-all duration-1000 shadow-[0_0_10px_#ffb000]" 
+                  :style="{ width: `${Math.min(managementStore.navdataTotalCount * 10, 100)}%` }"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Summary -->
+          <div class="mt-auto pt-4 border-t border-aviation-green/10 text-[9px] space-y-1">
+            <div class="flex justify-between uppercase">
+              <span class="opacity-50">Status:</span>
+              <span class="text-aviation-green">Nominal</span>
+            </div>
+            <div class="flex justify-between uppercase">
+              <span class="opacity-50">Ready:</span>
+              <span>100.0%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center Column: MFD (Main Controls) -->
+      <div class="col-span-6 flex flex-col gap-3">
+        <!-- Master Display -->
+        <div
+class="bezel-container flex-1 lcd-screen relative flex flex-col items-center justify-center overflow-hidden p-6"
+          :class="{'animate-pulse border-aviation-cyan shadow-[inset_0_0_30px_rgba(0,243,255,0.1)]': store.isAnalyzing}"
+          @click="handleDropZoneClick"
+        >
+          <!-- Background Radar Effect -->
+          <div class="absolute inset-0 pointer-events-none opacity-10">
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] border border-aviation-green rounded-full"></div>
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] border border-aviation-green rounded-full opacity-50"></div>
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100px] h-[100px] border border-aviation-green rounded-full opacity-20"></div>
+            <div class="absolute top-1/2 left-1/2 w-1/2 h-px bg-aviation-green origin-left animate-radar-sweep"></div>
+          </div>
+
+          <!-- Master Start Button -->
+          <button 
+            :disabled="isLaunchingXPlane || isXPlaneRunning"
+            class="relative z-10 w-40 h-40 rounded-full border-4 border-aviation-panel shadow-[0_0_20px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.1)] transition-all active:scale-95 group overflow-hidden"
+            :class="isXPlaneRunning ? 'cursor-default' : 'hover:shadow-[0_0_40px_rgba(0,243,255,0.3)]'"
+            @click.stop="handleLaunchXPlane"
+          >
+            <div class="absolute inset-0 bg-gradient-to-b from-gray-700 to-aviation-panel"></div>
+            <div class="absolute inset-1 rounded-full border-2 border-dashed border-aviation-cyan/30 opacity-50 group-hover:animate-spin-slow"></div>
+            
+            <div class="relative flex flex-col items-center justify-center h-full gap-2">
+              <svg v-if="isLaunchingXPlane" class="w-10 h-10 animate-spin text-aviation-cyan" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <svg
+v-else class="w-12 h-12 transition-transform duration-500" 
+                :class="[isXPlaneRunning ? 'text-aviation-green scale-110' : 'text-aviation-cyan group-hover:scale-110']"
+                fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path v-if="isXPlaneRunning" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <div class="text-[10px] font-black uppercase tracking-[0.2em]" :class="isXPlaneRunning ? 'text-aviation-green' : 'text-aviation-cyan'">
+                {{ isXPlaneRunning ? 'ONLINE' : 'MASTER START' }}
+              </div>
+            </div>
+          </button>
+
+          <!-- Drop Hint -->
+          <div class="mt-8 text-center relative z-10 transition-opacity duration-500" :class="{'opacity-30': isLaunchingXPlane}">
+            <div class="text-sm font-black uppercase tracking-widest text-aviation-green mb-1">{{ $t('dashboard.dropToInstall') }}</div>
+            <div class="text-[9px] uppercase opacity-50">{{ $t('home.supportedFormats') }}</div>
+          </div>
+
+          <!-- Bottom Quick Actions CDU Style -->
+          <div class="absolute bottom-4 left-4 right-4 grid grid-cols-4 gap-2">
+            <button class="aviation-button group" @click.stop="handleFixScenery">
+              <span class="group-hover:text-aviation-green transition-colors">Fix Scen</span>
+            </button>
+            <button class="aviation-button group" @click.stop="router.push('/log-analysis')">
+              <span class="group-hover:text-aviation-amber transition-colors">Log Anal</span>
+            </button>
+            <button class="aviation-button group" @click.stop="router.push('/activity')">
+              <span class="group-hover:text-aviation-cyan transition-colors">Activity</span>
+            </button>
+            <button class="aviation-button group" @click.stop="router.push('/management')">
+              <span class="group-hover:text-white transition-colors">Manage</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Telemetry & Status -->
+      <div class="col-span-3 flex flex-col gap-3">
+        <!-- Storage Telemetry -->
+        <div class="bezel-container h-1/2 p-4 lcd-screen flex flex-col">
+          <div class="text-[10px] font-black uppercase text-aviation-amber mb-4 border-b border-aviation-amber/20 pb-1">Storage Telemetry</div>
+          
+          <div class="flex-1 flex flex-col items-center justify-center">
+            <div v-if="diskUsageStore.isScanning" class="animate-pulse flex flex-col items-center">
+              <div class="text-[10px] uppercase mb-2">Scanning sectors...</div>
+              <div class="w-32 h-1 bg-gray-900 overflow-hidden">
+                <div class="h-full bg-aviation-amber animate-loading-bar"></div>
+              </div>
+            </div>
+            <div v-else-if="diskUsageStore.report" class="relative group">
+              <DiskUsageChart
+                :categories="diskCategories"
+                :total-bytes="diskUsageStore.report.totalBytes"
+                :size="140"
+                is-dark
+                radar
+              />
+              <!-- Raw readout overlay on hover -->
+              <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-aviation-dark/80 backdrop-blur-sm pointer-events-none">
+                <div class="text-[8px] text-aviation-amber space-y-1">
+                  <div v-for="cat in diskUsageStore.report.categories.slice(0, 4)" :key="cat.category" class="flex justify-between w-24">
+                    <span>{{ cat.category.toUpperCase() }}:</span>
+                    <span>{{ formatSize(cat.totalBytes) }}</span>
+                  </div>
                 </div>
               </div>
             </div>
-            <div class="space-y-1">
-              <div class="text-[9px] uppercase tracking-wider font-bold text-gray-400">
-                {{ $t('dashboard.appUpdate') }}
-              </div>
-              <div
-                v-if="updateStore.showUpdateBanner"
-                class="flex items-center gap-2 text-blue-500"
-              >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                  />
-                </svg>
-                <div class="text-xs font-bold">{{ $t('update.newVersionAvailable') }}</div>
-              </div>
-              <div v-else class="text-xs font-bold text-gray-700 dark:text-gray-200">
-                v{{ updateStore.currentVersion }} ({{ $t('common.latest') }})
-              </div>
-            </div>
-            <div class="space-y-1">
-              <div class="text-[9px] uppercase tracking-wider font-bold text-gray-400">
-                {{ $t('dashboard.xplanePath') }}
-              </div>
-              <div
-                class="text-[10px] font-mono p-1.5 bg-black/5 dark:bg-black/20 rounded-lg text-gray-600 dark:text-gray-400 break-all border border-black/5"
-              >
-                {{ store.xplanePath || $t('common.notSet') }}
-              </div>
-            </div>
+          </div>
+        </div>
+
+        <!-- Annunciator Panel -->
+        <div class="bezel-container flex-1 p-4 bg-aviation-panel flex flex-col">
+          <div class="text-[10px] font-black uppercase text-gray-500 mb-3">Annunciator Panel</div>
+          <div class="grid grid-cols-2 gap-1.5 flex-1">
+            <div class="annunciator-lamp" :class="store.xplanePath ? 'lamp-green' : 'lamp-red'">Path</div>
+            <div class="annunciator-lamp" :class="isXPlaneRunning ? 'lamp-amber' : 'lamp-off'">Running</div>
+            <div class="annunciator-lamp" :class="store.isContextMenuRegistered ? 'lamp-green' : 'lamp-off'">Shell</div>
+            <div class="annunciator-lamp" :class="updateStore.showUpdateBanner ? 'lamp-amber' : 'lamp-off'">Update</div>
+            <div class="annunciator-lamp" :class="sceneryStore.hasChanges ? 'lamp-amber' : 'lamp-off'">Scenery</div>
+            <div class="annunciator-lamp" :class="sceneryStore.duplicatesCount > 0 ? 'lamp-red' : 'lamp-off'">Dupl</div>
+            <div class="annunciator-lamp" :class="managementStore.aircraftUpdateCount > 0 ? 'lamp-amber' : 'lamp-off'">Fleet</div>
+            <div class="annunciator-lamp lamp-green">Sys OK</div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Drag Overlay -->
+    <!-- Data Link (Activity Stream) -->
+    <div class="h-24 bezel-container mt-3 p-3 lcd-screen flex gap-4">
+      <div class="flex-shrink-0 flex flex-col justify-center border-r border-aviation-green/20 pr-4">
+        <div class="text-[10px] font-black text-aviation-green uppercase tracking-widest">Data Link</div>
+        <div class="text-[8px] opacity-50 uppercase">Satellite Comms</div>
+      </div>
+      <div class="flex-1 overflow-y-auto custom-scrollbar text-[10px] leading-tight space-y-1 py-1">
+        <div v-for="entry in activityLogStore.entries.slice(0, 10)" :key="entry.id" class="flex items-start gap-3 group">
+          <span class="opacity-40 whitespace-nowrap">[{{ formatRelativeTime(entry.timestamp) }}]</span>
+          <span :class="entry.success ? 'text-aviation-green' : 'text-aviation-red'" class="uppercase">
+            &gt; {{ entry.operation }}: {{ entry.itemName || entry.itemType }}
+          </span>
+          <span class="opacity-0 group-hover:opacity-100 transition-opacity text-gray-600">-- SECURED</span>
+        </div>
+        <div v-if="activityLogStore.entries.length === 0" class="opacity-20 animate-pulse">Waiting for system telemetry...</div>
+      </div>
+    </div>
+
+    <!-- Drag Overlay (Full Cockpit Alert) -->
     <transition name="fade">
       <div
         v-if="isDragging && !store.isInstalling"
-        class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-blue-500/20 backdrop-blur-md transition-all duration-300 pointer-events-none"
+        class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-aviation-cyan/10 backdrop-blur-md pointer-events-none"
       >
-        <div
-          class="p-12 rounded-[3rem] bg-white/90 dark:bg-gray-800/90 shadow-2xl border-4 border-dashed border-blue-500 flex flex-col items-center gap-6 animate-bounce-in"
-        >
-          <div
-            class="w-24 h-24 rounded-full bg-blue-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/40"
-          >
-            <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="3"
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-          </div>
-          <div class="text-center">
-            <h2 class="text-3xl font-black text-gray-900 dark:text-white">
-              {{ $t('dashboard.dropToInstall') }}
-            </h2>
-            <p class="text-gray-500 dark:text-gray-400 mt-2 font-medium">
-              {{ $t('home.supportedFormats') }}
-            </p>
-          </div>
+        <div class="bezel-container p-12 bg-aviation-dark/90 border-4 border-aviation-cyan animate-cockpit-alert">
+           <div class="w-24 h-24 rounded-full border-4 border-aviation-cyan flex items-center justify-center text-aviation-cyan mb-6 shadow-[0_0_30px_#00f3ff]">
+             <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4" />
+             </svg>
+           </div>
+           <div class="text-center">
+             <h2 class="text-3xl font-black text-aviation-cyan tracking-[0.2em] uppercase mb-2">Ready to Load</h2>
+             <p class="text-aviation-cyan/60 font-black uppercase text-xs">Awaiting data injection</p>
+           </div>
         </div>
       </div>
     </transition>
 
-    <!-- Progress Overlays -->
+    <!-- Progress Overlays (Retain existing functional components) -->
     <transition name="fade" mode="out-in">
       <AnalyzingOverlay v-if="store.isAnalyzing" key="analyzing" />
 
@@ -671,110 +313,19 @@
 
     <!-- Launch X-Plane Confirmation Dialog -->
     <transition name="fade">
-      <div
-        v-if="showLaunchConfirmDialog"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-        @click.self="cancelLaunchDialog"
-      >
-        <div
-          class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-bounce-in"
-        >
-          <!-- Header -->
-          <div
-            class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3"
-          >
-            <div class="p-2 bg-amber-100 dark:bg-amber-500/20 rounded-lg">
-              <svg
-                class="w-5 h-5 text-amber-600 dark:text-amber-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
-                ></path>
-              </svg>
-            </div>
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ $t('home.launchConfirmTitle') }}
-            </h3>
+      <div v-if="showLaunchConfirmDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" @click.self="cancelLaunchDialog">
+        <div class="bezel-container max-w-md w-full p-6 animate-cockpit-alert border-aviation-amber">
+          <div class="flex items-center gap-4 mb-6 text-aviation-amber">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <h3 class="text-xl font-black uppercase tracking-wider">{{ $t('home.launchConfirmTitle') }}</h3>
           </div>
-
-          <!-- Content -->
-          <div class="px-6 py-4">
-            <p class="text-gray-600 dark:text-gray-300">
-              {{ $t('home.launchConfirmMessage') }}
-            </p>
-          </div>
-
-          <!-- Actions -->
-          <div
-            class="px-6 py-4 bg-gray-50 dark:bg-gray-800/50 flex flex-col sm:flex-row gap-3 sm:justify-end"
-          >
-            <button
-              :disabled="isLaunchingXPlane"
-              class="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              @click="cancelLaunchDialog"
-            >
-              {{ $t('common.cancel') }}
-            </button>
-            <button
-              :disabled="isLaunchingXPlane"
-              class="px-4 py-2 text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-500/20 hover:bg-blue-200 dark:hover:bg-blue-500/30 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              @click="launchXPlane"
-            >
-              <svg
-                v-if="isLaunchingXPlane"
-                class="w-4 h-4 animate-spin"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                ></circle>
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              {{ $t('home.launchDirectly') }}
-            </button>
-            <button
-              :disabled="isLaunchingXPlane"
-              class="px-4 py-2 text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg font-medium transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              @click="applyAndLaunch"
-            >
-              <svg
-                v-if="isLaunchingXPlane"
-                class="w-4 h-4 animate-spin"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                ></circle>
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              {{ $t('home.applyAndLaunch') }}
-            </button>
+          <p class="text-xs uppercase leading-relaxed text-aviation-amber/80 mb-8">{{ $t('home.launchConfirmMessage') }}</p>
+          <div class="flex gap-3 justify-end">
+            <button class="aviation-button border-gray-700" @click="cancelLaunchDialog">{{ $t('common.cancel') }}</button>
+            <button class="aviation-button border-aviation-cyan text-aviation-cyan" @click="launchXPlane">{{ $t('home.launchDirectly') }}</button>
+            <button class="aviation-button bg-aviation-amber border-aviation-amber text-black" @click="applyAndLaunch">{{ $t('home.applyAndLaunch') }}</button>
           </div>
         </div>
       </div>
@@ -855,20 +406,35 @@ const MAX_PASSWORD_RETRIES = 3
 
 // Password rate limiting
 const passwordAttemptTimestamps = ref<number[]>([])
-const MIN_PASSWORD_ATTEMPT_DELAY_MS = 1000 // 1 second between attempts
-const PASSWORD_RATE_LIMIT_WINDOW_MS = 10000 // 10 second window for rate limiting
-const DEBUG_DROP_FLASH_DURATION_MS = 800 // Duration for debug drop flash visual feedback
-const DROP_ZONE_CLICK_SUPPRESS_AFTER_FOCUS_MS = 350 // Prevent activation click from opening picker
-const COMPLETION_ANIMATION_DELAY_MS = 100 // Brief delay before hiding progress to allow animation to start
+const MIN_PASSWORD_ATTEMPT_DELAY_MS = 1000 
+const PASSWORD_RATE_LIMIT_WINDOW_MS = 10000 
+const DEBUG_DROP_FLASH_DURATION_MS = 800 
+const DROP_ZONE_CLICK_SUPPRESS_AFTER_FOCUS_MS = 350 
+const COMPLETION_ANIMATION_DELAY_MS = 100 
 const suppressDropZoneClickUntil = ref(0)
 const windowWasBlurred = ref(!document.hasFocus())
 
-// Disk usage categories for the widget
+const DISK_CATEGORY_KEY_MAP: Record<string, string> = {
+  aircraft: 'diskUsage.categoryAircraft',
+  plugin: 'diskUsage.categoryPlugins',
+  plugins: 'diskUsage.categoryPlugins',
+  scenery: 'diskUsage.categoryScenery',
+  navdata: 'diskUsage.categoryNavdata',
+  screenshot: 'diskUsage.categoryScreenshots',
+  screenshots: 'diskUsage.categoryScreenshots',
+}
+
+function diskCategoryLabel(category: string): string {
+  const key = DISK_CATEGORY_KEY_MAP[category.trim().toLowerCase()]
+  return key ? t(key) : category
+}
+
+// Disk usage categories for the widget - use aviation colors
 const diskCategories = computed(() => {
   if (!diskUsageStore.report) return []
-  const colors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#6b7280']
+  const colors = ['#00ff41', '#00f3ff', '#ffb000', '#ff3e3e', '#8b5cf6', '#6b7280']
   return diskUsageStore.report.categories.map((cat, i) => ({
-    name: t(`addonType.${cat.category}`),
+    name: diskCategoryLabel(cat.category),
     bytes: cat.totalBytes,
     color: colors[i % colors.length],
   }))
@@ -986,20 +552,18 @@ function formatRelativeTime(timestamp: number): string {
   const seconds = Math.floor(diff / 1000)
   const minutes = Math.floor(seconds / 60)
   const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
 
-  if (seconds < 60) return t('activityLog.justNow')
-  if (minutes < 60) return t('activityLog.minutesAgo', { n: minutes })
-  if (hours < 24) return t('activityLog.hoursAgo', { n: hours })
-  return t('activityLog.daysAgo', { n: days })
+  if (seconds < 60) return `${seconds}S`
+  if (minutes < 60) return `${minutes}M`
+  return `${hours}H`
 }
 
 function formatSize(bytes: number): string {
-  if (bytes === 0) return '0 B'
+  if (bytes === 0) return '0B'
   const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const sizes = ['B', 'K', 'M', 'G', 'T']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + sizes[i]
 }
 
 onMounted(async () => {
@@ -1131,9 +695,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
       verificationPreferences: store.verificationPreferences,
     })
 
-    const nestedRequiredPaths = result.nestedPasswordRequired
-      ? Object.keys(result.nestedPasswordRequired)
-      : []
+    const nestedRequiredPaths = result.nestedPasswordRequired ? Object.keys(result.nestedPasswordRequired) : []
     const allRequiredPaths = [...(result.passwordRequired || []), ...nestedRequiredPaths]
 
     if (allRequiredPaths.length > 0) {
@@ -1146,9 +708,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
     }
 
     if (result.errors.length > 0) {
-      const passwordErrors = result.errors.filter(
-        (err) => err.includes('Wrong password') || err.toLowerCase().includes('wrong password'),
-      )
+      const passwordErrors = result.errors.filter(err => err.includes('Wrong password') || err.toLowerCase().includes('wrong password'))
       if (passwordErrors.length > 0 && passwords && Object.keys(passwords).length > 0) {
         passwordRetryCount.value++
         if (passwordRetryCount.value >= MAX_PASSWORD_RETRIES) {
@@ -1166,9 +726,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
       }
 
       if (result.tasks.length > 0) {
-        toast.warning(
-          `${t('home.partialAnalysisWarning', { count: result.errors.length })} ${t('home.partialAnalysisHint')}`,
-        )
+        toast.warning(`${t('home.partialAnalysisWarning', { count: result.errors.length })} ${t('home.partialAnalysisHint')}`)
       } else {
         modal.showError(result.errors.join('\n'))
         return
@@ -1212,9 +770,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
 
 async function handlePasswordSubmit(passwords: Record<string, string>) {
   const now = Date.now()
-  const recentAttempts = passwordAttemptTimestamps.value.filter(
-    (t) => now - t < PASSWORD_RATE_LIMIT_WINDOW_MS,
-  )
+  const recentAttempts = passwordAttemptTimestamps.value.filter(t => now - t < PASSWORD_RATE_LIMIT_WINDOW_MS)
   if (recentAttempts.length > 0) {
     const lastAttempt = Math.max(...recentAttempts)
     if (now - lastAttempt < MIN_PASSWORD_ATTEMPT_DELAY_MS) {
@@ -1231,9 +787,7 @@ async function handlePasswordSubmit(passwords: Record<string, string>) {
 
 async function handlePasswordCancel() {
   showPasswordModal.value = false
-  const nonPasswordPaths = pendingAnalysisPaths.value.filter(
-    (p) => !passwordRequiredPaths.value.includes(p),
-  )
+  const nonPasswordPaths = pendingAnalysisPaths.value.filter(p => !passwordRequiredPaths.value.includes(p))
   resetPasswordState()
   if (nonPasswordPaths.length > 0) await analyzeFiles(nonPasswordPaths)
 }
@@ -1418,76 +972,67 @@ async function handleFixScenery() {
 <style scoped>
 /* Custom Scrollbar for dashboard */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(0, 255, 65, 0.05);
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.3);
-  border-radius: 10px;
+  background: rgba(0, 255, 65, 0.2);
+  border-radius: 2px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(156, 163, 175, 0.5);
-}
-
-/* debug drop visual */
-.debug-drop {
-  border-color: #10b981 !important; /* emerald */
-  box-shadow: 0 0 30px rgba(16, 185, 129, 0.15) !important;
+  background: rgba(0, 255, 65, 0.4);
 }
 
 /* Animations */
-@keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+@keyframes cockpit-power-on {
+  0% { opacity: 0; filter: brightness(5) contrast(2); transform: scale(1.05); }
+  100% { opacity: 1; filter: brightness(1) contrast(1); transform: scale(1); }
 }
 
-@keyframes bounce-in {
-  0% {
-    opacity: 0;
-    transform: scale(0.3);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.05);
-  }
-  70% {
-    transform: scale(0.9);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
+@keyframes radar-sweep {
+  0% { transform: rotate(0deg); opacity: 0.5; }
+  50% { opacity: 0.2; }
+  100% { transform: rotate(360deg); opacity: 0.5; }
 }
 
-.animate-fade-in {
-  animation: fade-in 0.6s ease-out;
+@keyframes loading-bar {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
-.animate-bounce-in {
-  animation: bounce-in 0.8s ease-out;
+@keyframes cockpit-alert {
+  0%, 100% { border-color: inherit; box-shadow: 0 0 10px rgba(0,0,0,0); }
+  50% { border-color: #ff3e3e; box-shadow: 0 0 30px rgba(255,62,62,0.4); }
 }
 
-/* Transition for warnings */
-.slide-down-enter-active,
-.slide-down-leave-active {
-  transition: all 0.3s ease-out;
+.animate-cockpit-power-on {
+  animation: cockpit-power-on 0.8s cubic-bezier(0.2, 0, 0.2, 1) forwards;
 }
 
-.slide-down-enter-from,
-.slide-down-leave-to {
-  opacity: 0;
-  transform: translateY(-20px);
+.animate-radar-sweep {
+  animation: radar-sweep 4s linear infinite;
+}
+
+.animate-loading-bar {
+  animation: loading-bar 1.5s infinite;
+}
+
+.animate-cockpit-alert {
+  animation: cockpit-alert 1s infinite;
+}
+
+.animate-spin-slow {
+  animation: spin 8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Fade transition */
