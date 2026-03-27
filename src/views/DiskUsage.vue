@@ -40,7 +40,7 @@
             class="flex items-center gap-2 text-sm"
           >
             <div class="w-3 h-3 rounded-sm flex-shrink-0" :style="{ backgroundColor: categoryColor(cat.category) }"></div>
-            <span class="text-gray-700 dark:text-gray-300">{{ cat.category }}</span>
+            <span class="text-gray-700 dark:text-gray-300">{{ diskCategoryLabel(cat.category) }}</span>
             <span class="text-gray-400 dark:text-gray-500 ml-auto">{{ formatSize(cat.totalBytes) }}</span>
           </div>
         </div>
@@ -58,7 +58,7 @@
           >
             <div class="flex items-center gap-2">
               <div class="w-2.5 h-2.5 rounded-sm" :style="{ backgroundColor: categoryColor(cat.category) }"></div>
-              <span class="font-medium text-gray-900 dark:text-white">{{ cat.category }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ diskCategoryLabel(cat.category) }}</span>
               <span class="text-xs text-gray-400 dark:text-gray-500">
                 {{ cat.itemCount }} {{ $t('diskUsage.items') }}
               </span>
@@ -141,7 +141,7 @@ import { useAppStore } from '@/stores/app'
 import { useThemeStore } from '@/stores/theme'
 import DiskUsageChart from '@/components/DiskUsageChart.vue'
 
-useI18n()
+const { t } = useI18n()
 
 const store = useDiskUsageStore()
 const appStore = useAppStore()
@@ -161,10 +161,25 @@ function categoryColor(name: string): string {
   return COLORS[name] || '#6b7280'
 }
 
+const DISK_CATEGORY_KEY_MAP: Record<string, string> = {
+  aircraft: 'diskUsage.categoryAircraft',
+  plugin: 'diskUsage.categoryPlugins',
+  plugins: 'diskUsage.categoryPlugins',
+  scenery: 'diskUsage.categoryScenery',
+  navdata: 'diskUsage.categoryNavdata',
+  screenshot: 'diskUsage.categoryScreenshots',
+  screenshots: 'diskUsage.categoryScreenshots',
+}
+
+function diskCategoryLabel(category: string): string {
+  const key = DISK_CATEGORY_KEY_MAP[category.trim().toLowerCase()]
+  return key ? t(key) : category
+}
+
 const chartData = computed(() => {
   if (!store.report) return []
   return store.report.categories.map((c) => ({
-    name: c.category,
+    name: diskCategoryLabel(c.category),
     bytes: c.totalBytes,
     color: categoryColor(c.category),
   }))

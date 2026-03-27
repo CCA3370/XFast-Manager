@@ -2,16 +2,13 @@ import { createI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import zh from './zh'
 import en from './en'
+import es from './es'
+import fr from './fr'
+import de from './de'
+import ja from './ja'
+import { getInitialLocale, persistLocale, type SupportedLocale } from './shared'
 
-// 获取系统语言 - 只有简体中文和繁体中文显示中文，其他一律显示英文
-const getSystemLanguage = (): string => {
-  const lang = navigator.language || 'en'
-  // 只匹配简体中文(zh-CN)和繁体中文(zh-TW, zh-HK)
-  const chineseLocales = ['zh-CN', 'zh-TW', 'zh-HK', 'zh-SG']
-  return chineseLocales.some((locale) => lang.startsWith(locale)) ? 'zh' : 'en'
-}
-
-const initialLocale = getSystemLanguage()
+const initialLocale = getInitialLocale()
 
 // Removed blocking invoke call from module top-level to improve startup speed
 // Use syncLocaleToBackend() in App.vue onMounted instead
@@ -19,10 +16,14 @@ const initialLocale = getSystemLanguage()
 export const i18n = createI18n({
   legacy: false,
   locale: initialLocale,
-  fallbackLocale: 'en',
+  fallbackLocale: false,
   messages: {
     zh,
     en,
+    es,
+    fr,
+    de,
+    ja,
   },
 })
 
@@ -34,8 +35,9 @@ export function syncLocaleToBackend() {
 }
 
 // Helper function to sync locale with backend when user changes language
-export async function setLocale(locale: string) {
-  i18n.global.locale.value = locale as 'en' | 'zh'
+export async function setLocale(locale: SupportedLocale) {
+  i18n.global.locale.value = locale
+  persistLocale(locale)
   try {
     await invoke('set_log_locale', { locale })
   } catch (e) {

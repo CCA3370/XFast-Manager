@@ -162,8 +162,27 @@ function operationLabel(op: string): string {
   return t(`activityLog.op_${op}`, op)
 }
 
+const ACTIVITY_TYPE_KEY_MAP: Record<string, string> = {
+  aircraft: 'aircraft',
+  plugin: 'plugin',
+  plugins: 'plugin',
+  scenery: 'scenery',
+  navdata: 'navdata',
+  livery: 'livery',
+  liveries: 'livery',
+  luascript: 'lua_script',
+  'lua-script': 'lua_script',
+  lua_script: 'lua_script',
+  preset: 'preset',
+}
+
+function normalizeActivityType(type: string): string {
+  const normalized = type.trim().toLowerCase().replace(/[\s-]+/g, '_')
+  return ACTIVITY_TYPE_KEY_MAP[normalized] ?? normalized
+}
+
 function typeLabel(type: string): string {
-  return t(`activityLog.type_${type}`, type)
+  return t(`activityLog.type_${normalizeActivityType(type)}`, type)
 }
 
 function formatDetails(details: string): string {

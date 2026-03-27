@@ -94,7 +94,7 @@
               class="block text-xs font-medium tabular-nums"
               :class="getCompletionCountClass()"
             >
-              {{ completedCount }}/{{ tasks.length }} {{ $t('home.completed') || 'completed' }}
+              {{ completedCount }}/{{ tasks.length }} {{ $t('home.completed') }}
             </span>
           </transition>
         </div>
@@ -262,7 +262,7 @@
                 v-if="isTaskFailed(index) && isComplete"
                 class="text-xs text-red-400 dark:text-red-500 flex-shrink-0"
               >
-                ({{ $t('completion.viewFailedTasks') || 'View Details' }})
+                ({{ $t('completion.viewFailedTasks') }})
               </span>
             </div>
             <div class="flex items-center gap-1 -mt-0.5">
@@ -701,22 +701,22 @@ function getTaskItemClass(index: number): string {
 // Get task status text
 function getTaskStatusText(index: number): string {
   if (isTaskCompleted(index)) {
-    return t('home.installed') || 'Installed'
+    return t('home.installed')
   }
   if (isTaskFailed(index)) {
-    return t('home.failed') || 'Failed'
+    return t('home.failed')
   }
   if (!props.isComplete && isTaskActive(index)) {
     // Check if the task is in verifying phase
     if (isParallel.value) {
       const at = props.activeTasks?.find((t) => t.taskIndex === index)
       if (at?.phase === 'verifying') {
-        return t('home.verifying') || 'Verifying...'
+        return t('home.verifying')
       }
     }
-    return t('home.installingNow') || 'Installing...'
+    return t('home.installingNow')
   }
-  return t('home.waiting') || 'Waiting'
+  return t('home.waiting')
 }
 
 // Get status text color class
@@ -823,13 +823,13 @@ function getTaskSizeText(task: InstallTask, index: number): string {
 // Get localized label for addon type
 function getTaskTypeLabel(type: AddonType): string {
   const labels: Record<AddonType, string> = {
-    [AddonType.Aircraft]: t('addonType.Aircraft') || 'Aircraft',
-    [AddonType.Scenery]: t('addonType.Scenery') || 'Scenery',
-    [AddonType.SceneryLibrary]: t('addonType.SceneryLibrary') || 'Scenery Library',
-    [AddonType.Plugin]: t('addonType.Plugin') || 'Plugin',
-    [AddonType.Navdata]: t('addonType.Navdata') || 'Navdata',
-    [AddonType.Livery]: t('addonType.Livery') || 'Livery',
-    [AddonType.LuaScript]: t('addonType.LuaScript') || 'Lua Script',
+    [AddonType.Aircraft]: t('addonType.Aircraft'),
+    [AddonType.Scenery]: t('addonType.Scenery'),
+    [AddonType.SceneryLibrary]: t('addonType.SceneryLibrary'),
+    [AddonType.Plugin]: t('addonType.Plugin'),
+    [AddonType.Navdata]: t('addonType.Navdata'),
+    [AddonType.Livery]: t('addonType.Livery'),
+    [AddonType.LuaScript]: t('addonType.LuaScript'),
   }
   return labels[type] || type
 }
@@ -905,5 +905,4 @@ function getTaskTypeLabel(type: AddonType): string {
   opacity: 0;
   transform: translateY(-8px);
 }
-
 </style>

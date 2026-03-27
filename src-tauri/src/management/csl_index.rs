@@ -7,8 +7,17 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 use crate::error::{ApiError, ApiErrorCode};
+
+macro_rules! csl_debug {
+    ($($arg:tt)*) => {
+        if crate::logger::is_debug_enabled() {
+            crate::log_debug!(&format!($($arg)*), "csl");
+        }
+    };
+}
 
 const DEFAULT_SERVER_BASE_URL: &str = "http://x-csl.ru";
 const CSL_CANONICAL_REL: &str = "Resources/plugins/IVAO_CSL/CSL";
@@ -33,6 +42,81 @@ static DESC_CACHE: std::sync::LazyLock<Mutex<HashMap<String, String>>> =
 /// If size+mtime still match, the cached hash is reused (avoids re-reading the file).
 static MD5_CACHE: std::sync::LazyLock<std::sync::Mutex<HashMap<PathBuf, (u64, i64, String)>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+
+#[derive(Clone, Debug)]
+struct RequestContext {
+    operation: String,
+    operation_id: String,
+    next_http_request_seq: Arc<AtomicU64>,
+}
+
+impl RequestContext {
+    fn new(operation: &str, request_id: Option<String>) -> Self {
+        Self {
+            operation: operation.to_string(),
+            operation_id: normalize_request_id(request_id.as_deref(), operation),
+            next_http_request_seq: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    fn operation(&self) -> &str {
+        &self.operation
+    }
+
+    fn operation_id(&self) -> &str {
+        &self.operation_id
+    }
+
+    fn next_http_request_id(&self) -> String {
+        let seq = self.next_http_request_seq.fetch_add(1, Ordering::Relaxed) + 1;
+        format!("{}-{:04}", self.operation_id, seq)
+    }
+}
+
+fn sanitize_request_id(raw: &str) -> Option<String> {
+    let sanitized: String = raw
+        .trim()
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | ':'))
+        .take(96)
+        .collect();
+
+    if sanitized.is_empty() {
+        None
+    } else {
+        Some(sanitized)
+    }
+}
+
+fn normalize_request_id(request_id: Option<&str>, operation: &str) -> String {
+    request_id
+        .and_then(sanitize_request_id)
+        .unwrap_or_else(|| format!("{}-{}", operation.replace('_', "-"), Uuid::new_v4().simple()))
+}
+
+fn with_request_tracking_headers(
+    builder: reqwest::RequestBuilder,
+    request_ctx: &RequestContext,
+    request_id: &str,
+) -> reqwest::RequestBuilder {
+    builder
+        .header("X-Request-Id", request_id)
+        .header("X-XFast-Operation-Id", request_ctx.operation_id())
+        .header("X-XFast-Operation", request_ctx.operation())
+}
+
+fn build_http_client(timeout: std::time::Duration) -> Result<reqwest::Client, ApiError> {
+    reqwest::Client::builder()
+        .timeout(timeout)
+        .user_agent("XFast Manager")
+        .build()
+        .map_err(|e| {
+            ApiError::new(
+                ApiErrorCode::NetworkError,
+                format!("HTTP client error: {}", e),
+            )
+        })
+}
 
 #[derive(Default)]
 pub struct CslDownloadControl {
@@ -471,7 +555,11 @@ fn compare_package_fast(pkg: &PackageData, local_dir: &Path) -> (String, usize, 
 // Network Operations
 // ============================================================================
 
-async fn fetch_remote_index(server: &str, index_path: &str) -> Result<String, ApiError> {
+async fn fetch_remote_index(
+    server: &str,
+    index_path: &str,
+    request_ctx: &RequestContext,
+) -> Result<String, ApiError> {
     let url = format!("{}/{}", server, index_path);
 
     // Check cache first (keyed by full URL)
@@ -479,49 +567,103 @@ async fn fetch_remote_index(server: &str, index_path: &str) -> Result<String, Ap
         let cache = INDEX_CACHE.lock().await;
         if let Some((fetched_at, ref content)) = cache.get(&url) {
             if fetched_at.elapsed() < INDEX_CACHE_TTL {
+                csl_debug!(
+                    "[{}] Index cache hit url={} age_secs={} bytes={}",
+                    request_ctx.operation_id(),
+                    url,
+                    fetched_at.elapsed().as_secs(),
+                    content.len()
+                );
                 return Ok(content.clone());
             }
         }
     }
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .user_agent("XFast Manager")
-        .build()
+    csl_debug!(
+        "[{}] Index cache miss url={} ttl_secs={}",
+        request_ctx.operation_id(),
+        url,
+        INDEX_CACHE_TTL.as_secs()
+    );
+
+    let client = build_http_client(std::time::Duration::from_secs(30))?;
+    let request_id = request_ctx.next_http_request_id();
+
+    csl_debug!(
+        "[{}] HTTP GET start request_id={} url={} purpose=index_fetch",
+        request_ctx.operation_id(),
+        request_id,
+        url
+    );
+
+    let resp = with_request_tracking_headers(client.get(&url), request_ctx, &request_id)
+        .send()
+        .await
         .map_err(|e| {
+            csl_debug!(
+                "[{}] HTTP GET failed request_id={} url={} purpose=index_fetch error={}",
+                request_ctx.operation_id(),
+                request_id,
+                url,
+                e
+            );
             ApiError::new(
                 ApiErrorCode::NetworkError,
-                format!("HTTP client error: {}", e),
+                format!("Failed to fetch index: {}", e),
             )
         })?;
 
-    let resp = client.get(&url).send().await.map_err(|e| {
-        ApiError::new(
-            ApiErrorCode::NetworkError,
-            format!("Failed to fetch index: {}", e),
-        )
-    })?;
-
-    if !resp.status().is_success() {
+    let status = resp.status();
+    if !status.is_success() {
+        csl_debug!(
+            "[{}] HTTP GET non-success request_id={} url={} purpose=index_fetch status={}",
+            request_ctx.operation_id(),
+            request_id,
+            url,
+            status
+        );
         return Err(ApiError::new(
             ApiErrorCode::NetworkError,
-            format!("Server returned status {}", resp.status()),
+            format!("Server returned status {}", status),
         ));
     }
 
     let bytes = resp.bytes().await.map_err(|e| {
+        csl_debug!(
+            "[{}] HTTP GET read failed request_id={} url={} purpose=index_fetch error={}",
+            request_ctx.operation_id(),
+            request_id,
+            url,
+            e
+        );
         ApiError::new(
             ApiErrorCode::NetworkError,
             format!("Failed to read response: {}", e),
         )
     })?;
 
+    csl_debug!(
+        "[{}] HTTP GET success request_id={} url={} purpose=index_fetch status={} bytes={}",
+        request_ctx.operation_id(),
+        request_id,
+        url,
+        status,
+        bytes.len()
+    );
+
     let content = String::from_utf8_lossy(&bytes).to_string();
 
     // Update cache
     {
         let mut cache = INDEX_CACHE.lock().await;
-        cache.insert(url, (std::time::Instant::now(), content.clone()));
+        cache.insert(url.clone(), (std::time::Instant::now(), content.clone()));
     }
+
+    csl_debug!(
+        "[{}] Index cache updated url={} bytes={}",
+        request_ctx.operation_id(),
+        url,
+        content.len()
+    );
 
     Ok(content)
 }
@@ -535,6 +677,7 @@ async fn download_file(
     local_path: &Path,
     cancel_flag: &AtomicBool,
     package_name: &str,
+    request_ctx: &RequestContext,
 ) -> Result<u64, ApiError> {
     let url = format!("{}/{}", server, remote_path);
 
@@ -559,18 +702,51 @@ async fn download_file(
             ensure_download_not_cancelled(cancel_flag, package_name)?;
         }
 
-        let resp = match client.get(&url).send().await {
+        let request_id = request_ctx.next_http_request_id();
+        csl_debug!(
+            "[{}] HTTP GET start request_id={} url={} purpose=file_download package={} local_path={} attempt={}",
+            request_ctx.operation_id(),
+            request_id,
+            url,
+            package_name,
+            local_path.display(),
+            attempt + 1
+        );
+
+        let resp = match with_request_tracking_headers(client.get(&url), request_ctx, &request_id)
+            .send()
+            .await
+        {
             Ok(r) => r,
             Err(e) => {
+                csl_debug!(
+                    "[{}] HTTP GET failed request_id={} url={} purpose=file_download package={} attempt={} error={}",
+                    request_ctx.operation_id(),
+                    request_id,
+                    url,
+                    package_name,
+                    attempt + 1,
+                    e
+                );
                 last_err = Some(format!("Download failed (attempt {}): {}", attempt + 1, e));
                 continue;
             }
         };
 
-        if !resp.status().is_success() {
+        let status = resp.status();
+        if !status.is_success() {
+            csl_debug!(
+                "[{}] HTTP GET non-success request_id={} url={} purpose=file_download package={} attempt={} status={}",
+                request_ctx.operation_id(),
+                request_id,
+                url,
+                package_name,
+                attempt + 1,
+                status
+            );
             last_err = Some(format!(
                 "Download failed with status {} (attempt {})",
-                resp.status(),
+                status,
                 attempt + 1,
             ));
             continue;
@@ -601,6 +777,15 @@ async fn download_file(
             let chunk = match chunk {
                 Ok(chunk) => chunk,
                 Err(e) => {
+                    csl_debug!(
+                        "[{}] HTTP GET stream failed request_id={} url={} purpose=file_download package={} attempt={} error={}",
+                        request_ctx.operation_id(),
+                        request_id,
+                        url,
+                        package_name,
+                        attempt + 1,
+                        e
+                    );
                     last_err = Some(format!(
                         "Failed to read download (attempt {}): {}",
                         attempt + 1,
@@ -612,6 +797,15 @@ async fn download_file(
             };
 
             if let Err(e) = file.write_all(&chunk) {
+                csl_debug!(
+                    "[{}] Local file write failed request_id={} package={} tmp_path={} attempt={} error={}",
+                    request_ctx.operation_id(),
+                    request_id,
+                    package_name,
+                    tmp_path.display(),
+                    attempt + 1,
+                    e
+                );
                 last_err = Some(format!(
                     "Failed to write file (attempt {}): {}",
                     attempt + 1,
@@ -657,6 +851,17 @@ async fn download_file(
             )
         })?;
 
+        csl_debug!(
+            "[{}] HTTP GET success request_id={} url={} purpose=file_download package={} status={} bytes={} local_path={}",
+            request_ctx.operation_id(),
+            request_id,
+            url,
+            package_name,
+            status,
+            size,
+            local_path.display()
+        );
+
         return Ok(size);
     }
 
@@ -673,6 +878,7 @@ async fn download_file(
 async fn fetch_package_descriptions(
     server: &str,
     package_names: Vec<String>,
+    request_ctx: &RequestContext,
 ) -> HashMap<String, String> {
     // 1. Read cache — collect already-known descriptions and the list of unknowns
     let (mut result, to_fetch) = {
@@ -690,30 +896,74 @@ async fn fetch_package_descriptions(
         (known, unknown)
     };
 
+    csl_debug!(
+        "[{}] Description fetch start total_packages={} cached={} remote_fetches={}",
+        request_ctx.operation_id(),
+        package_names.len(),
+        result.len(),
+        to_fetch.len()
+    );
+
     if to_fetch.is_empty() {
+        csl_debug!(
+            "[{}] Description fetch completed from cache only total_packages={}",
+            request_ctx.operation_id(),
+            result.len()
+        );
         return result;
     }
 
     // 2. Fetch only uncached descriptions
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .user_agent("XFast Manager")
-        .build()
-    {
+    let client = match build_http_client(std::time::Duration::from_secs(15)) {
         Ok(c) => c,
-        Err(_) => return result,
+        Err(err) => {
+            csl_debug!(
+                "[{}] Description fetch aborted: failed to build HTTP client error={}",
+                request_ctx.operation_id(),
+                err
+            );
+            return result;
+        }
     };
 
     let server_owned = server.to_string();
+    let request_ctx_for_fetch = request_ctx.clone();
     let fetched: Vec<Option<(String, String)>> =
         stream::iter(to_fetch.into_iter().map(move |name| {
             let client = client.clone();
+            let request_ctx = request_ctx_for_fetch.clone();
             let url = format!("{}/{}/x-csl-info.info", server_owned, name);
             async move {
                 for attempt in 0..DESCRIPTION_FETCH_ATTEMPTS {
-                    let resp = match client.get(&url).send().await {
+                    let request_id = request_ctx.next_http_request_id();
+                    csl_debug!(
+                        "[{}] HTTP GET start request_id={} url={} purpose=description_fetch package={} attempt={}",
+                        request_ctx.operation_id(),
+                        request_id,
+                        url,
+                        name,
+                        attempt + 1
+                    );
+
+                    let resp = match with_request_tracking_headers(
+                        client.get(&url),
+                        &request_ctx,
+                        &request_id,
+                    )
+                    .send()
+                    .await
+                    {
                         Ok(resp) => resp,
-                        Err(_) => {
+                        Err(err) => {
+                            csl_debug!(
+                                "[{}] HTTP GET failed request_id={} url={} purpose=description_fetch package={} attempt={} error={}",
+                                request_ctx.operation_id(),
+                                request_id,
+                                url,
+                                name,
+                                attempt + 1,
+                                err
+                            );
                             if attempt + 1 < DESCRIPTION_FETCH_ATTEMPTS {
                                 tokio::time::sleep(std::time::Duration::from_millis(
                                     300 * (attempt + 1) as u64,
@@ -725,7 +975,17 @@ async fn fetch_package_descriptions(
                         }
                     };
 
-                    if !resp.status().is_success() {
+                    let status = resp.status();
+                    if !status.is_success() {
+                        csl_debug!(
+                            "[{}] HTTP GET non-success request_id={} url={} purpose=description_fetch package={} attempt={} status={}",
+                            request_ctx.operation_id(),
+                            request_id,
+                            url,
+                            name,
+                            attempt + 1,
+                            status
+                        );
                         if attempt + 1 < DESCRIPTION_FETCH_ATTEMPTS {
                             tokio::time::sleep(std::time::Duration::from_millis(
                                 300 * (attempt + 1) as u64,
@@ -737,8 +997,28 @@ async fn fetch_package_descriptions(
                     }
 
                     let text = match resp.text().await {
-                        Ok(text) => text,
-                        Err(_) => {
+                        Ok(text) => {
+                            csl_debug!(
+                                "[{}] HTTP GET success request_id={} url={} purpose=description_fetch package={} status={} bytes={}",
+                                request_ctx.operation_id(),
+                                request_id,
+                                url,
+                                name,
+                                status,
+                                text.len()
+                            );
+                            text
+                        }
+                        Err(err) => {
+                            csl_debug!(
+                                "[{}] HTTP GET read failed request_id={} url={} purpose=description_fetch package={} attempt={} error={}",
+                                request_ctx.operation_id(),
+                                request_id,
+                                url,
+                                name,
+                                attempt + 1,
+                                err
+                            );
                             if attempt + 1 < DESCRIPTION_FETCH_ATTEMPTS {
                                 tokio::time::sleep(std::time::Duration::from_millis(
                                     300 * (attempt + 1) as u64,
@@ -753,9 +1033,22 @@ async fn fetch_package_descriptions(
                     if let Some(first_line) =
                         text.lines().map(str::trim).find(|line| !line.is_empty())
                     {
+                        csl_debug!(
+                            "[{}] Description resolved package={} request_id={} value={}",
+                            request_ctx.operation_id(),
+                            name,
+                            request_id,
+                            first_line
+                        );
                         return Some((name, first_line.to_string()));
                     }
 
+                    csl_debug!(
+                        "[{}] Description file empty package={} request_id={}",
+                        request_ctx.operation_id(),
+                        name,
+                        request_id
+                    );
                     return None;
                 }
 
@@ -778,6 +1071,12 @@ async fn fetch_package_descriptions(
         result.insert(name, desc);
     }
 
+    csl_debug!(
+        "[{}] Description fetch completed resolved_packages={}",
+        request_ctx.operation_id(),
+        result.len()
+    );
+
     result
 }
 
@@ -789,9 +1088,18 @@ async fn scan_packages_internal(
     server: &str,
     paths: Vec<CslPath>,
     local_path_strings: Vec<String>,
+    request_ctx: &RequestContext,
 ) -> Result<CslScanResult, String> {
+    csl_debug!(
+        "[{}] Scan internal start server={} visible_paths={} compare_paths={}",
+        request_ctx.operation_id(),
+        server,
+        paths.len(),
+        local_path_strings.len()
+    );
+
     // Fetch remote index (single HTTP request)
-    let index_content = fetch_remote_index(server, "x-csl-indexes.idx")
+    let index_content = fetch_remote_index(server, "x-csl-indexes.idx", request_ctx)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -800,6 +1108,14 @@ async fn scan_packages_internal(
     // Parse and group — pure CPU, fast
     let entries = parse_index(&index_content);
     let pkg_data_list = group_into_packages(&entries);
+
+    csl_debug!(
+        "[{}] Scan index parsed server_version={} entries={} packages={}",
+        request_ctx.operation_id(),
+        server_version,
+        entries.len(),
+        pkg_data_list.len()
+    );
 
     let compare_future = {
         let local_paths = local_path_strings;
@@ -883,6 +1199,13 @@ async fn scan_packages_internal(
     // Sort by name
     packages.sort_by(|a, b| a.name.cmp(&b.name));
 
+    csl_debug!(
+        "[{}] Scan internal completed packages={} server_version={}",
+        request_ctx.operation_id(),
+        packages.len(),
+        server_version
+    );
+
     Ok(CslScanResult {
         packages,
         paths,
@@ -898,8 +1221,18 @@ async fn install_package_internal(
     parallel_downloads: Option<usize>,
     app_handle: AppHandle,
     cancel_flag: Arc<AtomicBool>,
+    request_ctx: &RequestContext,
 ) -> Result<(), String> {
-    let index_content = fetch_remote_index(server, "x-csl-indexes.idx")
+    csl_debug!(
+        "[{}] Install internal start package={} server={} target_path={} requested_parallel_downloads={:?}",
+        request_ctx.operation_id(),
+        package_name,
+        server,
+        target_path,
+        parallel_downloads
+    );
+
+    let index_content = fetch_remote_index(server, "x-csl-indexes.idx", request_ctx)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -912,11 +1245,16 @@ async fn install_package_internal(
         .ok_or_else(|| format!("Package {} not found in index", package_name))?;
 
     let target_pkg_dir = Path::new(&target_path).join(&package_name);
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .user_agent("XFast Manager")
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
+    let client = build_http_client(std::time::Duration::from_secs(60))
+        .map_err(|e| e.to_string())?;
+
+    csl_debug!(
+        "[{}] Install package resolved package={} files_in_index={} target_dir={}",
+        request_ctx.operation_id(),
+        package_name,
+        pkg.files.len(),
+        target_pkg_dir.display()
+    );
 
     // Determine which files need downloading (size check + MD5)
     let prefix = format!("{}/", package_name);
@@ -953,6 +1291,16 @@ async fn install_package_internal(
 
     let concurrency = clamp_parallel_downloads(parallel_downloads);
 
+    csl_debug!(
+        "[{}] Install plan package={} files_in_index={} files_to_download={} total_bytes={} concurrency={}",
+        request_ctx.operation_id(),
+        package_name,
+        pkg.files.len(),
+        download_total,
+        download_total_bytes,
+        concurrency
+    );
+
     if concurrency <= 1 {
         // Sequential download (original behavior)
         let mut bytes_downloaded: u64 = 0;
@@ -983,11 +1331,20 @@ async fn install_package_internal(
                 &local_path,
                 cancel_flag.as_ref(),
                 &package_name,
+                request_ctx,
             )
             .await
             .map_err(|e| e.to_string())?;
 
             bytes_downloaded += downloaded;
+            csl_debug!(
+                "[{}] Install file completed package={} file={} downloaded_bytes={} cumulative_bytes={}",
+                request_ctx.operation_id(),
+                package_name,
+                rel_path,
+                downloaded,
+                bytes_downloaded
+            );
         }
     } else {
         // Parallel download — collect owned data to avoid lifetime issues
@@ -1008,6 +1365,7 @@ async fn install_package_internal(
                 let completed = completed.clone();
                 let bytes_downloaded = bytes_downloaded.clone();
                 let event_name = event_name_owned.clone();
+                let request_ctx = request_ctx.clone();
 
                 async move {
                     ensure_download_not_cancelled(cancel_flag.as_ref(), &package_name)
@@ -1023,6 +1381,7 @@ async fn install_package_internal(
                         &local_path,
                         cancel_flag.as_ref(),
                         &package_name,
+                        &request_ctx,
                     )
                     .await
                     .map_err(|e| e.to_string())?;
@@ -1041,6 +1400,16 @@ async fn install_package_internal(
                             bytes_downloaded: total_dl,
                             total_bytes: download_total_bytes,
                         },
+                    );
+
+                    csl_debug!(
+                        "[{}] Install file completed package={} file={} downloaded_bytes={} completed_files={} cumulative_bytes={}",
+                        request_ctx.operation_id(),
+                        package_name,
+                        rel_path,
+                        downloaded,
+                        done,
+                        total_dl
                     );
 
                     Ok(())
@@ -1066,6 +1435,14 @@ async fn install_package_internal(
             bytes_downloaded: download_total_bytes,
             total_bytes: download_total_bytes,
         },
+    );
+
+    csl_debug!(
+        "[{}] Install internal completed package={} files_downloaded={} total_bytes={}",
+        request_ctx.operation_id(),
+        package_name,
+        download_total,
+        download_total_bytes
     );
 
     Ok(())
@@ -1326,13 +1703,35 @@ fn sync_package_links_internal(
 pub async fn csl_fetch_package_descriptions(
     package_names: Vec<String>,
     server_base_url: Option<String>,
+    request_id: Option<String>,
 ) -> Result<HashMap<String, String>, String> {
+    let request_ctx = RequestContext::new("csl_fetch_package_descriptions", request_id);
+
     if package_names.is_empty() {
+        csl_debug!(
+            "[{}] Description fetch skipped because package list is empty",
+            request_ctx.operation_id()
+        );
         return Ok(HashMap::new());
     }
 
     let api_base = resolve_csl_api_base(server_base_url.as_deref());
-    Ok(fetch_package_descriptions(&api_base, package_names).await)
+    csl_debug!(
+        "[{}] Description fetch command start packages={} server={}",
+        request_ctx.operation_id(),
+        package_names.len(),
+        api_base
+    );
+
+    let result = fetch_package_descriptions(&api_base, package_names, &request_ctx).await;
+
+    csl_debug!(
+        "[{}] Description fetch command completed resolved_packages={}",
+        request_ctx.operation_id(),
+        result.len()
+    );
+
+    Ok(result)
 }
 
 /// Scan packages: fetch remote index, compare with local, return results.
@@ -1347,7 +1746,9 @@ pub async fn csl_scan_packages(
     xplane_path: String,
     custom_paths: Vec<String>,
     server_base_url: Option<String>,
+    request_id: Option<String>,
 ) -> Result<CslScanResult, String> {
+    let request_ctx = RequestContext::new("csl_scan_packages", request_id);
     let (paths, _) = collect_scan_paths(&xplane_path, &custom_paths);
 
     // Scan only from canonical path for local comparison
@@ -1360,7 +1761,34 @@ pub async fn csl_scan_packages(
     };
 
     let api_base = resolve_csl_api_base(server_base_url.as_deref());
-    scan_packages_internal(&api_base, paths, scan_paths).await
+    csl_debug!(
+        "[{}] CSL scan command start xplane_path={} custom_paths={} detected_paths={} scan_paths={} server={}",
+        request_ctx.operation_id(),
+        xplane_path,
+        custom_paths.len(),
+        paths.len(),
+        scan_paths.len(),
+        api_base
+    );
+
+    let result = scan_packages_internal(&api_base, paths, scan_paths, &request_ctx).await;
+
+    match &result {
+        Ok(scan_result) => csl_debug!(
+            "[{}] CSL scan command completed packages={} paths={} server_version={}",
+            request_ctx.operation_id(),
+            scan_result.packages.len(),
+            scan_result.paths.len(),
+            scan_result.server_version
+        ),
+        Err(err) => csl_debug!(
+            "[{}] CSL scan command failed error={}",
+            request_ctx.operation_id(),
+            err
+        ),
+    }
+
+    result
 }
 
 /// Rescan specific packages only (uses cached index).
@@ -1371,14 +1799,24 @@ pub async fn csl_rescan_packages(
     xplane_path: String,
     package_names: Vec<String>,
     server_base_url: Option<String>,
+    request_id: Option<String>,
 ) -> Result<Vec<CslPackageInfo>, String> {
+    let request_ctx = RequestContext::new("csl_rescan_packages", request_id);
     let xplane = Path::new(&xplane_path);
     let canonical = xplane.join(CSL_CANONICAL_REL);
     let scan_paths = vec![canonical.to_string_lossy().to_string()];
     let server_base_url = resolve_server_base_url(server_base_url.as_deref());
 
+    csl_debug!(
+        "[{}] CSL rescan command start xplane_path={} package_count={} server={}",
+        request_ctx.operation_id(),
+        xplane_path,
+        package_names.len(),
+        server_base_url
+    );
+
     // Fetch index (hits cache if recent scan happened)
-    let index_content = fetch_remote_index(&server_base_url, CSL_INDEX_PATH)
+    let index_content = fetch_remote_index(&server_base_url, CSL_INDEX_PATH, &request_ctx)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1459,10 +1897,21 @@ pub async fn csl_rescan_packages(
         match handle.await {
             Ok(info) => results.push(info),
             Err(e) => {
+                csl_debug!(
+                    "[{}] CSL rescan command failed while joining task error={}",
+                    request_ctx.operation_id(),
+                    e
+                );
                 return Err(format!("Package comparison failed: {}", e));
             }
         }
     }
+
+    csl_debug!(
+        "[{}] CSL rescan command completed packages={}",
+        request_ctx.operation_id(),
+        results.len()
+    );
 
     Ok(results)
 }
@@ -1477,9 +1926,11 @@ pub async fn csl_install_package(
     custom_paths: Vec<String>,
     parallel_downloads: Option<usize>,
     server_base_url: Option<String>,
+    request_id: Option<String>,
     app_handle: AppHandle,
     download_control: State<'_, CslDownloadControl>,
 ) -> Result<(), String> {
+    let request_ctx = RequestContext::new("csl_install_package", request_id);
     let task_key = install_task_key("csl", &package_name);
     let _registration = download_control
         .register(task_key)
@@ -1489,11 +1940,22 @@ pub async fn csl_install_package(
     let xplane = Path::new(&xplane_path);
     let canonical_base = xplane.join(CSL_CANONICAL_REL);
     let api_base = resolve_csl_api_base(server_base_url.as_deref());
+    csl_debug!(
+        "[{}] CSL install command start package={} xplane_path={} custom_paths={} target={} server={} requested_parallel_downloads={:?}",
+        request_ctx.operation_id(),
+        package_name,
+        xplane_path,
+        custom_paths.len(),
+        canonical_base.display(),
+        api_base,
+        parallel_downloads
+    );
+
     std::fs::create_dir_all(&canonical_base)
         .map_err(|e| format!("Failed to create canonical CSL dir: {}", e))?;
 
     let canonical_base_str = canonical_base.to_string_lossy().to_string();
-    install_package_internal(
+    let install_result = install_package_internal(
         &api_base,
         "csl-progress",
         package_name.clone(),
@@ -1501,13 +1963,32 @@ pub async fn csl_install_package(
         parallel_downloads,
         app_handle,
         cancel_flag,
+        &request_ctx,
     )
-    .await?;
+    .await;
+
+    if let Err(err) = install_result {
+        csl_debug!(
+            "[{}] CSL install command failed during download package={} error={}",
+            request_ctx.operation_id(),
+            package_name,
+            err
+        );
+        return Err(err);
+    }
 
     // Create links in other plugin CSL directories
     let link_targets = collect_link_targets(xplane, &custom_paths);
     let canonical_pkg_dir = canonical_base.join(&package_name);
-    let _warnings = create_package_links(&package_name, &canonical_pkg_dir, &link_targets);
+    let warnings = create_package_links(&package_name, &canonical_pkg_dir, &link_targets);
+
+    csl_debug!(
+        "[{}] CSL install command completed package={} link_targets={} link_warnings={}",
+        request_ctx.operation_id(),
+        package_name,
+        link_targets.len(),
+        warnings.len()
+    );
 
     Ok(())
 }
@@ -1516,14 +1997,28 @@ pub async fn csl_install_package(
 pub async fn csl_cancel_install(
     source: String,
     package_name: String,
+    request_id: Option<String>,
     download_control: State<'_, CslDownloadControl>,
 ) -> Result<(), String> {
+    let request_ctx = RequestContext::new("csl_cancel_install", request_id);
     let normalized_source = match source.as_str() {
         "altitude" => "altitude",
         _ => "csl",
     };
 
+    csl_debug!(
+        "[{}] Cancel install command start source={} package={}",
+        request_ctx.operation_id(),
+        normalized_source,
+        package_name
+    );
     download_control.cancel(&install_task_key(normalized_source, &package_name));
+    csl_debug!(
+        "[{}] Cancel install command completed source={} package={}",
+        request_ctx.operation_id(),
+        normalized_source,
+        package_name
+    );
     Ok(())
 }
 
@@ -1534,24 +2029,61 @@ pub async fn csl_uninstall_package(
     package_name: String,
     xplane_path: String,
     custom_paths: Vec<String>,
+    request_id: Option<String>,
 ) -> Result<(), String> {
+    let request_ctx = RequestContext::new("csl_uninstall_package", request_id);
     let xplane = Path::new(&xplane_path);
     let link_targets = collect_link_targets(xplane, &custom_paths);
 
+    csl_debug!(
+        "[{}] CSL uninstall command start package={} xplane_path={} custom_paths={} link_targets={}",
+        request_ctx.operation_id(),
+        package_name,
+        xplane_path,
+        custom_paths.len(),
+        link_targets.len()
+    );
+
     // Remove links first
-    let _warnings = remove_package_links(&package_name, &link_targets);
+    let warnings = remove_package_links(&package_name, &link_targets);
 
     // Remove the canonical copy
     let canonical_pkg_dir = xplane.join(CSL_CANONICAL_REL).join(&package_name);
     if canonical_pkg_dir.exists() && canonical_pkg_dir.is_dir() {
         std::fs::remove_dir_all(&canonical_pkg_dir)
             .map_err(|e| format!("Failed to remove {}: {}", canonical_pkg_dir.display(), e))?;
+        csl_debug!(
+            "[{}] CSL uninstall command completed package={} removed_path={} link_warnings={}",
+            request_ctx.operation_id(),
+            package_name,
+            canonical_pkg_dir.display(),
+            warnings.len()
+        );
         return Ok(());
     }
 
     // Fallback: try old paths for backward compatibility
     let (_, all_paths) = collect_scan_paths(&xplane_path, &custom_paths);
-    uninstall_package_internal(&package_name, &all_paths)
+    let result = uninstall_package_internal(&package_name, &all_paths);
+
+    match &result {
+        Ok(()) => csl_debug!(
+            "[{}] CSL uninstall fallback completed package={} searched_paths={} link_warnings={}",
+            request_ctx.operation_id(),
+            package_name,
+            all_paths.len(),
+            warnings.len()
+        ),
+        Err(err) => csl_debug!(
+            "[{}] CSL uninstall fallback failed package={} error={} link_warnings={}",
+            request_ctx.operation_id(),
+            package_name,
+            err,
+            warnings.len()
+        ),
+    }
+
+    result
 }
 
 /// Detect CSL paths from known plugin directories
@@ -1566,13 +2098,38 @@ pub async fn csl_sync_links(
     custom_paths: Vec<String>,
     package_names: Option<Vec<String>>,
     cleanup_paths: Option<Vec<String>>,
+    request_id: Option<String>,
 ) -> Result<(), String> {
-    sync_package_links_internal(
+    let request_ctx = RequestContext::new("csl_sync_links", request_id);
+    csl_debug!(
+        "[{}] CSL link sync command start xplane_path={} custom_paths={} package_count={} cleanup_paths={}",
+        request_ctx.operation_id(),
+        xplane_path,
+        custom_paths.len(),
+        package_names.as_ref().map(|names| names.len()).unwrap_or(0),
+        cleanup_paths.as_ref().map(|paths| paths.len()).unwrap_or(0)
+    );
+
+    let result = sync_package_links_internal(
         &xplane_path,
         &custom_paths,
         package_names.as_deref(),
         cleanup_paths.as_deref(),
-    )
+    );
+
+    match &result {
+        Ok(()) => csl_debug!(
+            "[{}] CSL link sync command completed",
+            request_ctx.operation_id()
+        ),
+        Err(err) => csl_debug!(
+            "[{}] CSL link sync command failed error={}",
+            request_ctx.operation_id(),
+            err
+        ),
+    }
+
+    result
 }
 
 // ============================================================================
@@ -1678,11 +2235,20 @@ fn compare_altitude_files(files: &[FileEntry], xplane: &Path) -> (String, usize,
 pub async fn altitude_scan_packages(
     xplane_path: String,
     server_base_url: Option<String>,
+    request_id: Option<String>,
 ) -> Result<CslScanResult, String> {
+    let request_ctx = RequestContext::new("altitude_scan_packages", request_id);
     let xplane = PathBuf::from(&xplane_path);
     let server_base_url = resolve_server_base_url(server_base_url.as_deref());
 
-    let index_content = fetch_remote_index(&server_base_url, ALTITUDE_INDEX_PATH)
+    csl_debug!(
+        "[{}] ALTITUDE scan command start xplane_path={} server={}",
+        request_ctx.operation_id(),
+        xplane_path,
+        server_base_url
+    );
+
+    let index_content = fetch_remote_index(&server_base_url, ALTITUDE_INDEX_PATH, &request_ctx)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1724,11 +2290,20 @@ pub async fn altitude_scan_packages(
         });
     }
 
-    Ok(CslScanResult {
+    let result = CslScanResult {
         packages,
         paths: vec![],
         server_version,
-    })
+    };
+
+    csl_debug!(
+        "[{}] ALTITUDE scan command completed packages={} server_version={}",
+        request_ctx.operation_id(),
+        result.packages.len(),
+        result.server_version
+    );
+
+    Ok(result)
 }
 
 /// Install or update the ALTITUDE supplementary package
@@ -1737,9 +2312,11 @@ pub async fn altitude_install_package(
     xplane_path: String,
     parallel_downloads: Option<usize>,
     server_base_url: Option<String>,
+    request_id: Option<String>,
     app_handle: AppHandle,
     download_control: State<'_, CslDownloadControl>,
 ) -> Result<(), String> {
+    let request_ctx = RequestContext::new("altitude_install_package", request_id);
     let xplane = PathBuf::from(&xplane_path);
     let package_name = "ALTITUDE".to_string();
     let resolved_server_base_url = resolve_server_base_url(server_base_url.as_deref());
@@ -1750,7 +2327,20 @@ pub async fn altitude_install_package(
         .map_err(|e| e.to_string())?;
     let cancel_flag = _registration.cancel_flag();
 
-    let index_content = fetch_remote_index(&resolved_server_base_url, ALTITUDE_INDEX_PATH)
+    csl_debug!(
+        "[{}] ALTITUDE install command start xplane_path={} server={} api_base={} requested_parallel_downloads={:?}",
+        request_ctx.operation_id(),
+        xplane_path,
+        resolved_server_base_url,
+        api_base,
+        parallel_downloads
+    );
+
+    let index_content = fetch_remote_index(
+        &resolved_server_base_url,
+        ALTITUDE_INDEX_PATH,
+        &request_ctx,
+    )
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1762,11 +2352,8 @@ pub async fn altitude_install_package(
         .find(|p| p.name == package_name)
         .ok_or("ALTITUDE package not found in index")?;
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .user_agent("XFast Manager")
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
+    let client = build_http_client(std::time::Duration::from_secs(60))
+        .map_err(|e| e.to_string())?;
 
     let pkg_prefix = "ALTITUDE/";
 
@@ -1806,6 +2393,15 @@ pub async fn altitude_install_package(
     let download_total_bytes: u64 = files_to_download.iter().map(|(f, _)| f.size_bytes).sum();
     let concurrency = clamp_parallel_downloads(parallel_downloads);
 
+    csl_debug!(
+        "[{}] ALTITUDE install plan files_in_index={} files_to_download={} total_bytes={} concurrency={}",
+        request_ctx.operation_id(),
+        pkg.files.len(),
+        download_total,
+        download_total_bytes,
+        concurrency
+    );
+
     if concurrency <= 1 {
         let mut bytes_downloaded: u64 = 0;
         for (i, (file, local_path)) in files_to_download.iter().enumerate() {
@@ -1831,10 +2427,18 @@ pub async fn altitude_install_package(
                 local_path,
                 cancel_flag.as_ref(),
                 &package_name,
+                &request_ctx,
             )
             .await
             .map_err(|e| e.to_string())?;
             bytes_downloaded += downloaded;
+            csl_debug!(
+                "[{}] ALTITUDE file completed file={} downloaded_bytes={} cumulative_bytes={}",
+                request_ctx.operation_id(),
+                display_name,
+                downloaded,
+                bytes_downloaded
+            );
         }
     } else {
         let owned: Vec<(String, PathBuf)> = files_to_download
@@ -1855,6 +2459,7 @@ pub async fn altitude_install_package(
                 let completed = completed.clone();
                 let bytes_downloaded = bytes_downloaded.clone();
                 let pkg_prefix = pkg_prefix_owned.clone();
+                let request_ctx = request_ctx.clone();
 
                 async move {
                     ensure_download_not_cancelled(cancel_flag.as_ref(), &package_name)
@@ -1867,6 +2472,7 @@ pub async fn altitude_install_package(
                         &local_path,
                         cancel_flag.as_ref(),
                         &package_name,
+                        &request_ctx,
                     )
                     .await
                     .map_err(|e| e.to_string())?;
@@ -1888,6 +2494,14 @@ pub async fn altitude_install_package(
                             bytes_downloaded: total_dl,
                             total_bytes: download_total_bytes,
                         },
+                    );
+                    csl_debug!(
+                        "[{}] ALTITUDE file completed file={} downloaded_bytes={} completed_files={} cumulative_bytes={}",
+                        request_ctx.operation_id(),
+                        display_name,
+                        downloaded,
+                        done,
+                        total_dl
                     );
                     Ok(())
                 }
@@ -1913,6 +2527,13 @@ pub async fn altitude_install_package(
         },
     );
 
+    csl_debug!(
+        "[{}] ALTITUDE install command completed files_downloaded={} total_bytes={}",
+        request_ctx.operation_id(),
+        download_total,
+        download_total_bytes
+    );
+
     Ok(())
 }
 
@@ -1921,11 +2542,20 @@ pub async fn altitude_install_package(
 pub async fn altitude_uninstall_package(
     xplane_path: String,
     server_base_url: Option<String>,
+    request_id: Option<String>,
 ) -> Result<(), String> {
+    let request_ctx = RequestContext::new("altitude_uninstall_package", request_id);
     let xplane = Path::new(&xplane_path);
     let server_base_url = resolve_server_base_url(server_base_url.as_deref());
 
-    let index_content = fetch_remote_index(&server_base_url, ALTITUDE_INDEX_PATH)
+    csl_debug!(
+        "[{}] ALTITUDE uninstall command start xplane_path={} server={}",
+        request_ctx.operation_id(),
+        xplane_path,
+        server_base_url
+    );
+
+    let index_content = fetch_remote_index(&server_base_url, ALTITUDE_INDEX_PATH, &request_ctx)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1947,8 +2577,18 @@ pub async fn altitude_uninstall_package(
     }
 
     if removed == 0 {
+        csl_debug!(
+            "[{}] ALTITUDE uninstall command failed because no local files were removed",
+            request_ctx.operation_id()
+        );
         return Err("ALTITUDE package not found locally".to_string());
     }
+
+    csl_debug!(
+        "[{}] ALTITUDE uninstall command completed removed_files={}",
+        request_ctx.operation_id(),
+        removed
+    );
 
     Ok(())
 }

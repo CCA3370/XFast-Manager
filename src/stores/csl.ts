@@ -12,7 +12,7 @@ import {
 import { useAppStore } from './app'
 import { useManagementStore } from './management'
 import { useToastStore } from './toast'
-import { logError } from '@/services/logger'
+import { logDebug, logError } from '@/services/logger'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
 
 type InstallSource = 'csl' | 'altitude'
@@ -27,6 +27,16 @@ const DEFAULT_CSL_SERVER_BASE_URL = 'http://x-csl.ru'
 const MAX_CSL_SERVER_BASE_URLS = 4
 const DESCRIPTION_LOAD_BATCH_SIZE = 12
 const DESCRIPTION_LOAD_QUEUE_DELAY_MS = 80
+
+function createOperationRequestId(operation: string): string {
+  const safeOperation = operation.trim().replace(/[^a-zA-Z0-9_-]+/g, '-')
+
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return `${safeOperation}-${globalThis.crypto.randomUUID()}`
+  }
+
+  return `${safeOperation}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
 
 export const useCslStore = defineStore('csl', () => {
   const appStore = useAppStore()
@@ -344,15 +354,25 @@ export const useCslStore = defineStore('csl', () => {
         ]
 
         let generationChanged = false
+        const requestId = createOperationRequestId('csl-description')
 
         try {
           await ensureServerConfigLoaded()
+          logDebug(
+            `[${requestId}] invoke csl_fetch_package_descriptions start batch_size=${batch.length} server=${activeServerBaseUrl.value} packages=${batch.join(',')}`,
+            'csl',
+          )
           const descriptions = await invoke<Record<string, string>>(
             'csl_fetch_package_descriptions',
             {
               packageNames: batch,
               serverBaseUrl: activeServerBaseUrl.value,
+              requestId,
             },
+          )
+          logDebug(
+            `[${requestId}] invoke csl_fetch_package_descriptions success descriptions=${Object.keys(descriptions).length}`,
+            'csl',
           )
 
           if (generation !== descriptionLoadGeneration) {
@@ -366,7 +386,7 @@ export const useCslStore = defineStore('csl', () => {
             }
           }
         } catch (e) {
-          logError(`CSL description fetch failed: ${e}`, 'csl')
+          logError(`[${requestId}] CSL description fetch failed: ${getErrorMessage(e)}`, 'csl')
         } finally {
           if (!generationChanged && generation === descriptionLoadGeneration) {
             loadingDescriptionPackages.value = loadingDescriptionPackages.value.filter(
@@ -396,15 +416,23 @@ export const useCslStore = defineStore('csl', () => {
       return
     }
 
+    const requestId = createOperationRequestId('csl-sync-links')
+
     try {
+      logDebug(
+        `[${requestId}] invoke csl_sync_links start xplane_path=${appStore.xplanePath} custom_paths=${customPaths.value.length} packages=${packageNames?.length ?? 0} cleanup_paths=${cleanupPaths?.length ?? 0}`,
+        'csl',
+      )
       await invoke('csl_sync_links', {
         xplanePath: appStore.xplanePath,
         customPaths: customPaths.value,
         packageNames: packageNames && packageNames.length > 0 ? packageNames : null,
         cleanupPaths: cleanupPaths && cleanupPaths.length > 0 ? cleanupPaths : null,
+        requestId,
       })
+      logDebug(`[${requestId}] invoke csl_sync_links success`, 'csl')
     } catch (e) {
-      logError(`CSL link sync failed: ${e}`, 'csl')
+      logError(`[${requestId}] CSL link sync failed: ${getErrorMessage(e)}`, 'csl')
     }
   }
 
@@ -423,9 +451,11 @@ export const useCslStore = defineStore('csl', () => {
 
   function enqueueInstallTask(task: QueuedInstallTask) {
     if (isTaskActive(task) || isTaskQueued(task)) {
+      logDebug(`Skip duplicate install task source=${task.source} name=${task.name}`, task.source)
       return
     }
 
+    logDebug(`Queue install task source=${task.source} name=${task.name}`, task.source)
     installQueue.value = [...installQueue.value, task]
     void pumpInstallQueue()
   }
@@ -436,10 +466,12 @@ export const useCslStore = defineStore('csl', () => {
 
     for (const task of tasks) {
       if (isTaskActive(task) || nextQueue.some((queued) => taskKey(queued) === taskKey(task))) {
+        logDebug(`Skip duplicate install task source=${task.source} name=${task.name}`, task.source)
         continue
       }
       nextQueue = [...nextQueue, task]
       changed = true
+      logDebug(`Queue install task source=${task.source} name=${task.name}`, task.source)
     }
 
     if (!changed) {
@@ -455,14 +487,23 @@ export const useCslStore = defineStore('csl', () => {
     await ensureServerConfigLoaded()
 
     const parallelDownloads = getParallelDownloads()
+    const requestId = createOperationRequestId(
+      task.source === 'altitude' ? 'altitude-install' : 'csl-install',
+    )
 
     if (task.source === 'altitude') {
       try {
+        logDebug(
+          `[${requestId}] invoke altitude_install_package start package=${task.name} xplane_path=${appStore.xplanePath} parallel_downloads=${parallelDownloads} server=${activeServerBaseUrl.value}`,
+          'altitude',
+        )
         await invoke('altitude_install_package', {
           xplanePath: appStore.xplanePath,
           parallelDownloads,
           serverBaseUrl: activeServerBaseUrl.value,
+          requestId,
         })
+        logDebug(`[${requestId}] invoke altitude_install_package success package=${task.name}`, 'altitude')
 
         toast.success(t('altitude.installSuccess', { name: task.name }))
 
@@ -475,24 +516,34 @@ export const useCslStore = defineStore('csl', () => {
         return false
       } catch (e) {
         if (isCancelledInstallError(e)) {
+          logDebug(
+            `[${requestId}] invoke altitude_install_package cancelled package=${task.name}`,
+            'altitude',
+          )
           toast.info(t('altitude.cancelled', { name: task.name }))
           return false
         }
 
-        logError(`ALTITUDE install failed: ${e}`, 'altitude')
+        logError(`[${requestId}] ALTITUDE install failed: ${getErrorMessage(e)}`, 'altitude')
         toast.error(t('altitude.installError', { name: task.name }))
         return false
       }
     }
 
     try {
+      logDebug(
+        `[${requestId}] invoke csl_install_package start package=${task.name} xplane_path=${appStore.xplanePath} custom_paths=${customPaths.value.length} parallel_downloads=${parallelDownloads} server=${activeServerBaseUrl.value}`,
+        'csl',
+      )
       await invoke('csl_install_package', {
         packageName: task.name,
         xplanePath: appStore.xplanePath,
         customPaths: customPaths.value,
         parallelDownloads,
         serverBaseUrl: activeServerBaseUrl.value,
+        requestId,
       })
+      logDebug(`[${requestId}] invoke csl_install_package success package=${task.name}`, 'csl')
 
       toast.success(t('csl.installSuccess', { name: task.name }))
 
@@ -504,11 +555,12 @@ export const useCslStore = defineStore('csl', () => {
       }
     } catch (e) {
       if (isCancelledInstallError(e)) {
+        logDebug(`[${requestId}] invoke csl_install_package cancelled package=${task.name}`, 'csl')
         toast.info(t('csl.cancelled', { name: task.name }))
         return true
       }
 
-      logError(`CSL install failed for ${task.name}: ${e}`, 'csl')
+      logError(`[${requestId}] CSL install failed for ${task.name}: ${getErrorMessage(e)}`, 'csl')
       toast.error(t('csl.installError', { name: task.name }))
       return true
     }
@@ -522,6 +574,7 @@ export const useCslStore = defineStore('csl', () => {
     }
 
     installQueueRunning = true
+    logDebug(`Install queue pump started queued=${installQueue.value.length}`, 'csl')
 
     try {
       while (true) {
@@ -533,9 +586,14 @@ export const useCslStore = defineStore('csl', () => {
 
         installQueue.value = installQueue.value.slice(1)
         activeInstallTask.value = nextTask
+        logDebug(`Install queue running source=${nextTask.source} name=${nextTask.name}`, nextTask.source)
 
         try {
           const shouldRescan = await runInstallTask(nextTask)
+          logDebug(
+            `Install queue finished source=${nextTask.source} name=${nextTask.name} should_rescan=${shouldRescan}`,
+            nextTask.source,
+          )
           if (shouldRescan && nextTask.source === 'csl') {
             await rescanPackages([nextTask.name])
           }
@@ -549,6 +607,7 @@ export const useCslStore = defineStore('csl', () => {
       }
     } finally {
       installQueueRunning = false
+      logDebug(`Install queue pump stopped queued=${installQueue.value.length}`, 'csl')
 
       if (installQueue.value.length > 0) {
         void pumpInstallQueue()
@@ -565,13 +624,23 @@ export const useCslStore = defineStore('csl', () => {
     await ensureServerConfigLoaded()
     isLoading.value = true
     error.value = null
+    const requestId = createOperationRequestId('csl-scan')
 
     try {
+      logDebug(
+        `[${requestId}] invoke csl_scan_packages start xplane_path=${appStore.xplanePath} custom_paths=${customPaths.value.length} server=${activeServerBaseUrl.value}`,
+        'csl',
+      )
       const result = await invoke<CslScanResult>('csl_scan_packages', {
         xplanePath: appStore.xplanePath,
         customPaths: customPaths.value,
         serverBaseUrl: activeServerBaseUrl.value,
+        requestId,
       })
+      logDebug(
+        `[${requestId}] invoke csl_scan_packages success packages=${result.packages.length} paths=${result.paths.length} server_version=${result.server_version}`,
+        'csl',
+      )
 
       packages.value = result.packages
       paths.value = result.paths
@@ -582,8 +651,8 @@ export const useCslStore = defineStore('csl', () => {
       void syncLinks()
     } catch (e) {
       resetDescriptionLoadState([])
-      error.value = String(e)
-      logError(`CSL scan failed: ${e}`, 'csl')
+      error.value = getErrorMessage(e)
+      logError(`[${requestId}] CSL scan failed: ${getErrorMessage(e)}`, 'csl')
       toast.error(t('csl.fetchError'))
     } finally {
       isLoading.value = false
@@ -591,13 +660,24 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   async function rescanPackages(packageNames: string[]) {
+    const requestId = createOperationRequestId('csl-rescan')
+
     try {
       await ensureServerConfigLoaded()
+      logDebug(
+        `[${requestId}] invoke csl_rescan_packages start xplane_path=${appStore.xplanePath} package_count=${packageNames.length} packages=${packageNames.join(',')} server=${activeServerBaseUrl.value}`,
+        'csl',
+      )
       const updated = await invoke<CslPackageInfo[]>('csl_rescan_packages', {
         xplanePath: appStore.xplanePath,
         packageNames,
         serverBaseUrl: activeServerBaseUrl.value,
+        requestId,
       })
+      logDebug(
+        `[${requestId}] invoke csl_rescan_packages success packages=${updated.length}`,
+        'csl',
+      )
 
       for (const upd of updated) {
         const index = packages.value.findIndex((p) => p.name === upd.name)
@@ -609,7 +689,7 @@ export const useCslStore = defineStore('csl', () => {
 
       await syncLinks(packageNames)
     } catch (e) {
-      logError(`CSL partial rescan failed: ${e}`, 'csl')
+      logError(`[${requestId}] CSL partial rescan failed: ${getErrorMessage(e)}`, 'csl')
     }
   }
 
@@ -626,12 +706,20 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   async function uninstallPackage(packageName: string) {
+    const requestId = createOperationRequestId('csl-uninstall')
+
     try {
+      logDebug(
+        `[${requestId}] invoke csl_uninstall_package start package=${packageName} xplane_path=${appStore.xplanePath} custom_paths=${customPaths.value.length}`,
+        'csl',
+      )
       await invoke('csl_uninstall_package', {
         packageName,
         xplanePath: appStore.xplanePath,
         customPaths: customPaths.value,
+        requestId,
       })
+      logDebug(`[${requestId}] invoke csl_uninstall_package success package=${packageName}`, 'csl')
 
       toast.success(t('csl.uninstallSuccess', { name: packageName }))
 
@@ -642,7 +730,10 @@ export const useCslStore = defineStore('csl', () => {
         pkg.update_size_bytes = pkg.total_size_bytes
       }
     } catch (e) {
-      logError(`CSL uninstall failed for ${packageName}: ${e}`, 'csl')
+      logError(
+        `[${requestId}] CSL uninstall failed for ${packageName}: ${getErrorMessage(e)}`,
+        'csl',
+      )
       toast.error(t('csl.uninstallError', { name: packageName }))
     }
   }
@@ -671,16 +762,26 @@ export const useCslStore = defineStore('csl', () => {
 
     await ensureServerConfigLoaded()
     altitudeLoading.value = true
+    const requestId = createOperationRequestId('altitude-scan')
 
     try {
+      logDebug(
+        `[${requestId}] invoke altitude_scan_packages start xplane_path=${appStore.xplanePath} server=${activeServerBaseUrl.value}`,
+        'altitude',
+      )
       const result = await invoke<CslScanResult>('altitude_scan_packages', {
         xplanePath: appStore.xplanePath,
         serverBaseUrl: activeServerBaseUrl.value,
+        requestId,
       })
+      logDebug(
+        `[${requestId}] invoke altitude_scan_packages success packages=${result.packages.length} server_version=${result.server_version}`,
+        'altitude',
+      )
 
       altitudePackages.value = result.packages
     } catch (e) {
-      logError(`ALTITUDE scan failed: ${e}`, 'altitude')
+      logError(`[${requestId}] ALTITUDE scan failed: ${getErrorMessage(e)}`, 'altitude')
       toast.error(t('altitude.fetchError'))
     } finally {
       altitudeLoading.value = false
@@ -711,15 +812,25 @@ export const useCslStore = defineStore('csl', () => {
       }
 
       cancellingTaskKeys.value = [...cancellingTaskKeys.value, key]
+      const requestId = createOperationRequestId(`${source}-cancel`)
 
       try {
+        logDebug(
+          `[${requestId}] invoke csl_cancel_install start source=${source} package=${packageName}`,
+          source,
+        )
         await invoke('csl_cancel_install', {
           source,
           packageName,
+          requestId,
         })
+        logDebug(
+          `[${requestId}] invoke csl_cancel_install success source=${source} package=${packageName}`,
+          source,
+        )
       } catch (e) {
         cancellingTaskKeys.value = cancellingTaskKeys.value.filter((item) => item !== key)
-        logError(`Failed to cancel ${key}: ${e}`, 'csl')
+        logError(`[${requestId}] Failed to cancel ${key}: ${getErrorMessage(e)}`, 'csl')
         toast.error(
           source === 'altitude'
             ? t('altitude.cancelError', { name: packageName })
@@ -730,6 +841,7 @@ export const useCslStore = defineStore('csl', () => {
       return
     }
 
+    logDebug(`Remove queued install task source=${source} package=${packageName}`, source)
     installQueue.value = installQueue.value.filter((queued) => taskKey(queued) !== key)
     clearProgressForTask(task)
   }
@@ -737,12 +849,20 @@ export const useCslStore = defineStore('csl', () => {
   async function uninstallAltitudePackage() {
     if (!appStore.xplanePath) return
 
+    const requestId = createOperationRequestId('altitude-uninstall')
+
     try {
       await ensureServerConfigLoaded()
+      logDebug(
+        `[${requestId}] invoke altitude_uninstall_package start xplane_path=${appStore.xplanePath} server=${activeServerBaseUrl.value}`,
+        'altitude',
+      )
       await invoke('altitude_uninstall_package', {
         xplanePath: appStore.xplanePath,
         serverBaseUrl: activeServerBaseUrl.value,
+        requestId,
       })
+      logDebug(`[${requestId}] invoke altitude_uninstall_package success`, 'altitude')
 
       toast.success(t('altitude.uninstallSuccess', { name: 'ALTITUDE' }))
 
@@ -752,7 +872,7 @@ export const useCslStore = defineStore('csl', () => {
         pkg.update_size_bytes = pkg.total_size_bytes
       }
     } catch (e) {
-      logError(`ALTITUDE uninstall failed: ${e}`, 'altitude')
+      logError(`[${requestId}] ALTITUDE uninstall failed: ${getErrorMessage(e)}`, 'altitude')
       toast.error(t('altitude.uninstallError', { name: 'ALTITUDE' }))
     }
   }

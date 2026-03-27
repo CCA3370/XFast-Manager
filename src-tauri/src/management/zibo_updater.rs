@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use librqbit::{AddTorrent, AddTorrentOptions, Session, SessionOptions, TorrentStats};
 use regex::Regex;
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -25,8 +26,13 @@ pub const ZIBO_MANUAL_DOWNLOAD_URL: &str =
 const ZIBO_VERSION_FILE: &str = "version.txt";
 const LOG_CTX: &str = "zibo_updater";
 const ZIBO_NO_PEER_TIMEOUT_SECS: u64 = 45;
+const ZIBO_UNREACHABLE_PEER_TIMEOUT_SECS: u64 = 75;
 const ZIBO_STALLED_TIMEOUT_SECS: u64 = 180;
 const ZIBO_TORRENT_LOG_INTERVAL_SECS: u64 = 5;
+const ZIBO_TORRENT_MAX_ATTEMPTS: u32 = 2;
+const ZIBO_TORRENT_RETRY_DELAY_SECS: u64 = 5;
+const ZIBO_TORRENT_LISTEN_PORT_START: u16 = 45000;
+const ZIBO_TORRENT_LISTEN_PORT_END: u16 = 45100;
 
 static ZIBO_TITLE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)_(\d+)_(\d+)_(full|\d+)\.zip$").expect("valid zibo title regex")
@@ -88,7 +94,7 @@ struct TorrentMetadata {
     total_bytes: u64,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct PeerSummary {
     queued: usize,
     connecting: usize,
@@ -114,6 +120,10 @@ impl PeerSummary {
         self.queued > 0 || self.connecting > 0 || self.live > 0 || self.seen > 0
     }
 
+    fn has_connectable_peers(self) -> bool {
+        self.queued > 0 || self.connecting > 0 || self.live > 0
+    }
+
     fn display_string(self) -> String {
         format!(
             "seen {}, connecting {}, live {}",
@@ -121,6 +131,60 @@ impl PeerSummary {
         )
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TorrentAttemptErrorKind {
+    NoPeers,
+    UnreachablePeers,
+    Stalled,
+    Fatal,
+}
+
+#[derive(Debug, Clone)]
+struct TorrentAttemptError {
+    kind: TorrentAttemptErrorKind,
+    message: String,
+}
+
+impl TorrentAttemptError {
+    fn new(kind: TorrentAttemptErrorKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+        }
+    }
+
+    fn no_peers(message: impl Into<String>) -> Self {
+        Self::new(TorrentAttemptErrorKind::NoPeers, message)
+    }
+
+    fn unreachable_peers(message: impl Into<String>) -> Self {
+        Self::new(TorrentAttemptErrorKind::UnreachablePeers, message)
+    }
+
+    fn stalled(message: impl Into<String>) -> Self {
+        Self::new(TorrentAttemptErrorKind::Stalled, message)
+    }
+
+    fn fatal(message: impl Into<String>) -> Self {
+        Self::new(TorrentAttemptErrorKind::Fatal, message)
+    }
+
+    fn is_retryable(&self) -> bool {
+        matches!(
+            self.kind,
+            TorrentAttemptErrorKind::NoPeers | TorrentAttemptErrorKind::UnreachablePeers
+        )
+    }
+}
+
+impl fmt::Display for TorrentAttemptError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for TorrentAttemptError {}
 
 #[derive(Debug, Clone)]
 struct ZiboPlanContext {
@@ -165,6 +229,12 @@ impl BencodeValue {
 
 fn log_info(message: impl Into<String>) {
     logger::log_info(&message.into(), Some(LOG_CTX));
+}
+
+fn log_debug(message: impl Into<String>) {
+    if logger::is_debug_enabled() {
+        logger::log_debug(&message.into(), Some(LOG_CTX), None);
+    }
 }
 
 fn emit_progress_event(
@@ -386,6 +456,39 @@ fn build_http_client(timeout_secs: u64) -> Result<reqwest::Client> {
         .timeout(Duration::from_secs(timeout_secs))
         .build()
         .context("Failed to create HTTP client")
+}
+
+fn zibo_torrent_help_suffix(release: &ZiboRelease, dht_enabled: bool) -> String {
+    format!(
+        "{} You can open this torrent in an external client such as qBittorrent, or use the Zibo manual download folder at {}. Torrent: {}",
+        if dht_enabled {
+            ""
+        } else {
+            " The BitTorrent session had to fall back to tracker-only mode because DHT initialization failed."
+        },
+        ZIBO_MANUAL_DOWNLOAD_URL,
+        release.torrent_url
+    )
+}
+
+fn reset_torrent_download_root(download_root: &Path) -> Result<()> {
+    if download_root.exists() {
+        fs::remove_dir_all(download_root).with_context(|| {
+            format!(
+                "Failed to reset Zibo torrent download directory '{}'",
+                download_root.display()
+            )
+        })?;
+    }
+
+    fs::create_dir_all(download_root).with_context(|| {
+        format!(
+            "Failed to recreate Zibo torrent download directory '{}'",
+            download_root.display()
+        )
+    })?;
+
+    Ok(())
 }
 
 async fn fetch_torrent_metadata(
@@ -872,10 +975,77 @@ async fn download_torrent_payload(
     folder_name: &str,
 ) -> Result<PathBuf> {
     let torrent_bytes = fetch_torrent_file_bytes(release, task_control).await?;
-    let (session, dht_enabled) = create_torrent_session(download_root).await?;
+    for attempt in 1..=ZIBO_TORRENT_MAX_ATTEMPTS {
+        ensure_not_cancelled(task_control, "install")?;
+        log_info(format!(
+            "Starting Zibo torrent attempt {attempt}/{ZIBO_TORRENT_MAX_ATTEMPTS} for '{}'",
+            release.title
+        ));
+
+        match run_torrent_download_attempt(
+            release,
+            metadata,
+            torrent_bytes.as_slice(),
+            download_root,
+            task_control,
+            progress_callback,
+            item_type,
+            folder_name,
+            attempt,
+        )
+        .await
+        {
+            Ok(zip_path) => return Ok(zip_path),
+            Err(err) if err.is_retryable() && attempt < ZIBO_TORRENT_MAX_ATTEMPTS => {
+                log_info(format!(
+                    "Zibo torrent attempt {attempt} failed with a retryable peer connectivity issue: {}. Retrying in {} seconds.",
+                    err,
+                    ZIBO_TORRENT_RETRY_DELAY_SECS
+                ));
+                emit_progress_event(
+                    progress_callback,
+                    item_type,
+                    folder_name,
+                    "install",
+                    "running",
+                    0.0,
+                    0,
+                    metadata.total_bytes,
+                    0.0,
+                    Some(format!(
+                        "Retrying Zibo torrent after peer connectivity issue (attempt {}/{})",
+                        attempt + 1,
+                        ZIBO_TORRENT_MAX_ATTEMPTS
+                    )),
+                    Some(metadata.file_name.clone()),
+                );
+                sleep(Duration::from_secs(ZIBO_TORRENT_RETRY_DELAY_SECS)).await;
+                reset_torrent_download_root(download_root)?;
+            }
+            Err(err) => return Err(err.into()),
+        }
+    }
+
+    Err(anyhow!("Zibo torrent download finished without a result"))
+}
+
+async fn run_torrent_download_attempt(
+    release: &ZiboRelease,
+    metadata: &TorrentMetadata,
+    torrent_bytes: &[u8],
+    download_root: &Path,
+    task_control: Option<&TaskControl>,
+    progress_callback: &Option<AddonUpdateProgressCallback>,
+    item_type: &str,
+    folder_name: &str,
+    attempt: u32,
+) -> std::result::Result<PathBuf, TorrentAttemptError> {
+    let (session, dht_enabled) = create_torrent_session(download_root)
+        .await
+        .map_err(|e| TorrentAttemptError::fatal(e.to_string()))?;
     let handle = session
         .add_torrent(
-            AddTorrent::from_bytes(torrent_bytes),
+            AddTorrent::from_bytes(torrent_bytes.to_vec()),
             Some(AddTorrentOptions {
                 paused: false,
                 overwrite: true,
@@ -884,26 +1054,54 @@ async fn download_torrent_payload(
             }),
         )
         .await
-        .with_context(|| format!("Failed to add torrent '{}'", release.torrent_url))?
+        .map_err(|e| {
+            TorrentAttemptError::fatal(format!(
+                "Failed to add torrent '{}': {}",
+                release.torrent_url, e
+            ))
+        })?
         .into_handle()
-        .ok_or_else(|| anyhow!("BitTorrent session returned a list-only torrent"))?;
+        .ok_or_else(|| {
+            TorrentAttemptError::fatal("BitTorrent session returned a list-only torrent")
+        })?;
+
+    log_debug(format!(
+        "Zibo torrent attempt {attempt} session ready dht_enabled={} output_folder={}",
+        dht_enabled,
+        download_root.display()
+    ));
 
     let mut wait_future = std::pin::pin!(handle.wait_until_completed());
-    let download_result: Result<()> = async {
+    let download_result: std::result::Result<(), TorrentAttemptError> = async {
         let mut last_sample_bytes = 0u64;
         let mut last_sample_at = Instant::now();
         let mut last_progress_at = Instant::now();
-        let mut last_status_log_at = Instant::now() - Duration::from_secs(ZIBO_TORRENT_LOG_INTERVAL_SECS);
+        let mut last_status_log_at =
+            Instant::now() - Duration::from_secs(ZIBO_TORRENT_LOG_INTERVAL_SECS);
+        let mut last_peer_summary = PeerSummary::default();
+        let mut last_peer_state_change_at = Instant::now();
 
         loop {
-            ensure_not_cancelled(task_control, "install")?;
+            ensure_not_cancelled(task_control, "install")
+                .map_err(|e| TorrentAttemptError::fatal(e.to_string()))?;
             let stats = handle.stats();
             if let Some(error) = stats.error.as_ref() {
-                return Err(anyhow!("BitTorrent download failed: {}", error));
+                return Err(TorrentAttemptError::fatal(format!(
+                    "BitTorrent download failed: {}",
+                    error
+                )));
             }
 
             let processed_bytes = stats.progress_bytes.min(metadata.total_bytes);
             let peer_summary = PeerSummary::from_stats(&stats);
+            if peer_summary != last_peer_summary {
+                log_debug(format!(
+                    "Zibo torrent attempt {attempt} peer state changed: {}",
+                    peer_summary.display_string()
+                ));
+                last_peer_summary = peer_summary;
+                last_peer_state_change_at = Instant::now();
+            }
             if processed_bytes > last_sample_bytes {
                 last_progress_at = Instant::now();
             }
@@ -939,14 +1137,16 @@ async fn download_torrent_payload(
                 Some(metadata.file_name.clone()),
             );
 
-            if last_status_log_at.elapsed() >= Duration::from_secs(ZIBO_TORRENT_LOG_INTERVAL_SECS) {
+            if last_status_log_at.elapsed() >= Duration::from_secs(ZIBO_TORRENT_LOG_INTERVAL_SECS)
+            {
                 let live_speed = stats
                     .live
                     .as_ref()
                     .map(|live| live.download_speed.to_string())
                     .unwrap_or_else(|| "0.00 MiB/s".to_string());
                 log_info(format!(
-                    "Zibo torrent status: state={}, progress={}/{}, speed={}, dht_enabled={}, peers={}",
+                    "Zibo torrent status: attempt={}, state={}, progress={}/{}, speed={}, dht_enabled={}, peers={}",
+                    attempt,
                     stats.state,
                     processed_bytes,
                     metadata.total_bytes,
@@ -965,32 +1165,36 @@ async fn download_torrent_payload(
                 && !peer_summary.has_activity()
                 && last_progress_at.elapsed() >= Duration::from_secs(ZIBO_NO_PEER_TIMEOUT_SECS)
             {
-                return Err(anyhow!(
-                    "No reachable peers were found for the Zibo torrent after {} seconds. Automatic update could not start.{} Torrent: {}",
+                return Err(TorrentAttemptError::no_peers(format!(
+                    "No reachable peers were found for the Zibo torrent after {} seconds. Automatic update could not start.{}",
                     ZIBO_NO_PEER_TIMEOUT_SECS,
-                    if dht_enabled {
-                        ""
-                    } else {
-                        " The BitTorrent session had to fall back to tracker-only mode because DHT initialization failed."
-                    },
-                    release.torrent_url
-                ));
+                    zibo_torrent_help_suffix(release, dht_enabled)
+                )));
+            }
+
+            if processed_bytes == 0
+                && peer_summary.seen > 0
+                && !peer_summary.has_connectable_peers()
+                && last_peer_state_change_at.elapsed()
+                    >= Duration::from_secs(ZIBO_UNREACHABLE_PEER_TIMEOUT_SECS)
+            {
+                return Err(TorrentAttemptError::unreachable_peers(format!(
+                    "The Zibo torrent discovered peers, but none became connectable within {} seconds. Peer status: {}.{}",
+                    ZIBO_UNREACHABLE_PEER_TIMEOUT_SECS,
+                    peer_summary.display_string(),
+                    zibo_torrent_help_suffix(release, dht_enabled)
+                )));
             }
 
             if processed_bytes < metadata.total_bytes
                 && last_progress_at.elapsed() >= Duration::from_secs(ZIBO_STALLED_TIMEOUT_SECS)
             {
-                return Err(anyhow!(
-                    "The Zibo torrent stalled for more than {} seconds. Peer status: {}.{} Torrent: {}",
+                return Err(TorrentAttemptError::stalled(format!(
+                    "The Zibo torrent made no download progress for more than {} seconds. Peer status: {}.{}",
                     ZIBO_STALLED_TIMEOUT_SECS,
                     peer_summary.display_string(),
-                    if dht_enabled {
-                        ""
-                    } else {
-                        " The BitTorrent session had to fall back to tracker-only mode because DHT initialization failed."
-                    },
-                    release.torrent_url
-                ));
+                    zibo_torrent_help_suffix(release, dht_enabled)
+                )));
             }
 
             last_sample_bytes = processed_bytes;
@@ -998,7 +1202,9 @@ async fn download_torrent_payload(
 
             tokio::select! {
                 result = &mut wait_future => {
-                    result.context("BitTorrent download failed")?;
+                    result.map_err(|e| {
+                        TorrentAttemptError::fatal(format!("BitTorrent download failed: {}", e))
+                    })?;
                     break;
                 }
                 _ = sleep(Duration::from_millis(500)) => {}
@@ -1014,10 +1220,10 @@ async fn download_torrent_payload(
 
     let zip_path = download_root.join(&metadata.file_name);
     if !zip_path.is_file() {
-        return Err(anyhow!(
+        return Err(TorrentAttemptError::fatal(format!(
             "BitTorrent download completed but '{}' was not found",
             zip_path.display()
-        ));
+        )));
     }
 
     Ok(zip_path)
@@ -1028,8 +1234,8 @@ async fn create_torrent_session(download_root: &Path) -> Result<(Arc<Session>, b
         disable_dht: false,
         disable_dht_persistence: true,
         persistence: None,
-        listen_port_range: None,
-        enable_upnp_port_forwarding: false,
+        listen_port_range: Some(ZIBO_TORRENT_LISTEN_PORT_START..ZIBO_TORRENT_LISTEN_PORT_END),
+        enable_upnp_port_forwarding: true,
         ..Default::default()
     };
 
@@ -1043,8 +1249,8 @@ async fn create_torrent_session(download_root: &Path) -> Result<(Arc<Session>, b
                 disable_dht: true,
                 disable_dht_persistence: true,
                 persistence: None,
-                listen_port_range: None,
-                enable_upnp_port_forwarding: false,
+                listen_port_range: Some(ZIBO_TORRENT_LISTEN_PORT_START..ZIBO_TORRENT_LISTEN_PORT_END),
+                enable_upnp_port_forwarding: true,
                 ..Default::default()
             };
             let session = Session::new_with_opts(download_root.to_path_buf(), fallback_opts)

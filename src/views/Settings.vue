@@ -163,7 +163,7 @@
         <transition name="slide-up">
           <section
             v-if="store.isWindows"
-            class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+            class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2"
           >
             <div
               class="p-4 cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
@@ -323,7 +323,7 @@
         <transition name="slide-up">
           <section
             v-if="store.isWindows"
-            class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+            class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2"
           >
             <div
               class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
@@ -487,7 +487,7 @@
         <transition name="slide-up">
           <section
             v-if="store.isWindows"
-            class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
+            class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2"
           >
             <div
               class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
@@ -1076,7 +1076,9 @@
                 inactive-class="bg-gray-300 dark:bg-gray-600"
                 @update:model-value="
                   managementStore.setAddonUpdateOptions({
-                    chunkedDownloadEnabled: !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true),
+                    chunkedDownloadEnabled: !(
+                      managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true
+                    ),
                   })
                 "
               />
@@ -1154,7 +1156,11 @@
               <!-- Connections per file stepper -->
               <div
                 class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5"
-                :class="{ 'opacity-50': !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true) }"
+                :class="{
+                  'opacity-50': !(
+                    managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true
+                  ),
+                }"
               >
                 <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
                   <AnimatedText>{{ $t('settings.threadsPerTask') }}</AnimatedText>
@@ -1167,10 +1173,16 @@
                         ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                         : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500'
                     "
-                    :disabled="(managementStore.addonUpdateOptions.threadsPerTask ?? 6) <= 1 || !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true)"
+                    :disabled="
+                      (managementStore.addonUpdateOptions.threadsPerTask ?? 6) <= 1 ||
+                      !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true)
+                    "
                     @click="
                       managementStore.setAddonUpdateOptions({
-                        threadsPerTask: Math.max(1, (managementStore.addonUpdateOptions.threadsPerTask ?? 6) - 1),
+                        threadsPerTask: Math.max(
+                          1,
+                          (managementStore.addonUpdateOptions.threadsPerTask ?? 6) - 1,
+                        ),
                       })
                     "
                   >
@@ -1188,10 +1200,16 @@
                         ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                         : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500'
                     "
-                    :disabled="(managementStore.addonUpdateOptions.threadsPerTask ?? 6) >= 32 || !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true)"
+                    :disabled="
+                      (managementStore.addonUpdateOptions.threadsPerTask ?? 6) >= 32 ||
+                      !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true)
+                    "
                     @click="
                       managementStore.setAddonUpdateOptions({
-                        threadsPerTask: Math.min(32, (managementStore.addonUpdateOptions.threadsPerTask ?? 6) + 1),
+                        threadsPerTask: Math.min(
+                          32,
+                          (managementStore.addonUpdateOptions.threadsPerTask ?? 6) + 1,
+                        ),
                       })
                     "
                   >
@@ -1203,7 +1221,11 @@
               <!-- Max total connections stepper -->
               <div
                 class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5"
-                :class="{ 'opacity-50': !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true) }"
+                :class="{
+                  'opacity-50': !(
+                    managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true
+                  ),
+                }"
               >
                 <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
                   <AnimatedText>{{ $t('settings.totalThreads') }}</AnimatedText>
@@ -1216,10 +1238,16 @@
                         ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                         : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500'
                     "
-                    :disabled="(managementStore.addonUpdateOptions.totalThreads ?? 32) <= 1 || !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true)"
+                    :disabled="
+                      (managementStore.addonUpdateOptions.totalThreads ?? 32) <= 1 ||
+                      !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true)
+                    "
                     @click="
                       managementStore.setAddonUpdateOptions({
-                        totalThreads: Math.max(1, (managementStore.addonUpdateOptions.totalThreads ?? 32) - 1),
+                        totalThreads: Math.max(
+                          1,
+                          (managementStore.addonUpdateOptions.totalThreads ?? 32) - 1,
+                        ),
                       })
                     "
                   >
@@ -1237,10 +1265,16 @@
                         ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                         : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500'
                     "
-                    :disabled="(managementStore.addonUpdateOptions.totalThreads ?? 32) >= 64 || !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true)"
+                    :disabled="
+                      (managementStore.addonUpdateOptions.totalThreads ?? 32) >= 64 ||
+                      !(managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true)
+                    "
                     @click="
                       managementStore.setAddonUpdateOptions({
-                        totalThreads: Math.min(64, (managementStore.addonUpdateOptions.totalThreads ?? 32) + 1),
+                        totalThreads: Math.min(
+                          64,
+                          (managementStore.addonUpdateOptions.totalThreads ?? 32) + 1,
+                        ),
                       })
                     "
                   >
@@ -1358,9 +1392,7 @@
                 </div>
                 <ToggleSwitch
                   size="lg"
-                  :model-value="
-                    store.crashAnalysisDmpEnabled && store.crashAnalysisIgnoreDateCheck
-                  "
+                  :model-value="store.crashAnalysisDmpEnabled && store.crashAnalysisIgnoreDateCheck"
                   active-class="bg-amber-500"
                   inactive-class="bg-gray-300 dark:bg-gray-600"
                   :disabled="!store.crashAnalysisDmpEnabled"
@@ -1623,10 +1655,10 @@
             </div>
             <div class="flex-1">
               <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-                <AnimatedText>SimBrief Integration</AnimatedText>
+                <AnimatedText>{{ $t('settings.simbrief.title') }}</AnimatedText>
               </h3>
               <p class="text-xs text-gray-500 dark:text-gray-400">
-                <AnimatedText>Import flight plans from SimBrief</AnimatedText>
+                <AnimatedText>{{ $t('settings.simbrief.desc') }}</AnimatedText>
               </p>
             </div>
           </div>
@@ -1651,101 +1683,101 @@
         <!-- Expanded content -->
         <transition name="collapse">
           <div v-if="simbriefExpanded" class="px-4 pb-4 space-y-4">
-<!-- Pilot ID Input -->
-          <div class="space-y-2">
-            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
-              Pilot ID
-            </label>
-            <div class="flex gap-2">
-              <input
-                v-model="simbriefPilotIdInput"
-                type="text"
-                placeholder="1234567"
-                maxlength="10"
-                class="flex-1 px-4 py-2 bg-gray-50 dark:bg-gray-900/50 border rounded-lg text-sm text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-500 transition-colors duration-200 font-mono"
-                :class="
-                  simbriefTestError
-                    ? 'border-red-500 dark:border-red-500'
-                    : 'border-gray-200 dark:border-gray-700/50'
-                "
-                @input="handleSimbriefInput"
-                @blur="handleSimbriefBlur"
-              />
-              <button
-                type="button"
-                class="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg transition-colors duration-200 flex items-center space-x-1.5 border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                :disabled="!simbriefPilotIdInput || simbriefTesting"
-                @click="testSimbriefConnection"
-              >
-                <svg
-                  v-if="simbriefTesting"
-                  class="w-4 h-4 animate-spin"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+            <!-- Pilot ID Input -->
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                {{ $t('settings.simbrief.pilotIdLabel') }}
+              </label>
+              <div class="flex gap-2">
+                <input
+                  v-model="simbriefPilotIdInput"
+                  type="text"
+                  placeholder="1234567"
+                  maxlength="10"
+                  class="flex-1 px-4 py-2 bg-gray-50 dark:bg-gray-900/50 border rounded-lg text-sm text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-500 transition-colors duration-200 font-mono"
+                  :class="
+                    simbriefTestError
+                      ? 'border-red-500 dark:border-red-500'
+                      : 'border-gray-200 dark:border-gray-700/50'
+                  "
+                  @input="handleSimbriefInput"
+                  @blur="handleSimbriefBlur"
+                />
+                <button
+                  type="button"
+                  class="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg transition-colors duration-200 flex items-center space-x-1.5 border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  :disabled="!simbriefPilotIdInput || simbriefTesting"
+                  @click="testSimbriefConnection"
                 >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  ></path>
-                </svg>
-                <svg
-                  v-else-if="simbriefTestSuccess"
-                  class="w-4 h-4 text-green-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+                  <svg
+                    v-if="simbriefTesting"
+                    class="w-4 h-4 animate-spin"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    ></path>
+                  </svg>
+                  <svg
+                    v-else-if="simbriefTestSuccess"
+                    class="w-4 h-4 text-green-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M5 13l4 4L19 7"
+                    ></path>
+                  </svg>
+                  <svg
+                    v-else-if="simbriefTestError"
+                    class="w-4 h-4 text-red-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M6 18L18 6M6 6l12 12"
+                    ></path>
+                  </svg>
+                  <span>{{ $t('common.test') }}</span>
+                </button>
+              </div>
+
+              <!-- Test Result Messages -->
+              <transition name="fade">
+                <div
+                  v-if="simbriefTestSuccess"
+                  class="rounded-lg bg-green-500/10 p-3 text-sm text-green-600 dark:text-green-400"
                 >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M5 13l4 4L19 7"
-                  ></path>
-                </svg>
-                <svg
-                  v-else-if="simbriefTestError"
-                  class="w-4 h-4 text-red-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+                  {{ $t('settings.simbrief.foundFlightPlan', { route: simbriefTestSuccess }) }}
+                </div>
+              </transition>
+
+              <transition name="fade">
+                <div
+                  v-if="simbriefTestError"
+                  class="rounded-lg bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-400"
                 >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M6 18L18 6M6 6l12 12"
-                  ></path>
-                </svg>
-                <span>Test</span>
-              </button>
+                  {{ simbriefTestError }}
+                </div>
+              </transition>
+
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ $t('settings.simbrief.pilotIdHelp') }}
+              </p>
             </div>
-
-            <!-- Test Result Messages -->
-            <transition name="fade">
-              <div
-                v-if="simbriefTestSuccess"
-                class="rounded-lg bg-green-500/10 p-3 text-sm text-green-600 dark:text-green-400"
-              >
-                Found flight plan: {{ simbriefTestSuccess }}
-              </div>
-            </transition>
-
-            <transition name="fade">
-              <div
-                v-if="simbriefTestError"
-                class="rounded-lg bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-400"
-              >
-                {{ simbriefTestError }}
-              </div>
-            </transition>
-
-            <p class="text-xs text-gray-500 dark:text-gray-400">
-              Your Pilot ID is a numeric identifier found in your SimBrief account settings.
-            </p>
-          </div>
 
             <!-- Help Link -->
             <div
@@ -1753,10 +1785,10 @@
             >
               <div class="space-y-0.5">
                 <p class="text-sm font-medium text-gray-900 dark:text-white">
-                  Don't have a SimBrief account?
+                  {{ $t('settings.simbrief.noAccountTitle') }}
                 </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
-                  SimBrief is a free flight planning service
+                  {{ $t('settings.simbrief.noAccountDesc') }}
                 </p>
               </div>
               <button
@@ -2990,7 +3022,7 @@ async function handleSimbriefBlur() {
     simbriefPilotId.value = simbriefPilotIdInput.value
     await mapStore.setSimbriefPilotId(simbriefPilotIdInput.value)
     if (simbriefPilotIdInput.value) {
-      toast.success('SimBrief Pilot ID saved')
+      toast.success(t('settings.simbrief.pilotIdSaved'))
     }
   }
 }
@@ -3012,8 +3044,9 @@ async function testSimbriefConnection() {
     interface SimbriefAircraft {
       icao_code?: string
     }
-    const origin = (data.origin as SimbriefAirport | undefined)?.icao_code || 'Unknown'
-    const destination = (data.destination as SimbriefAirport | undefined)?.icao_code || 'Unknown'
+    const origin = (data.origin as SimbriefAirport | undefined)?.icao_code || t('common.unknown')
+    const destination =
+      (data.destination as SimbriefAirport | undefined)?.icao_code || t('common.unknown')
     const aircraft = (data.aircraft as SimbriefAircraft | undefined)?.icao_code || ''
 
     simbriefTestSuccess.value = `${origin} → ${destination}${aircraft ? ` (${aircraft})` : ''}`
@@ -3025,11 +3058,11 @@ async function testSimbriefConnection() {
   } catch (error) {
     const errorMsg = getErrorMessage(error)
     if (errorMsg.includes('404') || errorMsg.includes('not found')) {
-      simbriefTestError.value = 'No flight plan found for this Pilot ID'
+      simbriefTestError.value = t('settings.simbrief.noFlightPlanFound')
     } else if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
-      simbriefTestError.value = 'Network error - check your connection'
+      simbriefTestError.value = t('settings.simbrief.networkError')
     } else {
-      simbriefTestError.value = 'Failed to fetch flight plan'
+      simbriefTestError.value = t('settings.simbrief.fetchFailed')
     }
 
     // Auto-clear error message after 5 seconds
