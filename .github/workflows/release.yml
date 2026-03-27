@@ -36,6 +36,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Validate version consistency
+        run: node scripts/validate-version-consistency.mjs
+
       - name: Get version from tauri.conf.json
         id: get-version
         run: |
@@ -47,15 +50,16 @@ jobs:
 
       - name: Check if pre-release
         id: check-prerelease
+        shell: bash
         run: |
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          MAJOR=$(echo "$VERSION" | cut -d. -f1)
-          if [ "$MAJOR" = "0" ]; then
+          BASE_VERSION="${VERSION%%+*}"
+          if [[ "$BASE_VERSION" == *-* ]]; then
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
-            echo "⚠️  Pre-release detected (version < 1.0.0)"
+            echo "⚠️  Pre-release detected from version suffix: $VERSION"
           else
             echo "is_prerelease=false" >> $GITHUB_OUTPUT
-            echo "✅ Stable release (version >= 1.0.0)"
+            echo "✅ Stable release: $VERSION"
           fi
 
       - name: Check if tag exists
@@ -102,20 +106,6 @@ jobs:
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           cat /tmp/changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Commit version sync
-        if: steps.check-tag.outputs.skip != 'true'
-        run: |
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
-          git add package.json
-          if git diff --staged --quiet; then
-            echo "ℹ️  No changes to commit"
-          else
-            git commit -m "chore: sync version to package.json"
-            git push
-            echo "✅ Committed and pushed version sync"
-          fi
 
   build:
     name: Build (${{ matrix.suffix }})
@@ -474,7 +464,7 @@ jobs:
           echo "📦 Version: ${{ needs.prepare-release.outputs.version }}"
           echo "🏷️  Tag: ${{ needs.prepare-release.outputs.tag }}"
           if [ "${{ needs.prepare-release.outputs.is_prerelease }}" = "true" ]; then
-            echo "⚠️  Type: Pre-release (version < 1.0.0)"
+            echo "⚠️  Type: Pre-release"
           else
             echo "✅ Type: Stable release"
           fi

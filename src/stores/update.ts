@@ -351,6 +351,12 @@ export const useUpdateStore = defineStore('update', () => {
     updatePhase.value = 'idle'
   }
 
+  function getUpdaterHeaders(): HeadersInit {
+    return {
+      'X-Include-Prerelease': includePreRelease.value ? '1' : '0',
+    }
+  }
+
   async function performUpdate() {
     if (isDownloading.value) return
 
@@ -360,7 +366,7 @@ export const useUpdateStore = defineStore('update', () => {
     logBasic('Starting auto-update download', 'update')
 
     try {
-      const update = await check()
+      const update = await check({ headers: getUpdaterHeaders() })
 
       if (!update) {
         logDebug('No update found via plugin check', 'update')
@@ -371,27 +377,30 @@ export const useUpdateStore = defineStore('update', () => {
       let contentLength = 0
       let downloaded = 0
 
-      await update.downloadAndInstall((event) => {
-        switch (event.event) {
-          case 'Started':
-            contentLength = event.data.contentLength ?? 0
-            totalBytes.value = contentLength
-            logDebug(`Update download started, size: ${contentLength}`, 'update')
-            break
-          case 'Progress':
-            downloaded += event.data.chunkLength
-            downloadedBytes.value = downloaded
-            if (contentLength > 0) {
-              downloadProgress.value = Math.round((downloaded / contentLength) * 100)
-            }
-            break
-          case 'Finished':
-            downloadProgress.value = 100
-            updatePhase.value = 'installing'
-            logBasic('Update download finished, installing...', 'update')
-            break
-        }
-      })
+      await update.downloadAndInstall(
+        (event) => {
+          switch (event.event) {
+            case 'Started':
+              contentLength = event.data.contentLength ?? 0
+              totalBytes.value = contentLength
+              logDebug(`Update download started, size: ${contentLength}`, 'update')
+              break
+            case 'Progress':
+              downloaded += event.data.chunkLength
+              downloadedBytes.value = downloaded
+              if (contentLength > 0) {
+                downloadProgress.value = Math.round((downloaded / contentLength) * 100)
+              }
+              break
+            case 'Finished':
+              downloadProgress.value = 100
+              updatePhase.value = 'installing'
+              logBasic('Update download finished, installing...', 'update')
+              break
+          }
+        },
+        { headers: getUpdaterHeaders() },
+      )
 
       updatePhase.value = 'restarting'
       logBasic('Update installed, restarting app...', 'update')

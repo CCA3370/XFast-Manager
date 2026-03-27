@@ -65,6 +65,9 @@ jobs:
           node-version: 22
           cache: 'npm'
 
+      - name: Validate version consistency
+        run: node scripts/validate-version-consistency.mjs
+
       - name: Install JS dependencies
         run: npm ci
 
