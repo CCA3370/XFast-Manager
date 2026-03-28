@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0-beta.1] - 2026-03-28
+
+### Added
+
+- **Configuration Presets** - Added preset save/apply workflow with import/export support for aircraft, plugins, scenery, Lua scripts, and lock states.
+- **Activity Log** - Added a dedicated history page for installs, updates, deletions, enable/disable actions, scenery sorting, and preset applies.
+- **Disk Space Analysis** - Added a disk usage page that scans X-Plane content by category and drills down to per-folder size details.
+- **CSL and ALTITUDE Model Management** - Added a dedicated page to scan, search, install, update, and uninstall multiplayer model packages, with custom path support and queued/cancellable installs.
+- **Built-in Zibo Updater** - Added version-aware Zibo update support with torrent downloads and manual handoff for major-version packages when required.
+- **Screenshot Background Management** - Screenshots can now be set or unset as X-Plane background images directly from Screenshot Manager.
+- **More Interface Languages** - Added Arabic, German, Spanish, French, Hindi, Japanese, Korean, Portuguese, and Russian UI translations.
+
+### Changed
+
+- **Navigation and Quick Access** - Refreshed the top navigation and home/dashboard layout, and added a command palette plus keyboard shortcuts for faster page switching.
+- **Addon Update Planning** - Update tasks now show clearer plan details, including file-level add/replace/delete previews and more transparent download information.
+
+### Fixed
+
+- **Pre-release Update Downloads** - In-app update downloads now correctly follow the pre-release setting when checking and installing new versions.
+- **Addon Update Cleanup Rules** - Blacklist-based deletions are handled more completely during addon updates, reducing leftover obsolete files.
+
 ## [1.1.2] - 2026-03-06
 
 ### Added

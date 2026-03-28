@@ -46,6 +46,9 @@
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
       "timestampUrl": "",
+      "wix": {
+        "version": "1.2.0.1"
+      },
       "webviewInstallMode": {
         "type": "embedBootstrapper"
       }
