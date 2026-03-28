@@ -15,10 +15,19 @@ import { getInitialLocale, persistLocale, type SupportedLocale } from './shared'
 
 const initialLocale = getInitialLocale()
 
+function getLocaleTextDirection(locale: SupportedLocale): 'ltr' | 'rtl' {
+  return locale === 'ar' ? 'rtl' : 'ltr'
+}
+
 function applyDocumentLocale(locale: SupportedLocale) {
   if (typeof document === 'undefined') return
+  const textDirection = getLocaleTextDirection(locale)
   document.documentElement.lang = locale
-  document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr'
+  // Keep the application layout in LTR. The UI is authored with explicit
+  // left/right positioning utilities, so flipping the root document direction
+  // mirrors the whole interface instead of only affecting Arabic text flow.
+  document.documentElement.dir = 'ltr'
+  document.documentElement.dataset.localeDirection = textDirection
 }
 
 // Removed blocking invoke call from module top-level to improve startup speed

@@ -3,7 +3,7 @@ use futures::StreamExt;
 use regex::Regex;
 use serde::Deserialize;
 use std::fs;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -24,6 +24,11 @@ const LOG_CTX: &str = "zibo_updater";
 const GOOGLE_DRIVE_API_BASE: &str = "https://www.googleapis.com/drive/v3";
 const GOOGLE_DRIVE_API_KEY_ENV: &str = "XFAST_ZIBO_GOOGLE_DRIVE_API_KEY";
 const ZIBO_DOWNLOAD_PROGRESS_MAX: f64 = 90.0;
+const ZIBO_EXTRACT_PROGRESS_MAX: f64 = 96.0;
+const ZIBO_COPY_PROGRESS_MAX: f64 = 99.0;
+const ZIBO_PROGRESS_EMIT_INTERVAL_MS: u64 = 250;
+const ZIBO_SPEED_SAMPLE_INTERVAL_MS: u64 = 1000;
+const ZIBO_SPEED_SMOOTHING_ALPHA: f64 = 0.35;
 
 #[derive(Debug, Clone, Copy)]
 struct DriveSource {
@@ -174,6 +179,35 @@ fn emit_progress_event(
         current_file,
         message,
     });
+}
+
+fn take_emit_interval_secs(last_emit_at: &mut Instant, force: bool) -> Option<f64> {
+    let now = Instant::now();
+    let elapsed = now.duration_since(*last_emit_at);
+    if force || elapsed >= Duration::from_millis(ZIBO_PROGRESS_EMIT_INTERVAL_MS) {
+        *last_emit_at = now;
+        Some(elapsed.as_secs_f64())
+    } else {
+        None
+    }
+}
+
+fn smooth_speed(previous: f64, next: f64) -> f64 {
+    if next <= 0.0 {
+        0.0
+    } else if previous <= 0.0 {
+        next
+    } else {
+        previous * (1.0 - ZIBO_SPEED_SMOOTHING_ALPHA) + next * ZIBO_SPEED_SMOOTHING_ALPHA
+    }
+}
+
+fn interpolate_progress(start: f64, end: f64, processed: u64, total: u64) -> f64 {
+    if total == 0 {
+        return end;
+    }
+    let ratio = (processed as f64 / total as f64).clamp(0.0, 1.0);
+    start + (end - start) * ratio
 }
 
 fn ensure_not_cancelled(task_control: Option<&TaskControl>, stage: &str) -> Result<()> {
@@ -551,11 +585,14 @@ async fn download_drive_file_to_path(
         })?;
 
     let mut stream = response.bytes_stream();
-    let mut output = fs::File::create(output_path)
+    let output = fs::File::create(output_path)
         .with_context(|| format!("Failed to create '{}'", output_path.display()))?;
+    let mut output = BufWriter::new(output);
     let mut processed_bytes = 0u64;
-    let mut last_sample_bytes = 0u64;
-    let mut last_sample_at = Instant::now();
+    let mut last_emit_at = Instant::now();
+    let mut last_speed_sample_at = Instant::now();
+    let mut last_speed_sample_bytes = 0u64;
+    let mut displayed_speed = 0.0;
 
     while let Some(chunk) = stream.next().await {
         ensure_not_cancelled(task_control, "install")?;
@@ -573,37 +610,44 @@ async fn download_drive_file_to_path(
         })?;
         processed_bytes = processed_bytes.saturating_add(chunk.len() as u64);
 
-        let elapsed = last_sample_at.elapsed().as_secs_f64();
-        let speed = if elapsed > 0.0 && processed_bytes >= last_sample_bytes {
-            (processed_bytes - last_sample_bytes) as f64 / elapsed
-        } else {
-            0.0
-        };
+        let processed_for_display = processed_bytes.min(file.total_bytes);
+        let force_emit = file.total_bytes > 0 && processed_for_display >= file.total_bytes;
+        if take_emit_interval_secs(&mut last_emit_at, force_emit).is_some() {
+            let speed_elapsed = last_speed_sample_at.elapsed();
+            if force_emit || speed_elapsed >= Duration::from_millis(ZIBO_SPEED_SAMPLE_INTERVAL_MS) {
+                let elapsed_secs = speed_elapsed.as_secs_f64();
+                let speed = if elapsed_secs > 0.0 && processed_bytes >= last_speed_sample_bytes {
+                    (processed_bytes - last_speed_sample_bytes) as f64 / elapsed_secs
+                } else {
+                    0.0
+                };
+                displayed_speed = smooth_speed(displayed_speed, speed);
+                last_speed_sample_at = Instant::now();
+                last_speed_sample_bytes = processed_bytes;
+            }
 
-        emit_progress_event(
-            progress_callback,
-            item_type,
-            folder_name,
-            "install",
-            "running",
-            if file.total_bytes > 0 {
-                (processed_bytes.min(file.total_bytes) as f64 / file.total_bytes as f64)
-                    * ZIBO_DOWNLOAD_PROGRESS_MAX
-            } else {
-                0.0
-            },
-            processed_bytes.min(file.total_bytes),
-            file.total_bytes,
-            speed,
-            Some(format!(
-                "Downloading {} from {}",
-                file.file_name, file.source.label
-            )),
-            Some(file.file_name.clone()),
-        );
-
-        last_sample_bytes = processed_bytes;
-        last_sample_at = Instant::now();
+            emit_progress_event(
+                progress_callback,
+                item_type,
+                folder_name,
+                "install",
+                "in_progress",
+                interpolate_progress(
+                    0.0,
+                    ZIBO_DOWNLOAD_PROGRESS_MAX,
+                    processed_for_display,
+                    file.total_bytes,
+                ),
+                processed_for_display,
+                file.total_bytes,
+                displayed_speed,
+                Some(format!(
+                    "Downloading {} from {}",
+                    file.file_name, file.source.label
+                )),
+                Some(file.file_name.clone()),
+            );
+        }
     }
 
     output
@@ -654,7 +698,7 @@ async fn download_release_from_drive_with_order(
             item_type,
             folder_name,
             "install",
-            "running",
+            "in_progress",
             0.0,
             0,
             0,
@@ -981,29 +1025,75 @@ pub async fn execute_update(
     .await?;
 
     ensure_not_cancelled(task_control.as_ref(), "install")?;
-    emit_progress_event(
-        &progress_callback,
-        item_type,
-        folder_name,
-        "install",
-        "running",
-        92.0,
-        downloaded_file.total_bytes,
-        downloaded_file.total_bytes,
-        0.0,
-        Some("Extracting Zibo archive".to_string()),
-        Some(
-            zip_path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("zibo.zip")
-                .to_string(),
-        ),
-    );
-
-    unzip_archive(&zip_path, &unpacked_dir)?;
+    let archive_name = zip_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("zibo.zip")
+        .to_string();
+    let mut last_extract_emit_at = Instant::now();
+    unzip_archive_with_progress(
+        &zip_path,
+        &unpacked_dir,
+        |processed_entries, total_entries| {
+            ensure_not_cancelled(task_control.as_ref(), "install")?;
+            let force_emit = total_entries == 0 || processed_entries >= total_entries;
+            if take_emit_interval_secs(&mut last_extract_emit_at, force_emit).is_some() {
+                emit_progress_event(
+                    &progress_callback,
+                    item_type,
+                    folder_name,
+                    "install",
+                    "in_progress",
+                    interpolate_progress(
+                        ZIBO_DOWNLOAD_PROGRESS_MAX,
+                        ZIBO_EXTRACT_PROGRESS_MAX,
+                        processed_entries,
+                        total_entries,
+                    ),
+                    downloaded_file.total_bytes,
+                    downloaded_file.total_bytes,
+                    0.0,
+                    Some(format!(
+                        "Extracting Zibo archive ({}/{})",
+                        processed_entries, total_entries
+                    )),
+                    Some(archive_name.clone()),
+                );
+            }
+            Ok(())
+        },
+    )?;
     let extracted_root = find_extracted_zibo_root(&unpacked_dir)?;
-    let updated_files = copy_dir_contents_overwrite(&extracted_root, &target_path)?;
+    let mut last_copy_emit_at = Instant::now();
+    let updated_files = copy_dir_contents_overwrite_with_progress(
+        &extracted_root,
+        &target_path,
+        |copied, total| {
+            ensure_not_cancelled(task_control.as_ref(), "install")?;
+            let force_emit = total == 0 || copied >= total;
+            if take_emit_interval_secs(&mut last_copy_emit_at, force_emit).is_some() {
+                emit_progress_event(
+                    &progress_callback,
+                    item_type,
+                    folder_name,
+                    "install",
+                    "in_progress",
+                    interpolate_progress(
+                        ZIBO_EXTRACT_PROGRESS_MAX,
+                        ZIBO_COPY_PROGRESS_MAX,
+                        copied,
+                        total,
+                    ),
+                    downloaded_file.total_bytes,
+                    downloaded_file.total_bytes,
+                    0.0,
+                    Some(format!("Applying Zibo files ({}/{})", copied, total)),
+                    Some(context.latest_release.title.clone()),
+                );
+            }
+            Ok(())
+        },
+    )?;
 
     emit_progress_event(
         &progress_callback,
@@ -1072,11 +1162,19 @@ fn resolve_zibo_target_path(
         .map_err(|err| anyhow!("Invalid target path: {}", err))
 }
 
-fn unzip_archive(archive_path: &Path, output_dir: &Path) -> Result<()> {
+fn unzip_archive_with_progress<F>(
+    archive_path: &Path,
+    output_dir: &Path,
+    mut on_progress: F,
+) -> Result<()>
+where
+    F: FnMut(u64, u64) -> Result<()>,
+{
     let file = fs::File::open(archive_path)
         .with_context(|| format!("Failed to open '{}'", archive_path.display()))?;
     let mut archive = ZipArchive::new(file)
         .with_context(|| format!("Failed to read ZIP '{}'", archive_path.display()))?;
+    let total_entries = archive.len() as u64;
 
     for idx in 0..archive.len() {
         let mut entry = archive.by_index(idx).with_context(|| {
@@ -1087,12 +1185,14 @@ fn unzip_archive(archive_path: &Path, output_dir: &Path) -> Result<()> {
             )
         })?;
         let Some(enclosed) = entry.enclosed_name().map(|path| path.to_path_buf()) else {
+            on_progress((idx + 1) as u64, total_entries)?;
             continue;
         };
         let destination = output_dir.join(enclosed);
         if entry.is_dir() {
             fs::create_dir_all(&destination)
                 .with_context(|| format!("Failed to create '{}'", destination.display()))?;
+            on_progress((idx + 1) as u64, total_entries)?;
             continue;
         }
 
@@ -1106,6 +1206,7 @@ fn unzip_archive(archive_path: &Path, output_dir: &Path) -> Result<()> {
         std::io::copy(&mut entry, &mut output)
             .with_context(|| format!("Failed to extract '{}'", destination.display()))?;
         output.flush().ok();
+        on_progress((idx + 1) as u64, total_entries)?;
     }
 
     Ok(())
@@ -1151,7 +1252,20 @@ fn find_extracted_zibo_root(output_dir: &Path) -> Result<PathBuf> {
     }
 }
 
-fn copy_dir_contents_overwrite(source_dir: &Path, target_dir: &Path) -> Result<usize> {
+fn copy_dir_contents_overwrite_with_progress<F>(
+    source_dir: &Path,
+    target_dir: &Path,
+    mut on_progress: F,
+) -> Result<usize>
+where
+    F: FnMut(u64, u64) -> Result<()>,
+{
+    let total_files = walkdir::WalkDir::new(source_dir)
+        .follow_links(false)
+        .into_iter()
+        .flatten()
+        .filter(|entry| entry.file_type().is_file())
+        .count() as u64;
     let mut copied_files = 0usize;
 
     for entry in walkdir::WalkDir::new(source_dir)
@@ -1187,6 +1301,7 @@ fn copy_dir_contents_overwrite(source_dir: &Path, target_dir: &Path) -> Result<u
             )
         })?;
         copied_files += 1;
+        on_progress(copied_files as u64, total_files)?;
     }
 
     Ok(copied_files)

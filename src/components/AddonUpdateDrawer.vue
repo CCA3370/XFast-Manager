@@ -580,11 +580,17 @@ function applyAddonProgressEvent(event: AddonUpdateProgressEvent) {
   if (stage === 'install') {
     const processedBytes = Math.max(0, Number(event.processedBytes || 0))
     const totalBytes = Math.max(0, Number(event.totalBytes || 0))
-    if (status === 'started' || status === 'in_progress') {
+    if (status === 'started' || status === 'in_progress' || status === 'running') {
       state.installing = true
       state.status = 'installing'
-      state.progress = totalBytes > 0 && processedBytes <= 0 ? 0 : percent
-      state.speedBytes = Math.max(0, Number(event.speedBytesPerSec || 0))
+      state.progress = Math.max(state.progress, totalBytes > 0 && processedBytes <= 0 ? 0 : percent)
+      const nextSpeed = Math.max(0, Number(event.speedBytesPerSec || 0))
+      state.speedBytes =
+        nextSpeed > 0
+          ? state.speedBytes > 0
+            ? state.speedBytes * 0.7 + nextSpeed * 0.3
+            : nextSpeed
+          : 0
     } else if (status === 'completed') {
       state.installing = false
       state.status = 'completed'
@@ -803,7 +809,7 @@ watch(
 
                     <div class="mt-2 h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                       <div
-                        class="h-full bg-gradient-to-r from-sky-500 to-cyan-500 transition-all duration-200"
+                        class="h-full bg-gradient-to-r from-sky-500 to-cyan-500 transition-[width] duration-150 ease-out"
                         :style="{ width: `${Math.max(0, Math.min(100, stateFor(task).progress))}%` }"
                       />
                     </div>
