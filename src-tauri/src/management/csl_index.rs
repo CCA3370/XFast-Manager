@@ -90,9 +90,13 @@ fn sanitize_request_id(raw: &str) -> Option<String> {
 }
 
 fn normalize_request_id(request_id: Option<&str>, operation: &str) -> String {
-    request_id
-        .and_then(sanitize_request_id)
-        .unwrap_or_else(|| format!("{}-{}", operation.replace('_', "-"), Uuid::new_v4().simple()))
+    request_id.and_then(sanitize_request_id).unwrap_or_else(|| {
+        format!(
+            "{}-{}",
+            operation.replace('_', "-"),
+            Uuid::new_v4().simple()
+        )
+    })
 }
 
 fn with_request_tracking_headers(
@@ -1254,8 +1258,8 @@ async fn install_package_internal(
         .ok_or_else(|| format!("Package {} not found in index", package_name))?;
 
     let target_pkg_dir = Path::new(&target_path).join(&package_name);
-    let client = build_http_client(std::time::Duration::from_secs(60))
-        .map_err(|e| e.to_string())?;
+    let client =
+        build_http_client(std::time::Duration::from_secs(60)).map_err(|e| e.to_string())?;
 
     csl_debug!(
         "[{}] Install package resolved package={} files_in_index={} target_dir={}",
@@ -2345,13 +2349,10 @@ pub async fn altitude_install_package(
         parallel_downloads
     );
 
-    let index_content = fetch_remote_index(
-        &resolved_server_base_url,
-        ALTITUDE_INDEX_PATH,
-        &request_ctx,
-    )
-        .await
-        .map_err(|e| e.to_string())?;
+    let index_content =
+        fetch_remote_index(&resolved_server_base_url, ALTITUDE_INDEX_PATH, &request_ctx)
+            .await
+            .map_err(|e| e.to_string())?;
 
     let entries = parse_index(&index_content);
     let pkg_data_list = group_into_packages(&entries);
@@ -2361,8 +2362,8 @@ pub async fn altitude_install_package(
         .find(|p| p.name == package_name)
         .ok_or("ALTITUDE package not found in index")?;
 
-    let client = build_http_client(std::time::Duration::from_secs(60))
-        .map_err(|e| e.to_string())?;
+    let client =
+        build_http_client(std::time::Duration::from_secs(60)).map_err(|e| e.to_string())?;
 
     let pkg_prefix = "ALTITUDE/";
 

@@ -135,6 +135,8 @@ jobs:
 
       - name: Build Tauri
         shell: bash
+        env:
+          XFAST_ZIBO_GOOGLE_DRIVE_API_KEY: ${{ secrets.XFAST_ZIBO_GOOGLE_DRIVE_API_KEY }}
         run: |
           echo "🔨 Building for ${{ matrix.suffix }}..."
           if [ -n "${{ matrix.args }}" ]; then

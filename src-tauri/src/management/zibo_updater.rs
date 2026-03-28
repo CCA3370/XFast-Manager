@@ -1,14 +1,12 @@
 use anyhow::{anyhow, Context, Result};
-use librqbit::{AddTorrent, AddTorrentOptions, Session, SessionOptions, TorrentStats};
+use futures::StreamExt;
 use regex::Regex;
-use std::collections::BTreeMap;
-use std::fmt;
+use serde::Deserialize;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock};
-use std::time::{Duration, Instant};
-use tokio::time::sleep;
+use std::sync::LazyLock;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use zip::ZipArchive;
 
 use crate::addon_updater::{AddonUpdateProgressCallback, AddonUpdateProgressEvent};
@@ -21,18 +19,31 @@ use crate::task_control::TaskControl;
 
 pub const ZIBO_PROVIDER: &str = "zibo";
 pub const ZIBO_RSS_URL: &str = "https://skymatixva.com/tfiles/feed.xml";
-pub const ZIBO_MANUAL_DOWNLOAD_URL: &str =
-    "https://drive.google.com/drive/folders/1RHz4PQqWNGGpVG9GaHr84kuGs8LM2xyK";
 const ZIBO_VERSION_FILE: &str = "version.txt";
 const LOG_CTX: &str = "zibo_updater";
-const ZIBO_NO_PEER_TIMEOUT_SECS: u64 = 45;
-const ZIBO_UNREACHABLE_PEER_TIMEOUT_SECS: u64 = 75;
-const ZIBO_STALLED_TIMEOUT_SECS: u64 = 180;
-const ZIBO_TORRENT_LOG_INTERVAL_SECS: u64 = 5;
-const ZIBO_TORRENT_MAX_ATTEMPTS: u32 = 2;
-const ZIBO_TORRENT_RETRY_DELAY_SECS: u64 = 5;
-const ZIBO_TORRENT_LISTEN_PORT_START: u16 = 45000;
-const ZIBO_TORRENT_LISTEN_PORT_END: u16 = 45100;
+const GOOGLE_DRIVE_API_BASE: &str = "https://www.googleapis.com/drive/v3";
+const GOOGLE_DRIVE_API_KEY_ENV: &str = "XFAST_ZIBO_GOOGLE_DRIVE_API_KEY";
+const ZIBO_DOWNLOAD_PROGRESS_MAX: f64 = 90.0;
+
+#[derive(Debug, Clone, Copy)]
+struct DriveSource {
+    label: &'static str,
+    folder_id: &'static str,
+    folder_url: &'static str,
+}
+
+const ZIBO_DRIVE_SOURCES: [DriveSource; 2] = [
+    DriveSource {
+        label: "drive-source-a",
+        folder_id: "1qo88h_CCQRRrAMhG3EabHSwa4Lzw-WHL",
+        folder_url: "https://drive.google.com/drive/folders/1qo88h_CCQRRrAMhG3EabHSwa4Lzw-WHL",
+    },
+    DriveSource {
+        label: "drive-source-b",
+        folder_id: "1PkGPZV2J3Fpq8jkvsxgWtXPLMtjlPpGT",
+        folder_url: "https://drive.google.com/drive/folders/1PkGPZV2J3Fpq8jkvsxgWtXPLMtjlPpGT",
+    },
+];
 
 static ZIBO_TITLE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)_(\d+)_(\d+)_(full|\d+)\.zip$").expect("valid zibo title regex")
@@ -72,7 +83,6 @@ impl VersionTriple {
 pub struct ZiboRelease {
     version: VersionTriple,
     title: String,
-    torrent_url: String,
 }
 
 impl ZiboRelease {
@@ -89,152 +99,49 @@ enum LocalVersionState {
 }
 
 #[derive(Debug, Clone)]
-struct TorrentMetadata {
-    file_name: String,
+struct DownloadMetadata {
     total_bytes: u64,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct PeerSummary {
-    queued: usize,
-    connecting: usize,
-    live: usize,
-    seen: usize,
-}
-
-impl PeerSummary {
-    fn from_stats(stats: &TorrentStats) -> Self {
-        let Some(live_stats) = stats.live.as_ref() else {
-            return Self::default();
-        };
-        let peer_stats = &live_stats.snapshot.peer_stats;
-        Self {
-            queued: peer_stats.queued,
-            connecting: peer_stats.connecting,
-            live: peer_stats.live,
-            seen: peer_stats.seen,
-        }
-    }
-
-    fn has_activity(self) -> bool {
-        self.queued > 0 || self.connecting > 0 || self.live > 0 || self.seen > 0
-    }
-
-    fn has_connectable_peers(self) -> bool {
-        self.queued > 0 || self.connecting > 0 || self.live > 0
-    }
-
-    fn display_string(self) -> String {
-        format!(
-            "seen {}, connecting {}, live {}",
-            self.seen, self.connecting, self.live
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TorrentAttemptErrorKind {
-    NoPeers,
-    UnreachablePeers,
-    Stalled,
-    Fatal,
-}
-
 #[derive(Debug, Clone)]
-struct TorrentAttemptError {
-    kind: TorrentAttemptErrorKind,
-    message: String,
+struct ResolvedDriveFile {
+    source: DriveSource,
+    file_id: String,
+    file_name: String,
+    total_bytes: u64,
+    web_view_link: Option<String>,
 }
 
-impl TorrentAttemptError {
-    fn new(kind: TorrentAttemptErrorKind, message: impl Into<String>) -> Self {
-        Self {
-            kind,
-            message: message.into(),
-        }
-    }
-
-    fn no_peers(message: impl Into<String>) -> Self {
-        Self::new(TorrentAttemptErrorKind::NoPeers, message)
-    }
-
-    fn unreachable_peers(message: impl Into<String>) -> Self {
-        Self::new(TorrentAttemptErrorKind::UnreachablePeers, message)
-    }
-
-    fn stalled(message: impl Into<String>) -> Self {
-        Self::new(TorrentAttemptErrorKind::Stalled, message)
-    }
-
-    fn fatal(message: impl Into<String>) -> Self {
-        Self::new(TorrentAttemptErrorKind::Fatal, message)
-    }
-
-    fn is_retryable(&self) -> bool {
-        matches!(
-            self.kind,
-            TorrentAttemptErrorKind::NoPeers | TorrentAttemptErrorKind::UnreachablePeers
-        )
-    }
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DriveFilesListResponse {
+    #[serde(default)]
+    files: Vec<DriveFileRecord>,
 }
 
-impl fmt::Display for TorrentAttemptError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
-    }
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DriveFileRecord {
+    id: String,
+    name: String,
+    size: Option<String>,
+    web_view_link: Option<String>,
 }
-
-impl std::error::Error for TorrentAttemptError {}
 
 #[derive(Debug, Clone)]
 struct ZiboPlanContext {
     local_state: LocalVersionState,
     latest_release: ZiboRelease,
-    torrent_metadata: Option<TorrentMetadata>,
+    download_metadata: Option<DownloadMetadata>,
+    drive_file: Option<ResolvedDriveFile>,
+    preferred_source_url: String,
     manual_download_url: Option<String>,
     warnings: Vec<String>,
     has_update: bool,
 }
 
-#[derive(Debug, Clone)]
-enum BencodeValue {
-    Int(i64),
-    Bytes(Vec<u8>),
-    List,
-    Dict(BTreeMap<String, BencodeValue>),
-}
-
-impl BencodeValue {
-    fn as_dict(&self) -> Option<&BTreeMap<String, BencodeValue>> {
-        match self {
-            Self::Dict(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    fn as_bytes(&self) -> Option<&[u8]> {
-        match self {
-            Self::Bytes(value) => Some(value.as_slice()),
-            _ => None,
-        }
-    }
-
-    fn as_int(&self) -> Option<i64> {
-        match self {
-            Self::Int(value) => Some(*value),
-            _ => None,
-        }
-    }
-}
-
 fn log_info(message: impl Into<String>) {
     logger::log_info(&message.into(), Some(LOG_CTX));
-}
-
-fn log_debug(message: impl Into<String>) {
-    if logger::is_debug_enabled() {
-        logger::log_debug(&message.into(), Some(LOG_CTX), None);
-    }
 }
 
 fn emit_progress_event(
@@ -399,13 +306,10 @@ fn parse_latest_release(xml: &str) -> Result<ZiboRelease> {
         let Some(item_body) = item_match.get(1) else {
             continue;
         };
-        let title = extract_xml_tag(item_body.as_str(), "title");
-        let link = extract_xml_tag(item_body.as_str(), "link");
-
-        let (Some(title), Some(link)) = (title, link) else {
+        let Some(title) = extract_xml_tag(item_body.as_str(), "title") else {
             continue;
         };
-        if let Some(release) = parse_release_entry(&title, &link) {
+        if let Some(release) = parse_release_entry(&title) {
             releases.push(release);
         }
     }
@@ -425,7 +329,7 @@ fn extract_xml_tag(xml: &str, tag: &str) -> Option<String> {
     Some(xml_entity_decode(rest[..end].trim()))
 }
 
-fn parse_release_entry(title: &str, link: &str) -> Option<ZiboRelease> {
+fn parse_release_entry(title: &str) -> Option<ZiboRelease> {
     let captures = ZIBO_TITLE_RE.captures(title.trim())?;
     let major = captures.get(1)?.as_str().parse::<u32>().ok()?;
     let minor = captures.get(2)?.as_str().parse::<u32>().ok()?;
@@ -433,12 +337,10 @@ fn parse_release_entry(title: &str, link: &str) -> Option<ZiboRelease> {
         "full" => 0,
         value => value.parse::<u32>().ok()?,
     };
-    let torrent_url = reqwest::Url::parse(link.trim()).ok()?.to_string();
 
     Some(ZiboRelease {
         version: VersionTriple::new(major, minor, patch),
         title: title.trim().to_string(),
-        torrent_url,
     })
 }
 
@@ -454,210 +356,381 @@ fn xml_entity_decode(input: &str) -> String {
 fn build_http_client(timeout_secs: u64) -> Result<reqwest::Client> {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(timeout_secs))
+        .user_agent("XFast-Manager/ZiboUpdater")
         .build()
         .context("Failed to create HTTP client")
 }
 
-fn zibo_torrent_help_suffix(release: &ZiboRelease, dht_enabled: bool) -> String {
+fn resolve_drive_api_key() -> Option<String> {
+    option_env!("XFAST_ZIBO_GOOGLE_DRIVE_API_KEY")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            std::env::var(GOOGLE_DRIVE_API_KEY_ENV)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+}
+
+fn require_drive_api_key() -> Result<String> {
+    resolve_drive_api_key().ok_or_else(|| {
+        anyhow!(
+            "Missing {} for Zibo Google Drive search/download",
+            GOOGLE_DRIVE_API_KEY_ENV
+        )
+    })
+}
+
+fn drive_source_order_for_seed(seed: u128) -> [DriveSource; 2] {
+    if seed % 2 == 0 {
+        [ZIBO_DRIVE_SOURCES[0], ZIBO_DRIVE_SOURCES[1]]
+    } else {
+        [ZIBO_DRIVE_SOURCES[1], ZIBO_DRIVE_SOURCES[0]]
+    }
+}
+
+fn current_drive_source_order() -> [DriveSource; 2] {
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    drive_source_order_for_seed(seed)
+}
+
+fn escape_drive_query_literal(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('\'', "\\'")
+}
+
+fn build_drive_search_query(folder_id: &str, archive_name: &str) -> String {
     format!(
-        "{} You can open this torrent in an external client such as qBittorrent, or use the Zibo manual download folder at {}. Torrent: {}",
-        if dht_enabled {
-            ""
-        } else {
-            " The BitTorrent session had to fall back to tracker-only mode because DHT initialization failed."
-        },
-        ZIBO_MANUAL_DOWNLOAD_URL,
-        release.torrent_url
+        "'{}' in parents and name = '{}' and trashed = false",
+        escape_drive_query_literal(folder_id),
+        escape_drive_query_literal(archive_name)
     )
 }
 
-fn reset_torrent_download_root(download_root: &Path) -> Result<()> {
-    if download_root.exists() {
-        fs::remove_dir_all(download_root).with_context(|| {
+async fn search_drive_file_in_source(
+    client: &reqwest::Client,
+    api_key: &str,
+    source: DriveSource,
+    archive_name: &str,
+    task_control: Option<&TaskControl>,
+) -> Result<Option<ResolvedDriveFile>> {
+    ensure_not_cancelled(task_control, "scan")?;
+    let query = build_drive_search_query(source.folder_id, archive_name);
+    let response = client
+        .get(format!("{}/files", GOOGLE_DRIVE_API_BASE))
+        .query(&[
+            ("q", query.as_str()),
+            ("fields", "files(id,name,size,webViewLink)"),
+            ("pageSize", "10"),
+            ("supportsAllDrives", "true"),
+            ("includeItemsFromAllDrives", "true"),
+            ("key", api_key),
+        ])
+        .send()
+        .await
+        .with_context(|| {
             format!(
-                "Failed to reset Zibo torrent download directory '{}'",
-                download_root.display()
+                "Failed to search '{}' in Google Drive source {}",
+                archive_name, source.label
+            )
+        })?
+        .error_for_status()
+        .with_context(|| {
+            format!(
+                "Google Drive source {} returned an error while searching '{}'",
+                source.label, archive_name
             )
         })?;
+
+    let payload: DriveFilesListResponse = response
+        .json()
+        .await
+        .context("Failed to decode Google Drive file search response")?;
+    ensure_not_cancelled(task_control, "scan")?;
+
+    for file in payload.files {
+        if file.name != archive_name || !file.name.to_ascii_lowercase().ends_with(".zip") {
+            continue;
+        }
+        let Some(total_bytes) = file
+            .size
+            .as_deref()
+            .and_then(|value| value.parse::<u64>().ok())
+        else {
+            continue;
+        };
+        if total_bytes == 0 {
+            continue;
+        }
+
+        return Ok(Some(ResolvedDriveFile {
+            source,
+            file_id: file.id,
+            file_name: file.name,
+            total_bytes,
+            web_view_link: file.web_view_link,
+        }));
     }
 
-    fs::create_dir_all(download_root).with_context(|| {
-        format!(
-            "Failed to recreate Zibo torrent download directory '{}'",
-            download_root.display()
-        )
-    })?;
+    Ok(None)
+}
+
+async fn resolve_drive_file_metadata_with_order(
+    release: &ZiboRelease,
+    source_order: [DriveSource; 2],
+    task_control: Option<&TaskControl>,
+) -> Result<ResolvedDriveFile> {
+    let api_key = require_drive_api_key()?;
+    let client = build_http_client(20)?;
+    let mut failures = Vec::new();
+
+    log_info(format!(
+        "Resolving Zibo archive '{}' using Google Drive sources {} -> {}",
+        release.title, source_order[0].label, source_order[1].label
+    ));
+
+    for source in source_order {
+        match search_drive_file_in_source(&client, &api_key, source, &release.title, task_control)
+            .await
+        {
+            Ok(Some(file)) => return Ok(file),
+            Ok(None) => {
+                failures.push(format!(
+                    "{}: '{}' not found in {}",
+                    source.label, release.title, source.folder_url
+                ));
+            }
+            Err(err) => failures.push(format!("{}: {}", source.label, err)),
+        }
+    }
+
+    Err(anyhow!(
+        "Failed to locate Zibo archive '{}' in configured Google Drive sources: {}",
+        release.title,
+        failures.join(" | ")
+    ))
+}
+
+async fn download_drive_file_to_path(
+    client: &reqwest::Client,
+    api_key: &str,
+    file: &ResolvedDriveFile,
+    output_path: &Path,
+    task_control: Option<&TaskControl>,
+    progress_callback: &Option<AddonUpdateProgressCallback>,
+    item_type: &str,
+    folder_name: &str,
+) -> Result<()> {
+    ensure_not_cancelled(task_control, "install")?;
+
+    let response = client
+        .get(format!("{}/files/{}", GOOGLE_DRIVE_API_BASE, file.file_id))
+        .query(&[
+            ("alt", "media"),
+            ("supportsAllDrives", "true"),
+            ("key", api_key),
+        ])
+        .send()
+        .await
+        .with_context(|| {
+            format!(
+                "Failed to start Google Drive download for '{}' from {}",
+                file.file_name, file.source.label
+            )
+        })?
+        .error_for_status()
+        .with_context(|| {
+            format!(
+                "Google Drive download returned an error for '{}' from {}",
+                file.file_name, file.source.label
+            )
+        })?;
+
+    let mut stream = response.bytes_stream();
+    let mut output = fs::File::create(output_path)
+        .with_context(|| format!("Failed to create '{}'", output_path.display()))?;
+    let mut processed_bytes = 0u64;
+    let mut last_sample_bytes = 0u64;
+    let mut last_sample_at = Instant::now();
+
+    while let Some(chunk) = stream.next().await {
+        ensure_not_cancelled(task_control, "install")?;
+        let chunk = chunk.with_context(|| {
+            format!(
+                "Failed while downloading '{}' from {}",
+                file.file_name, file.source.label
+            )
+        })?;
+        output.write_all(&chunk).with_context(|| {
+            format!(
+                "Failed to write '{}' while downloading Zibo archive",
+                output_path.display()
+            )
+        })?;
+        processed_bytes = processed_bytes.saturating_add(chunk.len() as u64);
+
+        let elapsed = last_sample_at.elapsed().as_secs_f64();
+        let speed = if elapsed > 0.0 && processed_bytes >= last_sample_bytes {
+            (processed_bytes - last_sample_bytes) as f64 / elapsed
+        } else {
+            0.0
+        };
+
+        emit_progress_event(
+            progress_callback,
+            item_type,
+            folder_name,
+            "install",
+            "running",
+            if file.total_bytes > 0 {
+                (processed_bytes.min(file.total_bytes) as f64 / file.total_bytes as f64)
+                    * ZIBO_DOWNLOAD_PROGRESS_MAX
+            } else {
+                0.0
+            },
+            processed_bytes.min(file.total_bytes),
+            file.total_bytes,
+            speed,
+            Some(format!(
+                "Downloading {} from {}",
+                file.file_name, file.source.label
+            )),
+            Some(file.file_name.clone()),
+        );
+
+        last_sample_bytes = processed_bytes;
+        last_sample_at = Instant::now();
+    }
+
+    output
+        .flush()
+        .with_context(|| format!("Failed to flush '{}'", output_path.display()))?;
+
+    if processed_bytes == 0 {
+        return Err(anyhow!(
+            "Google Drive download for '{}' produced an empty file",
+            file.file_name
+        ));
+    }
+
+    if file.total_bytes > 0 && processed_bytes != file.total_bytes {
+        return Err(anyhow!(
+            "Downloaded size mismatch for '{}': expected {}, got {}",
+            file.file_name,
+            file.total_bytes,
+            processed_bytes
+        ));
+    }
 
     Ok(())
 }
 
-async fn fetch_torrent_metadata(
+async fn download_release_from_drive_with_order(
     release: &ZiboRelease,
+    source_order: [DriveSource; 2],
+    download_root: &Path,
     task_control: Option<&TaskControl>,
-) -> Result<TorrentMetadata> {
-    let bytes = fetch_torrent_file_bytes(release, task_control).await?;
-    parse_torrent_metadata(bytes.as_slice())
-}
+    progress_callback: &Option<AddonUpdateProgressCallback>,
+    item_type: &str,
+    folder_name: &str,
+) -> Result<(ResolvedDriveFile, PathBuf)> {
+    let api_key = require_drive_api_key()?;
+    let client = build_http_client(180)?;
+    let mut failures = Vec::new();
 
-async fn fetch_torrent_file_bytes(
-    release: &ZiboRelease,
-    task_control: Option<&TaskControl>,
-) -> Result<Vec<u8>> {
-    ensure_not_cancelled(task_control, "scan")?;
-    let client = build_http_client(20)?;
-    let bytes = client
-        .get(&release.torrent_url)
-        .send()
-        .await
-        .with_context(|| format!("Failed to download torrent '{}'", release.torrent_url))?
-        .error_for_status()
-        .with_context(|| format!("Torrent URL returned error: {}", release.torrent_url))?
-        .bytes()
-        .await
-        .context("Failed to read torrent file bytes")?;
-    ensure_not_cancelled(task_control, "scan")?;
-    Ok(bytes.to_vec())
-}
+    log_info(format!(
+        "Downloading Zibo archive '{}' using Google Drive sources {} -> {}",
+        release.title, source_order[0].label, source_order[1].label
+    ));
 
-fn parse_torrent_metadata(bytes: &[u8]) -> Result<TorrentMetadata> {
-    let value = parse_bencode(bytes)?;
-    let root = value
-        .as_dict()
-        .ok_or_else(|| anyhow!("Torrent file root is not a dictionary"))?;
-    let info = root
-        .get("info")
-        .and_then(BencodeValue::as_dict)
-        .ok_or_else(|| anyhow!("Torrent file is missing an 'info' dictionary"))?;
+    for source in source_order {
+        ensure_not_cancelled(task_control, "install")?;
+        emit_progress_event(
+            progress_callback,
+            item_type,
+            folder_name,
+            "install",
+            "running",
+            0.0,
+            0,
+            0,
+            0.0,
+            Some(format!("Searching Zibo archive in {}", source.label)),
+            None,
+        );
 
-    if info.contains_key("files") {
-        return Err(anyhow!(
-            "Zibo torrent contains multiple files; automatic install expects a single ZIP payload"
-        ));
-    }
-
-    let file_name = info
-        .get("name")
-        .and_then(BencodeValue::as_bytes)
-        .map(|value| String::from_utf8_lossy(value).to_string())
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| anyhow!("Torrent file is missing the payload name"))?;
-
-    if !file_name.to_ascii_lowercase().ends_with(".zip") {
-        return Err(anyhow!(
-            "Zibo torrent payload is not a ZIP archive: {}",
-            file_name
-        ));
-    }
-
-    let length = info
-        .get("length")
-        .and_then(BencodeValue::as_int)
-        .ok_or_else(|| anyhow!("Torrent file is missing the payload length"))?;
-    if length <= 0 {
-        return Err(anyhow!("Torrent payload length is invalid: {}", length));
-    }
-
-    Ok(TorrentMetadata {
-        file_name,
-        total_bytes: length as u64,
-    })
-}
-
-fn parse_bencode(input: &[u8]) -> Result<BencodeValue> {
-    let (value, consumed) = parse_bencode_at(input, 0)?;
-    if consumed != input.len() {
-        return Err(anyhow!("Torrent metadata contains trailing bytes"));
-    }
-    Ok(value)
-}
-
-fn parse_bencode_at(input: &[u8], pos: usize) -> Result<(BencodeValue, usize)> {
-    let Some(current) = input.get(pos).copied() else {
-        return Err(anyhow!("Unexpected end of bencode input"));
-    };
-
-    match current {
-        b'i' => parse_bencode_int(input, pos),
-        b'l' => parse_bencode_list(input, pos),
-        b'd' => parse_bencode_dict(input, pos),
-        b'0'..=b'9' => parse_bencode_bytes(input, pos),
-        _ => Err(anyhow!("Invalid bencode token at byte {}", pos)),
-    }
-}
-
-fn parse_bencode_int(input: &[u8], pos: usize) -> Result<(BencodeValue, usize)> {
-    let start = pos + 1;
-    let end = input[start..]
-        .iter()
-        .position(|byte| *byte == b'e')
-        .map(|offset| start + offset)
-        .ok_or_else(|| anyhow!("Unterminated bencode integer"))?;
-    let value = std::str::from_utf8(&input[start..end])
-        .context("Bencode integer is not valid UTF-8")?
-        .parse::<i64>()
-        .context("Bencode integer is not valid")?;
-    Ok((BencodeValue::Int(value), end + 1))
-}
-
-fn parse_bencode_bytes(input: &[u8], pos: usize) -> Result<(BencodeValue, usize)> {
-    let colon = input[pos..]
-        .iter()
-        .position(|byte| *byte == b':')
-        .map(|offset| pos + offset)
-        .ok_or_else(|| anyhow!("Bencode string is missing ':'"))?;
-    let len = std::str::from_utf8(&input[pos..colon])
-        .context("Bencode string length is not valid UTF-8")?
-        .parse::<usize>()
-        .context("Bencode string length is invalid")?;
-    let start = colon + 1;
-    let end = start
-        .checked_add(len)
-        .ok_or_else(|| anyhow!("Bencode string length overflow"))?;
-    let slice = input
-        .get(start..end)
-        .ok_or_else(|| anyhow!("Bencode string exceeds input length"))?;
-    Ok((BencodeValue::Bytes(slice.to_vec()), end))
-}
-
-fn parse_bencode_list(input: &[u8], pos: usize) -> Result<(BencodeValue, usize)> {
-    let mut cursor = pos + 1;
-
-    while input.get(cursor).copied() != Some(b'e') {
-        let (_value, next) = parse_bencode_at(input, cursor)?;
-        cursor = next;
-    }
-
-    Ok((BencodeValue::List, cursor + 1))
-}
-
-fn parse_bencode_dict(input: &[u8], pos: usize) -> Result<(BencodeValue, usize)> {
-    let mut values = BTreeMap::new();
-    let mut cursor = pos + 1;
-
-    while input.get(cursor).copied() != Some(b'e') {
-        let (key, next) = parse_bencode_bytes(input, cursor)?;
-        let key = String::from_utf8_lossy(
-            key.as_bytes()
-                .ok_or_else(|| anyhow!("Bencode dictionary key is not bytes"))?,
+        let file = match search_drive_file_in_source(
+            &client,
+            &api_key,
+            source,
+            &release.title,
+            task_control,
         )
-        .to_string();
-        let (value, next_value) = parse_bencode_at(input, next)?;
-        values.insert(key, value);
-        cursor = next_value;
+        .await
+        {
+            Ok(Some(file)) => file,
+            Ok(None) => {
+                failures.push(format!(
+                    "{}: '{}' not found in {}",
+                    source.label, release.title, source.folder_url
+                ));
+                continue;
+            }
+            Err(err) => {
+                failures.push(format!("{}: {}", source.label, err));
+                continue;
+            }
+        };
+
+        let zip_path = download_root.join(&file.file_name);
+        if zip_path.exists() {
+            fs::remove_file(&zip_path)
+                .with_context(|| format!("Failed to reset '{}'", zip_path.display()))?;
+        }
+
+        match download_drive_file_to_path(
+            &client,
+            &api_key,
+            &file,
+            &zip_path,
+            task_control,
+            progress_callback,
+            item_type,
+            folder_name,
+        )
+        .await
+        {
+            Ok(()) => return Ok((file, zip_path)),
+            Err(err) => {
+                let _ = fs::remove_file(&zip_path);
+                failures.push(format!("{}: {}", source.label, err));
+            }
+        }
     }
 
-    Ok((BencodeValue::Dict(values), cursor + 1))
+    Err(anyhow!(
+        "Failed to download Zibo archive '{}' from configured Google Drive sources: {}",
+        release.title,
+        failures.join(" | ")
+    ))
 }
 
 fn build_plan_context(
     local_state: &LocalVersionState,
     latest_release: ZiboRelease,
+    preferred_manual_download_url: String,
 ) -> ZiboPlanContext {
     match local_state {
         LocalVersionState::Parsed(local) if latest_release.version <= *local => ZiboPlanContext {
             local_state: local_state.clone(),
             latest_release,
-            torrent_metadata: None,
+            download_metadata: None,
+            drive_file: None,
+            preferred_source_url: preferred_manual_download_url,
             manual_download_url: None,
             warnings: Vec::new(),
             has_update: false,
@@ -666,7 +739,9 @@ fn build_plan_context(
             ZiboPlanContext {
                 local_state: local_state.clone(),
                 latest_release,
-                torrent_metadata: None,
+                download_metadata: None,
+                drive_file: None,
+                preferred_source_url: preferred_manual_download_url,
                 manual_download_url: None,
                 warnings: Vec::new(),
                 has_update: true,
@@ -675,8 +750,10 @@ fn build_plan_context(
         LocalVersionState::Parsed(_) => ZiboPlanContext {
             local_state: local_state.clone(),
             latest_release,
-            torrent_metadata: None,
-            manual_download_url: Some(ZIBO_MANUAL_DOWNLOAD_URL.to_string()),
+            download_metadata: None,
+            drive_file: None,
+            preferred_source_url: preferred_manual_download_url.clone(),
+            manual_download_url: Some(preferred_manual_download_url),
             warnings: vec![
                 "Local Zibo major/minor version does not match the latest feed version; manual major download is required."
                     .to_string(),
@@ -686,8 +763,10 @@ fn build_plan_context(
         LocalVersionState::Missing => ZiboPlanContext {
             local_state: local_state.clone(),
             latest_release,
-            torrent_metadata: None,
-            manual_download_url: Some(ZIBO_MANUAL_DOWNLOAD_URL.to_string()),
+            download_metadata: None,
+            drive_file: None,
+            preferred_source_url: preferred_manual_download_url.clone(),
+            manual_download_url: Some(preferred_manual_download_url),
             warnings: vec![
                 "Local Zibo version.txt was not found; manual major download is required."
                     .to_string(),
@@ -697,8 +776,10 @@ fn build_plan_context(
         LocalVersionState::Invalid(err) => ZiboPlanContext {
             local_state: local_state.clone(),
             latest_release,
-            torrent_metadata: None,
-            manual_download_url: Some(ZIBO_MANUAL_DOWNLOAD_URL.to_string()),
+            download_metadata: None,
+            drive_file: None,
+            preferred_source_url: preferred_manual_download_url.clone(),
+            manual_download_url: Some(preferred_manual_download_url),
             warnings: vec![
                 format!(
                     "Local Zibo version.txt could not be parsed; manual major download is required. {}",
@@ -723,11 +804,24 @@ async fn build_plan_context_from_target(
 ) -> Result<ZiboPlanContext> {
     let local_state = inspect_local_version(target_path);
     let latest_release = fetch_latest_release(task_control).await?;
-    let mut context = build_plan_context(&local_state, latest_release);
+    let source_order = current_drive_source_order();
+    let mut context = build_plan_context(
+        &local_state,
+        latest_release,
+        source_order[0].folder_url.to_string(),
+    );
 
     if context.has_update && context.manual_download_url.is_none() {
-        context.torrent_metadata =
-            Some(fetch_torrent_metadata(&context.latest_release, task_control).await?);
+        let drive_file = resolve_drive_file_metadata_with_order(
+            &context.latest_release,
+            source_order,
+            task_control,
+        )
+        .await?;
+        context.download_metadata = Some(DownloadMetadata {
+            total_bytes: drive_file.total_bytes,
+        });
+        context.drive_file = Some(drive_file);
     }
 
     Ok(context)
@@ -766,15 +860,23 @@ pub async fn build_update_plan(
         remote_version: Some(context.latest_release.version_string()),
         remote_module: Some(
             context
-                .manual_download_url
-                .clone()
-                .unwrap_or_else(|| context.latest_release.torrent_url.clone()),
+                .drive_file
+                .as_ref()
+                .and_then(|file| file.web_view_link.clone())
+                .or_else(|| {
+                    context
+                        .drive_file
+                        .as_ref()
+                        .map(|file| file.source.folder_url.to_string())
+                })
+                .or_else(|| context.manual_download_url.clone())
+                .unwrap_or_else(|| context.preferred_source_url.clone()),
         ),
         manual_download_url: context.manual_download_url,
         remote_locked: false,
         has_update: context.has_update,
         estimated_download_bytes: context
-            .torrent_metadata
+            .download_metadata
             .as_ref()
             .map(|metadata| metadata.total_bytes)
             .unwrap_or(0),
@@ -832,17 +934,21 @@ pub async fn execute_update(
         });
     }
 
-    if context.manual_download_url.is_some() {
+    if let Some(manual_download_url) = context.manual_download_url.as_ref() {
         return Err(anyhow!(
             "Latest Zibo release requires a manual major download from {}",
-            ZIBO_MANUAL_DOWNLOAD_URL
+            manual_download_url
         ));
     }
 
-    let torrent_metadata = context
-        .torrent_metadata
+    let planned_file = context
+        .drive_file
         .clone()
-        .ok_or_else(|| anyhow!("Missing Zibo torrent metadata"))?;
+        .ok_or_else(|| anyhow!("Missing Zibo Google Drive file metadata"))?;
+    let download_metadata = context
+        .download_metadata
+        .clone()
+        .ok_or_else(|| anyhow!("Missing Zibo download metadata"))?;
     let workdir = tempfile::tempdir().context("Failed to create Zibo update temp directory")?;
     let downloads_dir = workdir.path().join("downloads");
     let unpacked_dir = workdir.path().join("unpacked");
@@ -857,15 +963,15 @@ pub async fn execute_update(
         "started",
         0.0,
         0,
-        torrent_metadata.total_bytes,
+        download_metadata.total_bytes,
         0.0,
-        Some("Downloading Zibo update".to_string()),
-        Some(torrent_metadata.file_name.clone()),
+        Some("Resolving Zibo archive via Google Drive".to_string()),
+        Some(planned_file.file_name.clone()),
     );
 
-    let zip_path = download_torrent_payload(
+    let (downloaded_file, zip_path) = download_release_from_drive_with_order(
         &context.latest_release,
-        &torrent_metadata,
+        current_drive_source_order(),
         &downloads_dir,
         task_control.as_ref(),
         &progress_callback,
@@ -882,8 +988,8 @@ pub async fn execute_update(
         "install",
         "running",
         92.0,
-        torrent_metadata.total_bytes,
-        torrent_metadata.total_bytes,
+        downloaded_file.total_bytes,
+        downloaded_file.total_bytes,
         0.0,
         Some("Extracting Zibo archive".to_string()),
         Some(
@@ -906,16 +1012,17 @@ pub async fn execute_update(
         "install",
         "completed",
         100.0,
-        torrent_metadata.total_bytes,
-        torrent_metadata.total_bytes,
+        downloaded_file.total_bytes,
+        downloaded_file.total_bytes,
         0.0,
         Some("Zibo update installed".to_string()),
         None,
     );
 
     log_info(format!(
-        "Installed Zibo update '{}' into '{}'",
+        "Installed Zibo update '{}' from {} into '{}'",
         context.latest_release.title,
+        downloaded_file.source.label,
         target_path.display()
     ));
 
@@ -963,302 +1070,6 @@ fn resolve_zibo_target_path(
 
     crate::path_utils::validate_child_path(&base_path, &target_path)
         .map_err(|err| anyhow!("Invalid target path: {}", err))
-}
-
-async fn download_torrent_payload(
-    release: &ZiboRelease,
-    metadata: &TorrentMetadata,
-    download_root: &Path,
-    task_control: Option<&TaskControl>,
-    progress_callback: &Option<AddonUpdateProgressCallback>,
-    item_type: &str,
-    folder_name: &str,
-) -> Result<PathBuf> {
-    let torrent_bytes = fetch_torrent_file_bytes(release, task_control).await?;
-    for attempt in 1..=ZIBO_TORRENT_MAX_ATTEMPTS {
-        ensure_not_cancelled(task_control, "install")?;
-        log_info(format!(
-            "Starting Zibo torrent attempt {attempt}/{ZIBO_TORRENT_MAX_ATTEMPTS} for '{}'",
-            release.title
-        ));
-
-        match run_torrent_download_attempt(
-            release,
-            metadata,
-            torrent_bytes.as_slice(),
-            download_root,
-            task_control,
-            progress_callback,
-            item_type,
-            folder_name,
-            attempt,
-        )
-        .await
-        {
-            Ok(zip_path) => return Ok(zip_path),
-            Err(err) if err.is_retryable() && attempt < ZIBO_TORRENT_MAX_ATTEMPTS => {
-                log_info(format!(
-                    "Zibo torrent attempt {attempt} failed with a retryable peer connectivity issue: {}. Retrying in {} seconds.",
-                    err,
-                    ZIBO_TORRENT_RETRY_DELAY_SECS
-                ));
-                emit_progress_event(
-                    progress_callback,
-                    item_type,
-                    folder_name,
-                    "install",
-                    "running",
-                    0.0,
-                    0,
-                    metadata.total_bytes,
-                    0.0,
-                    Some(format!(
-                        "Retrying Zibo torrent after peer connectivity issue (attempt {}/{})",
-                        attempt + 1,
-                        ZIBO_TORRENT_MAX_ATTEMPTS
-                    )),
-                    Some(metadata.file_name.clone()),
-                );
-                sleep(Duration::from_secs(ZIBO_TORRENT_RETRY_DELAY_SECS)).await;
-                reset_torrent_download_root(download_root)?;
-            }
-            Err(err) => return Err(err.into()),
-        }
-    }
-
-    Err(anyhow!("Zibo torrent download finished without a result"))
-}
-
-async fn run_torrent_download_attempt(
-    release: &ZiboRelease,
-    metadata: &TorrentMetadata,
-    torrent_bytes: &[u8],
-    download_root: &Path,
-    task_control: Option<&TaskControl>,
-    progress_callback: &Option<AddonUpdateProgressCallback>,
-    item_type: &str,
-    folder_name: &str,
-    attempt: u32,
-) -> std::result::Result<PathBuf, TorrentAttemptError> {
-    let (session, dht_enabled) = create_torrent_session(download_root)
-        .await
-        .map_err(|e| TorrentAttemptError::fatal(e.to_string()))?;
-    let handle = session
-        .add_torrent(
-            AddTorrent::from_bytes(torrent_bytes.to_vec()),
-            Some(AddTorrentOptions {
-                paused: false,
-                overwrite: true,
-                output_folder: Some(download_root.to_string_lossy().to_string()),
-                ..Default::default()
-            }),
-        )
-        .await
-        .map_err(|e| {
-            TorrentAttemptError::fatal(format!(
-                "Failed to add torrent '{}': {}",
-                release.torrent_url, e
-            ))
-        })?
-        .into_handle()
-        .ok_or_else(|| {
-            TorrentAttemptError::fatal("BitTorrent session returned a list-only torrent")
-        })?;
-
-    log_debug(format!(
-        "Zibo torrent attempt {attempt} session ready dht_enabled={} output_folder={}",
-        dht_enabled,
-        download_root.display()
-    ));
-
-    let mut wait_future = std::pin::pin!(handle.wait_until_completed());
-    let download_result: std::result::Result<(), TorrentAttemptError> = async {
-        let mut last_sample_bytes = 0u64;
-        let mut last_sample_at = Instant::now();
-        let mut last_progress_at = Instant::now();
-        let mut last_status_log_at =
-            Instant::now() - Duration::from_secs(ZIBO_TORRENT_LOG_INTERVAL_SECS);
-        let mut last_peer_summary = PeerSummary::default();
-        let mut last_peer_state_change_at = Instant::now();
-
-        loop {
-            ensure_not_cancelled(task_control, "install")
-                .map_err(|e| TorrentAttemptError::fatal(e.to_string()))?;
-            let stats = handle.stats();
-            if let Some(error) = stats.error.as_ref() {
-                return Err(TorrentAttemptError::fatal(format!(
-                    "BitTorrent download failed: {}",
-                    error
-                )));
-            }
-
-            let processed_bytes = stats.progress_bytes.min(metadata.total_bytes);
-            let peer_summary = PeerSummary::from_stats(&stats);
-            if peer_summary != last_peer_summary {
-                log_debug(format!(
-                    "Zibo torrent attempt {attempt} peer state changed: {}",
-                    peer_summary.display_string()
-                ));
-                last_peer_summary = peer_summary;
-                last_peer_state_change_at = Instant::now();
-            }
-            if processed_bytes > last_sample_bytes {
-                last_progress_at = Instant::now();
-            }
-
-            let elapsed = last_sample_at.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.0 && processed_bytes >= last_sample_bytes {
-                (processed_bytes - last_sample_bytes) as f64 / elapsed
-            } else {
-                0.0
-            };
-
-            let progress_message = if processed_bytes == 0 {
-                format!("Searching Zibo peers ({})", peer_summary.display_string())
-            } else {
-                format!("Downloading {} ({})", release.title, peer_summary.display_string())
-            };
-
-            emit_progress_event(
-                progress_callback,
-                item_type,
-                folder_name,
-                "install",
-                "running",
-                if metadata.total_bytes > 0 {
-                    (processed_bytes as f64 / metadata.total_bytes as f64) * 90.0
-                } else {
-                    0.0
-                },
-                processed_bytes,
-                metadata.total_bytes,
-                speed,
-                Some(progress_message),
-                Some(metadata.file_name.clone()),
-            );
-
-            if last_status_log_at.elapsed() >= Duration::from_secs(ZIBO_TORRENT_LOG_INTERVAL_SECS)
-            {
-                let live_speed = stats
-                    .live
-                    .as_ref()
-                    .map(|live| live.download_speed.to_string())
-                    .unwrap_or_else(|| "0.00 MiB/s".to_string());
-                log_info(format!(
-                    "Zibo torrent status: attempt={}, state={}, progress={}/{}, speed={}, dht_enabled={}, peers={}",
-                    attempt,
-                    stats.state,
-                    processed_bytes,
-                    metadata.total_bytes,
-                    live_speed,
-                    dht_enabled,
-                    peer_summary.display_string()
-                ));
-                last_status_log_at = Instant::now();
-            }
-
-            if stats.finished {
-                break;
-            }
-
-            if processed_bytes == 0
-                && !peer_summary.has_activity()
-                && last_progress_at.elapsed() >= Duration::from_secs(ZIBO_NO_PEER_TIMEOUT_SECS)
-            {
-                return Err(TorrentAttemptError::no_peers(format!(
-                    "No reachable peers were found for the Zibo torrent after {} seconds. Automatic update could not start.{}",
-                    ZIBO_NO_PEER_TIMEOUT_SECS,
-                    zibo_torrent_help_suffix(release, dht_enabled)
-                )));
-            }
-
-            if processed_bytes == 0
-                && peer_summary.seen > 0
-                && !peer_summary.has_connectable_peers()
-                && last_peer_state_change_at.elapsed()
-                    >= Duration::from_secs(ZIBO_UNREACHABLE_PEER_TIMEOUT_SECS)
-            {
-                return Err(TorrentAttemptError::unreachable_peers(format!(
-                    "The Zibo torrent discovered peers, but none became connectable within {} seconds. Peer status: {}.{}",
-                    ZIBO_UNREACHABLE_PEER_TIMEOUT_SECS,
-                    peer_summary.display_string(),
-                    zibo_torrent_help_suffix(release, dht_enabled)
-                )));
-            }
-
-            if processed_bytes < metadata.total_bytes
-                && last_progress_at.elapsed() >= Duration::from_secs(ZIBO_STALLED_TIMEOUT_SECS)
-            {
-                return Err(TorrentAttemptError::stalled(format!(
-                    "The Zibo torrent made no download progress for more than {} seconds. Peer status: {}.{}",
-                    ZIBO_STALLED_TIMEOUT_SECS,
-                    peer_summary.display_string(),
-                    zibo_torrent_help_suffix(release, dht_enabled)
-                )));
-            }
-
-            last_sample_bytes = processed_bytes;
-            last_sample_at = Instant::now();
-
-            tokio::select! {
-                result = &mut wait_future => {
-                    result.map_err(|e| {
-                        TorrentAttemptError::fatal(format!("BitTorrent download failed: {}", e))
-                    })?;
-                    break;
-                }
-                _ = sleep(Duration::from_millis(500)) => {}
-            }
-        }
-
-        Ok(())
-    }
-    .await;
-
-    session.stop().await;
-    download_result?;
-
-    let zip_path = download_root.join(&metadata.file_name);
-    if !zip_path.is_file() {
-        return Err(TorrentAttemptError::fatal(format!(
-            "BitTorrent download completed but '{}' was not found",
-            zip_path.display()
-        )));
-    }
-
-    Ok(zip_path)
-}
-
-async fn create_torrent_session(download_root: &Path) -> Result<(Arc<Session>, bool)> {
-    let dht_enabled_opts = SessionOptions {
-        disable_dht: false,
-        disable_dht_persistence: true,
-        persistence: None,
-        listen_port_range: Some(ZIBO_TORRENT_LISTEN_PORT_START..ZIBO_TORRENT_LISTEN_PORT_END),
-        enable_upnp_port_forwarding: true,
-        ..Default::default()
-    };
-
-    match Session::new_with_opts(download_root.to_path_buf(), dht_enabled_opts).await {
-        Ok(session) => Ok((session, true)),
-        Err(primary_err) => {
-            log_info(format!(
-                "Failed to create DHT-enabled BitTorrent session, retrying without DHT: {primary_err:#}"
-            ));
-            let fallback_opts = SessionOptions {
-                disable_dht: true,
-                disable_dht_persistence: true,
-                persistence: None,
-                listen_port_range: Some(ZIBO_TORRENT_LISTEN_PORT_START..ZIBO_TORRENT_LISTEN_PORT_END),
-                enable_upnp_port_forwarding: true,
-                ..Default::default()
-            };
-            let session = Session::new_with_opts(download_root.to_path_buf(), fallback_opts)
-                .await
-                .context("Failed to create BitTorrent session")?;
-            Ok((session, false))
-        }
-    }
 }
 
 fn unzip_archive(archive_path: &Path, output_dir: &Path) -> Result<()> {
@@ -1430,7 +1241,7 @@ mod tests {
 
         let release = parse_latest_release(xml).unwrap();
         assert_eq!(release.version_string(), "4.05.31");
-        assert_eq!(release.torrent_url, "https://example.com/31.torrent");
+        assert_eq!(release.title, "B738X_XP12_4_05_31.zip");
     }
 
     #[test]
@@ -1439,22 +1250,32 @@ mod tests {
         let latest = ZiboRelease {
             version: VersionTriple::new(4, 5, 31),
             title: "B738X_XP12_4_05_31.zip".to_string(),
-            torrent_url: "https://example.com/31.torrent".to_string(),
         };
 
-        let context = build_plan_context(&local, latest);
+        let context =
+            build_plan_context(&local, latest, ZIBO_DRIVE_SOURCES[0].folder_url.to_string());
         assert!(context.has_update);
         assert_eq!(
             context.manual_download_url.as_deref(),
-            Some(ZIBO_MANUAL_DOWNLOAD_URL)
+            Some(ZIBO_DRIVE_SOURCES[0].folder_url)
         );
     }
 
     #[test]
-    fn bencode_metadata_parser_reads_single_file_torrent() {
-        let torrent = b"d8:announce14:http://tracker4:infod6:lengthi42e4:name12:testfile.zipee";
-        let metadata = parse_torrent_metadata(torrent).unwrap();
-        assert_eq!(metadata.file_name, "testfile.zip");
-        assert_eq!(metadata.total_bytes, 42);
+    fn drive_source_order_flips_with_seed() {
+        let even_order = drive_source_order_for_seed(0);
+        let odd_order = drive_source_order_for_seed(1);
+
+        assert_eq!(even_order[0].folder_id, ZIBO_DRIVE_SOURCES[0].folder_id);
+        assert_eq!(odd_order[0].folder_id, ZIBO_DRIVE_SOURCES[1].folder_id);
+    }
+
+    #[test]
+    fn drive_query_escapes_exact_archive_name() {
+        let query = build_drive_search_query("folder'1", "B738X_'special'.zip");
+        assert_eq!(
+            query,
+            "'folder\\'1' in parents and name = 'B738X_\\'special\\'.zip' and trashed = false"
+        );
     }
 }
