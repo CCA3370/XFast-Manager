@@ -1057,6 +1057,8 @@ fn build_xupdater_plan(
         remote_version: context.remote_version.clone(),
         remote_module: Some(context.host.clone()),
         manual_download_url: None,
+        manual_download_reason: None,
+        zibo_install_mode: None,
         remote_locked: false,
         has_update: !add_files.is_empty() || !replace_files.is_empty() || !delete_files.is_empty(),
         estimated_download_bytes,

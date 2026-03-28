@@ -79,6 +79,10 @@ pub struct SkunkUpdatePlan {
     pub remote_module: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub manual_download_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual_download_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zibo_install_mode: Option<String>,
     pub remote_locked: bool,
     pub has_update: bool,
     pub estimated_download_bytes: u64,
@@ -861,6 +865,8 @@ fn build_plan_internal(
         remote_version,
         remote_module: Some(prepared.module_url.clone()),
         manual_download_url: None,
+        manual_download_reason: None,
+        zibo_install_mode: None,
         remote_locked: prepared.remote.locked,
         has_update,
         estimated_download_bytes,

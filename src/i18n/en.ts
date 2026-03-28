@@ -718,6 +718,14 @@ export default {
     downloadMajorVersion: 'Download Major Version',
     ziboManualDownloadHint:
       'This Zibo install requires downloading the latest major version manually before updating.',
+    openAlternativeDownloads: 'Open Alternative Downloads',
+    goToReleasePage: 'Go To Release Page',
+    ziboDriveLimitHint:
+      'Google Drive has hit the 24-hour download limit for this Zibo package. Use the alternative download links instead.',
+    ziboDriveFileNotUpdatedHint:
+      'The Google Drive file may not be updated yet. Please try again later or visit the release page for other download options.',
+    ziboMajorCleanInstallHint:
+      'This Zibo major update will install the latest full package, then automatically apply the newest patch for that version. Choose what to preserve first.',
     useBeta: 'Use Beta Channel',
     includeLiveries: 'Include Liveries',
     applyBlacklist: 'Apply Blacklist Deletes',

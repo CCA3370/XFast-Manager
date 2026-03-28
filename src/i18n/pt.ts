@@ -739,6 +739,14 @@ export default {
     downloadMajorVersion: 'Baixar versão principal',
     ziboManualDownloadHint:
       'Esta instalação do Zibo exige baixar manualmente a versão principal mais recente antes de atualizar.',
+    openAlternativeDownloads: 'Abrir downloads alternativos',
+    goToReleasePage: 'Ir para a página de lançamento',
+    ziboDriveLimitHint:
+      'O Google Drive atingiu o limite de download de 24 horas para este pacote do Zibo. Use os links alternativos de download.',
+    ziboDriveFileNotUpdatedHint:
+      'O arquivo do Google Drive pode ainda não ter sido atualizado. Tente novamente mais tarde ou visite a página de lançamento para outras opções de download.',
+    ziboMajorCleanInstallHint:
+      'Esta atualização principal do Zibo instalará primeiro o pacote completo correspondente e depois aplicará automaticamente o patch mais recente dessa versão. Escolha primeiro o que deseja preservar.',
     useBeta: 'Usar canal beta',
     includeLiveries: 'Incluir pinturas',
     applyBlacklist: 'Aplicar exclusões da lista negra',

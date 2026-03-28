@@ -391,6 +391,10 @@ export interface AddonUpdatePreview {
   changelog?: string
 }
 
+export type AddonManualDownloadReason = 'drive-limit' | 'release-page'
+
+export type ZiboInstallMode = 'patch' | 'major-clean'
+
 export interface AddonUpdatePlan {
   provider?: string
   itemType: string
@@ -399,6 +403,8 @@ export interface AddonUpdatePlan {
   remoteVersion?: string
   remoteModule?: string
   manualDownloadUrl?: string
+  manualDownloadReason?: AddonManualDownloadReason
+  ziboInstallMode?: ZiboInstallMode
   remoteLocked: boolean
   hasUpdate: boolean
   estimatedDownloadBytes: number

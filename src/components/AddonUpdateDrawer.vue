@@ -37,6 +37,8 @@ interface TaskUiState {
   status: 'idle' | 'planning' | 'installing' | 'completed' | 'failed' | 'cancelled'
   installing: boolean
   message: string
+  ziboPreserveLiveries: boolean
+  ziboPreserveConfigFiles: boolean
 }
 
 const props = defineProps<{
@@ -102,6 +104,8 @@ function createTaskState(): TaskUiState {
     status: 'idle',
     installing: false,
     message: '',
+    ziboPreserveLiveries: true,
+    ziboPreserveConfigFiles: true,
   }
 }
 
@@ -293,6 +297,30 @@ function planNeedsAction(plan: AddonUpdatePlan | null | undefined): boolean {
   return false
 }
 
+function isZiboMajorCleanPlan(plan: AddonUpdatePlan | null | undefined): boolean {
+  return plan?.provider === 'zibo' && plan?.ziboInstallMode === 'major-clean'
+}
+
+function manualDownloadButtonText(plan: AddonUpdatePlan | null | undefined): string {
+  if (plan?.manualDownloadReason === 'drive-limit') {
+    return t('management.openAlternativeDownloads')
+  }
+  if (plan?.manualDownloadReason === 'release-page') {
+    return t('management.goToReleasePage')
+  }
+  return t('management.downloadMajorVersion')
+}
+
+function manualDownloadHint(plan: AddonUpdatePlan | null | undefined): string {
+  if (plan?.manualDownloadReason === 'drive-limit') {
+    return t('management.ziboDriveLimitHint')
+  }
+  if (plan?.manualDownloadReason === 'release-page') {
+    return t('management.ziboDriveFileNotUpdatedHint')
+  }
+  return t('management.ziboManualDownloadHint')
+}
+
 function taskHasUpdate(task: AddonUpdateDrawerTask, state: TaskUiState): boolean {
   if (state.plan) return planNeedsAction(state.plan)
   const local = String(task.initialLocalVersion || '').trim()
@@ -456,7 +484,13 @@ async function startUpdate(task: AddonUpdateDrawerTask) {
   state.message = ''
 
   try {
-    const result = await managementStore.executeAddonUpdate(task.itemType, task.folderName)
+    const result = await managementStore.executeAddonUpdate(task.itemType, task.folderName, {
+      ...(isZiboMajorCleanPlan(state.plan) && {
+        freshInstall: true,
+        preserveLiveries: state.ziboPreserveLiveries,
+        preserveConfigFiles: state.ziboPreserveConfigFiles,
+      }),
+    })
     state.progress = 100
     state.installing = false
     state.status = 'completed'
@@ -784,7 +818,7 @@ watch(
                           :disabled="stateFor(task).loadingPlan || stateFor(task).installing"
                           @click.stop="openManualDownload(stateFor(task).plan?.manualDownloadUrl)"
                         >
-                          {{ t('management.downloadMajorVersion') }}
+                          {{ manualDownloadButtonText(stateFor(task).plan) }}
                         </button>
                         <button
                           v-if="
@@ -925,6 +959,47 @@ watch(
                             </label>
                           </div>
                         </div>
+                        <div
+                          v-if="
+                            isZiboMajorCleanPlan(stateFor(task).plan) &&
+                            !stateFor(task).plan?.manualDownloadUrl
+                          "
+                          class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/70 dark:to-slate-900/50 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:shadow-none"
+                        >
+                          <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
+                            {{ t('management.updateOptions') }}
+                          </p>
+                          <div class="mt-2 space-y-2">
+                            <label
+                              class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300 transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60"
+                            >
+                              <input
+                                type="checkbox"
+                                class="peer sr-only"
+                                :checked="stateFor(task).ziboPreserveLiveries"
+                                @change="stateFor(task).ziboPreserveLiveries = ($event.target as HTMLInputElement).checked"
+                              />
+                              <span
+                                class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 peer-checked:after:translate-x-4 peer-disabled:opacity-60"
+                              ></span>
+                              <span class="font-semibold">{{ t('management.preserveLiveries') }}</span>
+                            </label>
+                            <label
+                              class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300 transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60"
+                            >
+                              <input
+                                type="checkbox"
+                                class="peer sr-only"
+                                :checked="stateFor(task).ziboPreserveConfigFiles"
+                                @change="stateFor(task).ziboPreserveConfigFiles = ($event.target as HTMLInputElement).checked"
+                              />
+                              <span
+                                class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 peer-checked:after:translate-x-4 peer-disabled:opacity-60"
+                              ></span>
+                              <span class="font-semibold">{{ t('management.preserveConfigFiles') }}</span>
+                            </label>
+                          </div>
+                        </div>
                       </div>
 
                       <p
@@ -938,13 +1013,13 @@ watch(
                         class="rounded-lg border border-sky-200 dark:border-sky-700 bg-sky-50/70 dark:bg-sky-900/20 p-2 flex items-center justify-between gap-3"
                       >
                         <p class="text-xs text-sky-700 dark:text-sky-300">
-                          {{ t('management.ziboManualDownloadHint') }}
+                          {{ manualDownloadHint(stateFor(task).plan) }}
                         </p>
                         <button
                           class="px-2.5 py-1 rounded text-xs font-medium text-white bg-sky-600 hover:bg-sky-700"
                           @click.stop="openManualDownload(stateFor(task).plan?.manualDownloadUrl)"
                         >
-                          {{ t('management.downloadMajorVersion') }}
+                          {{ manualDownloadButtonText(stateFor(task).plan) }}
                         </button>
                       </div>
 
@@ -992,6 +1067,7 @@ watch(
 
                       <p
                         v-if="
+                          stateFor(task).plan?.provider !== 'zibo' &&
                           (stateFor(task).plan?.addFiles?.length || 0) === 0 &&
                           (stateFor(task).plan?.replaceFiles?.length || 0) === 0 &&
                           (stateFor(task).plan?.deleteFiles?.length || 0) === 0
