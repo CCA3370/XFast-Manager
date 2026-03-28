@@ -183,21 +183,26 @@ export const useUpdateStore = defineStore('update', () => {
 
   function normalizeVersionTag(version: string): string {
     const withoutPrefix = version.trim().replace(/^v/i, '')
-    const semverCore = withoutPrefix.split('+')[0]?.split('-')[0] ?? withoutPrefix
-    const match = semverCore.match(/\d+(?:\.\d+){0,3}/)
-    if (!match) return semverCore.trim()
+    // Strip build metadata (+...) but preserve pre-release suffix (-...)
+    const withoutBuild = withoutPrefix.split('+')[0] ?? withoutPrefix
+    const dashIndex = withoutBuild.indexOf('-')
+    const numericPart = dashIndex >= 0 ? withoutBuild.slice(0, dashIndex) : withoutBuild
+    const preReleasePart = dashIndex >= 0 ? withoutBuild.slice(dashIndex) : ''
+
+    const match = numericPart.match(/\d+(?:\.\d+){0,3}/)
+    if (!match) return withoutBuild.trim()
 
     const segments = match[0].split('.').map((segment) => {
       const normalized = Number.parseInt(segment, 10)
       return Number.isFinite(normalized) ? String(normalized) : segment
     })
 
-    // Normalize "1.2.3.0" to "1.2.3" for release tag matching.
-    if (segments.length > 3 && segments[segments.length - 1] === '0') {
+    // Normalize "1.2.3.0" to "1.2.3" only for stable releases (no pre-release suffix)
+    if (!preReleasePart && segments.length > 3 && segments[segments.length - 1] === '0') {
       segments.pop()
     }
 
-    return segments.join('.').trim()
+    return (segments.join('.') + preReleasePart).trim()
   }
 
   type ChangelogEntry = {
