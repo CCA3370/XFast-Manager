@@ -22,6 +22,7 @@ macro_rules! csl_debug {
 const DEFAULT_SERVER_BASE_URL: &str = "http://x-csl.ru";
 const CSL_CANONICAL_REL: &str = "Resources/plugins/IVAO_CSL/CSL";
 const CSL_API_BASE_PATH: &str = "package";
+const ALTITUDE_API_BASE_PATH: &str = "package/ALTITUDE";
 const CSL_INDEX_PATH: &str = "package/x-csl-indexes.idx";
 const ALTITUDE_INDEX_PATH: &str = "package/ALTITUDE/files.idx";
 const MAX_CSL_PARALLEL_DOWNLOADS: usize = 12;
@@ -227,6 +228,14 @@ fn resolve_csl_api_base(server_base_url: Option<&str>) -> String {
         "{}/{}",
         resolve_server_base_url(server_base_url),
         CSL_API_BASE_PATH
+    )
+}
+
+fn resolve_altitude_api_base(server_base_url: Option<&str>) -> String {
+    format!(
+        "{}/{}",
+        resolve_server_base_url(server_base_url),
+        ALTITUDE_API_BASE_PATH
     )
 }
 
@@ -2320,7 +2329,7 @@ pub async fn altitude_install_package(
     let xplane = PathBuf::from(&xplane_path);
     let package_name = "ALTITUDE".to_string();
     let resolved_server_base_url = resolve_server_base_url(server_base_url.as_deref());
-    let api_base = resolve_csl_api_base(server_base_url.as_deref());
+    let api_base = resolve_altitude_api_base(server_base_url.as_deref());
     let task_key = install_task_key("altitude", &package_name);
     let _registration = download_control
         .register(task_key)
