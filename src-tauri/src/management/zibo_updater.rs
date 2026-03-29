@@ -3,11 +3,17 @@ use futures::StreamExt;
 use glob::Pattern;
 use regex::Regex;
 use serde::Deserialize;
+use std::collections::VecDeque;
 use std::fs;
-use std::io::{BufWriter, Write};
+use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tokio::fs::OpenOptions as TokioOpenOptions;
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex as TokioMutex;
+use tokio::task::JoinSet;
 use uuid::Uuid;
 use zip::ZipArchive;
 
@@ -42,7 +48,19 @@ const ZIBO_MAJOR_RESTORE_PROGRESS_MAX: f64 = 99.5;
 const ZIBO_PROGRESS_EMIT_INTERVAL_MS: u64 = 250;
 const ZIBO_SPEED_SAMPLE_INTERVAL_MS: u64 = 1000;
 const ZIBO_SPEED_SMOOTHING_ALPHA: f64 = 0.35;
+const ZIBO_CHUNKED_DOWNLOAD_MIN_SIZE: u64 = 512 * 1024;
+const ZIBO_CHUNK_REQUEST_WINDOW_BYTES: u64 = 16 * 1024 * 1024;
+const ZIBO_CHUNKED_TRANSFER_PROGRESS_RATIO: f64 = 0.88;
+const ZIBO_CHUNK_RETRY_BASE_DELAY_MS: u64 = 750;
+const ZIBO_CHUNK_RETRY_MAX_DELAY_MS: u64 = 8_000;
+const ZIBO_CHUNK_MAX_CONSECUTIVE_FAILURES: usize = 5;
+const ZIBO_CHUNK_IDLE_TIMEOUT_SECS: u64 = 6;
+const ZIBO_CHUNK_REQUEST_SOFT_TIMEOUT_SECS: u64 = 12;
+const ZIBO_FILE_IO_BUFFER_BYTES: usize = 1024 * 1024;
 const ZIBO_CONFIG_PATTERNS: [&str; 1] = ["*_prefs.txt"];
+const GOOGLE_DRIVE_BROWSER_DOWNLOAD_BASE: &str = "https://drive.usercontent.google.com/download";
+const GOOGLE_DRIVE_BROWSER_USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 
 #[derive(Debug, Clone, Copy)]
 struct DriveSource {
@@ -69,6 +87,16 @@ static ZIBO_TITLE_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 static RSS_ITEM_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?s)<item>(.*?)</item>").expect("valid rss item regex"));
+static DRIVE_CONFIRM_FORM_ACTION_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?is)<form[^>]+id=["']download-form["'][^>]+action=["']([^"']+)["']"#)
+        .expect("valid drive confirm form regex")
+});
+static DRIVE_CONFIRM_LINK_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?is)href=["']([^"'#>]*(?:confirm|uuid)=[^"'>]*)["']"#)
+        .expect("valid drive confirm link regex")
+});
+static HTML_INPUT_TAG_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?is)<input[^>]*>"#).expect("valid input tag regex"));
 static LOCAL_VERSION_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^\s*(\d+)\.(\d+)\.(\d+)\s*$").expect("valid local version regex")
 });
@@ -175,6 +203,18 @@ struct ProgressRange {
     end: f64,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ChunkedDriveDownloadConfig {
+    active_connections: usize,
+    window_bytes: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DriveDownloadMode {
+    Single,
+    Chunked(ChunkedDriveDownloadConfig),
+}
+
 #[derive(Debug, Clone)]
 struct DownloadedDriveArchive {
     release: ZiboRelease,
@@ -189,6 +229,24 @@ struct ResolvedDriveFile {
     file_name: String,
     total_bytes: u64,
     web_view_link: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct DriveDownloadPiece {
+    index: usize,
+    start: u64,
+    end: u64,
+    part_path: PathBuf,
+}
+
+impl DriveDownloadPiece {
+    fn len(&self) -> u64 {
+        self.end.saturating_sub(self.start).saturating_add(1)
+    }
+
+    fn range_label(&self) -> String {
+        format!("{}-{}", self.start, self.end)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -242,6 +300,47 @@ struct ZiboPlanContext {
 
 fn log_info(message: impl Into<String>) {
     logger::log_info(&message.into(), Some(LOG_CTX));
+}
+
+fn log_debug(message: impl Into<String>) {
+    logger::log_debug(&message.into(), Some(LOG_CTX), None);
+}
+
+fn format_binary_size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0usize;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{} {}", bytes, UNITS[unit])
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+fn format_elapsed(duration: Duration) -> String {
+    format!("{:.3}s", duration.as_secs_f64())
+}
+
+fn log_timed_step(step: &str, started_at: Instant, detail: impl Into<String>) {
+    let detail = detail.into();
+    if detail.is_empty() {
+        log_debug(format!(
+            "Zibo step '{}' completed in {}",
+            step,
+            format_elapsed(started_at.elapsed())
+        ));
+    } else {
+        log_debug(format!(
+            "Zibo step '{}' completed in {} ({})",
+            step,
+            format_elapsed(started_at.elapsed()),
+            detail
+        ));
+    }
 }
 
 fn emit_progress_event(
@@ -303,6 +402,67 @@ fn interpolate_progress(start: f64, end: f64, processed: u64, total: u64) -> f64
     }
     let ratio = (processed as f64 / total as f64).clamp(0.0, 1.0);
     start + (end - start) * ratio
+}
+
+fn emit_file_operation_progress(
+    callback: &Option<AddonUpdateProgressCallback>,
+    item_type: &str,
+    folder_name: &str,
+    progress_range: ProgressRange,
+    processed_bytes: u64,
+    total_bytes: u64,
+    message_prefix: &str,
+    current_file: Option<&Path>,
+) {
+    let current_file_label = current_file.map(|path| path.to_string_lossy().replace('\\', "/"));
+    let message = if total_bytes > 0 {
+        format!(
+            "{} ({}/{})",
+            message_prefix,
+            format_binary_size(processed_bytes.min(total_bytes)),
+            format_binary_size(total_bytes)
+        )
+    } else {
+        message_prefix.to_string()
+    };
+
+    emit_progress_event(
+        callback,
+        item_type,
+        folder_name,
+        "install",
+        "in_progress",
+        interpolate_progress(
+            progress_range.start,
+            progress_range.end,
+            processed_bytes,
+            total_bytes,
+        ),
+        processed_bytes,
+        total_bytes,
+        0.0,
+        Some(message),
+        current_file_label,
+    );
+}
+
+fn zibo_full_package_download_mode(options: &AddonUpdateOptions) -> DriveDownloadMode {
+    if !options.chunked_download_enabled.unwrap_or(true) {
+        return DriveDownloadMode::Single;
+    }
+
+    let per_file_connections = options.threads_per_task.unwrap_or(6).clamp(1, 32);
+    let total_connections = options.total_threads.unwrap_or(32).clamp(1, 64);
+    let active_connections = per_file_connections.min(total_connections);
+
+    if active_connections > 1 {
+        DriveDownloadMode::Chunked(ChunkedDriveDownloadConfig {
+            active_connections,
+            window_bytes: ZIBO_CHUNK_REQUEST_WINDOW_BYTES,
+        })
+    } else {
+        DriveDownloadMode::Single
+    }
 }
 
 fn ensure_not_cancelled(task_control: Option<&TaskControl>, stage: &str) -> Result<()> {
@@ -558,6 +718,174 @@ fn xml_entity_decode(input: &str) -> String {
         .replace("&amp;", "&")
 }
 
+fn extract_html_attr(tag: &str, attr_name: &str) -> Option<String> {
+    for quote in ['"', '\''] {
+        let needle = format!("{attr_name}={quote}");
+        if let Some(start) = tag.find(&needle) {
+            let value_start = start + needle.len();
+            let value = tag.get(value_start..)?.split(quote).next()?.trim();
+            if !value.is_empty() {
+                return Some(xml_entity_decode(value));
+            }
+        }
+    }
+
+    None
+}
+
+fn build_drive_browser_download_url(file_id: &str) -> Result<reqwest::Url> {
+    let mut url = reqwest::Url::parse(GOOGLE_DRIVE_BROWSER_DOWNLOAD_BASE)
+        .context("Invalid Google Drive browser download base URL")?;
+    {
+        let mut query = url.query_pairs_mut();
+        query.append_pair("id", file_id);
+        query.append_pair("export", "download");
+        query.append_pair("confirm", "t");
+    }
+    Ok(url)
+}
+
+fn extract_drive_confirm_download_url(
+    response_url: &reqwest::Url,
+    body: &str,
+) -> Option<reqwest::Url> {
+    if let Some(captures) = DRIVE_CONFIRM_FORM_ACTION_RE.captures(body) {
+        let action = xml_entity_decode(captures.get(1)?.as_str());
+        let mut url = reqwest::Url::parse(&action)
+            .ok()
+            .or_else(|| response_url.join(&action).ok())?;
+        let params = HTML_INPUT_TAG_RE
+            .find_iter(body)
+            .filter_map(|tag_match| {
+                let tag = tag_match.as_str();
+                let name = extract_html_attr(tag, "name")?;
+                let value = extract_html_attr(tag, "value").unwrap_or_default();
+                Some((name, value))
+            })
+            .filter(|(name, _)| {
+                matches!(name.as_str(), "id" | "export" | "confirm" | "uuid" | "at")
+            })
+            .collect::<Vec<_>>();
+        if !params.is_empty() {
+            url.query_pairs_mut().clear().extend_pairs(params);
+        }
+        return Some(url);
+    }
+
+    DRIVE_CONFIRM_LINK_RE
+        .captures(body)
+        .and_then(|captures| captures.get(1))
+        .and_then(|value| {
+            let href = xml_entity_decode(value.as_str());
+            reqwest::Url::parse(&href)
+                .ok()
+                .or_else(|| response_url.join(&href).ok())
+        })
+}
+
+fn drive_response_is_html(response: &reqwest::Response) -> bool {
+    response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_ascii_lowercase().contains("text/html"))
+        .unwrap_or(false)
+}
+
+fn build_drive_download_request(
+    client: &reqwest::Client,
+    url: reqwest::Url,
+    range: Option<(u64, u64)>,
+) -> reqwest::RequestBuilder {
+    let mut request = client
+        .get(url)
+        .header(reqwest::header::USER_AGENT, GOOGLE_DRIVE_BROWSER_USER_AGENT)
+        .header(reqwest::header::ACCEPT, "*/*")
+        .header(reqwest::header::ACCEPT_LANGUAGE, "en-US,en;q=0.9")
+        .header(reqwest::header::REFERER, "https://drive.google.com/");
+    if let Some((start, end)) = range {
+        request = request.header(reqwest::header::RANGE, format!("bytes={start}-{end}"));
+    }
+    request
+}
+
+async fn send_drive_download_request(
+    client: &reqwest::Client,
+    file: &ResolvedDriveFile,
+    range: Option<(u64, u64)>,
+    operation_label: &str,
+) -> Result<reqwest::Response> {
+    let mut url = build_drive_browser_download_url(&file.file_id)?;
+
+    for attempt in 1..=3 {
+        let response = build_drive_download_request(client, url.clone(), range)
+            .send()
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to start Google Drive {} for '{}' from {}",
+                    operation_label, file.file_name, file.source.label
+                )
+            })?;
+        let status = response.status();
+
+        if (status.is_success() || status == reqwest::StatusCode::PARTIAL_CONTENT)
+            && !drive_response_is_html(&response)
+        {
+            return Ok(response);
+        }
+
+        let response_url = response.url().clone();
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::new())
+            .replace('\n', " ");
+
+        if attempt < 3 {
+            if let Some(confirm_url) = extract_drive_confirm_download_url(&response_url, &body) {
+                if confirm_url != url {
+                    log_debug(format!(
+                        "Resolved Google Drive confirm URL for '{}' from {} during {} attempt {}",
+                        file.file_name, file.source.label, operation_label, attempt
+                    ));
+                    url = confirm_url;
+                    continue;
+                }
+            }
+        }
+
+        let reasons = extract_drive_error_reasons(&body);
+        let reason_suffix = if reasons.is_empty() {
+            String::new()
+        } else {
+            format!(" [reason={}]", reasons.join(","))
+        };
+        let details = if body.trim().is_empty() {
+            String::new()
+        } else {
+            format!(": {}", body.trim().chars().take(160).collect::<String>())
+        };
+
+        return Err(anyhow!(
+            "Google Drive {} returned {} for '{}' from {}{}{}",
+            operation_label,
+            status.as_u16(),
+            file.file_name,
+            file.source.label,
+            reason_suffix,
+            details
+        ));
+    }
+
+    Err(anyhow!(
+        "Google Drive {} could not resolve a download URL for '{}' from {}",
+        operation_label,
+        file.file_name,
+        file.source.label
+    ))
+}
+
 fn build_http_client(timeout_secs: u64) -> Result<reqwest::Client> {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(timeout_secs))
@@ -741,6 +1069,29 @@ async fn probe_drive_file_download(
     ))
 }
 
+async fn probe_drive_range_support(
+    client: &reqwest::Client,
+    _api_key: &str,
+    file: &ResolvedDriveFile,
+    task_control: Option<&TaskControl>,
+) -> Result<bool> {
+    ensure_not_cancelled(task_control, "install")?;
+    let response = send_drive_download_request(client, file, Some((0, 0)), "range probe").await?;
+    let status = response.status();
+    if status == reqwest::StatusCode::PARTIAL_CONTENT {
+        return Ok(true);
+    }
+    if status.is_success() {
+        return Ok(false);
+    }
+    Err(anyhow!(
+        "Google Drive range probe returned {} for '{}' from {}",
+        status.as_u16(),
+        file.file_name,
+        file.source.label
+    ))
+}
+
 async fn resolve_drive_files_in_source(
     client: &reqwest::Client,
     api_key: &str,
@@ -802,11 +1153,588 @@ async fn resolve_drive_files_with_order(
     ))
 }
 
+async fn emit_chunked_drive_download_progress(
+    progress_callback: Option<AddonUpdateProgressCallback>,
+    item_type: String,
+    folder_name: String,
+    file_name: String,
+    source_label: String,
+    progress_range: ProgressRange,
+    downloaded_before: u64,
+    combined_total_bytes: u64,
+    file_total_bytes: u64,
+    downloaded_bytes: Arc<AtomicU64>,
+    finished: Arc<AtomicBool>,
+) {
+    let mut last_emit_at = Instant::now();
+    let mut last_speed_sample_at = Instant::now();
+    let mut last_speed_sample_bytes = 0u64;
+    let mut displayed_speed = 0.0;
+
+    loop {
+        let processed = downloaded_bytes
+            .load(Ordering::Relaxed)
+            .min(file_total_bytes);
+        let is_finished = finished.load(Ordering::Relaxed);
+
+        if take_emit_interval_secs(&mut last_emit_at, is_finished).is_some() {
+            let speed_elapsed = last_speed_sample_at.elapsed();
+            if is_finished || speed_elapsed >= Duration::from_millis(ZIBO_SPEED_SAMPLE_INTERVAL_MS)
+            {
+                let elapsed_secs = speed_elapsed.as_secs_f64();
+                let speed = if elapsed_secs > 0.0 && processed >= last_speed_sample_bytes {
+                    (processed - last_speed_sample_bytes) as f64 / elapsed_secs
+                } else {
+                    0.0
+                };
+                displayed_speed = smooth_speed(displayed_speed, speed);
+                last_speed_sample_at = Instant::now();
+                last_speed_sample_bytes = processed;
+            }
+
+            emit_progress_event(
+                &progress_callback,
+                &item_type,
+                &folder_name,
+                "install",
+                "in_progress",
+                interpolate_progress(
+                    progress_range.start,
+                    progress_range.end,
+                    processed,
+                    file_total_bytes,
+                ),
+                downloaded_before.saturating_add(processed),
+                combined_total_bytes.max(file_total_bytes),
+                displayed_speed,
+                Some(format!("Downloading {} from {}", file_name, source_label)),
+                Some(file_name.clone()),
+            );
+        }
+
+        if is_finished {
+            break;
+        }
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+async fn download_drive_piece_with_retry(
+    client: &reqwest::Client,
+    _api_key: &str,
+    file: &ResolvedDriveFile,
+    piece: &DriveDownloadPiece,
+    downloaded_bytes: &Arc<AtomicU64>,
+    task_control: Option<TaskControl>,
+    worker_id: usize,
+) -> Result<()> {
+    let piece_started_at = Instant::now();
+    let mut output = TokioOpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(&piece.part_path)
+        .await
+        .with_context(|| format!("Failed to create '{}'", piece.part_path.display()))?;
+    let mut next_offset = piece.start;
+    let mut consecutive_failures = 0usize;
+    let mut request_count = 0usize;
+    let max_requests = chunk_request_budget(piece.start, piece.end);
+
+    while next_offset <= piece.end {
+        ensure_not_cancelled(task_control.as_ref(), "install")?;
+        request_count = request_count.saturating_add(1);
+        if request_count > max_requests {
+            return Err(anyhow!(
+                "Failed while downloading '{}' from {}: piece {} exceeded retry budget after {} requests",
+                file.file_name,
+                file.source.label,
+                piece.index,
+                max_requests
+            ));
+        }
+
+        let range_start = next_offset;
+        let request_end = chunk_request_end(range_start, piece.end);
+        let request_started_at = Instant::now();
+        let response = match send_drive_download_request(
+            client,
+            file,
+            Some((range_start, request_end)),
+            "range download",
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(err) => {
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                if consecutive_failures > ZIBO_CHUNK_MAX_CONSECUTIVE_FAILURES {
+                    return Err(err).with_context(|| {
+                        format!(
+                            "Failed to start range download for '{}' from {}",
+                            file.file_name, file.source.label
+                        )
+                    });
+                }
+                let delay = chunk_retry_delay(consecutive_failures);
+                log_info(format!(
+                    "Retrying Zibo piece {} for '{}' from {} after request error at byte {} (worker={} failure {}/{}; retry in {} ms): {}",
+                    piece.index,
+                    file.file_name,
+                    file.source.label,
+                    range_start,
+                    worker_id,
+                    consecutive_failures,
+                    ZIBO_CHUNK_MAX_CONSECUTIVE_FAILURES,
+                    delay.as_millis(),
+                    err
+                ));
+                tokio::time::sleep(delay).await;
+                continue;
+            }
+        };
+        if response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+            return Err(anyhow!(
+                "Google Drive range download returned {} for '{}' from {}",
+                response.status().as_u16(),
+                file.file_name,
+                file.source.label
+            ));
+        }
+
+        let mut stream = response.bytes_stream();
+        let mut received_in_request = 0u64;
+        let mut request_failed = None;
+
+        loop {
+            ensure_not_cancelled(task_control.as_ref(), "install")?;
+            let chunk = match tokio::time::timeout(
+                Duration::from_secs(ZIBO_CHUNK_IDLE_TIMEOUT_SECS),
+                stream.next(),
+            )
+            .await
+            {
+                Ok(chunk) => chunk,
+                Err(_) => {
+                    request_failed = Some(anyhow!(
+                        "Timed out waiting for Google Drive data for '{}' from {} at byte {} after {}s of inactivity",
+                        file.file_name,
+                        file.source.label,
+                        next_offset,
+                        ZIBO_CHUNK_IDLE_TIMEOUT_SECS
+                    ));
+                    break;
+                }
+            };
+
+            match chunk {
+                Some(Ok(chunk)) => {
+                    output.write_all(&chunk).await.with_context(|| {
+                        format!(
+                            "Failed to write '{}' while downloading piece {}",
+                            piece.part_path.display(),
+                            piece.index
+                        )
+                    })?;
+
+                    let written = chunk.len() as u64;
+                    next_offset = next_offset.saturating_add(written);
+                    received_in_request = received_in_request.saturating_add(written);
+                    downloaded_bytes.fetch_add(written, Ordering::Relaxed);
+
+                    if next_offset <= request_end
+                        && request_started_at.elapsed()
+                            >= Duration::from_secs(ZIBO_CHUNK_REQUEST_SOFT_TIMEOUT_SECS)
+                    {
+                        request_failed = Some(anyhow!(
+                            "Google Drive range request for '{}' from {} exceeded soft timeout after {}s with {} of {} bytes received",
+                            file.file_name,
+                            file.source.label,
+                            ZIBO_CHUNK_REQUEST_SOFT_TIMEOUT_SECS,
+                            received_in_request,
+                            request_end.saturating_sub(range_start).saturating_add(1)
+                        ));
+                        break;
+                    }
+                }
+                Some(Err(err)) => {
+                    request_failed = Some(anyhow!(err).context(format!(
+                        "Failed while downloading '{}' from {}",
+                        file.file_name, file.source.label
+                    )));
+                    break;
+                }
+                None => break,
+            }
+        }
+
+        if next_offset > request_end {
+            consecutive_failures = 0;
+            continue;
+        }
+
+        if next_offset > piece.end {
+            break;
+        }
+
+        let progress_made = received_in_request > 0;
+        if received_in_request > 0 {
+            consecutive_failures = 0;
+        } else {
+            consecutive_failures = consecutive_failures.saturating_add(1);
+        }
+
+        if consecutive_failures > ZIBO_CHUNK_MAX_CONSECUTIVE_FAILURES {
+            if let Some(err) = request_failed {
+                return Err(err);
+            }
+            return Err(anyhow!(
+                "Failed while downloading '{}' from {}: piece {} stopped making progress",
+                file.file_name,
+                file.source.label,
+                piece.index
+            ));
+        }
+
+        let failure_streak = consecutive_failures.max(1);
+        let delay = if progress_made {
+            Duration::from_millis(150)
+        } else {
+            chunk_retry_delay(failure_streak)
+        };
+        let reason = request_failed
+            .map(|err| err.to_string())
+            .unwrap_or_else(|| {
+                format!(
+                    "Google Drive ended piece {} early at byte {} of {}",
+                    piece.index, next_offset, request_end
+                )
+            });
+        log_info(format!(
+            "Retrying Zibo piece {} for '{}' from {} at byte {} (worker={} failure {}/{}; request {}/{}; retry in {} ms): {}",
+            piece.index,
+            file.file_name,
+            file.source.label,
+            next_offset,
+            worker_id,
+            failure_streak,
+            ZIBO_CHUNK_MAX_CONSECUTIVE_FAILURES,
+            request_count,
+            max_requests,
+            delay.as_millis(),
+            reason
+        ));
+        tokio::time::sleep(delay).await;
+    }
+
+    output
+        .flush()
+        .await
+        .with_context(|| format!("Failed to flush '{}'", piece.part_path.display()))?;
+
+    let actual_size = tokio::fs::metadata(&piece.part_path)
+        .await
+        .with_context(|| format!("Failed to stat '{}'", piece.part_path.display()))?
+        .len();
+    let expected_size = piece.len();
+    if actual_size != expected_size {
+        return Err(anyhow!(
+            "Downloaded size mismatch for '{}' piece {}: expected {}, got {}",
+            file.file_name,
+            piece.index,
+            expected_size,
+            actual_size
+        ));
+    }
+
+    log_timed_step(
+        &format!("download piece {}", piece.index),
+        piece_started_at,
+        format!(
+            "worker={} range={} bytes={} requests={}",
+            worker_id,
+            piece.range_label(),
+            format_binary_size(piece.len()),
+            request_count
+        ),
+    );
+
+    Ok(())
+}
+
+async fn download_drive_file_to_path_chunked(
+    _client: &reqwest::Client,
+    api_key: &str,
+    file: &ResolvedDriveFile,
+    output_path: &Path,
+    config: ChunkedDriveDownloadConfig,
+    task_control: Option<&TaskControl>,
+    progress_callback: &Option<AddonUpdateProgressCallback>,
+    item_type: &str,
+    folder_name: &str,
+    progress_range: ProgressRange,
+    downloaded_before: u64,
+    combined_total_bytes: u64,
+) -> Result<()> {
+    let download_started_at = Instant::now();
+    let (transfer_range, finalize_range) = split_chunked_download_progress_range(progress_range);
+    let parts_dir = build_chunked_download_parts_dir(output_path)?;
+    fs::create_dir_all(&parts_dir)
+        .with_context(|| format!("Failed to create '{}'", parts_dir.display()))?;
+    let pieces = build_drive_download_pieces(file.total_bytes, &parts_dir, config.window_bytes);
+    if pieces.is_empty() {
+        let _ = fs::remove_dir_all(&parts_dir);
+        return Err(anyhow!(
+            "Google Drive download for '{}' produced no download pieces",
+            file.file_name
+        ));
+    }
+    let active_connections = config.active_connections.min(pieces.len().max(1));
+    let piece_count = pieces.len();
+
+    emit_progress_event(
+        progress_callback,
+        item_type,
+        folder_name,
+        "install",
+        "in_progress",
+        transfer_range.start,
+        downloaded_before,
+        combined_total_bytes.max(file.total_bytes),
+        0.0,
+        Some(format!(
+            "Downloading {} from {}",
+            file.file_name, file.source.label
+        )),
+        Some(file.file_name.clone()),
+    );
+
+    let downloaded_bytes = Arc::new(AtomicU64::new(0));
+    let finished = Arc::new(AtomicBool::new(false));
+
+    let reporter_handle = tokio::spawn(emit_chunked_drive_download_progress(
+        progress_callback.clone(),
+        item_type.to_string(),
+        folder_name.to_string(),
+        file.file_name.clone(),
+        file.source.label.to_string(),
+        transfer_range,
+        downloaded_before,
+        combined_total_bytes,
+        file.total_bytes,
+        Arc::clone(&downloaded_bytes),
+        Arc::clone(&finished),
+    ));
+
+    log_debug(format!(
+        "Starting chunked Zibo download archive={} source={} bytes={} activeConnections={} pieceCount={} window={}",
+        file.file_name,
+        file.source.label,
+        format_binary_size(file.total_bytes),
+        active_connections,
+        piece_count,
+        format_binary_size(config.window_bytes)
+    ));
+
+    let queue = Arc::new(TokioMutex::new(VecDeque::from(pieces.clone())));
+    let result: Result<()> = async {
+        let mut join_set = JoinSet::new();
+
+        for worker_id in 0..active_connections {
+            let api_key = api_key.to_string();
+            let file = file.clone();
+            let queue = Arc::clone(&queue);
+            let downloaded_bytes = Arc::clone(&downloaded_bytes);
+            let task_control = task_control.cloned();
+
+            join_set.spawn(async move {
+                let worker_id = worker_id + 1;
+                let client = build_chunked_download_client(180)?;
+                log_debug(format!(
+                    "Zibo chunk worker {} started for '{}'",
+                    worker_id, file.file_name
+                ));
+
+                loop {
+                    ensure_not_cancelled(task_control.as_ref(), "install")?;
+                    let next_piece = {
+                        let mut queue = queue.lock().await;
+                        queue.pop_front()
+                    };
+
+                    let Some(piece) = next_piece else {
+                        log_debug(format!(
+                            "Zibo chunk worker {} completed all assigned work for '{}'",
+                            worker_id, file.file_name
+                        ));
+                        break;
+                    };
+
+                    download_drive_piece_with_retry(
+                        &client,
+                        api_key.as_str(),
+                        &file,
+                        &piece,
+                        &downloaded_bytes,
+                        task_control.clone(),
+                        worker_id,
+                    )
+                    .await?;
+                }
+
+                Ok::<(), anyhow::Error>(())
+            });
+        }
+
+        while let Some(next) = join_set.join_next().await {
+            match next {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => {
+                    join_set.abort_all();
+                    while join_set.join_next().await.is_some() {}
+                    return Err(err);
+                }
+                Err(err) => {
+                    join_set.abort_all();
+                    while join_set.join_next().await.is_some() {}
+                    return Err(anyhow!("Chunk download task panicked: {}", err));
+                }
+            }
+        }
+
+        Ok(())
+    }
+    .await;
+
+    finished.store(true, Ordering::Relaxed);
+    let _ = reporter_handle.await;
+
+    if let Err(err) = result {
+        let _ = fs::remove_dir_all(&parts_dir);
+        let _ = fs::remove_file(output_path);
+        return Err(err);
+    }
+
+    let processed_bytes = downloaded_bytes.load(Ordering::Relaxed);
+    if processed_bytes == 0 {
+        let _ = fs::remove_dir_all(&parts_dir);
+        let _ = fs::remove_file(output_path);
+        return Err(anyhow!(
+            "Google Drive download for '{}' produced an empty file",
+            file.file_name
+        ));
+    }
+
+    if processed_bytes != file.total_bytes {
+        let _ = fs::remove_dir_all(&parts_dir);
+        let _ = fs::remove_file(output_path);
+        return Err(anyhow!(
+            "Downloaded size mismatch for '{}': expected {}, got {}",
+            file.file_name,
+            file.total_bytes,
+            processed_bytes
+        ));
+    }
+
+    let merged_path = parts_dir.join("merged.tmp");
+    let merge_started_at = Instant::now();
+    let mut last_merge_emit_at = Instant::now();
+    let merge_result = merge_download_pieces_with_progress(
+        &pieces,
+        &merged_path,
+        |merged_bytes, total_bytes, _| {
+            ensure_not_cancelled(task_control, "install")?;
+            let force_emit = total_bytes == 0 || merged_bytes >= total_bytes;
+            if take_emit_interval_secs(&mut last_merge_emit_at, force_emit).is_some() {
+                emit_file_operation_progress(
+                    progress_callback,
+                    item_type,
+                    folder_name,
+                    finalize_range,
+                    merged_bytes,
+                    total_bytes,
+                    "Finalizing Zibo archive",
+                    Some(Path::new(&file.file_name)),
+                );
+            }
+            Ok(())
+        },
+    );
+    if let Err(err) = merge_result {
+        let _ = fs::remove_file(&merged_path);
+        let _ = fs::remove_dir_all(&parts_dir);
+        let _ = fs::remove_file(output_path);
+        return Err(err);
+    }
+
+    let merged_size = fs::metadata(&merged_path)
+        .with_context(|| format!("Failed to stat '{}'", merged_path.display()))?
+        .len();
+    if merged_size != file.total_bytes {
+        let _ = fs::remove_file(&merged_path);
+        let _ = fs::remove_dir_all(&parts_dir);
+        let _ = fs::remove_file(output_path);
+        return Err(anyhow!(
+            "Merged size mismatch for '{}': expected {}, got {}",
+            file.file_name,
+            file.total_bytes,
+            merged_size
+        ));
+    }
+    if output_path.exists() {
+        let _ = fs::remove_file(output_path);
+    }
+    fs::rename(&merged_path, output_path).with_context(|| {
+        format!(
+            "Failed to move merged archive '{}' to '{}'",
+            merged_path.display(),
+            output_path.display()
+        )
+    })?;
+
+    log_timed_step(
+        "merge archive parts",
+        merge_started_at,
+        format!(
+            "archive={} pieceCount={} bytes={}",
+            file.file_name,
+            piece_count,
+            format_binary_size(file.total_bytes)
+        ),
+    );
+
+    if let Err(err) = fs::remove_dir_all(&parts_dir) {
+        log_info(format!(
+            "Zibo chunked download finished but failed to remove parts directory '{}': {}",
+            parts_dir.display(),
+            err
+        ));
+    }
+
+    log_timed_step(
+        "download archive",
+        download_started_at,
+        format!(
+            "mode=chunked archive={} bytes={} source={} activeConnections={} pieceCount={} window={}",
+            file.file_name,
+            format_binary_size(file.total_bytes),
+            file.source.label,
+            active_connections,
+            piece_count,
+            format_binary_size(config.window_bytes)
+        ),
+    );
+
+    Ok(())
+}
+
 async fn download_drive_file_to_path(
     client: &reqwest::Client,
     api_key: &str,
     file: &ResolvedDriveFile,
     output_path: &Path,
+    download_mode: DriveDownloadMode,
     task_control: Option<&TaskControl>,
     progress_callback: &Option<AddonUpdateProgressCallback>,
     item_type: &str,
@@ -816,50 +1744,45 @@ async fn download_drive_file_to_path(
     combined_total_bytes: u64,
 ) -> Result<()> {
     ensure_not_cancelled(task_control, "install")?;
+    let download_started_at = Instant::now();
 
-    let response = client
-        .get(format!("{}/files/{}", GOOGLE_DRIVE_API_BASE, file.file_id))
-        .query(&[
-            ("alt", "media"),
-            ("supportsAllDrives", "true"),
-            ("key", api_key),
-        ])
-        .send()
-        .await
-        .with_context(|| {
-            format!(
-                "Failed to start Google Drive download for '{}' from {}",
-                file.file_name, file.source.label
-            )
-        })?;
-    let status = response.status();
-    if !status.is_success() {
-        let body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| String::new())
-            .replace('\n', " ");
-        let reasons = extract_drive_error_reasons(&body);
-        let body = body.trim();
-        let reason_suffix = if reasons.is_empty() {
-            String::new()
-        } else {
-            format!(" [reason={}]", reasons.join(","))
-        };
-        let details = if body.is_empty() {
-            String::new()
-        } else {
-            format!(": {}", body.chars().take(160).collect::<String>())
-        };
-        return Err(anyhow!(
-            "Google Drive download returned {} for '{}' from {}{}{}",
-            status.as_u16(),
-            file.file_name,
-            file.source.label,
-            reason_suffix,
-            details
-        ));
+    if let DriveDownloadMode::Chunked(config) = download_mode {
+        if file.total_bytes >= ZIBO_CHUNKED_DOWNLOAD_MIN_SIZE {
+            match probe_drive_range_support(client, api_key, file, task_control).await {
+                Ok(true) => {
+                    return download_drive_file_to_path_chunked(
+                        client,
+                        api_key,
+                        file,
+                        output_path,
+                        config,
+                        task_control,
+                        progress_callback,
+                        item_type,
+                        folder_name,
+                        progress_range,
+                        downloaded_before,
+                        combined_total_bytes,
+                    )
+                    .await;
+                }
+                Ok(false) => {
+                    log_info(format!(
+                        "Google Drive range download is unavailable for '{}' from {}; falling back to single-connection download",
+                        file.file_name, file.source.label
+                    ));
+                }
+                Err(err) => {
+                    log_info(format!(
+                        "Failed to probe Google Drive range download for '{}' from {} ({}); falling back to single-connection download",
+                        file.file_name, file.source.label, err
+                    ));
+                }
+            }
+        }
     }
+
+    let response = send_drive_download_request(client, file, None, "download").await?;
 
     let mut stream = response.bytes_stream();
     let output = fs::File::create(output_path)
@@ -947,6 +1870,17 @@ async fn download_drive_file_to_path(
         ));
     }
 
+    log_timed_step(
+        "download archive",
+        download_started_at,
+        format!(
+            "mode=single archive={} bytes={} source={}",
+            file.file_name,
+            format_binary_size(file.total_bytes),
+            file.source.label
+        ),
+    );
+
     Ok(())
 }
 
@@ -962,6 +1896,7 @@ async fn download_releases_from_drive_with_order(
     releases: &[ZiboRelease],
     source_order: [DriveSource; 2],
     download_root: &Path,
+    primary_archive_download_mode: DriveDownloadMode,
     task_control: Option<&TaskControl>,
     progress_callback: &Option<AddonUpdateProgressCallback>,
     item_type: &str,
@@ -1035,11 +1970,18 @@ async fn download_releases_from_drive_with_order(
                     .with_context(|| format!("Failed to reset '{}'", zip_path.display()))?;
             }
 
+            let download_mode = if idx == 0 {
+                primary_archive_download_mode
+            } else {
+                DriveDownloadMode::Single
+            };
+
             match download_drive_file_to_path(
                 &client,
                 &api_key,
                 &file,
                 &zip_path,
+                download_mode,
                 task_control,
                 progress_callback,
                 item_type,
@@ -1275,6 +2217,7 @@ pub async fn execute_update(
     task_control: Option<TaskControl>,
     progress_callback: Option<AddonUpdateProgressCallback>,
 ) -> Result<AddonUpdateResult> {
+    let execute_started_at = Instant::now();
     let target_path = resolve_zibo_target_path(xplane_path, item_type, folder_name)?;
     let context = build_plan_context_from_target(&target_path, task_control.as_ref()).await?;
     let local_version = local_version_text(&context.local_state);
@@ -1326,6 +2269,7 @@ pub async fn execute_update(
         follow_up_patch: context.follow_up_patch.clone(),
     };
     let total_download_bytes = context.estimated_download_bytes;
+    let full_package_download_mode = zibo_full_package_download_mode(&options);
 
     emit_progress_event(
         &progress_callback,
@@ -1373,6 +2317,7 @@ pub async fn execute_update(
                 &target_path,
                 preserve_liveries,
                 preserve_config_files,
+                full_package_download_mode,
                 total_download_bytes,
                 task_control.as_ref(),
                 &progress_callback,
@@ -1412,6 +2357,17 @@ pub async fn execute_update(
         message.push(' ');
         message.push_str(&suffix);
     }
+
+    log_timed_step(
+        "execute update",
+        execute_started_at,
+        format!(
+            "target={} version={} source={}",
+            target_path.display(),
+            context.latest_release.version_string(),
+            source_label
+        ),
+    );
 
     Ok(AddonUpdateResult {
         provider: ZIBO_PROVIDER.to_string(),
@@ -1471,6 +2427,165 @@ fn extract_drive_error_reasons(body: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn chunk_retry_delay(consecutive_failures: usize) -> Duration {
+    let exponent = consecutive_failures.saturating_sub(1).min(4) as u32;
+    let millis = ZIBO_CHUNK_RETRY_BASE_DELAY_MS.saturating_mul(1u64 << exponent);
+    Duration::from_millis(millis.min(ZIBO_CHUNK_RETRY_MAX_DELAY_MS))
+}
+
+fn chunk_request_end(start: u64, end: u64) -> u64 {
+    start
+        .saturating_add(ZIBO_CHUNK_REQUEST_WINDOW_BYTES.saturating_sub(1))
+        .min(end)
+}
+
+fn chunk_request_budget(start: u64, end: u64) -> usize {
+    let chunk_bytes = end.saturating_sub(start).saturating_add(1);
+    let expected_requests = chunk_bytes
+        .saturating_add(ZIBO_CHUNK_REQUEST_WINDOW_BYTES.saturating_sub(1))
+        / ZIBO_CHUNK_REQUEST_WINDOW_BYTES.max(1);
+    usize::try_from(
+        expected_requests
+            .saturating_mul(4)
+            .saturating_add(ZIBO_CHUNK_MAX_CONSECUTIVE_FAILURES as u64),
+    )
+    .unwrap_or(usize::MAX)
+    .max(ZIBO_CHUNK_MAX_CONSECUTIVE_FAILURES + 1)
+}
+
+fn split_chunked_download_progress_range(
+    progress_range: ProgressRange,
+) -> (ProgressRange, ProgressRange) {
+    let span = (progress_range.end - progress_range.start).max(0.0);
+    let transfer_end =
+        progress_range.start + span * ZIBO_CHUNKED_TRANSFER_PROGRESS_RATIO.clamp(0.0, 1.0);
+    (
+        ProgressRange {
+            start: progress_range.start,
+            end: transfer_end,
+        },
+        ProgressRange {
+            start: transfer_end,
+            end: progress_range.end,
+        },
+    )
+}
+
+fn build_chunked_download_parts_dir(output_path: &Path) -> Result<PathBuf> {
+    let parent = output_path
+        .parent()
+        .ok_or_else(|| anyhow!("Download output path does not have a parent directory"))?;
+    let file_name = output_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("Download output path does not have a valid file name"))?;
+
+    for _ in 0..8 {
+        let candidate = parent.join(format!("{}.parts-{}", file_name, Uuid::new_v4().simple()));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+
+    Err(anyhow!(
+        "Failed to allocate a temporary parts directory for '{}'",
+        output_path.display()
+    ))
+}
+
+fn build_drive_download_pieces(
+    file_size: u64,
+    parts_dir: &Path,
+    window_bytes: u64,
+) -> Vec<DriveDownloadPiece> {
+    if file_size == 0 {
+        return Vec::new();
+    }
+
+    let window_bytes = window_bytes.max(1);
+    let mut pieces = Vec::new();
+    let mut start = 0u64;
+    let mut index = 0usize;
+
+    while start < file_size {
+        let end = start
+            .saturating_add(window_bytes.saturating_sub(1))
+            .min(file_size.saturating_sub(1));
+        pieces.push(DriveDownloadPiece {
+            index,
+            start,
+            end,
+            part_path: parts_dir.join(format!("{:05}_{}-{}.part", index, start, end)),
+        });
+        start = end.saturating_add(1);
+        index = index.saturating_add(1);
+    }
+
+    pieces
+}
+
+fn total_piece_bytes(pieces: &[DriveDownloadPiece]) -> u64 {
+    pieces.iter().map(DriveDownloadPiece::len).sum()
+}
+
+fn build_chunked_download_client(timeout_secs: u64) -> Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(timeout_secs))
+        .user_agent("XFast-Manager/ZiboUpdater")
+        .http1_only()
+        .build()
+        .context("Failed to create chunked download HTTP client")
+}
+
+fn merge_download_pieces_with_progress<F>(
+    pieces: &[DriveDownloadPiece],
+    merged_path: &Path,
+    mut on_progress: F,
+) -> Result<()>
+where
+    F: FnMut(u64, u64, Option<&Path>) -> Result<()>,
+{
+    let total_bytes = total_piece_bytes(pieces);
+    let mut processed_bytes = 0u64;
+    let mut output = fs::File::create(merged_path)
+        .with_context(|| format!("Failed to create '{}'", merged_path.display()))?;
+    let mut buffer = vec![0u8; ZIBO_FILE_IO_BUFFER_BYTES];
+
+    for piece in pieces {
+        let mut input = fs::File::open(&piece.part_path)
+            .with_context(|| format!("Failed to open '{}'", piece.part_path.display()))?;
+        let mut remaining = piece.len();
+        while remaining > 0 {
+            let read_limit = remaining.min(buffer.len() as u64) as usize;
+            let read = input
+                .read(&mut buffer[..read_limit])
+                .with_context(|| format!("Failed to read '{}'", piece.part_path.display()))?;
+            if read == 0 {
+                return Err(anyhow!(
+                    "Unexpected end of part file '{}'",
+                    piece.part_path.display()
+                ));
+            }
+            output
+                .write_all(&buffer[..read])
+                .with_context(|| format!("Failed to write '{}'", merged_path.display()))?;
+            remaining = remaining.saturating_sub(read as u64);
+            processed_bytes = processed_bytes.saturating_add(read as u64);
+            on_progress(
+                processed_bytes,
+                total_bytes,
+                Some(piece.part_path.as_path()),
+            )?;
+        }
+    }
+
+    output
+        .flush()
+        .with_context(|| format!("Failed to flush '{}'", merged_path.display()))?;
+    on_progress(processed_bytes, total_bytes, None)?;
+    Ok(())
+}
+
 async fn execute_patch_update(
     planned_update: &PlannedZiboUpdate,
     target_path: &Path,
@@ -1480,16 +2595,19 @@ async fn execute_patch_update(
     item_type: &str,
     folder_name: &str,
 ) -> Result<(usize, String, Option<String>)> {
+    let patch_started_at = Instant::now();
     let workdir = tempfile::tempdir().context("Failed to create Zibo update temp directory")?;
     let downloads_dir = workdir.path().join("downloads");
     let unpacked_dir = workdir.path().join("unpacked");
     fs::create_dir_all(&downloads_dir).context("Failed to create Zibo download directory")?;
     fs::create_dir_all(&unpacked_dir).context("Failed to create Zibo extraction directory")?;
 
+    let download_started_at = Instant::now();
     let archives = download_releases_from_drive_with_order(
         &[planned_update.primary_release.clone()],
         current_drive_source_order(),
         &downloads_dir,
+        DriveDownloadMode::Single,
         task_control,
         progress_callback,
         item_type,
@@ -1505,6 +2623,18 @@ async fn execute_patch_update(
         .next()
         .ok_or_else(|| anyhow!("Patch download completed without a Zibo archive"))?;
     let source_label = archive.file.source.label.to_string();
+    log_timed_step(
+        "patch download",
+        download_started_at,
+        format!(
+            "archive={} bytes={} source={}",
+            archive.release.title,
+            format_binary_size(archive.file.total_bytes),
+            source_label
+        ),
+    );
+
+    let apply_started_at = Instant::now();
     let updated_files = apply_downloaded_archive_to_target(
         &archive,
         &unpacked_dir,
@@ -1523,6 +2653,15 @@ async fn execute_patch_update(
         item_type,
         folder_name,
     )?;
+    log_timed_step(
+        "patch install workflow",
+        apply_started_at,
+        format!(
+            "archive={} updatedFiles={}",
+            archive.release.title, updated_files
+        ),
+    );
+    log_timed_step("patch update total", patch_started_at, String::new());
 
     Ok((updated_files, source_label, None))
 }
@@ -1532,12 +2671,14 @@ async fn execute_major_clean_update(
     target_path: &Path,
     preserve_liveries: bool,
     preserve_config_files: bool,
+    full_package_download_mode: DriveDownloadMode,
     total_download_bytes: u64,
     task_control: Option<&TaskControl>,
     progress_callback: &Option<AddonUpdateProgressCallback>,
     item_type: &str,
     folder_name: &str,
 ) -> Result<(usize, String, Option<String>)> {
+    let major_started_at = Instant::now();
     emit_progress_event(
         progress_callback,
         item_type,
@@ -1552,11 +2693,63 @@ async fn execute_major_clean_update(
         None,
     );
 
-    let backup = prepare_zibo_backup(target_path, preserve_liveries, preserve_config_files)?;
+    let backup_started_at = Instant::now();
+    let mut last_backup_emit_at = Instant::now();
+    let backup = prepare_zibo_backup(
+        target_path,
+        preserve_liveries,
+        preserve_config_files,
+        |processed_bytes, total_bytes, processed_files, total_files, current_file| {
+            ensure_not_cancelled(task_control, "install")?;
+            let force_emit = total_bytes == 0 || processed_bytes >= total_bytes;
+            if take_emit_interval_secs(&mut last_backup_emit_at, force_emit).is_some() {
+                emit_file_operation_progress(
+                    progress_callback,
+                    item_type,
+                    folder_name,
+                    ProgressRange {
+                        start: 0.0,
+                        end: ZIBO_MAJOR_BACKUP_PROGRESS_MAX,
+                    },
+                    processed_bytes,
+                    total_bytes,
+                    &format!(
+                        "Backing up Zibo files ({}/{})",
+                        processed_files, total_files
+                    ),
+                    current_file,
+                );
+            }
+            Ok(())
+        },
+    )?;
+    if let Some(backup_state) = backup.as_ref() {
+        let (backup_files, backup_bytes) = backup_totals(backup_state);
+        log_timed_step(
+            "prepare backup",
+            backup_started_at,
+            format!(
+                "files={} bytes={} preserveLiveries={} preserveConfig={}",
+                backup_files,
+                format_binary_size(backup_bytes),
+                preserve_liveries,
+                preserve_config_files
+            ),
+        );
+    } else {
+        log_timed_step(
+            "prepare backup",
+            backup_started_at,
+            "no files selected for preservation".to_string(),
+        );
+    }
+
+    let verify_backup_started_at = Instant::now();
     if let Some(backup_state) = backup.as_ref() {
         verify_zibo_backup(backup_state)
             .context("Backup verification failed before clean install")?;
     }
+    log_timed_step("verify backup", verify_backup_started_at, String::new());
 
     emit_progress_event(
         progress_callback,
@@ -1572,6 +2765,7 @@ async fn execute_major_clean_update(
         None,
     );
 
+    let rename_started_at = Instant::now();
     let renamed_old_path = build_renamed_zibo_path(target_path)?;
     fs::rename(target_path, &renamed_old_path).with_context(|| {
         format!(
@@ -1580,6 +2774,15 @@ async fn execute_major_clean_update(
             renamed_old_path.display()
         )
     })?;
+    log_timed_step(
+        "rename current install",
+        rename_started_at,
+        format!(
+            "from='{}' to='{}'",
+            target_path.display(),
+            renamed_old_path.display()
+        ),
+    );
 
     emit_progress_event(
         progress_callback,
@@ -1621,10 +2824,12 @@ async fn execute_major_clean_update(
             }]
         };
 
+        let download_started_at = Instant::now();
         let archives = download_releases_from_drive_with_order(
             &releases,
             current_drive_source_order(),
             &downloads_dir,
+            full_package_download_mode,
             task_control,
             progress_callback,
             item_type,
@@ -1636,6 +2841,20 @@ async fn execute_major_clean_update(
             .first()
             .map(|archive| archive.file.source.label.to_string())
             .unwrap_or_else(|| "unknown-source".to_string());
+        let archive_bytes = archives
+            .iter()
+            .map(|archive| archive.file.total_bytes)
+            .sum::<u64>();
+        log_timed_step(
+            "download planned archives",
+            download_started_at,
+            format!(
+                "count={} bytes={} source={}",
+                archives.len(),
+                format_binary_size(archive_bytes),
+                source_label
+            ),
+        );
 
         let full_extract_range = if planned_update.follow_up_patch.is_some() {
             ProgressRange {
@@ -1660,6 +2879,7 @@ async fn execute_major_clean_update(
             }
         };
 
+        let full_apply_started_at = Instant::now();
         let mut updated_files = apply_downloaded_archive_to_target(
             archives
                 .first()
@@ -1674,8 +2894,19 @@ async fn execute_major_clean_update(
             item_type,
             folder_name,
         )?;
+        if let Some(full_archive) = archives.first() {
+            log_timed_step(
+                "apply full package",
+                full_apply_started_at,
+                format!(
+                    "archive={} updatedFiles={}",
+                    full_archive.release.title, updated_files
+                ),
+            );
+        }
 
         if let Some(patch_archive) = archives.get(1) {
+            let patch_apply_started_at = Instant::now();
             updated_files += apply_downloaded_archive_to_target(
                 patch_archive,
                 &unpacked_dir,
@@ -1694,25 +2925,58 @@ async fn execute_major_clean_update(
                 item_type,
                 folder_name,
             )?;
+            log_timed_step(
+                "apply follow-up patch",
+                patch_apply_started_at,
+                format!(
+                    "archive={} cumulativeUpdatedFiles={}",
+                    patch_archive.release.title, updated_files
+                ),
+            );
         }
 
         if let Some(backup_state) = backup.as_ref() {
-            emit_progress_event(
-                progress_callback,
-                item_type,
-                folder_name,
-                "install",
-                "in_progress",
-                ZIBO_MAJOR_PATCH_COPY_PROGRESS_MAX,
-                total_download_bytes,
-                total_download_bytes,
-                0.0,
-                Some("Restoring preserved Zibo files".to_string()),
-                None,
-            );
-            restore_zibo_backup(backup_state, target_path)?;
+            let restore_started_at = Instant::now();
+            let mut last_restore_emit_at = Instant::now();
+            restore_zibo_backup(
+                backup_state,
+                target_path,
+                |processed_bytes, total_bytes, processed_files, total_files, current_file| {
+                    ensure_not_cancelled(task_control, "install")?;
+                    let force_emit = total_bytes == 0 || processed_bytes >= total_bytes;
+                    if take_emit_interval_secs(&mut last_restore_emit_at, force_emit).is_some() {
+                        emit_file_operation_progress(
+                            progress_callback,
+                            item_type,
+                            folder_name,
+                            ProgressRange {
+                                start: ZIBO_MAJOR_PATCH_COPY_PROGRESS_MAX,
+                                end: ZIBO_MAJOR_RESTORE_PROGRESS_MAX,
+                            },
+                            processed_bytes,
+                            total_bytes,
+                            &format!(
+                                "Restoring preserved Zibo files ({}/{})",
+                                processed_files, total_files
+                            ),
+                            current_file,
+                        );
+                    }
+                    Ok(())
+                },
+            )?;
             verify_zibo_restore(backup_state, target_path)
                 .context("Restored Zibo backup verification failed")?;
+            let (backup_files, backup_bytes) = backup_totals(backup_state);
+            log_timed_step(
+                "restore preserved files",
+                restore_started_at,
+                format!(
+                    "files={} bytes={}",
+                    backup_files,
+                    format_binary_size(backup_bytes)
+                ),
+            );
             let _ = fs::remove_dir_all(&backup_state.temp_dir);
         }
 
@@ -1730,6 +2994,7 @@ async fn execute_major_clean_update(
             None,
         );
 
+        let cleanup_started_at = Instant::now();
         let cleanup_warning = match remove_dir_all_robust(&renamed_old_path) {
             Ok(()) => None,
             Err(err) => {
@@ -1743,13 +3008,21 @@ async fn execute_major_clean_update(
                 ))
             }
         };
+        log_timed_step(
+            "cleanup previous install",
+            cleanup_started_at,
+            cleanup_warning.clone().unwrap_or_default(),
+        );
 
         Ok((updated_files, source_label, cleanup_warning))
     }
     .await;
 
     match install_result {
-        Ok(result) => Ok(result),
+        Ok(result) => {
+            log_timed_step("major clean update total", major_started_at, String::new());
+            Ok(result)
+        }
         Err(err) => {
             if let Some(backup_state) = backup.as_ref() {
                 log_info(format!(
@@ -1758,8 +3031,12 @@ async fn execute_major_clean_update(
                 ));
             }
 
+            let rollback_started_at = Instant::now();
             match restore_original_zibo_folder(target_path, &renamed_old_path) {
-                Ok(()) => Err(anyhow!("{} Original Zibo installation was restored.", err)),
+                Ok(()) => {
+                    log_timed_step("rollback original install", rollback_started_at, String::new());
+                    Err(anyhow!("{} Original Zibo installation was restored.", err))
+                }
                 Err(restore_err) => Err(anyhow!(
                     "{} Original Zibo folder remains at '{}' and could not be restored automatically: {}",
                     err,
@@ -1784,6 +3061,7 @@ fn apply_downloaded_archive_to_target(
     folder_name: &str,
 ) -> Result<usize> {
     ensure_not_cancelled(task_control, "install")?;
+    let apply_started_at = Instant::now();
     let archive_extract_dir = unpack_root.join(format!("extract_{}", Uuid::new_v4().simple()));
     fs::create_dir_all(&archive_extract_dir)
         .with_context(|| format!("Failed to create '{}'", archive_extract_dir.display()))?;
@@ -1794,70 +3072,144 @@ fn apply_downloaded_archive_to_target(
         .unwrap_or("zibo.zip")
         .to_string();
 
+    let extract_started_at = Instant::now();
     let mut last_extract_emit_at = Instant::now();
     unzip_archive_with_progress(
         &archive.zip_path,
         &archive_extract_dir,
-        |processed_entries, total_entries| {
+        |processed_bytes, total_bytes, processed_entries, total_entries, current_file| {
             ensure_not_cancelled(task_control, "install")?;
-            let force_emit = total_entries == 0 || processed_entries >= total_entries;
+            let force_emit = total_bytes == 0 || processed_bytes >= total_bytes;
             if take_emit_interval_secs(&mut last_extract_emit_at, force_emit).is_some() {
-                emit_progress_event(
+                emit_file_operation_progress(
                     progress_callback,
                     item_type,
                     folder_name,
-                    "install",
-                    "in_progress",
-                    interpolate_progress(
-                        extract_range.start,
-                        extract_range.end,
-                        processed_entries,
-                        total_entries,
-                    ),
-                    total_download_bytes,
-                    total_download_bytes,
-                    0.0,
-                    Some(format!(
+                    extract_range,
+                    processed_bytes,
+                    total_bytes,
+                    &format!(
                         "Extracting Zibo archive ({}/{})",
                         processed_entries, total_entries
-                    )),
-                    Some(archive_name.clone()),
+                    ),
+                    current_file.or(Some(Path::new(&archive_name))),
                 );
             }
             Ok(())
         },
     )?;
+    let extracted_info = directory_info(&archive_extract_dir).unwrap_or(DirectoryInfo {
+        file_count: 0,
+        total_size: 0,
+    });
+    log_timed_step(
+        &format!("extract archive {}", archive.release.title),
+        extract_started_at,
+        format!(
+            "entries={} bytes={}",
+            extracted_info.file_count,
+            format_binary_size(extracted_info.total_size)
+        ),
+    );
 
     let extracted_root = find_extracted_zibo_root(&archive_extract_dir)?;
+    let copy_started_at = Instant::now();
     let mut last_copy_emit_at = Instant::now();
-    copy_dir_contents_overwrite_with_progress(&extracted_root, target_path, |copied, total| {
-        ensure_not_cancelled(task_control, "install")?;
-        let force_emit = total == 0 || copied >= total;
-        if take_emit_interval_secs(&mut last_copy_emit_at, force_emit).is_some() {
-            emit_progress_event(
-                progress_callback,
-                item_type,
-                folder_name,
-                "install",
-                "in_progress",
-                interpolate_progress(copy_range.start, copy_range.end, copied, total),
-                total_download_bytes,
-                total_download_bytes,
-                0.0,
-                Some(format!("Applying Zibo files ({}/{})", copied, total)),
-                Some(archive.release.title.clone()),
-            );
-        }
-        Ok(())
-    })
+    let updated_files = copy_dir_contents_overwrite_with_progress(
+        &extracted_root,
+        target_path,
+        |processed_bytes, total_bytes, copied, total, current_file| {
+            ensure_not_cancelled(task_control, "install")?;
+            let force_emit = total_bytes == 0 || processed_bytes >= total_bytes;
+            if take_emit_interval_secs(&mut last_copy_emit_at, force_emit).is_some() {
+                emit_file_operation_progress(
+                    progress_callback,
+                    item_type,
+                    folder_name,
+                    copy_range,
+                    processed_bytes,
+                    total_bytes,
+                    &format!("Applying Zibo files ({}/{})", copied, total),
+                    current_file.or(Some(Path::new(&archive.release.title))),
+                );
+            }
+            Ok(())
+        },
+    )?;
+    let copied_info = directory_info(&extracted_root).unwrap_or(DirectoryInfo {
+        file_count: updated_files as u64,
+        total_size: 0,
+    });
+    log_timed_step(
+        &format!("apply archive {}", archive.release.title),
+        copy_started_at,
+        format!(
+            "files={} bytes={}",
+            updated_files,
+            format_binary_size(copied_info.total_size)
+        ),
+    );
+    log_timed_step(
+        &format!("archive workflow {}", archive.release.title),
+        apply_started_at,
+        String::new(),
+    );
+    let _ = total_download_bytes;
+    Ok(updated_files)
 }
 
-fn prepare_zibo_backup(
+fn prepare_zibo_backup<F>(
     target_path: &Path,
     preserve_liveries: bool,
     preserve_config_files: bool,
-) -> Result<Option<ZiboBackupState>> {
+    mut on_progress: F,
+) -> Result<Option<ZiboBackupState>>
+where
+    F: FnMut(u64, u64, u64, u64, Option<&Path>) -> Result<()>,
+{
     if !target_path.exists() || (!preserve_liveries && !preserve_config_files) {
+        return Ok(None);
+    }
+
+    let mut total_files = 0u64;
+    let mut total_bytes = 0u64;
+    let mut config_candidates: Vec<(String, PathBuf, u64)> = Vec::new();
+
+    let liveries_src = target_path.join("liveries");
+    let liveries_info = if preserve_liveries && liveries_src.exists() && liveries_src.is_dir() {
+        let info = directory_info(&liveries_src)?;
+        total_files = total_files.saturating_add(info.file_count);
+        total_bytes = total_bytes.saturating_add(info.total_size);
+        Some(info)
+    } else {
+        None
+    };
+
+    if preserve_config_files {
+        let patterns = compile_zibo_config_patterns()?;
+        for entry in fs::read_dir(target_path)
+            .with_context(|| format!("Failed to read '{}'", target_path.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            if !patterns.iter().any(|pattern| pattern.matches(name)) {
+                continue;
+            }
+
+            let size = fs::metadata(&path)?.len();
+            total_files = total_files.saturating_add(1);
+            total_bytes = total_bytes.saturating_add(size);
+            config_candidates.push((name.to_string(), path, size));
+        }
+    }
+
+    if total_files == 0 {
         return Ok(None);
     }
 
@@ -1877,49 +3229,47 @@ fn prepare_zibo_backup(
         original_liveries_info: None,
         original_pref_sizes: Vec::new(),
     };
+    let mut processed_bytes = 0u64;
+    let mut processed_files = 0u64;
 
-    if preserve_liveries {
-        let liveries_src = target_path.join("liveries");
-        if liveries_src.exists() && liveries_src.is_dir() {
-            backup.original_liveries_info = Some(directory_info(&liveries_src)?);
-            let liveries_dst = temp_dir.join("liveries");
-            copy_dir_recursive(&liveries_src, &liveries_dst)
-                .context("Failed to backup Zibo liveries")?;
-            backup.liveries_path = Some(liveries_dst);
-        }
+    if let Some(info) = liveries_info {
+        backup.original_liveries_info = Some(info);
+        let liveries_dst = temp_dir.join("liveries");
+        copy_dir_contents_overwrite_with_progress(
+            &liveries_src,
+            &liveries_dst,
+            |copied_bytes, _, copied_files, _, current_file| {
+                let current_path = current_file.map(|path| PathBuf::from("liveries").join(path));
+                on_progress(
+                    processed_bytes.saturating_add(copied_bytes),
+                    total_bytes,
+                    processed_files.saturating_add(copied_files),
+                    total_files,
+                    current_path.as_deref(),
+                )
+            },
+        )
+        .context("Failed to backup Zibo liveries")?;
+        processed_bytes = processed_bytes.saturating_add(info.total_size);
+        processed_files = processed_files.saturating_add(info.file_count);
+        backup.liveries_path = Some(liveries_dst);
     }
 
-    if preserve_config_files {
-        let patterns = compile_zibo_config_patterns()?;
-        for entry in fs::read_dir(target_path)
-            .with_context(|| format!("Failed to read '{}'", target_path.display()))?
-        {
-            let entry = entry?;
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
-                continue;
-            };
-            if !patterns.iter().any(|pattern| pattern.matches(name)) {
-                continue;
-            }
-
-            let backup_path = temp_dir.join(name);
-            fs::copy(&path, &backup_path)
-                .with_context(|| format!("Failed to backup '{}'", path.display()))?;
-            let original_size = fs::metadata(&path)?.len();
-            backup.pref_files.push((name.to_string(), backup_path));
-            backup
-                .original_pref_sizes
-                .push((name.to_string(), original_size));
-        }
-    }
-
-    if backup.liveries_path.is_none() && backup.pref_files.is_empty() {
-        let _ = fs::remove_dir_all(&backup.temp_dir);
-        return Ok(None);
+    for (name, path, original_size) in config_candidates {
+        let backup_path = temp_dir.join(&name);
+        copy_file_with_progress(
+            &path,
+            &backup_path,
+            &mut processed_bytes,
+            total_bytes,
+            &mut processed_files,
+            total_files,
+            Some(Path::new(&name)),
+            &mut on_progress,
+        )
+        .with_context(|| format!("Failed to backup '{}'", path.display()))?;
+        backup.pref_files.push((name.clone(), backup_path));
+        backup.original_pref_sizes.push((name, original_size));
     }
 
     Ok(Some(backup))
@@ -1933,6 +3283,27 @@ fn compile_zibo_config_patterns() -> Result<Vec<Pattern>> {
                 .map_err(|err| anyhow!("Invalid config pattern '{}': {}", pattern, err))
         })
         .collect()
+}
+
+fn backup_totals(backup: &ZiboBackupState) -> (u64, u64) {
+    let liveries_files = backup
+        .original_liveries_info
+        .map(|info| info.file_count)
+        .unwrap_or(0);
+    let liveries_bytes = backup
+        .original_liveries_info
+        .map(|info| info.total_size)
+        .unwrap_or(0);
+    let pref_files = backup.original_pref_sizes.len() as u64;
+    let pref_bytes = backup
+        .original_pref_sizes
+        .iter()
+        .map(|(_, size)| *size)
+        .sum::<u64>();
+    (
+        liveries_files.saturating_add(pref_files),
+        liveries_bytes.saturating_add(pref_bytes),
+    )
 }
 
 fn verify_zibo_backup(backup: &ZiboBackupState) -> Result<()> {
@@ -1979,19 +3350,94 @@ fn verify_zibo_backup(backup: &ZiboBackupState) -> Result<()> {
     Ok(())
 }
 
-fn restore_zibo_backup(backup: &ZiboBackupState, target_path: &Path) -> Result<()> {
+fn restore_zibo_backup<F>(
+    backup: &ZiboBackupState,
+    target_path: &Path,
+    mut on_progress: F,
+) -> Result<()>
+where
+    F: FnMut(u64, u64, u64, u64, Option<&Path>) -> Result<()>,
+{
+    let liveries_info = if let Some(liveries_backup) = backup.liveries_path.as_ref() {
+        Some(directory_info(liveries_backup)?)
+    } else {
+        None
+    };
+    let pref_total_bytes = backup
+        .original_pref_sizes
+        .iter()
+        .map(|(_, size)| *size)
+        .sum::<u64>();
+    let total_bytes = liveries_info
+        .map(|info| info.total_size)
+        .unwrap_or(0)
+        .saturating_add(pref_total_bytes);
+    let total_files = liveries_info
+        .map(|info| info.file_count)
+        .unwrap_or(0)
+        .saturating_add(backup.pref_files.len() as u64);
+    let mut processed_bytes = 0u64;
+    let mut processed_files = 0u64;
+
     if let Some(liveries_backup) = backup.liveries_path.as_ref() {
         let liveries_target = target_path.join("liveries");
         if liveries_target.exists() {
-            merge_directories_skip_existing(liveries_backup, &liveries_target)?;
+            merge_directories_skip_existing_with_progress(
+                liveries_backup,
+                liveries_backup,
+                &liveries_target,
+                &mut processed_bytes,
+                total_bytes,
+                &mut processed_files,
+                total_files,
+                &mut |current_bytes, _, current_files, _, current_file| {
+                    let current_path =
+                        current_file.map(|path| PathBuf::from("liveries").join(path));
+                    on_progress(
+                        current_bytes,
+                        total_bytes,
+                        current_files,
+                        total_files,
+                        current_path.as_deref(),
+                    )
+                },
+            )?;
         } else {
-            copy_dir_recursive(liveries_backup, &liveries_target)?;
+            copy_dir_contents_overwrite_with_progress(
+                liveries_backup,
+                &liveries_target,
+                |current_bytes, _, current_files, _, current_file| {
+                    let current_path =
+                        current_file.map(|path| PathBuf::from("liveries").join(path));
+                    on_progress(
+                        current_bytes,
+                        total_bytes,
+                        current_files,
+                        total_files,
+                        current_path.as_deref(),
+                    )
+                },
+            )?;
+            if let Some(info) = liveries_info {
+                processed_bytes = processed_bytes.saturating_add(info.total_size);
+                processed_files = processed_files.saturating_add(info.file_count);
+            }
         }
     }
 
     for (filename, backup_path) in &backup.pref_files {
         let target_file = target_path.join(filename);
-        fs::copy(backup_path, &target_file).with_context(|| {
+        copy_file_with_progress(
+            backup_path,
+            &target_file,
+            &mut processed_bytes,
+            total_bytes,
+            &mut processed_files,
+            total_files,
+            Some(Path::new(filename)),
+            &mut on_progress,
+        )
+        .with_context(|| {
             format!(
                 "Failed to restore '{}' from '{}'",
                 target_file.display(),
@@ -2096,11 +3542,121 @@ fn directory_info(dir: &Path) -> Result<DirectoryInfo> {
     })
 }
 
-fn copy_dir_recursive(source_dir: &Path, target_dir: &Path) -> Result<()> {
-    copy_dir_contents_overwrite_with_progress(source_dir, target_dir, |_, _| Ok(())).map(|_| ())
+fn copy_reader_to_file_with_progress<R, F>(
+    reader: &mut R,
+    destination: &Path,
+    file_size: u64,
+    processed_bytes: &mut u64,
+    total_bytes: u64,
+    processed_files: &mut u64,
+    total_files: u64,
+    current_file: Option<&Path>,
+    on_progress: &mut F,
+) -> Result<()>
+where
+    R: Read,
+    F: FnMut(u64, u64, u64, u64, Option<&Path>) -> Result<()>,
+{
+    let mut output = fs::File::create(destination)
+        .with_context(|| format!("Failed to create '{}'", destination.display()))?;
+    let mut buffer = vec![0u8; ZIBO_FILE_IO_BUFFER_BYTES];
+    let mut remaining = file_size;
+
+    while remaining > 0 {
+        let read_limit = remaining.min(buffer.len() as u64) as usize;
+        let read = reader.read(&mut buffer[..read_limit]).with_context(|| {
+            format!("Failed to read source data for '{}'", destination.display())
+        })?;
+        if read == 0 {
+            return Err(anyhow!(
+                "Unexpected end of stream while writing '{}'",
+                destination.display()
+            ));
+        }
+        output
+            .write_all(&buffer[..read])
+            .with_context(|| format!("Failed to write '{}'", destination.display()))?;
+        *processed_bytes = processed_bytes.saturating_add(read as u64);
+        remaining = remaining.saturating_sub(read as u64);
+        on_progress(
+            *processed_bytes,
+            total_bytes,
+            *processed_files,
+            total_files,
+            current_file,
+        )?;
+    }
+
+    output.flush().ok();
+    *processed_files = processed_files.saturating_add(1);
+    on_progress(
+        *processed_bytes,
+        total_bytes,
+        *processed_files,
+        total_files,
+        current_file,
+    )?;
+    Ok(())
 }
 
-fn merge_directories_skip_existing(source_dir: &Path, target_dir: &Path) -> Result<()> {
+fn copy_file_with_progress<F>(
+    source: &Path,
+    destination: &Path,
+    processed_bytes: &mut u64,
+    total_bytes: u64,
+    processed_files: &mut u64,
+    total_files: u64,
+    current_file: Option<&Path>,
+    on_progress: &mut F,
+) -> Result<()>
+where
+    F: FnMut(u64, u64, u64, u64, Option<&Path>) -> Result<()>,
+{
+    let file_size = fs::metadata(source)
+        .with_context(|| format!("Failed to read metadata for '{}'", source.display()))?
+        .len();
+    if file_size == 0 {
+        let _ = fs::File::create(destination)
+            .with_context(|| format!("Failed to create '{}'", destination.display()))?;
+        *processed_files = processed_files.saturating_add(1);
+        on_progress(
+            *processed_bytes,
+            total_bytes,
+            *processed_files,
+            total_files,
+            current_file,
+        )?;
+        return Ok(());
+    }
+
+    let mut input =
+        fs::File::open(source).with_context(|| format!("Failed to open '{}'", source.display()))?;
+    copy_reader_to_file_with_progress(
+        &mut input,
+        destination,
+        file_size,
+        processed_bytes,
+        total_bytes,
+        processed_files,
+        total_files,
+        current_file,
+        on_progress,
+    )
+}
+
+fn merge_directories_skip_existing_with_progress<F>(
+    root_source_dir: &Path,
+    source_dir: &Path,
+    target_dir: &Path,
+    processed_bytes: &mut u64,
+    total_bytes: u64,
+    processed_files: &mut u64,
+    total_files: u64,
+    on_progress: &mut F,
+) -> Result<()>
+where
+    F: FnMut(u64, u64, u64, u64, Option<&Path>) -> Result<()>,
+{
     if !target_dir.exists() {
         fs::create_dir_all(target_dir)
             .with_context(|| format!("Failed to create '{}'", target_dir.display()))?;
@@ -2114,11 +3670,32 @@ fn merge_directories_skip_existing(source_dir: &Path, target_dir: &Path) -> Resu
         let target_path = target_dir.join(entry.file_name());
 
         if source_path.is_dir() {
-            merge_directories_skip_existing(&source_path, &target_path)?;
+            merge_directories_skip_existing_with_progress(
+                root_source_dir,
+                &source_path,
+                &target_path,
+                processed_bytes,
+                total_bytes,
+                processed_files,
+                total_files,
+                on_progress,
+            )?;
             continue;
         }
 
+        let file_size = fs::metadata(&source_path)
+            .with_context(|| format!("Failed to read metadata for '{}'", source_path.display()))?
+            .len();
         if target_path.exists() {
+            *processed_bytes = processed_bytes.saturating_add(file_size);
+            *processed_files = processed_files.saturating_add(1);
+            on_progress(
+                *processed_bytes,
+                total_bytes,
+                *processed_files,
+                total_files,
+                source_path.strip_prefix(root_source_dir).ok(),
+            )?;
             continue;
         }
 
@@ -2128,9 +3705,29 @@ fn merge_directories_skip_existing(source_dir: &Path, target_dir: &Path) -> Resu
         }
 
         match fs::rename(&source_path, &target_path) {
-            Ok(()) => {}
+            Ok(()) => {
+                *processed_bytes = processed_bytes.saturating_add(file_size);
+                *processed_files = processed_files.saturating_add(1);
+                on_progress(
+                    *processed_bytes,
+                    total_bytes,
+                    *processed_files,
+                    total_files,
+                    source_path.strip_prefix(root_source_dir).ok(),
+                )?;
+            }
             Err(_) => {
-                fs::copy(&source_path, &target_path).with_context(|| {
+                copy_file_with_progress(
+                    &source_path,
+                    &target_path,
+                    processed_bytes,
+                    total_bytes,
+                    processed_files,
+                    total_files,
+                    source_path.strip_prefix(root_source_dir).ok(),
+                    on_progress,
+                )
+                .with_context(|| {
                     format!(
                         "Failed to copy '{}' to '{}'",
                         source_path.display(),
@@ -2227,13 +3824,28 @@ fn unzip_archive_with_progress<F>(
     mut on_progress: F,
 ) -> Result<()>
 where
-    F: FnMut(u64, u64) -> Result<()>,
+    F: FnMut(u64, u64, u64, u64, Option<&Path>) -> Result<()>,
 {
     let file = fs::File::open(archive_path)
         .with_context(|| format!("Failed to open '{}'", archive_path.display()))?;
     let mut archive = ZipArchive::new(file)
         .with_context(|| format!("Failed to read ZIP '{}'", archive_path.display()))?;
     let total_entries = archive.len() as u64;
+    let mut total_bytes = 0u64;
+    for idx in 0..archive.len() {
+        let entry = archive.by_index(idx).with_context(|| {
+            format!(
+                "Failed to inspect ZIP entry {} from '{}'",
+                idx,
+                archive_path.display()
+            )
+        })?;
+        if entry.is_file() {
+            total_bytes = total_bytes.saturating_add(entry.size());
+        }
+    }
+    let mut processed_entries = 0u64;
+    let mut processed_bytes = 0u64;
 
     for idx in 0..archive.len() {
         let mut entry = archive.by_index(idx).with_context(|| {
@@ -2244,14 +3856,28 @@ where
             )
         })?;
         let Some(enclosed) = entry.enclosed_name().map(|path| path.to_path_buf()) else {
-            on_progress((idx + 1) as u64, total_entries)?;
+            processed_entries = processed_entries.saturating_add(1);
+            on_progress(
+                processed_bytes,
+                total_bytes,
+                processed_entries,
+                total_entries,
+                None,
+            )?;
             continue;
         };
         let destination = output_dir.join(enclosed);
         if entry.is_dir() {
             fs::create_dir_all(&destination)
                 .with_context(|| format!("Failed to create '{}'", destination.display()))?;
-            on_progress((idx + 1) as u64, total_entries)?;
+            processed_entries = processed_entries.saturating_add(1);
+            on_progress(
+                processed_bytes,
+                total_bytes,
+                processed_entries,
+                total_entries,
+                entry.enclosed_name().as_deref(),
+            )?;
             continue;
         }
 
@@ -2260,12 +3886,20 @@ where
                 .with_context(|| format!("Failed to create '{}'", parent.display()))?;
         }
 
-        let mut output = fs::File::create(&destination)
-            .with_context(|| format!("Failed to create '{}'", destination.display()))?;
-        std::io::copy(&mut entry, &mut output)
-            .with_context(|| format!("Failed to extract '{}'", destination.display()))?;
-        output.flush().ok();
-        on_progress((idx + 1) as u64, total_entries)?;
+        let entry_name = entry.enclosed_name().map(|path| path.to_path_buf());
+        let entry_size = entry.size();
+        copy_reader_to_file_with_progress(
+            &mut entry,
+            &destination,
+            entry_size,
+            &mut processed_bytes,
+            total_bytes,
+            &mut processed_entries,
+            total_entries,
+            entry_name.as_deref(),
+            &mut on_progress,
+        )
+        .with_context(|| format!("Failed to extract '{}'", destination.display()))?;
     }
 
     Ok(())
@@ -2317,15 +3951,14 @@ fn copy_dir_contents_overwrite_with_progress<F>(
     mut on_progress: F,
 ) -> Result<usize>
 where
-    F: FnMut(u64, u64) -> Result<()>,
+    F: FnMut(u64, u64, u64, u64, Option<&Path>) -> Result<()>,
 {
-    let total_files = walkdir::WalkDir::new(source_dir)
-        .follow_links(false)
-        .into_iter()
-        .flatten()
-        .filter(|entry| entry.file_type().is_file())
-        .count() as u64;
+    let info = directory_info(source_dir)?;
+    let total_files = info.file_count;
+    let total_bytes = info.total_size;
     let mut copied_files = 0usize;
+    let mut processed_bytes = 0u64;
+    let mut processed_files = 0u64;
 
     for entry in walkdir::WalkDir::new(source_dir)
         .follow_links(false)
@@ -2352,7 +3985,17 @@ where
                 .with_context(|| format!("Failed to create '{}'", parent.display()))?;
         }
 
-        fs::copy(path, &destination).with_context(|| {
+        copy_file_with_progress(
+            path,
+            &destination,
+            &mut processed_bytes,
+            total_bytes,
+            &mut processed_files,
+            total_files,
+            Some(relative),
+            &mut on_progress,
+        )
+        .with_context(|| {
             format!(
                 "Failed to copy '{}' to '{}'",
                 path.display(),
@@ -2360,7 +4003,6 @@ where
             )
         })?;
         copied_files += 1;
-        on_progress(copied_files as u64, total_files)?;
     }
 
     Ok(copied_files)
@@ -2461,5 +4103,101 @@ mod tests {
             query,
             "'folder\\'1' in parents and name = 'B738X_\\'special\\'.zip' and trashed = false"
         );
+    }
+
+    #[test]
+    fn full_package_download_mode_follows_settings() {
+        let disabled = AddonUpdateOptions {
+            use_beta: false,
+            include_liveries: false,
+            apply_blacklist: false,
+            rollback_on_failure: false,
+            parallel_downloads: None,
+            channel: None,
+            fresh_install: false,
+            preserve_liveries: false,
+            preserve_config_files: false,
+            chunked_download_enabled: Some(false),
+            threads_per_task: Some(8),
+            total_threads: None,
+        };
+        assert!(matches!(
+            zibo_full_package_download_mode(&disabled),
+            DriveDownloadMode::Single
+        ));
+
+        let single_thread = AddonUpdateOptions {
+            chunked_download_enabled: Some(true),
+            threads_per_task: Some(1),
+            ..disabled.clone()
+        };
+        assert!(matches!(
+            zibo_full_package_download_mode(&single_thread),
+            DriveDownloadMode::Single
+        ));
+
+        let multi_thread = AddonUpdateOptions {
+            chunked_download_enabled: Some(true),
+            threads_per_task: Some(12),
+            ..disabled.clone()
+        };
+        assert!(matches!(
+            zibo_full_package_download_mode(&multi_thread),
+            DriveDownloadMode::Chunked(ChunkedDriveDownloadConfig {
+                active_connections: 12,
+                window_bytes: ZIBO_CHUNK_REQUEST_WINDOW_BYTES,
+            })
+        ));
+
+        let capped_by_total_threads = AddonUpdateOptions {
+            total_threads: Some(4),
+            ..multi_thread
+        };
+        assert!(matches!(
+            zibo_full_package_download_mode(&capped_by_total_threads),
+            DriveDownloadMode::Chunked(ChunkedDriveDownloadConfig {
+                active_connections: 4,
+                window_bytes: ZIBO_CHUNK_REQUEST_WINDOW_BYTES,
+            })
+        ));
+    }
+
+    #[test]
+    fn drive_confirm_form_url_is_parsed() {
+        let response_url =
+            reqwest::Url::parse("https://drive.google.com/uc?export=download&id=file-123")
+                .expect("valid response url");
+        let html = r#"
+            <html>
+              <body>
+                <form id="download-form" action="https://drive.usercontent.google.com/download">
+                  <input type="hidden" name="id" value="file-123">
+                  <input type="hidden" name="export" value="download">
+                  <input type="hidden" name="confirm" value="t">
+                  <input type="hidden" name="uuid" value="abc123">
+                </form>
+              </body>
+            </html>
+        "#;
+
+        let confirm_url =
+            extract_drive_confirm_download_url(&response_url, html).expect("confirm url");
+
+        assert_eq!(
+            confirm_url.as_str(),
+            "https://drive.usercontent.google.com/download?id=file-123&export=download&confirm=t&uuid=abc123"
+        );
+    }
+
+    #[test]
+    fn chunk_requests_are_windowed_and_budgeted() {
+        assert_eq!(chunk_request_end(0, 1024), 1024);
+        assert_eq!(
+            chunk_request_end(0, ZIBO_CHUNK_REQUEST_WINDOW_BYTES * 3),
+            ZIBO_CHUNK_REQUEST_WINDOW_BYTES - 1
+        );
+
+        let budget = chunk_request_budget(0, ZIBO_CHUNK_REQUEST_WINDOW_BYTES * 3);
+        assert!(budget >= 17);
     }
 }
