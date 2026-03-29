@@ -533,6 +533,7 @@ type NavId =
   | 'activity'
   | 'disk-usage'
   | 'presets'
+  | 'gateway'
   | 'csl'
   | 'settings'
 type NavMeasureId = NavId | 'more'
@@ -554,6 +555,7 @@ const NAV_ORDER: NavId[] = [
   'activity',
   'disk-usage',
   'presets',
+  'gateway',
   'csl',
   'settings',
 ]
@@ -579,6 +581,10 @@ const NAV_ICON_PATHS: Record<NavId, string[]> = {
   ],
   presets: [
     'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4',
+  ],
+  gateway: [
+    'M4 11l8-5 8 5v8a2 2 0 01-2 2h-3v-6H9v6H6a2 2 0 01-2-2v-8z',
+    'M10 11h4',
   ],
   csl: ['M12 4l7 4-7 4-7-4 7-4zm7 4v8l-7 4m7-12l-7 4m-7-4v8l7 4m-7-12l7 4'],
   settings: [
@@ -654,6 +660,13 @@ const allNavItems = computed<NavItem[]>(() => [
     label: t('presets.navTitle'),
     active: route.path === '/presets',
     iconPaths: NAV_ICON_PATHS.presets,
+  },
+  {
+    id: 'gateway',
+    to: '/gateway',
+    label: t('gatewayManager.navTitle'),
+    active: route.path === '/gateway',
+    iconPaths: NAV_ICON_PATHS.gateway,
   },
   {
     id: 'csl',
@@ -867,8 +880,10 @@ const routeOrder: Record<string, number> = {
   '/log-analysis': 3,
   '/activity': 3.5,
   '/disk-usage': 4,
-  '/feedback': 5,
-  '/settings': 6,
+  '/gateway': 5,
+  '/csl': 5.5,
+  '/feedback': 6,
+  '/settings': 7,
   '/onboarding': -1,
 }
 
@@ -1052,11 +1067,11 @@ onMounted(async () => {
     action: () => router.push('/log-analysis'),
   })
   registerShortcut({
-    id: 'nav-map',
+    id: 'nav-gateway',
     keys: 'ctrl+5',
-    label: 'Map',
+    label: t('gatewayManager.navTitle'),
     category: t('commandPalette.categoryNav'),
-    action: () => router.push('/map'),
+    action: () => router.push('/gateway'),
   })
   registerShortcut({
     id: 'nav-settings',

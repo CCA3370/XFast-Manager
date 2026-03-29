@@ -49,6 +49,8 @@ mod verifier;
 mod addon_updater;
 #[path = "management/csl_index.rs"]
 mod csl_index;
+#[path = "management/gateway.rs"]
+mod gateway;
 #[path = "management/management_index.rs"]
 mod management_index;
 #[path = "management/skunk_updater.rs"]
@@ -3440,6 +3442,13 @@ pub fn run() {
             map::map_scan_aircraft,
             map::map_get_aircraft_image,
             map::map_launch_flight,
+            gateway::gateway_search_airports,
+            gateway::gateway_get_airport,
+            gateway::gateway_get_scenery,
+            gateway::gateway_list_installed,
+            gateway::gateway_check_updates,
+            gateway::gateway_install_scenery,
+            gateway::gateway_uninstall_airport,
             // Scenery manager commands
             get_scenery_manager_data,
             update_scenery_entry,

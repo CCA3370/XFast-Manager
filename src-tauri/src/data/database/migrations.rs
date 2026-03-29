@@ -62,6 +62,7 @@ pub async fn reset_schema(conn: &DatabaseConnection) -> Result<(), ApiError> {
         "scenery_packages",
         "activity_log",
         "addon_presets",
+        "gateway_installs",
         "schema_version",   // legacy rusqlite version table
         "seaql_migrations", // reset migration tracking so migration 001 re-runs
     ] {

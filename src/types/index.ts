@@ -557,3 +557,59 @@ export interface CslProgress {
   bytes_downloaded: number
   total_bytes: number
 }
+
+// ========== Gateway Management Types ==========
+
+export interface GatewayAirportSearchResult {
+  icao: string
+  airportName: string | null
+  sceneryCount: number | null
+  recommendedSceneryId: number | null
+  recommendedArtist: string | null
+  recommendedAcceptedAt: string | null
+}
+
+export interface GatewayScenerySummary {
+  sceneryId: number
+  artist: string | null
+  status: string | null
+  approvedDate: string | null
+  comment: string | null
+  recommended: boolean
+}
+
+export interface GatewayAirportDetail {
+  icao: string
+  airportName: string | null
+  sceneryCount: number | null
+  recommendedSceneryId: number | null
+  recommendedArtist: string | null
+  recommendedAcceptedAt: string | null
+  sceneries: GatewayScenerySummary[]
+}
+
+export interface GatewaySceneryDetail {
+  sceneryId: number
+  icao: string | null
+  airportName: string | null
+  status: string | null
+  artist: string | null
+  approvedDate: string | null
+  comment: string | null
+  features: string[]
+}
+
+export interface GatewayInstalledAirport {
+  id: number
+  airportIcao: string
+  airportName: string
+  sceneryId: number
+  folderName: string
+  artist: string | null
+  approvedDate: string | null
+  installedAt: number
+  updateAvailable: boolean | null
+  latestSceneryId: number | null
+  latestArtist: string | null
+  latestApprovedDate: string | null
+}
