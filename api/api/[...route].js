@@ -29,6 +29,17 @@ const handlers = {
 }
 
 function getRouteSegments(req) {
+  if (typeof req.url === 'string' && req.url.length > 0) {
+    const pathname = new URL(req.url, 'https://x-fast-manager.vercel.app').pathname
+    const segments = pathname.split('/').filter(Boolean)
+
+    if (segments[0] === 'api') {
+      return segments.slice(1)
+    }
+
+    return segments
+  }
+
   const route = req.query?.route
 
   if (Array.isArray(route)) {
