@@ -503,7 +503,10 @@ export const useCslStore = defineStore('csl', () => {
           serverBaseUrl: activeServerBaseUrl.value,
           requestId,
         })
-        logDebug(`[${requestId}] invoke altitude_install_package success package=${task.name}`, 'altitude')
+        logDebug(
+          `[${requestId}] invoke altitude_install_package success package=${task.name}`,
+          'altitude',
+        )
 
         toast.success(t('altitude.installSuccess', { name: task.name }))
 
@@ -586,7 +589,10 @@ export const useCslStore = defineStore('csl', () => {
 
         installQueue.value = installQueue.value.slice(1)
         activeInstallTask.value = nextTask
-        logDebug(`Install queue running source=${nextTask.source} name=${nextTask.name}`, nextTask.source)
+        logDebug(
+          `Install queue running source=${nextTask.source} name=${nextTask.name}`,
+          nextTask.source,
+        )
 
         try {
           const shouldRescan = await runInstallTask(nextTask)

@@ -346,12 +346,7 @@ function handleContextMenu(event: MouseEvent) {
         stroke="currentColor"
         viewBox="0 0 24 24"
       >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="3"
-          d="M5 13l4 4L19 7"
-        />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
       </svg>
     </button>
 
@@ -369,7 +364,10 @@ function handleContextMenu(event: MouseEvent) {
         :aria-label="entry.enabled ? t('contextMenu.disable') : t('contextMenu.enable')"
         @update:model-value="emit('toggle-enabled', entry.folderName)"
       />
-      <span v-if="isToggling" class="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <span
+        v-if="isToggling"
+        class="absolute inset-0 flex items-center justify-center pointer-events-none"
+      >
         <svg class="w-3 h-3 animate-spin text-white" fill="none" viewBox="0 0 24 24">
           <circle
             class="opacity-25"

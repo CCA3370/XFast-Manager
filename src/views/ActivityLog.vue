@@ -66,7 +66,9 @@
             </div>
             <p class="text-sm text-gray-600 dark:text-gray-400 truncate">
               {{ entry.itemName }}
-              <span class="text-gray-400 dark:text-gray-500">&middot; {{ typeLabel(entry.itemType) }}</span>
+              <span class="text-gray-400 dark:text-gray-500"
+                >&middot; {{ typeLabel(entry.itemType) }}</span
+              >
             </p>
             <!-- Expandable details -->
             <details v-if="entry.details" class="mt-1">
@@ -77,7 +79,8 @@
               </summary>
               <pre
                 class="mt-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto whitespace-pre-wrap"
-              >{{ formatDetails(entry.details) }}</pre>
+                >{{ formatDetails(entry.details) }}</pre
+              >
             </details>
           </div>
 
@@ -104,7 +107,12 @@
         v-else-if="!store.isLoading"
         class="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-500"
       >
-        <svg class="w-12 h-12 mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg
+          class="w-12 h-12 mb-3 opacity-50"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -117,7 +125,9 @@
 
       <!-- Loading -->
       <div v-if="store.isLoading && store.entries.length === 0" class="flex justify-center py-12">
-        <div class="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <div
+          class="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"
+        ></div>
       </div>
     </div>
   </div>
@@ -177,7 +187,10 @@ const ACTIVITY_TYPE_KEY_MAP: Record<string, string> = {
 }
 
 function normalizeActivityType(type: string): string {
-  const normalized = type.trim().toLowerCase().replace(/[\s-]+/g, '_')
+  const normalized = type
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
   return ACTIVITY_TYPE_KEY_MAP[normalized] ?? normalized
 }
 

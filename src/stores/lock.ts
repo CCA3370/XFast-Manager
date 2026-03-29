@@ -154,11 +154,7 @@ export const useLockStore = defineStore('lock', () => {
   }
 
   // Set lock state explicitly
-  async function setLocked(
-    type: LockItemType,
-    folderName: string,
-    locked: boolean,
-  ) {
+  async function setLocked(type: LockItemType, folderName: string, locked: boolean) {
     const set = getSetForType(type)
     const key = folderName.toLowerCase()
 
@@ -191,10 +187,7 @@ export const useLockStore = defineStore('lock', () => {
     }
   }
 
-  async function applyLockState(
-    snapshot?: Partial<LockedItemsData> | null,
-    xplanePath?: string,
-  ) {
+  async function applyLockState(snapshot?: Partial<LockedItemsData> | null, xplanePath?: string) {
     const normalized = normalizeSnapshot(snapshot)
 
     aircraft.value = new Set(normalized.aircraft)

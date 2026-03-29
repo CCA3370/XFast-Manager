@@ -233,7 +233,9 @@
                   d="M5 3l14 9-14 9V3z"
                 ></path>
               </svg>
-              <span>{{ isXPlaneRunning ? $t('home.xplaneRunning') : $t('home.launchXPlane') }}</span>
+              <span>{{
+                isXPlaneRunning ? $t('home.xplaneRunning') : $t('home.launchXPlane')
+              }}</span>
             </button>
           </div>
 

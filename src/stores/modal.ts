@@ -38,7 +38,12 @@ export const useModalStore = defineStore('modal', () => {
     const uniqueLines = Array.from(new Set(lines))
     const deduplicatedMessage = uniqueLines.join('\n')
 
-    errorModal.value = { visible: true, title, message: deduplicatedMessage, hideReport: options?.hideReport }
+    errorModal.value = {
+      visible: true,
+      title,
+      message: deduplicatedMessage,
+      hideReport: options?.hideReport,
+    }
     // Automatically log error modal messages
     logger.error(`[Modal] ${title ? title + ': ' : ''}${deduplicatedMessage}`, 'ui')
   }

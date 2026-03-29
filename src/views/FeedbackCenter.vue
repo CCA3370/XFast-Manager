@@ -6,7 +6,9 @@
           <h1 class="text-lg md:text-xl font-semibold text-gray-900 dark:text-white">
             <AnimatedText>{{ $t('feedback.myFeedbackTitle') }}</AnimatedText>
           </h1>
-          <p class="feedback-header-subtitle text-xs md:text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <p
+            class="feedback-header-subtitle text-xs md:text-sm text-gray-500 dark:text-gray-400 mt-1"
+          >
             <AnimatedText>{{ $t('feedback.myFeedbackSubtitle') }}</AnimatedText>
           </p>
         </div>
@@ -23,7 +25,9 @@
           class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md overflow-hidden flex flex-col transition-all duration-300 ease-out"
           :class="selectedRecord ? 'flex-none' : 'flex-1 min-h-0'"
         >
-          <div class="px-3 py-2 border-b border-gray-200 dark:border-white/5 flex items-center justify-between gap-2">
+          <div
+            class="px-3 py-2 border-b border-gray-200 dark:border-white/5 flex items-center justify-between gap-2"
+          >
             <div class="min-w-0">
               <h2 class="text-sm font-semibold text-gray-800 dark:text-gray-100">
                 {{ $t('feedback.recordListTitle') }}
@@ -57,7 +61,11 @@
                       : 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
                   "
                 >
-                  {{ selectedRecord.state === 'closed' ? $t('feedback.statusClosed') : $t('feedback.statusOpen') }}
+                  {{
+                    selectedRecord.state === 'closed'
+                      ? $t('feedback.statusClosed')
+                      : $t('feedback.statusOpen')
+                  }}
                 </span>
               </div>
               <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
@@ -90,7 +98,11 @@
                       : 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
                   "
                 >
-                  {{ record.state === 'closed' ? $t('feedback.statusClosed') : $t('feedback.statusOpen') }}
+                  {{
+                    record.state === 'closed'
+                      ? $t('feedback.statusClosed')
+                      : $t('feedback.statusOpen')
+                  }}
                 </span>
               </div>
               <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
@@ -117,11 +129,24 @@
                   <h2 class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
                     {{ selectedRecord.issueTitle }}
                   </h2>
-                  <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5">
+                  <p
+                    class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5"
+                  >
                     <span>#{{ selectedRecord.issueNumber }}</span>
-                    <span>{{ $t('feedback.typeLabel') }}: {{ displayFeedbackType(selectedRecord.feedbackType) }}</span>
-                    <span>{{ $t('feedback.commentCount') }}: {{ detailIssue?.comments ?? selectedRecord.commentCount }}</span>
-                    <span>{{ $t('feedback.updatedAt') }}: {{ formatDate(detailIssue?.updated_at || selectedRecord.lastCheckedAt) }}</span>
+                    <span
+                      >{{ $t('feedback.typeLabel') }}:
+                      {{ displayFeedbackType(selectedRecord.feedbackType) }}</span
+                    >
+                    <span
+                      >{{ $t('feedback.commentCount') }}:
+                      {{ detailIssue?.comments ?? selectedRecord.commentCount }}</span
+                    >
+                    <span
+                      >{{ $t('feedback.updatedAt') }}:
+                      {{
+                        formatDate(detailIssue?.updated_at || selectedRecord.lastCheckedAt)
+                      }}</span
+                    >
                   </p>
                 </div>
                 <div class="flex items-center gap-1.5 flex-shrink-0">
@@ -154,8 +179,19 @@
                 <div v-if="loadingDetail" class="space-y-2.5">
                   <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                     <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      />
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
                     </svg>
                     <span>{{ $t('feedback.loadingDetail') }}</span>
                   </div>
@@ -169,7 +205,10 @@
                     <div class="mt-1.5 h-3 w-4/5 rounded bg-gray-200 dark:bg-gray-700"></div>
                   </div>
                 </div>
-                <div v-else-if="comments.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
+                <div
+                  v-else-if="comments.length === 0"
+                  class="text-sm text-gray-500 dark:text-gray-400"
+                >
                   {{ $t('feedback.noComments') }}
                 </div>
                 <div
@@ -177,11 +216,17 @@
                   :key="comment.id + '-' + comment.created_at"
                   class="rounded-lg border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-gray-900/30 p-2.5"
                 >
-                  <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    <span class="font-semibold text-gray-700 dark:text-gray-200">@{{ comment.author }}</span>
+                  <div
+                    class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1"
+                  >
+                    <span class="font-semibold text-gray-700 dark:text-gray-200"
+                      >@{{ comment.author }}</span
+                    >
                     <span>· {{ formatDate(comment.created_at) }}</span>
                   </div>
-                  <p class="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">
+                  <p
+                    class="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words"
+                  >
                     {{ comment.body }}
                   </p>
                 </div>
@@ -193,16 +238,32 @@
                 >
                   {{ $t('feedback.loadMoreComments') }}
                 </button>
-                <div v-if="loadingMoreComments" class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <div
+                  v-if="loadingMoreComments"
+                  class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
+                >
                   <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    <circle
+                      class="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      stroke-width="4"
+                    />
+                    <path
+                      class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
                   </svg>
                   <span>{{ $t('feedback.loadingMoreComments') }}</span>
                 </div>
               </div>
 
-              <div class="feedback-composer px-3 py-2 border-t border-gray-200 dark:border-white/5 space-y-1.5">
+              <div
+                class="feedback-composer px-3 py-2 border-t border-gray-200 dark:border-white/5 space-y-1.5"
+              >
                 <textarea
                   v-model="newComment"
                   rows="2"
@@ -211,13 +272,17 @@
                   :placeholder="$t('feedback.commentPlaceholder')"
                 ></textarea>
                 <div class="flex items-center justify-between">
-                  <p class="text-[11px] text-gray-400 dark:text-gray-500">{{ newComment.length }}/3000</p>
+                  <p class="text-[11px] text-gray-400 dark:text-gray-500">
+                    {{ newComment.length }}/3000
+                  </p>
                   <button
                     class="px-2.5 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs md:text-sm font-medium transition-colors"
                     :disabled="submittingComment || !newComment.trim()"
                     @click="submitComment"
                   >
-                    {{ submittingComment ? $t('feedback.sendingComment') : $t('feedback.sendComment') }}
+                    {{
+                      submittingComment ? $t('feedback.sendingComment') : $t('feedback.sendComment')
+                    }}
                   </button>
                 </div>
               </div>
@@ -241,7 +306,11 @@ import { useRoute } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import AnimatedText from '@/components/AnimatedText.vue'
-import { useIssueTrackerStore, type IssueDetailComment, type IssueDetailIssue } from '@/stores/issueTracker'
+import {
+  useIssueTrackerStore,
+  type IssueDetailComment,
+  type IssueDetailIssue,
+} from '@/stores/issueTracker'
 import { useToastStore } from '@/stores/toast'
 import { logError } from '@/services/logger'
 import { useFeedbackStore } from '@/stores/feedback'
@@ -402,13 +471,19 @@ async function openIssue(url: string) {
 
   try {
     const parsed = new URL(finalUrl)
-    const numberFromQuery = Number(parsed.searchParams.get('number') || parsed.searchParams.get('issueNumber') || 0)
+    const numberFromQuery = Number(
+      parsed.searchParams.get('number') || parsed.searchParams.get('issueNumber') || 0,
+    )
     if (Number.isFinite(numberFromQuery) && numberFromQuery > 0) {
       finalUrl = `${issueRedirectApiBase}?number=${numberFromQuery}`
     } else {
       const issueTail = parsed.pathname.split('/').pop() ?? ''
       const issueNumber = Number(issueTail)
-      if (parsed.hostname.toLowerCase().includes('github.com') && Number.isFinite(issueNumber) && issueNumber > 0) {
+      if (
+        parsed.hostname.toLowerCase().includes('github.com') &&
+        Number.isFinite(issueNumber) &&
+        issueNumber > 0
+      ) {
         finalUrl = `${issueRedirectApiBase}?number=${issueNumber}`
       }
     }

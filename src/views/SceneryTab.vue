@@ -895,7 +895,9 @@ function parseIssueNumberFromUrl(url: string): number {
 
   try {
     const parsed = new URL(trimmed)
-    const queryNumber = Number(parsed.searchParams.get('number') || parsed.searchParams.get('issueNumber') || 0)
+    const queryNumber = Number(
+      parsed.searchParams.get('number') || parsed.searchParams.get('issueNumber') || 0,
+    )
     if (Number.isFinite(queryNumber) && queryNumber > 0) return queryNumber
   } catch {
     // ignore and fallback to tail parsing
@@ -931,7 +933,8 @@ async function handleSubmitContributeLink() {
   ].join('\n')
 
   const issueDraftApiBase =
-    import.meta.env.VITE_XFAST_ISSUE_DRAFT_API_URL || 'https://x-fast-manager.vercel.app/api/issue-draft'
+    import.meta.env.VITE_XFAST_ISSUE_DRAFT_API_URL ||
+    'https://x-fast-manager.vercel.app/api/issue-draft'
   const issueUrl = `${issueDraftApiBase}?template=${encodeURIComponent('library_link_submission.yml')}&labels=${encodeURIComponent('library-link')}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
 
   isSubmittingContributeLink.value = true

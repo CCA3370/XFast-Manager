@@ -39,9 +39,16 @@
             :key="cat.category"
             class="flex items-center gap-2 text-sm"
           >
-            <div class="w-3 h-3 rounded-sm flex-shrink-0" :style="{ backgroundColor: categoryColor(cat.category) }"></div>
-            <span class="text-gray-700 dark:text-gray-300">{{ diskCategoryLabel(cat.category) }}</span>
-            <span class="text-gray-400 dark:text-gray-500 ml-auto">{{ formatSize(cat.totalBytes) }}</span>
+            <div
+              class="w-3 h-3 rounded-sm flex-shrink-0"
+              :style="{ backgroundColor: categoryColor(cat.category) }"
+            ></div>
+            <span class="text-gray-700 dark:text-gray-300">{{
+              diskCategoryLabel(cat.category)
+            }}</span>
+            <span class="text-gray-400 dark:text-gray-500 ml-auto">{{
+              formatSize(cat.totalBytes)
+            }}</span>
           </div>
         </div>
       </div>
@@ -57,8 +64,13 @@
             class="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
           >
             <div class="flex items-center gap-2">
-              <div class="w-2.5 h-2.5 rounded-sm" :style="{ backgroundColor: categoryColor(cat.category) }"></div>
-              <span class="font-medium text-gray-900 dark:text-white">{{ diskCategoryLabel(cat.category) }}</span>
+              <div
+                class="w-2.5 h-2.5 rounded-sm"
+                :style="{ backgroundColor: categoryColor(cat.category) }"
+              ></div>
+              <span class="font-medium text-gray-900 dark:text-white">{{
+                diskCategoryLabel(cat.category)
+              }}</span>
               <span class="text-xs text-gray-400 dark:text-gray-500">
                 {{ cat.itemCount }} {{ $t('diskUsage.items') }}
               </span>
@@ -79,11 +91,14 @@
                   {{ item.displayName }}
                 </p>
                 <div class="flex items-center gap-2 mt-0.5">
-                  <div class="flex-1 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    class="flex-1 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden"
+                  >
                     <div
                       class="h-full rounded-full transition-all duration-300"
                       :style="{
-                        width: cat.totalBytes > 0 ? `${(item.sizeBytes / cat.totalBytes) * 100}%` : '0%',
+                        width:
+                          cat.totalBytes > 0 ? `${(item.sizeBytes / cat.totalBytes) * 100}%` : '0%',
                         backgroundColor: categoryColor(cat.category),
                       }"
                     ></div>
@@ -100,7 +115,12 @@
                 @click="openFolder(item.itemType, item.folderName)"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                  />
                 </svg>
               </button>
             </div>
@@ -115,7 +135,12 @@
       class="flex-1 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500"
     >
       <svg class="w-12 h-12 mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="1.5"
+          d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"
+        />
       </svg>
       <p class="text-sm">{{ $t('diskUsage.empty') }}</p>
       <p class="text-xs mt-1">{{ $t('diskUsage.emptyHint') }}</p>
@@ -126,7 +151,9 @@
       v-if="store.isScanning && !store.report"
       class="flex-1 flex flex-col items-center justify-center"
     >
-      <div class="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+      <div
+        class="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"
+      ></div>
       <p class="text-sm text-gray-500 dark:text-gray-400">{{ $t('diskUsage.scanning') }}</p>
     </div>
   </div>

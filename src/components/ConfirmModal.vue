@@ -1,6 +1,13 @@
 <template>
   <Teleport to="body">
-    <Transition name="modal" :css="false" @enter="onEnter" @leave="onLeave" @enter-cancelled="onEnterCancelled" @leave-cancelled="onLeaveCancelled">
+    <Transition
+      name="modal"
+      :css="false"
+      @enter="onEnter"
+      @leave="onLeave"
+      @enter-cancelled="onEnterCancelled"
+      @leave-cancelled="onLeaveCancelled"
+    >
       <div v-if="isVisible" class="fixed inset-0 z-[1300] flex items-center justify-center">
         <!-- Backdrop -->
         <div
@@ -259,8 +266,14 @@ let leaveTimer: ReturnType<typeof setTimeout> | null = null
 // GSAP animations
 function onEnter(_el: Element, done: () => void) {
   // Cancel any pending animations from a previous cycle
-  if (enterTl) { enterTl.kill(); enterTl = null }
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (enterTl) {
+    enterTl.kill()
+    enterTl = null
+  }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
 
   const tl = gsap.timeline({
     onComplete: () => {
@@ -282,8 +295,14 @@ function onEnter(_el: Element, done: () => void) {
 
 function onLeave(el: Element, done: () => void) {
   // Cancel any pending enter animation to prevent stale done() calls
-  if (enterTl) { enterTl.kill(); enterTl = null }
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (enterTl) {
+    enterTl.kill()
+    enterTl = null
+  }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
 
   const element = el as HTMLElement
   const backdropEl = element.querySelector('.modal-backdrop') as HTMLElement
@@ -316,11 +335,17 @@ function onLeave(el: Element, done: () => void) {
 }
 
 function onEnterCancelled() {
-  if (enterTl) { enterTl.kill(); enterTl = null }
+  if (enterTl) {
+    enterTl.kill()
+    enterTl = null
+  }
 }
 
 function onLeaveCancelled() {
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
 }
 
 // Focus management
@@ -357,8 +382,14 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  if (enterTl) { enterTl.kill(); enterTl = null }
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (enterTl) {
+    enterTl.kill()
+    enterTl = null
+  }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
   document.removeEventListener('keydown', handleKeydown)
 })
 </script>

@@ -1566,9 +1566,11 @@ export default {
     emptyHint: 'Click Scan to analyze disk usage',
   },
   gatewayManager: {
+    details: 'Details',
     navTitle: 'Gateway',
     title: 'Gateway Airport Manager',
-    subtitle: 'Search X-Plane Gateway airports, inspect version history, and manage local installs.',
+    subtitle:
+      'Search X-Plane Gateway airports, inspect version history, and manage local installs.',
     searchPlaceholder: 'Search airport by ICAO or name...',
     searchHint: 'Results are pulled from the official X-Plane Gateway directory.',
     searchEmpty: 'No matching Gateway airports found.',

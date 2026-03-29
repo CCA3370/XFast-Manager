@@ -331,12 +331,7 @@
 
                   <!-- Description -->
                   <p class="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                    {{
-                      $t(
-                        `logAnalysis.crashAnalysis.causes.${cause.cause_key}.description`,
-                        '',
-                      )
-                    }}
+                    {{ $t(`logAnalysis.crashAnalysis.causes.${cause.cause_key}.description`, '') }}
                   </p>
 
                   <!-- Evidence (expandable) -->
@@ -403,8 +398,9 @@
                       v-if="crashAnalysis.exception.exception_flags !== null"
                       class="pt-1 border-t border-gray-200 dark:border-gray-700"
                     >
-                      {{ $t('logAnalysis.crashAnalysis.technical.exceptionFlags') }}:
-                      0x{{ crashAnalysis.exception.exception_flags.toString(16).toUpperCase() }}
+                      {{ $t('logAnalysis.crashAnalysis.technical.exceptionFlags') }}: 0x{{
+                        crashAnalysis.exception.exception_flags.toString(16).toUpperCase()
+                      }}
                       <span
                         v-if="
                           crashAnalysis.exception.exception_type

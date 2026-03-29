@@ -85,8 +85,7 @@ export default {
       title: 'Falha ao iniciar o X-Plane: privilégios de administrador necessários (Erro 740)',
       causes: 'Possíveis causas:',
       cause1: '1. X-Plane.exe está configurado para "Executar como administrador"',
-      cause2:
-        '2. Instalado em um diretório protegido do sistema (ex.: Arquivos de Programas)',
+      cause2: '2. Instalado em um diretório protegido do sistema (ex.: Arquivos de Programas)',
       cause3: '3. Configuração incorreta de permissões de arquivo',
       solutions: 'Soluções sugeridas:',
       solution1:
@@ -213,8 +212,7 @@ export default {
     verifyDirectory: 'Diretórios',
     rarVerificationNote: 'Verificação do formato RAR não suportada (limitação da biblioteca)',
     atomicInstall: 'Modo de instalação segura',
-    atomicInstallDesc:
-      'Quando ativado, o processo de instalação será mais seguro e confiável',
+    atomicInstallDesc: 'Quando ativado, o processo de instalação será mais seguro e confiável',
     atomicInstallTitle: 'Modo de instalação segura',
     atomicInstallExplain: 'Explicação do modo de instalação segura',
     atomicInstallBenefit1: 'Extrair/copiar arquivos para o diretório temporário primeiro',
@@ -249,8 +247,7 @@ export default {
     windowsIntegrationNote: 'Nota: Disponível apenas em sistemas Windows',
     // Scenery Auto-Sorting
     sceneryAutoSort: 'Ordenação automática de cenários',
-    sceneryAutoSortDesc:
-      'Ordenar automaticamente o scenery_packs.ini após instalar cenários',
+    sceneryAutoSortDesc: 'Ordenar automaticamente o scenery_packs.ini após instalar cenários',
     sceneryAutoSortExplain: 'Explicação do recurso',
     sceneryAutoSortBenefit1:
       'Classifica automaticamente cenários por tipo (Aeroporto, Sobreposição, Malha, Biblioteca, etc.)',
@@ -267,7 +264,8 @@ export default {
     creatingIndex: 'Criando...',
     createIndexTooltip: 'Criar índice de cenários (primeira verificação completa)',
     rebuilding: 'Reconstruindo...',
-    rebuildIndexTooltip: 'Reconstruir índice de cenários (verificar novamente todos os pacotes de cenários)',
+    rebuildIndexTooltip:
+      'Reconstruir índice de cenários (verificar novamente todos os pacotes de cenários)',
     indexRebuilt: 'Índice de cenários reconstruído com sucesso',
     indexRebuildFailed: 'Falha ao reconstruir o índice de cenários',
     experimental: 'Em teste',
@@ -282,11 +280,11 @@ export default {
     maxParallelTasks: 'Máximo de tarefas paralelas',
     // Multi-Threaded Download
     chunkedDownloadTitle: 'Download multithread',
-    chunkedDownloadDesc:
-      'Baixar arquivos usando múltiplas conexões para maior velocidade',
+    chunkedDownloadDesc: 'Baixar arquivos usando múltiplas conexões para maior velocidade',
     chunkedDownloadExplain: 'Como funciona',
     chunkedDownloadBenefit1: 'Cada arquivo é dividido em partes baixadas em paralelo',
-    chunkedDownloadBenefit2: 'Volta automaticamente ao modo normal para arquivos pequenos ou servidores não compatíveis',
+    chunkedDownloadBenefit2:
+      'Volta automaticamente ao modo normal para arquivos pequenos ou servidores não compatíveis',
     chunkedDownloadNote:
       'Recurso experimental. Arquivos menores que 512 KB sempre usam uma única conexão.',
     threadsPerTask: 'Conexões por arquivo',
@@ -334,7 +332,8 @@ export default {
       'Alguns arquivos possuem características de tamanho incomuns. Revise e confirme antes de instalar.',
     suspiciousRatio:
       'Taxa de compressão suspeita ({ratio}:1). Tamanho estimado: {size} GB. Isso pode ser uma bomba zip.',
-    largeSize: 'Arquivo muito grande (estimado {size} GB). Certifique-se de ter espaço em disco suficiente.',
+    largeSize:
+      'Arquivo muito grande (estimado {size} GB). Certifique-se de ter espaço em disco suficiente.',
     confirmTrustArchive: 'Confio neste arquivo e desejo continuar',
     existingCycle: 'Existente',
     newCycle: 'Novo',
@@ -371,8 +370,7 @@ export default {
     dbIncompatibleConfirm: 'Redefinir banco de dados',
     // Installation in progress
     installInProgressTitle: 'Instalação em andamento',
-    installInProgressMessage:
-      'Uma instalação está em andamento. Tem certeza de que deseja fechar?',
+    installInProgressMessage: 'Uma instalação está em andamento. Tem certeza de que deseja fechar?',
     installInProgressWarning: 'Fechar agora pode corromper os arquivos instalados',
     // Pending installation confirmation
     confirmationOpenTitle: 'Instalação pendente',
@@ -607,8 +605,7 @@ export default {
     moreActions: 'Mais ações',
     hintFromScan:
       'Alterações de cenário detectadas. Abra o Gerenciador de cenários aqui para ordenar.',
-    hintFromSettings:
-      'A ordenação de cenários está ativada. Abra o Gerenciador de cenários aqui.',
+    hintFromSettings: 'A ordenação de cenários está ativada. Abra o Gerenciador de cenários aqui.',
     updatingIndex: 'Atualizando índice...',
     allContinents: 'Todos os continentes',
     groupByContinent: 'Por região',
@@ -696,8 +693,7 @@ export default {
     updateAllConfirm:
       'Isso adicionará todos os itens com suporte a atualização na página atual à lista de tarefas de atualização ({count} itens). Continuar?',
     updateAllSuccess: 'Atualização em lote finalizada: {updated}/{total} atualizados',
-    updateAllPartialFailed:
-      'Atualização em lote parcialmente falhou ({failed}/{total} falharam)',
+    updateAllPartialFailed: 'Atualização em lote parcialmente falhou ({failed}/{total} falharam)',
     outdated: 'Desatualizado',
     liveries: 'pinturas',
     platform: 'Plataforma',
@@ -808,8 +804,7 @@ export default {
     accountPlaceholder: 'Digite a conta',
     activationKey: 'Chave de ativação',
     activationKeyPlaceholder: 'Digite a chave de ativação',
-    credentialsHint:
-      'As credenciais são gravadas apenas no arquivo de perfil do addon.',
+    credentialsHint: 'As credenciais são gravadas apenas no arquivo de perfil do addon.',
     saveCredentials: 'Salvar',
     credentialsRequired: 'Insira a conta e a chave de ativação primeiro',
     settingsSaved: 'Configurações salvas',
@@ -1055,7 +1050,8 @@ export default {
     alipay: 'Pagamento via Alipay',
     scanTip: 'Escaneie com o aplicativo correspondente',
     onboardingTitle: 'Apoie o desenvolvedor',
-    onboardingDesc: 'Se esta ferramenta foi útil para você, considere pagar um café para o desenvolvedor',
+    onboardingDesc:
+      'Se esta ferramenta foi útil para você, considere pagar um café para o desenvolvedor',
   },
   contextMenu: {
     enable: 'Ativar',
@@ -1084,8 +1080,7 @@ export default {
     submitSuccess: 'Feedback enviado com sucesso',
     submitFailed: 'Falha ao enviar o feedback',
     discardTitle: 'Descartar rascunho do feedback?',
-    discardMessage:
-      'Você tem conteúdo de feedback não enviado. Tem certeza de que deseja fechar?',
+    discardMessage: 'Você tem conteúdo de feedback não enviado. Tem certeza de que deseja fechar?',
     closeAppDiscardMessage:
       'Você tem conteúdo de feedback não enviado na janela de feedback. Tem certeza de que deseja fechar o aplicativo?',
     discardWarning: 'O conteúdo de feedback não enviado será perdido',
@@ -1168,7 +1163,8 @@ export default {
       },
       scenery_load_failed: {
         name: 'Falha ao carregar cenário',
-        description: 'O pacote de cenário não pôde ser carregado — biblioteca ausente ou arquivos corrompidos',
+        description:
+          'O pacote de cenário não pôde ser carregado — biblioteca ausente ou arquivos corrompidos',
         suggestion:
           'Verifique se o cenário requer arquivos de biblioteca adicionais ou reinstale o cenário.',
       },
@@ -1186,17 +1182,20 @@ export default {
       system_alert: {
         name: 'Alerta do sistema',
         description: 'O X-Plane exibiu uma janela de aviso do sistema',
-        suggestion: 'Verifique as informações detalhadas do erro exibidas no log próximo a esta linha.',
+        suggestion:
+          'Verifique as informações detalhadas do erro exibidas no log próximo a esta linha.',
       },
       plugin_assert: {
         name: 'Erro de asserção de plugin',
         description: 'O gerenciador de plugins detectou uma falha de asserção interna',
-        suggestion: 'Problema de compatibilidade de plugin — tente atualizar ou desativar o plugin relacionado.',
+        suggestion:
+          'Problema de compatibilidade de plugin — tente atualizar ou desativar o plugin relacionado.',
       },
       plugin_error: {
         name: 'Erro de plugin',
         description: 'Erro relacionado a plugin detectado',
-        suggestion: 'Desative plugins instalados recentemente ou atualize-os para a versão mais recente.',
+        suggestion:
+          'Desative plugins instalados recentemente ou atualize-os para a versão mais recente.',
       },
       vulkan_gfx_error: {
         name: 'Erro de renderização Vulkan',
@@ -1223,17 +1222,20 @@ export default {
       missing_plugin_support: {
         name: 'Arquivo de suporte de plugin ausente',
         description: 'Um arquivo de suporte de plugin necessário está ausente (ex.: XPLM_64.dll)',
-        suggestion: 'Verifique os arquivos do jogo pelo Steam ou pelo instalador oficial, ou reinstale o X-Plane.',
+        suggestion:
+          'Verifique os arquivos do jogo pelo Steam ou pelo instalador oficial, ou reinstale o X-Plane.',
       },
       out_of_memory: {
         name: 'Sem memória',
         description: 'O sistema ficou sem memória',
-        suggestion: 'Feche outros programas, reduza as configurações gráficas ou adicione mais RAM.',
+        suggestion:
+          'Feche outros programas, reduza as configurações gráficas ou adicione mais RAM.',
       },
       memory_status_critical: {
         name: 'Estado crítico de memória',
         description: 'O log mostra uso de memória em níveis críticos',
-        suggestion: 'Reduza as configurações de renderização, diminua os plugins ou adicione mais RAM.',
+        suggestion:
+          'Reduza as configurações de renderização, diminua os plugins ou adicione mais RAM.',
       },
       memory_access_error: {
         name: 'Erro de acesso à memória',
@@ -1254,7 +1256,8 @@ export default {
       network_error: {
         name: 'Erro de rede',
         description: 'Erro de conexão de rede ou download',
-        suggestion: 'Verifique sua conexão de rede. Se estiver usando uma VPN, ajuste suas configurações.',
+        suggestion:
+          'Verifique sua conexão de rede. Se estiver usando uma VPN, ajuste suas configurações.',
       },
       weather_error: {
         name: 'Erro meteorológico',
@@ -1275,13 +1278,15 @@ export default {
       },
       severe_texture_downscale: {
         name: 'Redução severa de textura',
-        description: 'Texturas reduzidas forçadamente à qualidade mínima (6,25%) — VRAM criticamente baixa',
+        description:
+          'Texturas reduzidas forçadamente à qualidade mínima (6,25%) — VRAM criticamente baixa',
         suggestion:
           'Reduza as configurações de qualidade de textura e diminua os addons de cenários e aeronaves carregados.',
       },
       runloop_backlog: {
         name: 'Acúmulo na fila de tarefas',
-        description: 'A fila de tarefas do X-Plane está acumulada, pode causar engasgos ou resposta lenta',
+        description:
+          'A fila de tarefas do X-Plane está acumulada, pode causar engasgos ou resposta lenta',
         suggestion:
           'Geralmente temporário durante carregamento pesado de cenários/plugins. Se persistir, reduza o número de plugins.',
       },
@@ -1335,7 +1340,8 @@ export default {
       subtitle: 'Analisando despejo de memória para determinar causas prováveis',
       loading: 'Analisando relatório de falha...',
       noCrashReport: 'Nenhum arquivo de despejo de memória encontrado.',
-      parseWarning: 'O despejo de memória não pôde ser totalmente analisado. Os resultados são baseados em dados parciais.',
+      parseWarning:
+        'O despejo de memória não pôde ser totalmente analisado. Os resultados são baseados em dados parciais.',
       causes: {
         plugin_crash: {
           name: 'Falha de plugin',
@@ -1370,7 +1376,8 @@ export default {
         crash_in_gpu_driver: 'A falha ocorreu dentro de um módulo do driver da GPU',
         crash_in_injected_dll: 'A falha ocorreu dentro de uma DLL injetada / sobreposição',
         plugin_in_stack_frames: 'Plugin encontrado nos quadros superiores da pilha de falha',
-        gpu_driver_in_stack_frames: 'Driver da GPU encontrado nos quadros superiores da pilha de falha',
+        gpu_driver_in_stack_frames:
+          'Driver da GPU encontrado nos quadros superiores da pilha de falha',
         log_heavy_memory_pressure: 'O log indica pressão alta de memória',
         log_out_of_memory: 'O log contém erros de falta de memória',
         log_memory_status_critical: 'O log contém avisos de estado crítico de memória',
@@ -1470,7 +1477,8 @@ export default {
     unsetBackground: 'Remover plano de fundo',
     unsetBackgroundSuccess: 'Plano de fundo removido com sucesso',
     unsetBackgroundFailed: 'Falha ao remover o plano de fundo',
-    redditClipboardHint: 'Imagem copiada para a área de transferência — cole na página de envio do Reddit',
+    redditClipboardHint:
+      'Imagem copiada para a área de transferência — cole na página de envio do Reddit',
     redditTitle: 'Captura de tela do X-Plane',
   },
   errors: {
@@ -1590,6 +1598,7 @@ export default {
     emptyHint: 'Clique em Verificar para analisar o uso de disco',
   },
   gatewayManager: {
+    details: 'Detalhes',
     navTitle: 'Aeroportos Gateway',
     title: 'Gestor de aeroportos Gateway',
     subtitle:
@@ -1600,7 +1609,8 @@ export default {
     results: 'Resultados do Gateway',
     installedTitle: 'Instalações locais do Gateway',
     installedEmpty: 'Nenhum aeroporto do Gateway está instalado para esta raiz do X-Plane.',
-    installedEmptyHint: 'Defina o caminho do X-Plane para carregar as instalações locais do Gateway.',
+    installedEmptyHint:
+      'Defina o caminho do X-Plane para carregar as instalações locais do Gateway.',
     installedCount: 'Aeroportos instalados',
     updatesAvailable: 'Atualizações disponíveis',
     checkUpdates: 'Verificar atualizações',
@@ -1653,7 +1663,8 @@ export default {
       'Insira aqui apenas a origem do servidor. Não inclua nenhum segmento de caminho; os caminhos fixos da API são adicionados pelo aplicativo.',
     serverBaseUrl: 'URL base',
     serverBaseUrlPlaceholder: 'ex.: http://x-csl.ru',
-    serverOriginOnly: 'Insira aqui apenas a origem. Os caminhos fixos da API são adicionados automaticamente.',
+    serverOriginOnly:
+      'Insira aqui apenas a origem. Os caminhos fixos da API são adicionados automaticamente.',
     serverSlot: 'Servidor {index}',
     serverActive: 'Ativo',
     addServer: 'Adicionar servidor',

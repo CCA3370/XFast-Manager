@@ -95,9 +95,7 @@ export const usePresetsStore = defineStore('presets', () => {
         name,
         description,
         updateSnapshot,
-        lockState: shouldUpdateSnapshot
-          ? buildPresetLockState(lockStore.exportLockState())
-          : null,
+        lockState: shouldUpdateSnapshot ? buildPresetLockState(lockStore.exportLockState()) : null,
       })
       await loadPresets()
     } finally {

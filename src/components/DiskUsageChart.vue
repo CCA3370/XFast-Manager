@@ -32,7 +32,7 @@
       </svg>
       <!-- Center text -->
       <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-        <span 
+        <span
           class="font-bold text-gray-900 dark:text-white leading-tight"
           :class="size < 150 ? 'text-sm' : 'text-lg'"
         >
@@ -46,16 +46,21 @@
 
     <!-- Legend (Always visible in this version) -->
     <div class="flex-1 min-w-0 space-y-1.5">
-      <div 
-        v-for="(cat, i) in categories.slice(0, 5)" 
+      <div
+        v-for="(cat, i) in categories.slice(0, 5)"
         :key="i"
         class="flex items-center justify-between text-[10px] group cursor-default"
         @mouseenter="hovered = i"
         @mouseleave="hovered = -1"
       >
         <div class="flex items-center gap-1.5 min-w-0">
-          <div class="w-1.5 h-1.5 rounded-full shrink-0" :style="{ backgroundColor: cat.color }"></div>
-          <span class="truncate text-gray-600 dark:text-gray-400 font-medium group-hover:text-blue-500 transition-colors">
+          <div
+            class="w-1.5 h-1.5 rounded-full shrink-0"
+            :style="{ backgroundColor: cat.color }"
+          ></div>
+          <span
+            class="truncate text-gray-600 dark:text-gray-400 font-medium group-hover:text-blue-500 transition-colors"
+          >
             {{ cat.name }}
           </span>
         </div>

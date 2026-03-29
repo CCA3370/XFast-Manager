@@ -46,11 +46,13 @@ export const useGatewayStore = defineStore('gateway', () => {
   })
 
   const selectedInstalledRecord = computed(() =>
-    airportDetail.value ? installedByIcao.value.get(airportDetail.value.icao) ?? null : null,
+    airportDetail.value ? (installedByIcao.value.get(airportDetail.value.icao) ?? null) : null,
   )
 
-  const selectedScenerySummary = computed(() =>
-    airportDetail.value?.sceneries.find((item) => item.sceneryId === selectedSceneryId.value) ?? null,
+  const selectedScenerySummary = computed(
+    () =>
+      airportDetail.value?.sceneries.find((item) => item.sceneryId === selectedSceneryId.value) ??
+      null,
   )
 
   const updatesCount = computed(

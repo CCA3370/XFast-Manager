@@ -14,14 +14,14 @@ const GLYPH_MAP: Record<string, string> = {
   '^ru': '↗',
   '^ld': '↙',
   '^rd': '↘',
-  'r1': 'Ⅰ',
-  'r2': 'Ⅱ',
-  'r3': 'Ⅲ',
+  r1: 'Ⅰ',
+  r2: 'Ⅱ',
+  r3: 'Ⅲ',
   'no-entry': '⊘',
-  'critical': '◈',
-  'safety': '▣',
-  'hazard': '⚠',
-  'comma': ',',
+  critical: '◈',
+  safety: '▣',
+  hazard: '⚠',
+  comma: ',',
 }
 
 type ColorDirective = 'Y' | 'R' | 'L' | 'B'

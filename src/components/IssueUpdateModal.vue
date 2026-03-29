@@ -1,6 +1,12 @@
 <template>
   <Teleport to="body">
-    <Transition :css="false" @enter="onEnter" @leave="onLeave" @enter-cancelled="onEnterCancelled" @leave-cancelled="onLeaveCancelled">
+    <Transition
+      :css="false"
+      @enter="onEnter"
+      @leave="onLeave"
+      @enter-cancelled="onEnterCancelled"
+      @leave-cancelled="onLeaveCancelled"
+    >
       <div
         v-if="issueTracker.pendingUpdates.length > 0"
         class="fixed inset-0 z-[1200] flex items-center justify-center"
@@ -220,8 +226,14 @@ function formatDate(iso: string): string {
 
 function onEnter(el: Element, done: () => void) {
   // Cancel any pending timers from a previous animation cycle
-  if (enterTimer) { clearTimeout(enterTimer); enterTimer = null }
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (enterTimer) {
+    clearTimeout(enterTimer)
+    enterTimer = null
+  }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
 
   const container = el as HTMLElement
   const backdrop = backdropRef.value
@@ -259,8 +271,14 @@ function onEnter(el: Element, done: () => void) {
 
 function onLeave(el: Element, done: () => void) {
   // Cancel any pending enter timer to prevent stale done() calls
-  if (enterTimer) { clearTimeout(enterTimer); enterTimer = null }
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (enterTimer) {
+    clearTimeout(enterTimer)
+    enterTimer = null
+  }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
 
   const container = el as HTMLElement
   const backdrop = container.querySelector('.absolute.inset-0') as HTMLElement
@@ -290,10 +308,16 @@ function onLeave(el: Element, done: () => void) {
 }
 
 function onEnterCancelled() {
-  if (enterTimer) { clearTimeout(enterTimer); enterTimer = null }
+  if (enterTimer) {
+    clearTimeout(enterTimer)
+    enterTimer = null
+  }
 }
 
 function onLeaveCancelled() {
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
 }
 </script>

@@ -201,11 +201,7 @@ function drawVideoCoverToBlob(video: HTMLVideoElement): Promise<Blob | null> {
   if (!ctx) return Promise.resolve(null)
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
   return new Promise((resolve) => {
-    canvas.toBlob(
-      (blob) => resolve(blob),
-      'image/jpeg',
-      0.85,
-    )
+    canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.85)
   })
 }
 
@@ -400,12 +396,12 @@ const liveFilterStyle = computed(() => {
   // Temperature: rough warm/cool tint
   if (cur.temperature !== base.temperature) {
     const delta = cur.temperature - base.temperature
-    if (delta > 0) parts.push(`sepia(${(delta / 100 * 0.25).toFixed(3)})`)
-    else parts.push(`hue-rotate(${(delta / 100 * 25).toFixed(1)}deg)`)
+    if (delta > 0) parts.push(`sepia(${((delta / 100) * 0.25).toFixed(3)})`)
+    else parts.push(`hue-rotate(${((delta / 100) * 25).toFixed(1)}deg)`)
   }
   // Denoise → blur (additive px)
   if (cur.denoise !== base.denoise) {
-    const delta = (cur.denoise - base.denoise) / 100 * 1.8
+    const delta = ((cur.denoise - base.denoise) / 100) * 1.8
     if (delta > 0) parts.push(`blur(${delta.toFixed(2)}px)`)
   }
   return parts.length > 0 ? { filter: parts.join(' ') } : undefined
@@ -1213,7 +1209,9 @@ function cloneEditParams(params: ScreenshotEditParams): ScreenshotEditParams {
   const raw = toRaw(params)
   const rawCrop = raw.crop ? toRaw(raw.crop) : null
   return {
-    crop: rawCrop ? { x: rawCrop.x, y: rawCrop.y, width: rawCrop.width, height: rawCrop.height } : null,
+    crop: rawCrop
+      ? { x: rawCrop.x, y: rawCrop.y, width: rawCrop.width, height: rawCrop.height }
+      : null,
     rotate: raw.rotate,
     exposure: raw.exposure,
     contrast: raw.contrast,
@@ -1835,7 +1833,11 @@ onBeforeUnmount(() => {
                     @error="markThumbFailed(item.fileName)"
                   />
                   <video
-                    v-else-if="item.mediaType === 'video' && item.previewable && !isVideoFailed(item.fileName)"
+                    v-else-if="
+                      item.mediaType === 'video' &&
+                      item.previewable &&
+                      !isVideoFailed(item.fileName)
+                    "
                     :src="toSrc(item.path)"
                     class="w-full h-full object-cover"
                     muted
@@ -1862,13 +1864,17 @@ onBeforeUnmount(() => {
                     v-if="item.mediaType === 'image'"
                     class="absolute right-2 bottom-2 px-2 py-1 text-white text-[10px] rounded transition-opacity"
                     :class="[
-                      backgroundImages.has(item.fileName) 
-                        ? 'bg-rose-600/80 hover:bg-rose-600 opacity-100' 
-                        : 'bg-black/60 hover:bg-black/80 opacity-0 group-hover:opacity-100'
+                      backgroundImages.has(item.fileName)
+                        ? 'bg-rose-600/80 hover:bg-rose-600 opacity-100'
+                        : 'bg-black/60 hover:bg-black/80 opacity-0 group-hover:opacity-100',
                     ]"
                     @click.stop="setAsBackground(item)"
                   >
-                    {{ backgroundImages.has(item.fileName) ? $t('screenshot.unsetBackground') : $t('screenshot.setAsBackground') }}
+                    {{
+                      backgroundImages.has(item.fileName)
+                        ? $t('screenshot.unsetBackground')
+                        : $t('screenshot.setAsBackground')
+                    }}
                   </button>
                 </div>
                 <div class="px-2.5 py-2 space-y-1">
@@ -2064,7 +2070,10 @@ onBeforeUnmount(() => {
 
     <Teleport to="body">
       <div v-if="editorOpen" class="fixed inset-0 z-[120] p-2 sm:p-4">
-        <div class="absolute inset-0 bg-black/75 backdrop-blur-sm pointer-events-none" aria-hidden="true"></div>
+        <div
+          class="absolute inset-0 bg-black/75 backdrop-blur-sm pointer-events-none"
+          aria-hidden="true"
+        ></div>
         <div
           class="relative h-full max-w-[1320px] mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col will-change-transform"
         >

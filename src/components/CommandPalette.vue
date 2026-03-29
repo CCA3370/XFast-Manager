@@ -1,11 +1,7 @@
 <template>
   <Teleport to="body">
     <Transition name="palette-fade">
-      <div
-        v-if="visible"
-        class="fixed inset-0 z-[100] flex justify-center"
-        @mousedown.self="close"
-      >
+      <div v-if="visible" class="fixed inset-0 z-[100] flex justify-center" @mousedown.self="close">
         <div
           class="absolute inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-sm"
           @click="close"

@@ -227,7 +227,8 @@ export const useUpdateStore = defineStore('update', () => {
     }
 
     return headers.map((header, index) => {
-      const sectionEnd = index + 1 < headers.length ? headers[index + 1].headerStart : markdown.length
+      const sectionEnd =
+        index + 1 < headers.length ? headers[index + 1].headerStart : markdown.length
       const section = markdown.slice(header.headerEnd, sectionEnd).trim()
       return {
         version: header.version,
@@ -241,7 +242,9 @@ export const useUpdateStore = defineStore('update', () => {
 
   function readBundledChangelogSection(version: string): string {
     const normalized = normalizeVersionTag(version)
-    return bundledChangelogEntries.find((entry) => entry.normalizedVersion === normalized)?.section ?? ''
+    return (
+      bundledChangelogEntries.find((entry) => entry.normalizedVersion === normalized)?.section ?? ''
+    )
   }
 
   function getLatestBundledChangelogEntry(): ChangelogEntry | null {
@@ -270,7 +273,7 @@ export const useUpdateStore = defineStore('update', () => {
 
       logDebug(
         `Post-update changelog check rawVersion='${currentVersion}' normalized='${normalizedVersion}' bundledEntries=${bundledChangelogEntries.length} bundledLength=${bundledChangelog.length}`,
-        'update'
+        'update',
       )
 
       if (shownVersion && normalizeVersionTag(shownVersion) === normalizedVersion) {
@@ -282,7 +285,7 @@ export const useUpdateStore = defineStore('update', () => {
         const latestEntry = getLatestBundledChangelogEntry()
         logDebug(
           `No bundled changelog section for v${normalizedVersion}; available=[${getBundledChangelogVersionsPreview()}]`,
-          'update'
+          'update',
         )
 
         if (!latestEntry?.section) {
@@ -293,7 +296,7 @@ export const useUpdateStore = defineStore('update', () => {
         applyChangelog(latestEntry.normalizedVersion, latestEntry.section)
         logBasic(
           `Falling back to latest bundled changelog v${latestEntry.normalizedVersion} for current v${normalizedVersion}`,
-          'update'
+          'update',
         )
         await setItem(STORAGE_KEYS.LAST_SHOWN_CHANGELOG_VERSION, normalizedVersion)
         return
@@ -319,7 +322,7 @@ export const useUpdateStore = defineStore('update', () => {
         const latestEntry = getLatestBundledChangelogEntry()
         logDebug(
           `Current-version changelog miss rawVersion='${currentVersion}' normalized='${normalizedVersion}' available=[${getBundledChangelogVersionsPreview()}]`,
-          'update'
+          'update',
         )
 
         if (!latestEntry?.section) {
@@ -330,7 +333,7 @@ export const useUpdateStore = defineStore('update', () => {
         applyChangelog(latestEntry.normalizedVersion, latestEntry.section)
         logBasic(
           `Falling back to latest bundled changelog v${latestEntry.normalizedVersion} for current v${normalizedVersion}`,
-          'update'
+          'update',
         )
       } else {
         applyChangelog(normalizedVersion, releaseNotes)

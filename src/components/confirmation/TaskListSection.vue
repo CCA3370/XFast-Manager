@@ -78,10 +78,7 @@
           </div>
 
           <!-- Lua companion files/folders -->
-          <div
-            v-if="task.type === 'LuaScript' && hasLuaCompanions(task)"
-            class="mt-1"
-          >
+          <div v-if="task.type === 'LuaScript' && hasLuaCompanions(task)" class="mt-1">
             <button
               type="button"
               class="w-full flex items-center justify-between px-2 py-1 rounded bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200 dark:border-cyan-500/30 text-cyan-700 dark:text-cyan-300 text-xs"

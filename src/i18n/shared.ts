@@ -1,6 +1,18 @@
 export const LOCALE_STORAGE_KEY = 'xfast.locale'
 
-export const SUPPORTED_LOCALES = ['zh', 'en', 'es', 'fr', 'de', 'ja', 'pt', 'hi', 'ar', 'ru', 'ko'] as const
+export const SUPPORTED_LOCALES = [
+  'zh',
+  'en',
+  'es',
+  'fr',
+  'de',
+  'ja',
+  'pt',
+  'hi',
+  'ar',
+  'ru',
+  'ko',
+] as const
 
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number]
 
