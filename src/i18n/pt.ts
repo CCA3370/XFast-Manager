@@ -1627,6 +1627,9 @@ export default {
     uninstallConfirm:
       'Desinstalar o aeroporto do Gateway gerenciado para {icao}? Isso removerá a pasta de cenário instalada.',
     installBlocked: 'Instalação do Gateway bloqueada',
+    installBlockedWarning:
+      'Foi detectado um cenário de aeroporto não Gateway para este aeroporto. Ignorar este aviso pode deixar aeroportos duplicados ou conflitos de cenário.',
+    ignoreWarningInstall: 'Ignorar aviso e instalar',
     pathRequired: 'Caminho do X-Plane obrigatório',
     pathRequiredHint:
       'A navegação do Gateway funciona sem um caminho do X-Plane, mas instalar, desinstalar e ver o inventário local exige uma raiz do X-Plane configurada.',

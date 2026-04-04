@@ -122,21 +122,19 @@
           class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 p-3 transition-colors hover:border-blue-300 dark:hover:border-blue-700/50 hover:bg-blue-50/30 dark:hover:bg-blue-900/10 cursor-pointer flex flex-col gap-2 shadow-sm hover:shadow-md"
           @click="openAirportModal(airport.airportIcao, airport.sceneryId)"
         >
-          <div class="flex justify-between items-start">
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2">
-                <span class="font-bold text-gray-900 dark:text-white text-base">{{
-                  airport.airportIcao
-                }}</span>
-                <span
-                  v-if="airport.updateAvailable === true"
-                  class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
-                  >{{ $t('gatewayManager.updatesAvailable') }}</span
-                >
-              </div>
-              <div class="text-[13px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0 flex flex-1 items-center gap-2 overflow-hidden">
+              <span class="font-bold text-gray-900 dark:text-white text-base flex-shrink-0">{{
+                airport.airportIcao
+              }}</span>
+              <div class="min-w-0 truncate text-[13px] text-gray-500 dark:text-gray-400">
                 {{ airport.airportName }}
               </div>
+              <span
+                v-if="airport.updateAvailable === true"
+                class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+                >{{ $t('gatewayManager.updatesAvailable') }}</span
+              >
             </div>
             <div
               class="text-[10px] font-medium text-gray-400 dark:text-gray-500 flex-shrink-0 ml-2 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded"
@@ -167,12 +165,16 @@
           v-if="!store.isLoadingInstalled && filteredInstalled.length === 0"
           class="col-span-full text-sm text-gray-400 dark:text-gray-500 py-12 text-center"
         >
-          <template v-if="searchText">{{ $t('gatewayManager.searchEmpty') }}</template>
-          <template v-else>{{
-            appStore.xplanePath
-              ? $t('gatewayManager.installedEmpty')
-              : $t('gatewayManager.installedEmptyHint')
-          }}</template>
+          <template v-if="searchText">
+            {{ $t('gatewayManager.searchEmpty') }}
+          </template>
+          <template v-else>
+            {{
+              appStore.xplanePath
+                ? $t('gatewayManager.installedEmpty')
+                : $t('gatewayManager.installedEmptyHint')
+            }}
+          </template>
         </div>
       </div>
 
@@ -187,12 +189,12 @@
           class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 p-4 transition-colors hover:border-blue-300 dark:hover:border-blue-700/50 hover:bg-blue-50/30 dark:hover:bg-blue-900/10 cursor-pointer flex flex-col gap-3 shadow-sm hover:shadow-md"
           @click="openAirportModal(airport.icao)"
         >
-          <div class="flex justify-between items-start">
-            <div class="min-w-0 flex-1">
-              <span class="font-bold text-gray-900 dark:text-white text-lg">{{
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0 flex flex-1 items-center gap-2 overflow-hidden">
+              <span class="font-bold text-gray-900 dark:text-white text-lg flex-shrink-0">{{
                 airport.icao
               }}</span>
-              <div class="text-sm text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+              <div class="min-w-0 truncate text-sm text-gray-500 dark:text-gray-400">
                 {{ airport.airportName || airport.icao }}
               </div>
             </div>
@@ -518,6 +520,7 @@ import { getErrorMessage, type GatewayInstalledAirport } from '@/types'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+const GATEWAY_EXTERNAL_CONFLICT_DETAIL = 'gateway_external_airport_conflict'
 const { t } = useI18n()
 const appStore = useAppStore()
 const store = useGatewayStore()
@@ -672,7 +675,38 @@ async function handleCheckUpdates() {
   }
 }
 
-async function handleInstall() {
+async function installSelectedGateway(ignoreExternalConflict = false) {
+  if (!appStore.xplanePath) return
+
+  const installedRecord = await store.installSelected(
+    appStore.xplanePath,
+    appStore.autoSortScenery,
+    ignoreExternalConflict,
+  )
+  toast.success(
+    t('gatewayManager.installSuccess', {
+      icao: installedRecord.airportIcao,
+    }),
+  )
+}
+
+function showInstallBlockedWarning(error: CommandError) {
+  modal.showConfirm({
+    title: t('gatewayManager.installBlocked'),
+    message: error.message,
+    warning: t('gatewayManager.installBlockedWarning'),
+    confirmText: t('gatewayManager.ignoreWarningInstall'),
+    cancelText: t('common.cancel'),
+    type: 'warning',
+    hideCloseButton: true,
+    onConfirm: () => {
+      void handleInstall(true)
+    },
+    onCancel: () => {},
+  })
+}
+
+async function handleInstall(ignoreExternalConflict = false) {
   if (!appStore.xplanePath) {
     modal.showError(t('gatewayManager.pathRequiredHint'), t('gatewayManager.pathRequired'), {
       hideReport: true,
@@ -681,16 +715,17 @@ async function handleInstall() {
   }
 
   try {
-    const installedRecord = await store.installSelected(
-      appStore.xplanePath,
-      appStore.autoSortScenery,
-    )
-    toast.success(
-      t('gatewayManager.installSuccess', {
-        icao: installedRecord.airportIcao,
-      }),
-    )
+    await installSelectedGateway(ignoreExternalConflict)
   } catch (error) {
+    if (
+      error instanceof CommandError &&
+      error.code === 'conflict_exists' &&
+      error.details === GATEWAY_EXTERNAL_CONFLICT_DETAIL &&
+      !ignoreExternalConflict
+    ) {
+      showInstallBlockedWarning(error)
+      return
+    }
     if (error instanceof CommandError && error.code === 'conflict_exists') {
       modal.showError(error.message, t('gatewayManager.installBlocked'), { hideReport: true })
       return

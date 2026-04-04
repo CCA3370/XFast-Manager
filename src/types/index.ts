@@ -24,24 +24,62 @@ export interface ApiError {
   details?: string
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function parseApiErrorObject(value: Record<string, unknown>): ApiError | null {
+  const code = value.code
+  const message = value.message
+  const details = value.details
+
+  if (typeof code === 'string' && typeof message === 'string') {
+    return {
+      code: code as ApiErrorCode,
+      message,
+      details: typeof details === 'string' ? details : undefined,
+    }
+  }
+
+  if (message !== undefined) {
+    const nested = parseApiError(message)
+    if (nested) return nested
+  }
+
+  if (value.error !== undefined) {
+    const nested = parseApiError(value.error)
+    if (nested) return nested
+  }
+
+  return null
+}
+
 /**
  * Parse a Tauri invoke error to check if it's a structured ApiError
  * @param error The error from invoke (typically a string)
  * @returns Parsed ApiError if structured, or null if it's a plain string error
  */
 export function parseApiError(error: unknown): ApiError | null {
-  if (typeof error !== 'string') {
+  if (typeof error === 'string') {
+    // Try to parse as JSON (structured error)
+    try {
+      const parsed = JSON.parse(error)
+      if (isRecord(parsed)) {
+        return parseApiErrorObject(parsed)
+      }
+    } catch {
+      // Not JSON, it's a plain string error
+    }
+
     return null
   }
 
-  // Try to parse as JSON (structured error)
-  try {
-    const parsed = JSON.parse(error)
-    if (parsed && typeof parsed === 'object' && 'code' in parsed && 'message' in parsed) {
-      return parsed as ApiError
-    }
-  } catch {
-    // Not JSON, it's a plain string error
+  if (isRecord(error)) {
+    return parseApiErrorObject(error)
+  }
+
+  if (error instanceof Error) {
+    return parseApiError(error.message)
   }
 
   return null
@@ -68,6 +106,19 @@ export function getErrorMessage(error: unknown): string {
   }
   if (error instanceof Error) {
     return error.message
+  }
+  if (isRecord(error)) {
+    if (typeof error.message === 'string') {
+      return error.message
+    }
+    if (typeof error.error === 'string') {
+      return error.error
+    }
+    try {
+      return JSON.stringify(error)
+    } catch {
+      // Ignore JSON serialization failures and fall back below.
+    }
   }
   return String(error)
 }

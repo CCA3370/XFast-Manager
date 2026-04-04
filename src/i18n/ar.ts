@@ -1571,6 +1571,9 @@ export default {
     uninstallConfirm:
       'هل تريد إزالة مطار Gateway المُدار لـ {icao}؟ سيؤدي ذلك إلى حذف مجلد المشهد المثبّت.',
     installBlocked: 'تم حظر تثبيت Gateway',
+    installBlockedWarning:
+      'تم العثور على مشهد مطار آخر غير تابع لـ Gateway لهذا المطار. قد يؤدي تجاهل هذا التحذير إلى بقاء مطارات مكررة أو تعارضات في المشاهد.',
+    ignoreWarningInstall: 'تجاهل التحذير والتثبيت',
     pathRequired: 'مسار X-Plane مطلوب',
     pathRequiredHint:
       'يمكنك استعراض Gateway بدون مسار X-Plane، لكن التثبيت والإزالة وعرض القائمة المحلية تتطلب تعيين جذر X-Plane.',

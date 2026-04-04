@@ -1644,6 +1644,9 @@ export default {
     uninstallConfirm:
       'Verwalteten Gateway-Flughafen für {icao} deinstallieren? Dabei wird der installierte Szenerieordner entfernt.',
     installBlocked: 'Gateway-Installation blockiert',
+    installBlockedWarning:
+      'Für diesen Flughafen wurde bereits eine Nicht-Gateway-Flughafenszenerie erkannt. Wenn du diese Warnung ignorierst, können doppelte Flughäfen oder Szeneriekonflikte zurückbleiben.',
+    ignoreWarningInstall: 'Warnung ignorieren und installieren',
     pathRequired: 'X-Plane-Pfad erforderlich',
     pathRequiredHint:
       'Die Gateway-Ansicht funktioniert auch ohne X-Plane-Pfad, aber Installation, Deinstallation und lokales Inventar benötigen ein konfiguriertes X-Plane-Hauptverzeichnis.',

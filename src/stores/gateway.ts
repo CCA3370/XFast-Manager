@@ -177,7 +177,11 @@ export const useGatewayStore = defineStore('gateway', () => {
     }
   }
 
-  async function installSelected(xplanePath: string, autoSortScenery = false) {
+  async function installSelected(
+    xplanePath: string,
+    autoSortScenery = false,
+    ignoreExternalConflict = false,
+  ) {
     if (!airportDetail.value || selectedSceneryId.value === null) {
       throw new Error('No Gateway scenery selected')
     }
@@ -189,6 +193,7 @@ export const useGatewayStore = defineStore('gateway', () => {
         icao: airportDetail.value.icao,
         sceneryId: selectedSceneryId.value,
         autoSortScenery,
+        ignoreExternalConflict,
       })
       await loadInstalled(xplanePath)
       await openAirport(installedRecord.airportIcao, installedRecord.sceneryId)

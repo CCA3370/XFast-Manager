@@ -31,6 +31,7 @@ use crate::scenery_packs_manager::SceneryPacksManager;
 const GATEWAY_API_BASE: &str = "https://gateway.x-plane.com/apiv1";
 const AIRPORT_DIRECTORY_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 const UPDATE_CHECK_CONCURRENCY: usize = 4;
+const EXTERNAL_AIRPORT_CONFLICT_DETAIL: &str = "gateway_external_airport_conflict";
 
 static GATEWAY_HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
@@ -71,6 +72,16 @@ struct GatewaySceneryInstallPayload {
     comment: Option<String>,
     features: Vec<String>,
     master_zip_blob: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GatewayInstallRequest {
+    pub xplane_path: String,
+    pub icao: String,
+    pub scenery_id: i64,
+    pub auto_sort_scenery: Option<bool>,
+    pub ignore_external_conflict: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -423,11 +434,15 @@ fn airport_match_score(airport: &GatewayAirportSearchResult, query: &str) -> Opt
 pub async fn gateway_install_scenery(
     app_handle: AppHandle,
     db: State<'_, DatabaseState>,
-    xplane_path: String,
-    icao: String,
-    scenery_id: i64,
-    auto_sort_scenery: Option<bool>,
+    request: GatewayInstallRequest,
 ) -> ApiResult<GatewayInstalledAirport> {
+    let GatewayInstallRequest {
+        xplane_path,
+        icao,
+        scenery_id,
+        auto_sort_scenery,
+        ignore_external_conflict,
+    } = request;
     let xplane_root = validate_xplane_root(&xplane_path)?;
     let xplane_key = normalize_xplane_key(&xplane_root);
     let airport_icao = normalize_icao(&icao)?;
@@ -445,7 +460,9 @@ pub async fn gateway_install_scenery(
             ))
         })?;
 
-    ensure_no_external_airport_conflict(&conn, &xplane_root, &airport_icao).await?;
+    if !ignore_external_conflict.unwrap_or(false) {
+        ensure_no_external_airport_conflict(&conn, &xplane_root, &airport_icao).await?;
+    }
 
     let scenery_payload = fetch_gateway_scenery_payload(scenery_id).await?;
     let scenery_detail =
@@ -617,12 +634,11 @@ fn parse_gateway_airport_summary(
     fallback_icao: &str,
 ) -> Option<GatewayAirportSummaryData> {
     let root = payload.as_object()?;
-    let airport = pick_object(root, &["airport", "Airport", "data"]).unwrap_or(root);
-    let airport_code = pick_string(
-        airport,
-        &["icao", "ICAO", "airportCode", "AirportCode", "code", "ident"],
-    )
-    .or_else(|| pick_string(root, &["icao", "ICAO", "airportCode", "AirportCode"]))
+    let airport = pick_gateway_airport_object(root);
+    let scenery_list = pick_gateway_scenery_list(root, airport);
+    let metadata = pick_gateway_metadata(root, airport);
+    let airport_code = pick_gateway_airport_code(airport)
+    .or_else(|| pick_gateway_airport_code(root))
     .unwrap_or_else(|| fallback_icao.to_string())
     .trim()
     .to_ascii_uppercase();
@@ -631,25 +647,16 @@ fn parse_gateway_airport_summary(
         return None;
     }
 
-    let airport_name = pick_string(airport, &["name", "airportName", "AirportName", "Name"]);
-    let scenery_list = pick_array(root, &["sceneries", "Sceneries", "scenery", "results", "items"])
-        .or_else(|| {
-            pick_array(
-                airport,
-                &["sceneries", "Sceneries", "scenery", "results", "items"],
-            )
-        })
-        .cloned()
-        .unwrap_or_default();
+    let airport_name = pick_gateway_airport_name(airport).or_else(|| pick_gateway_airport_name(root));
 
     let root_recommended = pick_object(root, &["recommendedScenery", "RecommendedScenery"]);
     let airport_recommended = pick_object(airport, &["recommendedScenery", "RecommendedScenery"]);
 
-    let recommended_scenery_id = pick_i64(
+    let recommended_scenery_id = normalize_gateway_id(pick_i64(
         airport,
         &[
-            "recommendedSceneryId",
             "RecommendedSceneryId",
+            "recommendedSceneryId",
             "recommended_scenery_id",
         ],
     )
@@ -657,8 +664,8 @@ fn parse_gateway_airport_summary(
         pick_i64(
             root,
             &[
-                "recommendedSceneryId",
                 "RecommendedSceneryId",
+                "recommendedSceneryId",
                 "recommended_scenery_id",
             ],
         )
@@ -668,61 +675,52 @@ fn parse_gateway_airport_summary(
     })
     .or_else(|| {
         airport_recommended.and_then(|value| pick_i64(value, &["id", "sceneryId", "SceneryId"]))
+    }));
+
+    let recommended = recommended_scenery_id.and_then(|target_id| {
+        scenery_list.iter().find_map(|entry| {
+            let record = entry.as_object()?;
+            let entry_scenery_id = normalize_gateway_id(pick_i64(
+                record,
+                &["sceneryId", "SceneryId", "id"],
+            ))?;
+            (entry_scenery_id == target_id).then_some(record)
+        })
     });
 
-    let mut recommended = root_recommended.or(airport_recommended);
-    if recommended.is_none() && !scenery_list.is_empty() {
-        if let Some(recommended_scenery_id) = recommended_scenery_id {
-            recommended = scenery_list.iter().find_map(|entry| {
-                let record = entry.as_object()?;
-                let entry_scenery_id = pick_i64(record, &["id", "sceneryId", "SceneryId"])?;
-                (entry_scenery_id == recommended_scenery_id).then_some(record)
-            });
-        }
-
-        if recommended.is_none() {
-            recommended = scenery_list.first().and_then(Value::as_object);
-        }
-    }
-
-    let scenery_count = pick_i64(airport, &["sceneryCount", "SceneryCount", "totalSceneries"])
-        .or_else(|| pick_i64(root, &["sceneryCount", "SceneryCount", "totalSceneries"]))
+    let scenery_count = pick_i64(
+        airport,
+        &[
+            "SubmissionCount",
+            "ApprovedSceneryCount",
+            "AcceptedSceneryCount",
+            "sceneryCount",
+            "SceneryCount",
+            "totalSceneries",
+        ],
+    )
+        .or_else(|| {
+            pick_i64(
+                root,
+                &[
+                    "SubmissionCount",
+                    "ApprovedSceneryCount",
+                    "AcceptedSceneryCount",
+                    "sceneryCount",
+                    "SceneryCount",
+                    "totalSceneries",
+                ],
+            )
+        })
         .or_else(|| (!scenery_list.is_empty()).then_some(scenery_list.len() as i64));
 
-    let mut recommended_artist = recommended.and_then(|value| {
-        pick_string(
-            value,
-            &[
-                "userName",
-                "username",
-                "authorName",
-                "author",
-                "artist",
-                "submittedBy",
-            ],
-        )
-    });
+    let recommended_artist = recommended
+        .and_then(pick_gateway_artist)
+        .or_else(|| metadata.and_then(pick_gateway_artist));
 
-    if recommended_artist.is_none() {
-        recommended_artist = recommended
-            .and_then(|value| pick_object(value, &["user", "User"]))
-            .and_then(|user| pick_string(user, &["name", "username", "displayName", "userName"]));
-    }
-
-    let recommended_accepted_at = recommended.and_then(|value| {
-        pick_string(
-            value,
-            &[
-                "dateAccepted",
-                "acceptedAt",
-                "accepted",
-                "approvalDate",
-                "approvedAt",
-                "date",
-                "updatedAt",
-            ],
-        )
-    });
+    let recommended_accepted_at = recommended
+        .and_then(pick_gateway_summary_date)
+        .or_else(|| metadata.and_then(pick_gateway_summary_date));
 
     if recommended_scenery_id.is_none()
         && scenery_count.is_none()
@@ -746,73 +744,24 @@ fn parse_gateway_airport_summary(
 fn parse_gateway_airport_detail(payload: &Value, fallback_icao: &str) -> Option<GatewayAirportDetail> {
     let summary = parse_gateway_airport_summary(payload, fallback_icao)?;
     let root = payload.as_object()?;
-    let airport = pick_object(root, &["airport", "Airport", "data"]).unwrap_or(root);
-    let scenery_list = pick_array(root, &["sceneries", "Sceneries", "scenery", "results", "items"])
-        .or_else(|| {
-            pick_array(
-                airport,
-                &["sceneries", "Sceneries", "scenery", "results", "items"],
-            )
-        })
-        .cloned()
-        .unwrap_or_default();
+    let airport = pick_gateway_airport_object(root);
+    let scenery_list = pick_gateway_scenery_list(root, airport);
 
     let mut sceneries: Vec<GatewayScenerySummary> = scenery_list
         .iter()
         .filter_map(|entry| {
             let record = entry.as_object()?;
-            let scenery_id = pick_i64(record, &["id", "sceneryId", "SceneryId"])?;
-            let mut artist = pick_string(
+            let scenery_id = normalize_gateway_id(pick_i64(
                 record,
-                &[
-                    "artist",
-                    "artistName",
-                    "author",
-                    "authorName",
-                    "userName",
-                    "username",
-                    "submittedBy",
-                ],
-            );
-            if artist.is_none() {
-                artist = pick_object(record, &["user", "User"]).and_then(|user| {
-                    pick_string(user, &["name", "username", "displayName", "userName"])
-                });
-            }
+                &["sceneryId", "SceneryId", "id"],
+            ))?;
 
             Some(GatewayScenerySummary {
                 scenery_id,
-                artist,
-                status: pick_string(
-                    record,
-                    &[
-                        "status",
-                        "approvalStatus",
-                        "submissionStatus",
-                        "state",
-                        "gatewayStatus",
-                    ],
-                ),
-                approved_date: pick_string(
-                    record,
-                    &[
-                        "dateAccepted",
-                        "acceptedAt",
-                        "approvedDate",
-                        "approvalDate",
-                        "updatedAt",
-                    ],
-                ),
-                comment: pick_string(
-                    record,
-                    &[
-                        "artistComments",
-                        "comments",
-                        "comment",
-                        "description",
-                        "notes",
-                    ],
-                ),
+                artist: pick_gateway_artist(record),
+                status: pick_gateway_status(record),
+                approved_date: pick_gateway_approved_date(record),
+                comment: pick_gateway_comment(record),
                 recommended: summary
                     .recommended_scenery_id
                     .map(|value| value == scenery_id)
@@ -847,99 +796,26 @@ fn parse_gateway_scenery_detail(
     let detail = pick_object(root, &["scenery", "Scenery", "data"]).unwrap_or(root);
     let airport =
         pick_object(detail, &["airport", "Airport"]).or_else(|| pick_object(root, &["airport", "Airport"]));
-    let scenery_id = pick_i64(detail, &["id", "sceneryId", "SceneryId"]).unwrap_or(fallback_scenery_id);
-
-    let mut artist = pick_string(
+    let scenery_id = normalize_gateway_id(pick_i64(
         detail,
-        &[
-            "artist",
-            "artistName",
-            "author",
-            "authorName",
-            "userName",
-            "username",
-            "submittedBy",
-        ],
-    );
-    if artist.is_none() {
-        artist = pick_object(detail, &["user", "User"]).and_then(|user| {
-            pick_string(user, &["name", "username", "displayName", "userName"])
-        });
-    }
+        &["sceneryId", "SceneryId", "id"],
+    ))
+    .unwrap_or(fallback_scenery_id);
 
-    let status = pick_string(
-        detail,
-        &[
-            "status",
-            "approvalStatus",
-            "submissionStatus",
-            "state",
-            "gatewayStatus",
-        ],
-    );
-    let approved_date = pick_string(
-        detail,
-        &[
-            "dateAccepted",
-            "acceptedAt",
-            "approvedDate",
-            "approvalDate",
-            "updatedAt",
-        ],
-    );
-    let comment = pick_string(
-        detail,
-        &[
-            "artistComments",
-            "comments",
-            "comment",
-            "description",
-            "notes",
-        ],
-    );
-
-    let runway_count =
-        pick_i64(detail, &["runwayCount", "runwaysCount"]).or_else(|| pick_array_len(detail, &["runways", "Runways"]));
-    let gate_count = pick_i64(detail, &["gateCount", "gatesCount", "startupCount"])
-        .or_else(|| pick_array_len(detail, &["gates", "startupLocations", "ramps"]));
-    let taxiway_count =
-        pick_i64(detail, &["taxiwayCount", "taxiwaysCount"]).or_else(|| {
-            pick_array_len(detail, &["taxiways", "taxiwayEdges"])
-        });
-
-    let mut features = Vec::new();
-    if let Some(runway_count) = runway_count {
-        features.push(format!("RWY {}", runway_count));
-    }
-    if let Some(gate_count) = gate_count {
-        features.push(format!("Gates {}", gate_count));
-    }
-    if let Some(taxiway_count) = taxiway_count {
-        features.push(format!("Taxiway {}", taxiway_count));
-    }
-
-    if let Some(tags) = pick_array(detail, &["features", "featureFlags", "tags"]) {
-        for tag in tags.iter().take(5) {
-            if let Some(tag) = tag.as_str() {
-                let trimmed = tag.trim();
-                if !trimmed.is_empty() {
-                    features.push(trimmed.to_string());
-                }
-            }
-        }
-    }
+    let artist = pick_gateway_artist(detail);
+    let status = pick_gateway_status(detail);
+    let approved_date = pick_gateway_approved_date(detail);
+    let comment = pick_gateway_comment(detail);
+    let features = parse_gateway_feature_labels(detail);
 
     let icao = airport
-        .and_then(|value| {
-            pick_string(
-                value,
-                &["icao", "ICAO", "airportCode", "AirportCode", "code", "ident"],
-            )
-        })
-        .or_else(|| pick_string(detail, &["icao", "ICAO", "airportCode", "AirportCode"]));
+        .and_then(pick_gateway_airport_code)
+        .or_else(|| pick_gateway_airport_code(detail))
+        .or_else(|| pick_gateway_airport_code(root));
     let airport_name = airport
-        .and_then(|value| pick_string(value, &["name", "airportName", "AirportName", "Name"]))
-        .or_else(|| pick_string(detail, &["airportName", "AirportName", "name", "Name"]));
+        .and_then(pick_gateway_airport_name)
+        .or_else(|| pick_gateway_airport_name(detail))
+        .or_else(|| pick_gateway_airport_name(root));
     let master_zip_blob = pick_string(
         detail,
         &["masterZipBlob", "MasterZipBlob", "master_zip_blob", "blob"],
@@ -1144,19 +1020,27 @@ async fn ensure_no_external_airport_conflict(
     if let Some(folder_name) =
         find_conflicting_airport_from_index(conn, xplane_root, airport_icao).await?
     {
-        return Err(ApiError::conflict(format!(
-            "Custom Scenery already contains a non-Gateway airport for {}: {}",
-            airport_icao, folder_name
-        )));
+        return Err(ApiError::with_details(
+            ApiErrorCode::ConflictExists,
+            format!(
+                "Custom Scenery already contains a non-Gateway airport for {}: {}",
+                airport_icao, folder_name
+            ),
+            EXTERNAL_AIRPORT_CONFLICT_DETAIL,
+        ));
     }
 
     if let Some(folder_name) =
         find_conflicting_airport_from_folder_scan(conn, xplane_root, airport_icao).await?
     {
-        return Err(ApiError::conflict(format!(
-            "Custom Scenery already contains a non-Gateway airport for {}: {}",
-            airport_icao, folder_name
-        )));
+        return Err(ApiError::with_details(
+            ApiErrorCode::ConflictExists,
+            format!(
+                "Custom Scenery already contains a non-Gateway airport for {}: {}",
+                airport_icao, folder_name
+            ),
+            EXTERNAL_AIRPORT_CONFLICT_DETAIL,
+        ));
     }
 
     Ok(())
@@ -1334,6 +1218,243 @@ fn summary_to_search_result(summary: GatewayAirportSummaryData) -> GatewayAirpor
         recommended_artist: summary.recommended_artist,
         recommended_accepted_at: summary.recommended_accepted_at,
     }
+}
+
+fn pick_gateway_airport_object<'a>(root: &'a Map<String, Value>) -> &'a Map<String, Value> {
+    pick_object(root, &["airport", "Airport", "data"]).unwrap_or(root)
+}
+
+fn pick_gateway_scenery_list(root: &Map<String, Value>, airport: &Map<String, Value>) -> Vec<Value> {
+    pick_array(root, &["scenery", "Sceneries", "sceneries", "results", "items"])
+        .or_else(|| pick_array(airport, &["scenery", "Sceneries", "sceneries", "results", "items"]))
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn pick_gateway_metadata<'a>(
+    root: &'a Map<String, Value>,
+    airport: &'a Map<String, Value>,
+) -> Option<&'a Map<String, Value>> {
+    pick_object(root, &["metadata", "Metadata"])
+        .or_else(|| pick_object(airport, &["metadata", "Metadata"]))
+}
+
+fn normalize_gateway_id(value: Option<i64>) -> Option<i64> {
+    value.filter(|id| *id > 0)
+}
+
+fn pick_gateway_airport_code(record: &Map<String, Value>) -> Option<String> {
+    pick_string(
+        record,
+        &["AirportCode", "airportCode", "icao", "ICAO", "code", "ident"],
+    )
+}
+
+fn pick_gateway_airport_name(record: &Map<String, Value>) -> Option<String> {
+    pick_string(
+        record,
+        &["AirportName", "airportName", "aptName", "name", "Name"],
+    )
+}
+
+fn pick_gateway_artist(record: &Map<String, Value>) -> Option<String> {
+    pick_string(
+        record,
+        &[
+            "userName",
+            "username",
+            "artist",
+            "artistName",
+            "author",
+            "authorName",
+            "submittedBy",
+        ],
+    )
+    .or_else(|| {
+        pick_object(record, &["user", "User"])
+            .and_then(|user| pick_string(user, &["name", "username", "displayName", "userName"]))
+    })
+}
+
+fn pick_gateway_summary_date(record: &Map<String, Value>) -> Option<String> {
+    pick_string(
+        record,
+        &[
+            "dateAccepted",
+            "dateApproved",
+            "acceptedAt",
+            "approvedDate",
+            "approvalDate",
+            "approvedAt",
+            "date",
+            "updatedAt",
+        ],
+    )
+}
+
+fn pick_gateway_approved_date(record: &Map<String, Value>) -> Option<String> {
+    pick_string(
+        record,
+        &[
+            "dateApproved",
+            "dateAccepted",
+            "approvedDate",
+            "approvalDate",
+            "acceptedAt",
+            "updatedAt",
+        ],
+    )
+}
+
+fn pick_gateway_status(record: &Map<String, Value>) -> Option<String> {
+    pick_string(
+        record,
+        &[
+            "status",
+            "gatewayStatus",
+            "submissionStatus",
+            "approvalStatus",
+            "state",
+        ],
+    )
+    .or_else(|| {
+        if pick_string(record, &["dateDeclined"]).is_some() {
+            Some("Declined".to_string())
+        } else if pick_string(record, &["dateApproved"]).is_some() {
+            Some("Approved".to_string())
+        } else if pick_string(record, &["dateAccepted"]).is_some() {
+            Some("Accepted".to_string())
+        } else {
+            None
+        }
+    })
+}
+
+fn pick_gateway_comment(record: &Map<String, Value>) -> Option<String> {
+    let mut comments = Vec::new();
+    if let Some(comment) = pick_string(record, &["artistComments"]) {
+        comments.push(comment);
+    }
+    if let Some(comment) = pick_string(record, &["moderatorComments"]) {
+        comments.push(comment);
+    }
+    if comments.is_empty() {
+        if let Some(comment) = pick_string(
+            record,
+            &["comments", "comment", "description", "notes"],
+        ) {
+            comments.push(comment);
+        }
+    }
+    comments.dedup();
+    (!comments.is_empty()).then(|| comments.join("\n\n"))
+}
+
+fn parse_gateway_feature_labels(record: &Map<String, Value>) -> Vec<String> {
+    let mut labels = Vec::new();
+
+    if let Some(airport_type) = pick_string(record, &["type", "Type"]) {
+        labels.push(airport_type);
+    }
+
+    if let Some(raw_features) = pick_string(record, &["features", "featureFlags"]) {
+        for token in raw_features.split(',').map(str::trim).filter(|token| !token.is_empty()) {
+            if token.chars().all(|ch| ch.is_ascii_digit()) {
+                let feature_id = token.parse::<i64>().ok();
+                labels.push(
+                    feature_id
+                        .and_then(gateway_feature_name)
+                        .unwrap_or_else(|| format!("Feature {}", token)),
+                );
+            } else {
+                labels.push(token.to_string());
+            }
+        }
+    }
+
+    let runway_count =
+        pick_i64(record, &["runwayCount", "runwaysCount"]).or_else(|| pick_array_len(record, &["runways", "Runways"]));
+    let gate_count = pick_i64(record, &["gateCount", "gatesCount", "startupCount"])
+        .or_else(|| pick_array_len(record, &["gates", "startupLocations", "ramps"]));
+    let taxiway_count =
+        pick_i64(record, &["taxiwayCount", "taxiwaysCount"]).or_else(|| {
+            pick_array_len(record, &["taxiways", "taxiwayEdges"])
+        });
+
+    if let Some(runway_count) = runway_count {
+        labels.push(format!("RWY {}", runway_count));
+    }
+    if let Some(gate_count) = gate_count {
+        labels.push(format!("Gates {}", gate_count));
+    }
+    if let Some(taxiway_count) = taxiway_count {
+        labels.push(format!("Taxiway {}", taxiway_count));
+    }
+
+    if let Some(tags) = pick_array(record, &["tags"]) {
+        for tag in tags.iter().take(5) {
+            if let Some(tag) = tag.as_str().map(str::trim).filter(|text| !text.is_empty()) {
+                labels.push(tag.to_string());
+            }
+        }
+    }
+
+    let mut deduped = Vec::new();
+    for label in labels {
+        if !deduped.contains(&label) {
+            deduped.push(label);
+        }
+    }
+    deduped
+}
+
+fn gateway_feature_name(feature_id: i64) -> Option<String> {
+    let name = match feature_id {
+        1 => "Has ATC Flow",
+        2 => "Has Taxi Route",
+        5 => "Has Log.txt Issue",
+        6 => "LR Internal Use",
+        8 => "Has Ground Routes",
+        11 => "Runway Numbering/Length Fix",
+        18 => "Runway Numbering Fix",
+        20 => "Floating Runway",
+        29 => "Ground Routes Certified",
+        35 => "Misused Draped Sign Polygons",
+        38 => "Runway in Water",
+        40 => "Runway Unusable (XP11)",
+        42 => "Low Res Terrain Polygons (XP11)",
+        43 => "Fix Fragmented Road Network XP11",
+        47 => "Overlap - Wrong location",
+        51 => "Boat Injection",
+        52 => "Tunnel Injection",
+        55 => "Parking Lot Injection",
+        57 => "Embankment Injection",
+        58 => "Pier Injection",
+        59 => "Runway is Stepped (XP11)",
+        62 => "Custom Runway Markings",
+        64 => "Runway Misaligned",
+        65 => "Facade Injection",
+        67 => "Ground Markings Injection",
+        70 => "Jetway Kit Injection",
+        71 => "Challenged by Artist",
+        75 => "Structure(s) do not match imagery",
+        78 => "Has orphaned taxiway",
+        79 => "Misused Terrain Polygons",
+        80 => "Road network duplication",
+        83 => "XP12 pre-opening",
+        84 => "Better than a newer submission.",
+        86 => "Has Road Network",
+        87 => "Temporary Terrain Polygon(s)",
+        88 => "Runway Unusable (XP12)",
+        89 => "Runway is Stepped (XP12)",
+        90 => "Roads made with polygons",
+        92 => "Review in Sim",
+        93 => "Fix Fragmented Road Network XP12",
+        94 => "Oversized Terrain Polygon(s)",
+        95 => "Contains Flatten Polygon",
+        _ => return None,
+    };
+    Some(name.to_string())
 }
 
 fn pick_string(record: &Map<String, Value>, keys: &[&str]) -> Option<String> {

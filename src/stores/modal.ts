@@ -10,6 +10,7 @@ export interface ConfirmOptions {
   confirmText: string
   cancelText: string
   type: 'warning' | 'danger'
+  hideCloseButton?: boolean
   onConfirm: () => void
   onCancel: () => void
 }

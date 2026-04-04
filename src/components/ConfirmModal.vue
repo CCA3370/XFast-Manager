@@ -64,6 +64,7 @@
               </div>
             </div>
             <button
+              v-if="currentShowCloseButton"
               class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1"
               @click="handleCancel"
             >
@@ -169,11 +170,13 @@ const props = withDefaults(
     loadingText?: string
     isLoading?: boolean
     variant?: 'warning' | 'danger'
+    hideCloseButton?: boolean
   }>(),
   {
     show: false,
     isLoading: false,
     variant: 'danger',
+    hideCloseButton: false,
   },
 )
 
@@ -225,6 +228,11 @@ const currentWarning = computed(() => {
 const currentType = computed(() => {
   if (isLocalMode.value) return props.variant
   return modal.confirmModal.options?.type || 'danger'
+})
+
+const currentShowCloseButton = computed(() => {
+  if (isLocalMode.value) return !props.hideCloseButton
+  return !modal.confirmModal.options?.hideCloseButton
 })
 
 const currentConfirmText = computed(() => {

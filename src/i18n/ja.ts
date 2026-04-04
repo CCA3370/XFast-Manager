@@ -1598,6 +1598,9 @@ export default {
     uninstallConfirm:
       '{icao} の管理対象 Gateway 空港をアンインストールしますか？ インストール済みシーナリーフォルダーが削除されます。',
     installBlocked: 'Gateway のインストールがブロックされました',
+    installBlockedWarning:
+      'この空港には Gateway 以外の空港シーナリーが見つかりました。この警告を無視して続行すると、空港の重複やシーナリー競合が残る可能性があります。',
+    ignoreWarningInstall: '警告を無視してインストール',
     pathRequired: 'X-Plane パスが必要です',
     pathRequiredHint:
       'Gateway の閲覧は X-Plane パスがなくてもできますが、インストール、アンインストール、ローカル一覧には X-Plane ルートの設定が必要です。',

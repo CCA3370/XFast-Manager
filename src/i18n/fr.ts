@@ -1647,6 +1647,9 @@ export default {
     uninstallConfirm:
       "Désinstaller l'aéroport Gateway géré pour {icao} ? Le dossier de scène installé sera supprimé.",
     installBlocked: 'Installation Gateway bloquée',
+    installBlockedWarning:
+      "Une scène d'aéroport non Gateway a été détectée pour cet aéroport. Ignorer cet avertissement peut laisser des aéroports en double ou des conflits de scène.",
+    ignoreWarningInstall: "Ignorer l'avertissement et installer",
     pathRequired: 'Chemin X-Plane requis',
     pathRequiredHint:
       "La consultation de Gateway fonctionne sans chemin X-Plane, mais l'installation, la désinstallation et l'inventaire local nécessitent une racine X-Plane configurée.",

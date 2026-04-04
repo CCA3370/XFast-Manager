@@ -37,8 +37,9 @@ export async function gatewayInstallScenery(request: {
   icao: string
   sceneryId: number
   autoSortScenery?: boolean
+  ignoreExternalConflict?: boolean
 }): Promise<GatewayInstalledAirport> {
-  return invokeCommand<GatewayInstalledAirport>('gateway_install_scenery', request)
+  return invokeCommand<GatewayInstalledAirport>('gateway_install_scenery', { request })
 }
 
 export async function gatewayUninstallAirport(

@@ -1522,6 +1522,9 @@ export default {
     uninstallFailed: '卸载 Gateway 机场失败',
     uninstallConfirm: '确定卸载 {icao} 的 Gateway 管理版本吗？这会删除对应的已安装地景文件夹。',
     installBlocked: 'Gateway 安装已阻止',
+    installBlockedWarning:
+      '检测到该机场已有一个非 Gateway 机场地景。忽略此警告继续安装，可能会留下重复机场或造成地景冲突。',
+    ignoreWarningInstall: '忽略警告并安装',
     pathRequired: '需要 X-Plane 路径',
     pathRequiredHint:
       '未设置 X-Plane 路径时仍可浏览 Gateway，但安装、卸载和本地清单功能需要先配置 X-Plane 根目录。',

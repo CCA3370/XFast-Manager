@@ -1594,6 +1594,9 @@ export default {
     uninstallConfirm:
       'Uninstall the managed Gateway airport for {icao}? This will remove the installed scenery folder.',
     installBlocked: 'Gateway Install Blocked',
+    installBlockedWarning:
+      'A non-Gateway airport scenery was detected for this airport. Ignoring this warning may leave duplicate airports or scenery conflicts.',
+    ignoreWarningInstall: 'Ignore Warning and Install',
     pathRequired: 'X-Plane path required',
     pathRequiredHint:
       'Gateway browsing works without an X-Plane path, but install, uninstall, and local inventory need a configured X-Plane root.',

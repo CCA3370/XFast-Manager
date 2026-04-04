@@ -2858,14 +2858,187 @@ function pickArrayLength(record: Record<string, unknown>, keys: string[]): numbe
   return list ? list.length : null
 }
 
+const GATEWAY_FEATURE_NAMES: Record<number, string> = {
+  1: 'Has ATC Flow',
+  2: 'Has Taxi Route',
+  5: 'Has Log.txt Issue',
+  6: 'LR Internal Use',
+  8: 'Has Ground Routes',
+  11: 'Runway Numbering/Length Fix',
+  18: 'Runway Numbering Fix',
+  20: 'Floating Runway',
+  29: 'Ground Routes Certified',
+  35: 'Misused Draped Sign Polygons',
+  38: 'Runway in Water',
+  40: 'Runway Unusable (XP11)',
+  42: 'Low Res Terrain Polygons (XP11)',
+  43: 'Fix Fragmented Road Network XP11',
+  47: 'Overlap - Wrong location',
+  51: 'Boat Injection',
+  52: 'Tunnel Injection',
+  55: 'Parking Lot Injection',
+  57: 'Embankment Injection',
+  58: 'Pier Injection',
+  59: 'Runway is Stepped (XP11)',
+  62: 'Custom Runway Markings',
+  64: 'Runway Misaligned',
+  65: 'Facade Injection',
+  67: 'Ground Markings Injection',
+  70: 'Jetway Kit Injection',
+  71: 'Challenged by Artist',
+  75: 'Structure(s) do not match imagery',
+  78: 'Has orphaned taxiway',
+  79: 'Misused Terrain Polygons',
+  80: 'Road network duplication',
+  83: 'XP12 pre-opening',
+  84: 'Better than a newer submission.',
+  86: 'Has Road Network',
+  87: 'Temporary Terrain Polygon(s)',
+  88: 'Runway Unusable (XP12)',
+  89: 'Runway is Stepped (XP12)',
+  90: 'Roads made with polygons',
+  92: 'Review in Sim',
+  93: 'Fix Fragmented Road Network XP12',
+  94: 'Oversized Terrain Polygon(s)',
+  95: 'Contains Flatten Polygon',
+}
+
+function normalizeGatewayId(value: number | null): number | null {
+  return value !== null && value > 0 ? value : null
+}
+
+function resolveGatewayFeatureName(token: string): string {
+  if (!/^\d+$/.test(token)) return token
+  const featureId = Number(token)
+  return GATEWAY_FEATURE_NAMES[featureId] ?? `Feature ${token}`
+}
+
+function pickGatewayAirportCode(record: Record<string, unknown>): string | null {
+  return pickString(record, ['AirportCode', 'airportCode', 'icao', 'ICAO', 'code', 'ident'])
+}
+
+function pickGatewayAirportName(record: Record<string, unknown>): string | null {
+  return pickString(record, ['AirportName', 'airportName', 'aptName', 'name', 'Name'])
+}
+
+function pickGatewayArtist(record: Record<string, unknown>): string | null {
+  return (
+    pickString(record, [
+      'userName',
+      'username',
+      'artist',
+      'artistName',
+      'author',
+      'authorName',
+      'submittedBy',
+    ]) ??
+    (() => {
+      const user = pickRecord(record, ['user', 'User'])
+      return user ? pickString(user, ['name', 'username', 'displayName', 'userName']) : null
+    })()
+  )
+}
+
+function pickGatewaySummaryDate(record: Record<string, unknown>): string | null {
+  return pickString(record, [
+    'dateAccepted',
+    'dateApproved',
+    'acceptedAt',
+    'approvedDate',
+    'approvalDate',
+    'approvedAt',
+    'date',
+    'updatedAt',
+  ])
+}
+
+function pickGatewayApprovedDate(record: Record<string, unknown>): string | null {
+  return pickString(record, [
+    'dateApproved',
+    'dateAccepted',
+    'approvedDate',
+    'approvalDate',
+    'acceptedAt',
+    'updatedAt',
+  ])
+}
+
+function pickGatewayStatus(record: Record<string, unknown>): string | null {
+  return (
+    pickString(record, ['status', 'gatewayStatus', 'submissionStatus', 'approvalStatus', 'state']) ??
+    (pickString(record, ['dateDeclined'])
+      ? 'Declined'
+      : pickString(record, ['dateApproved'])
+        ? 'Approved'
+        : pickString(record, ['dateAccepted'])
+          ? 'Accepted'
+          : null)
+  )
+}
+
+function pickGatewayComment(record: Record<string, unknown>): string | null {
+  const comments: string[] = []
+  const artistComment = pickString(record, ['artistComments'])
+  const moderatorComment = pickString(record, ['moderatorComments'])
+  if (artistComment) comments.push(artistComment)
+  if (moderatorComment) comments.push(moderatorComment)
+  if (comments.length === 0) {
+    const fallback = pickString(record, ['comments', 'comment', 'description', 'notes'])
+    if (fallback) comments.push(fallback)
+  }
+  return comments.length > 0 ? [...new Set(comments)].join('\n\n') : null
+}
+
+function parseGatewayFeatureList(record: Record<string, unknown>): string[] {
+  const labels: string[] = []
+
+  const airportType = pickString(record, ['type', 'Type'])
+  if (airportType) labels.push(airportType)
+
+  const featureText = pickString(record, ['features', 'featureFlags'])
+  if (featureText) {
+    for (const token of featureText.split(',').map((item) => item.trim()).filter(Boolean)) {
+      labels.push(resolveGatewayFeatureName(token))
+    }
+  }
+
+  const runwayCount =
+    pickNumber(record, ['runwayCount', 'runwaysCount']) ??
+    pickArrayLength(record, ['runways', 'Runways'])
+  const gateCount =
+    pickNumber(record, ['gateCount', 'gatesCount', 'startupCount']) ??
+    pickArrayLength(record, ['gates', 'startupLocations', 'ramps'])
+  const taxiwayCount =
+    pickNumber(record, ['taxiwayCount', 'taxiwaysCount']) ??
+    pickArrayLength(record, ['taxiways', 'taxiwayEdges'])
+
+  if (runwayCount !== null) labels.push(`RWY ${runwayCount}`)
+  if (gateCount !== null) labels.push(`Gates ${gateCount}`)
+  if (taxiwayCount !== null) labels.push(`Taxiway ${taxiwayCount}`)
+
+  const tags = pickArray(record, ['tags']) ?? []
+  for (const item of tags.slice(0, 5)) {
+    if (typeof item !== 'string') continue
+    const tag = item.trim()
+    if (tag) labels.push(tag)
+  }
+
+  return [...new Set(labels)]
+}
+
 function parseGatewaySummary(payload: unknown, fallbackIcao: string): GatewaySummary | null {
   const root = asRecord(payload)
   if (!root) return null
 
   const airport = pickRecord(root, ['airport', 'Airport', 'data']) ?? root
+  const sceneryList =
+    pickArray(root, ['scenery', 'Sceneries', 'sceneries', 'results', 'items']) ??
+    pickArray(airport, ['scenery', 'Sceneries', 'sceneries', 'results', 'items']) ??
+    []
+  const metadata = pickRecord(root, ['metadata', 'Metadata']) ?? pickRecord(airport, ['metadata', 'Metadata'])
   const airportCode = (
-    pickString(airport, ['icao', 'ICAO', 'airportCode', 'AirportCode', 'code', 'ident']) ||
-    pickString(root, ['icao', 'ICAO', 'airportCode', 'AirportCode']) ||
+    pickGatewayAirportCode(airport) ||
+    pickGatewayAirportCode(root) ||
     fallbackIcao
   )
     .trim()
@@ -2873,72 +3046,60 @@ function parseGatewaySummary(payload: unknown, fallbackIcao: string): GatewaySum
 
   if (!airportCode) return null
 
-  const airportName = pickString(airport, ['name', 'airportName', 'AirportName', 'Name'])
-  const sceneryList =
-    pickArray(root, ['sceneries', 'Sceneries', 'scenery', 'results', 'items']) ?? []
+  const airportName = pickGatewayAirportName(airport) || pickGatewayAirportName(root)
 
   const rootRecommended = pickRecord(root, ['recommendedScenery', 'RecommendedScenery'])
   const airportRecommended = pickRecord(airport, ['recommendedScenery', 'RecommendedScenery'])
 
-  const recommendedSceneryId =
+  const recommendedSceneryId = normalizeGatewayId(
     pickNumber(airport, [
-      'recommendedSceneryId',
       'RecommendedSceneryId',
+      'recommendedSceneryId',
       'recommended_scenery_id',
     ]) ??
-    pickNumber(root, ['recommendedSceneryId', 'RecommendedSceneryId', 'recommended_scenery_id']) ??
-    (rootRecommended ? pickNumber(rootRecommended, ['id', 'sceneryId', 'SceneryId']) : null) ??
-    (airportRecommended ? pickNumber(airportRecommended, ['id', 'sceneryId', 'SceneryId']) : null)
+    pickNumber(root, ['RecommendedSceneryId', 'recommendedSceneryId', 'recommended_scenery_id']) ??
+    (rootRecommended ? pickNumber(rootRecommended, ['sceneryId', 'SceneryId', 'id']) : null) ??
+    (airportRecommended ? pickNumber(airportRecommended, ['sceneryId', 'SceneryId', 'id']) : null),
+  )
 
-  let recommended = rootRecommended ?? airportRecommended
-  if (!recommended && sceneryList.length > 0) {
-    if (recommendedSceneryId !== null) {
-      recommended =
-        sceneryList
+  const recommended =
+    recommendedSceneryId !== null
+      ? (sceneryList
           .map((entry) => asRecord(entry))
           .find(
             (entry) =>
-              entry && pickNumber(entry, ['id', 'sceneryId', 'SceneryId']) === recommendedSceneryId,
-          ) ?? null
-    }
-    if (!recommended) {
-      recommended = asRecord(sceneryList[0])
-    }
-  }
+              entry &&
+              normalizeGatewayId(pickNumber(entry, ['sceneryId', 'SceneryId', 'id'])) ===
+                recommendedSceneryId,
+          ) ?? null)
+      : null
 
   const sceneryCount =
-    pickNumber(airport, ['sceneryCount', 'SceneryCount', 'totalSceneries']) ??
-    pickNumber(root, ['sceneryCount', 'SceneryCount', 'totalSceneries']) ??
+    pickNumber(airport, [
+      'SubmissionCount',
+      'ApprovedSceneryCount',
+      'AcceptedSceneryCount',
+      'sceneryCount',
+      'SceneryCount',
+      'totalSceneries',
+    ]) ??
+    pickNumber(root, [
+      'SubmissionCount',
+      'ApprovedSceneryCount',
+      'AcceptedSceneryCount',
+      'sceneryCount',
+      'SceneryCount',
+      'totalSceneries',
+    ]) ??
     (sceneryList.length > 0 ? sceneryList.length : null)
 
-  let recommendedArtist = recommended
-    ? pickString(recommended, [
-        'userName',
-        'username',
-        'authorName',
-        'author',
-        'artist',
-        'submittedBy',
-      ])
-    : null
-  if (!recommendedArtist && recommended) {
-    const user = pickRecord(recommended, ['user', 'User'])
-    if (user) {
-      recommendedArtist = pickString(user, ['name', 'username', 'displayName', 'userName'])
-    }
-  }
+  const recommendedArtist =
+    (recommended ? pickGatewayArtist(recommended) : null) ||
+    (metadata ? pickGatewayArtist(metadata) : null)
 
-  const recommendedAcceptedAt = recommended
-    ? pickString(recommended, [
-        'dateAccepted',
-        'acceptedAt',
-        'accepted',
-        'approvalDate',
-        'approvedAt',
-        'date',
-        'updatedAt',
-      ])
-    : null
+  const recommendedAcceptedAt =
+    (recommended ? pickGatewaySummaryDate(recommended) : null) ||
+    (metadata ? pickGatewaySummaryDate(metadata) : null)
 
   if (
     recommendedSceneryId === null &&
@@ -2968,66 +3129,14 @@ function parseGatewaySceneryDetail(
   if (!root) return null
 
   const detail = pickRecord(root, ['scenery', 'Scenery', 'data']) ?? root
-  const sceneryId = pickNumber(detail, ['id', 'sceneryId', 'SceneryId']) ?? fallbackSceneryId
+  const sceneryId =
+    normalizeGatewayId(pickNumber(detail, ['sceneryId', 'SceneryId', 'id'])) ?? fallbackSceneryId
 
-  let artist = pickString(detail, [
-    'artist',
-    'artistName',
-    'author',
-    'authorName',
-    'userName',
-    'username',
-    'submittedBy',
-  ])
-  const user = pickRecord(detail, ['user', 'User'])
-  if (!artist && user) {
-    artist = pickString(user, ['name', 'username', 'displayName', 'userName'])
-  }
-
-  const status = pickString(detail, [
-    'status',
-    'approvalStatus',
-    'submissionStatus',
-    'state',
-    'gatewayStatus',
-  ])
-  const approvedDate = pickString(detail, [
-    'dateAccepted',
-    'acceptedAt',
-    'approvedDate',
-    'approvalDate',
-    'updatedAt',
-  ])
-  const comment = pickString(detail, [
-    'artistComments',
-    'comments',
-    'comment',
-    'description',
-    'notes',
-  ])
-
-  const runwayCount =
-    pickNumber(detail, ['runwayCount', 'runwaysCount']) ??
-    pickArrayLength(detail, ['runways', 'Runways'])
-  const gateCount =
-    pickNumber(detail, ['gateCount', 'gatesCount', 'startupCount']) ??
-    pickArrayLength(detail, ['gates', 'startupLocations', 'ramps'])
-  const taxiwayCount =
-    pickNumber(detail, ['taxiwayCount', 'taxiwaysCount']) ??
-    pickArrayLength(detail, ['taxiways', 'taxiwayEdges'])
-
-  const rawFeatures = pickArray(detail, ['features', 'featureFlags', 'tags']) ?? []
-  const tagFeatures = rawFeatures
-    .map((item) => (typeof item === 'string' ? item.trim() : ''))
-    .filter((item) => item.length > 0)
-    .slice(0, 5)
-
-  const countFeatures: string[] = []
-  if (runwayCount !== null) countFeatures.push(`RWY ${runwayCount}`)
-  if (gateCount !== null) countFeatures.push(`Gates ${gateCount}`)
-  if (taxiwayCount !== null) countFeatures.push(`Taxiway ${taxiwayCount}`)
-
-  const features = [...countFeatures, ...tagFeatures]
+  const artist = pickGatewayArtist(detail)
+  const status = pickGatewayStatus(detail)
+  const approvedDate = pickGatewayApprovedDate(detail)
+  const comment = pickGatewayComment(detail)
+  const features = parseGatewayFeatureList(detail)
   if (!status && !artist && !approvedDate && !comment && features.length === 0 && sceneryId <= 0) {
     return null
   }

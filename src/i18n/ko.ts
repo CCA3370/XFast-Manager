@@ -1581,6 +1581,9 @@ export default {
     uninstallConfirm:
       '{icao}용으로 관리되는 Gateway 공항을 제거할까요? 설치된 시너리 폴더가 삭제됩니다.',
     installBlocked: 'Gateway 설치가 차단되었습니다',
+    installBlockedWarning:
+      '이 공항에 대해 Gateway가 아닌 공항 시너리가 감지되었습니다. 이 경고를 무시하고 계속하면 중복 공항이나 시너리 충돌이 남을 수 있습니다.',
+    ignoreWarningInstall: '경고를 무시하고 설치',
     pathRequired: 'X-Plane 경로가 필요합니다',
     pathRequiredHint:
       'X-Plane 경로가 없어도 Gateway를 탐색할 수 있지만, 설치, 제거, 로컬 목록에는 X-Plane 루트 설정이 필요합니다.',
