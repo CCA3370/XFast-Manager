@@ -401,6 +401,19 @@ async function setPreference(key: 'useBeta' | 'includeLiveries', value: boolean)
   }, 1000)
 }
 
+function taskUpdateOptionsDisabled(
+  task: AddonUpdateDrawerTask,
+  includePreferenceState = true,
+): boolean {
+  const state = stateFor(task)
+  return (
+    state.loadingPlan ||
+    state.installing ||
+    managementStore.isExecutingUpdate ||
+    (includePreferenceState && (preferenceSaving.value || preferenceRefreshPending.value))
+  )
+}
+
 function isCancelledError(error: unknown): boolean {
   return String(error || '')
     .toLowerCase()
@@ -968,12 +981,18 @@ watch(
                             <div class="mt-2 space-y-2">
                               <label
                                 v-if="stateFor(task).plan?.hasBetaConfig"
-                                class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300 transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60"
+                                class="group flex items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300"
+                                :class="
+                                  taskUpdateOptionsDisabled(task)
+                                    ? 'cursor-not-allowed opacity-60'
+                                    : 'cursor-pointer transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60'
+                                "
                               >
                                 <input
                                   type="checkbox"
                                   class="peer sr-only"
                                   :checked="managementStore.addonUpdateOptions.useBeta"
+                                  :disabled="taskUpdateOptionsDisabled(task)"
                                   @change="
                                     setPreference(
                                       'useBeta',
@@ -988,12 +1007,18 @@ watch(
                               </label>
                               <label
                                 v-if="task.itemType === 'aircraft'"
-                                class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300 transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60"
+                                class="group flex items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300"
+                                :class="
+                                  taskUpdateOptionsDisabled(task)
+                                    ? 'cursor-not-allowed opacity-60'
+                                    : 'cursor-pointer transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60'
+                                "
                               >
                                 <input
                                   type="checkbox"
                                   class="peer sr-only"
                                   :checked="managementStore.addonUpdateOptions.includeLiveries"
+                                  :disabled="taskUpdateOptionsDisabled(task)"
                                   @change="
                                     setPreference(
                                       'includeLiveries',
@@ -1022,12 +1047,18 @@ watch(
                             </p>
                             <div class="mt-2 space-y-2">
                               <label
-                                class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300 transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60"
+                                class="group flex items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300"
+                                :class="
+                                  taskUpdateOptionsDisabled(task, false)
+                                    ? 'cursor-not-allowed opacity-60'
+                                    : 'cursor-pointer transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60'
+                                "
                               >
                                 <input
                                   type="checkbox"
                                   class="peer sr-only"
                                   :checked="stateFor(task).ziboPreserveLiveries"
+                                  :disabled="taskUpdateOptionsDisabled(task, false)"
                                   @change="
                                     stateFor(task).ziboPreserveLiveries = (
                                       $event.target as HTMLInputElement
@@ -1042,12 +1073,18 @@ watch(
                                 }}</span>
                               </label>
                               <label
-                                class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300 transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60"
+                                class="group flex items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300"
+                                :class="
+                                  taskUpdateOptionsDisabled(task, false)
+                                    ? 'cursor-not-allowed opacity-60'
+                                    : 'cursor-pointer transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60'
+                                "
                               >
                                 <input
                                   type="checkbox"
                                   class="peer sr-only"
                                   :checked="stateFor(task).ziboPreserveConfigFiles"
+                                  :disabled="taskUpdateOptionsDisabled(task, false)"
                                   @change="
                                     stateFor(task).ziboPreserveConfigFiles = (
                                       $event.target as HTMLInputElement

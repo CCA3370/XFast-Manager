@@ -243,7 +243,7 @@
         @click.self="closeAirportModal"
       >
         <div
-          class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-full"
+          class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col h-[calc(100vh-2rem)] sm:h-[calc(100vh-3rem)]"
         >
           <!-- Modal Header -->
           <div
@@ -273,11 +273,8 @@
                       }}
                     </span>
                   </div>
-                  <div class="min-w-0 text-sm text-gray-700 dark:text-gray-300 font-medium truncate">
+                  <div class="min-w-0 text-sm text-gray-800 dark:text-gray-200 font-medium truncate">
                     {{ selectedAirportName }}
-                  </div>
-                  <div class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                    {{ $t('map.gateway.submissions', { count: selectedSubmissionCount }) }}
                   </div>
                 </div>
               </template>
@@ -293,65 +290,23 @@
             </button>
           </div>
 
-          <div class="flex-1 min-h-0 flex flex-col p-4 sm:p-5 bg-gray-50/50 dark:bg-gray-900/20">
-            <div v-if="!store.airportDetail" class="h-full flex items-center justify-center">
+          <div class="flex-1 min-h-0 flex flex-col p-4 sm:p-5 bg-gray-100/90 dark:bg-gray-950/40">
+            <div v-if="!store.airportDetail" class="flex-1 min-h-0 flex items-center justify-center">
               <div
                 class="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"
               ></div>
             </div>
             <template v-else>
-              <!-- Action Bar -->
-              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3">
-                <div
-                  class="min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-gray-600 dark:text-gray-300"
-                >
-                  <span class="font-semibold text-gray-900 dark:text-white">
-                    {{ $t('management.currentVersionLabel') }}
-                    {{ formatGatewayVersion(store.selectedSceneryId) }}
-                  </span>
-                  <span>
-                    {{ $t('gatewayManager.localVersion') }}
-                    {{ selectedInstalledVersionLabel }}
-                  </span>
-                  <span>
-                    {{ $t('map.gateway.recommended') }}
-                    {{ formatGatewayVersion(store.airportDetail.recommendedSceneryId) }}
-                  </span>
-                  <span
-                    v-if="store.selectedInstalledRecord?.updateAvailable === true"
-                    class="text-amber-700 dark:text-amber-300"
-                  >
-                    {{ $t('gatewayManager.updatesAvailable') }}
-                    {{ formatGatewayVersion(store.selectedInstalledRecord.latestSceneryId) }}
-                  </span>
-                </div>
-                <button
-                  class="text-[13px] px-3.5 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 flex-shrink-0 shadow-sm shadow-blue-600/20"
-                  :disabled="installDisabled"
-                  @click="handleInstall()"
-                >
-                  <div
-                    v-if="store.installingIcao === store.airportDetail.icao"
-                    class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"
-                  ></div>
-                  {{
-                    store.installingIcao === store.airportDetail.icao
-                      ? $t('common.loading')
-                      : installButtonText
-                  }}
-                </button>
-              </div>
-
               <!-- Two Column Grid inside Modal -->
               <div
                 class="min-h-0 flex-1 grid grid-cols-[minmax(190px,36%)_minmax(0,1fr)] sm:grid-cols-[260px_minmax(0,1fr)] gap-3 sm:gap-4"
               >
                 <!-- Scenery List -->
                 <div
-                  class="min-h-0 flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 py-2.5 shadow-sm"
+                  class="min-h-0 flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-600 py-2.5 shadow-sm"
                 >
                   <div
-                    class="px-3 pb-2 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700/50 mb-1.5"
+                    class="px-3 pb-2 text-[11px] font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider border-b border-gray-200 dark:border-gray-600 mb-1.5"
                   >
                     {{
                       $t('map.gateway.submissions', {
@@ -367,8 +322,8 @@
                       class="w-full text-left rounded-lg border px-2.5 py-2 transition-colors flex flex-col gap-1"
                       :class="
                         store.selectedSceneryId === scenery.sceneryId
-                          ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-500/10 dark:border-blue-400 shadow-sm'
-                          : 'border-transparent hover:border-gray-200 dark:hover:border-gray-700 bg-transparent hover:bg-gray-50 dark:hover:bg-gray-800/60'
+                          ? 'border-blue-500 bg-blue-100/90 dark:bg-blue-950/60 dark:border-blue-400 shadow-sm ring-1 ring-blue-200 dark:ring-blue-800/60'
+                          : 'border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/30 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800/80'
                       "
                       @click="handleSelectScenery(scenery.sceneryId)"
                     >
@@ -398,7 +353,7 @@
                         </div>
                       </div>
                       <div
-                        class="flex items-center justify-between w-full text-[11px] text-gray-500 dark:text-gray-400"
+                        class="flex items-center justify-between w-full text-[11px] text-gray-600 dark:text-gray-300"
                       >
                         <span class="truncate pr-2">{{
                           scenery.artist || $t('common.unknown')
@@ -411,7 +366,7 @@
 
                     <div
                       v-if="store.airportDetail.sceneries.length === 0"
-                      class="text-[11px] text-gray-400 dark:text-gray-500 py-6 text-center"
+                      class="text-[11px] text-gray-500 dark:text-gray-400 py-6 text-center"
                     >
                       {{ $t('gatewayManager.historyEmpty') }}
                     </div>
@@ -420,7 +375,7 @@
 
                 <!-- Scenery Details -->
                 <div
-                  class="min-h-0 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 overflow-y-auto shadow-sm"
+                  class="min-h-0 bg-white dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-600 p-4 overflow-y-auto shadow-sm"
                 >
                   <div
                     v-if="store.isLoadingScenery"
@@ -434,16 +389,19 @@
                   <template v-else-if="store.sceneryDetail">
                     <div class="space-y-4">
                       <div
-                        class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 p-4"
+                        class="rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900/70 p-4"
                       >
                         <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                           <div>
                             <div
-                              class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400"
+                              class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-700 dark:text-gray-300"
                             >
                               {{ $t('management.versionInfo') }}
                             </div>
-                            <div class="mt-2 flex flex-wrap gap-1.5">
+                            <div class="mt-1 flex flex-wrap items-center gap-2">
+                              <div class="text-lg font-bold text-gray-900 dark:text-white">
+                                {{ formatGatewayVersion(store.sceneryDetail.sceneryId) }}
+                              </div>
                               <span
                                 v-if="selectedSceneryIsInstalled"
                                 class="px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-wide bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
@@ -464,22 +422,27 @@
                               </span>
                             </div>
                           </div>
+                          <button
+                            class="text-[13px] px-3.5 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 flex-shrink-0 shadow-sm shadow-blue-600/20"
+                            :disabled="installDisabled"
+                            @click="handleInstall()"
+                          >
+                            <div
+                              v-if="store.installingIcao === store.airportDetail.icao"
+                              class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"
+                            ></div>
+                            {{
+                              store.installingIcao === store.airportDetail.icao
+                                ? $t('common.loading')
+                                : installButtonText
+                            }}
+                          </button>
                         </div>
-                        <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-[13px]">
+                        <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[13px]">
                           <div
-                            class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/70 px-3 py-2.5"
+                            class="rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5"
                           >
-                            <div class="text-[11px] text-gray-500 dark:text-gray-400">
-                              {{ $t('management.currentVersionLabel') }}
-                            </div>
-                            <div class="font-medium text-gray-900 dark:text-white mt-1">
-                              {{ formatGatewayVersion(store.sceneryDetail.sceneryId) }}
-                            </div>
-                          </div>
-                          <div
-                            class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/70 px-3 py-2.5"
-                          >
-                            <div class="text-[11px] text-gray-500 dark:text-gray-400">
+                            <div class="text-[11px] text-gray-700 dark:text-gray-300">
                               {{ $t('map.gateway.artist') }}
                             </div>
                             <div class="font-medium text-gray-900 dark:text-white mt-1">
@@ -487,9 +450,9 @@
                             </div>
                           </div>
                           <div
-                            class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/70 px-3 py-2.5"
+                            class="rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5"
                           >
-                            <div class="text-[11px] text-gray-500 dark:text-gray-400">
+                            <div class="text-[11px] text-gray-700 dark:text-gray-300">
                               {{ $t('map.gateway.acceptedAt') }}
                             </div>
                             <div class="font-medium text-gray-900 dark:text-white mt-1">
@@ -501,9 +464,9 @@
                             </div>
                           </div>
                           <div
-                            class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/70 px-3 py-2.5"
+                            class="rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5"
                           >
-                            <div class="text-[11px] text-gray-500 dark:text-gray-400">
+                            <div class="text-[11px] text-gray-700 dark:text-gray-300">
                               {{ $t('map.gateway.status') }}
                             </div>
                             <div class="font-medium text-gray-900 dark:text-white mt-1">
@@ -514,12 +477,12 @@
                       </div>
 
                       <div
-                        class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 p-4"
+                        class="rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900/70 p-4"
                       >
                         <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                           <div class="min-w-0 flex-1">
                             <div
-                              class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400"
+                              class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-700 dark:text-gray-300"
                             >
                               {{ $t('gatewayManager.folderName') }}
                             </div>
@@ -531,32 +494,24 @@
                           </div>
                           <div v-if="hasInstalledFolderActions" class="flex items-center gap-2">
                             <button
-                              class="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                              class="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                               @click="handleOpenInstalledFolder"
                             >
                               {{ $t('diskUsage.openFolder') }}
                             </button>
                             <button
-                              class="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                              class="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                               @click="handleCopyInstalledFolder"
                             >
                               {{ $t('copy.copy') }}
                             </button>
                           </div>
                         </div>
-                        <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-[13px]">
+                        <div
+                          v-if="store.selectedInstalledRecord?.updateAvailable === true"
+                          class="mt-4"
+                        >
                           <div
-                            class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/70 px-3 py-2.5"
-                          >
-                            <div class="text-[11px] text-gray-500 dark:text-gray-400">
-                              {{ $t('gatewayManager.localVersion') }}
-                            </div>
-                            <div class="font-medium text-gray-900 dark:text-white mt-1">
-                              {{ selectedInstalledVersionLabel }}
-                            </div>
-                          </div>
-                          <div
-                            v-if="store.selectedInstalledRecord?.updateAvailable === true"
                             class="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2.5"
                           >
                             <div class="text-[11px] text-amber-700 dark:text-amber-300">
@@ -591,10 +546,10 @@
 
                       <div
                         v-if="store.sceneryDetail.features.length > 0"
-                        class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 p-4"
+                        class="rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900/70 p-4"
                       >
                         <div
-                          class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 mb-2"
+                          class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-700 dark:text-gray-300 mb-2"
                         >
                           {{ $t('map.gateway.features') }}
                         </div>
@@ -602,7 +557,7 @@
                           <span
                             v-for="feature in store.sceneryDetail.features"
                             :key="feature"
-                            class="px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-700/50 text-[10px] font-medium text-gray-700 dark:text-gray-300"
+                            class="px-2 py-0.5 rounded-md bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-[10px] font-medium text-gray-800 dark:text-gray-200"
                           >
                             {{ feature }}
                           </span>
@@ -611,15 +566,15 @@
 
                       <div
                         v-if="store.sceneryDetail.comment"
-                        class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 p-4"
+                        class="rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900/70 p-4"
                       >
                         <div
-                          class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 mb-2"
+                          class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-700 dark:text-gray-300 mb-2"
                         >
                           {{ $t('map.gateway.comments') }}
                         </div>
                         <div
-                          class="rounded-xl bg-white dark:bg-gray-800/70 border border-gray-200 dark:border-gray-700 px-3 py-2 text-[12px] text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto"
+                          class="rounded-xl bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 px-3 py-2 text-[12px] text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto"
                         >
                           {{ store.sceneryDetail.comment }}
                         </div>
@@ -629,7 +584,7 @@
 
                   <div
                     v-else
-                    class="h-full flex items-center justify-center text-[13px] text-gray-400 dark:text-gray-500"
+                    class="h-full flex items-center justify-center text-[13px] text-gray-500 dark:text-gray-400"
                   >
                     {{ $t('gatewayManager.noSelection') }}
                   </div>
@@ -708,17 +663,6 @@ const installButtonText = computed(() => {
 
 const selectedAirportName = computed(
   () => store.airportDetail?.airportName || store.airportDetail?.icao || '',
-)
-
-const selectedSubmissionCount = computed(() => {
-  if (!store.airportDetail) return 0
-  return store.airportDetail.sceneryCount ?? store.airportDetail.sceneries.length
-})
-
-const selectedInstalledVersionLabel = computed(() =>
-  store.selectedInstalledRecord?.sceneryId !== null && store.selectedInstalledRecord?.sceneryId !== undefined
-    ? `#${store.selectedInstalledRecord.sceneryId}`
-    : t('gatewayManager.notInstalled'),
 )
 
 const selectedInstalledFolderLabel = computed(
