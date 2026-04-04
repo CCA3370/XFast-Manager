@@ -1,5 +1,88 @@
 use super::*;
 
+fn resolve_extracted_nested_archive_path(
+    extract_target: &Path,
+    internal_path: &str,
+) -> Result<PathBuf> {
+    let relative = sanitize_path(Path::new(internal_path))
+        .ok_or_else(|| anyhow::anyhow!("Unsafe nested archive path: {}", internal_path))?;
+    Ok(extract_target.join(relative))
+}
+
+fn load_nested_zip_layers_from_bytes(
+    mut current_archive_data: Vec<u8>,
+    remaining_chain: &[crate::models::NestedArchiveInfo],
+    password: Option<&str>,
+) -> Result<(Vec<u8>, Option<Vec<u8>>)> {
+    use std::io::{Cursor, Read};
+    use zip::ZipArchive;
+
+    let mut current_password_bytes = password.map(|pwd| pwd.as_bytes().to_vec());
+
+    for archive_info in remaining_chain {
+        if archive_info.format != "zip" {
+            return Err(anyhow::anyhow!(
+                "Non-ZIP layer encountered in memory optimization"
+            ));
+        }
+
+        let cursor = Cursor::new(&current_archive_data);
+        let mut archive = ZipArchive::new(cursor)?;
+        let nested_path_normalized = archive_info.internal_path.replace('\\', "/");
+        let mut nested_data = Vec::new();
+        let mut found = false;
+        let mut decryption_error: Option<String> = None;
+
+        for i in 0..archive.len() {
+            let file_name = {
+                let raw_file = archive.by_index_raw(i)?;
+                raw_file.name().replace('\\', "/")
+            };
+
+            if file_name != nested_path_normalized {
+                continue;
+            }
+
+            let mut file = if let Some(ref pwd) = current_password_bytes {
+                match archive.by_index_decrypt(i, pwd) {
+                    Ok(file) => file,
+                    Err(_) => {
+                        decryption_error = Some(format!(
+                            "Failed to decrypt nested ZIP at {}",
+                            archive_info.internal_path
+                        ));
+                        break;
+                    }
+                }
+            } else {
+                archive.by_index(i)?
+            };
+
+            file.read_to_end(&mut nested_data)?;
+            found = true;
+            break;
+        }
+
+        if let Some(err) = decryption_error {
+            return Err(anyhow::anyhow!(err));
+        }
+
+        if !found {
+            return Err(anyhow::anyhow!(
+                "Nested ZIP not found in memory: {}",
+                archive_info.internal_path
+            ));
+        }
+
+        current_archive_data = nested_data;
+        if let Some(ref next_pwd) = archive_info.password {
+            current_password_bytes = Some(next_pwd.as_bytes().to_vec());
+        }
+    }
+
+    Ok((current_archive_data, current_password_bytes))
+}
+
 impl Installer {
     /// Check whether a source file is a supported archive format.
     fn is_supported_archive_file(path: &Path) -> bool {
@@ -533,6 +616,15 @@ impl Installer {
         let source = Path::new(&task.source_path);
         let target = Path::new(&task.target_path);
         let password = task.password.as_deref();
+        let compute_inline_7z_hashes = should_compute_inline_7z_hashes(
+            task.enable_verification,
+            task.extraction_chain.is_some(),
+        );
+
+        ctx.inline_hash_collection_enabled.store(
+            compute_inline_7z_hashes,
+            std::sync::atomic::Ordering::SeqCst,
+        );
 
         // Create parent directory if it doesn't exist
         let mkdir_start = Instant::now();
@@ -990,28 +1082,17 @@ impl Installer {
         // Extract each layer in the chain
         for (index, archive_info) in chain.archives.iter().enumerate() {
             let is_last = index == chain.archives.len() - 1;
-            let current_format = &archive_info.format;
+            let extract_target = temp_base.path().join(format!("layer_{}", index));
 
-            // Determine extraction target
-            let extract_target = if is_last {
-                // Last layer: extract directly to final target
-                target.to_path_buf()
-            } else {
-                // Intermediate layer: extract to temp
-                temp_base.path().join(format!("layer_{}", index))
-            };
-
-            // Create target directory
             fs::create_dir_all(&extract_target).context(format!(
                 "Failed to create extraction target: {:?}",
                 extract_target
             ))?;
 
-            // Extract the current archive
             crate::logger::log_info(
                 &format!(
-                    "Extracting layer {} ({}): {} to {:?}",
-                    index, current_format, archive_info.internal_path, extract_target
+                    "Extracting container for layer {} to {:?} to locate {} ({})",
+                    index, extract_target, archive_info.internal_path, archive_info.format
                 ),
                 Some("installer"),
             );
@@ -1019,94 +1100,105 @@ impl Installer {
             self.extract_archive_with_progress(
                 &current_source,
                 &extract_target,
-                if is_last {
-                    chain.final_internal_root.as_deref()
-                } else {
-                    None
-                },
+                None,
                 ctx,
                 current_password,
                 None,
             )?;
 
-            // For non-last layers, find the nested archive in the extracted content
-            if !is_last {
-                let nested_archive_path = extract_target.join(&archive_info.internal_path);
+            let nested_archive_path = resolve_extracted_nested_archive_path(
+                &extract_target,
+                &archive_info.internal_path,
+            )?;
 
-                if !nested_archive_path.exists() {
-                    // Provide detailed error with directory listing
-                    let mut available_files = Vec::new();
-                    if let Ok(entries) = fs::read_dir(&extract_target) {
-                        for entry in entries.flatten().take(10) {
-                            if let Some(name) = entry.file_name().to_str() {
-                                available_files.push(name.to_string());
-                            }
+            if !nested_archive_path.exists() {
+                let mut available_files = Vec::new();
+                if let Ok(entries) = fs::read_dir(&extract_target) {
+                    for entry in entries.flatten().take(10) {
+                        if let Some(name) = entry.file_name().to_str() {
+                            available_files.push(name.to_string());
                         }
                     }
-
-                    return Err(anyhow::anyhow!(
-                        "Nested archive not found after extraction: {}\nExpected at: {:?}\nExtracted to: {:?}\nAvailable files: {}",
-                        archive_info.internal_path,
-                        nested_archive_path,
-                        extract_target,
-                        if available_files.is_empty() {
-                            "(none)".to_string()
-                        } else {
-                            available_files.join(", ")
-                        }
-                    ));
                 }
 
-                // OPTIMIZATION: If next layer is ZIP, try to load it into memory
-                if let Some(next_archive) = chain.archives.get(index + 1) {
-                    if next_archive.format == "zip" {
+                return Err(anyhow::anyhow!(
+                    "Nested archive not found after extraction: {}\nExpected at: {:?}\nExtracted to: {:?}\nAvailable files: {}",
+                    archive_info.internal_path,
+                    nested_archive_path,
+                    extract_target,
+                    if available_files.is_empty() {
+                        "(none)".to_string()
+                    } else {
+                        available_files.join(", ")
+                    }
+                ));
+            }
+
+            let nested_password = archive_info.password.as_deref().or(current_password);
+
+            if archive_info.format == "zip"
+                && chain.archives[(index + 1)..]
+                    .iter()
+                    .all(|remaining| remaining.format == "zip")
+            {
+                crate::logger::log_info(
+                    &format!("Optimizing: Loading ZIP layer {} into memory", index),
+                    Some("installer"),
+                );
+
+                match self.try_extract_zip_from_memory(
+                    &nested_archive_path,
+                    target,
+                    &chain.archives[(index + 1)..],
+                    chain.final_internal_root.as_deref(),
+                    ctx,
+                    nested_password,
+                ) {
+                    Ok(()) => {
                         crate::logger::log_info(
-                            &format!("Optimizing: Loading ZIP layer {} into memory", index + 1),
+                            "Memory optimization successful for remaining ZIP layers",
                             Some("installer"),
                         );
-
-                        // Try to read the ZIP into memory for faster processing
-                        match self.try_extract_zip_from_memory(
-                            &nested_archive_path,
-                            target,
-                            &chain.archives[(index + 1)..],
-                            chain.final_internal_root.as_deref(),
-                            ctx,
-                            next_archive.password.as_deref(),
-                        ) {
-                            Ok(()) => {
-                                // Successfully extracted from memory, we're done
-                                crate::logger::log_info(
-                                    "Memory optimization successful for remaining ZIP layers",
-                                    Some("installer"),
-                                );
-                                return Ok(());
-                            }
-                            Err(e) => {
-                                // Fall back to normal extraction
-                                crate::logger::log_info(
-                                    &format!("Memory optimization failed, falling back to temp extraction: {}", e),
-                                    Some("installer"),
-                                );
-                            }
-                        }
+                        return Ok(());
                     }
-                }
-
-                // Update source for next iteration
-                current_source = nested_archive_path;
-
-                // Update password for next layer if specified
-                if let Some(next_archive) = chain.archives.get(index + 1) {
-                    if next_archive.password.is_some() {
-                        current_password = next_archive.password.as_deref();
+                    Err(e) => {
+                        crate::logger::log_info(
+                            &format!(
+                                "Memory optimization failed, falling back to temp extraction: {}",
+                                e
+                            ),
+                            Some("installer"),
+                        );
                     }
                 }
             }
+
+            if is_last {
+                crate::logger::log_info(
+                    &format!(
+                        "Extracting final nested archive {} ({}) to {:?}",
+                        archive_info.internal_path, archive_info.format, target
+                    ),
+                    Some("installer"),
+                );
+
+                self.extract_archive_with_progress(
+                    &nested_archive_path,
+                    target,
+                    chain.final_internal_root.as_deref(),
+                    ctx,
+                    nested_password,
+                    None,
+                )?;
+
+                return Ok(());
+            }
+
+            current_source = nested_archive_path;
+            current_password = nested_password;
         }
 
-        // Temp directory automatically cleaned up when TempDir drops
-        Ok(())
+        Err(anyhow::anyhow!("Nested extraction chain is empty"))
     }
 
     /// Try to extract remaining ZIP layers from memory (optimization for mixed formats)
@@ -1131,80 +1223,23 @@ impl Installer {
             ));
         }
 
-        // Read the ZIP file into memory
         let mut zip_data = Vec::new();
         let mut file = fs::File::open(zip_path)?;
         file.read_to_end(&mut zip_data)?;
 
-        let mut current_archive_data = zip_data;
-        // Store password as bytes to avoid handling it as a string near logging/formatting sinks
-        let mut current_password_opt: Option<&[u8]> = password.map(|p| p.as_bytes());
+        let (current_archive_data, current_password_opt) =
+            load_nested_zip_layers_from_bytes(zip_data, remaining_chain, password)?;
 
-        // Process remaining ZIP layers in memory
-        for (index, archive_info) in remaining_chain.iter().enumerate() {
-            let is_last = index == remaining_chain.len() - 1;
+        let cursor = Cursor::new(current_archive_data);
+        let mut archive = ZipArchive::new(cursor)?;
 
-            // Verify this is a ZIP layer
-            if archive_info.format != "zip" {
-                return Err(anyhow::anyhow!(
-                    "Non-ZIP layer encountered in memory optimization"
-                ));
-            }
-
-            let cursor = Cursor::new(&current_archive_data);
-            let mut archive = ZipArchive::new(cursor)?;
-
-            if is_last {
-                // Last layer: extract to final target
-                let cursor = Cursor::new(current_archive_data);
-                let mut archive = ZipArchive::new(cursor)?;
-
-                self.extract_zip_from_archive(
-                    &mut archive,
-                    target,
-                    final_internal_root,
-                    ctx,
-                    current_password_opt,
-                )?;
-                break;
-            } else {
-                // Intermediate layer: read nested ZIP into memory
-                let nested_path = &archive_info.internal_path;
-                let mut nested_data = Vec::new();
-
-                let mut found = false;
-                for i in 0..archive.len() {
-                    let mut file = match current_password_opt {
-                        Some(pwd) => match archive.by_index_decrypt(i, pwd) {
-                            Ok(f) => f,
-                            Err(_) => continue,
-                        },
-                        None => archive.by_index(i)?,
-                    };
-
-                    if file.name() == nested_path {
-                        file.read_to_end(&mut nested_data)?;
-                        found = true;
-                        break;
-                    }
-                }
-
-                if !found {
-                    return Err(anyhow::anyhow!(
-                        "Nested ZIP not found in memory: {}",
-                        nested_path
-                    ));
-                }
-
-                current_archive_data = nested_data;
-                // Update password for next layer if specified
-                if let Some(ref next_pwd) = archive_info.password {
-                    current_password_opt = Some(next_pwd.as_bytes());
-                } else {
-                    current_password_opt = None;
-                }
-            }
-        }
+        self.extract_zip_from_archive(
+            &mut archive,
+            target,
+            final_internal_root,
+            ctx,
+            current_password_opt.as_deref(),
+        )?;
 
         Ok(())
     }
@@ -2391,5 +2426,78 @@ impl Installer {
         );
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Cursor, Read, Write};
+    use zip::write::SimpleFileOptions;
+    use zip::ZipWriter;
+
+    fn build_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let cursor = Cursor::new(Vec::new());
+        let mut writer = ZipWriter::new(cursor);
+        let options = SimpleFileOptions::default();
+
+        for (path, contents) in entries {
+            writer
+                .start_file(path, options)
+                .expect("failed to start zip entry");
+            writer
+                .write_all(contents)
+                .expect("failed to write zip entry");
+        }
+
+        writer.finish().expect("failed to finish zip").into_inner()
+    }
+
+    fn archive_entries(archive_data: &[u8]) -> Vec<String> {
+        let cursor = Cursor::new(archive_data.to_vec());
+        let mut archive = zip::ZipArchive::new(cursor).expect("failed to open zip");
+        let mut entries = Vec::new();
+
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).expect("failed to read zip entry");
+            let mut data = Vec::new();
+            file.read_to_end(&mut data)
+                .expect("failed to read zip entry data");
+            entries.push(file.name().to_string());
+        }
+
+        entries
+    }
+
+    #[test]
+    fn load_nested_zip_layers_keeps_current_archive_when_no_remaining_layers() {
+        let outer_zip = build_zip(&[("plane.acf", b"acf")]);
+
+        let (result, password) =
+            load_nested_zip_layers_from_bytes(outer_zip, &[], None).expect("load failed");
+
+        assert!(password.is_none());
+        assert_eq!(archive_entries(&result), vec!["plane.acf".to_string()]);
+    }
+
+    #[test]
+    fn load_nested_zip_layers_descends_into_requested_nested_zip() {
+        let inner_zip = build_zip(&[("aircraft/plane.acf", b"acf")]);
+        let outer_zip = build_zip(&[("nested/inner.zip", inner_zip.as_slice())]);
+        let remaining_chain = vec![crate::models::NestedArchiveInfo {
+            internal_path: "nested/inner.zip".to_string(),
+            password: None,
+            format: "zip".to_string(),
+        }];
+
+        let (result, password) =
+            load_nested_zip_layers_from_bytes(outer_zip, &remaining_chain, None)
+                .expect("load failed");
+
+        assert!(password.is_none());
+        assert_eq!(
+            archive_entries(&result),
+            vec!["aircraft/plane.acf".to_string()]
+        );
     }
 }

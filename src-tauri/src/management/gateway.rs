@@ -280,7 +280,10 @@ pub async fn gateway_check_updates(
         ));
     }
 
-    Ok(results.into_iter().map(|(installed, _)| installed).collect())
+    Ok(results
+        .into_iter()
+        .map(|(installed, _)| installed)
+        .collect())
 }
 
 fn validate_xplane_root(xplane_path: &str) -> ApiResult<PathBuf> {
@@ -291,10 +294,14 @@ fn validate_xplane_root(xplane_path: &str) -> ApiResult<PathBuf> {
 
     let path = PathBuf::from(trimmed);
     if !path.exists() {
-        return Err(ApiError::not_found("Configured X-Plane path does not exist"));
+        return Err(ApiError::not_found(
+            "Configured X-Plane path does not exist",
+        ));
     }
     if !path.is_dir() {
-        return Err(ApiError::validation("Configured X-Plane path must be a directory"));
+        return Err(ApiError::validation(
+            "Configured X-Plane path must be a directory",
+        ));
     }
     Ok(path)
 }
@@ -360,7 +367,9 @@ async fn fetch_gateway_airport_payload(icao: &str) -> ApiResult<Value> {
 
 async fn fetch_gateway_scenery_payload(scenery_id: i64) -> ApiResult<Value> {
     if scenery_id <= 0 {
-        return Err(ApiError::validation("Scenery ID must be a positive integer"));
+        return Err(ApiError::validation(
+            "Scenery ID must be a positive integer",
+        ));
     }
     fetch_gateway_json(&format!("{}/scenery/{}", GATEWAY_API_BASE, scenery_id)).await
 }
@@ -375,14 +384,16 @@ async fn fetch_gateway_json(url: &str) -> ApiResult<Value> {
     if !response.status().is_success() {
         return Err(ApiError::new(
             ApiErrorCode::NetworkError,
-            format!("Gateway API request failed with status {}", response.status()),
+            format!(
+                "Gateway API request failed with status {}",
+                response.status()
+            ),
         ));
     }
 
-    response
-        .json::<Value>()
-        .await
-        .map_err(|error| ApiError::corrupted(format!("Failed to parse Gateway response: {}", error)))
+    response.json::<Value>().await.map_err(|error| {
+        ApiError::corrupted(format!("Failed to parse Gateway response: {}", error))
+    })
 }
 
 fn extract_airport_directory_entries(payload: &Value) -> Vec<GatewayAirportSearchResult> {
@@ -512,7 +523,8 @@ async fn gateway_install_scenery_impl(
     .map_err(|error| ApiError::internal(format!("Gateway analysis task failed: {}", error)))?;
 
     let mut tasks = analysis_result.tasks;
-    let mut task = extract_gateway_install_task(&mut tasks, &analysis_result.errors, &airport_icao)?;
+    let mut task =
+        extract_gateway_install_task(&mut tasks, &analysis_result.errors, &airport_icao)?;
     let folder_name = extract_folder_name_from_task(&task)?;
     let target_path = PathBuf::from(&task.target_path);
 
@@ -554,13 +566,18 @@ async fn gateway_install_scenery_impl(
         .map_err(|error| ApiError::internal(format!("Gateway installation failed: {}", error)))?;
 
     let task_result = install_result.task_results.first().cloned();
-    if install_result.failed_tasks > 0 || task_result.as_ref().is_some_and(|result| !result.success) {
+    if install_result.failed_tasks > 0 || task_result.as_ref().is_some_and(|result| !result.success)
+    {
         let message = task_result
             .and_then(|result| result.error_message)
             .unwrap_or_else(|| "Gateway installation failed".to_string());
         activity::log_activity(
             &conn,
-            if installed_before.is_some() { "update" } else { "install" },
+            if installed_before.is_some() {
+                "update"
+            } else {
+                "install"
+            },
             "gateway",
             &airport_icao,
             Some(message.clone()),
@@ -590,13 +607,22 @@ async fn gateway_install_scenery_impl(
         maybe_update_scenery_index_after_install(&conn, &xplane_root, &folder_name).await;
     }
 
-    let installed_model =
-        upsert_install_record(&conn, &xplane_key, &airport_detail, &scenery_detail, &folder_name)
-            .await?;
+    let installed_model = upsert_install_record(
+        &conn,
+        &xplane_key,
+        &airport_detail,
+        &scenery_detail,
+        &folder_name,
+    )
+    .await?;
 
     activity::log_activity(
         &conn,
-        if installed_before.is_some() { "update" } else { "install" },
+        if installed_before.is_some() {
+            "update"
+        } else {
+            "install"
+        },
         "gateway",
         &airport_icao,
         Some(format!("scenery {} -> {}", scenery_id, folder_name)),
@@ -619,8 +645,7 @@ pub async fn gateway_install_scenery(
     ignore_external_conflict: Option<bool>,
 ) -> ApiResult<GatewayInstalledAirport> {
     let request = request.unwrap_or(GatewayInstallRequest {
-        xplane_path: xplane_path
-            .ok_or_else(|| ApiError::validation("xplanePath is required"))?,
+        xplane_path: xplane_path.ok_or_else(|| ApiError::validation("xplanePath is required"))?,
         icao: icao.ok_or_else(|| ApiError::validation("icao is required"))?,
         scenery_id: scenery_id.ok_or_else(|| ApiError::validation("sceneryId is required"))?,
         auto_sort_scenery,
@@ -699,52 +724,53 @@ fn parse_gateway_airport_summary(
     let scenery_list = pick_gateway_scenery_list(root, airport);
     let metadata = pick_gateway_metadata(root, airport);
     let airport_code = pick_gateway_airport_code(airport)
-    .or_else(|| pick_gateway_airport_code(root))
-    .unwrap_or_else(|| fallback_icao.to_string())
-    .trim()
-    .to_ascii_uppercase();
+        .or_else(|| pick_gateway_airport_code(root))
+        .unwrap_or_else(|| fallback_icao.to_string())
+        .trim()
+        .to_ascii_uppercase();
 
     if airport_code.is_empty() {
         return None;
     }
 
-    let airport_name = pick_gateway_airport_name(airport).or_else(|| pick_gateway_airport_name(root));
+    let airport_name =
+        pick_gateway_airport_name(airport).or_else(|| pick_gateway_airport_name(root));
 
     let root_recommended = pick_object(root, &["recommendedScenery", "RecommendedScenery"]);
     let airport_recommended = pick_object(airport, &["recommendedScenery", "RecommendedScenery"]);
 
-    let recommended_scenery_id = normalize_gateway_id(pick_i64(
-        airport,
-        &[
-            "RecommendedSceneryId",
-            "recommendedSceneryId",
-            "recommended_scenery_id",
-        ],
-    )
-    .or_else(|| {
+    let recommended_scenery_id = normalize_gateway_id(
         pick_i64(
-            root,
+            airport,
             &[
                 "RecommendedSceneryId",
                 "recommendedSceneryId",
                 "recommended_scenery_id",
             ],
         )
-    })
-    .or_else(|| {
-        root_recommended.and_then(|value| pick_i64(value, &["id", "sceneryId", "SceneryId"]))
-    })
-    .or_else(|| {
-        airport_recommended.and_then(|value| pick_i64(value, &["id", "sceneryId", "SceneryId"]))
-    }));
+        .or_else(|| {
+            pick_i64(
+                root,
+                &[
+                    "RecommendedSceneryId",
+                    "recommendedSceneryId",
+                    "recommended_scenery_id",
+                ],
+            )
+        })
+        .or_else(|| {
+            root_recommended.and_then(|value| pick_i64(value, &["id", "sceneryId", "SceneryId"]))
+        })
+        .or_else(|| {
+            airport_recommended.and_then(|value| pick_i64(value, &["id", "sceneryId", "SceneryId"]))
+        }),
+    );
 
     let recommended = recommended_scenery_id.and_then(|target_id| {
         scenery_list.iter().find_map(|entry| {
             let record = entry.as_object()?;
-            let entry_scenery_id = normalize_gateway_id(pick_i64(
-                record,
-                &["sceneryId", "SceneryId", "id"],
-            ))?;
+            let entry_scenery_id =
+                normalize_gateway_id(pick_i64(record, &["sceneryId", "SceneryId", "id"]))?;
             (entry_scenery_id == target_id).then_some(record)
         })
     });
@@ -760,20 +786,20 @@ fn parse_gateway_airport_summary(
             "totalSceneries",
         ],
     )
-        .or_else(|| {
-            pick_i64(
-                root,
-                &[
-                    "SubmissionCount",
-                    "ApprovedSceneryCount",
-                    "AcceptedSceneryCount",
-                    "sceneryCount",
-                    "SceneryCount",
-                    "totalSceneries",
-                ],
-            )
-        })
-        .or_else(|| (!scenery_list.is_empty()).then_some(scenery_list.len() as i64));
+    .or_else(|| {
+        pick_i64(
+            root,
+            &[
+                "SubmissionCount",
+                "ApprovedSceneryCount",
+                "AcceptedSceneryCount",
+                "sceneryCount",
+                "SceneryCount",
+                "totalSceneries",
+            ],
+        )
+    })
+    .or_else(|| (!scenery_list.is_empty()).then_some(scenery_list.len() as i64));
 
     let recommended_artist = recommended
         .and_then(pick_gateway_artist)
@@ -802,7 +828,10 @@ fn parse_gateway_airport_summary(
     })
 }
 
-fn parse_gateway_airport_detail(payload: &Value, fallback_icao: &str) -> Option<GatewayAirportDetail> {
+fn parse_gateway_airport_detail(
+    payload: &Value,
+    fallback_icao: &str,
+) -> Option<GatewayAirportDetail> {
     let summary = parse_gateway_airport_summary(payload, fallback_icao)?;
     let root = payload.as_object()?;
     let airport = pick_gateway_airport_object(root);
@@ -812,10 +841,8 @@ fn parse_gateway_airport_detail(payload: &Value, fallback_icao: &str) -> Option<
         .iter()
         .filter_map(|entry| {
             let record = entry.as_object()?;
-            let scenery_id = normalize_gateway_id(pick_i64(
-                record,
-                &["sceneryId", "SceneryId", "id"],
-            ))?;
+            let scenery_id =
+                normalize_gateway_id(pick_i64(record, &["sceneryId", "SceneryId", "id"]))?;
 
             Some(GatewayScenerySummary {
                 scenery_id,
@@ -841,7 +868,9 @@ fn parse_gateway_airport_detail(payload: &Value, fallback_icao: &str) -> Option<
     Some(GatewayAirportDetail {
         icao: summary.icao,
         airport_name: summary.airport_name,
-        scenery_count: summary.scenery_count.or_else(|| Some(sceneries.len() as i64)),
+        scenery_count: summary
+            .scenery_count
+            .or_else(|| Some(sceneries.len() as i64)),
         recommended_scenery_id: summary.recommended_scenery_id,
         recommended_artist: summary.recommended_artist,
         recommended_accepted_at: summary.recommended_accepted_at,
@@ -855,13 +884,10 @@ fn parse_gateway_scenery_detail(
 ) -> Option<GatewaySceneryInstallPayload> {
     let root = payload.as_object()?;
     let detail = pick_object(root, &["scenery", "Scenery", "data"]).unwrap_or(root);
-    let airport =
-        pick_object(detail, &["airport", "Airport"]).or_else(|| pick_object(root, &["airport", "Airport"]));
-    let scenery_id = normalize_gateway_id(pick_i64(
-        detail,
-        &["sceneryId", "SceneryId", "id"],
-    ))
-    .unwrap_or(fallback_scenery_id);
+    let airport = pick_object(detail, &["airport", "Airport"])
+        .or_else(|| pick_object(root, &["airport", "Airport"]));
+    let scenery_id = normalize_gateway_id(pick_i64(detail, &["sceneryId", "SceneryId", "id"]))
+        .unwrap_or(fallback_scenery_id);
 
     let artist = pick_gateway_artist(detail);
     let status = pick_gateway_status(detail);
@@ -928,11 +954,17 @@ fn decode_master_zip_blob(detail: &GatewaySceneryInstallPayload) -> ApiResult<Ve
         .as_deref()
         .ok_or_else(|| ApiError::corrupted("Gateway scenery is missing masterZipBlob"))?;
 
-    let compact_blob: String = blob.chars().filter(|value| !value.is_whitespace()).collect();
+    let compact_blob: String = blob
+        .chars()
+        .filter(|value| !value.is_whitespace())
+        .collect();
     base64::engine::general_purpose::STANDARD
         .decode(compact_blob.as_bytes())
         .map_err(|error| {
-            ApiError::corrupted(format!("Failed to decode Gateway scenery archive: {}", error))
+            ApiError::corrupted(format!(
+                "Failed to decode Gateway scenery archive: {}",
+                error
+            ))
         })
 }
 
@@ -941,10 +973,12 @@ fn extract_gateway_install_task(
     errors: &[String],
     airport_icao: &str,
 ) -> ApiResult<InstallTask> {
-    if let Some(task) = tasks
-        .drain(..)
-        .find(|task| matches!(task.addon_type, AddonType::Scenery | AddonType::SceneryLibrary))
-    {
+    if let Some(task) = tasks.drain(..).find(|task| {
+        matches!(
+            task.addon_type,
+            AddonType::Scenery | AddonType::SceneryLibrary
+        )
+    }) {
         return Ok(task);
     }
 
@@ -1108,7 +1142,9 @@ async fn ensure_no_external_airport_conflict(
     xplane_root: &Path,
     airport_icao: &str,
 ) -> ApiResult<()> {
-    if let Some(message) = find_external_airport_conflict_message(conn, xplane_root, airport_icao).await? {
+    if let Some(message) =
+        find_external_airport_conflict_message(conn, xplane_root, airport_icao).await?
+    {
         return Err(ApiError::with_details(
             ApiErrorCode::ConflictExists,
             message,
@@ -1210,7 +1246,10 @@ async fn find_conflicting_airport_from_folder_scan(
         let path = entry.path();
         let folder_name = entry.file_name().to_string_lossy().to_string();
         let folder_key = folder_name.to_ascii_lowercase();
-        if managed_folders.contains(&folder_key) || !path.is_dir() || folder_key.contains("global airports") {
+        if managed_folders.contains(&folder_key)
+            || !path.is_dir()
+            || folder_key.contains("global airports")
+        {
             continue;
         }
 
@@ -1273,17 +1312,20 @@ async fn remove_managed_scenery_folder(
         } else if metadata.is_file() {
             fs::remove_file(&entry_path).map_err(ApiError::from)?;
         } else {
-            let canonical_path =
-                path_utils::validate_child_path(&custom_scenery_path, &entry_path).map_err(|error| {
+            let canonical_path = path_utils::validate_child_path(&custom_scenery_path, &entry_path)
+                .map_err(|error| {
                     ApiError::validation(format!("Invalid scenery path: {}", error))
                 })?;
             fs::remove_dir_all(&canonical_path).map_err(ApiError::from)?;
         }
     }
 
-    if let Err(error) =
-        crate::scenery_index::remove_scenery_entry(conn, &xplane_root.to_string_lossy(), folder_name)
-            .await
+    if let Err(error) = crate::scenery_index::remove_scenery_entry(
+        conn,
+        &xplane_root.to_string_lossy(),
+        folder_name,
+    )
+    .await
     {
         logger::log_error(
             &format!(
@@ -1323,11 +1365,22 @@ fn pick_gateway_airport_object<'a>(root: &'a Map<String, Value>) -> &'a Map<Stri
     pick_object(root, &["airport", "Airport", "data"]).unwrap_or(root)
 }
 
-fn pick_gateway_scenery_list(root: &Map<String, Value>, airport: &Map<String, Value>) -> Vec<Value> {
-    pick_array(root, &["scenery", "Sceneries", "sceneries", "results", "items"])
-        .or_else(|| pick_array(airport, &["scenery", "Sceneries", "sceneries", "results", "items"]))
-        .cloned()
-        .unwrap_or_default()
+fn pick_gateway_scenery_list(
+    root: &Map<String, Value>,
+    airport: &Map<String, Value>,
+) -> Vec<Value> {
+    pick_array(
+        root,
+        &["scenery", "Sceneries", "sceneries", "results", "items"],
+    )
+    .or_else(|| {
+        pick_array(
+            airport,
+            &["scenery", "Sceneries", "sceneries", "results", "items"],
+        )
+    })
+    .cloned()
+    .unwrap_or_default()
 }
 
 fn pick_gateway_metadata<'a>(
@@ -1345,7 +1398,14 @@ fn normalize_gateway_id(value: Option<i64>) -> Option<i64> {
 fn pick_gateway_airport_code(record: &Map<String, Value>) -> Option<String> {
     pick_string(
         record,
-        &["AirportCode", "airportCode", "icao", "ICAO", "code", "ident"],
+        &[
+            "AirportCode",
+            "airportCode",
+            "icao",
+            "ICAO",
+            "code",
+            "ident",
+        ],
     )
 }
 
@@ -1438,10 +1498,8 @@ fn pick_gateway_comment(record: &Map<String, Value>) -> Option<String> {
         comments.push(comment);
     }
     if comments.is_empty() {
-        if let Some(comment) = pick_string(
-            record,
-            &["comments", "comment", "description", "notes"],
-        ) {
+        if let Some(comment) = pick_string(record, &["comments", "comment", "description", "notes"])
+        {
             comments.push(comment);
         }
     }
@@ -1457,7 +1515,11 @@ fn parse_gateway_feature_labels(record: &Map<String, Value>) -> Vec<String> {
     }
 
     if let Some(raw_features) = pick_string(record, &["features", "featureFlags"]) {
-        for token in raw_features.split(',').map(str::trim).filter(|token| !token.is_empty()) {
+        for token in raw_features
+            .split(',')
+            .map(str::trim)
+            .filter(|token| !token.is_empty())
+        {
             if token.chars().all(|ch| ch.is_ascii_digit()) {
                 let feature_id = token.parse::<i64>().ok();
                 labels.push(
@@ -1471,14 +1533,12 @@ fn parse_gateway_feature_labels(record: &Map<String, Value>) -> Vec<String> {
         }
     }
 
-    let runway_count =
-        pick_i64(record, &["runwayCount", "runwaysCount"]).or_else(|| pick_array_len(record, &["runways", "Runways"]));
+    let runway_count = pick_i64(record, &["runwayCount", "runwaysCount"])
+        .or_else(|| pick_array_len(record, &["runways", "Runways"]));
     let gate_count = pick_i64(record, &["gateCount", "gatesCount", "startupCount"])
         .or_else(|| pick_array_len(record, &["gates", "startupLocations", "ramps"]));
-    let taxiway_count =
-        pick_i64(record, &["taxiwayCount", "taxiwaysCount"]).or_else(|| {
-            pick_array_len(record, &["taxiways", "taxiwayEdges"])
-        });
+    let taxiway_count = pick_i64(record, &["taxiwayCount", "taxiwaysCount"])
+        .or_else(|| pick_array_len(record, &["taxiways", "taxiwayEdges"]));
 
     if let Some(runway_count) = runway_count {
         labels.push(format!("RWY {}", runway_count));
@@ -1585,7 +1645,10 @@ fn pick_i64(record: &Map<String, Value>, keys: &[&str]) -> Option<i64> {
     })
 }
 
-fn pick_object<'a>(record: &'a Map<String, Value>, keys: &[&str]) -> Option<&'a Map<String, Value>> {
+fn pick_object<'a>(
+    record: &'a Map<String, Value>,
+    keys: &[&str],
+) -> Option<&'a Map<String, Value>> {
     keys.iter()
         .find_map(|key| record.get(*key).and_then(Value::as_object))
 }

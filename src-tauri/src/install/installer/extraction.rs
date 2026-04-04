@@ -438,6 +438,7 @@ impl Installer {
         password: Option<&str>,
     ) -> Result<()> {
         use sha2::{Digest, Sha256};
+        let compute_inline_hashes = ctx.inline_hash_collection_enabled.load(Ordering::SeqCst);
 
         // Normalize internal_root for path matching
         let internal_root_normalized = internal_root.map(|s| {
@@ -460,6 +461,13 @@ impl Installer {
             sevenz_rust2::ArchiveReader::open(archive, sevenz_rust2::Password::empty())
                 .map_err(|e| anyhow::anyhow!("Failed to open 7z: {}", e))?
         };
+
+        if !compute_inline_hashes {
+            logger::log_info(
+                "Skipping inline 7z SHA256 computation for current task",
+                Some("installer"),
+            );
+        }
 
         // Extract directly to target with progress reporting and inline SHA256
         reader
@@ -501,30 +509,34 @@ impl Installer {
                         std::fs::create_dir_all(parent)?;
                     }
 
-                    // Compute SHA256 inline while writing
                     let mut file = std::fs::File::create(&dest_path)?;
-                    let mut hasher = Sha256::new();
-                    let mut buffer = vec![0u8; IO_BUFFER_SIZE];
-                    loop {
-                        let bytes_read = entry_reader.read(&mut buffer)?;
-                        if bytes_read == 0 {
-                            break;
+                    if compute_inline_hashes {
+                        // Compute SHA256 inline while writing.
+                        let mut hasher = Sha256::new();
+                        let mut buffer = vec![0u8; IO_BUFFER_SIZE];
+                        loop {
+                            let bytes_read = entry_reader.read(&mut buffer)?;
+                            if bytes_read == 0 {
+                                break;
+                            }
+                            hasher.update(&buffer[..bytes_read]);
+                            std::io::Write::write_all(&mut file, &buffer[..bytes_read])?;
                         }
-                        hasher.update(&buffer[..bytes_read]);
-                        std::io::Write::write_all(&mut file, &buffer[..bytes_read])?;
-                    }
-                    let hash = format!("{:x}", hasher.finalize());
+                        let hash = format!("{:x}", hasher.finalize());
 
-                    // Store computed hash for inline verification
-                    let relative_str = sanitized.to_string_lossy().replace('\\', "/");
-                    ctx.inline_hashes.lock().unwrap().insert(
-                        relative_str.clone(),
-                        crate::models::FileHash {
-                            path: relative_str,
-                            hash,
-                            algorithm: crate::models::HashAlgorithm::Sha256,
-                        },
-                    );
+                        // Store computed hash for inline verification
+                        let relative_str = sanitized.to_string_lossy().replace('\\', "/");
+                        ctx.inline_hashes.lock().unwrap().insert(
+                            relative_str.clone(),
+                            crate::models::FileHash {
+                                path: relative_str,
+                                hash,
+                                algorithm: crate::models::HashAlgorithm::Sha256,
+                            },
+                        );
+                    } else {
+                        copy_file_optimized(entry_reader, &mut file)?;
+                    }
 
                     // Remove read-only attribute
                     let _ = remove_readonly_attribute(&dest_path);

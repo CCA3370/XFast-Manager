@@ -19,7 +19,8 @@ impl Scanner {
 
         // First, scan the archive normally for direct addon markers
         let scan_markers_start = std::time::Instant::now();
-        let mut detected = self.scan_rar(archive_path, password)?;
+        let mut detected =
+            self.scan_rar_internal(archive_path, password, !ctx.is_nested_archive_scan())?;
         crate::log_debug!(
             &format!(
                 "[TIMING] RAR marker scan completed in {:.2}ms: {} addons detected",
@@ -290,12 +291,21 @@ impl Scanner {
                     item.extraction_chain = Some(chain);
                     item.archive_internal_root = None;
 
-                    // Update display_name to use the nested archive's filename (without extension)
-                    // This prevents creating folders like "Scenery/.zip"
-                    if let Some(nested_filename) = Path::new(nested_path).file_stem() {
-                        if let Some(name_str) = nested_filename.to_str() {
-                            item.display_name = name_str.to_string();
-                        }
+                    // Preserve the detected addon name when available.
+                    // Only fall back to the nested archive filename for blank/unknown names.
+                    item.display_name =
+                        super::resolve_nested_display_name(&item.display_name, nested_path);
+
+                    if item.version_info.is_none() {
+                        item.version_info = infer_version_from_name(
+                            Path::new(nested_path)
+                                .file_stem()
+                                .and_then(|stem| stem.to_str())
+                                .unwrap_or(nested_path),
+                        )
+                        .map(|version| crate::models::VersionInfo {
+                            version: Some(version),
+                        });
                     }
                 }
                 Ok(items)
@@ -309,6 +319,15 @@ impl Scanner {
         &self,
         archive_path: &Path,
         password: Option<&str>,
+    ) -> Result<Vec<DetectedItem>> {
+        self.scan_rar_internal(archive_path, password, true)
+    }
+
+    fn scan_rar_internal(
+        &self,
+        archive_path: &Path,
+        password: Option<&str>,
+        read_archive_versions: bool,
     ) -> Result<Vec<DetectedItem>> {
         let normalized_archive_path =
             crate::archive_input::normalize_archive_entry_path(archive_path);
@@ -510,10 +529,22 @@ impl Scanner {
 
             // Detect addon based on marker type
             let item = match marker_type {
-                "acf" => self.detect_aircraft_in_archive(&file_path, archive_path)?,
+                "acf" => {
+                    if read_archive_versions {
+                        self.detect_aircraft_in_archive(&file_path, archive_path)?
+                    } else {
+                        self.detect_aircraft_in_archive_without_version(&file_path, archive_path)?
+                    }
+                }
                 "library" => self.detect_scenery_library(&file_path, archive_path)?,
                 "dsf" => self.detect_scenery_dsf(&file_path, archive_path)?,
-                "xpl" => self.detect_plugin_in_archive(&file_path, archive_path)?,
+                "xpl" => {
+                    if read_archive_versions {
+                        self.detect_plugin_in_archive(&file_path, archive_path)?
+                    } else {
+                        self.detect_plugin_in_archive_without_version(&file_path, archive_path)?
+                    }
+                }
                 "navdata" => {
                     if let Ok(content) = self.read_file_from_rar(archive_path, &file_path, password)
                     {

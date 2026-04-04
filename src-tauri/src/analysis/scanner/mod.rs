@@ -3,6 +3,7 @@ use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use crate::archive_input::{detect_archive_format, prepare_archive_for_read, ArchiveFormat};
 use crate::livery_patterns;
@@ -77,6 +78,10 @@ impl ScanContext {
         self.depth < self.max_depth
     }
 
+    fn is_nested_archive_scan(&self) -> bool {
+        !self.parent_chain.is_empty()
+    }
+
     fn push_archive(&mut self, info: NestedArchiveInfo) {
         self.parent_chain.push(info);
         self.depth += 1;
@@ -132,6 +137,149 @@ fn is_archive_file(filename: &str) -> bool {
 /// Get archive format from filename
 fn get_archive_format(filename: &str) -> Option<String> {
     detect_archive_format(Path::new(filename)).map(|fmt| fmt.as_str().to_string())
+}
+
+pub(super) fn resolve_nested_display_name(display_name: &str, nested_path: &str) -> String {
+    let trimmed = display_name.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let should_fallback = trimmed.is_empty() || lower == "unknown" || lower.starts_with("unknown ");
+
+    if !should_fallback {
+        return trimmed.to_string();
+    }
+
+    Path::new(nested_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| trimmed.to_string())
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum VersionFileCandidateKind {
+    UpdaterCfg,
+    VersionFile,
+}
+
+#[derive(Debug, Default, Eq, PartialEq)]
+struct VersionFileReadPlan {
+    updater_cfg_path: Option<String>,
+    version_file_paths: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+struct VersionFilesReadOutcome {
+    files_content: Option<(Option<String>, Vec<String>)>,
+    timed_out: bool,
+}
+
+#[derive(Debug, Default)]
+struct VersionReadOutcome {
+    version_info: Option<crate::models::VersionInfo>,
+    timed_out: bool,
+}
+
+fn classify_version_file_candidate(file_name: &str) -> Option<VersionFileCandidateKind> {
+    let file_name_lower = file_name.to_lowercase();
+
+    if file_name == "skunkcrafts_updater.cfg" {
+        Some(VersionFileCandidateKind::UpdaterCfg)
+    } else if file_name_lower.contains("version")
+        || file_name == "767.ini"
+        || file_name == "757.ini"
+    {
+        Some(VersionFileCandidateKind::VersionFile)
+    } else {
+        None
+    }
+}
+
+fn plan_version_file_reads<'a, I>(entries: I, internal_root: Option<&str>) -> VersionFileReadPlan
+where
+    I: IntoIterator<Item = (&'a str, u64)>,
+{
+    let search_prefix = internal_root.map(|r| {
+        if r.ends_with('/') {
+            r.to_string()
+        } else {
+            format!("{}/", r)
+        }
+    });
+
+    let mut plan = VersionFileReadPlan::default();
+    let mut best_updater_depth: Option<usize> = None;
+    let mut best_version_depth: Option<usize> = None;
+
+    for (file_path, size) in entries {
+        if size > 10240 {
+            continue;
+        }
+
+        if let Some(ref prefix) = search_prefix {
+            if !file_path.starts_with(prefix) {
+                continue;
+            }
+        }
+
+        let relative_path = if let Some(ref prefix) = search_prefix {
+            file_path.strip_prefix(prefix).unwrap_or(file_path)
+        } else {
+            file_path
+        };
+
+        let depth = relative_path.matches('/').count();
+        if depth > 2 {
+            continue;
+        }
+
+        let file_name = Path::new(relative_path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+
+        match classify_version_file_candidate(file_name) {
+            Some(VersionFileCandidateKind::UpdaterCfg) => {
+                if best_updater_depth.map(|best| depth < best).unwrap_or(true) {
+                    best_updater_depth = Some(depth);
+                    plan.updater_cfg_path = Some(file_path.to_string());
+                }
+            }
+            Some(VersionFileCandidateKind::VersionFile) => match best_version_depth {
+                Some(best_depth) if depth > best_depth => {}
+                Some(best_depth) if depth == best_depth => {
+                    plan.version_file_paths.push(file_path.to_string());
+                }
+                _ => {
+                    best_version_depth = Some(depth);
+                    plan.version_file_paths.clear();
+                    plan.version_file_paths.push(file_path.to_string());
+                }
+            },
+            None => {}
+        }
+    }
+
+    plan
+}
+
+fn infer_version_from_name(text: &str) -> Option<String> {
+    static VERSION_RE: OnceLock<Regex> = OnceLock::new();
+
+    let normalized = text.trim();
+    if normalized.is_empty() {
+        return None;
+    }
+
+    let re = VERSION_RE.get_or_init(|| {
+        Regex::new(r"(?i)(?:^|[^A-Za-z0-9])(?P<version>v?\d+(?:[._][A-Za-z]?\d+){1,4}[A-Za-z0-9]*)")
+            .expect("valid version inference regex")
+    });
+
+    re.captures(normalized)
+        .and_then(|captures| captures.name("version"))
+        .map(|matched| matched.as_str().replace('_', "."))
 }
 
 /// Scans a directory or archive and detects addon types based on markers
@@ -637,6 +785,23 @@ impl Scanner {
         file_path: &str,
         archive_path: &Path,
     ) -> Result<Option<DetectedItem>> {
+        self.detect_aircraft_in_archive_internal(file_path, archive_path, true)
+    }
+
+    fn detect_aircraft_in_archive_without_version(
+        &self,
+        file_path: &str,
+        archive_path: &Path,
+    ) -> Result<Option<DetectedItem>> {
+        self.detect_aircraft_in_archive_internal(file_path, archive_path, false)
+    }
+
+    fn detect_aircraft_in_archive_internal(
+        &self,
+        file_path: &str,
+        archive_path: &Path,
+        include_version: bool,
+    ) -> Result<Option<DetectedItem>> {
         let path = PathBuf::from(file_path);
         let parent = path.parent();
 
@@ -691,8 +856,11 @@ impl Scanner {
             )
         };
 
-        // Read version info from the archive
-        let version_info = self.read_version_from_archive(archive_path, internal_root.as_deref());
+        let version_info = if include_version {
+            self.read_version_from_archive(archive_path, internal_root.as_deref())
+        } else {
+            None
+        };
 
         Ok(Some(DetectedItem {
             original_input_path: String::new(),
@@ -994,6 +1162,23 @@ impl Scanner {
         file_path: &str,
         archive_path: &Path,
     ) -> Result<Option<DetectedItem>> {
+        self.detect_plugin_in_archive_internal(file_path, archive_path, true)
+    }
+
+    fn detect_plugin_in_archive_without_version(
+        &self,
+        file_path: &str,
+        archive_path: &Path,
+    ) -> Result<Option<DetectedItem>> {
+        self.detect_plugin_in_archive_internal(file_path, archive_path, false)
+    }
+
+    fn detect_plugin_in_archive_internal(
+        &self,
+        file_path: &str,
+        archive_path: &Path,
+        include_version: bool,
+    ) -> Result<Option<DetectedItem>> {
         let path = PathBuf::from(file_path);
         let parent = path.parent();
 
@@ -1037,8 +1222,11 @@ impl Scanner {
             ("Unknown Plugin".to_string(), None)
         };
 
-        // Read version info from the archive
-        let version_info = self.read_version_from_archive(archive_path, internal_root.as_deref());
+        let version_info = if include_version {
+            self.read_version_from_archive(archive_path, internal_root.as_deref())
+        } else {
+            None
+        };
 
         Ok(Some(DetectedItem {
             original_input_path: String::new(),
@@ -1726,6 +1914,255 @@ impl Scanner {
         None
     }
 
+    fn read_version_files_from_7z_reader<R: std::io::Read + std::io::Seek>(
+        &self,
+        archive: &sevenz_rust2::Archive,
+        reader: &mut sevenz_rust2::ArchiveReader<R>,
+        internal_root: Option<&str>,
+    ) -> Option<(Option<String>, Vec<String>)> {
+        self.read_version_files_from_7z_reader_with_budget(archive, reader, internal_root, None)
+            .files_content
+    }
+
+    fn read_version_files_from_7z_reader_with_budget<R: std::io::Read + std::io::Seek>(
+        &self,
+        archive: &sevenz_rust2::Archive,
+        reader: &mut sevenz_rust2::ArchiveReader<R>,
+        internal_root: Option<&str>,
+        solid_scan_budget: Option<std::time::Duration>,
+    ) -> VersionFilesReadOutcome {
+        let plan = plan_version_file_reads(
+            archive.files.iter().filter_map(|entry| {
+                if entry.is_directory() || !entry.has_stream() {
+                    None
+                } else {
+                    Some((entry.name(), entry.size()))
+                }
+            }),
+            internal_root,
+        );
+
+        if plan.updater_cfg_path.is_none() && plan.version_file_paths.is_empty() {
+            return VersionFilesReadOutcome::default();
+        }
+
+        if archive.is_solid {
+            let budget_start = std::time::Instant::now();
+            let updater_cfg_target = plan.updater_cfg_path.clone();
+            let mut updater_cfg_processed = updater_cfg_target.is_none();
+            let mut updater_cfg_content: Option<String> = None;
+            let mut remaining_version_targets: HashSet<String> =
+                plan.version_file_paths.iter().cloned().collect();
+            let mut version_file_contents = Vec::new();
+            let mut timed_out = false;
+
+            let read_result = reader
+                .for_each_entries(|entry, entry_reader| {
+                    if solid_scan_budget
+                        .map(|budget| budget_start.elapsed() >= budget)
+                        .unwrap_or(false)
+                    {
+                        timed_out = true;
+                        return Ok(false);
+                    }
+
+                    let entry_name = entry.name();
+                    let is_updater_cfg = updater_cfg_target.as_deref() == Some(entry_name);
+                    let is_version_file = remaining_version_targets.contains(entry_name);
+
+                    if !is_updater_cfg && !is_version_file {
+                        return Ok(true);
+                    }
+
+                    let mut data = Vec::with_capacity(entry.size.min(10240) as usize);
+                    let content = if entry_reader.read_to_end(&mut data).is_ok() {
+                        String::from_utf8(data).ok()
+                    } else {
+                        None
+                    };
+
+                    if is_updater_cfg {
+                        updater_cfg_processed = true;
+                        updater_cfg_content = content;
+                    } else {
+                        remaining_version_targets.remove(entry_name);
+                        if let Some(content) = content {
+                            version_file_contents.push(content);
+                        }
+                    }
+
+                    let should_continue = updater_cfg_content.is_none()
+                        && !(updater_cfg_processed && remaining_version_targets.is_empty());
+                    Ok(should_continue)
+                })
+                .ok();
+
+            if read_result.is_none() {
+                return VersionFilesReadOutcome {
+                    files_content: None,
+                    timed_out,
+                };
+            }
+
+            if timed_out && updater_cfg_content.is_none() && version_file_contents.is_empty() {
+                return VersionFilesReadOutcome {
+                    files_content: None,
+                    timed_out: true,
+                };
+            }
+
+            if updater_cfg_content.is_some() || !version_file_contents.is_empty() {
+                return VersionFilesReadOutcome {
+                    files_content: Some((updater_cfg_content, version_file_contents)),
+                    timed_out,
+                };
+            }
+
+            return VersionFilesReadOutcome {
+                files_content: None,
+                timed_out,
+            };
+        }
+
+        let updater_cfg_content = plan.updater_cfg_path.as_deref().and_then(|path| {
+            reader
+                .read_file(path)
+                .ok()
+                .and_then(|bytes| String::from_utf8(bytes).ok())
+        });
+
+        if updater_cfg_content.is_some() {
+            return VersionFilesReadOutcome {
+                files_content: Some((updater_cfg_content, Vec::new())),
+                timed_out: false,
+            };
+        }
+
+        let version_file_contents: Vec<String> = plan
+            .version_file_paths
+            .into_iter()
+            .filter_map(|path| {
+                reader
+                    .read_file(&path)
+                    .ok()
+                    .and_then(|bytes| String::from_utf8(bytes).ok())
+            })
+            .collect();
+
+        if !version_file_contents.is_empty() {
+            VersionFilesReadOutcome {
+                files_content: Some((None, version_file_contents)),
+                timed_out: false,
+            }
+        } else {
+            VersionFilesReadOutcome::default()
+        }
+    }
+
+    fn read_version_from_7z_reader_with_budget<R: std::io::Read + std::io::Seek>(
+        &self,
+        archive: &sevenz_rust2::Archive,
+        reader: &mut sevenz_rust2::ArchiveReader<R>,
+        internal_root: Option<&str>,
+        solid_scan_budget: Option<std::time::Duration>,
+    ) -> VersionReadOutcome {
+        let outcome = self.read_version_files_from_7z_reader_with_budget(
+            archive,
+            reader,
+            internal_root,
+            solid_scan_budget,
+        );
+        let version_info = outcome.files_content.and_then(|version_files_content| {
+            let version =
+                self.parse_version_from_contents(version_files_content.0, version_files_content.1)?;
+            Some(crate::models::VersionInfo {
+                version: Some(version),
+            })
+        });
+
+        VersionReadOutcome {
+            version_info,
+            timed_out: outcome.timed_out,
+        }
+    }
+
+    fn infer_version_info_from_archive_context(
+        &self,
+        item: &DetectedItem,
+        archive_path: &Path,
+        archive_name_hint: Option<&str>,
+    ) -> Option<crate::models::VersionInfo> {
+        let candidates = [
+            Some(item.display_name.as_str()),
+            item.archive_internal_root.as_deref(),
+            archive_name_hint.and_then(|hint| {
+                Path::new(hint)
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .or(Some(hint))
+            }),
+            archive_path.file_stem().and_then(|stem| stem.to_str()),
+        ];
+
+        for candidate in candidates.into_iter().flatten() {
+            if let Some(version) = infer_version_from_name(candidate) {
+                return Some(crate::models::VersionInfo {
+                    version: Some(version),
+                });
+            }
+        }
+
+        None
+    }
+
+    fn populate_version_info_from_7z_reader<R: std::io::Read + std::io::Seek>(
+        &self,
+        detected: &mut [DetectedItem],
+        archive: &sevenz_rust2::Archive,
+        reader: &mut sevenz_rust2::ArchiveReader<R>,
+        archive_path: &Path,
+        archive_name_hint: Option<&str>,
+    ) {
+        const SOLID_7Z_VERSION_READ_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+
+        for item in detected.iter_mut() {
+            if !matches!(item.addon_type, AddonType::Aircraft | AddonType::Plugin) {
+                continue;
+            }
+
+            let version_outcome = self.read_version_from_7z_reader_with_budget(
+                archive,
+                reader,
+                item.archive_internal_root.as_deref(),
+                archive.is_solid.then_some(SOLID_7Z_VERSION_READ_BUDGET),
+            );
+
+            item.version_info = version_outcome.version_info.or_else(|| {
+                if version_outcome.timed_out {
+                    let inferred = self.infer_version_info_from_archive_context(
+                        item,
+                        archive_path,
+                        archive_name_hint,
+                    );
+
+                    if inferred.is_some() {
+                        crate::log_debug!(
+                            &format!(
+                                "[TIMING] 7z version read timed out, inferred from filename/context: {}",
+                                item.display_name
+                            ),
+                            "scanner_timing"
+                        );
+                    }
+
+                    inferred
+                } else {
+                    None
+                }
+            });
+        }
+    }
+
     /// Read a file from a ZIP archive
     fn read_file_from_zip(&self, archive_path: &Path, file_path: &str) -> Result<String> {
         use std::io::Read;
@@ -1920,96 +2357,8 @@ impl Scanner {
 
         let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::SevenZ).ok()?;
         let mut reader = ArchiveReader::open(prepared.read_path(), Password::empty()).ok()?;
-
-        let mut updater_cfg_content: Option<String> = None;
-        let mut version_files_by_depth: Vec<(usize, String)> = Vec::new();
-
-        let search_prefix = internal_root.map(|r| {
-            if r.ends_with('/') {
-                r.to_string()
-            } else {
-                format!("{}/", r)
-            }
-        });
-
-        let _ = reader.for_each_entries(|entry, reader| {
-            if entry.is_directory() {
-                return Ok(true);
-            }
-
-            let file_path = entry.name();
-
-            // Skip if not in internal_root
-            if let Some(ref prefix) = search_prefix {
-                if !file_path.starts_with(prefix.as_str()) {
-                    return Ok(true);
-                }
-            }
-
-            let relative_path = if let Some(ref prefix) = search_prefix {
-                file_path.strip_prefix(prefix.as_str()).unwrap_or(file_path)
-            } else {
-                file_path
-            };
-
-            // Calculate depth
-            let depth = relative_path.matches('/').count();
-
-            // Skip if too deep
-            if depth > 2 {
-                return Ok(true);
-            }
-
-            let file_name = Path::new(relative_path)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("");
-            let file_name_lower = file_name.to_lowercase();
-
-            let is_updater_cfg = file_name == "skunkcrafts_updater.cfg";
-            let is_version_file = file_name_lower.contains("version")
-                || file_name == "767.ini"
-                || file_name == "757.ini";
-
-            if is_updater_cfg || is_version_file {
-                if entry.size() > 10240 {
-                    return Ok(true);
-                }
-
-                let mut content = String::new();
-                if reader.read_to_string(&mut content).is_ok() {
-                    if is_updater_cfg {
-                        updater_cfg_content = Some(content);
-                    } else {
-                        version_files_by_depth.push((depth, content));
-                    }
-                }
-            }
-
-            Ok(true)
-        });
-
-        // Sort by depth and keep only the shallowest level
-        if !version_files_by_depth.is_empty() {
-            version_files_by_depth.sort_by_key(|(depth, _)| *depth);
-            let min_depth = version_files_by_depth[0].0;
-
-            let version_file_contents: Vec<String> = version_files_by_depth
-                .into_iter()
-                .filter(|(depth, _)| *depth == min_depth)
-                .map(|(_, content)| content)
-                .collect();
-
-            if updater_cfg_content.is_some() || !version_file_contents.is_empty() {
-                return Some((updater_cfg_content, version_file_contents));
-            }
-        }
-
-        if updater_cfg_content.is_some() {
-            Some((updater_cfg_content, Vec::new()))
-        } else {
-            None
-        }
+        let archive = reader.archive().clone();
+        self.read_version_files_from_7z_reader(&archive, &mut reader, internal_root)
     }
 
     /// Read version files from a RAR archive
@@ -2134,5 +2483,103 @@ impl Scanner {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        infer_version_from_name, plan_version_file_reads, resolve_nested_display_name,
+        VersionFileReadPlan,
+    };
+
+    #[test]
+    fn nested_archive_display_name_preserves_detected_name() {
+        assert_eq!(
+            resolve_nested_display_name(
+                "AT98WolfsFang",
+                "JPN Airports/XP12 Tsulon&hana RJFT v1.15.rar"
+            ),
+            "AT98WolfsFang"
+        );
+    }
+
+    #[test]
+    fn nested_archive_display_name_falls_back_for_unknown_name() {
+        assert_eq!(
+            resolve_nested_display_name(
+                "Unknown Scenery",
+                "JPN Airports/XP12 Tsulon&hana RJFT v1.15.rar"
+            ),
+            "XP12 Tsulon&hana RJFT v1.15"
+        );
+    }
+
+    #[test]
+    fn nested_archive_display_name_falls_back_for_blank_name() {
+        assert_eq!(
+            resolve_nested_display_name("", "nested/airport_package.zip"),
+            "airport_package"
+        );
+    }
+
+    #[test]
+    fn version_read_plan_keeps_only_shallowest_matching_version_files() {
+        let plan = plan_version_file_reads(
+            [
+                ("Aircraft/version.txt", 128),
+                ("Aircraft/767.ini", 64),
+                ("Aircraft/plugins/64/version.txt", 256),
+                ("Aircraft/docs/version.txt", 512),
+                ("Other/version.txt", 128),
+                ("Aircraft/too-big-version.txt", 16384),
+            ],
+            Some("Aircraft"),
+        );
+
+        assert_eq!(
+            plan,
+            VersionFileReadPlan {
+                updater_cfg_path: None,
+                version_file_paths: vec![
+                    "Aircraft/version.txt".to_string(),
+                    "Aircraft/767.ini".to_string(),
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn version_read_plan_prefers_shallowest_updater_cfg_and_filters_depth() {
+        let plan = plan_version_file_reads(
+            [
+                ("Aircraft/plugins/skunkcrafts_updater.cfg", 256),
+                ("Aircraft/skunkcrafts_updater.cfg", 128),
+                ("Aircraft/config/deeper/skunkcrafts_updater.cfg", 64),
+                ("Aircraft/sub/version.txt", 64),
+            ],
+            Some("Aircraft"),
+        );
+
+        assert_eq!(
+            plan,
+            VersionFileReadPlan {
+                updater_cfg_path: Some("Aircraft/skunkcrafts_updater.cfg".to_string()),
+                version_file_paths: vec!["Aircraft/sub/version.txt".to_string()],
+            }
+        );
+    }
+
+    #[test]
+    fn infer_version_from_name_supports_v_dot_stage_patterns() {
+        assert_eq!(
+            infer_version_from_name("737NG Series_V2.S1"),
+            Some("V2.S1".to_string())
+        );
+    }
+
+    #[test]
+    fn infer_version_from_name_ignores_plain_model_numbers() {
+        assert_eq!(infer_version_from_name("737NG Series"), None);
     }
 }

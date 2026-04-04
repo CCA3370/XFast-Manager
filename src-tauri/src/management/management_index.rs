@@ -154,7 +154,15 @@ fn resolve_management_path(
 pub fn scan_aircraft(xplane_path: &Path) -> Result<ManagementData<AircraftInfo>> {
     let aircraft_path = xplane_path.join("Aircraft");
     if !aircraft_path.exists() {
-        return Err(anyhow!("Aircraft folder not found"));
+        logger::log_info(
+            "Aircraft folder not found, returning empty aircraft list",
+            Some("management"),
+        );
+        return Ok(ManagementData {
+            entries: Vec::new(),
+            total_count: 0,
+            enabled_count: 0,
+        });
     }
 
     logger::log_info("Scanning aircraft folder...", Some("management"));
@@ -2021,4 +2029,21 @@ pub fn delete_lua_script(xplane_path: &Path, file_name: &str) -> Result<()> {
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scan_aircraft;
+    use tempfile::tempdir;
+
+    #[test]
+    fn scan_aircraft_returns_empty_when_aircraft_folder_is_missing() {
+        let temp = tempdir().expect("failed to create tempdir");
+
+        let result = scan_aircraft(temp.path()).expect("scan_aircraft should not fail");
+
+        assert!(result.entries.is_empty());
+        assert_eq!(result.total_count, 0);
+        assert_eq!(result.enabled_count, 0);
+    }
 }

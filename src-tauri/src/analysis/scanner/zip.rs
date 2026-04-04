@@ -1,5 +1,61 @@
 use super::*;
 
+struct BoundedReader<R: std::io::Read + std::io::Seek> {
+    inner: R,
+    start: u64,
+    len: u64,
+    pos: u64,
+}
+
+impl<R: std::io::Read + std::io::Seek> BoundedReader<R> {
+    fn new(mut inner: R, start: u64, len: u64) -> std::io::Result<Self> {
+        inner.seek(std::io::SeekFrom::Start(start))?;
+        Ok(Self {
+            inner,
+            start,
+            len,
+            pos: 0,
+        })
+    }
+}
+
+impl<R: std::io::Read + std::io::Seek> std::io::Read for BoundedReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let remaining = self.len.saturating_sub(self.pos);
+        if remaining == 0 {
+            return Ok(0);
+        }
+
+        let max_len = remaining.min(buf.len() as u64) as usize;
+        let bytes_read = self.inner.read(&mut buf[..max_len])?;
+        self.pos += bytes_read as u64;
+        Ok(bytes_read)
+    }
+}
+
+impl<R: std::io::Read + std::io::Seek> std::io::Seek for BoundedReader<R> {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        let next_pos = match pos {
+            std::io::SeekFrom::Start(offset) => offset as i128,
+            std::io::SeekFrom::End(offset) => self.len as i128 + offset as i128,
+            std::io::SeekFrom::Current(offset) => self.pos as i128 + offset as i128,
+        };
+
+        if !(0..=self.len as i128).contains(&next_pos) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "seek out of bounds for bounded reader",
+            ));
+        }
+
+        let next_pos = next_pos as u64;
+        self.inner
+            .seek(std::io::SeekFrom::Start(self.start + next_pos))?;
+        self.pos = next_pos;
+        Ok(self.pos)
+    }
+}
+
 impl Scanner {
     /// Try to scan a ZIP file by loading it into memory (optimization)
     pub(super) fn try_scan_zip_from_file_to_memory(
@@ -279,6 +335,7 @@ impl Scanner {
 
         let mut detected = Vec::new();
         let mut skip_prefixes: Vec<String> = Vec::new();
+        let read_archive_versions = !ctx.is_nested_archive_scan();
 
         // Process marker files to detect addons
         let process_start = std::time::Instant::now();
@@ -315,10 +372,22 @@ impl Scanner {
 
             // Detect addon based on marker type
             let item = match marker_type {
-                "acf" => self.detect_aircraft_in_archive(&file_path, zip_path)?,
+                "acf" => {
+                    if read_archive_versions {
+                        self.detect_aircraft_in_archive(&file_path, zip_path)?
+                    } else {
+                        self.detect_aircraft_in_archive_without_version(&file_path, zip_path)?
+                    }
+                }
                 "library" => self.detect_scenery_library(&file_path, zip_path)?,
                 "dsf" => self.detect_scenery_dsf(&file_path, zip_path)?,
-                "xpl" => self.detect_plugin_in_archive(&file_path, zip_path)?,
+                "xpl" => {
+                    if read_archive_versions {
+                        self.detect_plugin_in_archive(&file_path, zip_path)?
+                    } else {
+                        self.detect_plugin_in_archive_without_version(&file_path, zip_path)?
+                    }
+                }
                 "navdata" => {
                     // Need to read cycle.json content
                     let mut content = String::new();
@@ -479,71 +548,177 @@ impl Scanner {
         } = params;
         use std::io::Read;
 
-        // Read nested archive into memory
-        let mut nested_data = Vec::new();
-
-        if is_encrypted {
-            if let Some(pwd) = parent_password {
-                let mut nested_file = parent_archive
-                    .by_index_decrypt(file_index, pwd)
-                    .map_err(|e| anyhow::anyhow!("Failed to decrypt nested archive: {}", e))?;
-                nested_file.read_to_end(&mut nested_data)?;
-            } else {
-                return Err(anyhow::anyhow!(PasswordRequiredError {
-                    archive_path: format!("{}/{}", parent_path.display(), nested_path),
-                }));
-            }
-        } else {
-            let mut nested_file = parent_archive.by_index(file_index)?;
-            nested_file.read_to_end(&mut nested_data)?;
-        }
-
         // Get archive format
         let format = get_archive_format(nested_path)
             .ok_or_else(|| anyhow::anyhow!("Unknown archive format: {}", nested_path))?;
 
-        // Check if this nested archive has its own password
-        let nested_password =
-            ctx.get_nested_password(parent_path.to_string_lossy().as_ref(), nested_path);
+        // Read nested ZIP archives into memory for fast recursive scan.
+        // For 7z/RAR, stream directly to a temp file to avoid a large extra memory copy.
+        let nested_result = if format == "zip" {
+            let mut nested_data = Vec::new();
+            if is_encrypted {
+                if let Some(pwd) = parent_password {
+                    let mut nested_file = parent_archive
+                        .by_index_decrypt(file_index, pwd)
+                        .map_err(|e| anyhow::anyhow!("Failed to decrypt nested archive: {}", e))?;
+                    nested_file.read_to_end(&mut nested_data)?;
+                } else {
+                    return Err(anyhow::anyhow!(PasswordRequiredError {
+                        archive_path: format!("{}/{}", parent_path.display(), nested_path),
+                    }));
+                }
+            } else {
+                let mut nested_file = parent_archive.by_index(file_index)?;
+                nested_file.read_to_end(&mut nested_data)?;
+            }
 
-        // Build nested archive info with password if available
-        let nested_info = NestedArchiveInfo {
-            internal_path: nested_path.to_string(),
-            password: nested_password.clone(),
-            format,
-        };
+            // Check if this nested archive has its own password
+            let nested_password =
+                ctx.get_nested_password(parent_path.to_string_lossy().as_ref(), nested_path);
 
-        // Push to context chain
-        ctx.push_archive(nested_info.clone());
+            // Build nested archive info with password if available
+            let nested_info = NestedArchiveInfo {
+                internal_path: nested_path.to_string(),
+                password: nested_password.clone(),
+                format,
+            };
 
-        // For ZIP nested archives, scan in-memory
-        let nested_result = if nested_path.to_lowercase().ends_with(".zip") {
+            // Push to context chain
+            ctx.push_archive(nested_info.clone());
+
             // Create in-memory ZIP archive
             let cursor = std::io::Cursor::new(nested_data);
-            match ::zip::ZipArchive::new(cursor) {
+            let nested_result = match ::zip::ZipArchive::new(cursor) {
                 Ok(mut nested_archive) => {
                     // Scan the nested ZIP archive
                     self.scan_zip_in_memory(&mut nested_archive, parent_path, ctx, nested_path)
                 }
                 Err(e) => Err(anyhow::anyhow!("Failed to open nested ZIP: {}", e)),
+            };
+
+            ctx.pop_archive();
+
+            (nested_info, nested_result)
+        } else if format == "7z" && !is_encrypted {
+            let (compression_method, data_start, compressed_size) = {
+                let raw_file = parent_archive.by_index_raw(file_index)?;
+                (
+                    raw_file.compression(),
+                    raw_file.data_start(),
+                    raw_file.compressed_size(),
+                )
+            };
+
+            if compression_method == ::zip::CompressionMethod::Stored {
+                let nested_password =
+                    ctx.get_nested_password(parent_path.to_string_lossy().as_ref(), nested_path);
+
+                let nested_info = NestedArchiveInfo {
+                    internal_path: nested_path.to_string(),
+                    password: nested_password,
+                    format,
+                };
+
+                ctx.push_archive(nested_info.clone());
+
+                crate::logger::log_info(
+                    "Scanning nested 7z archive from ZIP via direct range reader",
+                    Some("scanner"),
+                );
+
+                let scan_result = (|| -> Result<Vec<DetectedItem>> {
+                    let outer_file = fs::File::open(parent_path)?;
+                    let bounded = BoundedReader::new(outer_file, data_start, compressed_size)?;
+                    let buffered = std::io::BufReader::with_capacity(1024 * 1024, bounded);
+                    let password = match nested_info.password.as_deref() {
+                        Some(pwd) => sevenz_rust2::Password::from(pwd),
+                        None => sevenz_rust2::Password::empty(),
+                    };
+                    let reader = sevenz_rust2::ArchiveReader::new(buffered, password)
+                        .map_err(|e| anyhow::anyhow!("Failed to open nested 7z from ZIP: {}", e))?;
+                    let archive = reader.archive().clone();
+                    self.scan_7z_archive_with_reader(
+                        parent_path,
+                        archive,
+                        reader,
+                        ctx,
+                        nested_info.password.as_deref(),
+                        std::time::Instant::now(),
+                    )
+                })();
+
+                ctx.pop_archive();
+
+                (nested_info, scan_result)
+            } else {
+                let nested_password =
+                    ctx.get_nested_password(parent_path.to_string_lossy().as_ref(), nested_path);
+
+                let nested_info = NestedArchiveInfo {
+                    internal_path: nested_path.to_string(),
+                    password: nested_password,
+                    format,
+                };
+
+                ctx.push_archive(nested_info.clone());
+
+                crate::logger::log_info(
+                    "Scanning nested 7z archive from ZIP via temp file fallback",
+                    Some("scanner"),
+                );
+
+                let nested_file = parent_archive.by_index(file_index)?;
+                let nested_result =
+                    self.scan_nested_non_zip_from_reader(nested_file, &nested_info.format, ctx);
+
+                ctx.pop_archive();
+
+                (nested_info, nested_result)
             }
         } else {
-            // For 7z/RAR nested in ZIP, write to temp file and scan
+            // Check if this nested archive has its own password
+            let nested_password =
+                ctx.get_nested_password(parent_path.to_string_lossy().as_ref(), nested_path);
+
+            let nested_info = NestedArchiveInfo {
+                internal_path: nested_path.to_string(),
+                password: nested_password,
+                format,
+            };
+
+            ctx.push_archive(nested_info.clone());
+
             crate::logger::log_info(
                 &format!(
-                    "Scanning nested {} archive from ZIP (using temp file)",
+                    "Scanning nested {} archive from ZIP (streaming to temp file)",
                     nested_info.format
                 ),
                 Some("scanner"),
             );
-            self.scan_nested_non_zip_from_memory(nested_data, &nested_info.format, parent_path, ctx)
+
+            let nested_result = if is_encrypted {
+                if let Some(pwd) = parent_password {
+                    let nested_file = parent_archive
+                        .by_index_decrypt(file_index, pwd)
+                        .map_err(|e| anyhow::anyhow!("Failed to decrypt nested archive: {}", e))?;
+                    self.scan_nested_non_zip_from_reader(nested_file, &nested_info.format, ctx)
+                } else {
+                    Err(anyhow::anyhow!(PasswordRequiredError {
+                        archive_path: format!("{}/{}", parent_path.display(), nested_path),
+                    }))
+                }
+            } else {
+                let nested_file = parent_archive.by_index(file_index)?;
+                self.scan_nested_non_zip_from_reader(nested_file, &nested_info.format, ctx)
+            };
+
+            ctx.pop_archive();
+
+            (nested_info, nested_result)
         };
 
-        // Pop from context chain
-        ctx.pop_archive();
-
         // Process results
-        match nested_result {
+        match nested_result.1 {
             Ok(mut items) => {
                 // Update each detected item with extraction chain
                 for item in &mut items {
@@ -554,19 +729,28 @@ impl Scanner {
                     };
 
                     // Add current nested archive to chain
-                    chain.archives.push(nested_info.clone());
+                    chain.archives.push(nested_result.0.clone());
 
                     // Update item
                     item.path = parent_path.to_string_lossy().to_string();
                     item.extraction_chain = Some(chain);
                     item.archive_internal_root = None; // Replaced by extraction_chain
 
-                    // Update display_name to use the nested archive's filename (without extension)
-                    // This prevents creating folders like "Scenery/.zip"
-                    if let Some(nested_filename) = Path::new(nested_path).file_stem() {
-                        if let Some(name_str) = nested_filename.to_str() {
-                            item.display_name = name_str.to_string();
-                        }
+                    // Preserve the detected addon name when available.
+                    // Only fall back to the nested archive filename for blank/unknown names.
+                    item.display_name =
+                        super::resolve_nested_display_name(&item.display_name, nested_path);
+
+                    if item.version_info.is_none() {
+                        item.version_info = infer_version_from_name(
+                            Path::new(nested_path)
+                                .file_stem()
+                                .and_then(|stem| stem.to_str())
+                                .unwrap_or(nested_path),
+                        )
+                        .map(|version| crate::models::VersionInfo {
+                            version: Some(version),
+                        });
                     }
                 }
                 Ok(items)
@@ -685,6 +869,7 @@ impl Scanner {
         let mut skip_prefixes: Vec<String> = Vec::new();
 
         // Process marker files
+        let read_archive_versions = !ctx.is_nested_archive_scan();
         for (file_index, file_path, marker_type) in marker_files {
             // Check if inside a skip prefix (already detected addon)
             let should_skip = skip_prefixes
@@ -710,10 +895,22 @@ impl Scanner {
 
             // Detect addon based on marker type
             let item = match marker_type {
-                "acf" => self.detect_aircraft_in_archive(&file_path, parent_path)?,
+                "acf" => {
+                    if read_archive_versions {
+                        self.detect_aircraft_in_archive(&file_path, parent_path)?
+                    } else {
+                        self.detect_aircraft_in_archive_without_version(&file_path, parent_path)?
+                    }
+                }
                 "library" => self.detect_scenery_library(&file_path, parent_path)?,
                 "dsf" => self.detect_scenery_dsf(&file_path, parent_path)?,
-                "xpl" => self.detect_plugin_in_archive(&file_path, parent_path)?,
+                "xpl" => {
+                    if read_archive_versions {
+                        self.detect_plugin_in_archive(&file_path, parent_path)?
+                    } else {
+                        self.detect_plugin_in_archive_without_version(&file_path, parent_path)?
+                    }
+                }
                 "navdata" => {
                     // Read cycle.json from nested archive
                     if let Ok(mut file) = archive.by_index(file_index) {
@@ -754,11 +951,10 @@ impl Scanner {
 
     /// Scan a non-ZIP archive (7z/RAR) that was extracted from memory
     /// Writes the data to a temp file, scans it, then cleans up
-    pub(super) fn scan_nested_non_zip_from_memory(
+    pub(super) fn scan_nested_non_zip_from_reader<R: std::io::Read>(
         &self,
-        archive_data: Vec<u8>,
+        mut reader: R,
         format: &str,
-        _parent_path: &Path,
         ctx: &mut ScanContext,
     ) -> Result<Vec<DetectedItem>> {
         use std::io::Write;
@@ -774,10 +970,8 @@ impl Scanner {
         let mut temp_file = NamedTempFile::with_suffix(extension)
             .context("Failed to create temp file for nested archive")?;
 
-        // Write archive data to temp file
-        temp_file
-            .write_all(&archive_data)
-            .context("Failed to write nested archive to temp file")?;
+        std::io::copy(&mut reader, &mut temp_file)
+            .context("Failed to stream nested archive to temp file")?;
         temp_file.flush()?;
 
         // Get the temp file path
@@ -1066,5 +1260,34 @@ impl Scanner {
         }
 
         Ok(detected)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BoundedReader;
+    use std::io::{Cursor, Read, Seek, SeekFrom};
+
+    #[test]
+    fn bounded_reader_reads_only_selected_range() {
+        let source = Cursor::new(b"0123456789".to_vec());
+        let mut reader = BoundedReader::new(source, 2, 4).expect("bounded reader");
+        let mut buf = String::new();
+
+        reader.read_to_string(&mut buf).expect("read range");
+
+        assert_eq!(buf, "2345");
+    }
+
+    #[test]
+    fn bounded_reader_seeks_within_range() {
+        let source = Cursor::new(b"abcdefghij".to_vec());
+        let mut reader = BoundedReader::new(source, 3, 5).expect("bounded reader");
+        let mut buf = [0u8; 2];
+
+        reader.seek(SeekFrom::Start(2)).expect("seek");
+        reader.read_exact(&mut buf).expect("read after seek");
+
+        assert_eq!(&buf, b"fg");
     }
 }
