@@ -148,6 +148,13 @@ pub struct GatewayInstalledAirport {
     pub latest_approved_date: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GatewayInstallWarning {
+    pub kind: String,
+    pub message: String,
+}
+
 #[tauri::command]
 pub async fn gateway_search_airports(
     query: String,
@@ -430,10 +437,9 @@ fn airport_match_score(airport: &GatewayAirportSearchResult, query: &str) -> Opt
     None
 }
 
-#[tauri::command]
-pub async fn gateway_install_scenery(
+async fn gateway_install_scenery_impl(
     app_handle: AppHandle,
-    db: State<'_, DatabaseState>,
+    conn: DatabaseConnection,
     request: GatewayInstallRequest,
 ) -> ApiResult<GatewayInstalledAirport> {
     let GatewayInstallRequest {
@@ -446,7 +452,16 @@ pub async fn gateway_install_scenery(
     let xplane_root = validate_xplane_root(&xplane_path)?;
     let xplane_key = normalize_xplane_key(&xplane_root);
     let airport_icao = normalize_icao(&icao)?;
-    let conn = db.get();
+    let skip_external_conflict_check = ignore_external_conflict.unwrap_or(false);
+
+    logger::log_info(
+        &format!(
+            "Gateway install requested for {} scenery {} (skip_external_conflict_check={})",
+            airport_icao, scenery_id, skip_external_conflict_check
+        ),
+        Some("gateway"),
+    );
+
     let should_auto_sort = auto_sort_scenery.unwrap_or(false);
 
     let installed_before = find_install_by_airport(&conn, &xplane_key, &airport_icao).await?;
@@ -460,7 +475,7 @@ pub async fn gateway_install_scenery(
             ))
         })?;
 
-    if !ignore_external_conflict.unwrap_or(false) {
+    if !skip_external_conflict_check {
         ensure_no_external_airport_conflict(&conn, &xplane_root, &airport_icao).await?;
     }
 
@@ -590,6 +605,52 @@ pub async fn gateway_install_scenery(
     .await;
 
     Ok(model_to_installed_airport(installed_model))
+}
+
+#[tauri::command]
+pub async fn gateway_install_scenery(
+    app_handle: AppHandle,
+    db: State<'_, DatabaseState>,
+    request: Option<GatewayInstallRequest>,
+    xplane_path: Option<String>,
+    icao: Option<String>,
+    scenery_id: Option<i64>,
+    auto_sort_scenery: Option<bool>,
+    ignore_external_conflict: Option<bool>,
+) -> ApiResult<GatewayInstalledAirport> {
+    let request = request.unwrap_or(GatewayInstallRequest {
+        xplane_path: xplane_path
+            .ok_or_else(|| ApiError::validation("xplanePath is required"))?,
+        icao: icao.ok_or_else(|| ApiError::validation("icao is required"))?,
+        scenery_id: scenery_id.ok_or_else(|| ApiError::validation("sceneryId is required"))?,
+        auto_sort_scenery,
+        ignore_external_conflict,
+    });
+
+    gateway_install_scenery_impl(app_handle, db.get(), request).await
+}
+
+#[tauri::command]
+pub async fn gateway_force_install_scenery(
+    app_handle: AppHandle,
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+    icao: String,
+    scenery_id: i64,
+    auto_sort_scenery: Option<bool>,
+) -> ApiResult<GatewayInstalledAirport> {
+    gateway_install_scenery_impl(
+        app_handle,
+        db.get(),
+        GatewayInstallRequest {
+            xplane_path,
+            icao,
+            scenery_id,
+            auto_sort_scenery,
+            ignore_external_conflict: Some(true),
+        },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -954,6 +1015,36 @@ async fn list_installed_internal(
     Ok(installed)
 }
 
+#[tauri::command]
+pub async fn gateway_check_install_warning(
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+    icao: String,
+) -> ApiResult<Option<GatewayInstallWarning>> {
+    let xplane_root = validate_xplane_root(&xplane_path)?;
+    let airport_icao = normalize_icao(&icao)?;
+    let conn = db.get();
+
+    let warning = find_external_airport_conflict_message(&conn, &xplane_root, &airport_icao)
+        .await?
+        .map(|message| GatewayInstallWarning {
+            kind: "external_airport_conflict".to_string(),
+            message,
+        });
+
+    if let Some(warning) = &warning {
+        logger::log_info(
+            &format!(
+                "Gateway install warning detected for {} (kind={})",
+                airport_icao, warning.kind
+            ),
+            Some("gateway"),
+        );
+    }
+
+    Ok(warning)
+}
+
 async fn upsert_install_record(
     conn: &DatabaseConnection,
     xplane_key: &str,
@@ -1017,33 +1108,41 @@ async fn ensure_no_external_airport_conflict(
     xplane_root: &Path,
     airport_icao: &str,
 ) -> ApiResult<()> {
-    if let Some(folder_name) =
-        find_conflicting_airport_from_index(conn, xplane_root, airport_icao).await?
-    {
+    if let Some(message) = find_external_airport_conflict_message(conn, xplane_root, airport_icao).await? {
         return Err(ApiError::with_details(
             ApiErrorCode::ConflictExists,
-            format!(
-                "Custom Scenery already contains a non-Gateway airport for {}: {}",
-                airport_icao, folder_name
-            ),
-            EXTERNAL_AIRPORT_CONFLICT_DETAIL,
-        ));
-    }
-
-    if let Some(folder_name) =
-        find_conflicting_airport_from_folder_scan(conn, xplane_root, airport_icao).await?
-    {
-        return Err(ApiError::with_details(
-            ApiErrorCode::ConflictExists,
-            format!(
-                "Custom Scenery already contains a non-Gateway airport for {}: {}",
-                airport_icao, folder_name
-            ),
+            message,
             EXTERNAL_AIRPORT_CONFLICT_DETAIL,
         ));
     }
 
     Ok(())
+}
+
+async fn find_external_airport_conflict_message(
+    conn: &DatabaseConnection,
+    xplane_root: &Path,
+    airport_icao: &str,
+) -> ApiResult<Option<String>> {
+    if let Some(folder_name) =
+        find_conflicting_airport_from_index(conn, xplane_root, airport_icao).await?
+    {
+        return Ok(Some(format!(
+            "Custom Scenery already contains a non-Gateway airport for {}: {}",
+            airport_icao, folder_name
+        )));
+    }
+
+    if let Some(folder_name) =
+        find_conflicting_airport_from_folder_scan(conn, xplane_root, airport_icao).await?
+    {
+        return Ok(Some(format!(
+            "Custom Scenery already contains a non-Gateway airport for {}: {}",
+            airport_icao, folder_name
+        )));
+    }
+
+    Ok(None)
 }
 
 async fn find_conflicting_airport_from_index(

@@ -3447,7 +3447,9 @@ pub fn run() {
             gateway::gateway_get_scenery,
             gateway::gateway_list_installed,
             gateway::gateway_check_updates,
+            gateway::gateway_check_install_warning,
             gateway::gateway_install_scenery,
+            gateway::gateway_force_install_scenery,
             gateway::gateway_uninstall_airport,
             // Scenery manager commands
             get_scenery_manager_data,

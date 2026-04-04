@@ -664,3 +664,8 @@ export interface GatewayInstalledAirport {
   latestArtist: string | null
   latestApprovedDate: string | null
 }
+
+export interface GatewayInstallWarning {
+  kind: string
+  message: string
+}

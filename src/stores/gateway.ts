@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import {
   gatewayCheckUpdates,
+  gatewayCheckInstallWarning,
   gatewayGetAirport,
   gatewayGetScenery,
   gatewayInstallScenery,
@@ -203,6 +204,15 @@ export const useGatewayStore = defineStore('gateway', () => {
     }
   }
 
+  async function checkInstallWarning(xplanePath: string, airportIcao?: string | null) {
+    const icao = airportIcao ?? airportDetail.value?.icao
+    if (!icao) {
+      throw new Error('No Gateway airport selected')
+    }
+
+    return gatewayCheckInstallWarning(xplanePath, icao)
+  }
+
   async function uninstallAirportByIcao(xplanePath: string, airportIcao: string) {
     uninstallingIcao.value = airportIcao
     try {
@@ -242,6 +252,7 @@ export const useGatewayStore = defineStore('gateway', () => {
     openAirport,
     selectScenery,
     installSelected,
+    checkInstallWarning,
     uninstallAirportByIcao,
     resetAirportSelection,
   }
