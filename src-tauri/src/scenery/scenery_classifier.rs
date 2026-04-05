@@ -22,6 +22,31 @@ fn is_lines3d_folder_name(folder_name: &str) -> bool {
     folder_name.trim().eq_ignore_ascii_case("lines3d")
 }
 
+fn is_sam_folder_name(folder_name: &str) -> bool {
+    let folder_lower = folder_name.to_lowercase();
+
+    let parts: Vec<&str> = folder_lower
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let has_sam_word = parts.contains(&"sam");
+
+    parts.iter().any(|&part| {
+        part.ends_with("sam") && part.len() > 3 && {
+            let prefix = &part[..part.len() - 3];
+            matches!(prefix, "open" | "my" | "custom" | "new")
+        }
+    }) || has_sam_word
+}
+
+fn classify_library_folder_name(folder_name: &str) -> SceneryCategory {
+    if is_lines3d_folder_name(folder_name) || is_sam_folder_name(folder_name) {
+        SceneryCategory::FixedHighPriority
+    } else {
+        SceneryCategory::Library
+    }
+}
+
 /// Check if folder contains plugins (.xpl files)
 fn has_plugins(scenery_path: &Path) -> bool {
     let plugins_path = scenery_path.join("plugins");
@@ -147,13 +172,6 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
     }
 
     // Collect file system information
-    crate::log_debug!("  Checking for apt.dat...", "scenery_classifier");
-    let has_apt_dat = check_apt_dat_recursive(scenery_path)?;
-    crate::log_debug!(
-        &format!("  apt.dat check complete: {}", has_apt_dat),
-        "scenery_classifier"
-    );
-
     crate::log_debug!("  Searching for DSF files...", "scenery_classifier");
     let dsf_files = find_dsf_files(scenery_path)?;
     crate::log_debug!(
@@ -170,11 +188,58 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
 
     crate::log_debug!(
         &format!(
-            "  has_apt_dat: {}, dsf_files: {}, texture_count: {}",
-            has_apt_dat,
-            dsf_files.len(),
-            texture_count
+            "  pre-check summary: has_library_txt={}, has_earth_nav_data={}, dsf_files={}, texture_count={}",
+            has_library_txt, has_earth_nav_data, dsf_files.len(), texture_count
         ),
+        "scenery_classifier"
+    );
+
+    // Fast path for library packages:
+    // if there is no top-level "Earth nav data", treat top-level library packages
+    // as libraries even if they contain nested test/demo apt.dat files.
+    if has_library_txt && !has_earth_nav_data {
+        let category = classify_library_folder_name(&folder_name);
+
+        crate::log_debug!(
+            if category == SceneryCategory::FixedHighPriority {
+                "  ✓ Classified as FixedHighPriority (library.txt without top-level Earth nav data)"
+            } else {
+                "  ✓ Classified as Library (library.txt without top-level Earth nav data)"
+            },
+            "scenery_classifier"
+        );
+
+        let exported_library_names = crate::scenery_index::parse_library_exports(&library_txt_path)
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        crate::log_debug!(
+            &format!("  Library exports: {:?}", exported_library_names),
+            "scenery_classifier"
+        );
+
+        return build_package_info(
+            folder_name,
+            category,
+            scenery_path,
+            PackageInfoDetails {
+                has_apt_dat: false,
+                has_dsf: !dsf_files.is_empty(),
+                has_library_txt: true,
+                texture_count,
+                earth_nav_tile_count: 0,
+                required_libraries: Vec::new(),
+                missing_libraries: Vec::new(),
+                exported_library_names,
+                ..Default::default()
+            },
+        );
+    }
+
+    crate::log_debug!("  Checking for apt.dat...", "scenery_classifier");
+    let has_apt_dat = check_apt_dat_recursive(scenery_path)?;
+    crate::log_debug!(
+        &format!("  apt.dat check complete: {}", has_apt_dat),
         "scenery_classifier"
     );
 
@@ -397,48 +462,16 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
 
     // 3. Has library.txt but no Earth nav data → Library or FixedHighPriority (Lines3D/SAM)
     if has_library_txt && !has_earth_nav_data {
-        // Check if it's a SAM library
-        // Match patterns:
-        // 1. "sam" as a separate word: "SAM_Library", "open_SAM_library"
-        // 2. Starts with "sam": "SAM-DeveloperPack"
-        // 3. Ends with "sam": "openSAM", "openSAM_Library"
-        // But NOT: "zsam" (airport code), "sample" (different word)
+        let category = classify_library_folder_name(&folder_name);
 
-        let folder_lower = folder_name.to_lowercase();
-
-        // Split by non-alphanumeric and check for exact "sam"
-        let parts: Vec<&str> = folder_lower
-            .split(|c: char| !c.is_ascii_alphanumeric())
-            .filter(|s| !s.is_empty())
-            .collect();
-        let has_sam_word = parts.contains(&"sam");
-
-        // Check if any part ends with "sam" (like "opensam")
-        let has_sam_suffix = parts.iter().any(|&part| {
-            part.ends_with("sam") && part.len() > 3 && {
-                // Make sure it's not part of another word like "sample"
-                let prefix = &part[..part.len() - 3];
-                // Common SAM library prefixes
-                matches!(prefix, "open" | "my" | "custom" | "new")
-            }
-        });
-
-        let is_sam = has_sam_word || has_sam_suffix;
-        let is_lines3d = is_lines3d_folder_name(&folder_name);
-
-        let category = if is_lines3d || is_sam {
-            crate::log_debug!(
-                "  ✓ Classified as FixedHighPriority (Lines3D/SAM library)",
-                "scenery_classifier"
-            );
-            SceneryCategory::FixedHighPriority
-        } else {
-            crate::log_debug!(
-                "  ✓ Classified as Library (has library.txt but no Earth nav data)",
-                "scenery_classifier"
-            );
-            SceneryCategory::Library
-        };
+        crate::log_debug!(
+            if category == SceneryCategory::FixedHighPriority {
+                "  ✓ Classified as FixedHighPriority (Lines3D/SAM library)"
+            } else {
+                "  ✓ Classified as Library (has library.txt but no Earth nav data)"
+            },
+            "scenery_classifier"
+        );
 
         // Parse library.txt to get exported library names
         let library_txt_path = scenery_path.join("library.txt");
@@ -1498,6 +1531,77 @@ fn calculate_sub_priority(category: &SceneryCategory, folder_name: &str) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+
+    #[test]
+    fn classify_library_with_nested_demo_airport_stays_library() {
+        let temp = tempfile::tempdir().unwrap();
+        let scenery_path = temp.path().join("openSAM_Library");
+
+        fs::create_dir_all(
+            scenery_path
+                .join("dev-tools")
+                .join("OSJW_openSAM_demo_airport")
+                .join("Earth nav data")
+                .join("+40+010"),
+        )
+        .unwrap();
+        fs::write(
+            scenery_path.join("library.txt"),
+            "EXPORT opensam/test/object.obj objects/object.obj\n",
+        )
+        .unwrap();
+        fs::write(
+            scenery_path
+                .join("dev-tools")
+                .join("OSJW_openSAM_demo_airport")
+                .join("Earth nav data")
+                .join("apt.dat"),
+            "I\n1100 Demo\n1 0 0 0 OSJW Demo Airport\n",
+        )
+        .unwrap();
+        fs::write(
+            scenery_path
+                .join("dev-tools")
+                .join("OSJW_openSAM_demo_airport")
+                .join("Earth nav data")
+                .join("+40+010")
+                .join("+40+010.dsf"),
+            b"dummy-dsf",
+        )
+        .unwrap();
+
+        let info = classify_scenery(&scenery_path, temp.path()).unwrap();
+
+        assert_eq!(info.category, SceneryCategory::FixedHighPriority);
+        assert!(!info.has_apt_dat);
+        assert!(info.has_library_txt);
+        assert!(info.has_dsf);
+    }
+
+    #[test]
+    fn classify_airport_with_top_level_earth_nav_data_stays_airport() {
+        let temp = tempfile::tempdir().unwrap();
+        let scenery_path = temp.path().join("DemoAirport");
+
+        fs::create_dir_all(scenery_path.join("Earth nav data").join("+40+010")).unwrap();
+        fs::write(
+            scenery_path.join("library.txt"),
+            "EXPORT demo/test/object.obj objects/object.obj\n",
+        )
+        .unwrap();
+        fs::write(
+            scenery_path.join("Earth nav data").join("apt.dat"),
+            "I\n1100 Demo\n1 0 0 0 KDEM Demo Airport\n",
+        )
+        .unwrap();
+
+        let info = classify_scenery(&scenery_path, temp.path()).unwrap();
+
+        assert_eq!(info.category, SceneryCategory::Airport);
+        assert!(info.has_apt_dat);
+        assert!(info.has_library_txt);
+    }
 
     #[test]
     fn test_sam_library_detection() {
