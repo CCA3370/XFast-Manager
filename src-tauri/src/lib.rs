@@ -105,7 +105,7 @@ use models::{
     LiveryInfo, LuaScriptInfo, ManagementData, NavdataBackupInfo, NavdataManagerInfo, PluginInfo,
     PresetApplyResult, PresetExportFormat, PresetLockState, PresetSnapshot, PresetSummary,
     SceneryIndexScanResult, SceneryIndexStats, SceneryIndexStatus, SceneryManagerData,
-    SceneryPackageInfo,
+    SceneryPackageInfo, GLOBAL_AIRPORTS_ENTRY_NAME,
 };
 use scenery_index::SceneryIndexManager;
 use scenery_packs_manager::SceneryPacksManager;
@@ -1751,6 +1751,7 @@ async fn sort_scenery_packs(
     let db_for_log = db.clone();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
+    let packs_manager = SceneryPacksManager::new(xplane_path, db_for_log.clone());
 
     logger::log_info("Resetting scenery index sort order", Some("scenery"));
 
@@ -1770,6 +1771,11 @@ async fn sort_scenery_packs(
         "Scenery index sort order reset successfully",
         Some("scenery"),
     );
+
+    packs_manager
+        .reset_global_airports_position_to_default()
+        .await
+        .map_err(|e| format!("Failed to reset Global Airports position: {}", e))?;
 
     if has_changes {
         activity::log_activity(
@@ -1954,6 +1960,29 @@ async fn update_scenery_entry(
 ) -> Result<(), String> {
     let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
+    if folder_name == GLOBAL_AIRPORTS_ENTRY_NAME {
+        let packs_manager = SceneryPacksManager::new(xplane_path, db);
+        if let Some(enabled) = enabled {
+            packs_manager
+                .set_global_airports_enabled(enabled)
+                .await
+                .map_err(|e| format!("Failed to update Global Airports state: {}", e))?;
+        }
+        if let Some(sort_order) = sort_order {
+            packs_manager
+                .set_global_airports_sort_order(sort_order)
+                .await
+                .map_err(|e| format!("Failed to update Global Airports position: {}", e))?;
+        }
+        if let Some(category) = category {
+            packs_manager
+                .set_global_airports_category(&category)
+                .await
+                .map_err(|e| format!("Failed to update Global Airports category: {}", e))?;
+        }
+        return Ok(());
+    }
+
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
     index_manager
@@ -1971,6 +2000,13 @@ async fn move_scenery_entry(
 ) -> Result<(), String> {
     let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
+    if folder_name == GLOBAL_AIRPORTS_ENTRY_NAME {
+        return SceneryPacksManager::new(xplane_path, db)
+            .set_global_airports_sort_order(new_sort_order)
+            .await
+            .map_err(|e| format!("Failed to move Global Airports entry: {}", e));
+    }
+
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
     index_manager
@@ -1992,15 +2028,42 @@ async fn apply_scenery_changes(
 
     logger::log_info("Applying scenery changes to index and ini", Some("scenery"));
 
+    let mut global_airports_enabled: Option<bool> = None;
+    let mut global_airports_sort_order: Option<u32> = None;
+    let index_updates: Vec<models::SceneryEntryUpdate> = entries
+        .into_iter()
+        .filter_map(|entry| {
+            if entry.folder_name == GLOBAL_AIRPORTS_ENTRY_NAME {
+                global_airports_enabled = Some(entry.enabled);
+                global_airports_sort_order = Some(entry.sort_order);
+                None
+            } else {
+                Some(entry)
+            }
+        })
+        .collect();
+
     // Update index with all entry changes
     index_manager
-        .batch_update_entries(&entries)
+        .batch_update_entries(&index_updates)
         .await
         .map_err(|e| format!("Failed to update index: {}", e))?;
 
     // Apply to ini file
     let db_for_log = db.clone();
     let packs_manager = SceneryPacksManager::new(xplane_path, db);
+    if let Some(enabled) = global_airports_enabled {
+        packs_manager
+            .set_global_airports_enabled(enabled)
+            .await
+            .map_err(|e| format!("Failed to update Global Airports state: {}", e))?;
+    }
+    if let Some(sort_order) = global_airports_sort_order {
+        packs_manager
+            .set_global_airports_sort_order(sort_order)
+            .await
+            .map_err(|e| format!("Failed to update Global Airports position: {}", e))?;
+    }
     packs_manager
         .apply_from_index()
         .await
@@ -2008,7 +2071,7 @@ async fn apply_scenery_changes(
 
     logger::log_info("Scenery changes applied successfully", Some("scenery"));
 
-    let count = entries.len();
+    let count = index_updates.len() + usize::from(global_airports_sort_order.is_some());
     activity::log_activity(
         &db_for_log,
         "config_change",

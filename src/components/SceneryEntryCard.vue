@@ -11,6 +11,8 @@ import { SceneryCategory, getErrorMessage } from '@/types'
 import { useContextMenu } from '@/composables/useContextMenu'
 import type { ContextMenuItem } from '@/composables/useContextMenu'
 
+const GLOBAL_AIRPORTS_ENTRY_NAME = '*GLOBAL_AIRPORTS*'
+
 const props = withDefaults(
   defineProps<{
     entry: SceneryManagerEntry
@@ -136,6 +138,7 @@ const duplicatesCount = computed(() => {
   }
   return all.size
 })
+const isGlobalAirportsEntry = computed(() => props.entry.folderName === GLOBAL_AIRPORTS_ENTRY_NAME)
 const isFirst = computed(() => props.index === 0)
 const isLast = computed(() => props.index === props.totalCount - 1)
 
@@ -147,6 +150,8 @@ function handleToggleLock() {
 }
 
 async function handleDoubleClick() {
+  if (isGlobalAirportsEntry.value) return
+
   if (!appStore.xplanePath) {
     modalStore.showError(t('sceneryManager.noXplanePath'))
     return
@@ -163,6 +168,10 @@ async function handleDoubleClick() {
 }
 
 function handleClick(event: Event) {
+  if (isGlobalAirportsEntry.value) {
+    return
+  }
+
   // Don't trigger if clicking on interactive elements
   const target = event.target as HTMLElement
   if (target.closest('button') || target.closest('.drag-handle')) {
@@ -191,13 +200,15 @@ function handleContextMenu(event: MouseEvent) {
       : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>',
   })
 
-  menuItems.push({
-    id: 'open-folder',
-    label: t('contextMenu.openFolder'),
-    icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/></svg>',
-  })
+  if (!isGlobalAirportsEntry.value) {
+    menuItems.push({
+      id: 'open-folder',
+      label: t('contextMenu.openFolder'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/></svg>',
+    })
+  }
 
-  if (canOpenUpdater.value) {
+  if (canOpenUpdater.value && !isGlobalAirportsEntry.value) {
     menuItems.push({
       id: 'update',
       label: t('management.startUpdate'),
@@ -241,20 +252,22 @@ function handleContextMenu(event: MouseEvent) {
     menuItems[menuItems.length - 1].dividerAfter = true
   }
 
-  menuItems.push({
-    id: 'toggle-lock',
-    label: isItemLocked.value ? t('management.unlock') : t('management.lock'),
-    icon: isItemLocked.value
-      ? '<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>'
-      : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>',
-  })
+  if (!isGlobalAirportsEntry.value) {
+    menuItems.push({
+      id: 'toggle-lock',
+      label: isItemLocked.value ? t('management.unlock') : t('management.lock'),
+      icon: isItemLocked.value
+        ? '<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>'
+        : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>',
+    })
 
-  menuItems.push({
-    id: 'delete',
-    label: t('sceneryManager.delete'),
-    icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>',
-    danger: true,
-  })
+    menuItems.push({
+      id: 'delete',
+      label: t('sceneryManager.delete'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>',
+      danger: true,
+    })
+  }
 
   contextMenu.show(event, menuItems, (id: string) => {
     switch (id) {
@@ -325,6 +338,7 @@ function handleContextMenu(event: MouseEvent) {
     <!-- Enable/Disable toggle -->
     <ToggleSwitch
       :model-value="entry.enabled"
+      :disabled="false"
       active-class="bg-blue-500"
       inactive-class="bg-gray-300 dark:bg-gray-600"
       :aria-label="entry.enabled ? t('contextMenu.disable') : t('contextMenu.enable')"
@@ -395,7 +409,7 @@ function handleContextMenu(event: MouseEvent) {
     </span>
 
     <button
-      v-if="canOpenUpdater"
+      v-if="canOpenUpdater && !isGlobalAirportsEntry"
       class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-white bg-emerald-500 hover:bg-emerald-600 transition-colors"
       :title="t('management.startUpdate')"
       @click.stop="emit('update', entry.folderName)"
@@ -444,6 +458,7 @@ function handleContextMenu(event: MouseEvent) {
 
     <!-- Lock button -->
     <button
+      v-if="!isGlobalAirportsEntry"
       class="flex-shrink-0 p-0.5 rounded transition-colors"
       :class="
         isItemLocked
@@ -472,6 +487,7 @@ function handleContextMenu(event: MouseEvent) {
 
     <!-- Delete button -->
     <button
+      v-if="!isGlobalAirportsEntry"
       class="flex-shrink-0 p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
       :title="t('sceneryManager.delete')"
       @click.stop="emit('show-delete-confirm', entry)"

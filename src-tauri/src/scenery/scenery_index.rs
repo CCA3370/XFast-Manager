@@ -7,8 +7,9 @@ use crate::database::{SceneryQueries, CURRENT_SCHEMA_VERSION};
 use crate::logger;
 use crate::management_index::read_version_from_paths;
 use crate::models::{
-    SceneryCategory, SceneryIndex, SceneryIndexScanResult, SceneryIndexStats, SceneryIndexStatus,
-    SceneryManagerData, SceneryManagerEntry, SceneryPackageInfo,
+    is_global_airports_folder_name, SceneryCategory, SceneryIndex, SceneryIndexScanResult,
+    SceneryIndexStats, SceneryIndexStatus, SceneryManagerData, SceneryManagerEntry,
+    SceneryPackageInfo, GLOBAL_AIRPORTS_ENTRY_NAME,
 };
 use crate::scenery_classifier::classify_scenery;
 use anyhow::{anyhow, Result};
@@ -642,6 +643,13 @@ impl SceneryIndexManager {
 
         // Promote special high-priority libraries (Lines3D, SAM) before sorting.
         for (name, info) in index.packages.iter_mut() {
+            if is_global_airports_folder_name(name)
+                && (info.category != SceneryCategory::DefaultAirport || info.sub_priority != 0)
+            {
+                info.category = SceneryCategory::DefaultAirport;
+                info.sub_priority = 0;
+            }
+
             if should_promote_to_fixed_high_priority(name, info)
                 && info.category != SceneryCategory::FixedHighPriority
             {
@@ -1236,6 +1244,14 @@ impl SceneryIndexManager {
         // Promote special high-priority libraries (Lines3D, SAM) before sorting.
         let mut category_changed = false;
         for (name, info) in index.packages.iter_mut() {
+            if is_global_airports_folder_name(name)
+                && (info.category != SceneryCategory::DefaultAirport || info.sub_priority != 0)
+            {
+                info.category = SceneryCategory::DefaultAirport;
+                info.sub_priority = 0;
+                category_changed = true;
+            }
+
             if should_promote_to_fixed_high_priority(name, info)
                 && info.category != SceneryCategory::FixedHighPriority
             {
@@ -1474,35 +1490,83 @@ impl SceneryIndexManager {
         // Detect duplicate airports (same airport_id across multiple packages)
         let duplicate_airports_map = detect_duplicate_airports(&index.packages);
 
-        // Convert to manager entries and sort by sort_order
-        let mut entries: Vec<SceneryManagerEntry> = index
+        let all_packages: Vec<_> = index.packages.values().collect();
+        let global_airports = packs_manager
+            .get_global_airports_state_for_packages(&all_packages)
+            .await?;
+
+        let mut packages: Vec<_> = index
             .packages
             .values()
-            .map(|info| SceneryManagerEntry {
-                folder_name: info.folder_name.clone(),
-                category: info.category.clone(),
-                sub_priority: info.sub_priority,
-                enabled: info.enabled,
-                sort_order: info.sort_order,
-                update_url: read_scenery_update_url(&custom_scenery_path.join(&info.folder_name)),
-                missing_libraries: info.missing_libraries.clone(),
-                required_libraries: info.required_libraries.clone(),
-                continent: info.continent.clone(),
-                duplicate_tiles: duplicate_tiles_map
-                    .get(&info.folder_name)
-                    .cloned()
-                    .unwrap_or_default(),
-                duplicate_airports: duplicate_airports_map
-                    .get(&info.folder_name)
-                    .cloned()
-                    .unwrap_or_default(),
-                airport_id: info.airport_id.clone(),
-                original_category: info.original_category.clone(),
+            .filter(|info| {
+                !(info.category == SceneryCategory::DefaultAirport
+                    || is_global_airports_folder_name(&info.folder_name))
             })
             .collect();
+        let mut entries_with_sort: Vec<(u32, bool, SceneryManagerEntry)> =
+            Vec::with_capacity(packages.len() + 1);
 
-        // Sort by sort_order
-        entries.sort_by_key(|e| e.sort_order);
+        for info in packages.drain(..) {
+            entries_with_sort.push((
+                info.sort_order,
+                false,
+                SceneryManagerEntry {
+                    folder_name: info.folder_name.clone(),
+                    category: info.category.clone(),
+                    sub_priority: info.sub_priority,
+                    enabled: info.enabled,
+                    sort_order: info.sort_order,
+                    update_url: read_scenery_update_url(
+                        &custom_scenery_path.join(&info.folder_name),
+                    ),
+                    missing_libraries: info.missing_libraries.clone(),
+                    required_libraries: info.required_libraries.clone(),
+                    continent: info.continent.clone(),
+                    duplicate_tiles: duplicate_tiles_map
+                        .get(&info.folder_name)
+                        .cloned()
+                        .unwrap_or_default(),
+                    duplicate_airports: duplicate_airports_map
+                        .get(&info.folder_name)
+                        .cloned()
+                        .unwrap_or_default(),
+                    airport_id: info.airport_id.clone(),
+                    original_category: info.original_category.clone(),
+                },
+            ));
+        }
+
+        entries_with_sort.push((
+            global_airports.sort_order,
+            true,
+            SceneryManagerEntry {
+                folder_name: GLOBAL_AIRPORTS_ENTRY_NAME.to_string(),
+                category: global_airports.category.clone(),
+                sub_priority: 0,
+                enabled: global_airports.enabled,
+                sort_order: global_airports.sort_order,
+                update_url: None,
+                missing_libraries: Vec::new(),
+                required_libraries: Vec::new(),
+                continent: None,
+                duplicate_tiles: Vec::new(),
+                duplicate_airports: Vec::new(),
+                airport_id: None,
+                original_category: None,
+            },
+        ));
+
+        entries_with_sort.sort_by(|(sort_a, global_a, _), (sort_b, global_b, _)| {
+            sort_a.cmp(sort_b).then_with(|| global_b.cmp(global_a))
+        });
+
+        let mut entries: Vec<SceneryManagerEntry> = entries_with_sort
+            .into_iter()
+            .map(|(_, _, entry)| entry)
+            .collect();
+        for (index, entry) in entries.iter_mut().enumerate() {
+            entry.sort_order = index as u32;
+        }
 
         // Calculate statistics
         let total_count = entries.len();

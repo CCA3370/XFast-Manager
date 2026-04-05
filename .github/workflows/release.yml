@@ -262,14 +262,12 @@ jobs:
           path: |
             target/release/XFast-Manager-*-windows-portable.exe
             target/release/bundle/msi/XFast-Manager-*-windows-setup.msi
-            target/release/bundle/msi/*.msi.zip
-            target/release/bundle/msi/*.msi.zip.sig
+            target/release/bundle/msi/*.msi.sig
             target/universal-apple-darwin/release/bundle/dmg/XFast-Manager-*-macos-universal.dmg
             target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
             target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
             target/release/bundle/appimage/XFast-Manager-*-linux-x64.AppImage
-            target/release/bundle/appimage/*.AppImage.tar.gz
-            target/release/bundle/appimage/*.AppImage.tar.gz.sig
+            target/release/bundle/appimage/*.AppImage.sig
             target/release/bundle/deb/XFast-Manager-*-linux-x64.deb
             target/release/bundle/rpm/XFast-Manager-*-linux-x64.rpm
           if-no-files-found: ignore
@@ -312,7 +310,7 @@ jobs:
           find artifacts -type f -name "XFast-Manager-*" -exec cp {} release-files/ \;
 
           # Copy updater bundles and signatures to release-files
-          find artifacts -type f \( -name "*.msi.zip" -o -name "*.msi.zip.sig" -o -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" -o -name "*.AppImage.tar.gz" -o -name "*.AppImage.tar.gz.sig" \) -exec cp {} release-files/ \;
+          find artifacts -type f \( -name "*.msi.sig" -o -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" -o -name "*.AppImage.sig" \) -exec cp {} release-files/ \;
 
           cd release-files
 
@@ -325,7 +323,6 @@ jobs:
           # Zip Windows MSI installer
           if [ -f "XFast-Manager-${version}-windows-setup.msi" ]; then
             zip "XFast-Manager-${version}-windows-setup.zip" "XFast-Manager-${version}-windows-setup.msi"
-            rm "XFast-Manager-${version}-windows-setup.msi"
           fi
 
           # Zip macOS DMG
@@ -337,7 +334,6 @@ jobs:
           # Zip Linux AppImage
           if [ -f "XFast-Manager-${version}-linux-x64.AppImage" ]; then
             zip "XFast-Manager-${version}-linux-x64-AppImage.zip" "XFast-Manager-${version}-linux-x64.AppImage"
-            rm "XFast-Manager-${version}-linux-x64.AppImage"
           fi
 
           # Zip Linux deb
@@ -375,7 +371,7 @@ jobs:
           mac_sig=""
           linux_sig=""
 
-          win_sig_file=$(find release-files -name "*.msi.zip.sig" | head -1)
+          win_sig_file=$(find release-files -name "*.msi.sig" | head -1)
           if [ -n "$win_sig_file" ]; then
             win_sig=$(cat "$win_sig_file")
           fi
@@ -385,15 +381,15 @@ jobs:
             mac_sig=$(cat "$mac_sig_file")
           fi
 
-          linux_sig_file=$(find release-files -name "*.AppImage.tar.gz.sig" | head -1)
+          linux_sig_file=$(find release-files -name "*.AppImage.sig" | head -1)
           if [ -n "$linux_sig_file" ]; then
             linux_sig=$(cat "$linux_sig_file")
           fi
 
           # Find updater bundle filenames
-          win_bundle=$(find release-files -name "*.msi.zip" ! -name "*.sig" -printf "%f\n" | head -1)
+          win_bundle=$(find release-files -name "*.msi" -printf "%f\n" | head -1)
           mac_bundle=$(find release-files -name "*.app.tar.gz" ! -name "*.sig" -printf "%f\n" | head -1)
-          linux_bundle=$(find release-files -name "*.AppImage.tar.gz" ! -name "*.sig" -printf "%f\n" | head -1)
+          linux_bundle=$(find release-files -name "*.AppImage" -printf "%f\n" | head -1)
 
           # Build latest.json using jq
           platforms='{}'
@@ -449,12 +445,12 @@ jobs:
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-rpm.zip
             release-files/checksums.txt
             release-files/latest.json
-            release-files/*.msi.zip
-            release-files/*.msi.zip.sig
+            release-files/*.msi
+            release-files/*.msi.sig
             release-files/*.app.tar.gz
             release-files/*.app.tar.gz.sig
-            release-files/*.AppImage.tar.gz
-            release-files/*.AppImage.tar.gz.sig
+            release-files/*.AppImage
+            release-files/*.AppImage.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -14,7 +14,7 @@ lerna-debug.log*
 
 # Rust / Tauri
 .tauri/
-target/
+target*/
 src-tauri/target/
 src-tauri/target-check/
 **/*.rs.bk

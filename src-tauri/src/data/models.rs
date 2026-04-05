@@ -409,6 +409,12 @@ impl SceneryCategory {
     }
 }
 
+pub const GLOBAL_AIRPORTS_ENTRY_NAME: &str = "*GLOBAL_AIRPORTS*";
+
+pub fn is_global_airports_folder_name(folder_name: &str) -> bool {
+    folder_name.trim().eq_ignore_ascii_case("Global Airports")
+}
+
 /// Information about a classified scenery package
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

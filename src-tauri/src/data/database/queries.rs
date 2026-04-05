@@ -67,6 +67,21 @@ fn string_to_category(s: &str) -> SceneryCategory {
 pub struct SceneryQueries;
 
 impl SceneryQueries {
+    pub async fn get_metadata(
+        conn: &DatabaseConnection,
+        key: &str,
+    ) -> Result<Option<String>, ApiError> {
+        Self::get_metadata_async(conn, key).await
+    }
+
+    pub async fn set_metadata(
+        conn: &DatabaseConnection,
+        key: &str,
+        value: &str,
+    ) -> Result<(), ApiError> {
+        Self::set_metadata_async(conn, key, value).await
+    }
+
     /// Load all scenery packages from the database into a SceneryIndex
     pub async fn load_all(conn: &DatabaseConnection) -> Result<SceneryIndex, ApiError> {
         let packages = scenery_packages::Entity::find()
