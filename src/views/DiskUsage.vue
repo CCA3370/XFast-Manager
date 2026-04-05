@@ -160,7 +160,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useDiskUsageStore } from '@/stores/diskUsage'
@@ -230,4 +230,9 @@ async function openFolder(itemType: string, folderName: string) {
     // silently ignore
   }
 }
+
+onMounted(() => {
+  if (!appStore.xplanePath || store.isScanning) return
+  void store.scan()
+})
 </script>
