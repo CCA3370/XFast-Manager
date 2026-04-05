@@ -370,41 +370,100 @@ fn compare_fixed_high_priority_packages(
     }
 }
 
-fn is_darkblue_airport_mesh_folder_name(folder_name: &str) -> bool {
+fn is_darkblue_folder_name(folder_name: &str) -> bool {
     folder_name
         .get(..9)
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case("DarkBlue-"))
 }
 
-fn apply_darkblue_airport_mesh_anchors(
+fn is_darkblue_package_linked_to_airport_by_prefix(
+    package_folder_name: &str,
+    airport_folder_name: &str,
+) -> bool {
+    let package_lower = package_folder_name.to_lowercase();
+    let airport_lower = airport_folder_name.to_lowercase();
+    if !package_lower.starts_with(&airport_lower) {
+        return false;
+    }
+
+    let suffix = &package_folder_name[airport_folder_name.len()..];
+    suffix.starts_with('_') || suffix.starts_with('-')
+}
+
+fn find_darkblue_airport_folder_for_package(
+    package_folder_name: &str,
+    airport_folder_names: &[String],
+) -> Option<String> {
+    let mut best_match: Option<String> = None;
+
+    for airport_folder_name in airport_folder_names {
+        if !is_darkblue_package_linked_to_airport_by_prefix(
+            package_folder_name,
+            airport_folder_name,
+        ) {
+            continue;
+        }
+
+        let should_replace = match best_match.as_ref() {
+            Some(current) => airport_folder_name.len() > current.len(),
+            None => true,
+        };
+
+        if should_replace {
+            best_match = Some(airport_folder_name.clone());
+        }
+    }
+
+    best_match
+}
+
+fn apply_darkblue_airport_package_anchors(
     packages: &mut Vec<SceneryPackageInfo>,
     airport_mesh_matches: &HashMap<String, String>,
 ) {
-    if packages.is_empty() || airport_mesh_matches.is_empty() {
+    if packages.is_empty() {
         return;
     }
 
     let ordered_names: Vec<String> = packages.iter().map(|pkg| pkg.folder_name.clone()).collect();
+    let darkblue_airport_folders: Vec<String> = packages
+        .iter()
+        .filter(|pkg| pkg.category == SceneryCategory::Airport)
+        .filter(|pkg| is_darkblue_folder_name(&pkg.folder_name))
+        .map(|pkg| pkg.folder_name.clone())
+        .collect();
     let available_names: HashSet<String> = ordered_names.iter().cloned().collect();
     let mut anchors_by_airport: HashMap<String, Vec<String>> = HashMap::new();
     let mut anchored_names: HashSet<String> = HashSet::new();
 
     for pkg in packages.iter() {
-        if pkg.category != SceneryCategory::AirportMesh
-            || !is_darkblue_airport_mesh_folder_name(&pkg.folder_name)
+        if !matches!(
+            pkg.category,
+            SceneryCategory::Overlay | SceneryCategory::AirportMesh
+        ) || !is_darkblue_folder_name(&pkg.folder_name)
         {
             continue;
         }
 
-        let Some(airport_folder) = airport_mesh_matches.get(&pkg.folder_name) else {
+        let airport_folder = airport_mesh_matches
+            .get(&pkg.folder_name)
+            .cloned()
+            .or_else(|| {
+                find_darkblue_airport_folder_for_package(
+                    &pkg.folder_name,
+                    &darkblue_airport_folders,
+                )
+            });
+
+        let Some(airport_folder) = airport_folder else {
             continue;
         };
-        if !available_names.contains(airport_folder) {
+        if !available_names.contains(&airport_folder) {
             continue;
         }
 
         anchors_by_airport
-            .entry(airport_folder.clone())
+            .entry(airport_folder)
             .or_default()
             .push(pkg.folder_name.clone());
         anchored_names.insert(pkg.folder_name.clone());
@@ -490,7 +549,7 @@ fn sort_packages_with_special_rules(
         .sort_by(|a, b| compare_packages_for_sorting(&a.folder_name, a, &b.folder_name, b));
 
     fixed_packages.extend(other_packages);
-    apply_darkblue_airport_mesh_anchors(&mut fixed_packages, &airport_mesh_matches);
+    apply_darkblue_airport_package_anchors(&mut fixed_packages, &airport_mesh_matches);
     *packages = fixed_packages;
 
     category_changed
@@ -2373,21 +2432,23 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_darkblue_airport_mesh_anchors_moves_darkblue_below_airport() {
+    fn test_apply_darkblue_airport_package_anchors_moves_darkblue_overlay_and_mesh_below_airport() {
         let mut packages = vec![
-            make_package("KSEA Demo", SceneryCategory::Airport, 0),
+            make_package("DarkBlue-KSEA", SceneryCategory::Airport, 0),
             make_package("MisterX Library", SceneryCategory::Library, 1),
-            make_package("DarkBlue-KSEA Mesh", SceneryCategory::AirportMesh, 2),
-            make_package("DarkBlue-KSEA Mesh HD", SceneryCategory::AirportMesh, 3),
+            make_package("DarkBlue-KSEA_Overlays1", SceneryCategory::Overlay, 2),
+            make_package("DarkBlue-KSEA_Overlays2", SceneryCategory::AirportMesh, 3),
             make_package("Regular-KSEA Mesh", SceneryCategory::AirportMesh, 4),
         ];
         let airport_mesh_matches = HashMap::from([
-            ("DarkBlue-KSEA Mesh".to_string(), "KSEA Demo".to_string()),
-            ("DarkBlue-KSEA Mesh HD".to_string(), "KSEA Demo".to_string()),
-            ("Regular-KSEA Mesh".to_string(), "KSEA Demo".to_string()),
+            (
+                "DarkBlue-KSEA_Overlays2".to_string(),
+                "DarkBlue-KSEA".to_string(),
+            ),
+            ("Regular-KSEA Mesh".to_string(), "DarkBlue-KSEA".to_string()),
         ]);
 
-        apply_darkblue_airport_mesh_anchors(&mut packages, &airport_mesh_matches);
+        apply_darkblue_airport_package_anchors(&mut packages, &airport_mesh_matches);
 
         let ordered_names: Vec<&str> = packages
             .iter()
@@ -2396,9 +2457,9 @@ mod tests {
         assert_eq!(
             ordered_names,
             vec![
-                "KSEA Demo",
-                "DarkBlue-KSEA Mesh",
-                "DarkBlue-KSEA Mesh HD",
+                "DarkBlue-KSEA",
+                "DarkBlue-KSEA_Overlays1",
+                "DarkBlue-KSEA_Overlays2",
                 "MisterX Library",
                 "Regular-KSEA Mesh"
             ]
@@ -2406,24 +2467,22 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_darkblue_airport_mesh_anchors_ignores_unmatched_or_non_darkblue() {
+    fn test_apply_darkblue_airport_package_anchors_ignores_unmatched_or_non_darkblue() {
         let mut packages = vec![
-            make_package("KSEA Demo", SceneryCategory::Airport, 0),
+            make_package("DarkBlue-KSEA", SceneryCategory::Airport, 0),
             make_package("MisterX Library", SceneryCategory::Library, 1),
-            make_package("DarkBlue-KSEA Mesh", SceneryCategory::AirportMesh, 2),
-            make_package("Regular-KSEA Mesh", SceneryCategory::AirportMesh, 3),
+            make_package("DarkBlue-KJFK Overlay", SceneryCategory::Overlay, 2),
+            make_package("DarkBlue-KJFK Mesh", SceneryCategory::AirportMesh, 3),
+            make_package("Regular-KSEA Overlay", SceneryCategory::Overlay, 4),
         ];
         let original_names: Vec<String> =
             packages.iter().map(|pkg| pkg.folder_name.clone()).collect();
-        let airport_mesh_matches = HashMap::from([
-            (
-                "DarkBlue-KSEA Mesh".to_string(),
-                "Missing Airport".to_string(),
-            ),
-            ("Regular-KSEA Mesh".to_string(), "KSEA Demo".to_string()),
-        ]);
+        let airport_mesh_matches = HashMap::from([(
+            "DarkBlue-KJFK Mesh".to_string(),
+            "Missing Airport".to_string(),
+        )]);
 
-        apply_darkblue_airport_mesh_anchors(&mut packages, &airport_mesh_matches);
+        apply_darkblue_airport_package_anchors(&mut packages, &airport_mesh_matches);
 
         let ordered_names: Vec<String> =
             packages.iter().map(|pkg| pkg.folder_name.clone()).collect();
@@ -2431,22 +2490,22 @@ mod tests {
     }
 
     #[test]
-    fn test_sort_packages_with_special_rules_promotes_and_anchors_darkblue_meshes() {
+    fn test_sort_packages_with_special_rules_promotes_and_anchors_darkblue_overlays_and_meshes() {
         let temp_dir = tempfile::tempdir().unwrap();
-        write_test_airport(temp_dir.path(), "KSEA Demo", "KSEA", 47.4489, -122.3094);
-        write_test_mesh(temp_dir.path(), "DarkBlue-KSEA Mesh", "+47-123.dsf");
-        write_test_mesh(temp_dir.path(), "DarkBlue-KSEA Mesh HD", "+47-123.dsf");
+        write_test_airport(temp_dir.path(), "DarkBlue-KSEA", "KSEA", 47.4489, -122.3094);
+        write_test_mesh(temp_dir.path(), "DarkBlue-KSEA_Overlays1", "+47-123.dsf");
+        write_test_mesh(temp_dir.path(), "DarkBlue-KSEA_Overlays2", "+47-123.dsf");
         write_test_mesh(temp_dir.path(), "Regular-KSEA Mesh", "+47-123.dsf");
 
-        let mut airport = make_package("KSEA Demo", SceneryCategory::Airport, 0);
+        let mut airport = make_package("DarkBlue-KSEA", SceneryCategory::Airport, 0);
         airport.has_apt_dat = true;
         airport.airport_id = Some("KSEA".to_string());
 
         let mut packages = vec![
             airport,
             make_package("MisterX Library", SceneryCategory::Library, 1),
-            make_package("DarkBlue-KSEA Mesh", SceneryCategory::Mesh, 2),
-            make_package("DarkBlue-KSEA Mesh HD", SceneryCategory::Mesh, 3),
+            make_package("DarkBlue-KSEA_Overlays1", SceneryCategory::Overlay, 2),
+            make_package("DarkBlue-KSEA_Overlays2", SceneryCategory::Mesh, 3),
             make_package("Regular-KSEA Mesh", SceneryCategory::Mesh, 4),
         ];
 
@@ -2460,14 +2519,14 @@ mod tests {
         assert_eq!(
             ordered_names,
             vec![
-                "KSEA Demo",
-                "DarkBlue-KSEA Mesh",
-                "DarkBlue-KSEA Mesh HD",
+                "DarkBlue-KSEA",
+                "DarkBlue-KSEA_Overlays1",
+                "DarkBlue-KSEA_Overlays2",
                 "MisterX Library",
                 "Regular-KSEA Mesh"
             ]
         );
-        assert_eq!(packages[1].category, SceneryCategory::AirportMesh);
+        assert_eq!(packages[1].category, SceneryCategory::Overlay);
         assert_eq!(packages[2].category, SceneryCategory::AirportMesh);
         assert_eq!(packages[4].category, SceneryCategory::AirportMesh);
     }
