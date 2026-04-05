@@ -1635,6 +1635,7 @@ export default {
     navTitle: 'Модели CSL',
     title: 'Управление моделями CSL',
     description: 'Управление пакетами многопользовательских моделей CSL для X-Plane',
+    checking: 'Проверка...',
     notInstalled: 'Не установлено',
     needsUpdate: 'Требуется обновление',
     upToDate: 'Актуально',

@@ -1596,6 +1596,7 @@ export default {
     navTitle: 'CSL 모델',
     title: 'CSL 모델 관리',
     description: 'X-Plane 멀티플레이어 CSL 모델 패키지를 관리합니다',
+    checking: '확인 중...',
     notInstalled: '설치되지 않음',
     needsUpdate: '업데이트 필요',
     upToDate: '최신',

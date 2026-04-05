@@ -1586,6 +1586,7 @@ export default {
     navTitle: 'نماذج CSL',
     title: 'إدارة نماذج CSL',
     description: 'إدارة حزم نماذج CSL متعددة اللاعبين في X-Plane',
+    checking: 'جارٍ التحقق...',
     notInstalled: 'غير مثبت',
     needsUpdate: 'يتطلب تحديثاً',
     upToDate: 'محدّث',

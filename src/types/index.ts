@@ -575,7 +575,7 @@ export interface ScreenshotEditParams {
 
 // ========== CSL Management Types ==========
 
-export type CslPackageStatus = 'not_installed' | 'needs_update' | 'up_to_date'
+export type CslPackageStatus = 'checking' | 'not_installed' | 'needs_update' | 'up_to_date'
 
 export interface CslPackageInfo {
   name: string

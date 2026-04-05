@@ -1617,6 +1617,7 @@ export default {
     navTitle: 'CSL मॉडल',
     title: 'CSL मॉडल प्रबंधन',
     description: 'X-Plane मल्टीप्लेयर CSL मॉडल पैकेज प्रबंधित करें',
+    checking: 'जाँच हो रही है...',
     notInstalled: 'स्थापित नहीं',
     needsUpdate: 'अद्यतन आवश्यक',
     upToDate: 'नवीनतम',

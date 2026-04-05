@@ -1657,6 +1657,7 @@ export default {
     navTitle: 'Modelos CSL',
     title: 'Gestión de modelos CSL',
     description: 'Administrar paquetes de modelos CSL multijugador de X-Plane',
+    checking: 'Comprobando...',
     notInstalled: 'No instalado',
     needsUpdate: 'Necesita actualización',
     upToDate: 'Actualizado',

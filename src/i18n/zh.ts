@@ -1537,6 +1537,7 @@ export default {
     navTitle: 'CSL模型',
     title: 'CSL 模型管理',
     description: '管理 X-Plane 多人联飞 CSL 模型包',
+    checking: '检查中...',
     notInstalled: '未安装',
     needsUpdate: '需要更新',
     upToDate: '已是最新',

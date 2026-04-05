@@ -178,10 +178,15 @@
               ></span>
             </span>
             <span
-              class="px-1.5 py-0.5 rounded text-xs font-medium"
+              class="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded text-xs font-medium"
               :class="statusClass(pkg.status)"
-              >{{ statusLabel(pkg.status) }}</span
             >
+              <span
+                v-if="pkg.status === 'checking'"
+                class="h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin"
+              ></span>
+              {{ statusLabel(pkg.status) }}
+            </span>
             <span class="text-xs text-gray-400 dark:text-gray-500">{{
               formatSize(pkg.total_size_bytes)
             }}</span>
@@ -559,7 +564,7 @@ const combinedPackages = computed<DisplayPackage[]>(() => {
   return [...altPkgs, ...cslPkgs]
 })
 
-const hasPackages = computed(() => store.allScansDone && combinedPackages.value.length > 0)
+const hasPackages = computed(() => combinedPackages.value.length > 0)
 const isAnyLoading = computed(() => store.isLoading || store.altitudeLoading)
 const isAnyInstalling = computed(() => store.hasPendingInstalls)
 
@@ -612,8 +617,14 @@ function formatSize(bytes: number): string {
   return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i]
 }
 
+function isActionableStatus(status: DisplayPackage['status']): boolean {
+  return status === 'not_installed' || status === 'needs_update'
+}
+
 function statusClass(status: string): string {
   switch (status) {
+    case 'checking':
+      return 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300'
     case 'not_installed':
       return 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
     case 'needs_update':
@@ -627,6 +638,8 @@ function statusClass(status: string): string {
 
 function statusLabel(status: string): string {
   switch (status) {
+    case 'checking':
+      return t('csl.checking')
     case 'not_installed':
       return t('csl.notInstalled')
     case 'needs_update':
@@ -709,7 +722,7 @@ function scanAll() {
 function installAll() {
   store.installAllCombined(
     combinedPackages.value
-      .filter((pkg) => pkg.status !== 'up_to_date')
+      .filter((pkg) => isActionableStatus(pkg.status))
       .map((pkg) => ({ source: pkg.source, name: pkg.name })),
   )
 }

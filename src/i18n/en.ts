@@ -1609,6 +1609,7 @@ export default {
     navTitle: 'CSL',
     title: 'CSL Model Management',
     description: 'Manage X-Plane multiplayer CSL model packages',
+    checking: 'Checking...',
     notInstalled: 'Not Installed',
     needsUpdate: 'Needs Update',
     upToDate: 'Up to Date',

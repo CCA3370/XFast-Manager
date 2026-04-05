@@ -1659,6 +1659,7 @@ export default {
     navTitle: 'CSL-Modelle',
     title: 'CSL-Modellmanagement',
     description: 'Verwalten Sie X-Plane-Multiplayer-CSL-Modellpakete',
+    checking: 'Prüfe...',
     notInstalled: 'Nicht installiert',
     needsUpdate: 'Muss aktualisiert werden',
     upToDate: 'Auf dem neuesten Stand',

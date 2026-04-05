@@ -1613,6 +1613,7 @@ export default {
     navTitle: 'CSLモデル',
     title: 'CSL モデル管理',
     description: 'X-Plane マルチプレイヤー CSL モデル パッケージを管理する',
+    checking: '確認中...',
     notInstalled: 'インストールされていません',
     needsUpdate: '更新が必要です',
     upToDate: '最新の状態',

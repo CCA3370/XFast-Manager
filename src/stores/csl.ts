@@ -27,6 +27,16 @@ const DEFAULT_CSL_SERVER_BASE_URL = 'http://x-csl.ru'
 const MAX_CSL_SERVER_BASE_URLS = 4
 const DESCRIPTION_LOAD_BATCH_SIZE = 12
 const DESCRIPTION_LOAD_QUEUE_DELAY_MS = 80
+const CHECKING_STATUS_BATCH_SIZE = 24
+
+interface RescanPackagesOptions {
+  generation?: number
+  syncLinks?: boolean
+}
+
+function isActionableStatus(status: CslPackageInfo['status']): boolean {
+  return status === 'not_installed' || status === 'needs_update'
+}
 
 function createOperationRequestId(operation: string): string {
   const safeOperation = operation.trim().replace(/[^a-zA-Z0-9_-]+/g, '-')
@@ -70,6 +80,7 @@ export const useCslStore = defineStore('csl', () => {
   let descriptionLoadTimer: ReturnType<typeof setTimeout> | null = null
   let descriptionLoadRunning = false
   let descriptionLoadGeneration = 0
+  let scanGeneration = 0
   const descriptionLoadQueue = new Set<string>()
 
   const totalPackages = computed(() => packages.value.length)
@@ -80,7 +91,7 @@ export const useCslStore = defineStore('csl', () => {
     () => packages.value.filter((p) => p.status === 'needs_update').length,
   )
   const notUpToDateCount = computed(
-    () => packages.value.filter((p) => p.status !== 'up_to_date').length,
+    () => packages.value.filter((p) => isActionableStatus(p.status)).length,
   )
 
   const allPaths = computed(() => {
@@ -103,7 +114,7 @@ export const useCslStore = defineStore('csl', () => {
     () => altitudePackages.value.filter((p) => p.status === 'needs_update').length,
   )
   const altitudeNotUpToDateCount = computed(
-    () => altitudePackages.value.filter((p) => p.status !== 'up_to_date').length,
+    () => altitudePackages.value.filter((p) => isActionableStatus(p.status)).length,
   )
 
   const queuedPackages = computed(() =>
@@ -627,6 +638,7 @@ export const useCslStore = defineStore('csl', () => {
       return
     }
 
+    const generation = ++scanGeneration
     await ensureServerConfigLoaded()
     isLoading.value = true
     error.value = null
@@ -654,6 +666,10 @@ export const useCslStore = defineStore('csl', () => {
       resetDescriptionLoadState(
         result.packages.filter((pkg) => !pkg.description).map((pkg) => pkg.name),
       )
+      void resolveCheckingPackages(
+        result.packages.filter((pkg) => pkg.status === 'checking').map((pkg) => pkg.name),
+        generation,
+      )
       void syncLinks()
     } catch (e) {
       resetDescriptionLoadState([])
@@ -665,11 +681,49 @@ export const useCslStore = defineStore('csl', () => {
     }
   }
 
-  async function rescanPackages(packageNames: string[]) {
+  async function resolveCheckingPackages(packageNames: string[], generation: number) {
+    const uniquePackages = [...new Set(packageNames)]
+    if (uniquePackages.length === 0) {
+      return
+    }
+
+    for (let i = 0; i < uniquePackages.length; i += CHECKING_STATUS_BATCH_SIZE) {
+      if (generation !== scanGeneration) {
+        logDebug(
+          `Skip outdated CSL checking batch generation=${generation} current_generation=${scanGeneration}`,
+          'csl',
+        )
+        return
+      }
+
+      const batch = uniquePackages.slice(i, i + CHECKING_STATUS_BATCH_SIZE)
+      await rescanPackages(batch, {
+        generation,
+        syncLinks: false,
+      })
+    }
+  }
+
+  async function rescanPackages(
+    packageNames: string[],
+    options: RescanPackagesOptions = {},
+  ) {
+    if (!appStore.xplanePath || packageNames.length === 0) {
+      return
+    }
+
+    const generation = options.generation ?? scanGeneration
     const requestId = createOperationRequestId('csl-rescan')
 
     try {
       await ensureServerConfigLoaded()
+      if (generation !== scanGeneration) {
+        logDebug(
+          `[${requestId}] skip stale csl_rescan_packages before invoke generation=${generation} current_generation=${scanGeneration}`,
+          'csl',
+        )
+        return
+      }
       logDebug(
         `[${requestId}] invoke csl_rescan_packages start xplane_path=${appStore.xplanePath} package_count=${packageNames.length} packages=${packageNames.join(',')} server=${activeServerBaseUrl.value}`,
         'csl',
@@ -685,6 +739,14 @@ export const useCslStore = defineStore('csl', () => {
         'csl',
       )
 
+      if (generation !== scanGeneration) {
+        logDebug(
+          `[${requestId}] ignore stale csl_rescan_packages result generation=${generation} current_generation=${scanGeneration}`,
+          'csl',
+        )
+        return
+      }
+
       for (const upd of updated) {
         const index = packages.value.findIndex((p) => p.name === upd.name)
         if (index !== -1) {
@@ -693,7 +755,9 @@ export const useCslStore = defineStore('csl', () => {
         }
       }
 
-      await syncLinks(packageNames)
+      if (options.syncLinks ?? true) {
+        await syncLinks(packageNames)
+      }
     } catch (e) {
       logError(`[${requestId}] CSL partial rescan failed: ${getErrorMessage(e)}`, 'csl')
     }
@@ -706,7 +770,7 @@ export const useCslStore = defineStore('csl', () => {
   function installAll() {
     enqueueInstallTasks(
       packages.value
-        .filter((pkg) => pkg.status !== 'up_to_date')
+        .filter((pkg) => isActionableStatus(pkg.status))
         .map((pkg) => ({ source: 'csl' as const, name: pkg.name })),
     )
   }

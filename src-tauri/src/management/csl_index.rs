@@ -26,6 +26,8 @@ const ALTITUDE_API_BASE_PATH: &str = "package/ALTITUDE";
 const CSL_INDEX_PATH: &str = "package/x-csl-indexes.idx";
 const ALTITUDE_INDEX_PATH: &str = "package/ALTITUDE/files.idx";
 const MAX_CSL_PARALLEL_DOWNLOADS: usize = 12;
+const CSL_SCAN_COMPARE_CONCURRENCY_LIMIT: usize = 8;
+const CSL_RESCAN_COMPARE_CONCURRENCY_LIMIT: usize = 4;
 const DESCRIPTION_FETCH_CONCURRENCY: usize = 6;
 const DESCRIPTION_FETCH_ATTEMPTS: u32 = 3;
 
@@ -502,21 +504,90 @@ fn compute_file_md5_cached(
     Ok(hash)
 }
 
-/// Find package directory across local paths
-fn find_local_package_dir(package_name: &str, local_paths: &[String]) -> Option<PathBuf> {
-    for base_path in local_paths {
-        let pkg_dir = Path::new(base_path).join(package_name);
-        if pkg_dir.is_dir() {
-            return Some(pkg_dir);
-        }
-    }
-    None
+fn comparison_parallelism(max_limit: usize) -> usize {
+    std::thread::available_parallelism()
+        .map(|parallelism| parallelism.get())
+        .unwrap_or(4)
+        .clamp(1, max_limit.max(1))
 }
 
-/// Compare a single package against local files.
-/// Optimization: size check first, MD5 only when size matches.
-/// Uses MD5_CACHE to skip re-hashing unchanged files.
-fn compare_package_fast(pkg: &PackageData, local_dir: &Path) -> (String, usize, u64) {
+/// Enumerate package directories once per scan instead of probing every package name.
+fn collect_local_package_dirs(local_paths: &[String]) -> HashMap<String, PathBuf> {
+    let mut package_dirs = HashMap::new();
+
+    for base_path in local_paths {
+        let entries = match std::fs::read_dir(base_path) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+
+            let Some(folder_name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+
+            package_dirs.entry(folder_name.to_string()).or_insert(path);
+        }
+    }
+
+    package_dirs
+}
+
+fn package_total_size(pkg: &PackageData) -> u64 {
+    if pkg.header_size > 0 {
+        pkg.header_size
+    } else {
+        pkg.files.iter().map(|f| f.size_bytes).sum()
+    }
+}
+
+fn package_last_updated(pkg: &PackageData) -> String {
+    if !pkg.header_date.is_empty() {
+        format!("{} {}", pkg.header_date, pkg.header_time)
+    } else {
+        String::new()
+    }
+}
+
+fn build_csl_package_info(
+    pkg: &PackageData,
+    status: &str,
+    files_to_update: usize,
+    update_size_bytes: u64,
+) -> CslPackageInfo {
+    CslPackageInfo {
+        name: pkg.name.clone(),
+        total_size_bytes: package_total_size(pkg),
+        file_count: pkg.files.len(),
+        description: String::new(),
+        status: status.to_string(),
+        files_to_update,
+        update_size_bytes,
+        last_updated: package_last_updated(pkg),
+    }
+}
+
+/// Compare a single package against local files without hashing.
+/// Returns `checking` when size-based comparison passes and a hash pass is still needed.
+fn compare_package_quick(pkg: &PackageData, local_dir: &Path) -> (String, usize, u64) {
+    compare_package(pkg, local_dir, false)
+}
+
+/// Compare a single package against local files with MD5 verification when available.
+fn compare_package_exact(pkg: &PackageData, local_dir: &Path) -> (String, usize, u64) {
+    compare_package(pkg, local_dir, true)
+}
+
+fn compare_package(
+    pkg: &PackageData,
+    local_dir: &Path,
+    verify_hashes: bool,
+) -> (String, usize, u64) {
     let prefix = format!("{}/", pkg.name);
     let mut files_to_update = 0usize;
     let mut update_size: u64 = 0;
@@ -533,18 +604,20 @@ fn compare_package_fast(pkg: &PackageData, local_dir: &Path) -> (String, usize, 
                     update_size += file.size_bytes;
                     continue;
                 }
-                // Size matches → compute MD5 only if server provides hash
-                if let Some(ref server_hash) = file.md5_hash {
-                    match compute_file_md5_cached(&local_file, &meta) {
-                        Ok(local_hash) if local_hash != *server_hash => {
-                            files_to_update += 1;
-                            update_size += file.size_bytes;
+                if verify_hashes {
+                    // Size matches → compute MD5 only if server provides hash
+                    if let Some(ref server_hash) = file.md5_hash {
+                        match compute_file_md5_cached(&local_file, &meta) {
+                            Ok(local_hash) if local_hash != *server_hash => {
+                                files_to_update += 1;
+                                update_size += file.size_bytes;
+                            }
+                            Err(_) => {
+                                files_to_update += 1;
+                                update_size += file.size_bytes;
+                            }
+                            _ => {} // hash matches
                         }
-                        Err(_) => {
-                            files_to_update += 1;
-                            update_size += file.size_bytes;
-                        }
-                        _ => {} // hash matches
                     }
                 }
             }
@@ -557,7 +630,11 @@ fn compare_package_fast(pkg: &PackageData, local_dir: &Path) -> (String, usize, 
     }
 
     let status = if files_to_update == 0 {
-        "up_to_date"
+        if verify_hashes {
+            "up_to_date"
+        } else {
+            "checking"
+        }
     } else {
         "needs_update"
     };
@@ -1130,84 +1207,47 @@ async fn scan_packages_internal(
         pkg_data_list.len()
     );
 
-    let compare_future = {
-        let local_paths = local_path_strings;
-        async move {
-            let mut installed_results: Vec<tokio::task::JoinHandle<CslPackageInfo>> = Vec::new();
-            let mut not_installed_results: Vec<CslPackageInfo> = Vec::new();
+    let package_dirs = collect_local_package_dirs(&local_path_strings);
+    let compare_concurrency = comparison_parallelism(CSL_SCAN_COMPARE_CONCURRENCY_LIMIT);
 
-            for pkg in pkg_data_list {
-                let local_dir = find_local_package_dir(&pkg.name, &local_paths);
+    csl_debug!(
+        "[{}] Scan compare prepared package_dirs={} compare_concurrency={}",
+        request_ctx.operation_id(),
+        package_dirs.len(),
+        compare_concurrency
+    );
 
+    let compare_results: Vec<Result<CslPackageInfo, String>> =
+        stream::iter(pkg_data_list.into_iter().map(|pkg| {
+            let local_dir = package_dirs.get(&pkg.name).cloned();
+
+            async move {
                 if let Some(dir) = local_dir {
-                    let dir = dir.clone();
-                    installed_results.push(tokio::task::spawn_blocking(move || {
+                    tokio::task::spawn_blocking(move || {
                         let (status, files_to_update, update_size) =
-                            compare_package_fast(&pkg, &dir);
-
-                        let total_size = if pkg.header_size > 0 {
-                            pkg.header_size
-                        } else {
-                            pkg.files.iter().map(|f| f.size_bytes).sum()
-                        };
-
-                        let last_updated = if !pkg.header_date.is_empty() {
-                            format!("{} {}", pkg.header_date, pkg.header_time)
-                        } else {
-                            String::new()
-                        };
-
-                        CslPackageInfo {
-                            name: pkg.name.clone(),
-                            total_size_bytes: total_size,
-                            file_count: pkg.files.len(),
-                            description: String::new(), // filled after join
-                            status,
-                            files_to_update,
-                            update_size_bytes: update_size,
-                            last_updated,
-                        }
-                    }));
+                            compare_package_quick(&pkg, &dir);
+                        build_csl_package_info(&pkg, &status, files_to_update, update_size)
+                    })
+                    .await
+                    .map_err(|e| format!("Package comparison failed: {}", e))
                 } else {
-                    let total_size: u64 = if pkg.header_size > 0 {
-                        pkg.header_size
-                    } else {
-                        pkg.files.iter().map(|f| f.size_bytes).sum()
-                    };
-                    let update_size: u64 = pkg.files.iter().map(|f| f.size_bytes).sum();
-
-                    let last_updated = if !pkg.header_date.is_empty() {
-                        format!("{} {}", pkg.header_date, pkg.header_time)
-                    } else {
-                        String::new()
-                    };
-
-                    not_installed_results.push(CslPackageInfo {
-                        name: pkg.name.clone(),
-                        total_size_bytes: total_size,
-                        file_count: pkg.files.len(),
-                        description: String::new(),
-                        status: "not_installed".to_string(),
-                        files_to_update: pkg.files.len(),
-                        update_size_bytes: update_size,
-                        last_updated,
-                    });
+                    Ok(build_csl_package_info(
+                        &pkg,
+                        "not_installed",
+                        pkg.files.len(),
+                        pkg.files.iter().map(|f| f.size_bytes).sum(),
+                    ))
                 }
             }
+        }))
+        .buffer_unordered(compare_concurrency)
+        .collect()
+        .await;
 
-            // Collect blocking task results
-            let mut all = not_installed_results;
-            for handle in installed_results {
-                match handle.await {
-                    Ok(info) => all.push(info),
-                    Err(e) => return Err(format!("Package comparison failed: {}", e)),
-                }
-            }
-            Ok(all)
-        }
-    };
-
-    let mut packages = compare_future.await?;
+    let mut packages = Vec::with_capacity(compare_results.len());
+    for result in compare_results {
+        packages.push(result?);
+    }
 
     // Sort by name
     packages.sort_by(|a, b| a.name.cmp(&b.name));
@@ -1751,9 +1791,9 @@ pub async fn csl_fetch_package_descriptions(
 ///
 /// Optimizations vs. naive approach:
 /// 1. No per-package HTTP requests for descriptions — uses package name instead
-/// 2. File size check before MD5 — skips expensive hash for mismatched sizes
-/// 3. All package comparisons run in parallel on the blocking thread pool
-/// 4. 64KB read buffer for MD5 (8x larger)
+/// 2. First pass is size-only and returns `checking` for packages awaiting exact hash verification
+/// 3. Package directory discovery is done once per scan instead of probing every package name
+/// 4. Comparison concurrency is capped to keep first-open scans responsive
 #[tauri::command]
 pub async fn csl_scan_packages(
     xplane_path: String,
@@ -1840,85 +1880,59 @@ pub async fn csl_rescan_packages(
     let target_set: std::collections::HashSet<&str> =
         package_names.iter().map(|s| s.as_str()).collect();
 
-    let mut results = Vec::new();
-    let mut handles = Vec::new();
+    let package_dirs = collect_local_package_dirs(&scan_paths);
+    let compare_concurrency = comparison_parallelism(CSL_RESCAN_COMPARE_CONCURRENCY_LIMIT);
 
-    for pkg in pkg_data_list {
-        if !target_set.contains(pkg.name.as_str()) {
-            continue;
-        }
+    csl_debug!(
+        "[{}] CSL rescan compare prepared package_dirs={} compare_concurrency={}",
+        request_ctx.operation_id(),
+        package_dirs.len(),
+        compare_concurrency
+    );
 
-        let local_dir = find_local_package_dir(&pkg.name, &scan_paths);
-
-        if let Some(dir) = local_dir {
-            let dir = dir.clone();
-            handles.push(tokio::task::spawn_blocking(move || {
-                let (status, files_to_update, update_size) = compare_package_fast(&pkg, &dir);
-
-                let total_size = if pkg.header_size > 0 {
-                    pkg.header_size
+    let compare_results: Vec<Result<CslPackageInfo, String>> = stream::iter(
+        pkg_data_list
+            .into_iter()
+            .filter_map(|pkg| {
+                if target_set.contains(pkg.name.as_str()) {
+                    Some(pkg)
                 } else {
-                    pkg.files.iter().map(|f| f.size_bytes).sum()
-                };
-
-                let last_updated = if !pkg.header_date.is_empty() {
-                    format!("{} {}", pkg.header_date, pkg.header_time)
-                } else {
-                    String::new()
-                };
-
-                CslPackageInfo {
-                    name: pkg.name.clone(),
-                    total_size_bytes: total_size,
-                    file_count: pkg.files.len(),
-                    description: String::new(), // caller preserves original description
-                    status,
-                    files_to_update,
-                    update_size_bytes: update_size,
-                    last_updated,
+                    None
                 }
-            }));
-        } else {
-            // Not installed
-            let total_size: u64 = if pkg.header_size > 0 {
-                pkg.header_size
-            } else {
-                pkg.files.iter().map(|f| f.size_bytes).sum()
-            };
-            let update_size: u64 = pkg.files.iter().map(|f| f.size_bytes).sum();
+            })
+            .map(|pkg| {
+                let local_dir = package_dirs.get(&pkg.name).cloned();
 
-            let last_updated = if !pkg.header_date.is_empty() {
-                format!("{} {}", pkg.header_date, pkg.header_time)
-            } else {
-                String::new()
-            };
+                async move {
+                    if let Some(dir) = local_dir {
+                        tokio::task::spawn_blocking(move || {
+                            let (status, files_to_update, update_size) =
+                                compare_package_exact(&pkg, &dir);
+                            build_csl_package_info(&pkg, &status, files_to_update, update_size)
+                        })
+                        .await
+                        .map_err(|e| format!("Package comparison failed: {}", e))
+                    } else {
+                        Ok(build_csl_package_info(
+                            &pkg,
+                            "not_installed",
+                            pkg.files.len(),
+                            pkg.files.iter().map(|f| f.size_bytes).sum(),
+                        ))
+                    }
+                }
+            }),
+    )
+    .buffer_unordered(compare_concurrency)
+    .collect()
+    .await;
 
-            results.push(CslPackageInfo {
-                name: pkg.name.clone(),
-                total_size_bytes: total_size,
-                file_count: pkg.files.len(),
-                description: String::new(),
-                status: "not_installed".to_string(),
-                files_to_update: pkg.files.len(),
-                update_size_bytes: update_size,
-                last_updated,
-            });
-        }
+    let mut results = Vec::with_capacity(compare_results.len());
+    for result in compare_results {
+        results.push(result?);
     }
 
-    for handle in handles {
-        match handle.await {
-            Ok(info) => results.push(info),
-            Err(e) => {
-                csl_debug!(
-                    "[{}] CSL rescan command failed while joining task error={}",
-                    request_ctx.operation_id(),
-                    e
-                );
-                return Err(format!("Package comparison failed: {}", e));
-            }
-        }
-    }
+    results.sort_by(|a, b| a.name.cmp(&b.name));
 
     csl_debug!(
         "[{}] CSL rescan command completed packages={}",
@@ -2607,6 +2621,30 @@ pub async fn altitude_uninstall_package(
 mod tests {
     use super::*;
 
+    fn make_test_package_data(name: &str, files: Vec<(&str, u64, Option<&str>)>) -> PackageData {
+        PackageData {
+            name: name.to_string(),
+            header_size: 0,
+            header_date: String::new(),
+            header_time: String::new(),
+            files: files
+                .into_iter()
+                .map(|(path, size_bytes, md5_hash)| FileEntry {
+                    path: path.to_string(),
+                    size_bytes,
+                    md5_hash: md5_hash.map(str::to_string),
+                })
+                .collect(),
+        }
+    }
+
+    fn write_test_file(path: &Path, contents: &[u8]) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, contents).unwrap();
+    }
+
     #[test]
     fn clamp_parallel_downloads_limits_to_twelve() {
         assert_eq!(clamp_parallel_downloads(None), 1);
@@ -2636,5 +2674,78 @@ mod tests {
             resolve_csl_api_base(Some("https://example.com/")),
             "https://example.com/package"
         );
+    }
+
+    #[test]
+    fn compare_package_quick_marks_size_matched_package_as_checking() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let package_dir = temp_dir.path().join("B738");
+        write_test_file(&package_dir.join("model.obj"), b"abcd");
+
+        let pkg = make_test_package_data("B738", vec![("B738/model.obj", 4, Some("mismatch"))]);
+        let (status, files_to_update, update_size) = compare_package_quick(&pkg, &package_dir);
+
+        assert_eq!(status, "checking");
+        assert_eq!(files_to_update, 0);
+        assert_eq!(update_size, 0);
+    }
+
+    #[test]
+    fn compare_package_quick_detects_size_mismatch_without_hashing() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let package_dir = temp_dir.path().join("B738");
+        write_test_file(&package_dir.join("model.obj"), b"abcd");
+
+        let pkg = make_test_package_data("B738", vec![("B738/model.obj", 5, Some("mismatch"))]);
+        let (status, files_to_update, update_size) = compare_package_quick(&pkg, &package_dir);
+
+        assert_eq!(status, "needs_update");
+        assert_eq!(files_to_update, 1);
+        assert_eq!(update_size, 5);
+    }
+
+    #[test]
+    fn compare_package_exact_detects_hash_mismatch_after_quick_pass() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let package_dir = temp_dir.path().join("B738");
+        write_test_file(&package_dir.join("model.obj"), b"abcd");
+
+        let pkg = make_test_package_data("B738", vec![("B738/model.obj", 4, Some("mismatch"))]);
+        let (status, files_to_update, update_size) = compare_package_exact(&pkg, &package_dir);
+
+        assert_eq!(status, "needs_update");
+        assert_eq!(files_to_update, 1);
+        assert_eq!(update_size, 4);
+    }
+
+    #[test]
+    fn compare_package_exact_marks_hash_matched_package_as_up_to_date() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let package_dir = temp_dir.path().join("B738");
+        write_test_file(&package_dir.join("model.obj"), b"abcd");
+
+        let expected_hash = format!("{:x}", md5::compute(b"abcd"));
+        let pkg = make_test_package_data("B738", vec![("B738/model.obj", 4, Some(&expected_hash))]);
+        let (status, files_to_update, update_size) = compare_package_exact(&pkg, &package_dir);
+
+        assert_eq!(status, "up_to_date");
+        assert_eq!(files_to_update, 0);
+        assert_eq!(update_size, 0);
+    }
+
+    #[test]
+    fn collect_local_package_dirs_enumerates_directories_once() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let base_path = temp_dir.path().join("CSL");
+        std::fs::create_dir_all(base_path.join("B738")).unwrap();
+        std::fs::create_dir_all(base_path.join("A320")).unwrap();
+        write_test_file(&base_path.join("readme.txt"), b"ignore");
+
+        let dirs = collect_local_package_dirs(&[base_path.to_string_lossy().to_string()]);
+
+        assert_eq!(dirs.len(), 2);
+        assert_eq!(dirs.get("B738"), Some(&base_path.join("B738")));
+        assert_eq!(dirs.get("A320"), Some(&base_path.join("A320")));
+        assert!(!dirs.contains_key("readme.txt"));
     }
 }
