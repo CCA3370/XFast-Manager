@@ -121,6 +121,7 @@ export const STORAGE_KEYS = {
   XPLANE_LAUNCH_ARGS: 'xplaneLaunchArgs',
   PARALLEL_INSTALL_ENABLED: 'parallelInstallEnabled',
   MAX_PARALLEL_TASKS: 'maxParallelTasks',
+  STABLE_FEATURE_DEFAULTS_APPLIED: 'stableFeatureDefaultsApplied',
   REPORTED_ISSUES: 'reportedIssues',
   UNCONFIRMED_ISSUE_UPDATES: 'unconfirmedIssueUpdates',
   FEEDBACK_DRAFT: 'feedbackDraft',

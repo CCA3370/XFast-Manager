@@ -842,9 +842,9 @@
           </transition>
         </section>
 
-        <!-- Parallel Installation (Experimental) -->
+        <!-- Parallel Installation -->
         <section
-          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-dashed border-amber-300 dark:border-amber-400/40 ring-1 ring-inset ring-amber-300/50 dark:ring-amber-400/30 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2 experimental-highlight"
+          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2"
         >
           <div
             class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
@@ -865,16 +865,9 @@
                 </svg>
               </div>
               <div class="flex-1">
-                <div class="flex items-center gap-2">
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-                    <AnimatedText>{{ $t('settings.parallelInstallTitle') }}</AnimatedText>
-                  </h3>
-                  <span
-                    class="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded"
-                  >
-                    {{ $t('settings.parallelInstallExperimental') }}
-                  </span>
-                </div>
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  <AnimatedText>{{ $t('settings.parallelInstallTitle') }}</AnimatedText>
+                </h3>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                   <AnimatedText>{{ $t('settings.parallelInstallDesc') }}</AnimatedText>
                 </p>
@@ -1028,9 +1021,9 @@
           </transition>
         </section>
 
-        <!-- Multi-Threaded Download (Experimental) -->
+        <!-- Multi-Threaded Download -->
         <section
-          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-dashed border-amber-300 dark:border-amber-400/40 ring-1 ring-inset ring-amber-300/50 dark:ring-amber-400/30 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2 experimental-highlight"
+          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2"
         >
           <div
             class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors rounded-t-xl"
@@ -1051,16 +1044,9 @@
                 </svg>
               </div>
               <div class="flex-1">
-                <div class="flex items-center gap-2">
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-                    <AnimatedText>{{ $t('settings.chunkedDownloadTitle') }}</AnimatedText>
-                  </h3>
-                  <span
-                    class="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded"
-                  >
-                    {{ $t('settings.parallelInstallExperimental') }}
-                  </span>
-                </div>
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  <AnimatedText>{{ $t('settings.chunkedDownloadTitle') }}</AnimatedText>
+                </h3>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                   <AnimatedText>{{ $t('settings.chunkedDownloadDesc') }}</AnimatedText>
                 </p>
@@ -1304,9 +1290,9 @@
           </transition>
         </section>
 
-        <!-- DMP Crash Analysis (Experimental) -->
+        <!-- DMP Crash Analysis -->
         <section
-          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-dashed border-amber-300 dark:border-amber-400/40 ring-1 ring-inset ring-amber-300/50 dark:ring-amber-400/30 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2 experimental-highlight"
+          class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300 md:col-span-2"
         >
           <div
             class="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/20 transition-colors"
@@ -1327,16 +1313,9 @@
                 </svg>
               </div>
               <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-                    <AnimatedText>{{ $t('settings.crashAnalysisDmpEnabled') }}</AnimatedText>
-                  </h3>
-                  <span
-                    class="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded"
-                  >
-                    {{ $t('settings.experimental') }}
-                  </span>
-                </div>
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  <AnimatedText>{{ $t('settings.crashAnalysisDmpEnabled') }}</AnimatedText>
+                </h3>
               </div>
             </div>
 
@@ -3111,13 +3090,6 @@ function formatLastCheckTime(timestamp: number): string {
 </script>
 
 <style scoped>
-.experimental-highlight {
-  box-shadow:
-    inset 0 0 0 1px rgb(251 191 36 / 0.34),
-    inset 0 0 18px rgb(250 204 21 / 0.2),
-    inset 0 0 30px rgb(234 179 8 / 0.12);
-}
-
 /* Collapse transition */
 .collapse-enter-active,
 .collapse-leave-active {

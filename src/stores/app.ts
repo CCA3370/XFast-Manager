@@ -96,14 +96,14 @@ export const useAppStore = defineStore('app', () => {
   // X-Plane launch arguments (default: empty)
   const xplaneLaunchArgs = ref('')
 
-  // Parallel installation (experimental, default: disabled)
-  const parallelInstallEnabled = ref(false)
+  // Parallel installation (default: enabled)
+  const parallelInstallEnabled = ref(true)
   const maxParallelTasks = ref(3)
 
   // Crash analysis: ignore dmp date check (for testing)
   const crashAnalysisIgnoreDateCheck = ref(false)
-  // Crash analysis: deep analysis based on .dmp reports (experimental, default disabled)
-  const crashAnalysisDmpEnabled = ref(false)
+  // Crash analysis: deep analysis based on .dmp reports (default: enabled)
+  const crashAnalysisDmpEnabled = ref(true)
 
   // Confirmation modal state (for exit confirmation)
   const isConfirmationOpen = ref(false)
@@ -291,6 +291,8 @@ export const useAppStore = defineStore('app', () => {
     if (typeof savedIgnoreDateCheck === 'boolean')
       crashAnalysisIgnoreDateCheck.value = savedIgnoreDateCheck
 
+    await applyStableFeatureDefaultsMigration()
+
     // Check if log analysis hint should be shown (first time user)
     const logAnalysisHintShown = await getItem<boolean>(STORAGE_KEYS.LOG_ANALYSIS_HINT_SHOWN)
     if (!logAnalysisHintShown) {
@@ -298,6 +300,21 @@ export const useAppStore = defineStore('app', () => {
     }
 
     isInitialized.value = true
+  }
+
+  async function applyStableFeatureDefaultsMigration() {
+    const migrationApplied = await getItem<boolean>(STORAGE_KEYS.STABLE_FEATURE_DEFAULTS_APPLIED)
+    if (migrationApplied) return
+
+    parallelInstallEnabled.value = true
+    crashAnalysisDmpEnabled.value = true
+
+    await Promise.all([
+      setItem(STORAGE_KEYS.PARALLEL_INSTALL_ENABLED, true),
+      setItem(STORAGE_KEYS.CRASH_ANALYSIS_DMP_ENABLED, true),
+      setItem(STORAGE_KEYS.ADDON_UPDATE_CHUNKED_DOWNLOAD_ENABLED, true),
+      setItem(STORAGE_KEYS.STABLE_FEATURE_DEFAULTS_APPLIED, true),
+    ])
   }
 
   async function setXplanePath(path: string) {
