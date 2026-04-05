@@ -1613,8 +1613,49 @@ fn collect_link_targets(xplane_path: &Path, custom_paths: &[String]) -> Vec<Path
     targets
 }
 
+fn directory_is_empty(path: &Path) -> Result<bool, String> {
+    let mut entries = std::fs::read_dir(path)
+        .map_err(|e| format!("Failed to read directory {}: {}", path.display(), e))?;
+
+    Ok(entries.next().is_none())
+}
+
+fn remove_link_or_empty_directory(
+    link_path: &Path,
+    allow_empty_directory: bool,
+) -> Result<bool, String> {
+    if is_link(link_path) {
+        remove_directory_link(link_path)?;
+
+        if link_path.exists() && link_path.is_dir() && directory_is_empty(link_path)? {
+            std::fs::remove_dir(link_path).map_err(|e| {
+                format!(
+                    "Failed to remove directory shell left behind after deleting link {}: {}",
+                    link_path.display(),
+                    e
+                )
+            })?;
+        }
+
+        return Ok(true);
+    }
+
+    if allow_empty_directory && link_path.is_dir() && directory_is_empty(link_path)? {
+        std::fs::remove_dir(link_path).map_err(|e| {
+            format!(
+                "Failed to remove empty directory {}: {}",
+                link_path.display(),
+                e
+            )
+        })?;
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
 /// Create links from each link_target/{package_name} → canonical_pkg_dir.
-/// Skips if the target is a real directory (not a link) to avoid overwriting user data.
+/// Replaces empty real directories with a link, but preserves non-empty user folders.
 fn create_package_links(
     package_name: &str,
     canonical_pkg_dir: &Path,
@@ -1632,10 +1673,33 @@ fn create_package_links(
                     warnings.push(e);
                     continue;
                 }
+            } else if link_path.is_dir() {
+                match directory_is_empty(&link_path) {
+                    Ok(true) => {
+                        if let Err(e) = std::fs::remove_dir(&link_path) {
+                            warnings.push(format!(
+                                "Failed to remove empty directory {} before recreating link: {}",
+                                link_path.display(),
+                                e
+                            ));
+                            continue;
+                        }
+                    }
+                    Ok(false) => {
+                        warnings.push(format!(
+                            "Skipped {}: non-empty real directory exists (not a link)",
+                            link_path.display()
+                        ));
+                        continue;
+                    }
+                    Err(e) => {
+                        warnings.push(e);
+                        continue;
+                    }
+                }
             } else {
-                // Real directory — skip to avoid data loss
                 warnings.push(format!(
-                    "Skipped {}: real directory exists (not a link)",
+                    "Skipped {}: file exists and cannot be replaced with a link",
                     link_path.display()
                 ));
                 continue;
@@ -1656,19 +1720,57 @@ fn create_package_links(
 }
 
 /// Remove links for a package from all link targets.
-fn remove_package_links(package_name: &str, link_targets: &[PathBuf]) -> Vec<String> {
+fn remove_package_links(
+    package_name: &str,
+    link_targets: &[PathBuf],
+    allow_empty_directories: bool,
+) -> Vec<String> {
     let mut warnings = Vec::new();
 
     for base in link_targets {
         let link_path = base.join(package_name);
-        if is_link(&link_path) {
-            if let Err(e) = remove_directory_link(&link_path) {
-                warnings.push(e);
-            }
+        match remove_link_or_empty_directory(&link_path, allow_empty_directories) {
+            Ok(_) => {}
+            Err(e) => warnings.push(e),
         }
     }
 
     warnings
+}
+
+fn collect_cleanup_package_names(
+    cleanup_targets: &[PathBuf],
+    canonical_packages: &[String],
+) -> Result<Vec<String>, String> {
+    let mut package_names: std::collections::BTreeSet<String> =
+        canonical_packages.iter().cloned().collect();
+
+    for target in cleanup_targets {
+        let entries = match std::fs::read_dir(target) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                format!(
+                    "Failed to read cleanup target entry {}: {}",
+                    target.display(),
+                    e
+                )
+            })?;
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+                continue;
+            };
+
+            if is_link(&path) || (path.is_dir() && directory_is_empty(&path).unwrap_or(false)) {
+                package_names.insert(name.to_string());
+            }
+        }
+    }
+
+    Ok(package_names.into_iter().collect())
 }
 
 fn list_installed_canonical_packages(canonical_base: &Path) -> Result<Vec<String>, String> {
@@ -1705,11 +1807,11 @@ fn sync_package_links_internal(
     custom_paths: &[String],
     package_names: Option<&[String]>,
     cleanup_paths: Option<&[String]>,
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
     let xplane = Path::new(xplane_path);
     let canonical_base = xplane.join(CSL_CANONICAL_REL);
     if !canonical_base.exists() {
-        return Ok(());
+        return Ok(Vec::new());
     }
 
     let active_targets = collect_link_targets(xplane, custom_paths);
@@ -1729,23 +1831,36 @@ fn sync_package_links_internal(
         .map(PathBuf::from)
         .filter(|path| *path != canonical_base)
         .collect();
+    let mut warnings = Vec::new();
+    let cleanup_package_names = if cleanup_targets.is_empty() {
+        Vec::new()
+    } else if package_names.is_some() {
+        packages.clone()
+    } else {
+        collect_cleanup_package_names(&cleanup_targets, &packages)?
+    };
+
+    if !cleanup_targets.is_empty() {
+        for package_name in &cleanup_package_names {
+            warnings.extend(remove_package_links(package_name, &cleanup_targets, true));
+        }
+    }
 
     for package_name in packages {
         let canonical_pkg_dir = canonical_base.join(&package_name);
 
-        if !cleanup_targets.is_empty() {
-            let _warnings = remove_package_links(&package_name, &cleanup_targets);
-        }
-
         if canonical_pkg_dir.is_dir() {
-            let _warnings =
-                create_package_links(&package_name, &canonical_pkg_dir, &active_targets);
+            warnings.extend(create_package_links(
+                &package_name,
+                &canonical_pkg_dir,
+                &active_targets,
+            ));
         } else if package_names.is_some() {
-            let _warnings = remove_package_links(&package_name, &active_targets);
+            warnings.extend(remove_package_links(&package_name, &active_targets, false));
         }
     }
 
-    Ok(())
+    Ok(warnings)
 }
 
 // ============================================================================
@@ -2072,7 +2187,7 @@ pub async fn csl_uninstall_package(
     );
 
     // Remove links first
-    let warnings = remove_package_links(&package_name, &link_targets);
+    let warnings = remove_package_links(&package_name, &link_targets, false);
 
     // Remove the canonical copy
     let canonical_pkg_dir = xplane.join(CSL_CANONICAL_REL).join(&package_name);
@@ -2145,10 +2260,20 @@ pub async fn csl_sync_links(
     );
 
     match &result {
-        Ok(()) => csl_debug!(
-            "[{}] CSL link sync command completed",
-            request_ctx.operation_id()
-        ),
+        Ok(warnings) => {
+            csl_debug!(
+                "[{}] CSL link sync command completed warnings={}",
+                request_ctx.operation_id(),
+                warnings.len()
+            );
+            for warning in warnings.iter().take(10) {
+                csl_debug!(
+                    "[{}] CSL link sync warning: {}",
+                    request_ctx.operation_id(),
+                    warning
+                );
+            }
+        }
         Err(err) => csl_debug!(
             "[{}] CSL link sync command failed error={}",
             request_ctx.operation_id(),
@@ -2156,7 +2281,7 @@ pub async fn csl_sync_links(
         ),
     }
 
-    result
+    result.map(|_| ())
 }
 
 // ============================================================================
@@ -2747,5 +2872,58 @@ mod tests {
         assert_eq!(dirs.get("B738"), Some(&base_path.join("B738")));
         assert_eq!(dirs.get("A320"), Some(&base_path.join("A320")));
         assert!(!dirs.contains_key("readme.txt"));
+    }
+
+    #[test]
+    fn create_package_links_replaces_empty_real_directory() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let canonical_pkg_dir = temp_dir.path().join("canonical").join("A19N");
+        let link_target_base = temp_dir.path().join("xpilot");
+        let existing_dir = link_target_base.join("A19N");
+
+        write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
+        std::fs::create_dir_all(&existing_dir).unwrap();
+
+        let warnings = create_package_links("A19N", &canonical_pkg_dir, &[link_target_base]);
+
+        assert!(warnings.is_empty());
+        assert!(is_link(&existing_dir));
+    }
+
+    #[test]
+    fn create_package_links_preserves_non_empty_real_directory() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let canonical_pkg_dir = temp_dir.path().join("canonical").join("A19N");
+        let link_target_base = temp_dir.path().join("xpilot");
+        let existing_dir = link_target_base.join("A19N");
+
+        write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
+        write_test_file(&existing_dir.join("placeholder.txt"), b"user-data");
+
+        let warnings = create_package_links("A19N", &canonical_pkg_dir, &[link_target_base]);
+
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("non-empty real directory exists"));
+        assert!(!is_link(&existing_dir));
+        assert!(existing_dir.join("placeholder.txt").is_file());
+    }
+
+    #[test]
+    fn remove_package_links_removes_links_from_cleanup_targets() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let canonical_pkg_dir = temp_dir.path().join("canonical").join("A19N");
+        let link_target_base = temp_dir.path().join("xpilot");
+        let link_path = link_target_base.join("A19N");
+
+        write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
+
+        let create_warnings =
+            create_package_links("A19N", &canonical_pkg_dir, &[link_target_base.clone()]);
+        assert!(create_warnings.is_empty());
+        assert!(is_link(&link_path));
+
+        let remove_warnings = remove_package_links("A19N", &[link_target_base], true);
+        assert!(remove_warnings.is_empty());
+        assert!(!link_path.exists());
     }
 }
