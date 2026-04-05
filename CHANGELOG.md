@@ -5,16 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.0-beta.2] - 2026-04-05
+## [1.2.0-beta.1] - 2026-04-05
 
 ### Added
 
 - **Per-Variant ACF Management** - Aircraft entries with multiple top-level ACF/XFMA files now expose a dedicated management dialog so each variant can be enabled or disabled independently from the right-click menu.
-
-## [1.2.0-beta.1] - 2026-03-28
-
-### Added
-
 - **Configuration Presets** - Added preset save/apply workflow with import/export support for aircraft, plugins, scenery, Lua scripts, and lock states.
 - **Activity Log** - Added a dedicated history page for installs, updates, deletions, enable/disable actions, scenery sorting, and preset applies.
 - **Disk Space Analysis** - Added a disk usage page that scans X-Plane content by category and drills down to per-folder size details.

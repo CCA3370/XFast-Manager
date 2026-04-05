@@ -359,10 +359,11 @@ jobs:
 
       - name: Generate latest.json for updater
         shell: bash
+        env:
+          CHANGELOG_NOTES: ${{ needs.prepare-release.outputs.changelog }}
         run: |
           version="${{ needs.prepare-release.outputs.version }}"
           tag="${{ needs.prepare-release.outputs.tag }}"
-          changelog="${{ needs.prepare-release.outputs.changelog }}"
           repo="CCA3370/XFast-Manager"
           base_url="https://github.com/${repo}/releases/download/${tag}"
 
@@ -410,7 +411,7 @@ jobs:
 
           jq -n \
             --arg version "$version" \
-            --arg notes "$changelog" \
+            --arg notes "$CHANGELOG_NOTES" \
             --arg pub_date "$pub_date" \
             --argjson platforms "$platforms" \
             '{version: $version, notes: $notes, pub_date: $pub_date, platforms: $platforms}' \
