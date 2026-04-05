@@ -23,8 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Navigation and Quick Access** - Refreshed the top navigation and home/dashboard layout, and added a command palette plus keyboard shortcuts for faster page switching.
 - **Addon Update Planning** - Update tasks now show clearer plan details, including file-level add/replace/delete previews and more transparent download information.
 - **Addon Update Task Safety** - Install/update option controls are now disabled while addon updates are running to prevent conflicting changes mid-task.
+- **Scenery Manager Airport Entries** - Scenery Manager now shows `*GLOBAL_AIRPORTS*` as a real indexed entry and keeps `DarkBlue-` airport mesh/overlay packages directly below their corresponding airport packages.
 - **Nested Archive Performance** - Analysis and installation verification are faster for large wrapped addon packages, especially ZIP files that contain a 7z aircraft archive.
 - **Nested Archive Version Display** - When direct version-file reading is skipped for a nested package, the task list can now fall back to the nested archive filename to show a version label more often.
+- **Stable Feature Defaults** - Parallel Installation, Multi-Threaded Download, and DMP Crash Analysis are now enabled by default and no longer labeled as experimental in Settings.
 
 ### Fixed
 
