@@ -702,6 +702,7 @@ export default {
     deleteSuccess: 'Erfolgreich gelöscht',
     deleteFailed: 'Fehler beim Löschen',
     toggleFailed: 'Status konnte nicht umgeschaltet werden',
+    acfToggleFailed: 'ACF-Datei konnte nicht umgeschaltet werden',
     openFolderFailed: 'Ordner konnte nicht geöffnet werden',
     scanFailed: 'Scannen fehlgeschlagen',
     noItems: 'Keine Artikel gefunden',
@@ -721,6 +722,12 @@ export default {
     batchMode: 'Batch-Modus',
     protectedAircraft:
       'Dies ist ein Standardflugzeug von X-Plane und kann nicht deaktiviert werden',
+    manageAcfFilesTitle: 'ACF-Dateien verwalten · {name}',
+    manageAcfFilesHint: 'Einzelne Flugzeugmodell-Dateien in diesem Ordner umschalten.',
+    partialAcfState:
+      'Einige ACF-Dateien sind aktiviert, andere deaktiviert. Der Flugzeugeintrag bleibt aktiviert, solange eine Variante aktiv ist.',
+    acfEnabled: 'Aktiviert',
+    acfDisabled: 'Deaktiviert',
     updateDrawerTitle: 'Addon-Update',
     updatePlanLoading: 'Update-Plan wird erstellt...',
     updatePlanFailed: 'Aktualisierungsplan konnte nicht erstellt werden',
@@ -1058,6 +1065,7 @@ export default {
     disable: 'Deaktivieren',
     openFolder: 'Ordner öffnen',
     viewLiveries: 'Lackierungen anzeigen',
+    manageAcfFiles: 'ACF-Dateien verwalten',
     viewScripts: 'Skripte anzeigen',
     previewImage: 'Vorschaubild',
     copy: 'Kopieren',

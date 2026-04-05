@@ -69,7 +69,7 @@ function handleToggle(event: MouseEvent) {
     @click="handleToggle"
   >
     <span
-      class="rounded-full bg-white transition-transform"
+      class="rounded-full bg-white shadow-sm ring-1 ring-black/5 transition-transform dark:ring-white/10"
       :class="[sizeConfig.knob, modelValue ? sizeConfig.on : 'translate-x-0']"
     />
   </button>

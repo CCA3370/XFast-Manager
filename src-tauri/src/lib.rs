@@ -2178,6 +2178,20 @@ async fn scan_aircraft(xplane_path: String) -> Result<ManagementData<AircraftInf
 }
 
 #[tauri::command]
+async fn get_aircraft_folder_state(
+    xplane_path: String,
+    folder_name: String,
+) -> Result<AircraftInfo, String> {
+    tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::get_aircraft_folder_state(xplane_path, &folder_name)
+            .map_err(|e| format!("Failed to read aircraft folder state: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
 async fn check_aircraft_updates(
     _xplane_path: String,
     mut aircraft: Vec<AircraftInfo>,
@@ -2506,6 +2520,81 @@ async fn toggle_management_item(
         let op = if *enabled { "enable" } else { "disable" };
         activity::log_activity(&db.get(), op, &it, &fn_, None, true).await;
     }
+    result
+}
+
+#[tauri::command]
+async fn toggle_aircraft_folder(
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+    folder_name: String,
+) -> Result<AircraftInfo, String> {
+    let folder_for_log = folder_name.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::toggle_aircraft_folder(xplane_path, &folder_name)
+            .map_err(error::ApiError::from)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .to_tauri_error();
+
+    if let Ok(updated) = &result {
+        let op = if updated.enabled { "enable" } else { "disable" };
+        activity::log_activity(&db.get(), op, "aircraft", &folder_for_log, None, true).await;
+    }
+
+    result
+}
+
+#[tauri::command]
+async fn toggle_aircraft_acf_file(
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+    folder_name: String,
+    file_name: String,
+) -> Result<AircraftInfo, String> {
+    let folder_for_log = folder_name.clone();
+    let file_for_log = file_name.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let xplane_path = std::path::Path::new(&xplane_path);
+        management_index::toggle_aircraft_acf_file(xplane_path, &folder_name, &file_name)
+            .map_err(error::ApiError::from)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .to_tauri_error();
+
+    if let Ok(updated) = &result {
+        let op = if updated
+            .acf_files
+            .iter()
+            .find(|file| {
+                file.file_name.eq_ignore_ascii_case(&file_for_log)
+                    || std::path::Path::new(&file.file_name)
+                        .file_stem()
+                        .and_then(|stem| stem.to_str())
+                        == std::path::Path::new(&file_for_log)
+                            .file_stem()
+                            .and_then(|stem| stem.to_str())
+            })
+            .is_some_and(|file| file.enabled)
+        {
+            "enable"
+        } else {
+            "disable"
+        };
+        activity::log_activity(
+            &db.get(),
+            op,
+            "aircraft",
+            &format!("{}/{}", folder_for_log, file_for_log),
+            None,
+            true,
+        )
+        .await;
+    }
+
     result
 }
 
@@ -3521,6 +3610,7 @@ pub fn run() {
             apply_scenery_changes,
             // Management commands
             scan_aircraft,
+            get_aircraft_folder_state,
             check_aircraft_updates,
             scan_plugins,
             check_plugins_updates,
@@ -3534,6 +3624,8 @@ pub fn run() {
             scan_navdata_backups,
             restore_navdata_backup,
             toggle_management_item,
+            toggle_aircraft_folder,
+            toggle_aircraft_acf_file,
             delete_management_item,
             open_management_folder,
             get_aircraft_liveries,

@@ -582,6 +582,14 @@ pub struct SceneryManagerData {
 
 // ========== Management Data Structures ==========
 
+/// Individual aircraft model file state within an aircraft folder
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AircraftAcfFileInfo {
+    pub file_name: String,
+    pub enabled: bool,
+}
+
 /// Aircraft information for management UI
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -589,7 +597,9 @@ pub struct AircraftInfo {
     pub folder_name: String,
     pub display_name: String,
     pub acf_file: String,
+    pub acf_files: Vec<AircraftAcfFileInfo>,
     pub enabled: bool,
+    pub has_mixed_acf_states: bool,
     pub has_liveries: bool,
     pub livery_count: usize,
     pub version: Option<String>,
@@ -1073,7 +1083,12 @@ mod tests {
                 folder_name: "A320".to_string(),
                 display_name: "Airbus A320".to_string(),
                 acf_file: "A320.acf".to_string(),
+                acf_files: vec![AircraftAcfFileInfo {
+                    file_name: "A320.acf".to_string(),
+                    enabled: true,
+                }],
                 enabled: true,
+                has_mixed_acf_states: false,
                 has_liveries: true,
                 livery_count: 5,
                 version: Some("1.0".to_string()),

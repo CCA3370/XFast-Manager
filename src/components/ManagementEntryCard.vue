@@ -38,6 +38,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'toggle-enabled', folderName: string): void
+  (e: 'manage-acf-files', folderName: string): void
   (e: 'delete', folderName: string): void
   (e: 'open-folder', folderName: string): void
   (e: 'restore-backup', backupInfo: NavdataBackupInfo): void
@@ -181,6 +182,17 @@ const canOpenUpdater = computed(() => {
   return !!updateUrl
 })
 
+const hasMultipleAircraftAcfFiles = computed(
+  () => isAircraft(props.entry) && props.entry.acfFiles.length > 1,
+)
+
+const toggleActiveClass = computed(() => {
+  if (isAircraft(props.entry) && props.entry.hasMixedAcfStates) {
+    return 'bg-amber-500'
+  }
+  return 'bg-blue-500'
+})
+
 function handleDoubleClick() {
   emit('open-folder', props.entry.folderName)
 }
@@ -238,6 +250,14 @@ function handleContextMenu(event: MouseEvent) {
     })
   }
 
+  if (hasMultipleAircraftAcfFiles.value) {
+    menuItems.push({
+      id: 'manage-acf-files',
+      label: t('contextMenu.manageAcfFiles'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h10M7 16h6"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h.01M4 12h.01M4 16h.01"/></svg>',
+    })
+  }
+
   if (isPlugin(props.entry) && props.entry.hasScripts) {
     menuItems.push({
       id: 'view-scripts',
@@ -292,6 +312,9 @@ function handleContextMenu(event: MouseEvent) {
         break
       case 'view-liveries':
         emit('view-liveries', props.entry.folderName)
+        break
+      case 'manage-acf-files':
+        emit('manage-acf-files', props.entry.folderName)
         break
       case 'view-scripts':
         emit('view-scripts', props.entry.folderName)
@@ -358,7 +381,7 @@ function handleContextMenu(event: MouseEvent) {
     >
       <ToggleSwitch
         :model-value="entry.enabled"
-        active-class="bg-blue-500"
+        :active-class="toggleActiveClass"
         inactive-class="bg-gray-300 dark:bg-gray-600"
         :disabled="isToggling || (isProtected && entry.enabled)"
         :aria-label="entry.enabled ? t('contextMenu.disable') : t('contextMenu.enable')"
