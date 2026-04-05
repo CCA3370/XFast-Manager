@@ -8,9 +8,11 @@ import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import { getNavdataCycleStatus } from '@/utils/airac'
+import AircraftAcfManagerModal from '@/components/AircraftAcfManagerModal.vue'
 import ManagementEntryCard from '@/components/ManagementEntryCard.vue'
 import SceneryTab from '@/views/SceneryTab.vue'
 import type {
+  AircraftInfo,
   ManagementTab,
   ManagementItemType,
   NavdataBackupInfo,
@@ -52,6 +54,12 @@ const searchQuery = ref('')
 
 // Toggling state to prevent rapid clicks
 const togglingItems = ref<Set<string>>(new Set())
+const togglingAcfItems = ref<Set<string>>(new Set())
+const acfManagerFolderName = ref<string | null>(null)
+const acfManagerAircraft = ref<AircraftInfo | null>(null)
+const pendingCloseAcfManager = ref(false)
+const acfManagerDirty = ref(false)
+let acfManagerSyncToken = 0
 
 // Filter state for non-scenery tabs
 const showOnlyUpdates = ref(false)
@@ -169,6 +177,16 @@ const filteredAircraft = computed(() => {
       a.displayName.toLowerCase().includes(query) || a.folderName.toLowerCase().includes(query),
   )
 })
+
+const busyAcfFiles = computed(() => {
+  if (!acfManagerFolderName.value) return []
+  const prefix = `${acfManagerFolderName.value}::`
+  return [...togglingAcfItems.value]
+    .filter((key) => key.startsWith(prefix))
+    .map((key) => key.slice(prefix.length))
+})
+
+const hasBusyAcfFiles = computed(() => busyAcfFiles.value.length > 0)
 
 const filteredPlugins = computed(() => {
   let items = managementStore.sortedPlugins
@@ -447,6 +465,112 @@ async function handleOpenFolder(itemType: ManagementItemType, folderName: string
 // Handle view liveries for aircraft
 function handleViewLiveries(folderName: string) {
   router.push('/management/liveries?aircraft=' + encodeURIComponent(folderName))
+}
+
+function cloneAircraftInfo(aircraft: AircraftInfo): AircraftInfo {
+  return {
+    ...aircraft,
+    acfFiles: aircraft.acfFiles.map((file) => ({ ...file })),
+  }
+}
+
+function setAcfManagerAircraftState(aircraft: AircraftInfo | null) {
+  acfManagerAircraft.value = aircraft ? cloneAircraftInfo(aircraft) : null
+}
+
+function clearAcfManagerState() {
+  pendingCloseAcfManager.value = false
+  acfManagerDirty.value = false
+  acfManagerFolderName.value = null
+  acfManagerAircraft.value = null
+  acfManagerSyncToken += 1
+}
+
+async function handleManageAcfFiles(folderName: string) {
+  const syncToken = ++acfManagerSyncToken
+  acfManagerFolderName.value = folderName
+  pendingCloseAcfManager.value = false
+  acfManagerDirty.value = false
+  setAcfManagerAircraftState(
+    managementStore.aircraft.find((item) => item.folderName === folderName) || null,
+  )
+
+  try {
+    const refreshed = await managementStore.fetchAircraftFolderState(folderName)
+    if (acfManagerFolderName.value === folderName && acfManagerSyncToken === syncToken) {
+      setAcfManagerAircraftState(refreshed)
+    }
+  } catch (e) {
+    modalStore.showError(t('management.scanFailed') + ': ' + String(e))
+  }
+}
+
+async function finishCloseAcfManager() {
+  const folderName = acfManagerFolderName.value
+  const syncToken = acfManagerSyncToken
+
+  if (!folderName) {
+    clearAcfManagerState()
+    return
+  }
+
+  if (acfManagerFolderName.value !== folderName || acfManagerSyncToken !== syncToken) {
+    return
+  }
+
+  if (acfManagerDirty.value) {
+    try {
+      await managementStore.loadAircraft()
+    } catch (e) {
+      modalStore.showError(t('management.scanFailed') + ': ' + String(e))
+    }
+  }
+
+  if (acfManagerFolderName.value !== folderName || acfManagerSyncToken !== syncToken) {
+    return
+  }
+
+  clearAcfManagerState()
+}
+
+function handleCloseAcfManager() {
+  if (hasBusyAcfFiles.value) {
+    pendingCloseAcfManager.value = true
+    return
+  }
+
+  void finishCloseAcfManager()
+}
+
+async function handleToggleAircraftAcfFile(fileName: string) {
+  const folderName = acfManagerFolderName.value
+  if (!folderName) return
+
+  const key = `${folderName}::${fileName}`
+  const hasFolderBusy = [...togglingAcfItems.value].some((busyKey) =>
+    busyKey.startsWith(`${folderName}::`),
+  )
+  if (hasFolderBusy) return
+
+  togglingAcfItems.value.add(key)
+  try {
+    const updated = await managementStore.toggleAircraftAcfFile(folderName, fileName, false)
+    if (acfManagerFolderName.value === folderName) {
+      acfManagerDirty.value = true
+      setAcfManagerAircraftState(updated)
+    }
+  } catch (e) {
+    modalStore.showError(t('management.acfToggleFailed') + ': ' + String(e))
+  } finally {
+    togglingAcfItems.value.delete(key)
+
+    const hasRemainingBusy = [...togglingAcfItems.value].some((busyKey) =>
+      busyKey.startsWith(`${folderName}::`),
+    )
+    if (pendingCloseAcfManager.value && !hasRemainingBusy) {
+      await finishCloseAcfManager()
+    }
+  }
 }
 
 // Handle view scripts for FlyWithLua
@@ -1010,6 +1134,7 @@ const isLoading = computed(() => {
                   @toggle-enabled="(fn) => handleToggleEnabled('aircraft', fn)"
                   @delete="(fn) => handleDelete('aircraft', fn)"
                   @open-folder="(fn) => handleOpenFolder('aircraft', fn)"
+                  @manage-acf-files="handleManageAcfFiles"
                   @view-liveries="handleViewLiveries"
                   @toggle-select="toggleSelect"
                   @update="
@@ -1091,6 +1216,13 @@ const isLoading = computed(() => {
         </Transition>
       </div>
     </template>
+    <AircraftAcfManagerModal
+      :aircraft="acfManagerAircraft"
+      :busy-files="busyAcfFiles"
+      :folder-busy="hasBusyAcfFiles"
+      @close="handleCloseAcfManager"
+      @toggle="handleToggleAircraftAcfFile"
+    />
   </div>
 </template>
 

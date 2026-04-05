@@ -9,8 +9,8 @@
 
 use crate::logger;
 use crate::models::{
-    AircraftInfo, LiveryInfo, LuaScriptInfo, ManagementData, NavdataBackupInfo,
-    NavdataBackupVerification, NavdataManagerInfo, PluginInfo,
+    AircraftAcfFileInfo, AircraftInfo, LiveryInfo, LuaScriptInfo, ManagementData,
+    NavdataBackupInfo, NavdataBackupVerification, NavdataManagerInfo, PluginInfo,
 };
 use crate::path_utils;
 use crate::x_updater_profile::{
@@ -19,11 +19,21 @@ use crate::x_updater_profile::{
 use crate::zibo_updater;
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+
+const AIRCRAFT_ACF_STATE_FILE_NAME: &str = ".xfastmanager-acf-state.json";
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AircraftAcfState {
+    #[serde(default)]
+    disabled_stems: Vec<String>,
+}
 
 #[cfg(target_os = "windows")]
 #[allow(clippy::permissions_set_readonly_false)]
@@ -94,6 +104,107 @@ fn remove_dir_all_with_permission_fix(path: &Path, display_name: &str) -> Result
         }
         Err(e) => Err(e.into()),
     }
+}
+
+fn aircraft_acf_state_path(folder_path: &Path) -> PathBuf {
+    folder_path.join(AIRCRAFT_ACF_STATE_FILE_NAME)
+}
+
+fn normalize_aircraft_variant_stem(file_name: &str) -> Option<String> {
+    Path::new(file_name)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(|stem| stem.trim().to_lowercase())
+        .filter(|stem| !stem.is_empty())
+}
+
+fn normalize_aircraft_variant_stem_from_path(path: &Path) -> Option<String> {
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(|stem| stem.trim().to_lowercase())
+        .filter(|stem| !stem.is_empty())
+}
+
+fn read_aircraft_acf_state(folder_path: &Path) -> AircraftAcfState {
+    let state_path = aircraft_acf_state_path(folder_path);
+    let content = match fs::read_to_string(&state_path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == ErrorKind::NotFound => return AircraftAcfState::default(),
+        Err(error) => {
+            logger::log_debug(
+                &format!(
+                    "Failed to read aircraft ACF state '{}': {}",
+                    state_path.display(),
+                    error
+                ),
+                Some("management"),
+                None,
+            );
+            return AircraftAcfState::default();
+        }
+    };
+
+    match serde_json::from_str::<AircraftAcfState>(&content) {
+        Ok(mut state) => {
+            state.disabled_stems.sort();
+            state.disabled_stems.dedup();
+            state
+        }
+        Err(error) => {
+            logger::log_debug(
+                &format!(
+                    "Failed to parse aircraft ACF state '{}': {}",
+                    state_path.display(),
+                    error
+                ),
+                Some("management"),
+                None,
+            );
+            AircraftAcfState::default()
+        }
+    }
+}
+
+fn write_aircraft_acf_state(folder_path: &Path, disabled_stems: &[String]) -> Result<()> {
+    let state_path = aircraft_acf_state_path(folder_path);
+    let mut normalized: Vec<String> = disabled_stems
+        .iter()
+        .filter_map(|stem| normalize_aircraft_variant_stem(stem))
+        .collect();
+    normalized.sort();
+    normalized.dedup();
+
+    if normalized.is_empty() {
+        match fs::remove_file(&state_path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        return Ok(());
+    }
+
+    let content = serde_json::to_string_pretty(&AircraftAcfState {
+        disabled_stems: normalized,
+    })?;
+    fs::write(&state_path, content)?;
+    Ok(())
+}
+
+fn sync_aircraft_acf_state_for_selection(folder_path: &Path, entry: &AircraftInfo) -> Result<()> {
+    let enabled_count = entry.acf_files.iter().filter(|file| file.enabled).count();
+
+    if enabled_count == 0 || enabled_count == entry.acf_files.len() {
+        return write_aircraft_acf_state(folder_path, &[]);
+    }
+
+    let disabled_stems: Vec<String> = entry
+        .acf_files
+        .iter()
+        .filter(|file| !file.enabled)
+        .filter_map(|file| normalize_aircraft_variant_stem(&file.file_name))
+        .collect();
+
+    write_aircraft_acf_state(folder_path, &disabled_stems)
 }
 
 /// Validate a folder name to prevent path traversal and separator injection
@@ -280,8 +391,7 @@ fn scan_single_aircraft_folder(
 ) -> Option<AircraftInfo> {
     let read_dir = fs::read_dir(folder).ok()?;
 
-    let mut acf_file: Option<String> = None;
-    let mut xfma_file: Option<String> = None;
+    let mut acf_files: Vec<AircraftAcfFileInfo> = Vec::new();
     let mut has_liveries = false;
     let mut livery_count = 0;
     let mut updater_cfg_path: Option<std::path::PathBuf> = None;
@@ -300,11 +410,11 @@ fn scan_single_aircraft_folder(
         let name_lower = name.to_lowercase();
 
         if ft.is_file() {
-            // Check for .acf / .xfma
-            if acf_file.is_none() && name_lower.ends_with(".acf") {
-                acf_file = Some(name.clone());
-            } else if xfma_file.is_none() && name_lower.ends_with(".xfma") {
-                xfma_file = Some(name.clone());
+            if name_lower.ends_with(".acf") || name_lower.ends_with(".xfma") {
+                acf_files.push(AircraftAcfFileInfo {
+                    file_name: name.clone(),
+                    enabled: name_lower.ends_with(".acf"),
+                });
             }
             // Check for version sources
             if name_lower == "skunkcrafts_updater.cfg" {
@@ -333,14 +443,20 @@ fn scan_single_aircraft_folder(
         }
     }
 
-    // Must have .acf or .xfma to be recognized as aircraft
-    let (acf_name, enabled) = if let Some(name) = acf_file {
-        (name, true)
-    } else if let Some(name) = xfma_file {
-        (name, false)
-    } else {
+    if acf_files.is_empty() {
         return None;
-    };
+    }
+
+    acf_files.sort_by(|a, b| a.file_name.to_lowercase().cmp(&b.file_name.to_lowercase()));
+
+    let enabled_count = acf_files.iter().filter(|file| file.enabled).count();
+    let enabled = enabled_count > 0;
+    let has_mixed_acf_states = enabled && enabled_count < acf_files.len();
+    let acf_name = acf_files
+        .iter()
+        .find(|file| file.enabled)
+        .or_else(|| acf_files.first())
+        .map(|file| file.file_name.clone())?;
 
     let is_zibo = zibo_updater::is_zibo_aircraft(folder_name, &acf_name);
     let (version, update_url, update_provider, cfg_disabled) = if is_zibo {
@@ -379,7 +495,9 @@ fn scan_single_aircraft_folder(
         folder_name: relative_path,
         display_name: folder_name.to_string(),
         acf_file: acf_name,
+        acf_files,
         enabled,
+        has_mixed_acf_states,
         has_liveries,
         livery_count,
         version,
@@ -389,6 +507,22 @@ fn scan_single_aircraft_folder(
         has_update: false,    // Will be set by check_aircraft_updates
         cfg_disabled,
     })
+}
+
+fn rescan_aircraft_folder_entry(xplane_path: &Path, folder_name: &str) -> Result<AircraftInfo> {
+    let aircraft_path = xplane_path.join("Aircraft");
+    let folder_path = resolve_management_path(xplane_path, "aircraft", folder_name)?;
+    let display_name = folder_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("Invalid aircraft folder name: {}", folder_name))?;
+
+    scan_single_aircraft_folder(&folder_path, &aircraft_path, display_name)
+        .ok_or_else(|| anyhow!("Aircraft folder does not contain any .acf or .xfma files"))
+}
+
+pub fn get_aircraft_folder_state(xplane_path: &Path, folder_name: &str) -> Result<AircraftInfo> {
+    rescan_aircraft_folder_entry(xplane_path, folder_name)
 }
 
 /// Read version from already-discovered paths (avoids extra directory reads)
@@ -995,6 +1129,75 @@ pub fn toggle_management_item(
     }
 }
 
+pub fn toggle_aircraft_folder(xplane_path: &Path, folder_name: &str) -> Result<AircraftInfo> {
+    let folder_path = resolve_management_path(xplane_path, "aircraft", folder_name)?;
+    toggle_aircraft_files(&folder_path, folder_name)?;
+
+    let refreshed = rescan_aircraft_folder_entry(xplane_path, folder_name)?;
+    let aggregate_disabled = !refreshed.enabled;
+    set_cfg_disabled(xplane_path, "aircraft", folder_name, aggregate_disabled)?;
+    Ok(refreshed)
+}
+
+/// Toggle a specific aircraft model file: .acf <-> .xfma.
+pub fn toggle_aircraft_acf_file(
+    xplane_path: &Path,
+    folder_name: &str,
+    file_name: &str,
+) -> Result<AircraftInfo> {
+    let folder_path = resolve_management_path(xplane_path, "aircraft", folder_name)?;
+
+    if file_name.contains(['/', '\\']) {
+        return Err(anyhow!("Invalid aircraft file name"));
+    }
+
+    let source_path = folder_path.join(file_name);
+    if !source_path.is_file() {
+        return Err(anyhow!("Aircraft file not found: {}", file_name));
+    }
+
+    let extension = source_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .ok_or_else(|| anyhow!("Aircraft file has no supported extension"))?;
+
+    let target_extension = if extension.eq_ignore_ascii_case("acf") {
+        "xfma"
+    } else if extension.eq_ignore_ascii_case("xfma") {
+        "acf"
+    } else {
+        return Err(anyhow!(
+            "Unsupported aircraft file extension: {}",
+            extension
+        ));
+    };
+
+    let target_path = source_path.with_extension(target_extension);
+    if target_path.exists() {
+        return Err(anyhow!(
+            "Cannot toggle aircraft file because target already exists: {}",
+            target_path.display()
+        ));
+    }
+
+    fs::rename(&source_path, &target_path)?;
+
+    let refreshed = rescan_aircraft_folder_entry(xplane_path, folder_name)?;
+    sync_aircraft_acf_state_for_selection(&folder_path, &refreshed)?;
+    let aggregate_disabled = !refreshed.enabled;
+    set_cfg_disabled(xplane_path, "aircraft", folder_name, aggregate_disabled)?;
+
+    logger::log_info(
+        &format!(
+            "Toggled aircraft file '{}::{}' to {}",
+            folder_name, file_name, target_extension
+        ),
+        Some("management"),
+    );
+
+    Ok(refreshed)
+}
+
 /// Toggle aircraft files: .acf <-> .xfma (only in the folder, not subdirectories)
 fn toggle_aircraft_files(folder_path: &Path, folder_name: &str) -> Result<bool> {
     let read_dir = fs::read_dir(folder_path)?;
@@ -1018,6 +1221,12 @@ fn toggle_aircraft_files(folder_path: &Path, folder_name: &str) -> Result<bool> 
     }
 
     let new_enabled = if !acf_files.is_empty() {
+        let remembered_disabled_stems: Vec<String> = xfma_files
+            .iter()
+            .filter_map(|path| normalize_aircraft_variant_stem_from_path(path))
+            .collect();
+        write_aircraft_acf_state(folder_path, &remembered_disabled_stems)?;
+
         // Currently enabled (has .acf files), disable by renaming to .xfma
         for acf_path in &acf_files {
             let new_path = acf_path.with_extension("xfma");
@@ -1033,16 +1242,56 @@ fn toggle_aircraft_files(folder_path: &Path, folder_name: &str) -> Result<bool> 
         );
         false
     } else if !xfma_files.is_empty() {
-        // Currently disabled (has .xfma files), enable by renaming to .acf
-        for xfma_path in &xfma_files {
+        let remembered_disabled: HashSet<String> = read_aircraft_acf_state(folder_path)
+            .disabled_stems
+            .into_iter()
+            .collect();
+
+        let mut files_to_enable: Vec<std::path::PathBuf> = xfma_files
+            .iter()
+            .filter(|path| {
+                normalize_aircraft_variant_stem_from_path(path)
+                    .map(|stem| {
+                        remembered_disabled.is_empty() || !remembered_disabled.contains(&stem)
+                    })
+                    .unwrap_or(true)
+            })
+            .cloned()
+            .collect();
+
+        let fallback_enable_all = files_to_enable.is_empty();
+        if fallback_enable_all {
+            files_to_enable = xfma_files.clone();
+        }
+
+        // Currently disabled (has .xfma files), enable remembered active files.
+        for xfma_path in &files_to_enable {
             let new_path = xfma_path.with_extension("acf");
             fs::rename(xfma_path, &new_path)?;
         }
+
+        if fallback_enable_all || files_to_enable.len() == xfma_files.len() {
+            write_aircraft_acf_state(folder_path, &[])?;
+        } else {
+            let enabled_stems: HashSet<String> = files_to_enable
+                .iter()
+                .filter_map(|path| normalize_aircraft_variant_stem_from_path(path))
+                .collect();
+            let remaining_disabled_stems: Vec<String> = xfma_files
+                .iter()
+                .filter_map(|path| {
+                    let stem = normalize_aircraft_variant_stem_from_path(path)?;
+                    (!enabled_stems.contains(&stem)).then_some(stem)
+                })
+                .collect();
+            write_aircraft_acf_state(folder_path, &remaining_disabled_stems)?;
+        }
+
         logger::log_info(
             &format!(
                 "Enabled aircraft '{}': renamed {} .xfma file(s) to .acf",
                 folder_name,
-                xfma_files.len()
+                files_to_enable.len()
             ),
             Some("management"),
         );
@@ -2033,7 +2282,8 @@ pub fn delete_lua_script(xplane_path: &Path, file_name: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::scan_aircraft;
+    use super::{scan_aircraft, toggle_aircraft_acf_file, toggle_management_item};
+    use std::fs;
     use tempfile::tempdir;
 
     #[test]
@@ -2045,5 +2295,97 @@ mod tests {
         assert!(result.entries.is_empty());
         assert_eq!(result.total_count, 0);
         assert_eq!(result.enabled_count, 0);
+    }
+
+    #[test]
+    fn scan_aircraft_reports_multiple_acf_files_and_mixed_state() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let aircraft_dir = temp.path().join("Aircraft").join("DemoPlane");
+        fs::create_dir_all(&aircraft_dir).expect("failed to create aircraft dir");
+        fs::write(aircraft_dir.join("DemoPlane.acf"), "acf").expect("failed to write acf");
+        fs::write(aircraft_dir.join("DemoPlane_cargo.xfma"), "xfma").expect("failed to write xfma");
+
+        let result = scan_aircraft(temp.path()).expect("scan_aircraft should not fail");
+        let entry = result.entries.first().expect("expected aircraft entry");
+
+        assert_eq!(entry.acf_files.len(), 2);
+        assert!(entry.enabled);
+        assert!(entry.has_mixed_acf_states);
+    }
+
+    #[test]
+    fn toggle_aircraft_acf_file_updates_partial_state() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let aircraft_dir = temp.path().join("Aircraft").join("DemoPlane");
+        fs::create_dir_all(&aircraft_dir).expect("failed to create aircraft dir");
+        fs::write(aircraft_dir.join("DemoPlane.acf"), "acf").expect("failed to write acf");
+        fs::write(aircraft_dir.join("DemoPlane_cargo.acf"), "acf")
+            .expect("failed to write second acf");
+
+        let entry = toggle_aircraft_acf_file(temp.path(), "DemoPlane", "DemoPlane_cargo.acf")
+            .expect("toggle_aircraft_acf_file should succeed");
+
+        assert!(aircraft_dir.join("DemoPlane_cargo.xfma").exists());
+        assert!(entry.enabled);
+        assert!(entry.has_mixed_acf_states);
+    }
+
+    #[test]
+    fn master_toggle_restores_partial_acf_selection() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let aircraft_dir = temp.path().join("Aircraft").join("DemoPlane");
+        fs::create_dir_all(&aircraft_dir).expect("failed to create aircraft dir");
+        fs::write(aircraft_dir.join("DemoPlane.acf"), "acf").expect("failed to write acf");
+        fs::write(aircraft_dir.join("DemoPlane_cargo.xfma"), "xfma").expect("failed to write xfma");
+
+        let disabled = toggle_management_item(temp.path(), "aircraft", "DemoPlane")
+            .expect("toggle_management_item should disable aircraft");
+        assert!(!disabled);
+        assert!(aircraft_dir.join("DemoPlane.xfma").exists());
+        assert!(aircraft_dir.join("DemoPlane_cargo.xfma").exists());
+
+        let enabled = toggle_management_item(temp.path(), "aircraft", "DemoPlane")
+            .expect("toggle_management_item should enable aircraft");
+        assert!(enabled);
+
+        let result = scan_aircraft(temp.path()).expect("scan_aircraft should not fail");
+        let entry = result.entries.first().expect("expected aircraft entry");
+        assert!(aircraft_dir.join("DemoPlane.acf").exists());
+        assert!(aircraft_dir.join("DemoPlane_cargo.xfma").exists());
+        assert!(entry.enabled);
+        assert!(entry.has_mixed_acf_states);
+    }
+
+    #[test]
+    fn master_toggle_enables_all_after_all_acfs_were_disabled_individually() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let aircraft_dir = temp.path().join("Aircraft").join("DemoPlane");
+        fs::create_dir_all(&aircraft_dir).expect("failed to create aircraft dir");
+        fs::write(aircraft_dir.join("DemoPlane.acf"), "acf").expect("failed to write acf");
+        fs::write(aircraft_dir.join("DemoPlane_cargo.acf"), "acf")
+            .expect("failed to write second acf");
+
+        let first = toggle_aircraft_acf_file(temp.path(), "DemoPlane", "DemoPlane.acf")
+            .expect("first ACF toggle should succeed");
+        assert!(first.enabled);
+        assert!(first.has_mixed_acf_states);
+
+        let second = toggle_aircraft_acf_file(temp.path(), "DemoPlane", "DemoPlane_cargo.acf")
+            .expect("second ACF toggle should succeed");
+        assert!(!second.enabled);
+        assert!(!second.has_mixed_acf_states);
+        assert!(aircraft_dir.join("DemoPlane.xfma").exists());
+        assert!(aircraft_dir.join("DemoPlane_cargo.xfma").exists());
+
+        let enabled = toggle_management_item(temp.path(), "aircraft", "DemoPlane")
+            .expect("toggle_management_item should enable all aircraft files");
+        assert!(enabled);
+
+        let result = scan_aircraft(temp.path()).expect("scan_aircraft should not fail");
+        let entry = result.entries.first().expect("expected aircraft entry");
+        assert!(aircraft_dir.join("DemoPlane.acf").exists());
+        assert!(aircraft_dir.join("DemoPlane_cargo.acf").exists());
+        assert!(entry.enabled);
+        assert!(!entry.has_mixed_acf_states);
     }
 }

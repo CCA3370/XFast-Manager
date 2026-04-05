@@ -373,7 +373,9 @@ export interface AircraftInfo {
   folderName: string
   displayName: string
   acfFile: string
+  acfFiles: AircraftAcfFileInfo[]
   enabled: boolean
+  hasMixedAcfStates: boolean
   hasLiveries: boolean
   liveryCount: number
   version?: string
@@ -382,6 +384,11 @@ export interface AircraftInfo {
   latestVersion?: string
   hasUpdate: boolean
   cfgDisabled?: boolean
+}
+
+export interface AircraftAcfFileInfo {
+  fileName: string
+  enabled: boolean
 }
 
 export interface LiveryInfo {

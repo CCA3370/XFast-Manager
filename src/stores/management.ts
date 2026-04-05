@@ -154,6 +154,10 @@ interface LoadableItem {
   folderName: string
 }
 
+function normalizeManagementFolderKey(folderName: string): string {
+  return folderName.replace(/[\\/]+/g, '\\').trim().toLowerCase()
+}
+
 export const useManagementStore = defineStore('management', () => {
   const appStore = useAppStore()
   const toast = useToastStore()
@@ -218,6 +222,67 @@ export const useManagementStore = defineStore('management', () => {
       return getNavdataCycleStatus(cycleText) === 'outdated'
     }).length
   })
+
+  function findAircraftEntry(folderName: string): AircraftInfo | undefined {
+    const targetKey = normalizeManagementFolderKey(folderName)
+    return aircraft.value.find(
+      (item) => normalizeManagementFolderKey(item.folderName) === targetKey,
+    )
+  }
+
+  function upsertAircraftEntry(updated: AircraftInfo): AircraftInfo {
+    const targetKey = normalizeManagementFolderKey(updated.folderName)
+    const duplicateIndexes: number[] = []
+
+    aircraft.value.forEach((item, index) => {
+      if (normalizeManagementFolderKey(item.folderName) === targetKey) {
+        duplicateIndexes.push(index)
+      }
+    })
+
+    if (duplicateIndexes.length > 0) {
+      const primaryIndex = duplicateIndexes[0]
+      const primary = aircraft.value[primaryIndex]
+      Object.assign(primary, updated)
+
+      for (let i = duplicateIndexes.length - 1; i >= 1; i -= 1) {
+        aircraft.value.splice(duplicateIndexes[i], 1)
+      }
+
+      aircraftEnabledCount.value = aircraft.value.filter((item) => item.enabled).length
+      aircraftTotalCount.value = aircraft.value.length
+      return primary
+    }
+
+    aircraft.value.push(updated)
+    aircraftEnabledCount.value = aircraft.value.filter((item) => item.enabled).length
+    aircraftTotalCount.value = aircraft.value.length
+    return updated
+  }
+
+  async function fetchAircraftFolderState(folderName: string): Promise<AircraftInfo> {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value!)
+    }
+
+    try {
+      const updated = await invoke<AircraftInfo>('get_aircraft_folder_state', {
+        xplanePath: appStore.xplanePath,
+        folderName,
+      })
+
+      const existing = findAircraftEntry(folderName)
+      return {
+        ...updated,
+        latestVersion: updated.latestVersion ?? existing?.latestVersion,
+        hasUpdate: updated.hasUpdate ?? existing?.hasUpdate ?? false,
+      }
+    } catch (e) {
+      error.value = String(e)
+      logError(`Failed to fetch aircraft folder state ${folderName}: ${e}`, 'management')
+      throw e
+    }
+  }
 
   async function loadAddonUpdateOptions() {
     if (addonUpdateOptionsLoaded.value) return
@@ -572,6 +637,11 @@ export const useManagementStore = defineStore('management', () => {
       },
       logName: 'aircraft',
     })
+  }
+
+  async function refreshAircraftFolder(folderName: string): Promise<AircraftInfo> {
+    const merged = await fetchAircraftFolderState(folderName)
+    return upsertAircraftEntry(merged)
   }
 
   // Check for aircraft updates
@@ -947,7 +1017,7 @@ export const useManagementStore = defineStore('management', () => {
 
     // Prevent disabling protected aircraft
     if (itemType === 'aircraft') {
-      const item = aircraft.value.find((a) => a.folderName === folderName)
+      const item = findAircraftEntry(folderName)
       if (item && item.enabled && isProtectedAircraft(item.displayName)) {
         toast.warning(t('management.protectedAircraft'))
         return
@@ -955,6 +1025,24 @@ export const useManagementStore = defineStore('management', () => {
     }
 
     try {
+      if (itemType === 'aircraft') {
+        const updated = await invoke<AircraftInfo>('toggle_aircraft_folder', {
+          xplanePath: appStore.xplanePath,
+          folderName,
+        })
+
+        const existing = findAircraftEntry(folderName)
+        const merged: AircraftInfo = {
+          ...updated,
+          latestVersion: updated.latestVersion ?? existing?.latestVersion,
+          hasUpdate: updated.hasUpdate ?? existing?.hasUpdate ?? false,
+        }
+
+        upsertAircraftEntry(merged)
+        await syncLockAfterToggle('aircraft', folderName, merged.enabled)
+        return
+      }
+
       const newEnabled = await invoke<boolean>('toggle_management_item', {
         xplanePath: appStore.xplanePath,
         itemType,
@@ -963,17 +1051,6 @@ export const useManagementStore = defineStore('management', () => {
 
       // Update local state
       switch (itemType) {
-        case 'aircraft': {
-          // Aircraft: folder name stays the same, only enabled state changes
-          const item = aircraft.value.find((a) => a.folderName === folderName)
-          if (item) {
-            item.enabled = newEnabled
-            aircraftEnabledCount.value = aircraft.value.filter((a) => a.enabled).length
-          }
-          // Sync lock state: disabled → locked, enabled → unlocked
-          await syncLockAfterToggle('aircraft', folderName, newEnabled)
-          break
-        }
         case 'plugin': {
           // Plugin: folder name stays the same, only enabled state changes
           const item = plugins.value.find((p) => p.folderName === folderName)
@@ -998,6 +1075,38 @@ export const useManagementStore = defineStore('management', () => {
     } catch (e) {
       error.value = String(e)
       logError(`Failed to toggle enabled: ${e}`, 'management')
+      throw e
+    }
+  }
+
+  async function toggleAircraftAcfFile(
+    folderName: string,
+    fileName: string,
+    syncList: boolean = true,
+  ): Promise<AircraftInfo> {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value!)
+    }
+
+    try {
+      const updated = await invoke<AircraftInfo>('toggle_aircraft_acf_file', {
+        xplanePath: appStore.xplanePath,
+        folderName,
+        fileName,
+      })
+
+      const existing = findAircraftEntry(folderName)
+      const merged: AircraftInfo = {
+        ...updated,
+        latestVersion: updated.latestVersion ?? existing?.latestVersion,
+        hasUpdate: updated.hasUpdate ?? existing?.hasUpdate ?? false,
+      }
+      const entry = syncList ? upsertAircraftEntry(merged) : merged
+      await syncLockAfterToggle('aircraft', folderName, merged.enabled)
+      return entry
+    } catch (e) {
+      error.value = String(e)
+      logError(`Failed to toggle aircraft ACF file ${folderName}/${fileName}: ${e}`, 'management')
       throw e
     }
   }
@@ -1166,6 +1275,8 @@ export const useManagementStore = defineStore('management', () => {
 
     // Actions
     loadAircraft,
+    fetchAircraftFolderState,
+    refreshAircraftFolder,
     checkAircraftUpdates,
     loadPlugins,
     checkPluginsUpdates,
@@ -1182,6 +1293,7 @@ export const useManagementStore = defineStore('management', () => {
     restoreNavdataBackup,
     loadCurrentTabData,
     toggleEnabled,
+    toggleAircraftAcfFile,
     batchSetEnabled,
     deleteItem,
     openFolder,
