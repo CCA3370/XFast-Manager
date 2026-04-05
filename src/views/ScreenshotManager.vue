@@ -80,6 +80,7 @@ const thumbFailed = ref<Set<string>>(new Set())
 const videoCoverUrls = reactive(new Map<string, string>())
 const pendingVideoCovers = reactive(new Set<string>())
 const busyFile = ref<string | null>(null)
+const backgroundImages = ref<Set<string>>(new Set())
 const enhancedPreviews = reactive(new Map<string, EnhancedPreviewState>())
 
 const editorOpen = ref(false)
@@ -200,11 +201,7 @@ function drawVideoCoverToBlob(video: HTMLVideoElement): Promise<Blob | null> {
   if (!ctx) return Promise.resolve(null)
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
   return new Promise((resolve) => {
-    canvas.toBlob(
-      (blob) => resolve(blob),
-      'image/jpeg',
-      0.85,
-    )
+    canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.85)
   })
 }
 
@@ -399,12 +396,12 @@ const liveFilterStyle = computed(() => {
   // Temperature: rough warm/cool tint
   if (cur.temperature !== base.temperature) {
     const delta = cur.temperature - base.temperature
-    if (delta > 0) parts.push(`sepia(${(delta / 100 * 0.25).toFixed(3)})`)
-    else parts.push(`hue-rotate(${(delta / 100 * 25).toFixed(1)}deg)`)
+    if (delta > 0) parts.push(`sepia(${((delta / 100) * 0.25).toFixed(3)})`)
+    else parts.push(`hue-rotate(${((delta / 100) * 25).toFixed(1)}deg)`)
   }
   // Denoise → blur (additive px)
   if (cur.denoise !== base.denoise) {
-    const delta = (cur.denoise - base.denoise) / 100 * 1.8
+    const delta = ((cur.denoise - base.denoise) / 100) * 1.8
     if (delta > 0) parts.push(`blur(${delta.toFixed(2)}px)`)
   }
   return parts.length > 0 ? { filter: parts.join(' ') } : undefined
@@ -747,15 +744,19 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [media, aircraftData] = await Promise.all([
+    const [media, aircraftData, bgImages] = await Promise.all([
       invoke<ScreenshotMediaItem[]>('list_screenshot_media', {
         xplanePath: appStore.xplanePath,
       }),
       invoke<ManagementData<AircraftInfo>>('scan_aircraft', {
         xplanePath: appStore.xplanePath,
       }).catch(() => null),
+      invoke<string[]>('get_background_images', {
+        xplanePath: appStore.xplanePath,
+      }).catch(() => [] as string[]),
     ])
     items.value = media
+    backgroundImages.value = new Set(bgImages)
     const map: Record<string, string> = {}
     for (const entry of aircraftData?.entries ?? []) {
       const stem = entry.acfFile.replace(/\.[^.]+$/, '').trim()
@@ -860,6 +861,37 @@ async function saveAs(item: ScreenshotMediaItem) {
     toastStore.success(t('screenshot.saveAsSuccess') as string)
   } catch (e) {
     modalStore.showError(`${t('screenshot.saveAsFailed')}: ${String(e)}`)
+  } finally {
+    busyFile.value = null
+  }
+}
+
+async function setAsBackground(item: ScreenshotMediaItem) {
+  if (!appStore.xplanePath) return
+  busyFile.value = item.fileName
+  const isCurrentlyBg = backgroundImages.value.has(item.fileName)
+  try {
+    if (isCurrentlyBg) {
+      await invoke<boolean>('unset_screenshot_as_background', {
+        xplanePath: appStore.xplanePath,
+        fileName: item.fileName,
+      })
+      backgroundImages.value.delete(item.fileName)
+      toastStore.success(t('screenshot.unsetBackgroundSuccess') as string)
+    } else {
+      await invoke<ScreenshotOperationResult>('set_screenshot_as_background', {
+        xplanePath: appStore.xplanePath,
+        fileName: item.fileName,
+      })
+      backgroundImages.value.add(item.fileName)
+      toastStore.success(t('screenshot.setBackgroundSuccess') as string)
+    }
+  } catch (e) {
+    if (isCurrentlyBg) {
+      modalStore.showError(`${t('screenshot.unsetBackgroundFailed')}: ${String(e)}`)
+    } else {
+      modalStore.showError(`${t('screenshot.setBackgroundFailed')}: ${String(e)}`)
+    }
   } finally {
     busyFile.value = null
   }
@@ -1177,7 +1209,9 @@ function cloneEditParams(params: ScreenshotEditParams): ScreenshotEditParams {
   const raw = toRaw(params)
   const rawCrop = raw.crop ? toRaw(raw.crop) : null
   return {
-    crop: rawCrop ? { x: rawCrop.x, y: rawCrop.y, width: rawCrop.width, height: rawCrop.height } : null,
+    crop: rawCrop
+      ? { x: rawCrop.x, y: rawCrop.y, width: rawCrop.width, height: rawCrop.height }
+      : null,
     rotate: raw.rotate,
     exposure: raw.exposure,
     contrast: raw.contrast,
@@ -1592,7 +1626,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="h-full">
-    <div class="h-full flex flex-col p-5 overflow-hidden screenshot-view">
+    <div class="h-full flex flex-col px-5 pt-3 pb-5 overflow-hidden screenshot-view">
       <div class="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 class="text-xl font-bold text-gray-900 dark:text-white">
@@ -1783,10 +1817,10 @@ onBeforeUnmount(() => {
               {{ $t('screenshot.empty') }}
             </div>
             <div v-else class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 pb-3">
-              <button
+              <div
                 v-for="item in groupedItems"
                 :key="item.id"
-                class="text-left rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden hover:shadow-md transition-shadow"
+                class="text-left rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden hover:shadow-md transition-shadow cursor-pointer relative group"
                 @click="selected = item"
               >
                 <div class="relative aspect-[16/10] bg-gray-100 dark:bg-gray-900">
@@ -1799,7 +1833,11 @@ onBeforeUnmount(() => {
                     @error="markThumbFailed(item.fileName)"
                   />
                   <video
-                    v-else-if="item.mediaType === 'video' && item.previewable && !isVideoFailed(item.fileName)"
+                    v-else-if="
+                      item.mediaType === 'video' &&
+                      item.previewable &&
+                      !isVideoFailed(item.fileName)
+                    "
                     :src="toSrc(item.path)"
                     class="w-full h-full object-cover"
                     muted
@@ -1822,6 +1860,22 @@ onBeforeUnmount(() => {
                     class="absolute left-2 top-2 px-1.5 py-0.5 rounded bg-emerald-500/85 text-white text-[10px] tracking-wide"
                     >AI</span
                   >
+                  <button
+                    v-if="item.mediaType === 'image'"
+                    class="absolute right-2 bottom-2 px-2 py-1 text-white text-[10px] rounded transition-opacity"
+                    :class="[
+                      backgroundImages.has(item.fileName)
+                        ? 'bg-rose-600/80 hover:bg-rose-600 opacity-100'
+                        : 'bg-black/60 hover:bg-black/80 opacity-0 group-hover:opacity-100',
+                    ]"
+                    @click.stop="setAsBackground(item)"
+                  >
+                    {{
+                      backgroundImages.has(item.fileName)
+                        ? $t('screenshot.unsetBackground')
+                        : $t('screenshot.setAsBackground')
+                    }}
+                  </button>
                 </div>
                 <div class="px-2.5 py-2 space-y-1">
                   <p
@@ -1834,7 +1888,7 @@ onBeforeUnmount(() => {
                     {{ fmtSize(item.size) }} · {{ fmtTime(item.modifiedAt) }}
                   </p>
                 </div>
-              </button>
+              </div>
             </div>
           </template>
         </div>
@@ -2016,7 +2070,10 @@ onBeforeUnmount(() => {
 
     <Teleport to="body">
       <div v-if="editorOpen" class="fixed inset-0 z-[120] p-2 sm:p-4">
-        <div class="absolute inset-0 bg-black/75 backdrop-blur-sm pointer-events-none" aria-hidden="true"></div>
+        <div
+          class="absolute inset-0 bg-black/75 backdrop-blur-sm pointer-events-none"
+          aria-hidden="true"
+        ></div>
         <div
           class="relative h-full max-w-[1320px] mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col will-change-transform"
         >
@@ -2030,8 +2087,8 @@ onBeforeUnmount(() => {
               <button
                 class="text-sm px-2 py-1 flex items-center gap-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
                 :disabled="previewBusy || saveBusy"
-                @click="resetEditor"
                 :title="$t('screenshot.reset')"
+                @click="resetEditor"
               >
                 <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -2046,8 +2103,8 @@ onBeforeUnmount(() => {
               <button
                 class="text-sm px-2 py-1 flex items-center gap-1.5 rounded hover:bg-green-50 dark:hover:bg-green-900/20 text-green-600 dark:text-green-500"
                 :disabled="saveBusy"
-                @click="saveEdited(true)"
                 :title="$t('screenshot.saveOverwrite')"
+                @click="saveEdited(true)"
               >
                 <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -2062,8 +2119,8 @@ onBeforeUnmount(() => {
               <button
                 class="text-sm px-2 py-1 flex items-center gap-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-500"
                 :disabled="saveBusy"
-                @click="saveEdited(false)"
                 :title="$t('screenshot.saveAs')"
+                @click="saveEdited(false)"
               >
                 <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -2078,8 +2135,8 @@ onBeforeUnmount(() => {
               <button
                 class="text-sm px-2 py-1 flex items-center gap-1.5 rounded hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-600 dark:text-emerald-500"
                 :disabled="saveBusy"
-                @click="copyEdited"
                 :title="$t('screenshot.copyImage')"
+                @click="copyEdited"
               >
                 <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <rect x="9" y="9" width="10" height="10" rx="2" ry="2" stroke-width="2" />

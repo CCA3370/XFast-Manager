@@ -70,7 +70,10 @@ impl Analyzer {
             Some("analyzer"),
         );
 
-        crate::log_debug!(&format!("Analyzing paths: {:?}", normalized_paths), "analysis");
+        crate::log_debug!(
+            &format!("Analyzing paths: {:?}", normalized_paths),
+            "analysis"
+        );
         crate::log_debug!(&format!("X-Plane path: {}", xplane_path), "analysis");
 
         let passwords_ref = normalized_passwords.as_ref();
@@ -180,8 +183,7 @@ impl Analyzer {
                         logger::log_error(&error_msg, Some("analyzer"));
 
                         // For frontend display, use a cleaner format
-                        let display_msg =
-                            format!("{} ({}): {}", tr(LogMsg::ScanFailed), path_str, e);
+                        let display_msg = Self::format_scan_error_for_display(&path_str, &e);
                         errors.push(display_msg);
                     }
                 }
@@ -262,6 +264,21 @@ impl Analyzer {
             password_required,
             nested_password_required,
         }
+    }
+
+    fn format_scan_error_for_display(path_str: &str, error: &anyhow::Error) -> String {
+        let raw = error.to_string();
+        let lower = raw.to_ascii_lowercase();
+        let prefix = format!("{} ({})", tr(LogMsg::ScanFailed), path_str);
+
+        if lower.contains("invalid zip archive") || lower.contains("could not find eocd") {
+            return format!(
+                "{}: Invalid or incomplete ZIP archive. The file may be corrupted, partially downloaded, or use the wrong extension.",
+                prefix
+            );
+        }
+
+        format!("{}: {}", prefix, raw)
     }
 
     /// Deduplicate install tasks based on target_path AND original_input_path
@@ -518,7 +535,12 @@ impl Analyzer {
                 let candidate_has_internal_root = candidate.archive_internal_root.is_some();
 
                 !scenery_anchors.iter().any(
-                    |(scenery_source, scenery_source_path, scenery_has_internal_root, scenery_path)| {
+                    |(
+                        scenery_source,
+                        scenery_source_path,
+                        scenery_has_internal_root,
+                        scenery_path,
+                    )| {
                         let same_source =
                             if candidate_has_internal_root || *scenery_has_internal_root {
                                 candidate.path == *scenery_source
@@ -1764,5 +1786,15 @@ mod tests {
 
         assert_eq!(plugin_names.len(), 1);
         assert_eq!(plugin_names[0], "Standalone");
+    }
+
+    #[test]
+    fn test_format_scan_error_for_invalid_zip_is_user_friendly() {
+        let error = anyhow::anyhow!("invalid Zip archive: Could not find EOCD");
+
+        let formatted = Analyzer::format_scan_error_for_display("C:\\test\\bad.zip", &error);
+
+        assert!(formatted.contains("Invalid or incomplete ZIP archive"));
+        assert!(!formatted.contains("Could not find EOCD"));
     }
 }

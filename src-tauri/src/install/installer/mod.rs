@@ -2,6 +2,8 @@ use anyhow::{Context, Result};
 use glob::Pattern;
 use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
+#[cfg(target_os = "windows")]
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -81,13 +83,68 @@ pub fn sanitize_folder_name(name: &str) -> String {
     hash.iter().take(8).map(|b| format!("{:02x}", b)).collect()
 }
 
+#[cfg(target_os = "windows")]
+fn is_windows_reserved_name(name: &str) -> bool {
+    matches!(name, "CON" | "PRN" | "AUX" | "NUL")
+        || matches!(
+            name.strip_prefix("COM"),
+            Some("1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+        )
+        || matches!(
+            name.strip_prefix("LPT"),
+            Some("1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+        )
+}
+
+#[cfg(target_os = "windows")]
+fn sanitize_windows_path_component(component: &OsStr) -> Option<OsString> {
+    let mut sanitized: String = component
+        .to_string_lossy()
+        .chars()
+        .map(|ch| match ch {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            ch if ch.is_control() => '_',
+            _ => ch,
+        })
+        .collect();
+
+    sanitized = sanitized.trim_end_matches([' ', '.']).to_string();
+    if sanitized.is_empty() {
+        sanitized.push('_');
+    }
+
+    let reserved_key = sanitized
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches([' ', '.'])
+        .to_ascii_uppercase();
+    if is_windows_reserved_name(&reserved_key) {
+        sanitized = match sanitized.split_once('.') {
+            Some((stem, rest)) => format!("{stem}_.{rest}"),
+            None => format!("{sanitized}_"),
+        };
+    }
+
+    Some(OsString::from(sanitized))
+}
+
 /// Sanitize a file path to prevent path traversal attacks
 /// Returns None if the path is unsafe (contains `..` or is absolute)
 pub fn sanitize_path(path: &Path) -> Option<PathBuf> {
     let mut result = PathBuf::new();
     for component in path.components() {
         match component {
-            Component::Normal(c) => result.push(c),
+            Component::Normal(c) => {
+                #[cfg(target_os = "windows")]
+                {
+                    result.push(sanitize_windows_path_component(c)?);
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    result.push(c);
+                }
+            }
             Component::CurDir => {}              // Skip "."
             Component::ParentDir => return None, // Reject ".."
             Component::Prefix(_) | Component::RootDir => return None, // Reject absolute paths
@@ -141,6 +198,10 @@ fn copy_file_with_crc32<R: std::io::Read + ?Sized, W: std::io::Write>(
         total_bytes += bytes_read as u64;
     }
     Ok((total_bytes, hasher.finalize()))
+}
+
+fn should_compute_inline_7z_hashes(enable_verification: bool, is_nested_archive: bool) -> bool {
+    enable_verification && !is_nested_archive
 }
 
 /// Remove read-only attribute from a file (Windows only)
@@ -287,6 +348,8 @@ struct ProgressContext {
     inline_verified_count: Arc<AtomicU64>,
     /// Hashes computed inline during extraction (for 7z SHA256)
     inline_hashes: Arc<Mutex<HashMap<String, crate::models::FileHash>>>,
+    /// Whether current task should compute 7z SHA256 inline during extraction.
+    inline_hash_collection_enabled: Arc<std::sync::atomic::AtomicBool>,
     /// Optional parallel emit callback: when set, emit_progress updates tracker data
     /// and calls this instead of emitting directly
     parallel_emit: Option<Arc<dyn Fn() + Send + Sync>>,
@@ -311,6 +374,7 @@ impl ProgressContext {
             inline_verified: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             inline_verified_count: Arc::new(AtomicU64::new(0)),
             inline_hashes: Arc::new(Mutex::new(HashMap::new())),
+            inline_hash_collection_enabled: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             parallel_emit: None,
             parallel_current_file: None,
         }
@@ -607,6 +671,7 @@ struct TaskTracker {
     inline_verified: Arc<std::sync::atomic::AtomicBool>,
     inline_verified_count: Arc<AtomicU64>,
     inline_hashes: Arc<Mutex<HashMap<String, crate::models::FileHash>>>,
+    inline_hash_collection_enabled: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// Aggregated parallel progress context
@@ -646,6 +711,9 @@ impl ParallelProgressContext {
                     inline_verified: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                     inline_verified_count: Arc::new(AtomicU64::new(0)),
                     inline_hashes: Arc::new(Mutex::new(HashMap::new())),
+                    inline_hash_collection_enabled: Arc::new(std::sync::atomic::AtomicBool::new(
+                        true,
+                    )),
                 })
             })
             .collect();
@@ -926,6 +994,8 @@ impl TaskProgressView {
         ctx.inline_verified = Arc::clone(&self.tracker.inline_verified);
         ctx.inline_verified_count = Arc::clone(&self.tracker.inline_verified_count);
         ctx.inline_hashes = Arc::clone(&self.tracker.inline_hashes);
+        ctx.inline_hash_collection_enabled =
+            Arc::clone(&self.tracker.inline_hash_collection_enabled);
 
         // Set up task sizes so percentage calculations work correctly
         let mut sizes = vec![0u64; self.parent.total_tasks];
@@ -1794,14 +1864,13 @@ impl Installer {
                                 Ok(scenery_info) => {
                                     let manager =
                                         SceneryPacksManager::new(&xplane_path_buf, self.db.clone());
-                                    if let Err(e) =
-                                        manager
-                                            .add_entry_with_locked_entries(
-                                                folder_name,
-                                                &scenery_info.category,
-                                                &locked_scenery_folder_names,
-                                            )
-                                            .await
+                                    if let Err(e) = manager
+                                        .add_entry_with_locked_entries(
+                                            folder_name,
+                                            &scenery_info.category,
+                                            &locked_scenery_folder_names,
+                                        )
+                                        .await
                                     {
                                         logger::log_error(
                                             &format!(
@@ -2314,10 +2383,52 @@ mod tests {
         assert!(result.is_none(), "Only parent dir should be rejected");
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn test_sanitize_path_replaces_windows_invalid_characters() {
+        let path = Path::new("folder/Project: Yak-18T?/livery*.png");
+        let result = sanitize_path(path);
+        assert_eq!(
+            result,
+            Some(PathBuf::from("folder/Project_ Yak-18T_/livery_.png"))
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_sanitize_path_trims_windows_trailing_dots_and_spaces() {
+        let path = Path::new("folder./subdir ../file.txt. ");
+        let result = sanitize_path(path);
+        assert_eq!(result, Some(PathBuf::from("folder/subdir/file.txt")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_sanitize_path_rewrites_windows_reserved_names() {
+        let path = Path::new("CON.txt/AUX/COM1.cfg/LPT9");
+        let result = sanitize_path(path);
+        assert_eq!(result, Some(PathBuf::from("CON_.txt/AUX_/COM1_.cfg/LPT9_")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_sanitize_path_rewrites_windows_empty_segments() {
+        let path = Path::new("folder/.../   ");
+        let result = sanitize_path(path);
+        assert_eq!(result, Some(PathBuf::from("folder/_/_")));
+    }
+
     #[test]
     fn test_zip_bomb_constants() {
         // Verify constants are reasonable
         assert_eq!(MAX_EXTRACTION_SIZE, 20 * 1024 * 1024 * 1024); // 20 GB
         assert_eq!(MAX_COMPRESSION_RATIO, 100); // 100:1
+    }
+
+    #[test]
+    fn inline_7z_hashes_enabled_only_for_non_nested_verified_tasks() {
+        assert!(should_compute_inline_7z_hashes(true, false));
+        assert!(!should_compute_inline_7z_hashes(true, true));
+        assert!(!should_compute_inline_7z_hashes(false, false));
     }
 }

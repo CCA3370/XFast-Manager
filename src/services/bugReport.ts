@@ -19,7 +19,8 @@ export interface SubmitBugReportParams {
 
 const DEFAULT_BUG_REPORT_TIMEOUT_MS = 20000
 const ISSUE_DRAFT_API_BASE =
-  import.meta.env.VITE_XFAST_ISSUE_DRAFT_API_URL || 'https://x-fast-manager.vercel.app/api/issue-draft'
+  import.meta.env.VITE_XFAST_ISSUE_DRAFT_API_URL ||
+  'https://x-fast-manager.vercel.app/api/issue-draft'
 
 function buildFallbackBugReportUrl(errorTitle: string, errorMessage: string, logs: string): string {
   const fallbackTitle = `[Bug]: ${(errorTitle || errorMessage).slice(0, 80)}`
@@ -72,7 +73,10 @@ async function trackReportedIssue(
       await issueTrackerStore.appendTrackedIssue(newEntry)
       return
     } catch (storeErr) {
-      logError(`Failed to append tracked issue via store, fallback to storage: ${storeErr}`, 'bug-report')
+      logError(
+        `Failed to append tracked issue via store, fallback to storage: ${storeErr}`,
+        'bug-report',
+      )
     }
 
     const existing = (await getItem<TrackedIssue[]>(STORAGE_KEYS.REPORTED_ISSUES)) ?? []

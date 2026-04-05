@@ -3,8 +3,12 @@
 //! This module writes and sorts the scenery_packs.ini file using the index as source of truth
 //! based on scenery classifications.
 
+use crate::database::SceneryQueries;
 use crate::logger;
-use crate::models::{SceneryCategory, SceneryPackEntry};
+use crate::models::{
+    is_global_airports_folder_name, SceneryCategory, SceneryPackEntry, SceneryPackageInfo,
+    GLOBAL_AIRPORTS_ENTRY_NAME,
+};
 use crate::scenery_index::SceneryIndexManager;
 use anyhow::{anyhow, Result};
 use chrono::Local;
@@ -14,6 +18,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const INI_HEADER: &str = "I\n1000 Version\nSCENERY\n\n";
+const GLOBAL_AIRPORTS_ENABLED_METADATA_KEY: &str = "global_airports_enabled";
+const GLOBAL_AIRPORTS_SORT_ORDER_METADATA_KEY: &str = "global_airports_sort_order";
+const GLOBAL_AIRPORTS_CATEGORY_METADATA_KEY: &str = "global_airports_category";
 
 /// Normalize a scenery path for scenery_packs.ini
 /// Converts backslashes to forward slashes and ensures trailing slash
@@ -26,6 +33,108 @@ fn normalize_scenery_path(path: &str) -> String {
     } else {
         format!("{}/", normalized)
     }
+}
+
+fn entry_path_for_ini(entry: &SceneryPackEntry) -> String {
+    if entry.is_global_airports {
+        entry.path.clone()
+    } else {
+        normalize_scenery_path(&entry.path)
+    }
+}
+
+fn is_global_airports_package(info: &SceneryPackageInfo) -> bool {
+    info.category == SceneryCategory::DefaultAirport
+        || is_global_airports_folder_name(&info.folder_name)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GlobalAirportsState {
+    pub enabled: bool,
+    pub sort_order: u32,
+    pub category: SceneryCategory,
+}
+
+fn sort_visible_entries<T>(entries: &mut [(u32, bool, T)]) {
+    entries.sort_by(|(sort_a, global_a, _), (sort_b, global_b, _)| {
+        sort_a.cmp(sort_b).then_with(|| global_b.cmp(global_a))
+    });
+}
+
+fn build_entries_from_sorted_packages(
+    packages: &[&SceneryPackageInfo],
+    global_airports: &GlobalAirportsState,
+) -> Vec<SceneryPackEntry> {
+    let mut entries: Vec<(u32, bool, SceneryPackEntry)> = Vec::new();
+
+    for info in packages {
+        if is_global_airports_package(info) {
+            continue;
+        }
+
+        // Skip disabled Unrecognized packages - they should not be written to scenery_packs.ini
+        // Enabled Unrecognized packages WILL be written to ini
+        if info.category == SceneryCategory::Unrecognized && !info.enabled {
+            continue;
+        }
+
+        let path = if let Some(actual_path) = &info.actual_path {
+            actual_path.clone()
+        } else {
+            format!("Custom Scenery/{}/", info.folder_name)
+        };
+
+        entries.push((
+            info.sort_order,
+            false,
+            SceneryPackEntry {
+                enabled: info.enabled,
+                path,
+                is_global_airports: false,
+            },
+        ));
+    }
+
+    entries.push((
+        global_airports.sort_order,
+        true,
+        SceneryPackEntry {
+            enabled: global_airports.enabled,
+            path: GLOBAL_AIRPORTS_ENTRY_NAME.to_string(),
+            is_global_airports: true,
+        },
+    ));
+
+    sort_visible_entries(&mut entries);
+    entries.into_iter().map(|(_, _, entry)| entry).collect()
+}
+
+fn parse_ini_entries(content: &str) -> Vec<SceneryPackEntry> {
+    let mut entries = Vec::new();
+
+    for line in content.lines() {
+        let line = line.trim();
+        let (enabled, path) = if let Some(path) = line.strip_prefix("SCENERY_PACK_DISABLED ") {
+            (false, path)
+        } else if let Some(path) = line.strip_prefix("SCENERY_PACK ") {
+            (true, path)
+        } else {
+            continue;
+        };
+
+        let is_global_airports = path.contains("*GLOBAL_AIRPORTS*");
+        entries.push(SceneryPackEntry {
+            enabled,
+            path: if is_global_airports {
+                GLOBAL_AIRPORTS_ENTRY_NAME.to_string()
+            } else {
+                path.trim().to_string()
+            },
+            is_global_airports,
+        });
+    }
+
+    entries
 }
 
 /// Manager for scenery_packs.ini operations
@@ -46,6 +155,162 @@ impl SceneryPacksManager {
         }
     }
 
+    fn default_global_airports_enabled(packages: &[&SceneryPackageInfo]) -> bool {
+        packages
+            .iter()
+            .find(|info| is_global_airports_package(info))
+            .map(|info| info.enabled)
+            .unwrap_or(true)
+    }
+
+    fn default_global_airports_sort_order(packages: &[&SceneryPackageInfo]) -> u32 {
+        let mut visible_packages: Vec<_> = packages
+            .iter()
+            .copied()
+            .filter(|info| {
+                !is_global_airports_package(info)
+                    && !(info.category == SceneryCategory::Unrecognized && !info.enabled)
+            })
+            .collect();
+        visible_packages.sort_by_key(|info| info.sort_order);
+
+        visible_packages
+            .iter()
+            .position(|info| info.category.priority() >= SceneryCategory::DefaultAirport.priority())
+            .unwrap_or(visible_packages.len()) as u32
+    }
+
+    fn default_global_airports_category() -> SceneryCategory {
+        SceneryCategory::DefaultAirport
+    }
+
+    pub async fn get_global_airports_state_for_packages(
+        &self,
+        packages: &[&SceneryPackageInfo],
+    ) -> Result<GlobalAirportsState> {
+        let enabled = match SceneryQueries::get_metadata(
+            &self.db,
+            GLOBAL_AIRPORTS_ENABLED_METADATA_KEY,
+        )
+        .await
+        {
+            Ok(Some(value)) => !matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "0" | "false" | "no"
+            ),
+            Ok(None) => Self::default_global_airports_enabled(packages),
+            Err(error) => {
+                logger::log_info(
+                    &format!("Failed to load Global Airports enabled metadata: {}", error),
+                    Some("scenery_packs"),
+                );
+                Self::default_global_airports_enabled(packages)
+            }
+        };
+
+        let sort_order =
+            match SceneryQueries::get_metadata(&self.db, GLOBAL_AIRPORTS_SORT_ORDER_METADATA_KEY)
+                .await
+            {
+                Ok(Some(value)) => value
+                    .trim()
+                    .parse::<u32>()
+                    .unwrap_or_else(|_| Self::default_global_airports_sort_order(packages)),
+                Ok(None) => Self::default_global_airports_sort_order(packages),
+                Err(error) => {
+                    logger::log_info(
+                        &format!("Failed to load Global Airports sort metadata: {}", error),
+                        Some("scenery_packs"),
+                    );
+                    Self::default_global_airports_sort_order(packages)
+                }
+            };
+
+        let category =
+            match SceneryQueries::get_metadata(&self.db, GLOBAL_AIRPORTS_CATEGORY_METADATA_KEY)
+                .await
+            {
+                Ok(Some(value)) => match value.trim() {
+                    "FixedHighPriority" => SceneryCategory::FixedHighPriority,
+                    "Airport" => SceneryCategory::Airport,
+                    "DefaultAirport" => SceneryCategory::DefaultAirport,
+                    "Library" => SceneryCategory::Library,
+                    "Overlay" => SceneryCategory::Overlay,
+                    "AirportMesh" => SceneryCategory::AirportMesh,
+                    "Mesh" => SceneryCategory::Mesh,
+                    "Other" => SceneryCategory::Other,
+                    "Unrecognized" => SceneryCategory::Unrecognized,
+                    _ => Self::default_global_airports_category(),
+                },
+                Ok(None) => Self::default_global_airports_category(),
+                Err(error) => {
+                    logger::log_info(
+                        &format!(
+                            "Failed to load Global Airports category metadata: {}",
+                            error
+                        ),
+                        Some("scenery_packs"),
+                    );
+                    Self::default_global_airports_category()
+                }
+            };
+
+        Ok(GlobalAirportsState {
+            enabled,
+            sort_order,
+            category,
+        })
+    }
+
+    pub async fn set_global_airports_enabled(&self, enabled: bool) -> Result<()> {
+        SceneryQueries::set_metadata(
+            &self.db,
+            GLOBAL_AIRPORTS_ENABLED_METADATA_KEY,
+            if enabled { "true" } else { "false" },
+        )
+        .await
+        .map_err(|e| anyhow!("{}", e))
+    }
+
+    pub async fn set_global_airports_sort_order(&self, sort_order: u32) -> Result<()> {
+        SceneryQueries::set_metadata(
+            &self.db,
+            GLOBAL_AIRPORTS_SORT_ORDER_METADATA_KEY,
+            &sort_order.to_string(),
+        )
+        .await
+        .map_err(|e| anyhow!("{}", e))
+    }
+
+    pub async fn set_global_airports_category(&self, category: &SceneryCategory) -> Result<()> {
+        let value = match category {
+            SceneryCategory::FixedHighPriority => "FixedHighPriority",
+            SceneryCategory::Airport => "Airport",
+            SceneryCategory::DefaultAirport => "DefaultAirport",
+            SceneryCategory::Library => "Library",
+            SceneryCategory::Overlay => "Overlay",
+            SceneryCategory::AirportMesh => "AirportMesh",
+            SceneryCategory::Mesh => "Mesh",
+            SceneryCategory::Other => "Other",
+            SceneryCategory::Unrecognized => "Unrecognized",
+        };
+
+        SceneryQueries::set_metadata(&self.db, GLOBAL_AIRPORTS_CATEGORY_METADATA_KEY, value)
+            .await
+            .map_err(|e| anyhow!("{}", e))
+    }
+
+    pub async fn reset_global_airports_position_to_default(&self) -> Result<()> {
+        let index_manager = SceneryIndexManager::new(&self.xplane_path, self.db.clone());
+        let index = index_manager.load_index().await?;
+        let packages: Vec<_> = index.packages.values().collect();
+        let default_sort_order = Self::default_global_airports_sort_order(&packages);
+        self.set_global_airports_sort_order(default_sort_order)
+            .await?;
+        self.set_global_airports_category(&SceneryCategory::DefaultAirport)
+            .await
+    }
+
     fn write_ini_at_path(ini_path: &Path, entries: &[SceneryPackEntry]) -> Result<()> {
         Self::ensure_ini_parent_dir(ini_path)?;
 
@@ -58,13 +323,7 @@ impl SceneryPacksManager {
             } else {
                 "SCENERY_PACK_DISABLED"
             };
-            // Normalize path: convert backslashes to forward slashes and ensure trailing slash
-            // *GLOBAL_AIRPORTS* is special and should not be modified
-            let path = if entry.is_global_airports {
-                entry.path.clone()
-            } else {
-                normalize_scenery_path(&entry.path)
-            };
+            let path = entry_path_for_ini(entry);
             content.extend_from_slice(format!("{} {}\n", prefix, path).as_bytes());
         }
 
@@ -100,9 +359,12 @@ impl SceneryPacksManager {
     }
 
     fn ensure_ini_parent_dir(ini_path: &Path) -> Result<()> {
-        let parent = ini_path
-            .parent()
-            .ok_or_else(|| anyhow!("Invalid ini path: no parent directory ({})", ini_path.display()))?;
+        let parent = ini_path.parent().ok_or_else(|| {
+            anyhow!(
+                "Invalid ini path: no parent directory ({})",
+                ini_path.display()
+            )
+        })?;
 
         fs::create_dir_all(parent).map_err(|e| {
             let hint = if e.to_string().contains("failed to create whole tree") {
@@ -198,6 +460,7 @@ impl SceneryPacksManager {
     }
 
     /// Add a new entry to scenery_packs.ini (used after installation)
+    #[allow(dead_code)]
     pub async fn add_entry(&self, folder_name: &str, category: &SceneryCategory) -> Result<()> {
         self.add_entry_with_locked_entries(folder_name, category, &[])
             .await
@@ -305,56 +568,12 @@ impl SceneryPacksManager {
             }
         }
 
-        // Build entries from index, sorted by sort_order
         let mut packages: Vec<_> = index.packages.values().collect();
         packages.sort_by_key(|p| p.sort_order);
-
-        let mut entries: Vec<SceneryPackEntry> = Vec::new();
-        let mut global_airports_inserted = false;
-
-        for info in packages {
-            // Skip disabled Unrecognized packages - they should not be written to scenery_packs.ini
-            // Enabled Unrecognized packages WILL be written to ini
-            if info.category == SceneryCategory::Unrecognized && !info.enabled {
-                continue;
-            }
-
-            // Insert *GLOBAL_AIRPORTS* before the first DefaultAirport entry
-            // (DefaultAirport has priority 2)
-            if !global_airports_inserted
-                && info.category.priority() >= SceneryCategory::DefaultAirport.priority()
-            {
-                entries.push(SceneryPackEntry {
-                    enabled: true,
-                    path: "*GLOBAL_AIRPORTS*".to_string(),
-                    is_global_airports: true,
-                });
-                global_airports_inserted = true;
-            }
-
-            // Use actual_path if set (for shortcuts pointing outside Custom Scenery),
-            // otherwise use the standard Custom Scenery/{folder_name}/ format
-            let path = if let Some(actual_path) = &info.actual_path {
-                actual_path.clone()
-            } else {
-                format!("Custom Scenery/{}/", info.folder_name)
-            };
-
-            entries.push(SceneryPackEntry {
-                enabled: info.enabled,
-                path,
-                is_global_airports: false,
-            });
-        }
-
-        // If *GLOBAL_AIRPORTS* wasn't inserted yet, add it at the end
-        if !global_airports_inserted {
-            entries.push(SceneryPackEntry {
-                enabled: true,
-                path: "*GLOBAL_AIRPORTS*".to_string(),
-                is_global_airports: true,
-            });
-        }
+        let global_airports = self
+            .get_global_airports_state_for_packages(&packages)
+            .await?;
+        let entries = build_entries_from_sorted_packages(&packages, &global_airports);
 
         // Write sorted entries
         let ini_path = self.ini_path.clone();
@@ -380,8 +599,7 @@ impl SceneryPacksManager {
     }
 
     /// Check if ini file is in sync with the index
-    /// Returns true if ini order/enabled states match index for entries that exist in the index
-    /// Note: Extra entries in the ini (manually added) are ignored
+    /// Returns true if ini order/enabled states match the entries generated from the index.
     pub async fn is_synced_with_index(&self) -> Result<bool> {
         // If ini doesn't exist, it's not synced
         if !self.ini_path.exists() {
@@ -401,57 +619,23 @@ impl SceneryPacksManager {
             .await
             .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
 
-        // Parse ini entries (order matters)
-        let mut ini_entries: Vec<(String, bool)> = Vec::new(); // (folder_name, enabled)
-        for line in content.lines() {
-            let line = line.trim();
-            if line.starts_with("SCENERY_PACK_DISABLED ") {
-                let path = line.trim_start_matches("SCENERY_PACK_DISABLED ");
-                if let Some(folder) = extract_folder_name(path) {
-                    ini_entries.push((folder, false));
-                }
-            } else if line.starts_with("SCENERY_PACK ") {
-                let path = line.trim_start_matches("SCENERY_PACK ");
-                // Skip *GLOBAL_AIRPORTS*
-                if !path.contains("*GLOBAL_AIRPORTS*") {
-                    if let Some(folder) = extract_folder_name(path) {
-                        ini_entries.push((folder, true));
-                    }
-                }
-            }
-        }
-
-        // Build expected order from index
-        // Exclude disabled Unrecognized packages (they are not written to ini)
-        let mut packages: Vec<_> = index
-            .packages
-            .values()
-            .filter(|p| p.category != SceneryCategory::Unrecognized || p.enabled)
-            .collect();
+        let mut packages: Vec<_> = index.packages.values().collect();
         packages.sort_by_key(|p| p.sort_order);
+        let global_airports = self
+            .get_global_airports_state_for_packages(&packages)
+            .await?;
+        let expected_entries = build_entries_from_sorted_packages(&packages, &global_airports);
+        let ini_entries = parse_ini_entries(&content);
 
-        // Filter ini entries to only include entries that exist in the index
-        // This allows manually added entries in the ini to be ignored
-        let ini_entries_filtered: Vec<_> = ini_entries
-            .iter()
-            .filter(|(folder, _)| index.packages.contains_key(folder))
-            .collect();
-
-        // If ini has entries not in the index (e.g., deleted scenery folders),
-        // it's out of sync and needs updating
-        if ini_entries_filtered.len() != ini_entries.len() {
+        if ini_entries.len() != expected_entries.len() {
             return Ok(false);
         }
 
-        // Compare count of index entries
-        if ini_entries_filtered.len() != packages.len() {
-            return Ok(false);
-        }
-
-        // Compare order and enabled state for entries that exist in the index
-        for (i, pkg) in packages.iter().enumerate() {
-            let (ini_folder, ini_enabled) = ini_entries_filtered[i];
-            if ini_folder != &pkg.folder_name || *ini_enabled != pkg.enabled {
+        for (ini_entry, expected_entry) in ini_entries.iter().zip(expected_entries.iter()) {
+            if ini_entry.enabled != expected_entry.enabled
+                || ini_entry.is_global_airports != expected_entry.is_global_airports
+                || entry_path_for_ini(ini_entry) != entry_path_for_ini(expected_entry)
+            {
                 return Ok(false);
             }
         }
@@ -460,20 +644,53 @@ impl SceneryPacksManager {
     }
 }
 
-/// Extract folder name from ini path
-/// e.g., "Custom Scenery/MyScenery/" -> "MyScenery"
-fn extract_folder_name(path: &str) -> Option<String> {
-    let path = path.trim().trim_end_matches('/').trim_end_matches('\\');
-    if let Some(idx) = path.rfind('/').or_else(|| path.rfind('\\')) {
-        Some(path[idx + 1..].to_string())
-    } else {
-        Some(path.to_string())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::SystemTime;
+
+    fn global_airports_state(
+        enabled: bool,
+        sort_order: u32,
+        category: SceneryCategory,
+    ) -> GlobalAirportsState {
+        GlobalAirportsState {
+            enabled,
+            sort_order,
+            category,
+        }
+    }
+
+    fn make_package(
+        folder_name: &str,
+        category: SceneryCategory,
+        sort_order: u32,
+        enabled: bool,
+    ) -> SceneryPackageInfo {
+        SceneryPackageInfo {
+            folder_name: folder_name.to_string(),
+            category,
+            sub_priority: 0,
+            last_modified: SystemTime::UNIX_EPOCH,
+            has_apt_dat: false,
+            airport_id: None,
+            has_dsf: false,
+            has_library_txt: false,
+            has_textures: false,
+            has_objects: false,
+            texture_count: 0,
+            earth_nav_tile_count: 0,
+            indexed_at: SystemTime::UNIX_EPOCH,
+            required_libraries: Vec::new(),
+            missing_libraries: Vec::new(),
+            exported_library_names: Vec::new(),
+            enabled,
+            sort_order,
+            actual_path: None,
+            continent: None,
+            original_category: None,
+        }
+    }
 
     #[test]
     fn test_category_priority_order() {
@@ -488,5 +705,109 @@ mod tests {
         assert!(SceneryCategory::Overlay.priority() < SceneryCategory::AirportMesh.priority());
         assert!(SceneryCategory::AirportMesh.priority() < SceneryCategory::Mesh.priority());
         assert!(SceneryCategory::Mesh.priority() < SceneryCategory::Unrecognized.priority());
+    }
+
+    #[test]
+    fn writes_global_airports_once_at_default_airport_position() {
+        let airport = make_package("KSEA Demo", SceneryCategory::Airport, 0, true);
+        let global_airports =
+            make_package("Global Airports", SceneryCategory::DefaultAirport, 1, true);
+        let library = make_package("MisterX Library", SceneryCategory::Library, 2, true);
+        let packages = vec![&airport, &global_airports, &library];
+
+        let entries = build_entries_from_sorted_packages(
+            &packages,
+            &global_airports_state(true, 1, SceneryCategory::DefaultAirport),
+        );
+
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].path, "Custom Scenery/KSEA Demo/");
+        assert!(entries[1].is_global_airports);
+        assert_eq!(entries[1].path, "*GLOBAL_AIRPORTS*");
+        assert_eq!(entries[2].path, "Custom Scenery/MisterX Library/");
+        assert!(!entries
+            .iter()
+            .any(|entry| { !entry.is_global_airports && entry.path.contains("Global Airports") }));
+    }
+
+    #[test]
+    fn ignores_global_airports_package_sort_order_for_special_entry_position() {
+        let global_airports =
+            make_package("Global Airports", SceneryCategory::DefaultAirport, 0, true);
+        let airport = make_package("Airport A", SceneryCategory::Airport, 0, true);
+        let library = make_package("Library A", SceneryCategory::Library, 2, true);
+        let packages = vec![&global_airports, &airport, &library];
+
+        let entries = build_entries_from_sorted_packages(
+            &packages,
+            &global_airports_state(true, 1, SceneryCategory::DefaultAirport),
+        );
+
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].path, "Custom Scenery/Airport A/");
+        assert!(entries[1].is_global_airports);
+        assert_eq!(entries[2].path, "Custom Scenery/Library A/");
+    }
+
+    #[test]
+    fn treats_misclassified_global_airports_folder_as_special_marker() {
+        let airport = make_package("Airport A", SceneryCategory::Airport, 0, true);
+        let global_airports = make_package("Global Airports", SceneryCategory::Airport, 1, false);
+        let overlay = make_package("Overlay Pack", SceneryCategory::Overlay, 2, true);
+        let packages = vec![&airport, &global_airports, &overlay];
+
+        let entries = build_entries_from_sorted_packages(
+            &packages,
+            &global_airports_state(false, 1, SceneryCategory::DefaultAirport),
+        );
+
+        assert_eq!(entries.len(), 3);
+        assert!(entries[1].is_global_airports);
+        assert!(!entries[1].enabled);
+        assert_eq!(entries[2].path, "Custom Scenery/Overlay Pack/");
+    }
+
+    #[test]
+    fn parses_global_airports_and_actual_paths_from_ini() {
+        let content = concat!(
+            "I\n1000 Version\nSCENERY\n\n",
+            "SCENERY_PACK C:\\X-Plane\\Custom Scenery\\Airport A\n",
+            "SCENERY_PACK *GLOBAL_AIRPORTS*\n",
+            "SCENERY_PACK_DISABLED D:/External/Shortcut Scenery/\n"
+        );
+
+        let entries = parse_ini_entries(content);
+
+        assert_eq!(entries.len(), 3);
+        assert_eq!(
+            entry_path_for_ini(&entries[0]),
+            "C:/X-Plane/Custom Scenery/Airport A/"
+        );
+        assert!(entries[1].is_global_airports);
+        assert_eq!(entries[1].path, "*GLOBAL_AIRPORTS*");
+        assert!(!entries[2].enabled);
+        assert_eq!(
+            entry_path_for_ini(&entries[2]),
+            "D:/External/Shortcut Scenery/"
+        );
+    }
+
+    #[test]
+    fn honors_custom_global_airports_sort_order() {
+        let airport = make_package("Airport A", SceneryCategory::Airport, 0, true);
+        let library = make_package("Library A", SceneryCategory::Library, 1, true);
+        let overlay = make_package("Overlay A", SceneryCategory::Overlay, 2, true);
+        let packages = vec![&airport, &library, &overlay];
+
+        let entries = build_entries_from_sorted_packages(
+            &packages,
+            &global_airports_state(true, 2, SceneryCategory::Overlay),
+        );
+
+        assert_eq!(entries.len(), 4);
+        assert_eq!(entries[0].path, "Custom Scenery/Airport A/");
+        assert_eq!(entries[1].path, "Custom Scenery/Library A/");
+        assert!(entries[2].is_global_airports);
+        assert_eq!(entries[3].path, "Custom Scenery/Overlay A/");
     }
 }

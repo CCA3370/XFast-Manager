@@ -423,6 +423,20 @@ pub async fn build_update_plan(
     ));
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
     log_addon_debug(format!("resolved target path {}", target_path.display()));
+    if item_type == "aircraft"
+        && crate::zibo_updater::is_zibo_target_path(folder_name, &target_path)?
+    {
+        log_addon_info("detected zibo aircraft metadata; delegating to zibo updater flow");
+        return crate::zibo_updater::build_update_plan(
+            xplane_path,
+            item_type,
+            folder_name,
+            options,
+            task_control,
+            progress_callback,
+        )
+        .await;
+    }
     enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
     emit_progress_event(
@@ -623,6 +637,22 @@ pub async fn execute_update(
     ));
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
     log_addon_debug(format!("resolved target path {}", target_path.display()));
+    if item_type == "aircraft"
+        && crate::zibo_updater::is_zibo_target_path(folder_name, &target_path)?
+    {
+        log_addon_info(
+            "detected zibo aircraft metadata; delegating to zibo updater execution flow",
+        );
+        return crate::zibo_updater::execute_update(
+            xplane_path,
+            item_type,
+            folder_name,
+            options,
+            task_control,
+            progress_callback,
+        )
+        .await;
+    }
     enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
     emit_progress_event(
@@ -1026,6 +1056,9 @@ fn build_xupdater_plan(
         local_version: context.local_version.clone(),
         remote_version: context.remote_version.clone(),
         remote_module: Some(context.host.clone()),
+        manual_download_url: None,
+        manual_download_reason: None,
+        zibo_install_mode: None,
         remote_locked: false,
         has_update: !add_files.is_empty() || !replace_files.is_empty() || !delete_files.is_empty(),
         estimated_download_bytes,

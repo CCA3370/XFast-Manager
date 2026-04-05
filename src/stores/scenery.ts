@@ -400,7 +400,7 @@ export const useSceneryStore = defineStore('scenery', () => {
   // Delete a scenery entry (folder)
   async function deleteEntry(folderName: string) {
     if (!validateXPlanePath(error)) {
-      throw new Error(error.value)
+      throw new Error(error.value!)
     }
 
     try {

@@ -25,6 +25,7 @@ export interface TaskState {
 
 /** Delay to batch multiple CLI file selections (500ms) */
 const CLI_ARGS_BATCH_DELAY_MS = 500
+const XCSL_DEV_FLAG = '--xcsldev'
 
 export const useAppStore = defineStore('app', () => {
   const xplanePath = ref<string>('')
@@ -38,6 +39,7 @@ export const useAppStore = defineStore('app', () => {
   // Platform detection (initialized at app startup)
   const isWindows = ref(false)
   const isContextMenuRegistered = ref(false)
+  const isXcslDev = ref(false)
 
   // Log level setting (basic, full, debug)
   const logLevel = ref<LogLevel>('full')
@@ -94,14 +96,14 @@ export const useAppStore = defineStore('app', () => {
   // X-Plane launch arguments (default: empty)
   const xplaneLaunchArgs = ref('')
 
-  // Parallel installation (experimental, default: disabled)
-  const parallelInstallEnabled = ref(false)
+  // Parallel installation (default: enabled)
+  const parallelInstallEnabled = ref(true)
   const maxParallelTasks = ref(3)
 
   // Crash analysis: ignore dmp date check (for testing)
   const crashAnalysisIgnoreDateCheck = ref(false)
-  // Crash analysis: deep analysis based on .dmp reports (experimental, default disabled)
-  const crashAnalysisDmpEnabled = ref(false)
+  // Crash analysis: deep analysis based on .dmp reports (default: enabled)
+  const crashAnalysisDmpEnabled = ref(true)
 
   // Confirmation modal state (for exit confirmation)
   const isConfirmationOpen = ref(false)
@@ -289,6 +291,8 @@ export const useAppStore = defineStore('app', () => {
     if (typeof savedIgnoreDateCheck === 'boolean')
       crashAnalysisIgnoreDateCheck.value = savedIgnoreDateCheck
 
+    await applyStableFeatureDefaultsMigration()
+
     // Check if log analysis hint should be shown (first time user)
     const logAnalysisHintShown = await getItem<boolean>(STORAGE_KEYS.LOG_ANALYSIS_HINT_SHOWN)
     if (!logAnalysisHintShown) {
@@ -296,6 +300,21 @@ export const useAppStore = defineStore('app', () => {
     }
 
     isInitialized.value = true
+  }
+
+  async function applyStableFeatureDefaultsMigration() {
+    const migrationApplied = await getItem<boolean>(STORAGE_KEYS.STABLE_FEATURE_DEFAULTS_APPLIED)
+    if (migrationApplied) return
+
+    parallelInstallEnabled.value = true
+    crashAnalysisDmpEnabled.value = true
+
+    await Promise.all([
+      setItem(STORAGE_KEYS.PARALLEL_INSTALL_ENABLED, true),
+      setItem(STORAGE_KEYS.CRASH_ANALYSIS_DMP_ENABLED, true),
+      setItem(STORAGE_KEYS.ADDON_UPDATE_CHUNKED_DOWNLOAD_ENABLED, true),
+      setItem(STORAGE_KEYS.STABLE_FEATURE_DEFAULTS_APPLIED, true),
+    ])
   }
 
   async function setXplanePath(path: string) {
@@ -352,10 +371,7 @@ export const useAppStore = defineStore('app', () => {
 
   async function toggleCrashAnalysisIgnoreDateCheck() {
     crashAnalysisIgnoreDateCheck.value = !crashAnalysisIgnoreDateCheck.value
-    await setItem(
-      STORAGE_KEYS.CRASH_ANALYSIS_IGNORE_DATE_CHECK,
-      crashAnalysisIgnoreDateCheck.value,
-    )
+    await setItem(STORAGE_KEYS.CRASH_ANALYSIS_IGNORE_DATE_CHECK, crashAnalysisIgnoreDateCheck.value)
   }
 
   async function toggleCrashAnalysisDmpEnabled() {
@@ -547,14 +563,36 @@ export const useAppStore = defineStore('app', () => {
 
   // Set pending CLI args for Home.vue to process
   function setPendingCliArgs(args: string[]) {
-    pendingCliArgs.value = args
+    const fileArgs = splitCliArgs(args)
+    pendingCliArgs.value = fileArgs.length > 0 ? fileArgs : null
+  }
+
+  function splitCliArgs(args: string[]): string[] {
+    const fileArgs: string[] = []
+
+    for (const arg of args) {
+      if (arg === XCSL_DEV_FLAG) {
+        isXcslDev.value = true
+        continue
+      }
+
+      fileArgs.push(arg)
+    }
+
+    return fileArgs
   }
 
   // Add CLI args to batch (for handling multiple file selections)
   // Thread-safe: Uses Set for deduplication and reactive timer for proper cleanup
   function addCliArgsToBatch(args: string[]) {
+    const fileArgs = splitCliArgs(args)
+
+    if (fileArgs.length === 0) {
+      return []
+    }
+
     // Add new args to batch using Set for automatic deduplication
-    args.forEach((arg) => cliArgsBatch.value.add(arg))
+    fileArgs.forEach((arg) => cliArgsBatch.value.add(arg))
 
     // Clear existing timer if any
     if (cliArgsBatchTimerId.value !== null) {
@@ -580,6 +618,8 @@ export const useAppStore = defineStore('app', () => {
       }
       cliArgsBatchTimerId.value = null
     }, CLI_ARGS_BATCH_DELAY_MS)
+
+    return fileArgs
   }
 
   // Clear pending CLI args after processing
@@ -626,6 +666,7 @@ export const useAppStore = defineStore('app', () => {
     isAnalyzeInProgress,
     isWindows,
     isContextMenuRegistered,
+    isXcslDev,
     installPreferences,
     verificationPreferences,
     atomicInstallEnabled,

@@ -7,8 +7,9 @@ use crate::database::{SceneryQueries, CURRENT_SCHEMA_VERSION};
 use crate::logger;
 use crate::management_index::read_version_from_paths;
 use crate::models::{
-    SceneryCategory, SceneryIndex, SceneryIndexScanResult, SceneryIndexStats, SceneryIndexStatus,
-    SceneryManagerData, SceneryManagerEntry, SceneryPackageInfo,
+    is_global_airports_folder_name, SceneryCategory, SceneryIndex, SceneryIndexScanResult,
+    SceneryIndexStats, SceneryIndexStatus, SceneryManagerData, SceneryManagerEntry,
+    SceneryPackageInfo, GLOBAL_AIRPORTS_ENTRY_NAME,
 };
 use crate::scenery_classifier::classify_scenery;
 use anyhow::{anyhow, Result};
@@ -341,6 +342,219 @@ fn compare_packages_for_sorting(
     }
 }
 
+fn compare_fixed_high_priority_packages(
+    name_a: &str,
+    info_a: &SceneryPackageInfo,
+    name_b: &str,
+    info_b: &SceneryPackageInfo,
+) -> std::cmp::Ordering {
+    // Keep Lines3D at the absolute top of FixedHighPriority.
+    let lines3d_a = is_lines3d_folder_name(name_a);
+    let lines3d_b = is_lines3d_folder_name(name_b);
+    match lines3d_b.cmp(&lines3d_a) {
+        std::cmp::Ordering::Equal => {}
+        other => return other,
+    }
+
+    // Keep SAM entries near the top, after Lines3D.
+    let sam_a = is_sam_folder_name(name_a);
+    let sam_b = is_sam_folder_name(name_b);
+    match sam_b.cmp(&sam_a) {
+        std::cmp::Ordering::Equal => {}
+        other => return other,
+    }
+
+    match info_a.sort_order.cmp(&info_b.sort_order) {
+        std::cmp::Ordering::Equal => name_a.to_lowercase().cmp(&name_b.to_lowercase()),
+        other => other,
+    }
+}
+
+fn is_darkblue_folder_name(folder_name: &str) -> bool {
+    folder_name
+        .get(..9)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("DarkBlue-"))
+}
+
+fn is_darkblue_package_linked_to_airport_by_prefix(
+    package_folder_name: &str,
+    airport_folder_name: &str,
+) -> bool {
+    let package_lower = package_folder_name.to_lowercase();
+    let airport_lower = airport_folder_name.to_lowercase();
+    if !package_lower.starts_with(&airport_lower) {
+        return false;
+    }
+
+    let suffix = &package_folder_name[airport_folder_name.len()..];
+    suffix.starts_with('_') || suffix.starts_with('-')
+}
+
+fn find_darkblue_airport_folder_for_package(
+    package_folder_name: &str,
+    airport_folder_names: &[String],
+) -> Option<String> {
+    let mut best_match: Option<String> = None;
+
+    for airport_folder_name in airport_folder_names {
+        if !is_darkblue_package_linked_to_airport_by_prefix(
+            package_folder_name,
+            airport_folder_name,
+        ) {
+            continue;
+        }
+
+        let should_replace = match best_match.as_ref() {
+            Some(current) => airport_folder_name.len() > current.len(),
+            None => true,
+        };
+
+        if should_replace {
+            best_match = Some(airport_folder_name.clone());
+        }
+    }
+
+    best_match
+}
+
+fn apply_darkblue_airport_package_anchors(
+    packages: &mut Vec<SceneryPackageInfo>,
+    airport_mesh_matches: &HashMap<String, String>,
+) {
+    if packages.is_empty() {
+        return;
+    }
+
+    let ordered_names: Vec<String> = packages.iter().map(|pkg| pkg.folder_name.clone()).collect();
+    let darkblue_airport_folders: Vec<String> = packages
+        .iter()
+        .filter(|pkg| pkg.category == SceneryCategory::Airport)
+        .filter(|pkg| is_darkblue_folder_name(&pkg.folder_name))
+        .map(|pkg| pkg.folder_name.clone())
+        .collect();
+    let available_names: HashSet<String> = ordered_names.iter().cloned().collect();
+    let mut anchors_by_airport: HashMap<String, Vec<String>> = HashMap::new();
+    let mut anchored_names: HashSet<String> = HashSet::new();
+
+    for pkg in packages.iter() {
+        if !matches!(
+            pkg.category,
+            SceneryCategory::Overlay | SceneryCategory::AirportMesh
+        ) || !is_darkblue_folder_name(&pkg.folder_name)
+        {
+            continue;
+        }
+
+        let airport_folder = airport_mesh_matches
+            .get(&pkg.folder_name)
+            .cloned()
+            .or_else(|| {
+                find_darkblue_airport_folder_for_package(
+                    &pkg.folder_name,
+                    &darkblue_airport_folders,
+                )
+            });
+
+        let Some(airport_folder) = airport_folder else {
+            continue;
+        };
+        if !available_names.contains(&airport_folder) {
+            continue;
+        }
+
+        anchors_by_airport
+            .entry(airport_folder)
+            .or_default()
+            .push(pkg.folder_name.clone());
+        anchored_names.insert(pkg.folder_name.clone());
+    }
+
+    if anchored_names.is_empty() {
+        return;
+    }
+
+    let mut package_map: HashMap<String, SceneryPackageInfo> = packages
+        .drain(..)
+        .map(|pkg| (pkg.folder_name.clone(), pkg))
+        .collect();
+    let mut reordered = Vec::with_capacity(ordered_names.len());
+
+    for name in &ordered_names {
+        if anchored_names.contains(name) {
+            continue;
+        }
+
+        if let Some(pkg) = package_map.remove(name) {
+            reordered.push(pkg);
+        }
+
+        if let Some(anchored) = anchors_by_airport.get(name) {
+            for anchored_name in anchored {
+                if let Some(pkg) = package_map.remove(anchored_name) {
+                    reordered.push(pkg);
+                }
+            }
+        }
+    }
+
+    // Any unmatched leftovers keep their original relative order.
+    for name in &ordered_names {
+        if let Some(pkg) = package_map.remove(name) {
+            reordered.push(pkg);
+        }
+    }
+
+    *packages = reordered;
+}
+
+fn apply_airport_mesh_matches(
+    packages: &mut [SceneryPackageInfo],
+    airport_mesh_matches: &HashMap<String, String>,
+) -> bool {
+    let mut category_changed = false;
+
+    for pkg in packages.iter_mut() {
+        if pkg.category == SceneryCategory::Mesh
+            && airport_mesh_matches.contains_key(&pkg.folder_name)
+        {
+            pkg.category = SceneryCategory::AirportMesh;
+            category_changed = true;
+        }
+    }
+
+    category_changed
+}
+
+fn sort_packages_with_special_rules(
+    xplane_path: &Path,
+    packages: &mut Vec<SceneryPackageInfo>,
+) -> bool {
+    let airport_mesh_matches = detect_airport_mesh_matches_with_path(xplane_path, packages);
+    let category_changed = apply_airport_mesh_matches(packages, &airport_mesh_matches);
+
+    let mut fixed_packages = Vec::new();
+    let mut other_packages = Vec::new();
+
+    for pkg in packages.drain(..) {
+        if pkg.category == SceneryCategory::FixedHighPriority {
+            fixed_packages.push(pkg);
+        } else {
+            other_packages.push(pkg);
+        }
+    }
+
+    fixed_packages
+        .sort_by(|a, b| compare_fixed_high_priority_packages(&a.folder_name, a, &b.folder_name, b));
+    other_packages
+        .sort_by(|a, b| compare_packages_for_sorting(&a.folder_name, a, &b.folder_name, b));
+
+    fixed_packages.extend(other_packages);
+    apply_darkblue_airport_package_anchors(&mut fixed_packages, &airport_mesh_matches);
+    *packages = fixed_packages;
+
+    category_changed
+}
+
 /// Manager for scenery index operations
 pub struct SceneryIndexManager {
     xplane_path: PathBuf,
@@ -543,12 +757,8 @@ impl SceneryIndexManager {
                 packages_vec.push(info);
             }
 
-            // Post-process: Detect airport-associated mesh packages
-            detect_airport_mesh_packages_with_path(&xplane_path, &mut packages_vec);
-
-            // Sort packages using the common sorting function
-            packages_vec
-                .sort_by(|a, b| compare_packages_for_sorting(&a.folder_name, a, &b.folder_name, b));
+            // Apply shared post-processing and sorting rules.
+            sort_packages_with_special_rules(&xplane_path, &mut packages_vec);
 
             // Assign sort_order and set default enabled state
             // Fresh rebuild: Unrecognized packages default to disabled, others default to enabled
@@ -635,13 +845,20 @@ impl SceneryIndexManager {
 
     /// Recalculate sort_order for all packages using the same sorting logic as rebuild_index
     /// This ensures incremental updates produce consistent ordering with full rebuilds
-    fn recalculate_sort_order(index: &mut SceneryIndex) {
+    fn recalculate_sort_order(index: &mut SceneryIndex, xplane_path: &Path) {
         if index.packages.is_empty() {
             return;
         }
 
         // Promote special high-priority libraries (Lines3D, SAM) before sorting.
         for (name, info) in index.packages.iter_mut() {
+            if is_global_airports_folder_name(name)
+                && (info.category != SceneryCategory::DefaultAirport || info.sub_priority != 0)
+            {
+                info.category = SceneryCategory::DefaultAirport;
+                info.sub_priority = 0;
+            }
+
             if should_promote_to_fixed_high_priority(name, info)
                 && info.category != SceneryCategory::FixedHighPriority
             {
@@ -650,62 +867,18 @@ impl SceneryIndexManager {
             }
         }
 
-        // Separate FixedHighPriority packages (preserve their relative order)
-        let mut fixed_packages: Vec<(&String, &SceneryPackageInfo)> = index
-            .packages
-            .iter()
-            .filter(|(_, info)| info.category == SceneryCategory::FixedHighPriority)
-            .collect();
+        let mut packages_vec: Vec<SceneryPackageInfo> =
+            index.packages.drain().map(|(_, v)| v).collect();
+        sort_packages_with_special_rules(xplane_path, &mut packages_vec);
+        let package_count = packages_vec.len();
 
-        fixed_packages.sort_by(|(name_a, info_a), (name_b, info_b)| {
-            let lines3d_a = is_lines3d_folder_name(name_a);
-            let lines3d_b = is_lines3d_folder_name(name_b);
-            match lines3d_b.cmp(&lines3d_a) {
-                std::cmp::Ordering::Equal => {}
-                other => return other,
-            }
-
-            let sam_a = is_sam_folder_name(name_a);
-            let sam_b = is_sam_folder_name(name_b);
-            match sam_b.cmp(&sam_a) {
-                std::cmp::Ordering::Equal => {}
-                other => return other,
-            }
-            match info_a.sort_order.cmp(&info_b.sort_order) {
-                std::cmp::Ordering::Equal => name_a.to_lowercase().cmp(&name_b.to_lowercase()),
-                other => other,
-            }
-        });
-
-        // Sort other packages using the common sorting function
-        let mut other_packages: Vec<(&String, &SceneryPackageInfo)> = index
-            .packages
-            .iter()
-            .filter(|(_, info)| info.category != SceneryCategory::FixedHighPriority)
-            .collect();
-
-        other_packages.sort_by(|(name_a, info_a), (name_b, info_b)| {
-            compare_packages_for_sorting(name_a, info_a, name_b, info_b)
-        });
-
-        // Collect sorted names and update sort_order
-        let sorted_names: Vec<String> = fixed_packages
-            .iter()
-            .map(|(name, _)| (*name).clone())
-            .chain(other_packages.iter().map(|(name, _)| (*name).clone()))
-            .collect();
-
-        for (new_order, folder_name) in sorted_names.iter().enumerate() {
-            if let Some(info) = index.packages.get_mut(folder_name) {
-                info.sort_order = new_order as u32;
-            }
+        for (new_order, mut info) in packages_vec.into_iter().enumerate() {
+            info.sort_order = new_order as u32;
+            index.packages.insert(info.folder_name.clone(), info);
         }
 
         logger::log_info(
-            &format!(
-                "Recalculated sort order for {} packages",
-                sorted_names.len()
-            ),
+            &format!("Recalculated sort order for {} packages", package_count),
             Some("scenery_index"),
         );
     }
@@ -886,18 +1059,9 @@ impl SceneryIndexManager {
                     index.packages.insert(info.folder_name.clone(), info);
                 }
 
-                // Before recalculate_sort_order, detect airport mesh packages (same as rebuild_index)
-                let mut packages_vec: Vec<SceneryPackageInfo> =
-                    index.packages.drain().map(|(_, v)| v).collect();
-                detect_airport_mesh_packages_with_path(&xplane_path, &mut packages_vec);
-                index.packages = packages_vec
-                    .into_iter()
-                    .map(|info| (info.folder_name.clone(), info))
-                    .collect();
-
                 // After adding new packages, recalculate sort_order using the same logic as rebuild_index
                 // This ensures incremental updates produce the same ordering as full rebuilds
-                Self::recalculate_sort_order(&mut index);
+                Self::recalculate_sort_order(&mut index, &xplane_path);
 
                 if !locked_anchor_orders.is_empty() {
                     let mut sorted_entries: Vec<(&String, &SceneryPackageInfo)> =
@@ -1236,6 +1400,14 @@ impl SceneryIndexManager {
         // Promote special high-priority libraries (Lines3D, SAM) before sorting.
         let mut category_changed = false;
         for (name, info) in index.packages.iter_mut() {
+            if is_global_airports_folder_name(name)
+                && (info.category != SceneryCategory::DefaultAirport || info.sub_priority != 0)
+            {
+                info.category = SceneryCategory::DefaultAirport;
+                info.sub_priority = 0;
+                category_changed = true;
+            }
+
             if should_promote_to_fixed_high_priority(name, info)
                 && info.category != SceneryCategory::FixedHighPriority
             {
@@ -1245,49 +1417,17 @@ impl SceneryIndexManager {
             }
         }
 
-        // Preserve FixedHighPriority order, but keep SAM entries at the top
-        let mut fixed_packages: Vec<(&String, &SceneryPackageInfo)> = index
-            .packages
+        let mut packages_vec: Vec<SceneryPackageInfo> =
+            index.packages.drain().map(|(_, v)| v).collect();
+        let airport_mesh_category_changed =
+            sort_packages_with_special_rules(&self.xplane_path, &mut packages_vec);
+        let sorted_names: Vec<String> = packages_vec
             .iter()
-            .filter(|(_, info)| info.category == SceneryCategory::FixedHighPriority)
+            .map(|info| info.folder_name.clone())
             .collect();
-
-        fixed_packages.sort_by(|(name_a, info_a), (name_b, info_b)| {
-            let lines3d_a = is_lines3d_folder_name(name_a);
-            let lines3d_b = is_lines3d_folder_name(name_b);
-            match lines3d_b.cmp(&lines3d_a) {
-                std::cmp::Ordering::Equal => {}
-                other => return other,
-            }
-
-            let sam_a = is_sam_folder_name(name_a);
-            let sam_b = is_sam_folder_name(name_b);
-            match sam_b.cmp(&sam_a) {
-                std::cmp::Ordering::Equal => {}
-                other => return other,
-            }
-
-            match info_a.sort_order.cmp(&info_b.sort_order) {
-                std::cmp::Ordering::Equal => name_a.to_lowercase().cmp(&name_b.to_lowercase()),
-                other => other,
-            }
-        });
-
-        let mut other_packages: Vec<(&String, &SceneryPackageInfo)> = index
-            .packages
-            .iter()
-            .filter(|(_, info)| info.category != SceneryCategory::FixedHighPriority)
-            .collect();
-
-        other_packages.sort_by(|(name_a, info_a), (name_b, info_b)| {
-            compare_packages_for_sorting(name_a, info_a, name_b, info_b)
-        });
-
-        // Update sort_order based on sorted position and check for changes
-        let sorted_names: Vec<String> = fixed_packages
-            .iter()
-            .map(|(name, _)| (*name).clone())
-            .chain(other_packages.iter().map(|(name, _)| (*name).clone()))
+        index.packages = packages_vec
+            .into_iter()
+            .map(|info| (info.folder_name.clone(), info))
             .collect();
         let (sort_changed, locked_applied) = Self::apply_sort_order_with_locked_slots(
             &mut index,
@@ -1295,7 +1435,7 @@ impl SceneryIndexManager {
             &locked_folder_names,
             None,
         );
-        let has_changes = category_changed || sort_changed;
+        let has_changes = category_changed || airport_mesh_category_changed || sort_changed;
 
         if has_changes {
             index.last_updated = SystemTime::now();
@@ -1474,35 +1614,83 @@ impl SceneryIndexManager {
         // Detect duplicate airports (same airport_id across multiple packages)
         let duplicate_airports_map = detect_duplicate_airports(&index.packages);
 
-        // Convert to manager entries and sort by sort_order
-        let mut entries: Vec<SceneryManagerEntry> = index
+        let all_packages: Vec<_> = index.packages.values().collect();
+        let global_airports = packs_manager
+            .get_global_airports_state_for_packages(&all_packages)
+            .await?;
+
+        let mut packages: Vec<_> = index
             .packages
             .values()
-            .map(|info| SceneryManagerEntry {
-                folder_name: info.folder_name.clone(),
-                category: info.category.clone(),
-                sub_priority: info.sub_priority,
-                enabled: info.enabled,
-                sort_order: info.sort_order,
-                update_url: read_scenery_update_url(&custom_scenery_path.join(&info.folder_name)),
-                missing_libraries: info.missing_libraries.clone(),
-                required_libraries: info.required_libraries.clone(),
-                continent: info.continent.clone(),
-                duplicate_tiles: duplicate_tiles_map
-                    .get(&info.folder_name)
-                    .cloned()
-                    .unwrap_or_default(),
-                duplicate_airports: duplicate_airports_map
-                    .get(&info.folder_name)
-                    .cloned()
-                    .unwrap_or_default(),
-                airport_id: info.airport_id.clone(),
-                original_category: info.original_category.clone(),
+            .filter(|info| {
+                !(info.category == SceneryCategory::DefaultAirport
+                    || is_global_airports_folder_name(&info.folder_name))
             })
             .collect();
+        let mut entries_with_sort: Vec<(u32, bool, SceneryManagerEntry)> =
+            Vec::with_capacity(packages.len() + 1);
 
-        // Sort by sort_order
-        entries.sort_by_key(|e| e.sort_order);
+        for info in packages.drain(..) {
+            entries_with_sort.push((
+                info.sort_order,
+                false,
+                SceneryManagerEntry {
+                    folder_name: info.folder_name.clone(),
+                    category: info.category.clone(),
+                    sub_priority: info.sub_priority,
+                    enabled: info.enabled,
+                    sort_order: info.sort_order,
+                    update_url: read_scenery_update_url(
+                        &custom_scenery_path.join(&info.folder_name),
+                    ),
+                    missing_libraries: info.missing_libraries.clone(),
+                    required_libraries: info.required_libraries.clone(),
+                    continent: info.continent.clone(),
+                    duplicate_tiles: duplicate_tiles_map
+                        .get(&info.folder_name)
+                        .cloned()
+                        .unwrap_or_default(),
+                    duplicate_airports: duplicate_airports_map
+                        .get(&info.folder_name)
+                        .cloned()
+                        .unwrap_or_default(),
+                    airport_id: info.airport_id.clone(),
+                    original_category: info.original_category.clone(),
+                },
+            ));
+        }
+
+        entries_with_sort.push((
+            global_airports.sort_order,
+            true,
+            SceneryManagerEntry {
+                folder_name: GLOBAL_AIRPORTS_ENTRY_NAME.to_string(),
+                category: global_airports.category.clone(),
+                sub_priority: 0,
+                enabled: global_airports.enabled,
+                sort_order: global_airports.sort_order,
+                update_url: None,
+                missing_libraries: Vec::new(),
+                required_libraries: Vec::new(),
+                continent: None,
+                duplicate_tiles: Vec::new(),
+                duplicate_airports: Vec::new(),
+                airport_id: None,
+                original_category: None,
+            },
+        ));
+
+        entries_with_sort.sort_by(|(sort_a, global_a, _), (sort_b, global_b, _)| {
+            sort_a.cmp(sort_b).then_with(|| global_b.cmp(global_a))
+        });
+
+        let mut entries: Vec<SceneryManagerEntry> = entries_with_sort
+            .into_iter()
+            .map(|(_, _, entry)| entry)
+            .collect();
+        for (index, entry) in entries.iter_mut().enumerate() {
+            entry.sort_order = index as u32;
+        }
 
         // Calculate statistics
         let total_count = entries.len();
@@ -1719,9 +1907,46 @@ fn parse_airport_coords(scenery_path: &Path) -> Option<(i32, i32, Option<String>
     Some((lat_floor, lon_floor, icao_code))
 }
 
-/// Detect and reclassify mesh packages that are associated with airports
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+enum AirportMeshMatchStrength {
+    Prefix = 1,
+    Icao = 2,
+}
+
+fn resolve_airport_mesh_match_for_candidates(
+    pkg: &SceneryPackageInfo,
+    airports: &[(String, Option<String>)],
+    airport_prefixes: &HashSet<String>,
+) -> Option<(String, AirportMeshMatchStrength)> {
+    let folder_upper = pkg.folder_name.to_uppercase();
+
+    // Prefer packages whose folder name contains the ICAO code.
+    for (airport_folder, icao) in airports {
+        if let Some(ref code) = icao {
+            if folder_upper.contains(code) {
+                return Some((airport_folder.clone(), AirportMeshMatchStrength::Icao));
+            }
+        }
+    }
+
+    // If no ICAO match, fall back to the existing prefix-based association rule.
+    if let Some(prefix) = extract_scenery_prefix(&pkg.folder_name) {
+        if airport_prefixes.contains(&prefix) {
+            if let Some((airport_folder, _)) = airports.first() {
+                return Some((airport_folder.clone(), AirportMeshMatchStrength::Prefix));
+            }
+        }
+    }
+
+    None
+}
+
+/// Detect mesh packages that are associated with airports.
 /// Uses an explicit X-Plane path to avoid borrowing &self in blocking contexts.
-fn detect_airport_mesh_packages_with_path(xplane_path: &Path, packages: &mut [SceneryPackageInfo]) {
+fn detect_airport_mesh_matches_with_path(
+    xplane_path: &Path,
+    packages: &[SceneryPackageInfo],
+) -> HashMap<String, String> {
     logger::log_info(
         "Detecting airport-associated mesh packages...",
         Some("scenery_index"),
@@ -1757,12 +1982,15 @@ fn detect_airport_mesh_packages_with_path(xplane_path: &Path, packages: &mut [Sc
         Some("scenery_index"),
     );
 
-    // Step 2: Find mesh packages with small DSF count and matching coordinates
+    // Step 2: Resolve mesh packages with small DSF counts to their matching airport.
     let custom_scenery_path = xplane_path.join("Custom Scenery");
-    let mut mesh_candidates: Vec<(usize, i32, i32)> = Vec::new(); // (package index, lat, lon)
+    let mut matches = HashMap::new();
 
-    for (idx, pkg) in packages.iter().enumerate() {
-        if pkg.category != SceneryCategory::Mesh {
+    for pkg in packages.iter() {
+        if !matches!(
+            pkg.category,
+            SceneryCategory::Mesh | SceneryCategory::AirportMesh
+        ) {
             continue;
         }
 
@@ -1780,10 +2008,10 @@ fn detect_airport_mesh_packages_with_path(xplane_path: &Path, packages: &mut [Sc
                 continue;
             }
 
-            // Check if any DSF coordinate matches an airport
+            let mut best_match: Option<(String, AirportMeshMatchStrength)> = None;
+
             for (lat, lon) in &dsf_coords {
-                if airport_coords.contains_key(&(*lat, *lon)) {
-                    mesh_candidates.push((idx, *lat, *lon));
+                if let Some(airports) = airport_coords.get(&(*lat, *lon)) {
                     crate::log_debug!(
                         &format!(
                             "  Mesh candidate: {} at ({}, {})",
@@ -1791,43 +2019,38 @@ fn detect_airport_mesh_packages_with_path(xplane_path: &Path, packages: &mut [Sc
                         ),
                         "scenery_index"
                     );
-                }
-            }
-        }
-    }
 
-    // Step 3: Resolve candidates and apply classifications
-    for (idx, lat, lon) in mesh_candidates {
-        let pkg = &packages[idx];
-        if let Some(airports) = airport_coords.get(&(lat, lon)) {
-            let mut best_match: Option<(String, Option<String>)> = None;
+                    if let Some(candidate_match) =
+                        resolve_airport_mesh_match_for_candidates(pkg, airports, &airport_prefixes)
+                    {
+                        let should_replace = match best_match.as_ref() {
+                            Some((_, strength)) => candidate_match.1 > *strength,
+                            None => true,
+                        };
 
-            // Prefer packages whose folder name contains the ICAO code
-            for (airport_folder, icao) in airports {
-                if let Some(ref code) = icao {
-                    if pkg.folder_name.to_uppercase().contains(code) {
-                        best_match = Some((airport_folder.clone(), icao.clone()));
-                        break;
+                        if should_replace {
+                            let is_icao_match = candidate_match.1 == AirportMeshMatchStrength::Icao;
+                            best_match = Some(candidate_match);
+                            if is_icao_match {
+                                break;
+                            }
+                        }
                     }
                 }
             }
 
-            // If no ICAO match, try prefix matching
-            if best_match.is_none() {
-                if let Some(prefix) = extract_scenery_prefix(&pkg.folder_name) {
-                    if airport_prefixes.contains(&prefix) {
-                        best_match = airports.first().cloned();
-                    }
-                }
-            }
-
-            if best_match.is_some() {
-                if let Some(pkg) = packages.get_mut(idx) {
-                    pkg.category = SceneryCategory::AirportMesh;
-                }
+            if let Some((airport_folder, _)) = best_match {
+                matches.insert(pkg.folder_name.clone(), airport_folder);
             }
         }
     }
+
+    logger::log_info(
+        &format!("Matched {} airport-associated mesh packages", matches.len()),
+        Some("scenery_index"),
+    );
+
+    matches
 }
 
 /// Get DSF file coordinates from a mesh scenery package
@@ -2097,6 +2320,68 @@ fn extract_scenery_prefix(folder_name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+
+    fn make_package(
+        folder_name: &str,
+        category: SceneryCategory,
+        sort_order: u32,
+    ) -> SceneryPackageInfo {
+        SceneryPackageInfo {
+            folder_name: folder_name.to_string(),
+            category,
+            sub_priority: 0,
+            last_modified: SystemTime::UNIX_EPOCH,
+            has_apt_dat: false,
+            airport_id: None,
+            has_dsf: false,
+            has_library_txt: false,
+            has_textures: false,
+            has_objects: false,
+            texture_count: 0,
+            earth_nav_tile_count: 1,
+            indexed_at: SystemTime::UNIX_EPOCH,
+            required_libraries: Vec::new(),
+            missing_libraries: Vec::new(),
+            exported_library_names: Vec::new(),
+            enabled: true,
+            sort_order,
+            actual_path: None,
+            continent: None,
+            original_category: None,
+        }
+    }
+
+    fn write_test_airport(
+        xplane_root: &Path,
+        folder_name: &str,
+        airport_id: &str,
+        lat: f64,
+        lon: f64,
+    ) {
+        let airport_path = xplane_root
+            .join("Custom Scenery")
+            .join(folder_name)
+            .join("Earth nav data");
+        fs::create_dir_all(&airport_path).unwrap();
+        fs::write(
+            airport_path.join("apt.dat"),
+            format!(
+                "I\n1100 Test\n1 0 0 0 {airport_id} Test Airport\n1302 datum_lat {lat}\n1302 datum_lon {lon}\n1302 icao_code {airport_id}\n"
+            ),
+        )
+        .unwrap();
+    }
+
+    fn write_test_mesh(xplane_root: &Path, folder_name: &str, dsf_name: &str) {
+        let mesh_path = xplane_root
+            .join("Custom Scenery")
+            .join(folder_name)
+            .join("Earth nav data")
+            .join("+40-130");
+        fs::create_dir_all(&mesh_path).unwrap();
+        fs::write(mesh_path.join(dsf_name), b"test").unwrap();
+    }
 
     #[test]
     fn test_empty_index_creation() {
@@ -2144,5 +2429,157 @@ mod tests {
         assert!(!is_lines3d_folder_name(
             "Simple_Ground_Equipment_and_Services"
         ));
+    }
+
+    #[test]
+    fn test_apply_darkblue_airport_package_anchors_moves_darkblue_overlay_and_mesh_below_airport() {
+        let mut packages = vec![
+            make_package("DarkBlue-KSEA", SceneryCategory::Airport, 0),
+            make_package("MisterX Library", SceneryCategory::Library, 1),
+            make_package("DarkBlue-KSEA_Overlays1", SceneryCategory::Overlay, 2),
+            make_package("DarkBlue-KSEA_Overlays2", SceneryCategory::AirportMesh, 3),
+            make_package("Regular-KSEA Mesh", SceneryCategory::AirportMesh, 4),
+        ];
+        let airport_mesh_matches = HashMap::from([
+            (
+                "DarkBlue-KSEA_Overlays2".to_string(),
+                "DarkBlue-KSEA".to_string(),
+            ),
+            ("Regular-KSEA Mesh".to_string(), "DarkBlue-KSEA".to_string()),
+        ]);
+
+        apply_darkblue_airport_package_anchors(&mut packages, &airport_mesh_matches);
+
+        let ordered_names: Vec<&str> = packages
+            .iter()
+            .map(|pkg| pkg.folder_name.as_str())
+            .collect();
+        assert_eq!(
+            ordered_names,
+            vec![
+                "DarkBlue-KSEA",
+                "DarkBlue-KSEA_Overlays1",
+                "DarkBlue-KSEA_Overlays2",
+                "MisterX Library",
+                "Regular-KSEA Mesh"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_apply_darkblue_airport_package_anchors_ignores_unmatched_or_non_darkblue() {
+        let mut packages = vec![
+            make_package("DarkBlue-KSEA", SceneryCategory::Airport, 0),
+            make_package("MisterX Library", SceneryCategory::Library, 1),
+            make_package("DarkBlue-KJFK Overlay", SceneryCategory::Overlay, 2),
+            make_package("DarkBlue-KJFK Mesh", SceneryCategory::AirportMesh, 3),
+            make_package("Regular-KSEA Overlay", SceneryCategory::Overlay, 4),
+        ];
+        let original_names: Vec<String> =
+            packages.iter().map(|pkg| pkg.folder_name.clone()).collect();
+        let airport_mesh_matches = HashMap::from([(
+            "DarkBlue-KJFK Mesh".to_string(),
+            "Missing Airport".to_string(),
+        )]);
+
+        apply_darkblue_airport_package_anchors(&mut packages, &airport_mesh_matches);
+
+        let ordered_names: Vec<String> =
+            packages.iter().map(|pkg| pkg.folder_name.clone()).collect();
+        assert_eq!(ordered_names, original_names);
+    }
+
+    #[test]
+    fn test_sort_packages_with_special_rules_promotes_and_anchors_darkblue_overlays_and_meshes() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_test_airport(temp_dir.path(), "DarkBlue-KSEA", "KSEA", 47.4489, -122.3094);
+        write_test_mesh(temp_dir.path(), "DarkBlue-KSEA_Overlays1", "+47-123.dsf");
+        write_test_mesh(temp_dir.path(), "DarkBlue-KSEA_Overlays2", "+47-123.dsf");
+        write_test_mesh(temp_dir.path(), "Regular-KSEA Mesh", "+47-123.dsf");
+
+        let mut airport = make_package("DarkBlue-KSEA", SceneryCategory::Airport, 0);
+        airport.has_apt_dat = true;
+        airport.airport_id = Some("KSEA".to_string());
+
+        let mut packages = vec![
+            airport,
+            make_package("MisterX Library", SceneryCategory::Library, 1),
+            make_package("DarkBlue-KSEA_Overlays1", SceneryCategory::Overlay, 2),
+            make_package("DarkBlue-KSEA_Overlays2", SceneryCategory::Mesh, 3),
+            make_package("Regular-KSEA Mesh", SceneryCategory::Mesh, 4),
+        ];
+
+        let category_changed = sort_packages_with_special_rules(temp_dir.path(), &mut packages);
+
+        assert!(category_changed);
+        let ordered_names: Vec<&str> = packages
+            .iter()
+            .map(|pkg| pkg.folder_name.as_str())
+            .collect();
+        assert_eq!(
+            ordered_names,
+            vec![
+                "DarkBlue-KSEA",
+                "DarkBlue-KSEA_Overlays1",
+                "DarkBlue-KSEA_Overlays2",
+                "MisterX Library",
+                "Regular-KSEA Mesh"
+            ]
+        );
+        assert_eq!(packages[1].category, SceneryCategory::Overlay);
+        assert_eq!(packages[2].category, SceneryCategory::AirportMesh);
+        assert_eq!(packages[4].category, SceneryCategory::AirportMesh);
+    }
+
+    #[test]
+    fn test_reset_sort_order_detects_darkblue_anchor_difference() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        write_test_airport(temp_dir.path(), "KSEA Demo", "KSEA", 47.4489, -122.3094);
+        write_test_mesh(temp_dir.path(), "DarkBlue-KSEA Mesh", "+47-123.dsf");
+
+        let db = crate::database::open_memory_connection().unwrap();
+        crate::database::apply_migrations(&db).unwrap();
+        let manager = SceneryIndexManager::new(temp_dir.path(), db);
+
+        let mut airport = make_package("KSEA Demo", SceneryCategory::Airport, 0);
+        airport.has_apt_dat = true;
+        airport.airport_id = Some("KSEA".to_string());
+
+        let mut darkblue_mesh = make_package("DarkBlue-KSEA Mesh", SceneryCategory::AirportMesh, 2);
+        darkblue_mesh.airport_id = Some("KSEA".to_string());
+
+        let index = SceneryIndex {
+            version: CURRENT_SCHEMA_VERSION as u32,
+            packages: HashMap::from([
+                ("KSEA Demo".to_string(), airport),
+                (
+                    "MisterX Library".to_string(),
+                    make_package("MisterX Library", SceneryCategory::Library, 1),
+                ),
+                ("DarkBlue-KSEA Mesh".to_string(), darkblue_mesh),
+            ]),
+            last_updated: SystemTime::UNIX_EPOCH,
+        };
+
+        tauri::async_runtime::block_on(manager.save_index(&index)).unwrap();
+        let has_changes = tauri::async_runtime::block_on(
+            manager.reset_sort_order_with_locked_entries(Vec::new()),
+        )
+        .unwrap();
+        assert!(has_changes);
+
+        let updated_index = tauri::async_runtime::block_on(manager.load_index()).unwrap();
+        let mut ordered_entries: Vec<(&String, &SceneryPackageInfo)> =
+            updated_index.packages.iter().collect();
+        ordered_entries.sort_by_key(|(_, info)| info.sort_order);
+        let ordered_names: Vec<&str> = ordered_entries
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+
+        assert_eq!(
+            ordered_names,
+            vec!["KSEA Demo", "DarkBlue-KSEA Mesh", "MisterX Library"]
+        );
     }
 }

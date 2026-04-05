@@ -1,12 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
-import type {
-  MapAirport,
-  MapAirportFilters,
-  MapLayerVisibility,
-  MapPlaneState,
-} from '@/types/map'
+import type { MapAirport, MapAirportFilters, MapLayerVisibility, MapPlaneState } from '@/types/map'
 
 const DEFAULT_MAP_STYLE_URL = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
 
@@ -158,7 +153,10 @@ export const useMapStore = defineStore('map', () => {
     airportFilters.value = {
       ...airportFilters.value,
       ...next,
-      minRunwayCount: Math.max(0, Number(next.minRunwayCount ?? airportFilters.value.minRunwayCount)),
+      minRunwayCount: Math.max(
+        0,
+        Number(next.minRunwayCount ?? airportFilters.value.minRunwayCount),
+      ),
     }
     await setItem(STORAGE_KEYS.MAP_AIRPORT_FILTERS, airportFilters.value)
   }

@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use crc32fast::Hasher;
 use dashmap::DashMap;
 use futures::stream::{self, StreamExt};
+use glob::Pattern;
 use rayon::prelude::*;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -14,6 +15,7 @@ use std::sync::LazyLock;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::Semaphore;
+use walkdir::WalkDir;
 
 use crate::task_control::TaskControl;
 
@@ -75,6 +77,12 @@ pub struct SkunkUpdatePlan {
     pub local_version: Option<String>,
     pub remote_version: Option<String>,
     pub remote_module: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual_download_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual_download_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zibo_install_mode: Option<String>,
     pub remote_locked: bool,
     pub has_update: bool,
     pub estimated_download_bytes: u64,
@@ -187,6 +195,12 @@ struct PreparedUpdate {
     manifest: RemoteManifest,
     module_url: String,
     target_path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+struct LocalRelativeEntry {
+    rel_path: String,
+    is_dir: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -816,22 +830,13 @@ fn build_plan_internal(
     }
 
     if options.apply_blacklist {
-        for rel_path in &prepared.manifest.blacklist {
-            if whitelist_paths.contains(rel_path) {
-                warnings.push(format!(
-                    "Blacklist entry '{}' is also in whitelist; skipped for safety",
-                    rel_path
-                ));
-                continue;
-            }
-            if !include_liveries && is_livery_path(rel_path) {
-                continue;
-            }
-            let local_path = resolve_entry_path(&prepared.target_path, rel_path)?;
-            if local_path.exists() {
-                delete_files.push(rel_path.clone());
-            }
-        }
+        delete_files = expand_blacklist_delete_files(
+            &prepared.target_path,
+            &prepared.manifest.blacklist,
+            &whitelist_paths,
+            include_liveries,
+            &mut warnings,
+        )?;
     }
 
     let mut estimated_download_bytes: u64 = 0;
@@ -843,7 +848,10 @@ fn build_plan_internal(
 
     let local_version = prepared.local.version.clone();
     let remote_version = Some(prepared.remote.version.clone());
-    let has_update = remote_version.as_deref() != local_version.as_deref();
+    let has_update = remote_version.as_deref() != local_version.as_deref()
+        || !add_files.is_empty()
+        || !replace_files.is_empty()
+        || !delete_files.is_empty();
 
     if prepared.remote.locked {
         warnings.push("Remote repository is locked".to_string());
@@ -856,6 +864,9 @@ fn build_plan_internal(
         local_version,
         remote_version,
         remote_module: Some(prepared.module_url.clone()),
+        manual_download_url: None,
+        manual_download_reason: None,
+        zibo_install_mode: None,
         remote_locked: prepared.remote.locked,
         has_update,
         estimated_download_bytes,
@@ -866,6 +877,125 @@ fn build_plan_internal(
         warnings,
         has_beta_config: prepared.local.beta_zone.is_some() || prepared.local.beta_module.is_some(),
     })
+}
+
+fn expand_blacklist_delete_files(
+    target_root: &Path,
+    blacklist: &HashSet<String>,
+    whitelist_paths: &HashSet<String>,
+    include_liveries: bool,
+    warnings: &mut Vec<String>,
+) -> Result<Vec<String>> {
+    if blacklist.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let local_entries = collect_local_relative_entries(target_root)?;
+    if local_entries.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut delete_candidates: HashSet<String> = HashSet::new();
+    let mut matched_blacklist_dirs: HashSet<String> = HashSet::new();
+
+    for blacklist_entry in blacklist {
+        let pattern = match Pattern::new(blacklist_entry) {
+            Ok(pattern) => pattern,
+            Err(e) => {
+                warnings.push(format!(
+                    "Skipped invalid blacklist pattern '{}': {}",
+                    blacklist_entry, e
+                ));
+                continue;
+            }
+        };
+
+        for entry in &local_entries {
+            if pattern.matches(&entry.rel_path) {
+                delete_candidates.insert(entry.rel_path.clone());
+                if entry.is_dir {
+                    matched_blacklist_dirs.insert(entry.rel_path.clone());
+                }
+            }
+        }
+    }
+
+    if !matched_blacklist_dirs.is_empty() {
+        for dir_path in &matched_blacklist_dirs {
+            let prefix = format!("{}/", dir_path);
+            for entry in &local_entries {
+                if entry.rel_path.starts_with(&prefix) {
+                    delete_candidates.insert(entry.rel_path.clone());
+                }
+            }
+        }
+    }
+
+    let mut directory_paths: HashSet<String> = local_entries
+        .iter()
+        .filter(|entry| entry.is_dir)
+        .map(|entry| entry.rel_path.clone())
+        .collect();
+
+    let mut delete_entries: Vec<LocalRelativeEntry> = local_entries
+        .into_iter()
+        .filter(|entry| delete_candidates.contains(&entry.rel_path))
+        .filter(|entry| {
+            if !include_liveries && is_livery_path(&entry.rel_path) {
+                return false;
+            }
+
+            if whitelist_paths.contains(&entry.rel_path) {
+                warnings.push(format!(
+                    "Blacklist entry '{}' is also in whitelist; skipped for safety",
+                    entry.rel_path
+                ));
+                return false;
+            }
+
+            if entry.is_dir {
+                let prefix = format!("{}/", entry.rel_path);
+                if whitelist_paths.iter().any(|path| path.starts_with(&prefix)) {
+                    warnings.push(format!(
+                        "Blacklist directory '{}' contains whitelisted entries; skipped directory delete",
+                        entry.rel_path
+                    ));
+                    return false;
+                }
+            }
+
+            true
+        })
+        .collect();
+
+    delete_entries.sort_by(|a, b| {
+        let a_depth = a.rel_path.matches('/').count();
+        let b_depth = b.rel_path.matches('/').count();
+        b_depth
+            .cmp(&a_depth)
+            .then_with(|| a.is_dir.cmp(&b.is_dir))
+            .then_with(|| a.rel_path.cmp(&b.rel_path))
+    });
+
+    let mut delete_files = Vec::new();
+    let mut seen = HashSet::new();
+
+    for entry in delete_entries {
+        if !seen.insert(entry.rel_path.clone()) {
+            continue;
+        }
+        if entry.is_dir {
+            directory_paths.remove(&entry.rel_path);
+        }
+        delete_files.push(entry.rel_path);
+    }
+
+    delete_files.retain(|path| {
+        let prefix = format!("{}/", path);
+        !directory_paths.iter().any(|dir| dir.starts_with(&prefix))
+    });
+
+    Ok(delete_files)
 }
 
 async fn prepare_update_context(target_path: &Path, use_beta: bool) -> Result<PreparedUpdate> {
@@ -1166,12 +1296,7 @@ async fn download_file_chunked(
                 .header("Range", &range_header)
                 .send()
                 .await
-                .with_context(|| {
-                    format!(
-                        "Failed to download chunk {} of '{}'",
-                        idx, url
-                    )
-                })?;
+                .with_context(|| format!("Failed to download chunk {} of '{}'", idx, url))?;
 
             let status = response.status();
             // If server returns 200 instead of 206, it doesn't support Range for this request
@@ -1181,9 +1306,8 @@ async fn download_file_chunked(
                 let mut stream = response.bytes_stream();
                 while let Some(next_chunk) = stream.next().await {
                     ensure_not_cancelled(task_control.as_ref(), "install")?;
-                    let chunk = next_chunk.with_context(|| {
-                        format!("Failed to stream response body for '{}'", url)
-                    })?;
+                    let chunk = next_chunk
+                        .with_context(|| format!("Failed to stream response body for '{}'", url))?;
                     data.extend_from_slice(&chunk);
                     if let Some(cb) = chunk_progress_callback.as_ref() {
                         cb(rel_path.clone(), chunk.len() as u64);
@@ -1208,9 +1332,8 @@ async fn download_file_chunked(
             let mut stream = response.bytes_stream();
             while let Some(next_chunk) = stream.next().await {
                 ensure_not_cancelled(task_control.as_ref(), "install")?;
-                let chunk = next_chunk.with_context(|| {
-                    format!("Failed to stream chunk {} for '{}'", idx, url)
-                })?;
+                let chunk = next_chunk
+                    .with_context(|| format!("Failed to stream chunk {} for '{}'", idx, url))?;
                 data.extend_from_slice(&chunk);
                 if let Some(cb) = chunk_progress_callback.as_ref() {
                     cb(rel_path.clone(), chunk.len() as u64);
@@ -1239,7 +1362,10 @@ async fn download_file_chunked(
     if full_body_fallback {
         // Find the first chunk's data (which has the complete body)
         chunks.sort_by_key(|(idx, _)| *idx);
-        if let Some((_, data)) = chunks.into_iter().find(|(idx, data)| *idx == 0 && !data.is_empty()) {
+        if let Some((_, data)) = chunks
+            .into_iter()
+            .find(|(idx, data)| *idx == 0 && !data.is_empty())
+        {
             return Ok(data);
         }
         return Err(anyhow!("Range fallback failed: no data from first chunk"));
@@ -1433,6 +1559,57 @@ fn remove_path(path: &Path) -> Result<()> {
         fs::remove_file(path).with_context(|| format!("Failed to remove '{}'", path.display()))?;
     }
     Ok(())
+}
+
+fn collect_local_relative_entries(target_root: &Path) -> Result<Vec<LocalRelativeEntry>> {
+    let mut entries = Vec::new();
+
+    for entry in WalkDir::new(target_root).min_depth(1) {
+        let entry = entry.with_context(|| {
+            format!(
+                "Failed to enumerate local addon content under '{}'",
+                target_root.display()
+            )
+        })?;
+
+        let rel_path = normalize_local_relative_path(target_root, entry.path())?;
+        entries.push(LocalRelativeEntry {
+            rel_path,
+            is_dir: entry.file_type().is_dir(),
+        });
+    }
+
+    Ok(entries)
+}
+
+fn normalize_local_relative_path(target_root: &Path, path: &Path) -> Result<String> {
+    let relative = path.strip_prefix(target_root).with_context(|| {
+        format!(
+            "Failed to strip addon root '{}' from '{}'",
+            target_root.display(),
+            path.display()
+        )
+    })?;
+
+    let mut parts = Vec::new();
+    for component in relative.components() {
+        match component {
+            std::path::Component::Normal(segment) => {
+                parts.push(segment.to_string_lossy().to_string());
+            }
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                return Err(anyhow!("Local addon path escapes root: {}", path.display()));
+            }
+            _ => {}
+        }
+    }
+
+    if parts.is_empty() {
+        return Err(anyhow!("Local addon path is empty: {}", path.display()));
+    }
+
+    Ok(parts.join("/"))
 }
 
 fn update_local_cfg_fields(cfg_path: &Path, remote: &RemoteConfig) -> Result<()> {

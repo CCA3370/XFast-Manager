@@ -1,6 +1,13 @@
 <template>
   <Teleport to="body">
-    <Transition name="modal" :css="false" @enter="onEnter" @leave="onLeave" @enter-cancelled="onEnterCancelled" @leave-cancelled="onLeaveCancelled">
+    <Transition
+      name="modal"
+      :css="false"
+      @enter="onEnter"
+      @leave="onLeave"
+      @enter-cancelled="onEnterCancelled"
+      @leave-cancelled="onLeaveCancelled"
+    >
       <div
         v-if="modal.errorModal.visible"
         class="fixed inset-0 z-[1100] flex items-center justify-center"
@@ -214,8 +221,14 @@ async function submitBugReport() {
 // JavaScript-based animations
 function onEnter(el: Element, done: () => void) {
   // Cancel any pending timers from a previous animation cycle
-  if (enterTimer) { clearTimeout(enterTimer); enterTimer = null }
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (enterTimer) {
+    clearTimeout(enterTimer)
+    enterTimer = null
+  }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
 
   const element = el as HTMLElement
   const backdropEl = backdrop.value
@@ -262,8 +275,14 @@ function onEnter(el: Element, done: () => void) {
 
 function onLeave(el: Element, done: () => void) {
   // Cancel any pending enter timer to prevent stale done() calls
-  if (enterTimer) { clearTimeout(enterTimer); enterTimer = null }
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (enterTimer) {
+    clearTimeout(enterTimer)
+    enterTimer = null
+  }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
 
   const element = el as HTMLElement
   const backdropEl = element.querySelector('.modal-backdrop') as HTMLElement
@@ -296,11 +315,17 @@ function onLeave(el: Element, done: () => void) {
 }
 
 function onEnterCancelled() {
-  if (enterTimer) { clearTimeout(enterTimer); enterTimer = null }
+  if (enterTimer) {
+    clearTimeout(enterTimer)
+    enterTimer = null
+  }
 }
 
 function onLeaveCancelled() {
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
 }
 
 function onKey(e: KeyboardEvent) {
@@ -322,8 +347,14 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  if (enterTimer) { clearTimeout(enterTimer); enterTimer = null }
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (enterTimer) {
+    clearTimeout(enterTimer)
+    enterTimer = null
+  }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
   window.removeEventListener('keydown', onKey)
 })
 

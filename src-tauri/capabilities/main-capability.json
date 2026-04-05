@@ -18,6 +18,8 @@
     "core:event:allow-emit",
     "dialog:allow-open",
     "dialog:default",
-    "store:default"
+    "store:default",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

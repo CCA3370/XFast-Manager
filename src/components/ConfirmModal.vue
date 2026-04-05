@@ -1,6 +1,13 @@
 <template>
   <Teleport to="body">
-    <Transition name="modal" :css="false" @enter="onEnter" @leave="onLeave" @enter-cancelled="onEnterCancelled" @leave-cancelled="onLeaveCancelled">
+    <Transition
+      name="modal"
+      :css="false"
+      @enter="onEnter"
+      @leave="onLeave"
+      @enter-cancelled="onEnterCancelled"
+      @leave-cancelled="onLeaveCancelled"
+    >
       <div v-if="isVisible" class="fixed inset-0 z-[1300] flex items-center justify-center">
         <!-- Backdrop -->
         <div
@@ -57,6 +64,7 @@
               </div>
             </div>
             <button
+              v-if="currentShowCloseButton"
               class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-100 transition-colors p-1 -mr-1 -mt-1"
               @click="handleCancel"
             >
@@ -162,11 +170,13 @@ const props = withDefaults(
     loadingText?: string
     isLoading?: boolean
     variant?: 'warning' | 'danger'
+    hideCloseButton?: boolean
   }>(),
   {
     show: false,
     isLoading: false,
     variant: 'danger',
+    hideCloseButton: false,
   },
 )
 
@@ -220,6 +230,11 @@ const currentType = computed(() => {
   return modal.confirmModal.options?.type || 'danger'
 })
 
+const currentShowCloseButton = computed(() => {
+  if (isLocalMode.value) return !props.hideCloseButton
+  return !modal.confirmModal.options?.hideCloseButton
+})
+
 const currentConfirmText = computed(() => {
   if (isLocalMode.value) return props.confirmText || t('common.confirm')
   return modal.confirmModal.options?.confirmText || t('common.confirm')
@@ -259,8 +274,14 @@ let leaveTimer: ReturnType<typeof setTimeout> | null = null
 // GSAP animations
 function onEnter(_el: Element, done: () => void) {
   // Cancel any pending animations from a previous cycle
-  if (enterTl) { enterTl.kill(); enterTl = null }
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (enterTl) {
+    enterTl.kill()
+    enterTl = null
+  }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
 
   const tl = gsap.timeline({
     onComplete: () => {
@@ -282,8 +303,14 @@ function onEnter(_el: Element, done: () => void) {
 
 function onLeave(el: Element, done: () => void) {
   // Cancel any pending enter animation to prevent stale done() calls
-  if (enterTl) { enterTl.kill(); enterTl = null }
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (enterTl) {
+    enterTl.kill()
+    enterTl = null
+  }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
 
   const element = el as HTMLElement
   const backdropEl = element.querySelector('.modal-backdrop') as HTMLElement
@@ -316,11 +343,17 @@ function onLeave(el: Element, done: () => void) {
 }
 
 function onEnterCancelled() {
-  if (enterTl) { enterTl.kill(); enterTl = null }
+  if (enterTl) {
+    enterTl.kill()
+    enterTl = null
+  }
 }
 
 function onLeaveCancelled() {
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
 }
 
 // Focus management
@@ -357,8 +390,14 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  if (enterTl) { enterTl.kill(); enterTl = null }
-  if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null }
+  if (enterTl) {
+    enterTl.kill()
+    enterTl = null
+  }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
   document.removeEventListener('keydown', handleKeydown)
 })
 </script>

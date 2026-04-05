@@ -150,14 +150,40 @@ export async function xplaneIsApiAvailable(port?: number): Promise<boolean> {
   return invokeCommand<boolean>('xplane_is_api_available', { port: port ?? null })
 }
 
-export async function xplaneGetDataref(name: string, port?: number, index?: number): Promise<unknown> {
-  return invokeCommand<unknown>('xplane_get_dataref', { name, port: port ?? null, index: index ?? null })
+export async function xplaneGetDataref(
+  name: string,
+  port?: number,
+  index?: number,
+): Promise<unknown> {
+  return invokeCommand<unknown>('xplane_get_dataref', {
+    name,
+    port: port ?? null,
+    index: index ?? null,
+  })
 }
 
-export async function xplaneSetDataref(name: string, value: unknown, port?: number, index?: number): Promise<boolean> {
-  return invokeCommand<boolean>('xplane_set_dataref', { name, value, port: port ?? null, index: index ?? null })
+export async function xplaneSetDataref(
+  name: string,
+  value: unknown,
+  port?: number,
+  index?: number,
+): Promise<boolean> {
+  return invokeCommand<boolean>('xplane_set_dataref', {
+    name,
+    value,
+    port: port ?? null,
+    index: index ?? null,
+  })
 }
 
-export async function xplaneActivateCommand(name: string, port?: number, duration?: number): Promise<boolean> {
-  return invokeCommand<boolean>('xplane_activate_command', { name, port: port ?? null, duration: duration ?? null })
+export async function xplaneActivateCommand(
+  name: string,
+  port?: number,
+  duration?: number,
+): Promise<boolean> {
+  return invokeCommand<boolean>('xplane_activate_command', {
+    name,
+    port: port ?? null,
+    duration: duration ?? null,
+  })
 }

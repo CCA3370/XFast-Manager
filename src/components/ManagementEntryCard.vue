@@ -174,6 +174,8 @@ const latestVersion = computed(() => {
 
 const canOpenUpdater = computed(() => {
   if (!(isAircraft(props.entry) || isPlugin(props.entry))) return false
+  if (props.entry.updateProvider === 'x-updater') return false
+  if (props.entry.updateProvider === 'zibo') return true
   const updateUrl = (props.entry.updateUrl || '').toLowerCase()
   if (updateUrl.startsWith('x-updater:')) return false
   return !!updateUrl
@@ -188,6 +190,9 @@ function handleClick(event: MouseEvent) {
 
   const target = event.target as HTMLElement
   if (target.closest('button')) return
+
+  // Do not trigger actions on disabled or locked items
+  if (!props.entry.enabled || isItemLocked.value) return
 
   if (isAircraft(props.entry) && canOpenUpdater.value) {
     emit('update', props.entry.folderName)
@@ -341,12 +346,7 @@ function handleContextMenu(event: MouseEvent) {
         stroke="currentColor"
         viewBox="0 0 24 24"
       >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="3"
-          d="M5 13l4 4L19 7"
-        />
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
       </svg>
     </button>
 
@@ -364,7 +364,10 @@ function handleContextMenu(event: MouseEvent) {
         :aria-label="entry.enabled ? t('contextMenu.disable') : t('contextMenu.enable')"
         @update:model-value="emit('toggle-enabled', entry.folderName)"
       />
-      <span v-if="isToggling" class="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <span
+        v-if="isToggling"
+        class="absolute inset-0 flex items-center justify-center pointer-events-none"
+      >
         <svg class="w-3 h-3 animate-spin text-white" fill="none" viewBox="0 0 24 24">
           <circle
             class="opacity-25"
@@ -410,7 +413,13 @@ function handleContextMenu(event: MouseEvent) {
 
     <button
       v-if="canOpenUpdater"
-      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-white bg-emerald-500 hover:bg-emerald-600 transition-colors"
+      :disabled="!entry.enabled || isItemLocked"
+      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors"
+      :class="
+        !entry.enabled || isItemLocked
+          ? 'text-gray-400 dark:text-gray-500 bg-gray-200 dark:bg-gray-700 cursor-not-allowed'
+          : 'text-white bg-emerald-500 hover:bg-emerald-600'
+      "
       :title="t('management.startUpdate')"
       @click.stop="emit('update', entry.folderName)"
     >

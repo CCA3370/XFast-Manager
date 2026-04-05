@@ -4,7 +4,9 @@
 //! by parsing DSF file headers and checking file system structure.
 
 use crate::geo_regions;
-use crate::models::{DsfHeader, SceneryCategory, SceneryPackageInfo};
+use crate::models::{
+    is_global_airports_folder_name, DsfHeader, SceneryCategory, SceneryPackageInfo,
+};
 use anyhow::{anyhow, Result};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -225,8 +227,17 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
     // Decision Tree:
     // 1. Has apt.dat OR (DSF with WorldEditor creation_agent) → Airport
     if has_apt_dat {
+        let category = if is_global_airports_folder_name(&folder_name) {
+            SceneryCategory::DefaultAirport
+        } else {
+            SceneryCategory::Airport
+        };
         crate::log_debug!(
-            "  ✓ Classified as Airport (has apt.dat)",
+            if category == SceneryCategory::DefaultAirport {
+                "  ✓ Classified as DefaultAirport (Global Airports)"
+            } else {
+                "  ✓ Classified as Airport (has apt.dat)"
+            },
             "scenery_classifier"
         );
 
@@ -260,7 +271,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
 
         return build_package_info(
             folder_name,
-            SceneryCategory::Airport,
+            category,
             scenery_path,
             PackageInfoDetails {
                 has_apt_dat: true,
@@ -279,8 +290,17 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
     if let Some(ref header) = dsf_header_opt {
         if let Some(ref agent) = header.creation_agent {
             if agent.to_lowercase().contains("worldeditor") {
+                let category = if is_global_airports_folder_name(&folder_name) {
+                    SceneryCategory::DefaultAirport
+                } else {
+                    SceneryCategory::Airport
+                };
                 crate::log_debug!(
-                    "  ✓ Classified as Airport (WorldEditor without apt.dat)",
+                    if category == SceneryCategory::DefaultAirport {
+                        "  ✓ Classified as DefaultAirport (Global Airports)"
+                    } else {
+                        "  ✓ Classified as Airport (WorldEditor without apt.dat)"
+                    },
                     "scenery_classifier"
                 );
                 let required = extract_required_libraries(&header.object_references);
@@ -307,7 +327,7 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
 
                 return build_package_info(
                     folder_name,
-                    SceneryCategory::Airport,
+                    category,
                     scenery_path,
                     PackageInfoDetails {
                         has_apt_dat: false,

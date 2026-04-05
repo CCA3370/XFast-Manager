@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { check } from '@tauri-apps/plugin-updater'
+import { relaunch } from '@tauri-apps/plugin-process'
 import type { UpdateInfo } from '@/types'
 import { useToastStore } from './toast'
 import { useModalStore } from './modal'
@@ -29,6 +31,14 @@ export const useUpdateStore = defineStore('update', () => {
   const postUpdateVersion = ref('')
   const postUpdateReleaseNotes = ref('')
   const postUpdateReleaseUrl = ref('')
+
+  // Auto-update state
+  const isDownloading = ref(false)
+  const downloadProgress = ref(0)
+  const downloadedBytes = ref(0)
+  const totalBytes = ref(0)
+  const updateError = ref<string | null>(null)
+  const updatePhase = ref<'idle' | 'downloading' | 'installing' | 'restarting'>('idle')
 
   // Initialization flag
   const isInitialized = ref(false)
@@ -173,21 +183,26 @@ export const useUpdateStore = defineStore('update', () => {
 
   function normalizeVersionTag(version: string): string {
     const withoutPrefix = version.trim().replace(/^v/i, '')
-    const semverCore = withoutPrefix.split('+')[0]?.split('-')[0] ?? withoutPrefix
-    const match = semverCore.match(/\d+(?:\.\d+){0,3}/)
-    if (!match) return semverCore.trim()
+    // Strip build metadata (+...) but preserve pre-release suffix (-...)
+    const withoutBuild = withoutPrefix.split('+')[0] ?? withoutPrefix
+    const dashIndex = withoutBuild.indexOf('-')
+    const numericPart = dashIndex >= 0 ? withoutBuild.slice(0, dashIndex) : withoutBuild
+    const preReleasePart = dashIndex >= 0 ? withoutBuild.slice(dashIndex) : ''
+
+    const match = numericPart.match(/\d+(?:\.\d+){0,3}/)
+    if (!match) return withoutBuild.trim()
 
     const segments = match[0].split('.').map((segment) => {
       const normalized = Number.parseInt(segment, 10)
       return Number.isFinite(normalized) ? String(normalized) : segment
     })
 
-    // Normalize "1.2.3.0" to "1.2.3" for release tag matching.
-    if (segments.length > 3 && segments[segments.length - 1] === '0') {
+    // Normalize "1.2.3.0" to "1.2.3" only for stable releases (no pre-release suffix)
+    if (!preReleasePart && segments.length > 3 && segments[segments.length - 1] === '0') {
       segments.pop()
     }
 
-    return segments.join('.').trim()
+    return (segments.join('.') + preReleasePart).trim()
   }
 
   type ChangelogEntry = {
@@ -212,7 +227,8 @@ export const useUpdateStore = defineStore('update', () => {
     }
 
     return headers.map((header, index) => {
-      const sectionEnd = index + 1 < headers.length ? headers[index + 1].headerStart : markdown.length
+      const sectionEnd =
+        index + 1 < headers.length ? headers[index + 1].headerStart : markdown.length
       const section = markdown.slice(header.headerEnd, sectionEnd).trim()
       return {
         version: header.version,
@@ -226,7 +242,9 @@ export const useUpdateStore = defineStore('update', () => {
 
   function readBundledChangelogSection(version: string): string {
     const normalized = normalizeVersionTag(version)
-    return bundledChangelogEntries.find((entry) => entry.normalizedVersion === normalized)?.section ?? ''
+    return (
+      bundledChangelogEntries.find((entry) => entry.normalizedVersion === normalized)?.section ?? ''
+    )
   }
 
   function getLatestBundledChangelogEntry(): ChangelogEntry | null {
@@ -255,7 +273,7 @@ export const useUpdateStore = defineStore('update', () => {
 
       logDebug(
         `Post-update changelog check rawVersion='${currentVersion}' normalized='${normalizedVersion}' bundledEntries=${bundledChangelogEntries.length} bundledLength=${bundledChangelog.length}`,
-        'update'
+        'update',
       )
 
       if (shownVersion && normalizeVersionTag(shownVersion) === normalizedVersion) {
@@ -267,7 +285,7 @@ export const useUpdateStore = defineStore('update', () => {
         const latestEntry = getLatestBundledChangelogEntry()
         logDebug(
           `No bundled changelog section for v${normalizedVersion}; available=[${getBundledChangelogVersionsPreview()}]`,
-          'update'
+          'update',
         )
 
         if (!latestEntry?.section) {
@@ -278,7 +296,7 @@ export const useUpdateStore = defineStore('update', () => {
         applyChangelog(latestEntry.normalizedVersion, latestEntry.section)
         logBasic(
           `Falling back to latest bundled changelog v${latestEntry.normalizedVersion} for current v${normalizedVersion}`,
-          'update'
+          'update',
         )
         await setItem(STORAGE_KEYS.LAST_SHOWN_CHANGELOG_VERSION, normalizedVersion)
         return
@@ -304,7 +322,7 @@ export const useUpdateStore = defineStore('update', () => {
         const latestEntry = getLatestBundledChangelogEntry()
         logDebug(
           `Current-version changelog miss rawVersion='${currentVersion}' normalized='${normalizedVersion}' available=[${getBundledChangelogVersionsPreview()}]`,
-          'update'
+          'update',
         )
 
         if (!latestEntry?.section) {
@@ -315,7 +333,7 @@ export const useUpdateStore = defineStore('update', () => {
         applyChangelog(latestEntry.normalizedVersion, latestEntry.section)
         logBasic(
           `Falling back to latest bundled changelog v${latestEntry.normalizedVersion} for current v${normalizedVersion}`,
-          'update'
+          'update',
         )
       } else {
         applyChangelog(normalizedVersion, releaseNotes)
@@ -332,6 +350,88 @@ export const useUpdateStore = defineStore('update', () => {
     showPostUpdateChangelog.value = false
   }
 
+  function resetUpdateState() {
+    isDownloading.value = false
+    downloadProgress.value = 0
+    downloadedBytes.value = 0
+    totalBytes.value = 0
+    updateError.value = null
+    updatePhase.value = 'idle'
+  }
+
+  function getUpdaterHeaders(): HeadersInit {
+    return {
+      'X-Include-Prerelease': includePreRelease.value ? '1' : '0',
+    }
+  }
+
+  async function performUpdate() {
+    if (isDownloading.value) return
+
+    resetUpdateState()
+    isDownloading.value = true
+    updatePhase.value = 'downloading'
+    logBasic('Starting auto-update download', 'update')
+
+    try {
+      const update = await check({ headers: getUpdaterHeaders() })
+
+      if (!update) {
+        logDebug('No update found via plugin check', 'update')
+        resetUpdateState()
+        return
+      }
+
+      let contentLength = 0
+      let downloaded = 0
+
+      await update.downloadAndInstall(
+        (event) => {
+          switch (event.event) {
+            case 'Started':
+              contentLength = event.data.contentLength ?? 0
+              totalBytes.value = contentLength
+              logDebug(`Update download started, size: ${contentLength}`, 'update')
+              break
+            case 'Progress':
+              downloaded += event.data.chunkLength
+              downloadedBytes.value = downloaded
+              if (contentLength > 0) {
+                downloadProgress.value = Math.round((downloaded / contentLength) * 100)
+              }
+              break
+            case 'Finished':
+              downloadProgress.value = 100
+              updatePhase.value = 'installing'
+              logBasic('Update download finished, installing...', 'update')
+              break
+          }
+        },
+        { headers: getUpdaterHeaders() },
+      )
+
+      updatePhase.value = 'restarting'
+      logBasic('Update installed, restarting app...', 'update')
+      await relaunch()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logError(`Auto-update failed: ${message}`, 'update')
+      updateError.value = message
+      updatePhase.value = 'idle'
+      isDownloading.value = false
+
+      // For portable exe or other unsupported scenarios, fall back to manual download
+      if (
+        message.includes('not supported') ||
+        message.includes('permission') ||
+        message.includes('portable')
+      ) {
+        toast.warning(t('update.portableNoAutoUpdate'))
+        openReleaseUrl()
+      }
+    }
+  }
+
   return {
     updateInfo,
     showUpdateBanner,
@@ -344,6 +444,12 @@ export const useUpdateStore = defineStore('update', () => {
     postUpdateReleaseNotes,
     postUpdateReleaseUrl,
     isInitialized,
+    isDownloading,
+    downloadProgress,
+    downloadedBytes,
+    totalBytes,
+    updateError,
+    updatePhase,
     initStore,
     checkForUpdates,
     checkAndShowPostUpdateChangelog,
@@ -353,5 +459,7 @@ export const useUpdateStore = defineStore('update', () => {
     openReleaseUrl,
     toggleAutoCheck,
     toggleIncludePreRelease,
+    performUpdate,
+    resetUpdateState,
   }
 })

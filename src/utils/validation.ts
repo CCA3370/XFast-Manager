@@ -99,7 +99,7 @@ export function validateGlobPatterns(patterns: string[]): {
  * ```
  */
 export function validateXPlanePath(
-  errorRef?: { value: string },
+  errorRef?: { value: string | null },
   errorMessage: string = 'X-Plane path not set',
 ): boolean {
   const appStore = useAppStore()

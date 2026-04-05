@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0-beta.1] - 2026-03-28
+
+### Added
+
+- **Configuration Presets** - Added preset save/apply workflow with import/export support for aircraft, plugins, scenery, Lua scripts, and lock states.
+- **Activity Log** - Added a dedicated history page for installs, updates, deletions, enable/disable actions, scenery sorting, and preset applies.
+- **Disk Space Analysis** - Added a disk usage page that scans X-Plane content by category and drills down to per-folder size details.
+- **CSL and ALTITUDE Model Management** - Added a dedicated page to scan, search, install, update, and uninstall multiplayer model packages, with custom path support and queued/cancellable installs.
+- **Gateway Airport Management** - Added a dedicated Gateway browser to search airports, inspect submission history and details, display Gateway feature tags and installed-folder state, warn about conflicting non-Gateway airports with an ignore-and-continue option, install official Gateway sceneries, uninstall installed Gateway airports, and check for Gateway airport updates.
+- **Built-in Zibo Updater** - Added version-aware Zibo update support with torrent downloads, manual download fallback for major-version packages, and preserve options for liveries/config files during major updates.
+- **Screenshot Background Management** - Screenshots can now be set or unset as X-Plane background images directly from Screenshot Manager.
+- **More Interface Languages** - Added Arabic, German, Spanish, French, Hindi, Japanese, Korean, Portuguese, and Russian UI translations.
+
+### Changed
+
+- **Navigation and Quick Access** - Refreshed the top navigation and home/dashboard layout, and added a command palette plus keyboard shortcuts for faster page switching.
+- **Addon Update Planning** - Update tasks now show clearer plan details, including file-level add/replace/delete previews and more transparent download information.
+- **Addon Update Task Safety** - Install/update option controls are now disabled while addon updates are running to prevent conflicting changes mid-task.
+- **Scenery Manager Airport Entries** - Scenery Manager now shows `*GLOBAL_AIRPORTS*` as a real indexed entry and keeps `DarkBlue-` airport mesh/overlay packages directly below their corresponding airport packages.
+- **Nested Archive Performance** - Analysis and installation verification are faster for large wrapped addon packages, especially ZIP files that contain a 7z aircraft archive.
+- **Nested Archive Version Display** - When direct version-file reading is skipped for a nested package, the task list can now fall back to the nested archive filename to show a version label more often.
+- **Stable Feature Defaults** - Parallel Installation, Multi-Threaded Download, and DMP Crash Analysis are now enabled by default and no longer labeled as experimental in Settings.
+
+### Fixed
+
+- **Pre-release Update Downloads** - In-app update downloads now correctly follow the pre-release setting when checking and installing new versions.
+- **Addon Update Cleanup Rules** - Blacklist-based deletions are handled more completely during addon updates, reducing leftover obsolete files.
+- **Nested Archive Installation** - Fixed some nested archive installs producing an empty target folder instead of the actual addon content.
+- **Windows Archive Filename Compatibility** - Archive entries with Windows-invalid filenames are now sanitized during install instead of failing.
+- **Incomplete Aircraft Package Scanning** - Archives missing an expected `Aircraft` folder no longer abort addon analysis as a fatal error.
+
 ## [1.1.2] - 2026-03-06
 
 ### Added

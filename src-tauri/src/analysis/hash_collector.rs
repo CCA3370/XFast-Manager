@@ -14,8 +14,23 @@ impl HashCollector {
         HashCollector
     }
 
+    fn should_collect_hashes(&self, task: &InstallTask) -> bool {
+        task.extraction_chain.is_none()
+    }
+
     /// Collect hashes for a task based on source type
     pub fn collect_hashes(&self, task: &InstallTask) -> Result<HashMap<String, FileHash>> {
+        if !self.should_collect_hashes(task) {
+            crate::logger::log_info(
+                &format!(
+                    "Skipping hash collection for nested archive task: {}",
+                    task.display_name
+                ),
+                Some("hash_collector"),
+            );
+            return Ok(HashMap::new());
+        }
+
         let source = Path::new(&task.source_path);
 
         if source.is_dir() {
@@ -222,5 +237,67 @@ impl HashCollector {
         }
 
         Ok(format!("{:x}", hasher.finalize()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{AddonType, InstallTask};
+
+    fn make_task(extraction_chain: Option<crate::models::ExtractionChain>) -> InstallTask {
+        InstallTask {
+            id: "task".to_string(),
+            addon_type: AddonType::Aircraft,
+            source_path: "archive.zip".to_string(),
+            original_input_path: None,
+            target_path: "Aircraft/Test".to_string(),
+            display_name: "Test".to_string(),
+            conflict_exists: None,
+            archive_internal_root: None,
+            extraction_chain,
+            should_overwrite: false,
+            password: None,
+            estimated_size: None,
+            size_warning: None,
+            size_confirmed: false,
+            existing_navdata_info: None,
+            new_navdata_info: None,
+            existing_version_info: None,
+            new_version_info: None,
+            backup_liveries: true,
+            backup_config_files: true,
+            config_file_patterns: vec![],
+            backup_navdata: true,
+            file_hashes: None,
+            enable_verification: true,
+            livery_aircraft_type: None,
+            livery_aircraft_found: false,
+            flywithlua_installed: false,
+            companion_paths: vec![],
+        }
+    }
+
+    #[test]
+    fn should_collect_hashes_for_regular_task() {
+        let collector = HashCollector::new();
+        let task = make_task(None);
+
+        assert!(collector.should_collect_hashes(&task));
+    }
+
+    #[test]
+    fn should_skip_hash_collection_for_nested_archive_task() {
+        let collector = HashCollector::new();
+        let task = make_task(Some(crate::models::ExtractionChain {
+            archives: vec![crate::models::NestedArchiveInfo {
+                internal_path: "nested.7z".to_string(),
+                password: None,
+                format: "7z".to_string(),
+            }],
+            final_internal_root: None,
+        }));
+
+        assert!(!collector.should_collect_hashes(&task));
     }
 }

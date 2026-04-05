@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [vue()],
   clearScreen: false,
   server: {
-    port: 1420,
+    port: 1431,
     strictPort: true,
     watch: {
       ignored: ['**/src-tauri/**'],

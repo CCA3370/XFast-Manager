@@ -37,6 +37,8 @@ interface TaskUiState {
   status: 'idle' | 'planning' | 'installing' | 'completed' | 'failed' | 'cancelled'
   installing: boolean
   message: string
+  ziboPreserveLiveries: boolean
+  ziboPreserveConfigFiles: boolean
 }
 
 const props = defineProps<{
@@ -102,6 +104,8 @@ function createTaskState(): TaskUiState {
     status: 'idle',
     installing: false,
     message: '',
+    ziboPreserveLiveries: true,
+    ziboPreserveConfigFiles: true,
   }
 }
 
@@ -203,7 +207,9 @@ function onResizeStart(event: PointerEvent) {
 }
 
 function hasInstallingTasks(): boolean {
-  return taskCards.value.some((task) => stateFor(task).installing) || managementStore.isExecutingUpdate
+  return (
+    taskCards.value.some((task) => stateFor(task).installing) || managementStore.isExecutingUpdate
+  )
 }
 
 async function requestCancelAndClose() {
@@ -284,12 +290,37 @@ function remoteVersion(task: AddonUpdateDrawerTask, state: TaskUiState): string 
 
 function planNeedsAction(plan: AddonUpdatePlan | null | undefined): boolean {
   if (!plan) return false
+  if (plan.manualDownloadUrl) return true
   if (plan.hasUpdate) return true
   if ((plan.estimatedDownloadBytes || 0) > 0) return true
   if ((plan.addFiles?.length || 0) > 0) return true
   if ((plan.replaceFiles?.length || 0) > 0) return true
   if ((plan.deleteFiles?.length || 0) > 0) return true
   return false
+}
+
+function isZiboMajorCleanPlan(plan: AddonUpdatePlan | null | undefined): boolean {
+  return plan?.provider === 'zibo' && plan?.ziboInstallMode === 'major-clean'
+}
+
+function manualDownloadButtonText(plan: AddonUpdatePlan | null | undefined): string {
+  if (plan?.manualDownloadReason === 'drive-limit') {
+    return t('management.openAlternativeDownloads')
+  }
+  if (plan?.manualDownloadReason === 'release-page') {
+    return t('management.goToReleasePage')
+  }
+  return t('management.downloadMajorVersion')
+}
+
+function manualDownloadHint(plan: AddonUpdatePlan | null | undefined): string {
+  if (plan?.manualDownloadReason === 'drive-limit') {
+    return t('management.ziboDriveLimitHint')
+  }
+  if (plan?.manualDownloadReason === 'release-page') {
+    return t('management.ziboDriveFileNotUpdatedHint')
+  }
+  return t('management.ziboManualDownloadHint')
 }
 
 function taskHasUpdate(task: AddonUpdateDrawerTask, state: TaskUiState): boolean {
@@ -308,6 +339,16 @@ function localVersionTextClass(task: AddonUpdateDrawerTask, state: TaskUiState):
 
 function targetVersionTextClass(_task: AddonUpdateDrawerTask, _state: TaskUiState): string {
   return 'text-emerald-600 dark:text-emerald-400 font-semibold'
+}
+
+async function openManualDownload(url?: string | null) {
+  const target = String(url || '').trim()
+  if (!target) return
+  try {
+    await invoke('open_url', { url: target })
+  } catch (e) {
+    toast.error(String(e))
+  }
 }
 
 function clearPreferenceRefreshTimer() {
@@ -334,10 +375,7 @@ async function refreshAllTaskPlansAfterPreferenceChange() {
   preferenceRefreshPending.value = false
 }
 
-async function setPreference(
-  key: 'useBeta' | 'includeLiveries',
-  value: boolean,
-) {
+async function setPreference(key: 'useBeta' | 'includeLiveries', value: boolean) {
   const token = ++preferenceMutationToken
   preferenceSaving.value = true
   clearPreferenceRefreshTimer()
@@ -361,6 +399,19 @@ async function setPreference(
     preferenceRefreshTimer = null
     void refreshAllTaskPlansAfterPreferenceChange()
   }, 1000)
+}
+
+function taskUpdateOptionsDisabled(
+  task: AddonUpdateDrawerTask,
+  includePreferenceState = true,
+): boolean {
+  const state = stateFor(task)
+  return (
+    state.loadingPlan ||
+    state.installing ||
+    managementStore.isExecutingUpdate ||
+    (includePreferenceState && (preferenceSaving.value || preferenceRefreshPending.value))
+  )
 }
 
 function isCancelledError(error: unknown): boolean {
@@ -425,6 +476,11 @@ async function startUpdate(task: AddonUpdateDrawerTask) {
     return
   }
 
+  if (state.plan.manualDownloadUrl) {
+    await openManualDownload(state.plan.manualDownloadUrl)
+    return
+  }
+
   if (!planNeedsAction(state.plan)) {
     state.progress = 100
     state.status = 'completed'
@@ -440,7 +496,13 @@ async function startUpdate(task: AddonUpdateDrawerTask) {
   state.message = ''
 
   try {
-    const result = await managementStore.executeAddonUpdate(task.itemType, task.folderName)
+    const result = await managementStore.executeAddonUpdate(task.itemType, task.folderName, {
+      ...(isZiboMajorCleanPlan(state.plan) && {
+        freshInstall: true,
+        preserveLiveries: state.ziboPreserveLiveries,
+        preserveConfigFiles: state.ziboPreserveConfigFiles,
+      }),
+    })
     state.progress = 100
     state.installing = false
     state.status = 'completed'
@@ -564,11 +626,17 @@ function applyAddonProgressEvent(event: AddonUpdateProgressEvent) {
   if (stage === 'install') {
     const processedBytes = Math.max(0, Number(event.processedBytes || 0))
     const totalBytes = Math.max(0, Number(event.totalBytes || 0))
-    if (status === 'started' || status === 'in_progress') {
+    if (status === 'started' || status === 'in_progress' || status === 'running') {
       state.installing = true
       state.status = 'installing'
-      state.progress = totalBytes > 0 && processedBytes <= 0 ? 0 : percent
-      state.speedBytes = Math.max(0, Number(event.speedBytesPerSec || 0))
+      state.progress = Math.max(state.progress, totalBytes > 0 && processedBytes <= 0 ? 0 : percent)
+      const nextSpeed = Math.max(0, Number(event.speedBytesPerSec || 0))
+      state.speedBytes =
+        nextSpeed > 0
+          ? state.speedBytes > 0
+            ? state.speedBytes * 0.7 + nextSpeed * 0.3
+            : nextSpeed
+          : 0
     } else if (status === 'completed') {
       state.installing = false
       state.status = 'completed'
@@ -611,10 +679,14 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', onGlobalPointerDown, true)
 })
 
-watch(taskCards, () => {
-  syncTaskStates()
-  primePlansForVisibleTasks()
-}, { immediate: true })
+watch(
+  taskCards,
+  () => {
+    syncTaskStates()
+    primePlansForVisibleTasks()
+  },
+  { immediate: true },
+)
 
 watch(
   () => props.activeTaskKey,
@@ -646,10 +718,7 @@ watch(
 <template>
   <Teleport to="body">
     <Transition name="drawer-overlay">
-      <div
-        v-if="show"
-        class="fixed inset-0 z-[120] pointer-events-none"
-      >
+      <div v-if="show" class="fixed inset-0 z-[120] pointer-events-none">
         <div class="absolute inset-x-0 bottom-0 px-2 pb-2 sm:px-4 sm:pb-4 pointer-events-none">
           <div
             ref="drawerShellRef"
@@ -663,7 +732,9 @@ watch(
                   @pointerdown.prevent="onResizeStart"
                 />
               </div>
-              <div class="px-4 pb-3 border-b border-slate-200/70 dark:border-slate-700/70 flex items-center justify-between gap-3">
+              <div
+                class="px-4 pb-3 border-b border-slate-200/70 dark:border-slate-700/70 flex items-center justify-between gap-3"
+              >
                 <div class="min-w-0">
                   <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
                     {{ t('management.updateDrawerTitle') }}
@@ -686,7 +757,10 @@ watch(
             </div>
 
             <div v-else class="flex-1 overflow-y-auto px-4 py-4">
-              <div v-if="!taskCards.length" class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-white/70 dark:bg-slate-800/40 text-xs text-slate-600 dark:text-slate-300">
+              <div
+                v-if="!taskCards.length"
+                class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-white/70 dark:bg-slate-800/40 text-xs text-slate-600 dark:text-slate-300"
+              >
                 {{ t('management.noTasks') }}
               </div>
 
@@ -696,13 +770,12 @@ watch(
                   :key="taskKeyOf(task)"
                   class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-800/40 w-full"
                 >
-                  <button
-                    class="w-full text-left px-3 py-3"
-                    @click="toggleTaskDetails(task)"
-                  >
+                  <button class="w-full text-left px-3 py-3" @click="toggleTaskDetails(task)">
                     <div class="flex items-start justify-between gap-3">
                       <div class="min-w-0">
-                        <p class="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+                        <p
+                          class="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate"
+                        >
                           {{ task.displayName || task.folderName }}
                         </p>
                         <p class="mt-1 text-xs text-slate-500 dark:text-slate-400 truncate">
@@ -737,7 +810,9 @@ watch(
                           v-if="
                             !stateFor(task).installing &&
                             stateFor(task).plan &&
-                            !stateFor(task).plan?.remoteLocked
+                            !stateFor(task).plan?.remoteLocked &&
+                            !stateFor(task).plan?.manualDownloadUrl &&
+                            stateFor(task).plan?.provider !== 'zibo'
                           "
                           class="px-3 py-1.5 rounded-lg text-xs text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50"
                           :disabled="
@@ -753,7 +828,18 @@ watch(
                         </button>
                         <button
                           v-if="
+                            !stateFor(task).loadingPlan && stateFor(task).plan?.manualDownloadUrl
+                          "
+                          class="px-3 py-1.5 rounded-lg text-xs text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-50"
+                          :disabled="stateFor(task).loadingPlan || stateFor(task).installing"
+                          @click.stop="openManualDownload(stateFor(task).plan?.manualDownloadUrl)"
+                        >
+                          {{ manualDownloadButtonText(stateFor(task).plan) }}
+                        </button>
+                        <button
+                          v-if="
                             !stateFor(task).loadingPlan &&
+                            !stateFor(task).plan?.manualDownloadUrl &&
                             (!stateFor(task).plan || planNeedsAction(stateFor(task).plan))
                           "
                           class="px-3 py-1.5 rounded-lg text-xs text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
@@ -766,21 +852,35 @@ watch(
                           "
                           @click.stop="startUpdate(task)"
                         >
-                          {{ stateFor(task).installing ? t('management.updating') : t('management.startUpdate') }}
+                          {{
+                            stateFor(task).installing
+                              ? t('management.updating')
+                              : t('management.startUpdate')
+                          }}
                         </button>
                       </div>
                     </div>
 
-                    <div class="mt-2 h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                    <div
+                      class="mt-2 h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"
+                    >
                       <div
-                        class="h-full bg-gradient-to-r from-sky-500 to-cyan-500 transition-all duration-200"
-                        :style="{ width: `${Math.max(0, Math.min(100, stateFor(task).progress))}%` }"
+                        class="h-full bg-gradient-to-r from-sky-500 to-cyan-500 transition-[width] duration-150 ease-out"
+                        :style="{
+                          width: `${Math.max(0, Math.min(100, stateFor(task).progress))}%`,
+                        }"
                       />
                     </div>
-                    <div class="mt-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                    <div
+                      class="mt-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400"
+                    >
                       <span>{{ Math.round(stateFor(task).progress) }}%</span>
                       <span v-if="stateFor(task).speedBytes > 0">
-                        {{ t('management.downloadSpeed', { speed: `${formatBytes(stateFor(task).speedBytes)}/s` }) }}
+                        {{
+                          t('management.downloadSpeed', {
+                            speed: `${formatBytes(stateFor(task).speedBytes)}/s`,
+                          })
+                        }}
                       </span>
                     </div>
                   </button>
@@ -790,165 +890,330 @@ watch(
                       v-if="expandedTaskKey === taskKeyOf(task)"
                       class="px-3 pb-3 border-t border-slate-200/70 dark:border-slate-700/70"
                     >
-                    <div class="pt-3 flex items-center justify-between">
-                      <p class="text-xs font-semibold text-slate-900 dark:text-slate-100">
-                        {{ t('management.planDetails') }}
-                      </p>
-                    </div>
+                      <div class="pt-3 flex items-center justify-between">
+                        <p class="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                          {{ t('management.planDetails') }}
+                        </p>
+                      </div>
 
-                    <div v-if="stateFor(task).loadingPlan" class="mt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                      <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      <span>{{ t('management.updatePlanLoading') }}</span>
-                    </div>
-
-                    <div
-                      v-else-if="stateFor(task).planError"
-                      class="mt-2 rounded-lg border border-rose-200 dark:border-rose-700 bg-rose-50/70 dark:bg-rose-900/20 p-2"
-                    >
-                      <p class="text-xs text-rose-700 dark:text-rose-300">{{ stateFor(task).planError }}</p>
-                    </div>
-
-                    <div v-else-if="stateFor(task).plan" class="mt-2 space-y-3">
                       <div
-                        class="grid gap-2 text-xs [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]"
+                        v-if="stateFor(task).loadingPlan"
+                        class="mt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
                       >
-                        <div class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 p-2">
-                          <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
-                            {{ t('management.installInfo') }}
-                          </p>
-                          <p
-                            class="mt-1.5 text-sm leading-5"
-                            :class="
-                              planNeedsAction(stateFor(task).plan)
-                                ? stateFor(task).plan?.hasUpdate
-                                  ? 'text-slate-800 dark:text-slate-100'
-                                  : 'text-amber-600 dark:text-amber-300 font-semibold'
-                                : 'text-emerald-600 dark:text-emerald-400 font-semibold'
-                            "
+                        <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle
+                            class="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            stroke-width="4"
+                          />
+                          <path
+                            class="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                          />
+                        </svg>
+                        <span>{{ t('management.updatePlanLoading') }}</span>
+                      </div>
+
+                      <div
+                        v-else-if="stateFor(task).planError"
+                        class="mt-2 rounded-lg border border-rose-200 dark:border-rose-700 bg-rose-50/70 dark:bg-rose-900/20 p-2"
+                      >
+                        <p class="text-xs text-rose-700 dark:text-rose-300">
+                          {{ stateFor(task).planError }}
+                        </p>
+                      </div>
+
+                      <div v-else-if="stateFor(task).plan" class="mt-2 space-y-3">
+                        <div
+                          class="grid gap-2 text-xs [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]"
+                        >
+                          <div
+                            class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 p-2"
                           >
-                            {{
-                              planNeedsAction(stateFor(task).plan)
-                                ? stateFor(task).plan?.hasUpdate
-                                  ? t('management.updateAvailablePanel')
-                                  : t('management.repairRequired')
-                                : t('management.updateUpToDate')
-                            }}
-                          </p>
-                        </div>
-                        <div class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 p-2">
-                          <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
-                            {{ t('management.estimatedDownload') }}
-                          </p>
-                          <p class="mt-1.5 text-sm leading-5 font-semibold text-slate-800 dark:text-slate-100">
-                            {{ formatBytes(stateFor(task).plan?.estimatedDownloadBytes || 0) }}
-                          </p>
-                        </div>
-                        <div v-if="task.itemType === 'aircraft' || stateFor(task).plan?.hasBetaConfig" class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/70 dark:to-slate-900/50 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:shadow-none">
-                          <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
-                            {{ t('management.updateOptions') }}
-                          </p>
-                          <div class="mt-2 space-y-2">
-                            <label
-                              v-if="stateFor(task).plan?.hasBetaConfig"
-                              class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300 transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60"
+                            <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
+                              {{ t('management.installInfo') }}
+                            </p>
+                            <p
+                              class="mt-1.5 text-sm leading-5"
+                              :class="
+                                planNeedsAction(stateFor(task).plan)
+                                  ? stateFor(task).plan?.hasUpdate
+                                    ? 'text-slate-800 dark:text-slate-100'
+                                    : 'text-amber-600 dark:text-amber-300 font-semibold'
+                                  : 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                              "
                             >
-                              <input
-                                type="checkbox"
-                                class="peer sr-only"
-                                :checked="managementStore.addonUpdateOptions.useBeta"
-                                @change="setPreference('useBeta', ($event.target as HTMLInputElement).checked)"
-                              />
-                              <span
-                                class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 peer-checked:after:translate-x-4 peer-disabled:opacity-60"
-                              ></span>
-                              <span class="font-semibold">{{ t('management.useBeta') }}</span>
-                            </label>
-                            <label
-                              v-if="task.itemType === 'aircraft'"
-                              class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300 transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60"
+                              {{
+                                planNeedsAction(stateFor(task).plan)
+                                  ? stateFor(task).plan?.hasUpdate
+                                    ? t('management.updateAvailablePanel')
+                                    : t('management.repairRequired')
+                                  : t('management.updateUpToDate')
+                              }}
+                            </p>
+                          </div>
+                          <div
+                            class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 p-2"
+                          >
+                            <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
+                              {{ t('management.estimatedDownload') }}
+                            </p>
+                            <p
+                              class="mt-1.5 text-sm leading-5 font-semibold text-slate-800 dark:text-slate-100"
                             >
-                              <input
-                                type="checkbox"
-                                class="peer sr-only"
-                                :checked="managementStore.addonUpdateOptions.includeLiveries"
-                                @change="setPreference('includeLiveries', ($event.target as HTMLInputElement).checked)"
-                              />
-                              <span
-                                class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 peer-checked:after:translate-x-4 peer-disabled:opacity-60"
-                              ></span>
-                              <span class="font-semibold">{{ t('management.includeLiveries') }}</span>
-                            </label>
+                              {{ formatBytes(stateFor(task).plan?.estimatedDownloadBytes || 0) }}
+                            </p>
+                          </div>
+                          <div
+                            v-if="
+                              stateFor(task).plan?.provider !== 'zibo' &&
+                              (task.itemType === 'aircraft' || stateFor(task).plan?.hasBetaConfig)
+                            "
+                            class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/70 dark:to-slate-900/50 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:shadow-none"
+                          >
+                            <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
+                              {{ t('management.updateOptions') }}
+                            </p>
+                            <div class="mt-2 space-y-2">
+                              <label
+                                v-if="stateFor(task).plan?.hasBetaConfig"
+                                class="group flex items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300"
+                                :class="
+                                  taskUpdateOptionsDisabled(task)
+                                    ? 'cursor-not-allowed opacity-60'
+                                    : 'cursor-pointer transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60'
+                                "
+                              >
+                                <input
+                                  type="checkbox"
+                                  class="peer sr-only"
+                                  :checked="managementStore.addonUpdateOptions.useBeta"
+                                  :disabled="taskUpdateOptionsDisabled(task)"
+                                  @change="
+                                    setPreference(
+                                      'useBeta',
+                                      ($event.target as HTMLInputElement).checked,
+                                    )
+                                  "
+                                />
+                                <span
+                                  class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 peer-checked:after:translate-x-4 peer-disabled:opacity-60"
+                                ></span>
+                                <span class="font-semibold">{{ t('management.useBeta') }}</span>
+                              </label>
+                              <label
+                                v-if="task.itemType === 'aircraft'"
+                                class="group flex items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300"
+                                :class="
+                                  taskUpdateOptionsDisabled(task)
+                                    ? 'cursor-not-allowed opacity-60'
+                                    : 'cursor-pointer transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60'
+                                "
+                              >
+                                <input
+                                  type="checkbox"
+                                  class="peer sr-only"
+                                  :checked="managementStore.addonUpdateOptions.includeLiveries"
+                                  :disabled="taskUpdateOptionsDisabled(task)"
+                                  @change="
+                                    setPreference(
+                                      'includeLiveries',
+                                      ($event.target as HTMLInputElement).checked,
+                                    )
+                                  "
+                                />
+                                <span
+                                  class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 peer-checked:after:translate-x-4 peer-disabled:opacity-60"
+                                ></span>
+                                <span class="font-semibold">{{
+                                  t('management.includeLiveries')
+                                }}</span>
+                              </label>
+                            </div>
+                          </div>
+                          <div
+                            v-if="
+                              isZiboMajorCleanPlan(stateFor(task).plan) &&
+                              !stateFor(task).plan?.manualDownloadUrl
+                            "
+                            class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/70 dark:to-slate-900/50 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:shadow-none"
+                          >
+                            <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
+                              {{ t('management.updateOptions') }}
+                            </p>
+                            <div class="mt-2 space-y-2">
+                              <label
+                                class="group flex items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300"
+                                :class="
+                                  taskUpdateOptionsDisabled(task, false)
+                                    ? 'cursor-not-allowed opacity-60'
+                                    : 'cursor-pointer transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60'
+                                "
+                              >
+                                <input
+                                  type="checkbox"
+                                  class="peer sr-only"
+                                  :checked="stateFor(task).ziboPreserveLiveries"
+                                  :disabled="taskUpdateOptionsDisabled(task, false)"
+                                  @change="
+                                    stateFor(task).ziboPreserveLiveries = (
+                                      $event.target as HTMLInputElement
+                                    ).checked
+                                  "
+                                />
+                                <span
+                                  class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 peer-checked:after:translate-x-4 peer-disabled:opacity-60"
+                                ></span>
+                                <span class="font-semibold">{{
+                                  t('management.preserveLiveries')
+                                }}</span>
+                              </label>
+                              <label
+                                class="group flex items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300"
+                                :class="
+                                  taskUpdateOptionsDisabled(task, false)
+                                    ? 'cursor-not-allowed opacity-60'
+                                    : 'cursor-pointer transition-all hover:border-emerald-300/70 dark:hover:border-emerald-600/60'
+                                "
+                              >
+                                <input
+                                  type="checkbox"
+                                  class="peer sr-only"
+                                  :checked="stateFor(task).ziboPreserveConfigFiles"
+                                  :disabled="taskUpdateOptionsDisabled(task, false)"
+                                  @change="
+                                    stateFor(task).ziboPreserveConfigFiles = (
+                                      $event.target as HTMLInputElement
+                                    ).checked
+                                  "
+                                />
+                                <span
+                                  class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 peer-checked:after:translate-x-4 peer-disabled:opacity-60"
+                                ></span>
+                                <span class="font-semibold">{{
+                                  t('management.preserveConfigFiles')
+                                }}</span>
+                              </label>
+                            </div>
                           </div>
                         </div>
+
+                        <p
+                          v-if="stateFor(task).plan?.remoteLocked"
+                          class="text-xs text-amber-700 dark:text-amber-300"
+                        >
+                          {{ t('management.remoteLocked') }}
+                        </p>
+                        <div
+                          v-if="stateFor(task).plan?.manualDownloadUrl"
+                          class="rounded-lg border border-sky-200 dark:border-sky-700 bg-sky-50/70 dark:bg-sky-900/20 p-2 flex items-center justify-between gap-3"
+                        >
+                          <p class="text-xs text-sky-700 dark:text-sky-300">
+                            {{ manualDownloadHint(stateFor(task).plan) }}
+                          </p>
+                          <button
+                            class="px-2.5 py-1 rounded text-xs font-medium text-white bg-sky-600 hover:bg-sky-700"
+                            @click.stop="openManualDownload(stateFor(task).plan?.manualDownloadUrl)"
+                          >
+                            {{ manualDownloadButtonText(stateFor(task).plan) }}
+                          </button>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                          <div
+                            v-if="(stateFor(task).plan?.addFiles?.length || 0) > 0"
+                            class="rounded-lg border border-slate-200 dark:border-slate-700 p-2"
+                          >
+                            <p class="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                              {{ t('management.filesToAdd') }}
+                            </p>
+                            <ul
+                              class="mt-1 max-h-32 overflow-auto text-[11px] text-slate-600 dark:text-slate-300 space-y-1"
+                            >
+                              <li
+                                v-for="file in stateFor(task).plan?.addFiles || []"
+                                :key="`add-${file}`"
+                              >
+                                {{ file }}
+                              </li>
+                            </ul>
+                          </div>
+
+                          <div
+                            v-if="(stateFor(task).plan?.replaceFiles?.length || 0) > 0"
+                            class="rounded-lg border border-slate-200 dark:border-slate-700 p-2"
+                          >
+                            <p class="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                              {{ t('management.filesToReplace') }}
+                            </p>
+                            <ul
+                              class="mt-1 max-h-32 overflow-auto text-[11px] text-slate-600 dark:text-slate-300 space-y-1"
+                            >
+                              <li
+                                v-for="file in stateFor(task).plan?.replaceFiles || []"
+                                :key="`replace-${file}`"
+                              >
+                                {{ file }}
+                              </li>
+                            </ul>
+                          </div>
+
+                          <div
+                            v-if="(stateFor(task).plan?.deleteFiles?.length || 0) > 0"
+                            class="rounded-lg border border-slate-200 dark:border-slate-700 p-2"
+                          >
+                            <p class="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                              {{ t('management.filesToDelete') }}
+                            </p>
+                            <ul
+                              class="mt-1 max-h-32 overflow-auto text-[11px] text-slate-600 dark:text-slate-300 space-y-1"
+                            >
+                              <li
+                                v-for="file in stateFor(task).plan?.deleteFiles || []"
+                                :key="`delete-${file}`"
+                              >
+                                {{ file }}
+                              </li>
+                            </ul>
+                          </div>
+                        </div>
+
+                        <div
+                          v-if="(stateFor(task).plan?.warnings?.length || 0) > 0"
+                          class="rounded-lg border border-amber-200 dark:border-amber-700 p-2"
+                        >
+                          <p class="text-xs font-semibold text-amber-800 dark:text-amber-200">
+                            {{ t('management.warnings') }}
+                          </p>
+                          <ul
+                            class="mt-1 max-h-28 overflow-auto text-[11px] text-amber-700 dark:text-amber-300 space-y-1"
+                          >
+                            <li v-for="warn in stateFor(task).plan?.warnings || []" :key="warn">
+                              {{ warn }}
+                            </li>
+                          </ul>
+                        </div>
+
+                        <p
+                          v-if="
+                            stateFor(task).plan?.provider !== 'zibo' &&
+                            (stateFor(task).plan?.addFiles?.length || 0) === 0 &&
+                            (stateFor(task).plan?.replaceFiles?.length || 0) === 0 &&
+                            (stateFor(task).plan?.deleteFiles?.length || 0) === 0
+                          "
+                          class="text-xs text-slate-500 dark:text-slate-400"
+                        >
+                          {{ t('management.noFileChanges') }}
+                        </p>
                       </div>
 
-                      <p
-                        v-if="stateFor(task).plan?.remoteLocked"
-                        class="text-xs text-amber-700 dark:text-amber-300"
-                      >
-                        {{ t('management.remoteLocked') }}
+                      <p v-else class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                        {{ t('management.noPlanYet') }}
                       </p>
-
-                      <div class="grid grid-cols-1 lg:grid-cols-2 gap-2">
-                        <div
-                          v-if="(stateFor(task).plan?.addFiles?.length || 0) > 0"
-                          class="rounded-lg border border-slate-200 dark:border-slate-700 p-2"
-                        >
-                          <p class="text-xs font-semibold text-slate-800 dark:text-slate-100">{{ t('management.filesToAdd') }}</p>
-                          <ul class="mt-1 max-h-32 overflow-auto text-[11px] text-slate-600 dark:text-slate-300 space-y-1">
-                            <li v-for="file in stateFor(task).plan?.addFiles || []" :key="`add-${file}`">{{ file }}</li>
-                          </ul>
-                        </div>
-
-                        <div
-                          v-if="(stateFor(task).plan?.replaceFiles?.length || 0) > 0"
-                          class="rounded-lg border border-slate-200 dark:border-slate-700 p-2"
-                        >
-                          <p class="text-xs font-semibold text-slate-800 dark:text-slate-100">{{ t('management.filesToReplace') }}</p>
-                          <ul class="mt-1 max-h-32 overflow-auto text-[11px] text-slate-600 dark:text-slate-300 space-y-1">
-                            <li v-for="file in stateFor(task).plan?.replaceFiles || []" :key="`replace-${file}`">{{ file }}</li>
-                          </ul>
-                        </div>
-
-                        <div
-                          v-if="(stateFor(task).plan?.deleteFiles?.length || 0) > 0"
-                          class="rounded-lg border border-slate-200 dark:border-slate-700 p-2"
-                        >
-                          <p class="text-xs font-semibold text-slate-800 dark:text-slate-100">{{ t('management.filesToDelete') }}</p>
-                          <ul class="mt-1 max-h-32 overflow-auto text-[11px] text-slate-600 dark:text-slate-300 space-y-1">
-                            <li v-for="file in stateFor(task).plan?.deleteFiles || []" :key="`delete-${file}`">{{ file }}</li>
-                          </ul>
-                        </div>
-                      </div>
-
-                      <div
-                        v-if="(stateFor(task).plan?.warnings?.length || 0) > 0"
-                        class="rounded-lg border border-amber-200 dark:border-amber-700 p-2"
-                      >
-                        <p class="text-xs font-semibold text-amber-800 dark:text-amber-200">{{ t('management.warnings') }}</p>
-                        <ul class="mt-1 max-h-28 overflow-auto text-[11px] text-amber-700 dark:text-amber-300 space-y-1">
-                          <li v-for="warn in stateFor(task).plan?.warnings || []" :key="warn">{{ warn }}</li>
-                        </ul>
-                      </div>
-
-                      <p
-                        v-if="
-                          (stateFor(task).plan?.addFiles?.length || 0) === 0 &&
-                          (stateFor(task).plan?.replaceFiles?.length || 0) === 0 &&
-                          (stateFor(task).plan?.deleteFiles?.length || 0) === 0
-                        "
-                        class="text-xs text-slate-500 dark:text-slate-400"
-                      >
-                        {{ t('management.noFileChanges') }}
-                      </p>
-                    </div>
-
-                    <p v-else class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                      {{ t('management.noPlanYet') }}
-                    </p>
                     </div>
                   </Transition>
                 </div>
@@ -967,7 +1232,9 @@ watch(
         class="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm"
         @click.self="cancelFreshInstall"
       >
-        <div class="w-full max-w-sm mx-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xl p-5">
+        <div
+          class="w-full max-w-sm mx-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xl p-5"
+        >
           <h3 class="text-base font-semibold text-slate-900 dark:text-slate-100">
             {{ t('management.freshInstallDialogTitle') }}
           </h3>
@@ -983,11 +1250,7 @@ watch(
             <label
               class="group flex cursor-pointer items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/45 px-3 py-2.5 text-sm text-slate-700 dark:text-slate-300 transition-all hover:border-amber-300/70 dark:hover:border-amber-600/60"
             >
-              <input
-                v-model="freshInstallPreserveLiveries"
-                type="checkbox"
-                class="peer sr-only"
-              />
+              <input v-model="freshInstallPreserveLiveries" type="checkbox" class="peer sr-only" />
               <span
                 class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-amber-500 peer-checked:bg-amber-500 peer-checked:after:translate-x-4"
               ></span>

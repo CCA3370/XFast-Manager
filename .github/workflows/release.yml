@@ -36,6 +36,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Validate version consistency
+        run: node scripts/validate-version-consistency.mjs
+
       - name: Get version from tauri.conf.json
         id: get-version
         run: |
@@ -47,15 +50,16 @@ jobs:
 
       - name: Check if pre-release
         id: check-prerelease
+        shell: bash
         run: |
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          MAJOR=$(echo "$VERSION" | cut -d. -f1)
-          if [ "$MAJOR" = "0" ]; then
+          BASE_VERSION="${VERSION%%+*}"
+          if [[ "$BASE_VERSION" == *-* ]]; then
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
-            echo "⚠️  Pre-release detected (version < 1.0.0)"
+            echo "⚠️  Pre-release detected from version suffix: $VERSION"
           else
             echo "is_prerelease=false" >> $GITHUB_OUTPUT
-            echo "✅ Stable release (version >= 1.0.0)"
+            echo "✅ Stable release: $VERSION"
           fi
 
       - name: Check if tag exists
@@ -102,20 +106,6 @@ jobs:
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           cat /tmp/changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Commit version sync
-        if: steps.check-tag.outputs.skip != 'true'
-        run: |
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
-          git add package.json
-          if git diff --staged --quiet; then
-            echo "ℹ️  No changes to commit"
-          else
-            git commit -m "chore: sync version to package.json"
-            git push
-            echo "✅ Committed and pushed version sync"
-          fi
 
   build:
     name: Build (${{ matrix.suffix }})
@@ -196,6 +186,10 @@ jobs:
 
       - name: Build Tauri
         shell: bash
+        env:
+          XFAST_ZIBO_GOOGLE_DRIVE_API_KEY: ${{ secrets.XFAST_ZIBO_GOOGLE_DRIVE_API_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           echo "🔨 Building XFast-Manager ${{ needs.prepare-release.outputs.version }} for ${{ matrix.suffix }}..."
           if [ -n "${{ matrix.args }}" ]; then
@@ -268,8 +262,12 @@ jobs:
           path: |
             target/release/XFast-Manager-*-windows-portable.exe
             target/release/bundle/msi/XFast-Manager-*-windows-setup.msi
+            target/release/bundle/msi/*.msi.sig
             target/universal-apple-darwin/release/bundle/dmg/XFast-Manager-*-macos-universal.dmg
+            target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
             target/release/bundle/appimage/XFast-Manager-*-linux-x64.AppImage
+            target/release/bundle/appimage/*.AppImage.sig
             target/release/bundle/deb/XFast-Manager-*-linux-x64.deb
             target/release/bundle/rpm/XFast-Manager-*-linux-x64.rpm
           if-no-files-found: ignore
@@ -311,6 +309,9 @@ jobs:
           # Find and copy all artifacts to release-files
           find artifacts -type f -name "XFast-Manager-*" -exec cp {} release-files/ \;
 
+          # Copy updater bundles and signatures to release-files
+          find artifacts -type f \( -name "*.msi.sig" -o -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" -o -name "*.AppImage.sig" \) -exec cp {} release-files/ \;
+
           cd release-files
 
           # Zip Windows portable exe
@@ -322,7 +323,6 @@ jobs:
           # Zip Windows MSI installer
           if [ -f "XFast-Manager-${version}-windows-setup.msi" ]; then
             zip "XFast-Manager-${version}-windows-setup.zip" "XFast-Manager-${version}-windows-setup.msi"
-            rm "XFast-Manager-${version}-windows-setup.msi"
           fi
 
           # Zip macOS DMG
@@ -334,7 +334,6 @@ jobs:
           # Zip Linux AppImage
           if [ -f "XFast-Manager-${version}-linux-x64.AppImage" ]; then
             zip "XFast-Manager-${version}-linux-x64-AppImage.zip" "XFast-Manager-${version}-linux-x64.AppImage"
-            rm "XFast-Manager-${version}-linux-x64.AppImage"
           fi
 
           # Zip Linux deb
@@ -357,6 +356,68 @@ jobs:
           echo ""
           echo "📋 Checksums:"
           cat checksums.txt
+
+      - name: Generate latest.json for updater
+        shell: bash
+        run: |
+          version="${{ needs.prepare-release.outputs.version }}"
+          tag="${{ needs.prepare-release.outputs.tag }}"
+          changelog="${{ needs.prepare-release.outputs.changelog }}"
+          repo="CCA3370/XFast-Manager"
+          base_url="https://github.com/${repo}/releases/download/${tag}"
+
+          # Read signature files
+          win_sig=""
+          mac_sig=""
+          linux_sig=""
+
+          win_sig_file=$(find release-files -name "*.msi.sig" | head -1)
+          if [ -n "$win_sig_file" ]; then
+            win_sig=$(cat "$win_sig_file")
+          fi
+
+          mac_sig_file=$(find release-files -name "*.app.tar.gz.sig" | head -1)
+          if [ -n "$mac_sig_file" ]; then
+            mac_sig=$(cat "$mac_sig_file")
+          fi
+
+          linux_sig_file=$(find release-files -name "*.AppImage.sig" | head -1)
+          if [ -n "$linux_sig_file" ]; then
+            linux_sig=$(cat "$linux_sig_file")
+          fi
+
+          # Find updater bundle filenames
+          win_bundle=$(find release-files -name "*.msi" -printf "%f\n" | head -1)
+          mac_bundle=$(find release-files -name "*.app.tar.gz" ! -name "*.sig" -printf "%f\n" | head -1)
+          linux_bundle=$(find release-files -name "*.AppImage" -printf "%f\n" | head -1)
+
+          # Build latest.json using jq
+          platforms='{}'
+
+          if [ -n "$win_bundle" ] && [ -n "$win_sig" ]; then
+            platforms=$(echo "$platforms" | jq --arg url "${base_url}/${win_bundle}" --arg sig "$win_sig" '. + {"windows-x86_64": {"signature": $sig, "url": $url}}')
+          fi
+
+          if [ -n "$mac_bundle" ] && [ -n "$mac_sig" ]; then
+            platforms=$(echo "$platforms" | jq --arg url "${base_url}/${mac_bundle}" --arg sig "$mac_sig" '. + {"darwin-universal": {"signature": $sig, "url": $url}}')
+          fi
+
+          if [ -n "$linux_bundle" ] && [ -n "$linux_sig" ]; then
+            platforms=$(echo "$platforms" | jq --arg url "${base_url}/${linux_bundle}" --arg sig "$linux_sig" '. + {"linux-x86_64": {"signature": $sig, "url": $url}}')
+          fi
+
+          pub_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          jq -n \
+            --arg version "$version" \
+            --arg notes "$changelog" \
+            --arg pub_date "$pub_date" \
+            --argjson platforms "$platforms" \
+            '{version: $version, notes: $notes, pub_date: $pub_date, platforms: $platforms}' \
+            > release-files/latest.json
+
+          echo "✅ Generated latest.json:"
+          cat release-files/latest.json
 
       - name: Create Git Tag
         shell: bash
@@ -383,6 +444,13 @@ jobs:
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-deb.zip
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-rpm.zip
             release-files/checksums.txt
+            release-files/latest.json
+            release-files/*.msi
+            release-files/*.msi.sig
+            release-files/*.app.tar.gz
+            release-files/*.app.tar.gz.sig
+            release-files/*.AppImage
+            release-files/*.AppImage.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -393,7 +461,7 @@ jobs:
           echo "📦 Version: ${{ needs.prepare-release.outputs.version }}"
           echo "🏷️  Tag: ${{ needs.prepare-release.outputs.tag }}"
           if [ "${{ needs.prepare-release.outputs.is_prerelease }}" = "true" ]; then
-            echo "⚠️  Type: Pre-release (version < 1.0.0)"
+            echo "⚠️  Type: Pre-release"
           else
             echo "✅ Type: Stable release"
           fi

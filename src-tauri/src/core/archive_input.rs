@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use std::fs;
+use std::io::Read;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
@@ -93,19 +94,85 @@ fn find_existing_sibling(parent: &Path, target_name: &str) -> Option<PathBuf> {
     None
 }
 
+fn detect_archive_format_from_signature(path: &Path) -> Option<ArchiveFormat> {
+    if !path.is_file() {
+        return None;
+    }
+
+    let mut file = fs::File::open(path).ok()?;
+    let mut header = [0u8; 8];
+    let read = file.read(&mut header).ok()?;
+    if read < 4 {
+        return None;
+    }
+
+    if header.starts_with(b"PK\x03\x04")
+        || header.starts_with(b"PK\x05\x06")
+        || header.starts_with(b"PK\x07\x08")
+    {
+        return Some(ArchiveFormat::Zip);
+    }
+
+    if read >= 6 && header[..6] == [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C] {
+        return Some(ArchiveFormat::SevenZ);
+    }
+
+    if (read >= 7 && header[..7] == [0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00])
+        || header == [0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00]
+    {
+        return Some(ArchiveFormat::Rar);
+    }
+
+    None
+}
+
+fn is_split_archive_path(file_name: &str, lower: &str, path: &Path) -> bool {
+    split_numbered_series(file_name, ".zip.").is_some()
+        || split_numbered_series(file_name, ".7z.").is_some()
+        || split_rar_part(file_name).is_some()
+        || {
+            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+            ext.len() >= 2
+                && (ext.to_ascii_lowercase().starts_with('z')
+                    || ext.to_ascii_lowercase().starts_with('r'))
+                && ext[1..].chars().all(|c| c.is_ascii_digit())
+        }
+        || (lower.ends_with(".zip")
+            && path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(|stem| {
+                    find_existing_sibling(
+                        path.parent().unwrap_or_else(|| Path::new(".")),
+                        &format!("{}.z01", stem),
+                    )
+                    .is_some()
+                })
+                .unwrap_or(false))
+        || (lower.ends_with(".7z")
+            && find_existing_sibling(
+                path.parent().unwrap_or_else(|| Path::new(".")),
+                &format!("{}{}", file_name, ".001"),
+            )
+            .is_some())
+}
+
 pub fn detect_archive_format(path: &Path) -> Option<ArchiveFormat> {
     let file_name = path.file_name()?.to_str()?;
     let lower = file_name.to_ascii_lowercase();
 
-    if lower.ends_with(".zip")
-        || split_numbered_series(file_name, ".zip.").is_some()
-        || {
-            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-            ext.len() >= 2
-                && ext.to_ascii_lowercase().starts_with('z')
-                && ext[1..].chars().all(|c| c.is_ascii_digit())
+    if !is_split_archive_path(file_name, &lower, path) {
+        if let Some(format) = detect_archive_format_from_signature(path) {
+            return Some(format);
         }
-    {
+    }
+
+    if lower.ends_with(".zip") || split_numbered_series(file_name, ".zip.").is_some() || {
+        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+        ext.len() >= 2
+            && ext.to_ascii_lowercase().starts_with('z')
+            && ext[1..].chars().all(|c| c.is_ascii_digit())
+    } {
         return Some(ArchiveFormat::Zip);
     }
 
@@ -113,15 +180,12 @@ pub fn detect_archive_format(path: &Path) -> Option<ArchiveFormat> {
         return Some(ArchiveFormat::SevenZ);
     }
 
-    if lower.ends_with(".rar")
-        || split_rar_part(file_name).is_some()
-        || {
-            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-            ext.len() >= 2
-                && ext.to_ascii_lowercase().starts_with('r')
-                && ext[1..].chars().all(|c| c.is_ascii_digit())
-        }
-    {
+    if lower.ends_with(".rar") || split_rar_part(file_name).is_some() || {
+        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+        ext.len() >= 2
+            && ext.to_ascii_lowercase().starts_with('r')
+            && ext[1..].chars().all(|c| c.is_ascii_digit())
+    } {
         return Some(ArchiveFormat::Rar);
     }
 
@@ -239,7 +303,10 @@ fn collect_zip_split_parts(path: &Path) -> Result<Option<Vec<PathBuf>>> {
         }
 
         let final_part = find_existing_sibling(parent, file_name).ok_or_else(|| {
-            anyhow::anyhow!("Missing final ZIP volume for split archive: {}", path.display())
+            anyhow::anyhow!(
+                "Missing final ZIP volume for split archive: {}",
+                path.display()
+            )
         })?;
         parts.push(final_part);
         return Ok(Some(parts));
@@ -282,8 +349,9 @@ fn concat_parts_to_temp(parts: &[PathBuf], format: ArchiveFormat) -> Result<Prep
         let out = temp_file.as_file_mut();
         let mut writer = BufWriter::new(out);
         for part in parts {
-            let mut input = fs::File::open(part)
-                .with_context(|| format!("Failed to open split archive part: {}", part.display()))?;
+            let mut input = fs::File::open(part).with_context(|| {
+                format!("Failed to open split archive part: {}", part.display())
+            })?;
             std::io::copy(&mut input, &mut writer).with_context(|| {
                 format!("Failed to merge split archive part: {}", part.display())
             })?;
@@ -320,4 +388,33 @@ pub fn prepare_archive_for_read(path: &Path, format: ArchiveFormat) -> Result<Pr
         read_path: normalized,
         _temp_file: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{detect_archive_format, ArchiveFormat};
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn detect_archive_format_prefers_signature_for_single_file_archives() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let archive = temp.path().join("archive.zip");
+        fs::write(&archive, [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C, 0x00, 0x04])
+            .expect("failed to write archive");
+
+        assert_eq!(detect_archive_format(&archive), Some(ArchiveFormat::SevenZ));
+    }
+
+    #[test]
+    fn detect_archive_format_keeps_split_zip_detection() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let zip = temp.path().join("archive.zip");
+        let z01 = temp.path().join("archive.z01");
+        fs::write(&zip, b"not-a-real-zip").expect("failed to write zip");
+        fs::write(&z01, b"split-part").expect("failed to write z01");
+
+        assert_eq!(detect_archive_format(&zip), Some(ArchiveFormat::Zip));
+        assert_eq!(detect_archive_format(&z01), Some(ArchiveFormat::Zip));
+    }
 }

@@ -66,7 +66,7 @@ export const useFlightPlanStore = defineStore('flightPlan', () => {
       return Number.isFinite(n) ? n : 0
     }
     const asRec = (v: unknown): Record<string, unknown> =>
-      v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {}
+      v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
 
     const general = asRec(data.general)
     const origin = asRec(data.origin)
@@ -79,7 +79,11 @@ export const useFlightPlanStore = defineStore('flightPlan', () => {
 
     // Parse waypoints from navlog
     const navlog = asRec(data.navlog)
-    const fixesRaw = Array.isArray(navlog.fix) ? navlog.fix : Array.isArray(navlog.fixes) ? navlog.fixes : []
+    const fixesRaw = Array.isArray(navlog.fix)
+      ? navlog.fix
+      : Array.isArray(navlog.fixes)
+        ? navlog.fixes
+        : []
     const waypoints: FlightPlanWaypoint[] = []
 
     for (const fixItem of fixesRaw) {
@@ -120,7 +124,7 @@ export const useFlightPlanStore = defineStore('flightPlan', () => {
       flightNumber: asStr(atc.flightplan_id ?? general.flight_number),
       departure: asStr(origin.icao_code ?? origin.icao),
       arrival: asStr(destination.icao_code ?? destination.icao),
-      alternate: asStr(alternate.icao_code ?? alternate.icao ?? (data.alternate_icao)),
+      alternate: asStr(alternate.icao_code ?? alternate.icao ?? data.alternate_icao),
       cruiseAltitude: asNum(general.initial_altitude ?? general.cruise_altitude),
       cruiseMach: asStr(general.cruise_mach ?? general.avg_mach),
       costIndex: asNum(general.costindex ?? general.cost_index),

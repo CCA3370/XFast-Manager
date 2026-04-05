@@ -2,16 +2,33 @@ import { createI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import zh from './zh'
 import en from './en'
+import es from './es'
+import fr from './fr'
+import de from './de'
+import ja from './ja'
+import pt from './pt'
+import hi from './hi'
+import ar from './ar'
+import ru from './ru'
+import ko from './ko'
+import { getInitialLocale, persistLocale, type SupportedLocale } from './shared'
 
-// 获取系统语言 - 只有简体中文和繁体中文显示中文，其他一律显示英文
-const getSystemLanguage = (): string => {
-  const lang = navigator.language || 'en'
-  // 只匹配简体中文(zh-CN)和繁体中文(zh-TW, zh-HK)
-  const chineseLocales = ['zh-CN', 'zh-TW', 'zh-HK', 'zh-SG']
-  return chineseLocales.some((locale) => lang.startsWith(locale)) ? 'zh' : 'en'
+const initialLocale = getInitialLocale()
+
+function getLocaleTextDirection(locale: SupportedLocale): 'ltr' | 'rtl' {
+  return locale === 'ar' ? 'rtl' : 'ltr'
 }
 
-const initialLocale = getSystemLanguage()
+function applyDocumentLocale(locale: SupportedLocale) {
+  if (typeof document === 'undefined') return
+  const textDirection = getLocaleTextDirection(locale)
+  document.documentElement.lang = locale
+  // Keep the application layout in LTR. The UI is authored with explicit
+  // left/right positioning utilities, so flipping the root document direction
+  // mirrors the whole interface instead of only affecting Arabic text flow.
+  document.documentElement.dir = 'ltr'
+  document.documentElement.dataset.localeDirection = textDirection
+}
 
 // Removed blocking invoke call from module top-level to improve startup speed
 // Use syncLocaleToBackend() in App.vue onMounted instead
@@ -19,23 +36,37 @@ const initialLocale = getSystemLanguage()
 export const i18n = createI18n({
   legacy: false,
   locale: initialLocale,
-  fallbackLocale: 'en',
+  fallbackLocale: false,
   messages: {
     zh,
     en,
+    es,
+    fr,
+    de,
+    ja,
+    pt,
+    hi,
+    ar,
+    ru,
+    ko,
   },
 })
 
+applyDocumentLocale(initialLocale)
+
 // Non-blocking function to sync initial locale with backend (call in App.vue)
 export function syncLocaleToBackend() {
+  applyDocumentLocale(i18n.global.locale.value)
   invoke('set_log_locale', { locale: i18n.global.locale.value }).catch(() => {
     // Ignore errors during initialization
   })
 }
 
 // Helper function to sync locale with backend when user changes language
-export async function setLocale(locale: string) {
-  i18n.global.locale.value = locale as 'en' | 'zh'
+export async function setLocale(locale: SupportedLocale) {
+  i18n.global.locale.value = locale
+  applyDocumentLocale(locale)
+  persistLocale(locale)
   try {
     await invoke('set_log_locale', { locale })
   } catch (e) {

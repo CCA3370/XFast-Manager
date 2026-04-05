@@ -1,5 +1,5 @@
 <template>
-  <div class="log-analysis-view h-full flex flex-col p-5">
+  <div class="log-analysis-view h-full flex flex-col px-5 pt-3 pb-5">
     <!-- Header -->
     <div class="flex items-center justify-between mb-4 flex-shrink-0">
       <div>
@@ -331,12 +331,7 @@
 
                   <!-- Description -->
                   <p class="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                    {{
-                      $t(
-                        `logAnalysis.crashAnalysis.causes.${cause.cause_key}.description`,
-                        '',
-                      )
-                    }}
+                    {{ $t(`logAnalysis.crashAnalysis.causes.${cause.cause_key}.description`, '') }}
                   </p>
 
                   <!-- Evidence (expandable) -->
@@ -403,8 +398,9 @@
                       v-if="crashAnalysis.exception.exception_flags !== null"
                       class="pt-1 border-t border-gray-200 dark:border-gray-700"
                     >
-                      {{ $t('logAnalysis.crashAnalysis.technical.exceptionFlags') }}:
-                      0x{{ crashAnalysis.exception.exception_flags.toString(16).toUpperCase() }}
+                      {{ $t('logAnalysis.crashAnalysis.technical.exceptionFlags') }}: 0x{{
+                        crashAnalysis.exception.exception_flags.toString(16).toUpperCase()
+                      }}
                       <span
                         v-if="
                           crashAnalysis.exception.exception_type

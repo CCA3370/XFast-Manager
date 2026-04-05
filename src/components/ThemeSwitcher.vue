@@ -1,6 +1,6 @@
 <template>
   <button
-    class="p-2 rounded-lg transition-all duration-300 focus:outline-none"
+    class="p-1.5 rounded-lg transition-all duration-300 focus:outline-none"
     :class="
       themeStore.isDark ? 'text-yellow-400 hover:bg-white/10' : 'text-blue-600 hover:bg-gray-200'
     "
@@ -10,7 +10,7 @@
     <!-- Sun Icon -->
     <svg
       v-if="!themeStore.isDark"
-      class="w-5 h-5"
+      class="w-4 h-4"
       fill="none"
       stroke="currentColor"
       viewBox="0 0 24 24"
@@ -23,7 +23,7 @@
       ></path>
     </svg>
     <!-- Moon Icon -->
-    <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         stroke-linecap="round"
         stroke-linejoin="round"

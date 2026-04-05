@@ -409,6 +409,12 @@ impl SceneryCategory {
     }
 }
 
+pub const GLOBAL_AIRPORTS_ENTRY_NAME: &str = "*GLOBAL_AIRPORTS*";
+
+pub fn is_global_airports_folder_name(folder_name: &str) -> bool {
+    folder_name.trim().eq_ignore_ascii_case("Global Airports")
+}
+
 /// Information about a classified scenery package
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -589,6 +595,9 @@ pub struct AircraftInfo {
     pub version: Option<String>,
     /// URL for checking updates (from skunkcrafts_updater.cfg module| field)
     pub update_url: Option<String>,
+    /// Update provider type (e.g. skunkcrafts, x-updater, zibo)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_provider: Option<String>,
     /// Latest version from remote server (populated by check_aircraft_updates)
     pub latest_version: Option<String>,
     /// Whether an update is available
@@ -618,6 +627,9 @@ pub struct PluginInfo {
     pub version: Option<String>,
     /// URL for checking updates (from skunkcrafts_updater.cfg module| field)
     pub update_url: Option<String>,
+    /// Update provider type (e.g. skunkcrafts, x-updater)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_provider: Option<String>,
     /// Latest version from remote server (populated by check_plugins_updates)
     pub latest_version: Option<String>,
     /// Whether an update is available
@@ -686,6 +698,133 @@ mod systemtime_serde {
     }
 }
 
+// ========== Activity Log Data Structures ==========
+
+/// A single activity log entry returned to frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityLogEntry {
+    pub id: i64,
+    pub timestamp: i64,
+    pub operation: String,
+    pub item_type: String,
+    pub item_name: String,
+    pub details: Option<String>,
+    pub success: bool,
+}
+
+/// Paginated activity log response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityLogPage {
+    pub entries: Vec<ActivityLogEntry>,
+    pub total_count: u64,
+}
+
+// ========== Preset Data Structures ==========
+
+/// Summary of a preset for the list view
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetSummary {
+    pub id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub addon_counts: PresetAddonCounts,
+}
+
+/// Counts of enabled/total addons in a preset snapshot
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetAddonCounts {
+    pub aircraft_total: usize,
+    pub aircraft_enabled: usize,
+    pub plugins_total: usize,
+    pub plugins_enabled: usize,
+    pub scenery_total: usize,
+    pub scenery_enabled: usize,
+    pub lua_total: usize,
+    pub lua_enabled: usize,
+}
+
+/// The actual snapshot stored as JSON in the database
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetLockState {
+    #[serde(default)]
+    pub aircraft: Vec<String>,
+    #[serde(default)]
+    pub plugin: Vec<String>,
+    #[serde(default)]
+    pub scenery: Vec<String>,
+    #[serde(default)]
+    pub lua: Vec<String>,
+}
+
+/// The actual snapshot stored as JSON in the database
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetSnapshot {
+    #[serde(default)]
+    pub aircraft: HashMap<String, bool>,
+    #[serde(default)]
+    pub plugins: HashMap<String, bool>,
+    #[serde(default)]
+    pub scenery: HashMap<String, bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lua_scripts: Option<HashMap<String, bool>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lock_state: Option<PresetLockState>,
+}
+
+impl PresetSnapshot {
+    pub fn counts(&self) -> PresetAddonCounts {
+        fn count(map: &HashMap<String, bool>) -> (usize, usize) {
+            let total = map.len();
+            let enabled = map.values().filter(|v| **v).count();
+            (total, enabled)
+        }
+        let (at, ae) = count(&self.aircraft);
+        let (pt, pe) = count(&self.plugins);
+        let (st, se) = count(&self.scenery);
+        let (lt, le) = self.lua_scripts.as_ref().map(count).unwrap_or((0, 0));
+        PresetAddonCounts {
+            aircraft_total: at,
+            aircraft_enabled: ae,
+            plugins_total: pt,
+            plugins_enabled: pe,
+            scenery_total: st,
+            scenery_enabled: se,
+            lua_total: lt,
+            lua_enabled: le,
+        }
+    }
+}
+
+/// Result of applying a preset
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetApplyResult {
+    pub changes_made: usize,
+    pub errors: Vec<String>,
+    pub missing_items: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lock_state: Option<PresetLockState>,
+}
+
+/// Format for importing/exporting presets
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetExportFormat {
+    pub version: u32,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: i64,
+    pub snapshot: PresetSnapshot,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -712,6 +851,39 @@ mod tests {
 
         let scenery_lib: AddonType = serde_json::from_str(r#""SceneryLibrary""#).unwrap();
         assert_eq!(scenery_lib, AddonType::SceneryLibrary);
+    }
+
+    #[test]
+    fn test_preset_snapshot_ignores_legacy_navdata_fields() {
+        let json = r#"{
+            "aircraft": {"A": true},
+            "plugins": {"P": false},
+            "scenery": {"S": true},
+            "navdata": {"legacy": true},
+            "luaScripts": {"Script": true},
+            "lockState": {
+                "aircraft": ["aircraft-a"],
+                "plugin": ["plugin-a"],
+                "navdata": ["legacy-navdata"],
+                "scenery": ["scenery-a"],
+                "lua": ["lua-a"]
+            }
+        }"#;
+
+        let snapshot: PresetSnapshot = serde_json::from_str(json).unwrap();
+        let lock_state = snapshot.lock_state.clone().unwrap();
+
+        assert_eq!(snapshot.aircraft.len(), 1);
+        assert_eq!(snapshot.plugins.len(), 1);
+        assert_eq!(snapshot.scenery.len(), 1);
+        assert_eq!(snapshot.lua_scripts.as_ref().unwrap().len(), 1);
+        assert_eq!(lock_state.aircraft, vec!["aircraft-a"]);
+        assert_eq!(lock_state.plugin, vec!["plugin-a"]);
+        assert_eq!(lock_state.scenery, vec!["scenery-a"]);
+        assert_eq!(lock_state.lua, vec!["lua-a"]);
+
+        let serialized = serde_json::to_string(&snapshot).unwrap();
+        assert!(!serialized.contains("navdata"));
     }
 
     #[test]
@@ -906,6 +1078,7 @@ mod tests {
                 livery_count: 5,
                 version: Some("1.0".to_string()),
                 update_url: None,
+                update_provider: None,
                 latest_version: None,
                 has_update: false,
                 cfg_disabled: None,

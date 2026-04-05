@@ -24,24 +24,62 @@ export interface ApiError {
   details?: string
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function parseApiErrorObject(value: Record<string, unknown>): ApiError | null {
+  const code = value.code
+  const message = value.message
+  const details = value.details
+
+  if (typeof code === 'string' && typeof message === 'string') {
+    return {
+      code: code as ApiErrorCode,
+      message,
+      details: typeof details === 'string' ? details : undefined,
+    }
+  }
+
+  if (message !== undefined) {
+    const nested = parseApiError(message)
+    if (nested) return nested
+  }
+
+  if (value.error !== undefined) {
+    const nested = parseApiError(value.error)
+    if (nested) return nested
+  }
+
+  return null
+}
+
 /**
  * Parse a Tauri invoke error to check if it's a structured ApiError
  * @param error The error from invoke (typically a string)
  * @returns Parsed ApiError if structured, or null if it's a plain string error
  */
 export function parseApiError(error: unknown): ApiError | null {
-  if (typeof error !== 'string') {
+  if (typeof error === 'string') {
+    // Try to parse as JSON (structured error)
+    try {
+      const parsed = JSON.parse(error)
+      if (isRecord(parsed)) {
+        return parseApiErrorObject(parsed)
+      }
+    } catch {
+      // Not JSON, it's a plain string error
+    }
+
     return null
   }
 
-  // Try to parse as JSON (structured error)
-  try {
-    const parsed = JSON.parse(error)
-    if (parsed && typeof parsed === 'object' && 'code' in parsed && 'message' in parsed) {
-      return parsed as ApiError
-    }
-  } catch {
-    // Not JSON, it's a plain string error
+  if (isRecord(error)) {
+    return parseApiErrorObject(error)
+  }
+
+  if (error instanceof Error) {
+    return parseApiError(error.message)
   }
 
   return null
@@ -68,6 +106,19 @@ export function getErrorMessage(error: unknown): string {
   }
   if (error instanceof Error) {
     return error.message
+  }
+  if (isRecord(error)) {
+    if (typeof error.message === 'string') {
+      return error.message
+    }
+    if (typeof error.error === 'string') {
+      return error.error
+    }
+    try {
+      return JSON.stringify(error)
+    } catch {
+      // Ignore JSON serialization failures and fall back below.
+    }
   }
   return String(error)
 }
@@ -327,6 +378,7 @@ export interface AircraftInfo {
   liveryCount: number
   version?: string
   updateUrl?: string
+  updateProvider?: 'skunkcrafts' | 'x-updater' | 'zibo'
   latestVersion?: string
   hasUpdate: boolean
   cfgDisabled?: boolean
@@ -346,6 +398,7 @@ export interface PluginInfo {
   platform: string
   version?: string
   updateUrl?: string
+  updateProvider?: 'skunkcrafts' | 'x-updater'
   latestVersion?: string
   hasUpdate: boolean
   cfgDisabled?: boolean
@@ -389,6 +442,10 @@ export interface AddonUpdatePreview {
   changelog?: string
 }
 
+export type AddonManualDownloadReason = 'drive-limit' | 'release-page'
+
+export type ZiboInstallMode = 'patch' | 'major-clean'
+
 export interface AddonUpdatePlan {
   provider?: string
   itemType: string
@@ -396,6 +453,9 @@ export interface AddonUpdatePlan {
   localVersion?: string
   remoteVersion?: string
   remoteModule?: string
+  manualDownloadUrl?: string
+  manualDownloadReason?: AddonManualDownloadReason
+  ziboInstallMode?: ZiboInstallMode
   remoteLocked: boolean
   hasUpdate: boolean
   estimatedDownloadBytes: number
@@ -511,4 +571,101 @@ export interface ScreenshotEditParams {
   shadows: number
   sharpness: number
   denoise: number
+}
+
+// ========== CSL Management Types ==========
+
+export type CslPackageStatus = 'checking' | 'not_installed' | 'needs_update' | 'up_to_date'
+
+export interface CslPackageInfo {
+  name: string
+  total_size_bytes: number
+  file_count: number
+  description: string
+  status: CslPackageStatus
+  files_to_update: number
+  update_size_bytes: number
+  last_updated: string
+}
+
+export interface CslPath {
+  path: string
+  source: string
+  plugin_name: string | null
+}
+
+export interface CslScanResult {
+  packages: CslPackageInfo[]
+  paths: CslPath[]
+  server_version: string
+}
+
+export interface CslProgress {
+  package_name: string
+  current_file: number
+  total_files: number
+  current_file_name: string
+  bytes_downloaded: number
+  total_bytes: number
+}
+
+// ========== Gateway Management Types ==========
+
+export interface GatewayAirportSearchResult {
+  icao: string
+  airportName: string | null
+  sceneryCount: number | null
+  recommendedSceneryId: number | null
+  recommendedArtist: string | null
+  recommendedAcceptedAt: string | null
+}
+
+export interface GatewayScenerySummary {
+  sceneryId: number
+  artist: string | null
+  status: string | null
+  approvedDate: string | null
+  comment: string | null
+  recommended: boolean
+}
+
+export interface GatewayAirportDetail {
+  icao: string
+  airportName: string | null
+  sceneryCount: number | null
+  recommendedSceneryId: number | null
+  recommendedArtist: string | null
+  recommendedAcceptedAt: string | null
+  sceneries: GatewayScenerySummary[]
+}
+
+export interface GatewaySceneryDetail {
+  sceneryId: number
+  icao: string | null
+  airportName: string | null
+  status: string | null
+  artist: string | null
+  approvedDate: string | null
+  comment: string | null
+  features: string[]
+}
+
+export interface GatewayInstalledAirport {
+  id: number
+  airportIcao: string
+  airportName: string
+  sceneryId: number
+  folderName: string
+  artist: string | null
+  approvedDate: string | null
+  installedAt: number
+  updateAvailable: boolean | null
+  latestSceneryId: number | null
+  latestArtist: string | null
+  latestApprovedDate: string | null
+}
+
+export interface GatewayInstallWarning {
+  kind: string
+  message: string
 }

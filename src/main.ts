@@ -189,6 +189,7 @@ function escapeHtml(text: string): string {
 const preloadManagement = () => import('./views/Management.vue')
 const preloadSettings = () => import('./views/Settings.vue')
 const preloadMap = () => import('./views/MapView.vue')
+const preloadGateway = () => import('./views/GatewayManagement.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -198,12 +199,17 @@ const router = createRouter({
     { path: '/management', component: preloadManagement },
     { path: '/management/liveries', component: () => import('./views/Liveries.vue') },
     { path: '/management/scripts', component: () => import('./views/Scripts.vue') },
+    { path: '/presets', component: () => import('./views/Presets.vue') },
     { path: '/map', component: preloadMap },
+    { path: '/gateway', component: preloadGateway },
     { path: '/log-analysis', component: () => import('./views/LogAnalysis.vue') },
+    { path: '/activity', component: () => import('./views/ActivityLog.vue') },
     { path: '/screenshots', component: () => import('./views/ScreenshotManager.vue') },
+    { path: '/disk-usage', component: () => import('./views/DiskUsage.vue') },
     { path: '/feedback', component: () => import('./views/FeedbackCenter.vue') },
     { path: '/scenery', redirect: '/management?tab=scenery' },
     { path: '/settings', component: preloadSettings },
+    { path: '/csl', component: () => import('./views/CSLManagement.vue') },
   ],
 })
 
@@ -214,6 +220,7 @@ function preloadViews() {
   schedulePreload(() => {
     preloadManagement()
     preloadSettings()
+    preloadGateway()
     preloadMap()
   })
 }

@@ -16,6 +16,7 @@ use crate::path_utils;
 use crate::x_updater_profile::{
     find_profile_in_folder, is_profile_file_name, tag_host_as_update_url, XUPDATER_URL_PREFIX,
 };
+use crate::zibo_updater;
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
 use std::collections::HashSet;
@@ -153,7 +154,15 @@ fn resolve_management_path(
 pub fn scan_aircraft(xplane_path: &Path) -> Result<ManagementData<AircraftInfo>> {
     let aircraft_path = xplane_path.join("Aircraft");
     if !aircraft_path.exists() {
-        return Err(anyhow!("Aircraft folder not found"));
+        logger::log_info(
+            "Aircraft folder not found, returning empty aircraft list",
+            Some("management"),
+        );
+        return Ok(ManagementData {
+            entries: Vec::new(),
+            total_count: 0,
+            enabled_count: 0,
+        });
     }
 
     logger::log_info("Scanning aircraft folder...", Some("management"));
@@ -333,17 +342,32 @@ fn scan_single_aircraft_folder(
         return None;
     };
 
-    // Read version info (priority: skunkcrafts_updater.cfg > version files)
-    let (mut version, mut update_url, cfg_disabled) =
-        read_version_from_paths(updater_cfg_path.as_deref(), &version_file_paths);
-    if update_url.is_none() && has_xupdater_hints {
-        if let Some(profile) = find_profile_in_folder(folder) {
-            update_url = Some(tag_host_as_update_url(&profile.host));
-            if version.is_none() {
-                version = profile.version_label.clone();
+    let is_zibo = zibo_updater::is_zibo_aircraft(folder_name, &acf_name);
+    let (version, update_url, update_provider, cfg_disabled) = if is_zibo {
+        (
+            zibo_updater::read_local_version_for_scan(folder),
+            Some(zibo_updater::ZIBO_RSS_URL.to_string()),
+            Some(zibo_updater::ZIBO_PROVIDER.to_string()),
+            None,
+        )
+    } else {
+        // Read version info (priority: skunkcrafts_updater.cfg > version files)
+        let (mut version, mut update_url, cfg_disabled) =
+            read_version_from_paths(updater_cfg_path.as_deref(), &version_file_paths);
+        if update_url.is_none() && has_xupdater_hints {
+            if let Some(profile) = find_profile_in_folder(folder) {
+                update_url = Some(tag_host_as_update_url(&profile.host));
+                if version.is_none() {
+                    version = profile.version_label.clone();
+                }
             }
         }
-    }
+        let update_provider = update_url
+            .as_deref()
+            .map(detect_update_provider)
+            .map(str::to_string);
+        (version, update_url, update_provider, cfg_disabled)
+    };
 
     let relative_path = folder
         .strip_prefix(base_path)
@@ -360,6 +384,7 @@ fn scan_single_aircraft_folder(
         livery_count,
         version,
         update_url,
+        update_provider,
         latest_version: None, // Will be populated by check_aircraft_updates
         has_update: false,    // Will be set by check_aircraft_updates
         cfg_disabled,
@@ -453,6 +478,14 @@ pub fn read_version_from_paths(
     }
 
     (None, update_url, cfg_disabled)
+}
+
+fn detect_update_provider(update_url: &str) -> &'static str {
+    if is_x_updater_url(update_url) {
+        "x-updater"
+    } else {
+        "skunkcrafts"
+    }
 }
 
 /// Read version information from a folder (used by plugins where we don't have pre-collected paths)
@@ -667,6 +700,10 @@ fn scan_single_plugin_folder(path: &Path, folder_name: &str) -> Option<PluginInf
 
     // Read version info with update URL
     let (version, update_url, cfg_disabled) = read_version_info_with_url(path);
+    let update_provider = update_url
+        .as_deref()
+        .map(detect_update_provider)
+        .map(str::to_string);
 
     // Detect FlyWithLua scripts
     let (has_scripts, script_count) = if folder_name.eq_ignore_ascii_case("FlyWithLua") {
@@ -706,6 +743,7 @@ fn scan_single_plugin_folder(path: &Path, folder_name: &str) -> Option<PluginInf
         platform,
         version,
         update_url,
+        update_provider,
         latest_version: None, // Will be populated by check_plugins_updates
         has_update: false,    // Will be set by check_plugins_updates
         cfg_disabled,
@@ -1186,7 +1224,9 @@ pub async fn check_aircraft_updates(aircraft: &mut [AircraftInfo]) {
         .enumerate()
         .filter_map(|(idx, a)| {
             a.update_url.as_ref().and_then(|url| {
-                if is_x_updater_url(url) {
+                if a.update_provider.as_deref() == Some(zibo_updater::ZIBO_PROVIDER)
+                    || is_x_updater_url(url)
+                {
                     None
                 } else {
                     Some((idx, url.clone()))
@@ -1194,25 +1234,44 @@ pub async fn check_aircraft_updates(aircraft: &mut [AircraftInfo]) {
             })
         })
         .collect();
-
-    if update_tasks.is_empty() {
-        return;
-    }
-
-    // Fetch all remote configs in parallel
-    let fetch_futures: Vec<_> = update_tasks
+    let zibo_indices: Vec<usize> = aircraft
         .iter()
-        .map(|(_, url)| fetch_remote_version(url.clone()))
+        .enumerate()
+        .filter_map(|(idx, aircraft)| {
+            (aircraft.update_provider.as_deref() == Some(zibo_updater::ZIBO_PROVIDER))
+                .then_some(idx)
+        })
         .collect();
 
-    let results = join_all(fetch_futures).await;
+    if !update_tasks.is_empty() {
+        // Fetch all remote configs in parallel
+        let fetch_futures: Vec<_> = update_tasks
+            .iter()
+            .map(|(_, url)| fetch_remote_version(url.clone()))
+            .collect();
 
-    // Update aircraft with results
-    for ((idx, _), result) in update_tasks.into_iter().zip(results) {
-        if let Some(remote_version) = result {
-            let local_version = aircraft[idx].version.as_deref().unwrap_or("");
-            aircraft[idx].latest_version = Some(remote_version.clone());
-            aircraft[idx].has_update = remote_version != local_version;
+        let results = join_all(fetch_futures).await;
+
+        // Update aircraft with results
+        for ((idx, _), result) in update_tasks.into_iter().zip(results) {
+            if let Some(remote_version) = result {
+                let local_version = aircraft[idx].version.as_deref().unwrap_or("");
+                aircraft[idx].latest_version = Some(remote_version.clone());
+                aircraft[idx].has_update = remote_version != local_version;
+            }
+        }
+    }
+
+    if !zibo_indices.is_empty() {
+        if let Ok(remote_release) = zibo_updater::fetch_latest_release(None).await {
+            let remote_version = remote_release.version_string();
+            for idx in zibo_indices {
+                aircraft[idx].latest_version = Some(remote_version.clone());
+                aircraft[idx].has_update = zibo_updater::should_offer_update(
+                    aircraft[idx].version.as_deref(),
+                    &remote_version,
+                );
+            }
         }
     }
 }
@@ -1970,4 +2029,21 @@ pub fn delete_lua_script(xplane_path: &Path, file_name: &str) -> Result<()> {
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scan_aircraft;
+    use tempfile::tempdir;
+
+    #[test]
+    fn scan_aircraft_returns_empty_when_aircraft_folder_is_missing() {
+        let temp = tempdir().expect("failed to create tempdir");
+
+        let result = scan_aircraft(temp.path()).expect("scan_aircraft should not fail");
+
+        assert!(result.entries.is_empty());
+        assert_eq!(result.total_count, 0);
+        assert_eq!(result.enabled_count, 0);
+    }
 }

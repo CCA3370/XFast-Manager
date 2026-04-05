@@ -17,8 +17,14 @@
       <UpdateBanner
         :visible="updateStore.showUpdateBanner"
         :update-info="updateStore.updateInfo"
+        :is-downloading="updateStore.isDownloading"
+        :download-progress="updateStore.downloadProgress"
+        :update-phase="updateStore.updatePhase"
+        :update-error="updateStore.updateError"
         @view-release="updateStore.openReleaseUrl"
         @dismiss="updateStore.dismissUpdate"
+        @update="updateStore.performUpdate"
+        @retry="updateStore.performUpdate"
       />
 
       <!-- Warning Alert (Compact) -->
@@ -82,155 +88,161 @@
           class="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-purple-50/50 dark:from-blue-600/5 dark:to-purple-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
         ></div>
 
-        <div
-          v-if="!store.isAnalyzing && !store.isInstalling && !store.showCompletion"
-          class="relative z-10 flex flex-col items-center justify-center space-y-4"
-        >
-          <!-- Icon -->
-          <div
-            class="w-16 h-16 rounded-full bg-blue-50 dark:bg-gray-700/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-500 relative"
-          >
-            <div
-              class="absolute inset-0 bg-blue-500/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-            ></div>
-            <svg
-              class="w-8 h-8 text-gray-400 dark:text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors duration-300"
-              :class="{ 'text-blue-500 dark:text-blue-400 animate-bounce': isDragging }"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-              ></path>
-            </svg>
-          </div>
-
-          <!-- Text -->
-          <div class="space-y-1 text-center">
-            <h2
-              class="text-2xl font-bold text-gray-900 dark:text-white tracking-tight group-hover:text-blue-600 dark:group-hover:text-blue-100 transition-colors"
-            >
-              <AnimatedText>{{ $t('home.dropFilesHere') }}</AnimatedText>
-            </h2>
-            <p class="text-gray-500 dark:text-gray-400 max-w-md mx-auto text-sm">
-              <AnimatedText>{{ $t('home.supportedFormats') }}</AnimatedText>
-            </p>
-          </div>
-
-          <!-- Features Badges -->
-          <div class="flex flex-wrap justify-center gap-2 pt-2">
-            <span
-              class="px-2.5 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium flex items-center space-x-1.5 shadow-sm dark:shadow-none"
-            >
-              <svg
-                class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                ></path>
-              </svg>
-              <span
-                ><AnimatedText>{{ $t('home.autoDetect') }}</AnimatedText></span
-              >
-            </span>
-            <span
-              class="px-2.5 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium flex items-center space-x-1.5 shadow-sm dark:shadow-none"
-            >
-              <svg
-                class="w-3.5 h-3.5 text-purple-500 dark:text-purple-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
-                ></path>
-              </svg>
-              <span
-                ><AnimatedText>{{ $t('home.fastInstall') }}</AnimatedText></span
-              >
-            </span>
-            <span
-              class="px-2.5 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium flex items-center space-x-1.5 shadow-sm dark:shadow-none"
-            >
-              <svg
-                class="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                ></path>
-              </svg>
-              <span
-                ><AnimatedText>{{ $t('home.batchProcess') }}</AnimatedText></span
-              >
-            </span>
-          </div>
-
-          <!-- Launch X-Plane Button -->
-          <button
-            v-if="store.xplanePath"
-            :disabled="isLaunchingXPlane || isXPlaneRunning"
-            :title="isXPlaneRunning ? $t('home.xplaneAlreadyRunning') : ''"
-            class="mt-4 px-4 py-2 bg-white/70 dark:bg-gray-700/50 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium rounded-xl transition-all duration-300 hover:scale-105 flex items-center gap-2 border-2 border-gray-300 dark:border-gray-500/50 hover:border-blue-400 dark:hover:border-blue-500/70 shadow-sm hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
-            @click.stop="handleLaunchXPlane"
-          >
-            <!-- Loading spinner -->
-            <svg
-              v-if="isLaunchingXPlane"
-              class="w-4 h-4 animate-spin"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              ></circle>
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-            <!-- Play icon -->
-            <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M5 3l14 9-14 9V3z"
-              ></path>
-            </svg>
-            <span>{{ isXPlaneRunning ? $t('home.xplaneRunning') : $t('home.launchXPlane') }}</span>
-          </button>
-        </div>
-
-        <!-- Progress Overlays -->
+        <!-- Main Area Content: Toggle between Drop Zone and Progress Overlays -->
         <transition name="fade" mode="out-in">
-          <AnalyzingOverlay v-if="store.isAnalyzing" key="analyzing" />
+          <!-- Drop Zone State -->
+          <div
+            v-if="!store.isAnalyzing && !store.isInstalling && !store.showCompletion"
+            key="drop-zone"
+            class="relative z-10 flex flex-col items-center justify-center space-y-4"
+          >
+            <!-- Icon -->
+            <div
+              class="w-16 h-16 rounded-full bg-blue-50 dark:bg-gray-700/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-500 relative"
+            >
+              <div
+                class="absolute inset-0 bg-blue-500/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+              ></div>
+              <svg
+                class="w-8 h-8 text-gray-400 dark:text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors duration-300"
+                :class="{ 'text-blue-500 dark:text-blue-400 animate-bounce': isDragging }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                ></path>
+              </svg>
+            </div>
 
+            <!-- Text -->
+            <div class="space-y-1 text-center">
+              <h2
+                class="text-2xl font-bold text-gray-900 dark:text-white tracking-tight group-hover:text-blue-600 dark:group-hover:text-blue-100 transition-colors"
+              >
+                <AnimatedText>{{ $t('home.dropFilesHere') }}</AnimatedText>
+              </h2>
+              <p class="text-gray-500 dark:text-gray-400 max-w-md mx-auto text-sm">
+                <AnimatedText>{{ $t('home.supportedFormats') }}</AnimatedText>
+              </p>
+            </div>
+
+            <!-- Features Badges -->
+            <div class="flex flex-wrap justify-center gap-2 pt-2">
+              <span
+                class="px-2.5 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium flex items-center space-x-1.5 shadow-sm dark:shadow-none"
+              >
+                <svg
+                  class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  ></path>
+                </svg>
+                <span
+                  ><AnimatedText>{{ $t('home.autoDetect') }}</AnimatedText></span
+                >
+              </span>
+              <span
+                class="px-2.5 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium flex items-center space-x-1.5 shadow-sm dark:shadow-none"
+              >
+                <svg
+                  class="w-3.5 h-3.5 text-purple-500 dark:text-purple-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  ></path>
+                </svg>
+                <span
+                  ><AnimatedText>{{ $t('home.fastInstall') }}</AnimatedText></span
+                >
+              </span>
+              <span
+                class="px-2.5 py-1 rounded-full bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-white/5 text-gray-600 dark:text-gray-300 text-xs font-medium flex items-center space-x-1.5 shadow-sm dark:shadow-none"
+              >
+                <svg
+                  class="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                  ></path>
+                </svg>
+                <span
+                  ><AnimatedText>{{ $t('home.batchProcess') }}</AnimatedText></span
+                >
+              </span>
+            </div>
+
+            <!-- Launch X-Plane Button -->
+            <button
+              v-if="store.xplanePath"
+              :disabled="isLaunchingXPlane || isXPlaneRunning"
+              :title="isXPlaneRunning ? $t('home.xplaneAlreadyRunning') : ''"
+              class="mt-4 px-4 py-2 bg-white/70 dark:bg-gray-700/50 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium rounded-xl transition-all duration-300 hover:scale-105 flex items-center gap-2 border-2 border-gray-300 dark:border-gray-500/50 hover:border-blue-400 dark:hover:border-blue-500/70 shadow-sm hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
+              @click.stop="handleLaunchXPlane"
+            >
+              <!-- Loading spinner -->
+              <svg
+                v-if="isLaunchingXPlane"
+                class="w-4 h-4 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              <!-- Play icon -->
+              <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M5 3l14 9-14 9V3z"
+                ></path>
+              </svg>
+              <span>{{
+                isXPlaneRunning ? $t('home.xplaneRunning') : $t('home.launchXPlane')
+              }}</span>
+            </button>
+          </div>
+
+          <!-- Analyzing State -->
+          <AnalyzingOverlay v-else-if="store.isAnalyzing" key="analyzing" />
+
+          <!-- Installing / Completion State -->
           <InstallProgressOverlay
             v-else-if="store.isInstalling || store.showCompletion"
             key="installing"
@@ -1236,8 +1248,14 @@ function cancelLaunchDialog() {
 }
 
 function handleCompletionConfirm() {
-  store.clearInstallResult()
-  store.clearTasks()
+  setTrackedTimeout(
+    () => {
+      store.clearInstallResult()
+      store.clearTasks()
+    },
+    COMPLETION_ANIMATION_DELAY_MS,
+    activeTimeoutIds,
+  )
 }
 </script>
 

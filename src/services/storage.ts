@@ -121,6 +121,7 @@ export const STORAGE_KEYS = {
   XPLANE_LAUNCH_ARGS: 'xplaneLaunchArgs',
   PARALLEL_INSTALL_ENABLED: 'parallelInstallEnabled',
   MAX_PARALLEL_TASKS: 'maxParallelTasks',
+  STABLE_FEATURE_DEFAULTS_APPLIED: 'stableFeatureDefaultsApplied',
   REPORTED_ISSUES: 'reportedIssues',
   UNCONFIRMED_ISSUE_UPDATES: 'unconfirmedIssueUpdates',
   FEEDBACK_DRAFT: 'feedbackDraft',
@@ -144,6 +145,8 @@ export const STORAGE_KEYS = {
   MAP_SIMBRIEF_PILOT_ID: 'mapSimbriefPilotId',
   MAP_FOLLOW_PLANE: 'mapFollowPlane',
   MAP_WEIGHT_UNIT: 'mapWeightUnit',
+  CSL_SERVER_BASE_URLS: 'cslServerBaseUrls',
+  CSL_ACTIVE_SERVER_BASE_URL: 'cslActiveServerBaseUrl',
 } as const
 
 export type TrackedIssueSource = 'feedback' | 'auto-report' | 'library-link'

@@ -1,9 +1,20 @@
 <template>
-  <div class="map-page h-full relative overflow-hidden bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-gray-100">
-    <div v-if="!appStore.xplanePath" class="absolute inset-0 z-30 flex items-center justify-center p-6">
-      <div class="max-w-lg rounded-xl border border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-6 text-center">
-        <h2 class="text-lg font-semibold text-amber-700 dark:text-amber-200">{{ t('map.pathRequiredTitle') }}</h2>
-        <p class="mt-2 text-sm text-amber-600 dark:text-amber-100/90">{{ t('map.pathRequiredDesc') }}</p>
+  <div
+    class="map-page h-full relative overflow-hidden bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-gray-100"
+  >
+    <div
+      v-if="!appStore.xplanePath"
+      class="absolute inset-0 z-30 flex items-center justify-center p-6"
+    >
+      <div
+        class="max-w-lg rounded-xl border border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-6 text-center"
+      >
+        <h2 class="text-lg font-semibold text-amber-700 dark:text-amber-200">
+          {{ t('map.pathRequiredTitle') }}
+        </h2>
+        <p class="mt-2 text-sm text-amber-600 dark:text-amber-100/90">
+          {{ t('map.pathRequiredDesc') }}
+        </p>
       </div>
     </div>
 
@@ -13,188 +24,231 @@
       class="absolute top-3 left-3 z-20 rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-2 shadow-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
       @click="leftPanelCollapsed = false"
     >
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-5 w-5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+      </svg>
     </button>
 
     <transition name="slide-left">
-    <div v-if="!leftPanelCollapsed" class="absolute top-3 left-3 z-20 w-[420px] max-w-[calc(100%-1.5rem)] space-y-2">
-      <div class="flex justify-end -mb-1">
-        <button
-          class="rounded-md border border-gray-200/50 dark:border-gray-700/70 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-1.5 py-0.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
-          @click="leftPanelCollapsed = true"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
-        </button>
-      </div>
-      <div class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl">
-        <div class="flex items-center gap-2">
-          <input
-            v-model="searchQuery"
-            type="text"
-            class="flex-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:border-blue-400 focus:outline-none"
-            :placeholder="t('map.searchPlaceholder')"
-          />
+      <div
+        v-if="!leftPanelCollapsed"
+        class="absolute top-3 left-3 z-20 w-[420px] max-w-[calc(100%-1.5rem)] space-y-2"
+      >
+        <div class="flex justify-end -mb-1">
           <button
-            class="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-800 px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-slate-700"
-            @click="refreshMapData"
+            class="rounded-md border border-gray-200/50 dark:border-gray-700/70 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-1.5 py-0.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+            @click="leftPanelCollapsed = true"
           >
-            {{ t('map.refresh') }}
-          </button>
-          <select
-            :value="mapStore.mapStyleUrl"
-            class="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-800 px-2 py-2 text-xs text-gray-700 dark:text-gray-200"
-            @change="onMapStyleChange"
-          >
-            <option
-              v-for="style in mapStyleOptions"
-              :key="style.value"
-              :value="style.value"
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
             >
-              {{ style.label }}
-            </option>
-          </select>
-        </div>
-
-        <div v-if="searchResults.length > 0" class="mt-2 max-h-56 overflow-y-auto rounded-md border border-gray-300 dark:border-gray-700">
-          <button
-            v-for="airport in searchResults"
-            :key="`search-${airport.icao}`"
-            class="flex w-full items-center justify-between border-b border-gray-200 dark:border-gray-700/70 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-gray-100 dark:hover:bg-slate-700/60"
-            @click="selectAirport(airport)"
-          >
-            <span class="font-mono text-blue-600 dark:text-blue-300">{{ airport.icao }}</span>
-            <span class="ml-2 flex-1 truncate text-gray-700 dark:text-gray-200">{{ airport.name }}</span>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
           </button>
         </div>
-      </div>
+        <div
+          class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl"
+        >
+          <div class="flex items-center gap-2">
+            <input
+              v-model="searchQuery"
+              type="text"
+              class="flex-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:border-blue-400 focus:outline-none"
+              :placeholder="t('map.searchPlaceholder')"
+            />
+            <button
+              class="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-800 px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-slate-700"
+              @click="refreshMapData"
+            >
+              {{ t('map.refresh') }}
+            </button>
+            <select
+              :value="mapStore.mapStyleUrl"
+              class="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-800 px-2 py-2 text-xs text-gray-700 dark:text-gray-200"
+              @change="onMapStyleChange"
+            >
+              <option v-for="style in mapStyleOptions" :key="style.value" :value="style.value">
+                {{ style.label }}
+              </option>
+            </select>
+          </div>
 
-      <div class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl">
-        <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-          <span>{{ t('map.layersTitle') }}</span>
-          <span>
-            {{ dataStatus.loaded ? t('map.indexReady') : t('map.indexLoading') }}
-          </span>
-        </div>
-        <div class="grid grid-cols-3 gap-2 text-xs">
-          <label
-            v-for="item in layerItems"
-            :key="item.key"
-            class="flex cursor-pointer items-center gap-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5"
+          <div
+            v-if="searchResults.length > 0"
+            class="mt-2 max-h-56 overflow-y-auto rounded-md border border-gray-300 dark:border-gray-700"
           >
-            <input
-              type="checkbox"
-              class="h-3.5 w-3.5"
-              :checked="mapStore.layerVisibility[item.key]"
-              @change="toggleLayer(item.key)"
-            />
-            <span>{{ t(item.label) }}</span>
-          </label>
+            <button
+              v-for="airport in searchResults"
+              :key="`search-${airport.icao}`"
+              class="flex w-full items-center justify-between border-b border-gray-200 dark:border-gray-700/70 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-gray-100 dark:hover:bg-slate-700/60"
+              @click="selectAirport(airport)"
+            >
+              <span class="font-mono text-blue-600 dark:text-blue-300">{{ airport.icao }}</span>
+              <span class="ml-2 flex-1 truncate text-gray-700 dark:text-gray-200">{{
+                airport.name
+              }}</span>
+            </button>
+          </div>
         </div>
 
-        <div class="mt-3 flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300">
-          <label class="flex items-center gap-2">
-            <span>{{ t('map.followPlane') }}</span>
-            <input
-              type="checkbox"
-              class="h-3.5 w-3.5"
-              :checked="mapStore.followPlane"
-              @change="onToggleFollowPlane"
-            />
-          </label>
-          <label class="flex items-center gap-2">
-            <span>{{ t('map.navRadius') }}</span>
+        <div
+          class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl"
+        >
+          <div
+            class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400"
+          >
+            <span>{{ t('map.layersTitle') }}</span>
+            <span>
+              {{ dataStatus.loaded ? t('map.indexReady') : t('map.indexLoading') }}
+            </span>
+          </div>
+          <div class="grid grid-cols-3 gap-2 text-xs">
+            <label
+              v-for="item in layerItems"
+              :key="item.key"
+              class="flex cursor-pointer items-center gap-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5"
+            >
+              <input
+                type="checkbox"
+                class="h-3.5 w-3.5"
+                :checked="mapStore.layerVisibility[item.key]"
+                @change="toggleLayer(item.key)"
+              />
+              <span>{{ t(item.label) }}</span>
+            </label>
+          </div>
+
+          <div class="mt-3 flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300">
+            <label class="flex items-center gap-2">
+              <span>{{ t('map.followPlane') }}</span>
+              <input
+                type="checkbox"
+                class="h-3.5 w-3.5"
+                :checked="mapStore.followPlane"
+                @change="onToggleFollowPlane"
+              />
+            </label>
+            <label class="flex items-center gap-2">
+              <span>{{ t('map.navRadius') }}</span>
+              <input
+                type="number"
+                min="10"
+                max="200"
+                :value="mapStore.navRadiusNm"
+                class="w-16 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-2 py-1"
+                @change="onRadiusInput"
+              />
+            </label>
+            <label class="flex items-center gap-2">
+              <span>{{ t('map.vatsimInterval') }}</span>
+              <input
+                type="number"
+                min="5"
+                max="120"
+                :value="mapStore.vatsimRefreshInterval"
+                class="w-14 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-2 py-1"
+                @change="onVatsimIntervalInput"
+              />
+            </label>
+            <button
+              class="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-800 px-2 py-1 text-[11px] hover:bg-gray-100 dark:hover:bg-slate-700"
+              @click="reconnectPlaneStream"
+            >
+              {{ t('map.reconnectPlane') }}
+            </button>
+          </div>
+        </div>
+
+        <div
+          class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl"
+        >
+          <div
+            class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400"
+          >
+            <span>{{ t('map.filtersTitle') }}</span>
+            <button
+              class="rounded border border-gray-300 dark:border-gray-600 px-2 py-0.5 text-[11px] hover:bg-gray-100 dark:hover:bg-slate-700/70"
+              @click="resetAirportFilters"
+            >
+              {{ t('map.resetFilters') }}
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 text-xs text-gray-700 dark:text-gray-200">
+            <label
+              class="flex items-center gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5"
+            >
+              <input
+                type="checkbox"
+                class="h-3.5 w-3.5"
+                :checked="mapStore.airportFilters.showLand"
+                @change="onAirportFilterToggle('showLand', $event)"
+              />
+              <span>{{ t('map.filters.land') }}</span>
+            </label>
+            <label
+              class="flex items-center gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5"
+            >
+              <input
+                type="checkbox"
+                class="h-3.5 w-3.5"
+                :checked="mapStore.airportFilters.showSeaplane"
+                @change="onAirportFilterToggle('showSeaplane', $event)"
+              />
+              <span>{{ t('map.filters.seaplane') }}</span>
+            </label>
+            <label
+              class="flex items-center gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5"
+            >
+              <input
+                type="checkbox"
+                class="h-3.5 w-3.5"
+                :checked="mapStore.airportFilters.showHeliport"
+                @change="onAirportFilterToggle('showHeliport', $event)"
+              />
+              <span>{{ t('map.filters.heliport') }}</span>
+            </label>
+            <label
+              class="flex items-center gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5"
+            >
+              <input
+                type="checkbox"
+                class="h-3.5 w-3.5"
+                :checked="mapStore.airportFilters.onlyCustom"
+                @change="onAirportFilterToggle('onlyCustom', $event)"
+              />
+              <span>{{ t('map.filters.customOnly') }}</span>
+            </label>
+          </div>
+
+          <div class="mt-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+            <span>{{ t('map.filters.minRunways') }}</span>
             <input
               type="number"
-              min="10"
-              max="200"
-              :value="mapStore.navRadiusNm"
-              class="w-16 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-2 py-1"
-              @change="onRadiusInput"
-            />
-          </label>
-          <label class="flex items-center gap-2">
-            <span>{{ t('map.vatsimInterval') }}</span>
-            <input
-              type="number"
-              min="5"
-              max="120"
-              :value="mapStore.vatsimRefreshInterval"
+              min="0"
+              max="8"
+              :value="mapStore.airportFilters.minRunwayCount"
               class="w-14 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-2 py-1"
-              @change="onVatsimIntervalInput"
+              @change="onMinRunwayCountInput"
             />
-          </label>
-          <button
-            class="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-800 px-2 py-1 text-[11px] hover:bg-gray-100 dark:hover:bg-slate-700"
-            @click="reconnectPlaneStream"
-          >
-            {{ t('map.reconnectPlane') }}
-          </button>
+          </div>
         </div>
       </div>
-
-      <div class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl">
-        <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-          <span>{{ t('map.filtersTitle') }}</span>
-          <button
-            class="rounded border border-gray-300 dark:border-gray-600 px-2 py-0.5 text-[11px] hover:bg-gray-100 dark:hover:bg-slate-700/70"
-            @click="resetAirportFilters"
-          >
-            {{ t('map.resetFilters') }}
-          </button>
-        </div>
-
-        <div class="grid grid-cols-2 gap-2 text-xs text-gray-700 dark:text-gray-200">
-          <label class="flex items-center gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5">
-            <input
-              type="checkbox"
-              class="h-3.5 w-3.5"
-              :checked="mapStore.airportFilters.showLand"
-              @change="onAirportFilterToggle('showLand', $event)"
-            />
-            <span>{{ t('map.filters.land') }}</span>
-          </label>
-          <label class="flex items-center gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5">
-            <input
-              type="checkbox"
-              class="h-3.5 w-3.5"
-              :checked="mapStore.airportFilters.showSeaplane"
-              @change="onAirportFilterToggle('showSeaplane', $event)"
-            />
-            <span>{{ t('map.filters.seaplane') }}</span>
-          </label>
-          <label class="flex items-center gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5">
-            <input
-              type="checkbox"
-              class="h-3.5 w-3.5"
-              :checked="mapStore.airportFilters.showHeliport"
-              @change="onAirportFilterToggle('showHeliport', $event)"
-            />
-            <span>{{ t('map.filters.heliport') }}</span>
-          </label>
-          <label class="flex items-center gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 px-2 py-1.5">
-            <input
-              type="checkbox"
-              class="h-3.5 w-3.5"
-              :checked="mapStore.airportFilters.onlyCustom"
-              @change="onAirportFilterToggle('onlyCustom', $event)"
-            />
-            <span>{{ t('map.filters.customOnly') }}</span>
-          </label>
-        </div>
-
-        <div class="mt-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-          <span>{{ t('map.filters.minRunways') }}</span>
-          <input
-            type="number"
-            min="0"
-            max="8"
-            :value="mapStore.airportFilters.minRunwayCount"
-            class="w-14 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-slate-800 px-2 py-1"
-            @change="onMinRunwayCountInput"
-          />
-        </div>
-      </div>
-    </div>
     </transition>
 
     <!-- Right panel toggle button (visible when collapsed) -->
@@ -203,281 +257,429 @@
       class="absolute top-3 right-3 z-20 rounded-lg border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-2 shadow-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
       @click="rightPanelCollapsed = false"
     >
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-5 w-5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+      </svg>
     </button>
 
     <transition name="slide-right">
-    <div v-if="!rightPanelCollapsed" class="absolute top-3 right-3 z-20 w-[330px] max-w-[calc(100%-1.5rem)] space-y-2">
-      <div class="flex justify-start -mb-1">
-        <button
-          class="rounded-md border border-gray-200/50 dark:border-gray-700/70 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-1.5 py-0.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
-          @click="rightPanelCollapsed = true"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
-        </button>
-      </div>
-      <!-- Airport Info Panel with Start Position selector -->
-      <AirportInfoPanel
-        v-if="mapStore.selectedAirport"
-        :detail="selectedAirportDetail"
-        :metar-text="metarText"
-        :taf-text="tafText"
-        :collapsed="airportPanelCollapsed"
-        @toggle-collapse="airportPanelCollapsed = !airportPanelCollapsed"
-        @select-gate="(gate) => { if (mapRef && gate.lat && gate.lon) mapRef.easeTo({ center: [gate.lon, gate.lat], zoom: Math.max(mapRef.getZoom(), 16) }) }"
-        @select-runway-end="(rwy, end) => { const lat = end === 'end1' ? rwy.end1Lat : rwy.end2Lat; const lon = end === 'end1' ? rwy.end1Lon : rwy.end2Lon; if (mapRef && lat && lon) mapRef.easeTo({ center: [lon, lat], zoom: Math.max(mapRef.getZoom(), 15) }) }"
-        @select-helipad="(hp) => { if (mapRef && hp.lat && hp.lon) mapRef.easeTo({ center: [hp.lon, hp.lat], zoom: Math.max(mapRef.getZoom(), 16) }) }"
-      />
-
-      <div class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl">
-        <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('map.selectedAirport') }}</div>
-        <template v-if="mapStore.selectedAirport">
-          <div class="mt-1 flex items-baseline justify-between">
-            <div class="font-mono text-base text-blue-600 dark:text-blue-300">{{ mapStore.selectedAirport.icao }}</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">{{ mapStore.selectedAirport.airportType }}</div>
-          </div>
-          <div class="text-sm text-gray-700 dark:text-gray-200 truncate">{{ mapStore.selectedAirport.name }}</div>
-          <div v-if="selectedAirportDetail" class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-            {{ t('map.stats.runways') }}: {{ selectedAirportDetail.runways.length }}
-            · {{ t('map.stats.helipads') }}: {{ selectedAirportDetail.helipads.length }}
-            · {{ t('map.stats.gates') }}: {{ selectedAirportDetail.gates.length }}
-            · {{ t('map.stats.taxiways') }}: {{ selectedAirportDetail.taxiways.length }}
-            · {{ t('map.stats.windsocks') }}: {{ selectedAirportDetail.windsocks.length }}
-            · {{ t('map.stats.signs') }}: {{ selectedAirportDetail.signs.length }}
-            <template v-if="selectedAirportDetail.pavements?.length">· Pavements: {{ selectedAirportDetail.pavements.length }}</template>
-            <template v-if="selectedAirportDetail.linearFeatures?.length">· Lines: {{ selectedAirportDetail.linearFeatures.length }}</template>
-            <template v-if="selectedAirportDetail.boundaries?.length">· Boundaries: {{ selectedAirportDetail.boundaries.length }}</template>
-          </div>
-          <div class="mt-2 text-xs text-gray-600 dark:text-gray-300 leading-5">
-            <div>{{ metarText || t('map.noMetar') }}</div>
-            <div class="mt-1 text-gray-500 dark:text-gray-400">{{ tafText || t('map.noTaf') }}</div>
-          </div>
-          <div class="mt-2 border-t border-gray-200 dark:border-gray-700/70 pt-2 text-[11px] leading-5">
-            <div class="mb-1 flex items-center justify-between gap-2 text-gray-500 dark:text-gray-400">
-              <span>{{ t('map.gateway.title') }}</span>
-              <button
-                class="rounded border border-gray-300 dark:border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700/70 disabled:opacity-50"
-                :disabled="gatewayLoading"
-                @click="refreshGatewayDataForSelected"
-              >
-                {{ t('map.gateway.refresh') }}
-              </button>
-            </div>
-            <div v-if="gatewayLoading" class="text-gray-500">
-              {{ t('map.gateway.loading') }}
-            </div>
-            <template v-else-if="gatewaySummary">
-              <div class="text-gray-200">
-                {{ t('map.gateway.recommended') }}:
-                <span class="ml-1 font-mono text-cyan-300">
-                  {{ gatewaySummary.recommendedSceneryId ?? '-' }}
-                </span>
-              </div>
-              <div v-if="gatewaySummary.sceneryCount !== null" class="text-gray-400">
-                {{ t('map.gateway.submissions', { count: gatewaySummary.sceneryCount }) }}
-              </div>
-              <div v-if="gatewaySummary.recommendedArtist" class="text-gray-400">
-                {{ t('map.gateway.artist') }}: {{ gatewaySummary.recommendedArtist }}
-              </div>
-              <div v-if="gatewaySummary.recommendedAcceptedAt" class="text-gray-500">
-                {{ t('map.gateway.acceptedAt') }}:
-                {{ formatGatewayDate(gatewaySummary.recommendedAcceptedAt) }}
-              </div>
-              <div v-if="gatewaySceneryLoading" class="mt-1 text-gray-500">
-                {{ t('map.gateway.sceneryLoading') }}
-              </div>
-              <template v-else-if="gatewayScenery">
-                <div v-if="gatewayScenery.status" class="text-gray-400">
-                  {{ t('map.gateway.status') }}: {{ gatewayScenery.status }}
-                </div>
-                <div v-if="gatewayScenery.features.length > 0" class="text-gray-400">
-                  {{ t('map.gateway.features') }}: {{ gatewayScenery.features.join(' · ') }}
-                </div>
-                <div v-if="gatewayScenery.comment" class="mt-1 line-clamp-2 text-gray-500">
-                  {{ t('map.gateway.comments') }}: {{ gatewayScenery.comment }}
-                </div>
-              </template>
-            </template>
-            <div v-else class="text-gray-500">{{ t('map.gateway.unavailable') }}</div>
-          </div>
-        </template>
-        <div v-else class="mt-1 text-sm text-gray-500">{{ t('map.noAirportSelected') }}</div>
-      </div>
-
       <div
-        v-if="mapStore.selectedAirport"
-        class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-700 dark:text-gray-300"
+        v-if="!rightPanelCollapsed"
+        class="absolute top-3 right-3 z-20 w-[330px] max-w-[calc(100%-1.5rem)] space-y-2"
       >
-        <div class="mb-2 flex items-center justify-between text-gray-500 dark:text-gray-400">
-          <span>{{ t('map.procedures.title') }}</span>
+        <div class="flex justify-start -mb-1">
           <button
-            class="rounded border border-gray-300 dark:border-gray-600 px-2 py-0.5 text-[11px] hover:bg-gray-100 dark:hover:bg-slate-700/70 disabled:opacity-50"
-            :disabled="proceduresLoading"
-            @click="refreshProceduresForSelected"
+            class="rounded-md border border-gray-200/50 dark:border-gray-700/70 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-1.5 py-0.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+            @click="rightPanelCollapsed = true"
           >
-            {{ t('map.refresh') }}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
           </button>
         </div>
+        <!-- Airport Info Panel with Start Position selector -->
+        <AirportInfoPanel
+          v-if="mapStore.selectedAirport"
+          :detail="selectedAirportDetail"
+          :metar-text="metarText"
+          :taf-text="tafText"
+          :collapsed="airportPanelCollapsed"
+          @toggle-collapse="airportPanelCollapsed = !airportPanelCollapsed"
+          @select-gate="
+            (gate) => {
+              if (mapRef && gate.lat && gate.lon)
+                mapRef.easeTo({
+                  center: [gate.lon, gate.lat],
+                  zoom: Math.max(mapRef.getZoom(), 16),
+                })
+            }
+          "
+          @select-runway-end="
+            (rwy, end) => {
+              const lat = end === 'end1' ? rwy.end1Lat : rwy.end2Lat
+              const lon = end === 'end1' ? rwy.end1Lon : rwy.end2Lon
+              if (mapRef && lat && lon)
+                mapRef.easeTo({ center: [lon, lat], zoom: Math.max(mapRef.getZoom(), 15) })
+            }
+          "
+          @select-helipad="
+            (hp) => {
+              if (mapRef && hp.lat && hp.lon)
+                mapRef.easeTo({ center: [hp.lon, hp.lat], zoom: Math.max(mapRef.getZoom(), 16) })
+            }
+          "
+        />
 
-        <div v-if="proceduresLoading" class="text-[11px] text-gray-500">
-          {{ t('map.procedures.loading') }}
-        </div>
-        <template v-else>
-          <div class="mb-2 grid grid-cols-3 gap-1">
-            <button
-              v-for="tab in procedureTabs"
-              :key="tab.key"
-              class="rounded border px-2 py-1 text-[11px] transition-colors"
-              :class="activeProcedureTab === tab.key
-                ? 'border-blue-500/50 bg-blue-500/20 text-blue-700 dark:text-blue-200'
-                : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700/70'"
-              @click="setActiveProcedureTab(tab.key)"
+        <div
+          class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl"
+        >
+          <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('map.selectedAirport') }}</div>
+          <template v-if="mapStore.selectedAirport">
+            <div class="mt-1 flex items-baseline justify-between">
+              <div class="font-mono text-base text-blue-600 dark:text-blue-300">
+                {{ mapStore.selectedAirport.icao }}
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">
+                {{ mapStore.selectedAirport.airportType }}
+              </div>
+            </div>
+            <div class="text-sm text-gray-700 dark:text-gray-200 truncate">
+              {{ mapStore.selectedAirport.name }}
+            </div>
+            <div
+              v-if="selectedAirportDetail"
+              class="mt-1 text-[11px] text-gray-500 dark:text-gray-400"
             >
-              {{ t(tab.label) }} ({{ procedureCounts[tab.key] }})
+              {{ t('map.stats.runways') }}: {{ selectedAirportDetail.runways.length }} ·
+              {{ t('map.stats.helipads') }}: {{ selectedAirportDetail.helipads.length }} ·
+              {{ t('map.stats.gates') }}: {{ selectedAirportDetail.gates.length }} ·
+              {{ t('map.stats.taxiways') }}: {{ selectedAirportDetail.taxiways.length }} ·
+              {{ t('map.stats.windsocks') }}: {{ selectedAirportDetail.windsocks.length }} ·
+              {{ t('map.stats.signs') }}: {{ selectedAirportDetail.signs.length }}
+              <template v-if="selectedAirportDetail.pavements?.length">
+                · {{ t('map.stats.pavements') }}: {{ selectedAirportDetail.pavements.length }}
+              </template>
+              <template v-if="selectedAirportDetail.linearFeatures?.length">
+                · {{ t('map.stats.linearFeatures') }}:
+                {{ selectedAirportDetail.linearFeatures.length }}
+              </template>
+              <template v-if="selectedAirportDetail.boundaries?.length">
+                · {{ t('map.stats.boundaries') }}: {{ selectedAirportDetail.boundaries.length }}
+              </template>
+            </div>
+            <div class="mt-2 text-xs text-gray-600 dark:text-gray-300 leading-5">
+              <div>{{ metarText || t('map.noMetar') }}</div>
+              <div class="mt-1 text-gray-500 dark:text-gray-400">
+                {{ tafText || t('map.noTaf') }}
+              </div>
+            </div>
+            <div
+              class="mt-2 border-t border-gray-200 dark:border-gray-700/70 pt-2 text-[11px] leading-5"
+            >
+              <div
+                class="mb-1 flex items-center justify-between gap-2 text-gray-500 dark:text-gray-400"
+              >
+                <span>{{ t('map.gateway.title') }}</span>
+                <button
+                  class="rounded border border-gray-300 dark:border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700/70 disabled:opacity-50"
+                  :disabled="gatewayLoading"
+                  @click="refreshGatewayDataForSelected"
+                >
+                  {{ t('map.gateway.refresh') }}
+                </button>
+              </div>
+              <div v-if="gatewayLoading" class="text-gray-500">
+                {{ t('map.gateway.loading') }}
+              </div>
+              <template v-else-if="gatewaySummary">
+                <div class="text-gray-200">
+                  {{ t('map.gateway.recommended') }}:
+                  <span class="ml-1 font-mono text-cyan-300">
+                    {{ gatewaySummary.recommendedSceneryId ?? '-' }}
+                  </span>
+                </div>
+                <div v-if="gatewaySummary.sceneryCount !== null" class="text-gray-400">
+                  {{ t('map.gateway.submissions', { count: gatewaySummary.sceneryCount }) }}
+                </div>
+                <div v-if="gatewaySummary.recommendedArtist" class="text-gray-400">
+                  {{ t('map.gateway.artist') }}: {{ gatewaySummary.recommendedArtist }}
+                </div>
+                <div v-if="gatewaySummary.recommendedAcceptedAt" class="text-gray-500">
+                  {{ t('map.gateway.acceptedAt') }}:
+                  {{ formatGatewayDate(gatewaySummary.recommendedAcceptedAt) }}
+                </div>
+                <div v-if="gatewaySceneryLoading" class="mt-1 text-gray-500">
+                  {{ t('map.gateway.sceneryLoading') }}
+                </div>
+                <template v-else-if="gatewayScenery">
+                  <div v-if="gatewayScenery.status" class="text-gray-400">
+                    {{ t('map.gateway.status') }}: {{ gatewayScenery.status }}
+                  </div>
+                  <div v-if="gatewayScenery.features.length > 0" class="text-gray-400">
+                    {{ t('map.gateway.features') }}: {{ gatewayScenery.features.join(' · ') }}
+                  </div>
+                  <div v-if="gatewayScenery.comment" class="mt-1 line-clamp-2 text-gray-500">
+                    {{ t('map.gateway.comments') }}: {{ gatewayScenery.comment }}
+                  </div>
+                </template>
+              </template>
+              <div v-else class="text-gray-500">{{ t('map.gateway.unavailable') }}</div>
+            </div>
+          </template>
+          <div v-else class="mt-1 text-sm text-gray-500">{{ t('map.noAirportSelected') }}</div>
+        </div>
+
+        <div
+          v-if="mapStore.selectedAirport"
+          class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-700 dark:text-gray-300"
+        >
+          <div class="mb-2 flex items-center justify-between text-gray-500 dark:text-gray-400">
+            <span>{{ t('map.procedures.title') }}</span>
+            <button
+              class="rounded border border-gray-300 dark:border-gray-600 px-2 py-0.5 text-[11px] hover:bg-gray-100 dark:hover:bg-slate-700/70 disabled:opacity-50"
+              :disabled="proceduresLoading"
+              @click="refreshProceduresForSelected"
+            >
+              {{ t('map.refresh') }}
             </button>
           </div>
 
-          <div v-if="activeProcedureGroups.length === 0" class="text-[11px] text-gray-500">
-            {{ t('map.procedures.empty') }}
+          <div v-if="proceduresLoading" class="text-[11px] text-gray-500">
+            {{ t('map.procedures.loading') }}
           </div>
-          <div v-else class="max-h-44 space-y-1 overflow-y-auto pr-1">
-            <div
-              v-for="group in activeProcedureGroups"
-              :key="`${activeProcedureTab}-${group.name}`"
-              class="rounded border border-gray-200/70 dark:border-gray-700/70 bg-gray-50/70 dark:bg-slate-800/70"
-            >
+          <template v-else>
+            <div class="mb-2 grid grid-cols-3 gap-1">
               <button
-                class="flex w-full items-center justify-between px-2 py-1.5 text-left"
-                @click="toggleProcedureGroup(group.name)"
+                v-for="tab in procedureTabs"
+                :key="tab.key"
+                class="rounded border px-2 py-1 text-[11px] transition-colors"
+                :class="
+                  activeProcedureTab === tab.key
+                    ? 'border-blue-500/50 bg-blue-500/20 text-blue-700 dark:text-blue-200'
+                    : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700/70'
+                "
+                @click="setActiveProcedureTab(tab.key)"
               >
-                <span class="font-mono text-[11px] text-blue-600 dark:text-blue-200">{{ group.name }}</span>
-                <span class="text-[10px] text-gray-400">{{ group.variants.length }}</span>
+                {{ t(tab.label) }} ({{ procedureCounts[tab.key] }})
               </button>
+            </div>
 
+            <div v-if="activeProcedureGroups.length === 0" class="text-[11px] text-gray-500">
+              {{ t('map.procedures.empty') }}
+            </div>
+            <div v-else class="max-h-44 space-y-1 overflow-y-auto pr-1">
               <div
-                v-if="expandedProcedureGroup === group.name"
-                class="space-y-1 border-t border-gray-200/70 dark:border-gray-700/70 px-2 py-1.5"
+                v-for="group in activeProcedureGroups"
+                :key="`${activeProcedureTab}-${group.name}`"
+                class="rounded border border-gray-200/70 dark:border-gray-700/70 bg-gray-50/70 dark:bg-slate-800/70"
               >
-                <div
-                  v-for="(variant, idx) in group.variants"
-                  :key="`${group.name}-${idx}-${variant.runway || ''}-${variant.transition || ''}`"
-                  class="rounded border border-gray-200/70 dark:border-gray-700/70 bg-white/60 dark:bg-slate-900/60 px-2 py-1"
+                <button
+                  class="flex w-full items-center justify-between px-2 py-1.5 text-left"
+                  @click="toggleProcedureGroup(group.name)"
                 >
-                  <div class="flex items-center justify-between gap-2 text-[10px] text-gray-600 dark:text-gray-300">
-                    <span class="truncate">{{ formatProcedureVariant(variant) }}</span>
-                    <span class="shrink-0 text-gray-500">{{ variant.waypointCount }} {{ t('map.procedures.legs') }}</span>
+                  <span class="font-mono text-[11px] text-blue-600 dark:text-blue-200">{{
+                    group.name
+                  }}</span>
+                  <span class="text-[10px] text-gray-400">{{ group.variants.length }}</span>
+                </button>
+
+                <div
+                  v-if="expandedProcedureGroup === group.name"
+                  class="space-y-1 border-t border-gray-200/70 dark:border-gray-700/70 px-2 py-1.5"
+                >
+                  <div
+                    v-for="(variant, idx) in group.variants"
+                    :key="`${group.name}-${idx}-${variant.runway || ''}-${variant.transition || ''}`"
+                    class="rounded border border-gray-200/70 dark:border-gray-700/70 bg-white/60 dark:bg-slate-900/60 px-2 py-1"
+                  >
+                    <div
+                      class="flex items-center justify-between gap-2 text-[10px] text-gray-600 dark:text-gray-300"
+                    >
+                      <span class="truncate">{{ formatProcedureVariant(variant) }}</span>
+                      <span class="shrink-0 text-gray-500"
+                        >{{ variant.waypointCount }} {{ t('map.procedures.legs') }}</span
+                      >
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </template>
-      </div>
-
-      <div class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-700 dark:text-gray-300">
-        <button class="flex w-full items-center justify-between text-gray-500 dark:text-gray-400 mb-1" @click="statsCollapsed = !statsCollapsed">
-          <span class="text-xs font-medium">{{ t('map.stats.airports').split(':')[0] || 'Stats' }}</span>
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 transition-transform" :class="{ 'rotate-180': !statsCollapsed }" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
-        </button>
-        <div v-show="!statsCollapsed" class="grid grid-cols-2 gap-y-1">
-          <div>{{ t('map.stats.airports') }}: {{ airports.length }} / {{ rawAirports.length }}</div>
-          <div>{{ t('map.stats.navaids') }}: {{ navSnapshot.navaids.length }}</div>
-          <div>{{ t('map.stats.waypoints') }}: {{ navSnapshot.waypoints.length }}</div>
-          <div>{{ t('map.stats.airways') }}: {{ navSnapshot.airways.length }}</div>
-          <div>{{ t('map.stats.ils') }}: {{ navSnapshot.ils.length }}</div>
-          <div>{{ t('map.stats.airspaces') }}: {{ navSnapshot.airspaces.length }}</div>
+          </template>
         </div>
-        <div class="mt-2 border-t border-gray-200 dark:border-gray-700 pt-2 text-[11px] text-gray-500 dark:text-gray-400">
-          {{ t('map.planeStatus') }}:
-          <span :class="mapStore.planeConnected ? 'text-emerald-300' : 'text-rose-300'">
-            {{ mapStore.planeConnected ? t('map.connected') : t('map.disconnected') }}
-          </span>
-          <span class="ml-2">
-            {{ t('map.stream') }} {{ planeStreamStatus.running ? t('map.running') : t('map.stopped') }}
-          </span>
-        </div>
-      </div>
 
-      <div class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-700 dark:text-gray-300">
-        <div class="mb-2 flex items-center justify-between text-gray-500 dark:text-gray-400">
-          <button class="flex items-center gap-1" @click="vatsimCollapsed = !vatsimCollapsed">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 transition-transform" :class="{ 'rotate-180': !vatsimCollapsed }" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
-            <span>{{ t('map.vatsimOverview') }}</span>
-          </button>
+        <div
+          class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-700 dark:text-gray-300"
+        >
           <button
-            class="rounded border border-gray-600 px-2 py-0.5 text-[11px] hover:bg-slate-700/70"
-            @click="refreshVatsimAndEvents"
+            class="flex w-full items-center justify-between text-gray-500 dark:text-gray-400 mb-1"
+            @click="statsCollapsed = !statsCollapsed"
           >
-            {{ t('map.refresh') }}
-          </button>
-        </div>
-        <div v-show="!vatsimCollapsed" class="grid grid-cols-2 gap-y-1">
-          <div>{{ t('map.vatsimPilots') }}: {{ vatsimPilots.length }}</div>
-          <div>{{ t('map.vatsimEvents') }}: {{ vatsimEvents.length }}</div>
-        </div>
-        <div v-if="busiestAirports.length > 0 && !vatsimCollapsed" class="mt-2 border-t border-gray-700 pt-2">
-          <div class="mb-1 text-[11px] text-gray-400">{{ t('map.busiestAirports') }}</div>
-          <div class="space-y-1">
-            <button
-              v-for="item in busiestAirports"
-              :key="item.icao"
-              class="flex w-full items-center justify-between rounded border border-gray-700/70 bg-slate-800 px-2 py-1 text-left hover:bg-slate-700/70"
-              @click="focusAirportByIcao(item.icao)"
+            <span class="text-xs font-medium">{{ t('map.stats.airports').split(':')[0] }}</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-3.5 w-3.5 transition-transform"
+              :class="{ 'rotate-180': !statsCollapsed }"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
             >
-              <span class="font-mono text-blue-300">{{ item.icao }}</span>
-              <span class="text-[11px] text-gray-400">{{ item.departures }} / {{ item.arrivals }}</span>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
+          <div v-show="!statsCollapsed" class="grid grid-cols-2 gap-y-1">
+            <div>
+              {{ t('map.stats.airports') }}: {{ airports.length }} / {{ rawAirports.length }}
+            </div>
+            <div>{{ t('map.stats.navaids') }}: {{ navSnapshot.navaids.length }}</div>
+            <div>{{ t('map.stats.waypoints') }}: {{ navSnapshot.waypoints.length }}</div>
+            <div>{{ t('map.stats.airways') }}: {{ navSnapshot.airways.length }}</div>
+            <div>{{ t('map.stats.ils') }}: {{ navSnapshot.ils.length }}</div>
+            <div>{{ t('map.stats.airspaces') }}: {{ navSnapshot.airspaces.length }}</div>
+          </div>
+          <div
+            class="mt-2 border-t border-gray-200 dark:border-gray-700 pt-2 text-[11px] text-gray-500 dark:text-gray-400"
+          >
+            {{ t('map.planeStatus') }}:
+            <span :class="mapStore.planeConnected ? 'text-emerald-300' : 'text-rose-300'">
+              {{ mapStore.planeConnected ? t('map.connected') : t('map.disconnected') }}
+            </span>
+            <span class="ml-2">
+              {{ t('map.stream') }}
+              {{ planeStreamStatus.running ? t('map.running') : t('map.stopped') }}
+            </span>
+          </div>
+        </div>
+
+        <div
+          class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-700 dark:text-gray-300"
+        >
+          <div class="mb-2 flex items-center justify-between text-gray-500 dark:text-gray-400">
+            <button class="flex items-center gap-1" @click="vatsimCollapsed = !vatsimCollapsed">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-3.5 w-3.5 transition-transform"
+                :class="{ 'rotate-180': !vatsimCollapsed }"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+              <span>{{ t('map.vatsimOverview') }}</span>
+            </button>
+            <button
+              class="rounded border border-gray-600 px-2 py-0.5 text-[11px] hover:bg-slate-700/70"
+              @click="refreshVatsimAndEvents"
+            >
+              {{ t('map.refresh') }}
             </button>
           </div>
-        </div>
-        <div v-if="vatsimEvents.length > 0 && !vatsimCollapsed" class="mt-2 border-t border-gray-700 pt-2">
-          <div class="mb-1 text-[11px] text-gray-400">{{ t('map.upcomingEvents') }}</div>
-          <div class="space-y-1">
-            <div
-              v-for="event in vatsimEvents.slice(0, 3)"
-              :key="event.id"
-              class="rounded border border-gray-700/70 bg-slate-800 px-2 py-1"
-            >
-              <div class="truncate text-[11px] text-gray-200">{{ event.name }}</div>
-              <div class="text-[10px] text-gray-500">{{ event.startTime }}</div>
+          <div v-show="!vatsimCollapsed" class="grid grid-cols-2 gap-y-1">
+            <div>{{ t('map.vatsimPilots') }}: {{ vatsimPilots.length }}</div>
+            <div>{{ t('map.vatsimEvents') }}: {{ vatsimEvents.length }}</div>
+          </div>
+          <div
+            v-if="busiestAirports.length > 0 && !vatsimCollapsed"
+            class="mt-2 border-t border-gray-700 pt-2"
+          >
+            <div class="mb-1 text-[11px] text-gray-400">{{ t('map.busiestAirports') }}</div>
+            <div class="space-y-1">
+              <button
+                v-for="item in busiestAirports"
+                :key="item.icao"
+                class="flex w-full items-center justify-between rounded border border-gray-700/70 bg-slate-800 px-2 py-1 text-left hover:bg-slate-700/70"
+                @click="focusAirportByIcao(item.icao)"
+              >
+                <span class="font-mono text-blue-300">{{ item.icao }}</span>
+                <span class="text-[11px] text-gray-400"
+                  >{{ item.departures }} / {{ item.arrivals }}</span
+                >
+              </button>
+            </div>
+          </div>
+          <div
+            v-if="vatsimEvents.length > 0 && !vatsimCollapsed"
+            class="mt-2 border-t border-gray-700 pt-2"
+          >
+            <div class="mb-1 text-[11px] text-gray-400">{{ t('map.upcomingEvents') }}</div>
+            <div class="space-y-1">
+              <div
+                v-for="event in vatsimEvents.slice(0, 3)"
+                :key="event.id"
+                class="rounded border border-gray-700/70 bg-slate-800 px-2 py-1"
+              >
+                <div class="truncate text-[11px] text-gray-200">{{ event.name }}</div>
+                <div class="text-[10px] text-gray-500">{{ event.startTime }}</div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-700 dark:text-gray-300">
-        <button class="flex w-full items-center justify-between text-gray-500 dark:text-gray-400 mb-2" @click="simbriefPanelCollapsed = !simbriefPanelCollapsed">
-          <span>SimBrief</span>
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 transition-transform" :class="{ 'rotate-180': !simbriefPanelCollapsed }" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
-        </button>
-        <template v-if="!simbriefPanelCollapsed">
-        <div v-if="simbriefSummary" class="rounded border border-gray-700/70 bg-slate-800/80 p-2 text-[11px]">
-          <div class="font-mono text-blue-300">{{ simbriefSummary.callsign || '-' }}</div>
-          <div class="mt-1">{{ simbriefSummary.from }} -> {{ simbriefSummary.to }}</div>
-          <div class="mt-0.5 text-gray-400">{{ simbriefSummary.altitude }} / {{ simbriefSummary.distance }}</div>
-          <button
-            class="mt-1.5 w-full rounded bg-blue-600/80 px-2 py-1 text-[10px] text-white hover:bg-blue-500 transition-colors"
-            @click="showSimbriefDialog = true"
-          >
-            View OFP
-          </button>
-        </div>
-        <div v-else-if="mapStore.simbriefPilotId" class="text-[11px] text-gray-500">
-          {{ isSimbriefLoading ? t('map.loading') : 'No flight plan loaded' }}
-        </div>
-        <div v-else class="text-[11px] text-gray-500">
-          Configure Pilot ID in Settings
-        </div>
-        <button
-          v-if="mapStore.simbriefPilotId"
-          class="mt-2 w-full rounded-md border border-gray-600 bg-slate-800 px-2 py-1.5 text-[11px] hover:bg-slate-700 disabled:opacity-50"
-          :disabled="isSimbriefLoading"
-          @click="fetchSimbrief"
+        <div
+          class="rounded-xl border border-gray-200/50 dark:border-gray-700/70 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-3 shadow-xl text-xs text-gray-700 dark:text-gray-300"
         >
-          {{ isSimbriefLoading ? t('map.loading') : t('map.fetch') }}
-        </button>
-        </template>
+          <button
+            class="flex w-full items-center justify-between text-gray-500 dark:text-gray-400 mb-2"
+            @click="simbriefPanelCollapsed = !simbriefPanelCollapsed"
+          >
+            <span>SimBrief</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-3.5 w-3.5 transition-transform"
+              :class="{ 'rotate-180': !simbriefPanelCollapsed }"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
+          <template v-if="!simbriefPanelCollapsed">
+            <div
+              v-if="simbriefSummary"
+              class="rounded border border-gray-700/70 bg-slate-800/80 p-2 text-[11px]"
+            >
+              <div class="font-mono text-blue-300">{{ simbriefSummary.callsign || '-' }}</div>
+              <div class="mt-1">{{ simbriefSummary.from }} -> {{ simbriefSummary.to }}</div>
+              <div class="mt-0.5 text-gray-400">
+                {{ simbriefSummary.altitude }} / {{ simbriefSummary.distance }}
+              </div>
+              <button
+                class="mt-1.5 w-full rounded bg-blue-600/80 px-2 py-1 text-[10px] text-white hover:bg-blue-500 transition-colors"
+                @click="showSimbriefDialog = true"
+              >
+                {{ t('map.ofp.view') }}
+              </button>
+            </div>
+            <div v-else-if="mapStore.simbriefPilotId" class="text-[11px] text-gray-500">
+              {{ isSimbriefLoading ? t('map.loading') : t('map.ofp.noPlanTitle') }}
+            </div>
+            <div v-else class="text-[11px] text-gray-500">
+              {{ t('map.configurePilotId') }}
+            </div>
+            <button
+              v-if="mapStore.simbriefPilotId"
+              class="mt-2 w-full rounded-md border border-gray-600 bg-slate-800 px-2 py-1.5 text-[11px] hover:bg-slate-700 disabled:opacity-50"
+              :disabled="isSimbriefLoading"
+              @click="fetchSimbrief"
+            >
+              {{ isSimbriefLoading ? t('map.loading') : t('map.fetch') }}
+            </button>
+          </template>
+        </div>
       </div>
-    </div>
     </transition>
 
     <div ref="mapContainer" class="h-full w-full"></div>
@@ -489,36 +691,70 @@
     >
       <div class="flex items-center gap-1">
         <span class="text-gray-500">IAS</span>
-        <span class="text-gray-900 dark:text-gray-100">{{ mapStore.planeState.indicatedAirspeed != null ? Math.round(mapStore.planeState.indicatedAirspeed) : '-' }}</span>
+        <span class="text-gray-900 dark:text-gray-100">{{
+          mapStore.planeState.indicatedAirspeed != null
+            ? Math.round(mapStore.planeState.indicatedAirspeed)
+            : '-'
+        }}</span>
         <span class="text-gray-500">kt</span>
       </div>
       <div class="flex items-center gap-1">
         <span class="text-gray-500">GS</span>
-        <span class="text-gray-900 dark:text-gray-100">{{ mapStore.planeState.groundspeed != null ? Math.round(mapStore.planeState.groundspeed) : '-' }}</span>
+        <span class="text-gray-900 dark:text-gray-100">{{
+          mapStore.planeState.groundspeed != null
+            ? Math.round(mapStore.planeState.groundspeed)
+            : '-'
+        }}</span>
         <span class="text-gray-500">kt</span>
       </div>
       <div class="w-px h-4 bg-gray-300 dark:bg-gray-700"></div>
       <div class="flex items-center gap-1">
         <span class="text-gray-500">ALT</span>
-        <span class="text-gray-900 dark:text-gray-100">{{ mapStore.planeState.altitudeMSL != null ? Math.round(mapStore.planeState.altitudeMSL).toLocaleString() : '-' }}</span>
+        <span class="text-gray-900 dark:text-gray-100">{{
+          mapStore.planeState.altitudeMSL != null
+            ? Math.round(mapStore.planeState.altitudeMSL).toLocaleString()
+            : '-'
+        }}</span>
         <span class="text-gray-500">ft</span>
       </div>
       <div class="flex items-center gap-1">
         <span class="text-gray-500">AGL</span>
-        <span class="text-gray-900 dark:text-gray-100">{{ mapStore.planeState.altitudeAGL != null ? Math.round(mapStore.planeState.altitudeAGL).toLocaleString() : '-' }}</span>
+        <span class="text-gray-900 dark:text-gray-100">{{
+          mapStore.planeState.altitudeAGL != null
+            ? Math.round(mapStore.planeState.altitudeAGL).toLocaleString()
+            : '-'
+        }}</span>
         <span class="text-gray-500">ft</span>
       </div>
       <div class="w-px h-4 bg-gray-300 dark:bg-gray-700"></div>
       <div class="flex items-center gap-1">
         <span class="text-gray-500">VS</span>
-        <span :class="(mapStore.planeState.verticalSpeed ?? 0) > 100 ? 'text-emerald-300' : (mapStore.planeState.verticalSpeed ?? 0) < -100 ? 'text-amber-300' : 'text-gray-900 dark:text-gray-100'">
-          {{ mapStore.planeState.verticalSpeed != null ? Math.round(mapStore.planeState.verticalSpeed) : '-' }}
+        <span
+          :class="
+            (mapStore.planeState.verticalSpeed ?? 0) > 100
+              ? 'text-emerald-300'
+              : (mapStore.planeState.verticalSpeed ?? 0) < -100
+                ? 'text-amber-300'
+                : 'text-gray-900 dark:text-gray-100'
+          "
+        >
+          {{
+            mapStore.planeState.verticalSpeed != null
+              ? Math.round(mapStore.planeState.verticalSpeed)
+              : '-'
+          }}
         </span>
         <span class="text-gray-500">fpm</span>
       </div>
       <div class="flex items-center gap-1">
         <span class="text-gray-500">HDG</span>
-        <span class="text-gray-900 dark:text-gray-100">{{ mapStore.planeState.heading != null ? Math.round(mapStore.planeState.heading).toString().padStart(3, '0') : '-' }}°</span>
+        <span class="text-gray-900 dark:text-gray-100"
+          >{{
+            mapStore.planeState.heading != null
+              ? Math.round(mapStore.planeState.heading).toString().padStart(3, '0')
+              : '-'
+          }}°</span
+        >
       </div>
       <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
     </div>
@@ -528,7 +764,7 @@
       class="absolute bottom-4 left-4 z-20 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white shadow-lg hover:bg-blue-500 transition-colors"
       @click="showLaunchDialog = true"
     >
-      Launch Flight
+      {{ t('map.launcher.launch') }}
     </button>
 
     <!-- Launch Dialog -->
@@ -659,7 +895,10 @@ const showLaunchDialog = ref(false)
 const showSimbriefDialog = ref(false)
 
 const mapStyleOptions: Array<{ label: string; value: string }> = [
-  { label: 'Dark Matter', value: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json' },
+  {
+    label: 'Dark Matter',
+    value: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  },
   { label: 'Positron', value: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json' },
   { label: 'Voyager', value: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json' },
   { label: 'OpenStreetMap', value: 'https://tiles.openfreemap.org/styles/liberty' },
@@ -719,10 +958,10 @@ const activeProcedureGroups = computed<ProcedureGroup[]>(() => {
   return Array.from(grouped.entries())
     .map(([name, variants]) => ({
       name,
-      variants: [...variants].sort((a, b) =>
-        (a.runway || '')
-          .localeCompare(b.runway || '')
-          || (a.transition || '').localeCompare(b.transition || ''),
+      variants: [...variants].sort(
+        (a, b) =>
+          (a.runway || '').localeCompare(b.runway || '') ||
+          (a.transition || '').localeCompare(b.transition || ''),
       ),
     }))
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -901,12 +1140,14 @@ function normalizeHeading(value: number): number {
 }
 
 function isFiniteLatLon(lat: number, lon: number): boolean {
-  return Number.isFinite(lat)
-    && Number.isFinite(lon)
-    && lat >= -90
-    && lat <= 90
-    && lon >= -180
-    && lon <= 180
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lon) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lon >= -180 &&
+    lon <= 180
+  )
 }
 
 function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -915,8 +1156,8 @@ function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2:
   const deltaPhi = toRadians(lat2 - lat1)
   const deltaLambda = toRadians(lon2 - lon1)
 
-  const a = Math.sin(deltaPhi / 2) ** 2
-    + Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2
+  const a =
+    Math.sin(deltaPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   return EARTH_RADIUS_M * c
 }
@@ -927,27 +1168,34 @@ function calculateBearing(lat1: number, lon1: number, lat2: number, lon2: number
   const deltaLambda = toRadians(lon2 - lon1)
 
   const y = Math.sin(deltaLambda) * Math.cos(phi2)
-  const x = Math.cos(phi1) * Math.sin(phi2)
-    - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda)
+  const x =
+    Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda)
 
   return normalizeHeading(toDegrees(Math.atan2(y, x)))
 }
 
-function destinationPoint(lat: number, lon: number, distanceMeters: number, bearing: number): [number, number] {
+function destinationPoint(
+  lat: number,
+  lon: number,
+  distanceMeters: number,
+  bearing: number,
+): [number, number] {
   const angularDistance = distanceMeters / EARTH_RADIUS_M
   const theta = toRadians(normalizeHeading(bearing))
   const phi1 = toRadians(lat)
   const lambda1 = toRadians(lon)
 
   const phi2 = Math.asin(
-    Math.sin(phi1) * Math.cos(angularDistance)
-      + Math.cos(phi1) * Math.sin(angularDistance) * Math.cos(theta),
+    Math.sin(phi1) * Math.cos(angularDistance) +
+      Math.cos(phi1) * Math.sin(angularDistance) * Math.cos(theta),
   )
 
-  const lambda2 = lambda1 + Math.atan2(
-    Math.sin(theta) * Math.sin(angularDistance) * Math.cos(phi1),
-    Math.cos(angularDistance) - Math.sin(phi1) * Math.sin(phi2),
-  )
+  const lambda2 =
+    lambda1 +
+    Math.atan2(
+      Math.sin(theta) * Math.sin(angularDistance) * Math.cos(phi1),
+      Math.cos(angularDistance) - Math.sin(phi1) * Math.sin(phi2),
+    )
 
   return [toDegrees(lambda2), toDegrees(phi2)]
 }
@@ -975,7 +1223,10 @@ function createRectPolygon(
 }
 
 function parseRunwayHeadingFromName(name: string): number | null {
-  const numberText = name.trim().toUpperCase().replace(/[LCR]$/, '')
+  const numberText = name
+    .trim()
+    .toUpperCase()
+    .replace(/[LCR]$/, '')
   const number = Number.parseInt(numberText, 10)
   if (!Number.isFinite(number) || number <= 0 || number > 36) return null
   return normalizeHeading(number * 10)
@@ -983,14 +1234,14 @@ function parseRunwayHeadingFromName(name: string): number | null {
 
 function getRunwayHeading(runway: RunwayLike): number {
   if (
-    isFiniteLatLon(runway.end1Lat, runway.end1Lon)
-    && isFiniteLatLon(runway.end2Lat, runway.end2Lon)
+    isFiniteLatLon(runway.end1Lat, runway.end1Lon) &&
+    isFiniteLatLon(runway.end2Lat, runway.end2Lon)
   ) {
     return calculateBearing(runway.end1Lat, runway.end1Lon, runway.end2Lat, runway.end2Lon)
   }
-  return parseRunwayHeadingFromName(runway.end1Name)
-    ?? parseRunwayHeadingFromName(runway.end2Name)
-    ?? 0
+  return (
+    parseRunwayHeadingFromName(runway.end1Name) ?? parseRunwayHeadingFromName(runway.end2Name) ?? 0
+  )
 }
 
 function runwayWidthMeters(runway: RunwayLike): number {
@@ -1012,8 +1263,8 @@ function createRunwayPolygon(
   extraWidthMeters = 0,
 ): Array<[number, number]> | null {
   if (
-    !isFiniteLatLon(runway.end1Lat, runway.end1Lon)
-    || !isFiniteLatLon(runway.end2Lat, runway.end2Lon)
+    !isFiniteLatLon(runway.end1Lat, runway.end1Lon) ||
+    !isFiniteLatLon(runway.end2Lat, runway.end2Lon)
   ) {
     return null
   }
@@ -1042,7 +1293,10 @@ function formatRunwayNumberLabel(name: string): string {
 }
 
 function buildSurfaceColorExpression(propertyName: string): maplibregl.ExpressionSpecification {
-  const expression: Array<string | number | unknown[]> = ['match', ['to-number', ['get', propertyName]]]
+  const expression: Array<string | number | unknown[]> = [
+    'match',
+    ['to-number', ['get', propertyName]],
+  ]
   Object.entries(SURFACE_COLOR_BY_CODE).forEach(([surfaceCode, color]) => {
     expression.push(Number(surfaceCode), color)
   })
@@ -1064,9 +1318,10 @@ function pushThresholdBars(
   const startOffset = 6
 
   for (let i = 0; i < numBars; i += 1) {
-    const sideOffset = i < numBars / 2
-      ? -(barSpacing * (numBars / 4 - i - 0.5) + barWidth / 2)
-      : barSpacing * (i - numBars / 2 + 0.5) - barWidth / 2
+    const sideOffset =
+      i < numBars / 2
+        ? -(barSpacing * (numBars / 4 - i - 0.5) + barWidth / 2)
+        : barSpacing * (i - numBars / 2 + 0.5) - barWidth / 2
 
     const barCenter = destinationPoint(lat, lon, startOffset + barLength / 2, heading)
     const centerOffset = destinationPoint(
@@ -1081,7 +1336,9 @@ function pushThresholdBars(
       properties: { type: 'threshold' },
       geometry: {
         type: 'Polygon',
-        coordinates: [createRectPolygon(centerOffset[1], centerOffset[0], barLength, barWidth, heading)],
+        coordinates: [
+          createRectPolygon(centerOffset[1], centerOffset[0], barLength, barWidth, heading),
+        ],
       },
     })
   }
@@ -1143,7 +1400,9 @@ function pushTouchdownZoneMarks(
           properties: { type: 'tdz' },
           geometry: {
             type: 'Polygon',
-            coordinates: [createRectPolygon(offsetCenter[1], offsetCenter[0], markLength, markWidth, heading)],
+            coordinates: [
+              createRectPolygon(offsetCenter[1], offsetCenter[0], markLength, markWidth, heading),
+            ],
           },
         })
       }
@@ -1208,9 +1467,15 @@ function pushALSFLights(
     const center = destinationPoint(lat, lon, distance, heading)
     const isRed = distance <= 60
     for (let offset = -6; offset <= 6; offset += 3) {
-      const point = offset === 0
-        ? center
-        : destinationPoint(center[1], center[0], Math.abs(offset), offset < 0 ? heading - 90 : heading + 90)
+      const point =
+        offset === 0
+          ? center
+          : destinationPoint(
+              center[1],
+              center[0],
+              Math.abs(offset),
+              offset < 0 ? heading - 90 : heading + 90,
+            )
       pushApproachLight(features, point[0], point[1], distance, isRed, 1)
     }
   }
@@ -1220,7 +1485,12 @@ function pushALSFLights(
     const width = distance <= 150 ? 10 : 15
     for (let offset = -width; offset <= width; offset += 2.5) {
       if (Math.abs(offset) < 4) continue
-      const point = destinationPoint(center[1], center[0], Math.abs(offset), offset < 0 ? heading - 90 : heading + 90)
+      const point = destinationPoint(
+        center[1],
+        center[0],
+        Math.abs(offset),
+        offset < 0 ? heading - 90 : heading + 90,
+      )
       pushApproachLight(features, point[0], point[1], distance, distance <= 60, 0.95)
     }
   }
@@ -1251,16 +1521,19 @@ function pushCalvertLights(
     pushApproachLight(features, point[0], point[1], distance, distance <= 90, 1)
   }
 
-  const crossbars = isCalvert2
-    ? [90, 150, 300, 450, 600, 750]
-    : [150, 300, 450, 600]
+  const crossbars = isCalvert2 ? [90, 150, 300, 450, 600, 750] : [150, 300, 450, 600]
 
   for (const distance of crossbars) {
     const center = destinationPoint(lat, lon, distance, heading)
     const width = Math.min(distance / 10, 25)
     for (let offset = -width; offset <= width; offset += 3) {
       if (Math.abs(offset) < 3) continue
-      const point = destinationPoint(center[1], center[0], Math.abs(offset), offset < 0 ? heading - 90 : heading + 90)
+      const point = destinationPoint(
+        center[1],
+        center[0],
+        Math.abs(offset),
+        offset < 0 ? heading - 90 : heading + 90,
+      )
       pushApproachLight(features, point[0], point[1], distance, false, 0.9)
     }
   }
@@ -1277,9 +1550,15 @@ function pushSSALLights(
   for (let distance = 60; distance <= totalLength; distance += 60) {
     const center = destinationPoint(lat, lon, distance, heading)
     for (let offset = -3; offset <= 3; offset += 3) {
-      const point = offset === 0
-        ? center
-        : destinationPoint(center[1], center[0], Math.abs(offset), offset < 0 ? heading - 90 : heading + 90)
+      const point =
+        offset === 0
+          ? center
+          : destinationPoint(
+              center[1],
+              center[0],
+              Math.abs(offset),
+              offset < 0 ? heading - 90 : heading + 90,
+            )
       pushApproachLight(features, point[0], point[1], distance, distance <= 60, 1)
     }
   }
@@ -1311,9 +1590,15 @@ function pushMALSLights(
   for (let distance = 60; distance <= totalLength; distance += 60) {
     const center = destinationPoint(lat, lon, distance, heading)
     for (let offset = -3; offset <= 3; offset += 3) {
-      const point = offset === 0
-        ? center
-        : destinationPoint(center[1], center[0], Math.abs(offset), offset < 0 ? heading - 90 : heading + 90)
+      const point =
+        offset === 0
+          ? center
+          : destinationPoint(
+              center[1],
+              center[0],
+              Math.abs(offset),
+              offset < 0 ? heading - 90 : heading + 90,
+            )
       pushApproachLight(features, point[0], point[1], distance, false, 0.9)
     }
   }
@@ -1322,7 +1607,12 @@ function pushMALSLights(
     const center = destinationPoint(lat, lon, distance, heading)
     for (let offset = -12; offset <= 12; offset += 3) {
       if (Math.abs(offset) < 4) continue
-      const point = destinationPoint(center[1], center[0], Math.abs(offset), offset < 0 ? heading - 90 : heading + 90)
+      const point = destinationPoint(
+        center[1],
+        center[0],
+        Math.abs(offset),
+        offset < 0 ? heading - 90 : heading + 90,
+      )
       pushApproachLight(features, point[0], point[1], distance, false, 0.85)
     }
   }
@@ -1332,7 +1622,12 @@ function pushMALSLights(
   }
 }
 
-function pushODALSLights(features: Array<Record<string, unknown>>, lat: number, lon: number, heading: number) {
+function pushODALSLights(
+  features: Array<Record<string, unknown>>,
+  lat: number,
+  lon: number,
+  heading: number,
+) {
   for (let i = 0; i < 5; i += 1) {
     const distance = 90 + i * 90
     const point = destinationPoint(lat, lon, distance, heading)
@@ -1390,7 +1685,9 @@ function pushApproachLightsByType(
   }
 }
 
-function toAirportRunwayShoulderFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
+function toAirportRunwayShoulderFeatureCollection(
+  detail: MapAirportDetail | null,
+): FeatureCollection {
   if (!detail) {
     return { type: 'FeatureCollection', features: [] }
   }
@@ -1400,9 +1697,10 @@ function toAirportRunwayShoulderFeatureCollection(detail: MapAirportDetail | nul
       const shoulderCode = Number(runway.shoulderSurfaceCode || 0)
       if (!Number.isFinite(shoulderCode) || shoulderCode <= 0) return null
 
-      const shoulderWidth = runway.shoulderWidthM && runway.shoulderWidthM > 0
-        ? runway.shoulderWidthM
-        : defaultShoulderWidth(runwayWidthMeters(runway))
+      const shoulderWidth =
+        runway.shoulderWidthM && runway.shoulderWidthM > 0
+          ? runway.shoulderWidthM
+          : defaultShoulderWidth(runwayWidthMeters(runway))
 
       const polygon = createRunwayPolygon(runway, shoulderWidth)
       if (!polygon) return null
@@ -1419,7 +1717,7 @@ function toAirportRunwayShoulderFeatureCollection(detail: MapAirportDetail | nul
         },
       }
     })
-    .filter((item): item is Record<string, unknown> => Boolean(item))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
 
   return { type: 'FeatureCollection', features }
 }
@@ -1449,20 +1747,23 @@ function toAirportRunwayFeatureCollection(detail: MapAirportDetail | null): Feat
         },
       }
     })
-    .filter((item): item is Record<string, unknown> => Boolean(item))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
 
   return { type: 'FeatureCollection', features }
 }
 
-function toAirportRunwayCenterlineFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
+function toAirportRunwayCenterlineFeatureCollection(
+  detail: MapAirportDetail | null,
+): FeatureCollection {
   if (!detail) {
     return { type: 'FeatureCollection', features: [] }
   }
 
   const features = detail.runways
-    .filter((runway) =>
-      isFiniteLatLon(runway.end1Lat, runway.end1Lon)
-      && isFiniteLatLon(runway.end2Lat, runway.end2Lon),
+    .filter(
+      (runway) =>
+        isFiniteLatLon(runway.end1Lat, runway.end1Lon) &&
+        isFiniteLatLon(runway.end2Lat, runway.end2Lon),
     )
     .map((runway) => ({
       type: 'Feature',
@@ -1481,7 +1782,9 @@ function toAirportRunwayCenterlineFeatureCollection(detail: MapAirportDetail | n
   return { type: 'FeatureCollection', features }
 }
 
-function toAirportRunwayMarkingFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
+function toAirportRunwayMarkingFeatureCollection(
+  detail: MapAirportDetail | null,
+): FeatureCollection {
   if (!detail) {
     return { type: 'FeatureCollection', features: [] }
   }
@@ -1493,8 +1796,8 @@ function toAirportRunwayMarkingFeatureCollection(detail: MapAirportDetail | null
     }
 
     if (
-      !isFiniteLatLon(runway.end1Lat, runway.end1Lon)
-      || !isFiniteLatLon(runway.end2Lat, runway.end2Lon)
+      !isFiniteLatLon(runway.end1Lat, runway.end1Lon) ||
+      !isFiniteLatLon(runway.end2Lat, runway.end2Lon)
     ) {
       continue
     }
@@ -1529,7 +1832,9 @@ function toAirportRunwayMarkingFeatureCollection(detail: MapAirportDetail | null
   return { type: 'FeatureCollection', features }
 }
 
-function toAirportRunwayNumberFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
+function toAirportRunwayNumberFeatureCollection(
+  detail: MapAirportDetail | null,
+): FeatureCollection {
   if (!detail) {
     return { type: 'FeatureCollection', features: [] }
   }
@@ -1541,8 +1846,8 @@ function toAirportRunwayNumberFeatureCollection(detail: MapAirportDetail | null)
     }
 
     if (
-      !isFiniteLatLon(runway.end1Lat, runway.end1Lon)
-      || !isFiniteLatLon(runway.end2Lat, runway.end2Lon)
+      !isFiniteLatLon(runway.end1Lat, runway.end1Lon) ||
+      !isFiniteLatLon(runway.end2Lat, runway.end2Lon)
     ) {
       continue
     }
@@ -1590,8 +1895,8 @@ function toAirportRunwayLightFeatureCollection(detail: MapAirportDetail | null):
   const features: Array<Record<string, unknown>> = []
   for (const runway of detail.runways) {
     if (
-      !isFiniteLatLon(runway.end1Lat, runway.end1Lon)
-      || !isFiniteLatLon(runway.end2Lat, runway.end2Lon)
+      !isFiniteLatLon(runway.end1Lat, runway.end1Lon) ||
+      !isFiniteLatLon(runway.end2Lat, runway.end2Lon)
     ) {
       continue
     }
@@ -1599,7 +1904,12 @@ function toAirportRunwayLightFeatureCollection(detail: MapAirportDetail | null):
     const heading1 = getRunwayHeading(runway)
     const heading2 = normalizeHeading(heading1 + 180)
     const width = runwayWidthMeters(runway)
-    const length = haversineDistanceMeters(runway.end1Lat, runway.end1Lon, runway.end2Lat, runway.end2Lon)
+    const length = haversineDistanceMeters(
+      runway.end1Lat,
+      runway.end1Lon,
+      runway.end2Lat,
+      runway.end2Lon,
+    )
 
     if (runway.edgeLights) {
       for (let distance = 0; distance <= length; distance += 60) {
@@ -1695,24 +2005,12 @@ function toAirportRunwayLightFeatureCollection(detail: MapAirportDetail | null):
 
     const end1Lighting = Number(runway.end1Lighting || 0)
     if (end1Lighting > 0) {
-      pushApproachLightsByType(
-        features,
-        runway.end1Lat,
-        runway.end1Lon,
-        heading2,
-        end1Lighting,
-      )
+      pushApproachLightsByType(features, runway.end1Lat, runway.end1Lon, heading2, end1Lighting)
     }
 
     const end2Lighting = Number(runway.end2Lighting || 0)
     if (end2Lighting > 0) {
-      pushApproachLightsByType(
-        features,
-        runway.end2Lat,
-        runway.end2Lon,
-        heading1,
-        end2Lighting,
-      )
+      pushApproachLightsByType(features, runway.end2Lat, runway.end2Lon, heading1, end2Lighting)
     }
   }
 
@@ -1823,11 +2121,12 @@ function toAirportTaxiwayFeatureCollection(detail: MapAirportDetail | null): Fea
   return {
     type: 'FeatureCollection',
     features: detail.taxiways
-      .filter((edge) =>
-        Number.isFinite(edge.fromLat)
-        && Number.isFinite(edge.fromLon)
-        && Number.isFinite(edge.toLat)
-        && Number.isFinite(edge.toLon),
+      .filter(
+        (edge) =>
+          Number.isFinite(edge.fromLat) &&
+          Number.isFinite(edge.fromLon) &&
+          Number.isFinite(edge.toLat) &&
+          Number.isFinite(edge.toLon),
       )
       .map((edge) => ({
         type: 'Feature',
@@ -1928,7 +2227,12 @@ function toAirportBoundaryFeatureCollection(detail: MapAirportDetail | null): Fe
 }
 
 function toAirportTowerFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
-  if (!detail || !detail.tower || !Number.isFinite(detail.tower.lat) || !Number.isFinite(detail.tower.lon)) {
+  if (
+    !detail ||
+    !detail.tower ||
+    !Number.isFinite(detail.tower.lat) ||
+    !Number.isFinite(detail.tower.lon)
+  ) {
     return { type: 'FeatureCollection', features: [] }
   }
 
@@ -1951,7 +2255,12 @@ function toAirportTowerFeatureCollection(detail: MapAirportDetail | null): Featu
 }
 
 function toAirportBeaconFeatureCollection(detail: MapAirportDetail | null): FeatureCollection {
-  if (!detail || !detail.beacon || !Number.isFinite(detail.beacon.lat) || !Number.isFinite(detail.beacon.lon)) {
+  if (
+    !detail ||
+    !detail.beacon ||
+    !Number.isFinite(detail.beacon.lat) ||
+    !Number.isFinite(detail.beacon.lon)
+  ) {
     return { type: 'FeatureCollection', features: [] }
   }
 
@@ -2024,7 +2333,10 @@ function toAirportSignFeatureCollection(detail: MapAirportDetail | null): Featur
   }
 }
 
-function toSimbriefRouteFeatureCollection(coordinates: Array<[number, number]>, stages?: string[]): FeatureCollection {
+function toSimbriefRouteFeatureCollection(
+  coordinates: Array<[number, number]>,
+  stages?: string[],
+): FeatureCollection {
   if (coordinates.length < 2) {
     return { type: 'FeatureCollection', features: [] }
   }
@@ -2063,14 +2375,25 @@ function toSimbriefRouteFeatureCollection(coordinates: Array<[number, number]>, 
 /** Map navaid type code to color */
 function navaidColor(navaidType: string | undefined): string {
   switch (navaidType) {
-    case 'VOR': return '#0066CC'
-    case 'VOR-DME': case 'VORDME': return '#0088FF'
-    case 'VORTAC': return '#0044AA'
-    case 'NDB': return '#9933CC'
-    case 'DME': return '#0099CC'
-    case 'TACAN': return '#0099CC'
-    case 'ILS': case 'LOC': case 'GS': return '#FF8800'
-    default: return '#22d3ee'
+    case 'VOR':
+      return '#0066CC'
+    case 'VOR-DME':
+    case 'VORDME':
+      return '#0088FF'
+    case 'VORTAC':
+      return '#0044AA'
+    case 'NDB':
+      return '#9933CC'
+    case 'DME':
+      return '#0099CC'
+    case 'TACAN':
+      return '#0099CC'
+    case 'ILS':
+    case 'LOC':
+    case 'GS':
+      return '#FF8800'
+    default:
+      return '#22d3ee'
   }
 }
 
@@ -2079,11 +2402,11 @@ function toNavaidFeatureCollection(items: MapNavSnapshot['navaids']): FeatureCol
     type: 'FeatureCollection',
     features: items.map((item) => {
       const freq = item.frequency
-        ? (Number(item.frequency) >= 100000
-            ? (Number(item.frequency) / 1000).toFixed(2)
-            : item.navaidType === 'NDB'
-              ? `${item.frequency} kHz`
-              : String(item.frequency))
+        ? Number(item.frequency) >= 100000
+          ? (Number(item.frequency) / 1000).toFixed(2)
+          : item.navaidType === 'NDB'
+            ? `${item.frequency} kHz`
+            : String(item.frequency)
         : ''
       return {
         type: 'Feature',
@@ -2148,7 +2471,9 @@ function toIlsCourseFeatureCollection(items: MapNavSnapshot['ils']): FeatureColl
   return {
     type: 'FeatureCollection',
     features: items
-      .filter((item) => item.course != null && Number.isFinite(item.lat) && Number.isFinite(item.lon))
+      .filter(
+        (item) => item.course != null && Number.isFinite(item.lat) && Number.isFinite(item.lon),
+      )
       .map((item) => {
         const inboundCourse = ((Number(item.course) || 0) + 180) % 360
         const end = destinationPoint(item.lat, item.lon, courseLength, inboundCourse)
@@ -2177,7 +2502,9 @@ function toIlsConeFeatureCollection(items: MapNavSnapshot['ils']): FeatureCollec
   return {
     type: 'FeatureCollection',
     features: items
-      .filter((item) => item.course != null && Number.isFinite(item.lat) && Number.isFinite(item.lon))
+      .filter(
+        (item) => item.course != null && Number.isFinite(item.lat) && Number.isFinite(item.lon),
+      )
       .map((item) => {
         const course = ((Number(item.course) || 0) + 180) % 360
         const leftBearing = (course - halfAngle + 360) % 360
@@ -2195,7 +2522,14 @@ function toIlsConeFeatureCollection(items: MapNavSnapshot['ils']): FeatureCollec
           },
           geometry: {
             type: 'Polygon',
-            coordinates: [[[item.lon, item.lat], [left[0], left[1]], [right[0], right[1]], [item.lon, item.lat]]],
+            coordinates: [
+              [
+                [item.lon, item.lat],
+                [left[0], left[1]],
+                [right[0], right[1]],
+                [item.lon, item.lat],
+              ],
+            ],
           },
         }
       }),
@@ -2219,10 +2553,7 @@ function toVatsimTrailFeatureCollection(pilots: MapVatsimPilot[]): FeatureCollec
     for (let i = 1; i <= 4; i++) {
       const t = i / 4
       const segLen = len * t
-      points.push([
-        lon + (segLen * Math.sin(rad)) / cosLat,
-        lat + segLen * Math.cos(rad),
-      ])
+      points.push([lon + (segLen * Math.sin(rad)) / cosLat, lat + segLen * Math.cos(rad)])
     }
 
     features.push({
@@ -2437,9 +2768,8 @@ async function focusAirportByIcao(icao: string) {
 async function refreshVatsimEvents() {
   try {
     const response = await mapFetchVatsimEvents()
-    const root = response && typeof response === 'object'
-      ? response as Record<string, unknown>
-      : {}
+    const root =
+      response && typeof response === 'object' ? (response as Record<string, unknown>) : {}
     const listRaw = Array.isArray(root.data)
       ? root.data
       : Array.isArray(root.events)
@@ -2454,12 +2784,14 @@ async function refreshVatsimEvents() {
         endTime: String(item.end_time || item.endTime || ''),
         routes: Array.isArray(item.routes)
           ? item.routes.map((r) => ({
-              departure: r && typeof r === 'object'
-                ? String((r as Record<string, unknown>).departure || '')
-                : undefined,
-              arrival: r && typeof r === 'object'
-                ? String((r as Record<string, unknown>).arrival || '')
-                : undefined,
+              departure:
+                r && typeof r === 'object'
+                  ? String((r as Record<string, unknown>).departure || '')
+                  : undefined,
+              arrival:
+                r && typeof r === 'object'
+                  ? String((r as Record<string, unknown>).arrival || '')
+                  : undefined,
             }))
           : [],
       }))
@@ -2476,7 +2808,7 @@ async function refreshVatsimAndEvents() {
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : null
 }
 
@@ -2502,7 +2834,10 @@ function pickNumber(record: Record<string, unknown>, keys: string[]): number | n
   return null
 }
 
-function pickRecord(record: Record<string, unknown>, keys: string[]): Record<string, unknown> | null {
+function pickRecord(
+  record: Record<string, unknown>,
+  keys: string[],
+): Record<string, unknown> | null {
   for (const key of keys) {
     const child = asRecord(record[key])
     if (child) return child
@@ -2523,94 +2858,255 @@ function pickArrayLength(record: Record<string, unknown>, keys: string[]): numbe
   return list ? list.length : null
 }
 
+const GATEWAY_FEATURE_NAMES: Record<number, string> = {
+  1: 'Has ATC Flow',
+  2: 'Has Taxi Route',
+  5: 'Has Log.txt Issue',
+  6: 'LR Internal Use',
+  8: 'Has Ground Routes',
+  11: 'Runway Numbering/Length Fix',
+  18: 'Runway Numbering Fix',
+  20: 'Floating Runway',
+  29: 'Ground Routes Certified',
+  35: 'Misused Draped Sign Polygons',
+  38: 'Runway in Water',
+  40: 'Runway Unusable (XP11)',
+  42: 'Low Res Terrain Polygons (XP11)',
+  43: 'Fix Fragmented Road Network XP11',
+  47: 'Overlap - Wrong location',
+  51: 'Boat Injection',
+  52: 'Tunnel Injection',
+  55: 'Parking Lot Injection',
+  57: 'Embankment Injection',
+  58: 'Pier Injection',
+  59: 'Runway is Stepped (XP11)',
+  62: 'Custom Runway Markings',
+  64: 'Runway Misaligned',
+  65: 'Facade Injection',
+  67: 'Ground Markings Injection',
+  70: 'Jetway Kit Injection',
+  71: 'Challenged by Artist',
+  75: 'Structure(s) do not match imagery',
+  78: 'Has orphaned taxiway',
+  79: 'Misused Terrain Polygons',
+  80: 'Road network duplication',
+  83: 'XP12 pre-opening',
+  84: 'Better than a newer submission.',
+  86: 'Has Road Network',
+  87: 'Temporary Terrain Polygon(s)',
+  88: 'Runway Unusable (XP12)',
+  89: 'Runway is Stepped (XP12)',
+  90: 'Roads made with polygons',
+  92: 'Review in Sim',
+  93: 'Fix Fragmented Road Network XP12',
+  94: 'Oversized Terrain Polygon(s)',
+  95: 'Contains Flatten Polygon',
+}
+
+function normalizeGatewayId(value: number | null): number | null {
+  return value !== null && value > 0 ? value : null
+}
+
+function resolveGatewayFeatureName(token: string): string {
+  if (!/^\d+$/.test(token)) return token
+  const featureId = Number(token)
+  return GATEWAY_FEATURE_NAMES[featureId] ?? `Feature ${token}`
+}
+
+function pickGatewayAirportCode(record: Record<string, unknown>): string | null {
+  return pickString(record, ['AirportCode', 'airportCode', 'icao', 'ICAO', 'code', 'ident'])
+}
+
+function pickGatewayAirportName(record: Record<string, unknown>): string | null {
+  return pickString(record, ['AirportName', 'airportName', 'aptName', 'name', 'Name'])
+}
+
+function pickGatewayArtist(record: Record<string, unknown>): string | null {
+  return (
+    pickString(record, [
+      'userName',
+      'username',
+      'artist',
+      'artistName',
+      'author',
+      'authorName',
+      'submittedBy',
+    ]) ??
+    (() => {
+      const user = pickRecord(record, ['user', 'User'])
+      return user ? pickString(user, ['name', 'username', 'displayName', 'userName']) : null
+    })()
+  )
+}
+
+function pickGatewaySummaryDate(record: Record<string, unknown>): string | null {
+  return pickString(record, [
+    'dateAccepted',
+    'dateApproved',
+    'acceptedAt',
+    'approvedDate',
+    'approvalDate',
+    'approvedAt',
+    'date',
+    'updatedAt',
+  ])
+}
+
+function pickGatewayApprovedDate(record: Record<string, unknown>): string | null {
+  return pickString(record, [
+    'dateApproved',
+    'dateAccepted',
+    'approvedDate',
+    'approvalDate',
+    'acceptedAt',
+    'updatedAt',
+  ])
+}
+
+function pickGatewayStatus(record: Record<string, unknown>): string | null {
+  return (
+    pickString(record, ['status', 'gatewayStatus', 'submissionStatus', 'approvalStatus', 'state']) ??
+    (pickString(record, ['dateDeclined'])
+      ? 'Declined'
+      : pickString(record, ['dateApproved'])
+        ? 'Approved'
+        : pickString(record, ['dateAccepted'])
+          ? 'Accepted'
+          : null)
+  )
+}
+
+function pickGatewayComment(record: Record<string, unknown>): string | null {
+  const comments: string[] = []
+  const artistComment = pickString(record, ['artistComments'])
+  const moderatorComment = pickString(record, ['moderatorComments'])
+  if (artistComment) comments.push(artistComment)
+  if (moderatorComment) comments.push(moderatorComment)
+  if (comments.length === 0) {
+    const fallback = pickString(record, ['comments', 'comment', 'description', 'notes'])
+    if (fallback) comments.push(fallback)
+  }
+  return comments.length > 0 ? [...new Set(comments)].join('\n\n') : null
+}
+
+function parseGatewayFeatureList(record: Record<string, unknown>): string[] {
+  const labels: string[] = []
+
+  const airportType = pickString(record, ['type', 'Type'])
+  if (airportType) labels.push(airportType)
+
+  const featureText = pickString(record, ['features', 'featureFlags'])
+  if (featureText) {
+    for (const token of featureText.split(',').map((item) => item.trim()).filter(Boolean)) {
+      labels.push(resolveGatewayFeatureName(token))
+    }
+  }
+
+  const runwayCount =
+    pickNumber(record, ['runwayCount', 'runwaysCount']) ??
+    pickArrayLength(record, ['runways', 'Runways'])
+  const gateCount =
+    pickNumber(record, ['gateCount', 'gatesCount', 'startupCount']) ??
+    pickArrayLength(record, ['gates', 'startupLocations', 'ramps'])
+  const taxiwayCount =
+    pickNumber(record, ['taxiwayCount', 'taxiwaysCount']) ??
+    pickArrayLength(record, ['taxiways', 'taxiwayEdges'])
+
+  if (runwayCount !== null) labels.push(`RWY ${runwayCount}`)
+  if (gateCount !== null) labels.push(`Gates ${gateCount}`)
+  if (taxiwayCount !== null) labels.push(`Taxiway ${taxiwayCount}`)
+
+  const tags = pickArray(record, ['tags']) ?? []
+  for (const item of tags.slice(0, 5)) {
+    if (typeof item !== 'string') continue
+    const tag = item.trim()
+    if (tag) labels.push(tag)
+  }
+
+  return [...new Set(labels)]
+}
+
 function parseGatewaySummary(payload: unknown, fallbackIcao: string): GatewaySummary | null {
   const root = asRecord(payload)
   if (!root) return null
 
   const airport = pickRecord(root, ['airport', 'Airport', 'data']) ?? root
+  const sceneryList =
+    pickArray(root, ['scenery', 'Sceneries', 'sceneries', 'results', 'items']) ??
+    pickArray(airport, ['scenery', 'Sceneries', 'sceneries', 'results', 'items']) ??
+    []
+  const metadata = pickRecord(root, ['metadata', 'Metadata']) ?? pickRecord(airport, ['metadata', 'Metadata'])
   const airportCode = (
-    pickString(airport, ['icao', 'ICAO', 'airportCode', 'AirportCode', 'code', 'ident'])
-    || pickString(root, ['icao', 'ICAO', 'airportCode', 'AirportCode'])
-    || fallbackIcao
+    pickGatewayAirportCode(airport) ||
+    pickGatewayAirportCode(root) ||
+    fallbackIcao
   )
     .trim()
     .toUpperCase()
 
   if (!airportCode) return null
 
-  const airportName = pickString(airport, ['name', 'airportName', 'AirportName', 'Name'])
-  const sceneryList = pickArray(root, ['sceneries', 'Sceneries', 'scenery', 'results', 'items']) ?? []
+  const airportName = pickGatewayAirportName(airport) || pickGatewayAirportName(root)
 
   const rootRecommended = pickRecord(root, ['recommendedScenery', 'RecommendedScenery'])
   const airportRecommended = pickRecord(airport, ['recommendedScenery', 'RecommendedScenery'])
 
-  const recommendedSceneryId = (
-    pickNumber(
-      airport,
-      ['recommendedSceneryId', 'RecommendedSceneryId', 'recommended_scenery_id'],
-    )
-    ?? pickNumber(
-      root,
-      ['recommendedSceneryId', 'RecommendedSceneryId', 'recommended_scenery_id'],
-    )
-    ?? (rootRecommended
-      ? pickNumber(rootRecommended, ['id', 'sceneryId', 'SceneryId'])
-      : null)
-    ?? (airportRecommended
-      ? pickNumber(airportRecommended, ['id', 'sceneryId', 'SceneryId'])
-      : null)
+  const recommendedSceneryId = normalizeGatewayId(
+    pickNumber(airport, [
+      'RecommendedSceneryId',
+      'recommendedSceneryId',
+      'recommended_scenery_id',
+    ]) ??
+    pickNumber(root, ['RecommendedSceneryId', 'recommendedSceneryId', 'recommended_scenery_id']) ??
+    (rootRecommended ? pickNumber(rootRecommended, ['sceneryId', 'SceneryId', 'id']) : null) ??
+    (airportRecommended ? pickNumber(airportRecommended, ['sceneryId', 'SceneryId', 'id']) : null),
   )
 
-  let recommended = rootRecommended ?? airportRecommended
-  if (!recommended && sceneryList.length > 0) {
-    if (recommendedSceneryId !== null) {
-      recommended = sceneryList
-        .map((entry) => asRecord(entry))
-        .find((entry) => entry && pickNumber(entry, ['id', 'sceneryId', 'SceneryId']) === recommendedSceneryId)
-        ?? null
-    }
-    if (!recommended) {
-      recommended = asRecord(sceneryList[0])
-    }
-  }
+  const recommended =
+    recommendedSceneryId !== null
+      ? (sceneryList
+          .map((entry) => asRecord(entry))
+          .find(
+            (entry) =>
+              entry &&
+              normalizeGatewayId(pickNumber(entry, ['sceneryId', 'SceneryId', 'id'])) ===
+                recommendedSceneryId,
+          ) ?? null)
+      : null
 
-  const sceneryCount = (
-    pickNumber(airport, ['sceneryCount', 'SceneryCount', 'totalSceneries'])
-    ?? pickNumber(root, ['sceneryCount', 'SceneryCount', 'totalSceneries'])
-    ?? (sceneryList.length > 0 ? sceneryList.length : null)
-  )
+  const sceneryCount =
+    pickNumber(airport, [
+      'SubmissionCount',
+      'ApprovedSceneryCount',
+      'AcceptedSceneryCount',
+      'sceneryCount',
+      'SceneryCount',
+      'totalSceneries',
+    ]) ??
+    pickNumber(root, [
+      'SubmissionCount',
+      'ApprovedSceneryCount',
+      'AcceptedSceneryCount',
+      'sceneryCount',
+      'SceneryCount',
+      'totalSceneries',
+    ]) ??
+    (sceneryList.length > 0 ? sceneryList.length : null)
 
-  let recommendedArtist = recommended
-    ? pickString(recommended, ['userName', 'username', 'authorName', 'author', 'artist', 'submittedBy'])
-    : null
-  if (!recommendedArtist && recommended) {
-    const user = pickRecord(recommended, ['user', 'User'])
-    if (user) {
-      recommendedArtist = pickString(user, ['name', 'username', 'displayName', 'userName'])
-    }
-  }
+  const recommendedArtist =
+    (recommended ? pickGatewayArtist(recommended) : null) ||
+    (metadata ? pickGatewayArtist(metadata) : null)
 
-  const recommendedAcceptedAt = recommended
-    ? pickString(
-      recommended,
-      [
-        'dateAccepted',
-        'acceptedAt',
-        'accepted',
-        'approvalDate',
-        'approvedAt',
-        'date',
-        'updatedAt',
-      ],
-    )
-    : null
+  const recommendedAcceptedAt =
+    (recommended ? pickGatewaySummaryDate(recommended) : null) ||
+    (metadata ? pickGatewaySummaryDate(metadata) : null)
 
   if (
-    recommendedSceneryId === null
-    && sceneryCount === null
-    && !airportName
-    && !recommendedArtist
-    && !recommendedAcceptedAt
+    recommendedSceneryId === null &&
+    sceneryCount === null &&
+    !airportName &&
+    !recommendedArtist &&
+    !recommendedAcceptedAt
   ) {
     return null
   }
@@ -2625,68 +3121,23 @@ function parseGatewaySummary(payload: unknown, fallbackIcao: string): GatewaySum
   }
 }
 
-function parseGatewaySceneryDetail(payload: unknown, fallbackSceneryId: number): GatewaySceneryDetail | null {
+function parseGatewaySceneryDetail(
+  payload: unknown,
+  fallbackSceneryId: number,
+): GatewaySceneryDetail | null {
   const root = asRecord(payload)
   if (!root) return null
 
   const detail = pickRecord(root, ['scenery', 'Scenery', 'data']) ?? root
-  const sceneryId = pickNumber(detail, ['id', 'sceneryId', 'SceneryId']) ?? fallbackSceneryId
+  const sceneryId =
+    normalizeGatewayId(pickNumber(detail, ['sceneryId', 'SceneryId', 'id'])) ?? fallbackSceneryId
 
-  let artist = pickString(
-    detail,
-    ['artist', 'artistName', 'author', 'authorName', 'userName', 'username', 'submittedBy'],
-  )
-  const user = pickRecord(detail, ['user', 'User'])
-  if (!artist && user) {
-    artist = pickString(user, ['name', 'username', 'displayName', 'userName'])
-  }
-
-  const status = pickString(
-    detail,
-    ['status', 'approvalStatus', 'submissionStatus', 'state', 'gatewayStatus'],
-  )
-  const approvedDate = pickString(
-    detail,
-    ['dateAccepted', 'acceptedAt', 'approvedDate', 'approvalDate', 'updatedAt'],
-  )
-  const comment = pickString(
-    detail,
-    ['artistComments', 'comments', 'comment', 'description', 'notes'],
-  )
-
-  const runwayCount = (
-    pickNumber(detail, ['runwayCount', 'runwaysCount'])
-    ?? pickArrayLength(detail, ['runways', 'Runways'])
-  )
-  const gateCount = (
-    pickNumber(detail, ['gateCount', 'gatesCount', 'startupCount'])
-    ?? pickArrayLength(detail, ['gates', 'startupLocations', 'ramps'])
-  )
-  const taxiwayCount = (
-    pickNumber(detail, ['taxiwayCount', 'taxiwaysCount'])
-    ?? pickArrayLength(detail, ['taxiways', 'taxiwayEdges'])
-  )
-
-  const rawFeatures = pickArray(detail, ['features', 'featureFlags', 'tags']) ?? []
-  const tagFeatures = rawFeatures
-    .map((item) => (typeof item === 'string' ? item.trim() : ''))
-    .filter((item) => item.length > 0)
-    .slice(0, 5)
-
-  const countFeatures: string[] = []
-  if (runwayCount !== null) countFeatures.push(`RWY ${runwayCount}`)
-  if (gateCount !== null) countFeatures.push(`Gates ${gateCount}`)
-  if (taxiwayCount !== null) countFeatures.push(`Taxiway ${taxiwayCount}`)
-
-  const features = [...countFeatures, ...tagFeatures]
-  if (
-    !status
-    && !artist
-    && !approvedDate
-    && !comment
-    && features.length === 0
-    && sceneryId <= 0
-  ) {
+  const artist = pickGatewayArtist(detail)
+  const status = pickGatewayStatus(detail)
+  const approvedDate = pickGatewayApprovedDate(detail)
+  const comment = pickGatewayComment(detail)
+  const features = parseGatewayFeatureList(detail)
+  if (!status && !artist && !approvedDate && !comment && features.length === 0 && sceneryId <= 0) {
     return null
   }
 
@@ -2731,8 +3182,9 @@ function findAirportCoordinate(icao: string): [number, number] | null {
   const upper = icao.trim().toUpperCase()
   if (!upper) return null
 
-  const match = rawAirports.value.find((airport) => airport.icao === upper)
-    || airports.value.find((airport) => airport.icao === upper)
+  const match =
+    rawAirports.value.find((airport) => airport.icao === upper) ||
+    airports.value.find((airport) => airport.icao === upper)
 
   if (!match) return null
   return [match.lon, match.lat]
@@ -2746,9 +3198,8 @@ function buildSimbriefRouteCoordinates(
   const routeCoordinates: Array<[number, number]> = []
   const routeStages: string[] = []
   const navlogRaw = payload.navlog
-  const navlog = navlogRaw && typeof navlogRaw === 'object'
-    ? navlogRaw as Record<string, unknown>
-    : {}
+  const navlog =
+    navlogRaw && typeof navlogRaw === 'object' ? (navlogRaw as Record<string, unknown>) : {}
   const fixesRaw = Array.isArray(navlog.fix)
     ? navlog.fix
     : Array.isArray(navlog.fixes)
@@ -2758,12 +3209,8 @@ function buildSimbriefRouteCoordinates(
   for (const fixItem of fixesRaw) {
     if (!fixItem || typeof fixItem !== 'object') continue
     const fix = fixItem as Record<string, unknown>
-    const lat = parseCoordinateValue(
-      fix.pos_lat ?? fix.lat ?? fix.latitude ?? fix.posLat,
-    )
-    const lon = parseCoordinateValue(
-      fix.pos_long ?? fix.lon ?? fix.longitude ?? fix.posLon,
-    )
+    const lat = parseCoordinateValue(fix.pos_lat ?? fix.lat ?? fix.latitude ?? fix.posLat)
+    const lon = parseCoordinateValue(fix.pos_long ?? fix.lon ?? fix.longitude ?? fix.posLon)
     if (lat === null || lon === null) continue
     if (lat < -90 || lat > 90 || lon < -180 || lon > 180) continue
     routeCoordinates.push([lon, lat])
@@ -2793,7 +3240,7 @@ function buildSimbriefRouteCoordinates(
   const deduped: Array<[number, number]> = []
   const dedupedStages: string[] = []
   for (let i = 0; i < merged.length; i++) {
-    const last = deduped.at(-1)
+    const last = deduped[deduped.length - 1] as [number, number] | undefined
     if (!last || last[0] !== merged[i][0] || last[1] !== merged[i][1]) {
       deduped.push(merged[i])
       dedupedStages.push(mergedStages[i])
@@ -2819,24 +3266,21 @@ async function fetchSimbrief() {
   try {
     const payload = await mapFetchSimbriefLatest(pilotId)
     const p = payload as Record<string, unknown>
-    const general = p.general && typeof p.general === 'object'
-      ? p.general as Record<string, unknown>
-      : {}
-    const origin = p.origin && typeof p.origin === 'object'
-      ? p.origin as Record<string, unknown>
-      : {}
-    const destination = p.destination && typeof p.destination === 'object'
-      ? p.destination as Record<string, unknown>
-      : {}
-    const atc = p.atc && typeof p.atc === 'object'
-      ? p.atc as Record<string, unknown>
-      : {}
+    const general =
+      p.general && typeof p.general === 'object' ? (p.general as Record<string, unknown>) : {}
+    const origin =
+      p.origin && typeof p.origin === 'object' ? (p.origin as Record<string, unknown>) : {}
+    const destination =
+      p.destination && typeof p.destination === 'object'
+        ? (p.destination as Record<string, unknown>)
+        : {}
+    const atc = p.atc && typeof p.atc === 'object' ? (p.atc as Record<string, unknown>) : {}
 
     const from = String(origin.icao_code || origin.icao || '').toUpperCase()
     const to = String(destination.icao_code || destination.icao || '').toUpperCase()
 
     if (!from || !to) {
-      throw new Error('No valid route in SimBrief payload')
+      throw new Error(t('map.invalidSimbriefRoute'))
     }
 
     simbriefSummary.value = {
@@ -2883,7 +3327,8 @@ function updateGeoJsonSource(sourceId: string, data: FeatureCollection) {
 
   const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
   if (!source) return
-  source.setData(data)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  source.setData(data as any)
 }
 
 function applyLayerVisibility() {
@@ -3059,10 +3504,14 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       source: 'simbrief-route',
       paint: {
         'line-color': [
-          'match', ['get', 'stage'],
-          'CLB', '#22C55E',
-          'CRZ', '#06B6D4',
-          'DSC', '#F59E0B',
+          'match',
+          ['get', 'stage'],
+          'CLB',
+          '#22C55E',
+          'CRZ',
+          '#06B6D4',
+          'DSC',
+          '#F59E0B',
           '#8B5CF6',
         ] as unknown as maplibregl.ExpressionSpecification,
         'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.5, 10, 3],
@@ -3447,15 +3896,46 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       minzoom: 14,
       paint: {
         'line-color': [
-          'match', ['get', 'lineType'],
+          'match',
+          ['get', 'lineType'],
           // Hold lines (type 4-8) = red border
-          4, '#660000', 5, '#660000', 6, '#660000', 7, '#660000', 8, '#660000',
+          4,
+          '#660000',
+          5,
+          '#660000',
+          6,
+          '#660000',
+          7,
+          '#660000',
+          8,
+          '#660000',
           // ILS hold (type 20-22) = red border
-          20, '#660000', 21, '#660000', 22, '#660000',
+          20,
+          '#660000',
+          21,
+          '#660000',
+          22,
+          '#660000',
           // Centerlines (type 1-3) = yellow/dark yellow border
-          1, '#6b5900', 2, '#6b5900', 3, '#6b5900',
+          1,
+          '#6b5900',
+          2,
+          '#6b5900',
+          3,
+          '#6b5900',
           // Boundary lines (type 51-56) = light gray border
-          51, '#555555', 52, '#555555', 53, '#555555', 54, '#555555', 55, '#555555', 56, '#555555',
+          51,
+          '#555555',
+          52,
+          '#555555',
+          53,
+          '#555555',
+          54,
+          '#555555',
+          55,
+          '#555555',
+          56,
+          '#555555',
           // Default border
           '#444444',
         ] as unknown as maplibregl.ExpressionSpecification,
@@ -3474,15 +3954,46 @@ function setupMapSourcesAndLayers(map: maplibregl.Map) {
       minzoom: 14,
       paint: {
         'line-color': [
-          'match', ['get', 'lineType'],
+          'match',
+          ['get', 'lineType'],
           // Hold lines (type 4-8) = amber/red
-          4, '#FF4444', 5, '#FF4444', 6, '#FF4444', 7, '#FF4444', 8, '#FF4444',
+          4,
+          '#FF4444',
+          5,
+          '#FF4444',
+          6,
+          '#FF4444',
+          7,
+          '#FF4444',
+          8,
+          '#FF4444',
           // ILS hold (type 20-22) = amber
-          20, '#FF6600', 21, '#FF6600', 22, '#FF6600',
+          20,
+          '#FF6600',
+          21,
+          '#FF6600',
+          22,
+          '#FF6600',
           // Centerlines (type 1-3) = yellow
-          1, '#FFCC00', 2, '#FFCC00', 3, '#FFCC00',
+          1,
+          '#FFCC00',
+          2,
+          '#FFCC00',
+          3,
+          '#FFCC00',
           // Boundary lines (type 51-56) = light gray
-          51, '#aaaaaa', 52, '#aaaaaa', 53, '#aaaaaa', 54, '#aaaaaa', 55, '#aaaaaa', 56, '#aaaaaa',
+          51,
+          '#aaaaaa',
+          52,
+          '#aaaaaa',
+          53,
+          '#aaaaaa',
+          54,
+          '#aaaaaa',
+          55,
+          '#aaaaaa',
+          56,
+          '#aaaaaa',
           // Default
           '#888888',
         ] as unknown as maplibregl.ExpressionSpecification,
@@ -3908,7 +4419,7 @@ async function updateWeatherRadar(manifest?: RainViewerManifest) {
   }
 
   const frames = [...(resolved.radar?.past || []), ...(resolved.radar?.nowcast || [])]
-  const latestFrame = frames.at(-1)
+  const latestFrame = frames[frames.length - 1]
   if (!latestFrame || !resolved.host) return
 
   const sourceUrl = `${resolved.host}${latestFrame.path}/512/{z}/{x}/{y}/2/1_1.png`
@@ -3948,7 +4459,10 @@ function updateAirportDetailFeatures(detail: MapAirportDetail | null) {
   updateGeoJsonSource('airport-boundaries', toAirportBoundaryFeatureCollection(detail))
   updateGeoJsonSource('airport-runway-shoulders', toAirportRunwayShoulderFeatureCollection(detail))
   updateGeoJsonSource('airport-runways', toAirportRunwayFeatureCollection(detail))
-  updateGeoJsonSource('airport-runway-centerlines', toAirportRunwayCenterlineFeatureCollection(detail))
+  updateGeoJsonSource(
+    'airport-runway-centerlines',
+    toAirportRunwayCenterlineFeatureCollection(detail),
+  )
   updateGeoJsonSource('airport-runway-markings', toAirportRunwayMarkingFeatureCollection(detail))
   updateGeoJsonSource('airport-runway-numbers', toAirportRunwayNumberFeatureCollection(detail))
   updateGeoJsonSource('airport-runway-lights', toAirportRunwayLightFeatureCollection(detail))
@@ -3969,10 +4483,13 @@ function clearAirportDetailFeatures() {
 }
 
 function updateSimbriefRouteFeature() {
-  updateGeoJsonSource('simbrief-route', toSimbriefRouteFeatureCollection(
-    simbriefRouteCoordinates.value,
-    simbriefRouteStages.value.length > 0 ? simbriefRouteStages.value : undefined,
-  ))
+  updateGeoJsonSource(
+    'simbrief-route',
+    toSimbriefRouteFeatureCollection(
+      simbriefRouteCoordinates.value,
+      simbriefRouteStages.value.length > 0 ? simbriefRouteStages.value : undefined,
+    ),
+  )
 }
 
 async function refreshVatsim() {
@@ -3996,12 +4513,14 @@ async function refreshVatsim() {
         altitude: Number(item.altitude || 0),
         groundspeed: Number(item.groundspeed || 0),
         heading: Number(item.heading || 0),
-        departure: item.flight_plan && typeof item.flight_plan === 'object'
-          ? String((item.flight_plan as Record<string, unknown>).departure || '')
-          : undefined,
-        arrival: item.flight_plan && typeof item.flight_plan === 'object'
-          ? String((item.flight_plan as Record<string, unknown>).arrival || '')
-          : undefined,
+        departure:
+          item.flight_plan && typeof item.flight_plan === 'object'
+            ? String((item.flight_plan as Record<string, unknown>).departure || '')
+            : undefined,
+        arrival:
+          item.flight_plan && typeof item.flight_plan === 'object'
+            ? String((item.flight_plan as Record<string, unknown>).arrival || '')
+            : undefined,
       }))
       .filter((pilot) => Number.isFinite(pilot.latitude) && Number.isFinite(pilot.longitude))
 
@@ -4021,12 +4540,14 @@ function scheduleDataRefresh() {
 }
 
 function isDataLayer(layer: keyof MapLayerVisibility): boolean {
-  return layer === 'airports'
-    || layer === 'navaids'
-    || layer === 'waypoints'
-    || layer === 'airways'
-    || layer === 'ils'
-    || layer === 'airspaces'
+  return (
+    layer === 'airports' ||
+    layer === 'navaids' ||
+    layer === 'waypoints' ||
+    layer === 'airways' ||
+    layer === 'ils' ||
+    layer === 'airspaces'
+  )
 }
 
 function getEffectiveNavRadius(zoom: number): number {
@@ -4058,45 +4579,39 @@ async function refreshMapData() {
     const center = map.getCenter()
     const zoom = map.getZoom()
 
-    const airportLimit = zoom < 4
-      ? 700
-      : zoom < 6
-        ? 1200
-        : zoom < 8
-          ? 2000
-          : 3500
+    const airportLimit = zoom < 4 ? 700 : zoom < 6 ? 1200 : zoom < 8 ? 2000 : 3500
 
     const includeNav =
-      mapStore.layerVisibility.navaids
-      || mapStore.layerVisibility.waypoints
-      || mapStore.layerVisibility.airways
-      || mapStore.layerVisibility.ils
-      || mapStore.layerVisibility.airspaces
+      mapStore.layerVisibility.navaids ||
+      mapStore.layerVisibility.waypoints ||
+      mapStore.layerVisibility.airways ||
+      mapStore.layerVisibility.ils ||
+      mapStore.layerVisibility.airspaces
 
     const airportPromise = mapStore.layerVisibility.airports
       ? mapGetAirportsInBounds(
-        xplanePath,
-        {
-          north: boundsObj.getNorth(),
-          south: boundsObj.getSouth(),
-          east: boundsObj.getEast(),
-          west: boundsObj.getWest(),
-        },
-        airportLimit,
-      )
+          xplanePath,
+          {
+            north: boundsObj.getNorth(),
+            south: boundsObj.getSouth(),
+            east: boundsObj.getEast(),
+            west: boundsObj.getWest(),
+          },
+          airportLimit,
+        )
       : Promise.resolve([] as MapAirport[])
 
     const navPromise = includeNav
       ? mapGetNavSnapshot(xplanePath, {
-        lat: center.lat,
-        lon: center.lng,
-        radiusNm: getEffectiveNavRadius(zoom),
-        includeNavaids: mapStore.layerVisibility.navaids,
-        includeWaypoints: mapStore.layerVisibility.waypoints,
-        includeAirways: mapStore.layerVisibility.airways,
-        includeIls: mapStore.layerVisibility.ils,
-        includeAirspaces: mapStore.layerVisibility.airspaces,
-      })
+          lat: center.lat,
+          lon: center.lng,
+          radiusNm: getEffectiveNavRadius(zoom),
+          includeNavaids: mapStore.layerVisibility.navaids,
+          includeWaypoints: mapStore.layerVisibility.waypoints,
+          includeAirways: mapStore.layerVisibility.airways,
+          includeIls: mapStore.layerVisibility.ils,
+          includeAirspaces: mapStore.layerVisibility.airspaces,
+        })
       : Promise.resolve({ ...EMPTY_NAV_SNAPSHOT })
 
     const [airportResult, navResult] = await Promise.all([airportPromise, navPromise])
@@ -4216,9 +4731,12 @@ function startWeatherRadarTimer() {
 
   void updateWeatherRadar()
 
-  weatherRadarRefreshTimer = setInterval(() => {
-    void updateWeatherRadar()
-  }, 10 * 60 * 1000)
+  weatherRadarRefreshTimer = setInterval(
+    () => {
+      void updateWeatherRadar()
+    },
+    10 * 60 * 1000,
+  )
 }
 
 function stopWeatherRadarTimer() {
@@ -4310,6 +4828,7 @@ watch(
     if (!map) return
 
     map.once('style.load', () => {
+      // @ts-expect-error maplibre type inference issue inside .once callback
       setupMapSourcesAndLayers(map)
       updateGeoJsonSource('airports', toAirportFeatureCollection(airports.value))
       updateGeoJsonSource('navaids', toNavaidFeatureCollection(navSnapshot.value.navaids))
@@ -4343,7 +4862,7 @@ onMounted(async () => {
     style: mapStore.mapStyleUrl,
     center: [-95, 35],
     zoom: 3,
-    attributionControl: true,
+    attributionControl: {} as maplibregl.AttributionControlOptions,
   })
 
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right')
@@ -4430,7 +4949,9 @@ onBeforeUnmount(async () => {
 .slide-left-leave-active,
 .slide-right-enter-active,
 .slide-right-leave-active {
-  transition: transform 0.3s ease, opacity 0.3s ease;
+  transition:
+    transform 0.3s ease,
+    opacity 0.3s ease;
 }
 
 .slide-left-enter-from,

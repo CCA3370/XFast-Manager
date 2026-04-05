@@ -137,6 +137,85 @@ const categoryOrder = [
   'Unrecognized',
 ]
 
+function createGroupedEntriesMap(): Record<string, SceneryManagerEntry[]> {
+  const grouped: Record<string, SceneryManagerEntry[]> = {}
+  for (const category of categoryOrder) {
+    grouped[category] = []
+  }
+  return grouped
+}
+
+function isDarkBlueAirportLinkedEntry(entry: Pick<SceneryManagerEntry, 'category' | 'folderName'>) {
+  return (
+    (entry.category === 'Overlay' || entry.category === 'AirportMesh') &&
+    entry.folderName.toLowerCase().startsWith('darkblue-')
+  )
+}
+
+function isDarkBlueAirportPackageLinkedToAirport(
+  packageFolderName: string,
+  airportFolderName: string,
+) {
+  const packageLower = packageFolderName.toLowerCase()
+  const airportLower = airportFolderName.toLowerCase()
+  if (!packageLower.startsWith(airportLower)) return false
+
+  const suffix = packageFolderName.slice(airportFolderName.length)
+  return suffix.startsWith('_') || suffix.startsWith('-')
+}
+
+function findDarkBlueAirportFolderForPackage(
+  packageFolderName: string,
+  airportFolderNames: string[],
+): string | null {
+  let bestMatch: string | null = null
+
+  for (const airportFolderName of airportFolderNames) {
+    if (!isDarkBlueAirportPackageLinkedToAirport(packageFolderName, airportFolderName)) continue
+
+    if (!bestMatch || airportFolderName.length > bestMatch.length) {
+      bestMatch = airportFolderName
+    }
+  }
+
+  return bestMatch
+}
+
+function buildDisplayGroupedEntries(
+  entries: SceneryManagerEntry[],
+): Record<string, SceneryManagerEntry[]> {
+  const grouped = createGroupedEntriesMap()
+  const darkBlueAirportFolders = entries
+    .filter(
+      (entry) =>
+        entry.category === 'Airport' && entry.folderName.toLowerCase().startsWith('darkblue-'),
+    )
+    .map((entry) => entry.folderName)
+
+  for (const entry of entries) {
+    if (entry.category === 'Airport') {
+      grouped.Airport.push(entry)
+      continue
+    }
+
+    if (
+      isDarkBlueAirportLinkedEntry(entry) &&
+      findDarkBlueAirportFolderForPackage(entry.folderName, darkBlueAirportFolders)
+    ) {
+      grouped.Airport.push(entry)
+      continue
+    }
+
+    if (grouped[entry.category]) {
+      grouped[entry.category].push(entry)
+    } else {
+      grouped.Unrecognized.push(entry)
+    }
+  }
+
+  return grouped
+}
+
 // Scroll container ref (self-contained)
 const scrollContainerRef = ref<HTMLElement | null>(null)
 
@@ -276,17 +355,19 @@ const knownContinents = [
 const continentGroupedEntries = computed(() => {
   const result: Record<string, Record<string, SceneryManagerEntry[]>> = {}
 
-  // Group entries by continent and category
-  for (const entry of allSceneryEntries.value) {
-    const continent = entry.continent || 'Other'
-    const targetContinent = knownContinents.includes(continent) ? continent : 'Other'
-    if (!result[targetContinent]) {
-      result[targetContinent] = {}
-      for (const cat of categoryOrder) {
-        result[targetContinent][cat] = []
+  // Group entries by continent and displayed category
+  for (const category of categoryOrder) {
+    for (const entry of localGroupedEntries.value[category] || []) {
+      const continent = entry.continent || 'Other'
+      const targetContinent = knownContinents.includes(continent) ? continent : 'Other'
+      if (!result[targetContinent]) {
+        result[targetContinent] = {}
+        for (const cat of categoryOrder) {
+          result[targetContinent][cat] = []
+        }
       }
+      result[targetContinent][category].push(entry)
     }
-    result[targetContinent][entry.category].push(entry)
   }
 
   return result
@@ -499,34 +580,25 @@ const filteredSceneryEntries = computed(() => {
 
 // Filtered entries grouped by category (for grouped filtered view)
 const filteredGroupedEntries = computed(() => {
-  const result: Record<string, SceneryManagerEntry[]> = {}
-  for (const category of categoryOrder) {
-    result[category] = []
-  }
-  for (const entry of filteredSceneryEntries.value) {
-    const cat = entry.category || 'Unrecognized'
-    if (result[cat]) {
-      result[cat].push(entry)
-    } else {
-      result['Unrecognized'].push(entry)
-    }
-  }
-  return result
+  return buildDisplayGroupedEntries(filteredSceneryEntries.value)
 })
 
 // Filtered entries grouped by continent then category (for continent filtered view)
 const filteredContinentGroupedEntries = computed(() => {
   const result: Record<string, Record<string, SceneryManagerEntry[]>> = {}
-  for (const entry of filteredSceneryEntries.value) {
-    const continent = entry.continent || 'Other'
-    const targetContinent = knownContinents.includes(continent) ? continent : 'Other'
-    if (!result[targetContinent]) {
-      result[targetContinent] = {}
-      for (const cat of categoryOrder) {
-        result[targetContinent][cat] = []
+
+  for (const category of categoryOrder) {
+    for (const entry of filteredGroupedEntries.value[category] || []) {
+      const continent = entry.continent || 'Other'
+      const targetContinent = knownContinents.includes(continent) ? continent : 'Other'
+      if (!result[targetContinent]) {
+        result[targetContinent] = {}
+        for (const cat of categoryOrder) {
+          result[targetContinent][cat] = []
+        }
       }
+      result[targetContinent][category].push(entry)
     }
-    result[targetContinent][entry.category].push(entry)
   }
   return result
 })
@@ -620,9 +692,9 @@ const matchedIndices = computed(() => {
 })
 
 function syncLocalEntries() {
-  const grouped = sceneryStore.groupedEntries
+  const grouped = buildDisplayGroupedEntries(sceneryStore.sortedEntries)
   for (const cat of categoryOrder) {
-    const newArr = grouped[cat as SceneryCategory] || []
+    const newArr = grouped[cat] || []
     const oldArr = localGroupedEntries.value[cat] || []
     if (newArr.length !== oldArr.length || newArr.some((e, i) => e !== oldArr[i])) {
       localGroupedEntries.value[cat] = [...newArr]
@@ -895,7 +967,9 @@ function parseIssueNumberFromUrl(url: string): number {
 
   try {
     const parsed = new URL(trimmed)
-    const queryNumber = Number(parsed.searchParams.get('number') || parsed.searchParams.get('issueNumber') || 0)
+    const queryNumber = Number(
+      parsed.searchParams.get('number') || parsed.searchParams.get('issueNumber') || 0,
+    )
     if (Number.isFinite(queryNumber) && queryNumber > 0) return queryNumber
   } catch {
     // ignore and fallback to tail parsing
@@ -931,7 +1005,8 @@ async function handleSubmitContributeLink() {
   ].join('\n')
 
   const issueDraftApiBase =
-    import.meta.env.VITE_XFAST_ISSUE_DRAFT_API_URL || 'https://x-fast-manager.vercel.app/api/issue-draft'
+    import.meta.env.VITE_XFAST_ISSUE_DRAFT_API_URL ||
+    'https://x-fast-manager.vercel.app/api/issue-draft'
   const issueUrl = `${issueDraftApiBase}?template=${encodeURIComponent('library_link_submission.yml')}&labels=${encodeURIComponent('library-link')}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
 
   isSubmittingContributeLink.value = true

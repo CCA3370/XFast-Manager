@@ -9,301 +9,373 @@
         class="absolute inset-0 bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl border-b border-gray-200/50 dark:border-white/5 shadow-sm dark:shadow-2xl transition-colors duration-300"
       ></div>
 
-      <div class="relative container mx-auto px-6 h-12 flex justify-center items-center">
-        <!-- Navigation -->
-        <div class="flex items-center whitespace-nowrap">
-          <div v-if="!isOnboardingRoute" class="flex items-center space-x-1">
-            <router-link
-              to="/"
-              class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
-              :class="
-                $route.path === '/'
-                  ? 'text-blue-600 dark:text-white'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
-              "
-            >
-              <div
-                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
-                :class="
-                  $route.path === '/'
-                    ? 'scale-x-100 opacity-100'
-                    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
-                "
-              ></div>
-              <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                  ></path>
-                </svg>
-                <AnimatedText>{{ $t('common.home') }}</AnimatedText>
-              </span>
-            </router-link>
+      <div class="relative w-full px-4 sm:px-6">
+        <div class="w-full">
+          <!-- Primary row -->
+          <div ref="primaryNavViewport" class="flex h-10 items-center gap-3">
+            <div v-if="!isOnboardingRoute" class="min-w-0 flex-1 overflow-hidden">
+              <div class="flex items-center gap-1 whitespace-nowrap">
+                <template v-for="item in primaryVisibleNavItems" :key="`primary-${item.id}`">
+                  <div v-if="item.id === 'management'" class="relative flex items-center">
+                    <router-link
+                      :to="item.to"
+                      class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
+                      :class="navLinkClass(item)"
+                    >
+                      <div
+                        class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                        :class="navLinkBackgroundClass(item)"
+                      ></div>
+                      <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            v-for="(path, index) in item.iconPaths"
+                            :key="`${item.id}-icon-${index}`"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            :d="path"
+                          ></path>
+                        </svg>
+                        <AnimatedText>{{ item.label }}</AnimatedText>
+                      </span>
+                    </router-link>
+                    <div
+                      v-if="store.sceneryManagerHintVisible && store.sceneryManagerHintMessageKey"
+                      class="absolute left-1/2 top-full -translate-x-1/2 mt-2 z-50"
+                    >
+                      <div
+                        class="relative min-w-[240px] max-w-[340px] w-max bg-cyan-50 dark:bg-cyan-900/60 border border-cyan-200 dark:border-cyan-700 text-cyan-900 dark:text-cyan-100 text-xs px-3 py-2 rounded-lg shadow-lg flex items-start gap-2"
+                      >
+                        <div
+                          class="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-cyan-50 dark:bg-cyan-900/60 border-l border-t border-cyan-200 dark:border-cyan-700 rotate-45"
+                        ></div>
+                        <span class="leading-4">{{ $t(store.sceneryManagerHintMessageKey) }}</span>
+                        <button
+                          class="ml-1 text-cyan-700/80 dark:text-cyan-200/80 hover:text-cyan-900 dark:hover:text-white"
+                          @click="store.dismissSceneryManagerHint()"
+                        >
+                          <svg
+                            class="w-3.5 h-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
 
-            <div class="relative flex items-center">
+                  <router-link
+                    v-else
+                    :ref="item.id === 'log-analysis' ? setLogAnalysisLinkRef : undefined"
+                    :to="item.to"
+                    class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
+                    :class="navLinkClass(item)"
+                  >
+                    <div
+                      class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                      :class="navLinkBackgroundClass(item)"
+                    ></div>
+                    <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          v-for="(path, index) in item.iconPaths"
+                          :key="`${item.id}-icon-${index}`"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          :d="path"
+                        ></path>
+                      </svg>
+                      <AnimatedText>{{ item.label }}</AnimatedText>
+                    </span>
+                  </router-link>
+                </template>
+
+                <button
+                  v-if="hasOverflowNav"
+                  class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white"
+                  :title="moreNavLabel"
+                  @click="navExpanded = !navExpanded"
+                >
+                  <div
+                    class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                    :class="
+                      navExpanded
+                        ? 'scale-x-100 opacity-100'
+                        : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
+                    "
+                  ></div>
+                  <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
+                    <svg
+                      class="w-4 h-4 transition-transform duration-300"
+                      :class="navExpanded ? 'rotate-180' : ''"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                    <AnimatedText>{{ moreNavLabel }}</AnimatedText>
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div ref="primaryNavActions" class="ml-auto flex flex-none items-center">
+              <div
+                v-if="!isOnboardingRoute"
+                class="mx-[clamp(0.75rem,2vw,1.5rem)] h-5 w-px bg-gray-200 dark:bg-white/10 transition-colors"
+              ></div>
+
+              <div class="flex items-center gap-1">
+                <button
+                  class="relative p-1.5 rounded-lg group overflow-hidden transition-all duration-300"
+                  :class="
+                    $route.path === '/feedback'
+                      ? 'text-blue-600 dark:text-white'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+                  "
+                  :title="$t('feedback.navTitle')"
+                  @click="handleFeedbackClick"
+                >
+                  <div
+                    class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-center"
+                    :class="
+                      $route.path === '/feedback'
+                        ? 'scale-100 opacity-100'
+                        : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50'
+                    "
+                  ></div>
+                  <span class="relative flex items-center z-10">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M8 10h8M8 14h5M7 3h10a2 2 0 012 2v14l-4-2-4 2-4-2-4 2V5a2 2 0 012-2z"
+                      />
+                    </svg>
+                  </span>
+                </button>
+                <!-- Sponsor button (Chinese locale only) -->
+                <button
+                  v-if="locale === 'zh'"
+                  class="relative p-1.5 rounded-lg group overflow-hidden transition-all duration-300 text-gray-600 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400"
+                  :title="$t('sponsor.title')"
+                  @click="showSponsor = true"
+                >
+                  <div
+                    class="absolute inset-0 bg-pink-50 dark:bg-pink-500/10 rounded-lg transition-all duration-300 transform origin-center scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50"
+                  ></div>
+                  <span class="relative flex items-center z-10">
+                    <svg class="w-4 h-4 sponsor-heartbeat" fill="currentColor" viewBox="0 0 24 24">
+                      <path
+                        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+                      />
+                    </svg>
+                  </span>
+                </button>
+                <!-- Always on top button -->
+                <button
+                  class="relative p-1.5 rounded-lg group overflow-hidden transition-all duration-300"
+                  :class="
+                    isAlwaysOnTop
+                      ? 'text-blue-600 dark:text-blue-400'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+                  "
+                  :title="isAlwaysOnTop ? 'Unpin window' : 'Pin window on top'"
+                  @click="toggleAlwaysOnTop"
+                >
+                  <div
+                    class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-center"
+                    :class="
+                      isAlwaysOnTop
+                        ? 'scale-100 opacity-100'
+                        : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50'
+                    "
+                  ></div>
+                  <span class="relative flex items-center z-10">
+                    <!-- Pin icon -->
+                    <svg
+                      class="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      stroke-width="2"
+                    >
+                      <path
+                        v-if="isAlwaysOnTop"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                        fill="currentColor"
+                      />
+                      <path
+                        v-else
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                      />
+                    </svg>
+                  </span>
+                </button>
+                <ThemeSwitcher />
+                <LanguageSwitcher />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          v-if="!isOnboardingRoute && hasOverflowNav"
+          class="overflow-hidden transition-all duration-300 ease-in-out"
+          :style="{ maxHeight: navExpanded ? `${overflowNavHeight}px` : '0px' }"
+        >
+          <div
+            ref="overflowNavContent"
+            class="flex flex-wrap items-start content-start gap-1 whitespace-nowrap py-1"
+          >
+            <template v-for="item in overflowNavItems" :key="`overflow-${item.id}`">
+              <div v-if="item.id === 'management'" class="relative flex items-center">
+                <router-link
+                  :to="item.to"
+                  class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
+                  :class="navLinkClass(item)"
+                  @click="handleOverflowNavClick"
+                >
+                  <div
+                    class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
+                    :class="navLinkBackgroundClass(item)"
+                  ></div>
+                  <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        v-for="(path, index) in item.iconPaths"
+                        :key="`${item.id}-overflow-icon-${index}`"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        :d="path"
+                      ></path>
+                    </svg>
+                    <AnimatedText>{{ item.label }}</AnimatedText>
+                  </span>
+                </router-link>
+                <div
+                  v-if="store.sceneryManagerHintVisible && store.sceneryManagerHintMessageKey"
+                  class="absolute left-1/2 top-full -translate-x-1/2 mt-2 z-50"
+                >
+                  <div
+                    class="relative min-w-[240px] max-w-[340px] w-max bg-cyan-50 dark:bg-cyan-900/60 border border-cyan-200 dark:border-cyan-700 text-cyan-900 dark:text-cyan-100 text-xs px-3 py-2 rounded-lg shadow-lg flex items-start gap-2"
+                  >
+                    <div
+                      class="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-cyan-50 dark:bg-cyan-900/60 border-l border-t border-cyan-200 dark:border-cyan-700 rotate-45"
+                    ></div>
+                    <span class="leading-4">{{ $t(store.sceneryManagerHintMessageKey) }}</span>
+                    <button
+                      class="ml-1 text-cyan-700/80 dark:text-cyan-200/80 hover:text-cyan-900 dark:hover:text-white"
+                      @click="store.dismissSceneryManagerHint()"
+                    >
+                      <svg
+                        class="w-3.5 h-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <router-link
-                to="/management"
-                class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
-                :class="
-                  $route.path.startsWith('/management')
-                    ? 'text-blue-600 dark:text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
-                "
+                v-else
+                :ref="item.id === 'log-analysis' ? setLogAnalysisLinkRef : undefined"
+                :to="item.to"
+                class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
+                :class="navLinkClass(item)"
+                @click="handleOverflowNavClick"
               >
                 <div
                   class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
-                  :class="
-                    $route.path.startsWith('/management')
-                      ? 'scale-x-100 opacity-100'
-                      : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
-                  "
+                  :class="navLinkBackgroundClass(item)"
                 ></div>
-                <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
+                <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      v-for="(path, index) in item.iconPaths"
+                      :key="`${item.id}-overflow-icon-${index}`"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      :d="path"
+                    ></path>
+                  </svg>
+                  <AnimatedText>{{ item.label }}</AnimatedText>
+                </span>
+              </router-link>
+            </template>
+          </div>
+        </div>
+
+        <div class="nav-measurements" aria-hidden="true">
+          <div class="flex items-center gap-1 whitespace-nowrap">
+            <div
+              v-for="item in allNavItems"
+              :key="`measure-${item.id}`"
+              :ref="(el) => setNavMeasureRef(item.id, el)"
+            >
+              <div class="relative px-2.5 py-1.5 rounded-lg text-gray-600 dark:text-gray-400">
+                <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      v-for="(path, index) in item.iconPaths"
+                      :key="`${item.id}-measure-icon-${index}`"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      :d="path"
+                    ></path>
+                  </svg>
+                  <span>{{ item.label }}</span>
+                </span>
+              </div>
+            </div>
+
+            <div :ref="(el) => setNavMeasureRef('more', el)">
+              <div class="relative px-2.5 py-1.5 rounded-lg text-gray-600 dark:text-gray-400">
+                <span class="relative flex items-center space-x-1 text-sm font-medium z-10">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
                       stroke-width="2"
-                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                    ></path>
+                      d="M19 9l-7 7-7-7"
+                    />
                   </svg>
-                  <AnimatedText>{{ $t('management.navTitle') }}</AnimatedText>
+                  <span>{{ moreNavLabel }}</span>
                 </span>
-              </router-link>
-              <div
-                v-if="store.sceneryManagerHintVisible && store.sceneryManagerHintMessageKey"
-                class="absolute left-1/2 top-full -translate-x-1/2 mt-2 z-50"
-              >
-                <div
-                  class="relative min-w-[240px] max-w-[340px] w-max bg-cyan-50 dark:bg-cyan-900/60 border border-cyan-200 dark:border-cyan-700 text-cyan-900 dark:text-cyan-100 text-xs px-3 py-2 rounded-lg shadow-lg flex items-start gap-2"
-                >
-                  <div
-                    class="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-cyan-50 dark:bg-cyan-900/60 border-l border-t border-cyan-200 dark:border-cyan-700 rotate-45"
-                  ></div>
-                  <span class="leading-4">{{ $t(store.sceneryManagerHintMessageKey) }}</span>
-                  <button
-                    class="ml-1 text-cyan-700/80 dark:text-cyan-200/80 hover:text-cyan-900 dark:hover:text-white"
-                    @click="store.dismissSceneryManagerHint()"
-                  >
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                </div>
               </div>
             </div>
-
-            <router-link
-              to="/screenshots"
-              class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
-              :class="
-                $route.path === '/screenshots'
-                  ? 'text-blue-600 dark:text-white'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
-              "
-            >
-              <div
-                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
-                :class="
-                  $route.path === '/screenshots'
-                    ? 'scale-x-100 opacity-100'
-                    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
-                "
-              ></div>
-              <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-                  />
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
-                </svg>
-                <AnimatedText>{{ $t('screenshot.navTitle') }}</AnimatedText>
-              </span>
-            </router-link>
-
-            <router-link
-              ref="logAnalysisLink"
-              to="/log-analysis"
-              class="relative px-3 py-2 rounded-lg group overflow-hidden transition-all duration-300"
-              :class="
-                $route.path === '/log-analysis'
-                  ? 'text-blue-600 dark:text-white'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
-              "
-            >
-              <div
-                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
-                :class="
-                  $route.path === '/log-analysis'
-                    ? 'scale-x-100 opacity-100'
-                    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
-                "
-              ></div>
-              <span class="relative flex items-center space-x-1.5 text-sm font-medium z-10">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-                <AnimatedText>{{ $t('logAnalysis.navTitle') }}</AnimatedText>
-              </span>
-            </router-link>
-
-            <router-link
-              to="/settings"
-              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
-              :class="
-                $route.path === '/settings'
-                  ? 'text-blue-600 dark:text-white'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
-              "
-              :title="$t('common.settings')"
-            >
-              <div
-                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
-                :class="
-                  $route.path === '/settings'
-                    ? 'scale-x-100 opacity-100'
-                    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
-                "
-              ></div>
-              <span class="relative flex items-center z-10">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                  ></path>
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                  ></path>
-                </svg>
-              </span>
-            </router-link>
-          </div>
-
-          <div
-            v-if="!isOnboardingRoute"
-            class="mx-[clamp(1.25rem,5vw,4.5rem)] h-6 w-px bg-gray-200 dark:bg-white/10 transition-colors"
-          ></div>
-
-          <div class="flex items-center space-x-1">
-            <button
-              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
-              :class="
-                $route.path === '/feedback'
-                  ? 'text-blue-600 dark:text-white'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
-              "
-              :title="$t('feedback.navTitle')"
-              @click="handleFeedbackClick"
-            >
-              <div
-                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-center"
-                :class="
-                  $route.path === '/feedback'
-                    ? 'scale-100 opacity-100'
-                    : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50'
-                "
-              ></div>
-              <span class="relative flex items-center z-10">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M8 10h8M8 14h5M7 3h10a2 2 0 012 2v14l-4-2-4 2-4-2-4 2V5a2 2 0 012-2z"
-                  />
-                </svg>
-              </span>
-            </button>
-            <!-- Sponsor button (Chinese locale only) -->
-            <button
-              v-if="locale === 'zh'"
-              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300 text-gray-600 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400"
-              :title="$t('sponsor.title')"
-              @click="showSponsor = true"
-            >
-              <div
-                class="absolute inset-0 bg-pink-50 dark:bg-pink-500/10 rounded-lg transition-all duration-300 transform origin-center scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50"
-              ></div>
-              <span class="relative flex items-center z-10">
-                <svg class="w-4 h-4 sponsor-heartbeat" fill="currentColor" viewBox="0 0 24 24">
-                  <path
-                    d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-                  />
-                </svg>
-              </span>
-            </button>
-            <!-- Always on top button -->
-            <button
-              class="relative p-2 rounded-lg group overflow-hidden transition-all duration-300"
-              :class="
-                isAlwaysOnTop
-                  ? 'text-blue-600 dark:text-blue-400'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
-              "
-              :title="isAlwaysOnTop ? 'Unpin window' : 'Pin window on top'"
-              @click="toggleAlwaysOnTop"
-            >
-              <div
-                class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-center"
-                :class="
-                  isAlwaysOnTop
-                    ? 'scale-100 opacity-100'
-                    : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50'
-                "
-              ></div>
-              <span class="relative flex items-center z-10">
-                <!-- Pin icon -->
-                <svg
-                  class="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="2"
-                >
-                  <path
-                    v-if="isAlwaysOnTop"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
-                    fill="currentColor"
-                  />
-                  <path
-                    v-else
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
-                  />
-                </svg>
-              </span>
-            </button>
-            <ThemeSwitcher />
-            <LanguageSwitcher />
           </div>
         </div>
       </div>
@@ -313,12 +385,12 @@
     <main
       :class="[
         'main-content',
-        'pt-12',
         'flex-1',
         'min-h-0',
         'overflow-hidden',
         { 'hide-scrollbar': $route.path === '/' },
       ]"
+      :style="{ paddingTop: mainContentPaddingTop }"
     >
       <div class="h-full overflow-y-auto">
         <router-view v-slot="{ Component }">
@@ -349,6 +421,7 @@
       @select-task="addonUpdateDrawerStore.selectTask"
       @updated="handleGlobalAddonUpdated"
     />
+    <CommandPalette ref="commandPaletteRef" />
 
     <!-- Log Analysis First-time Hint -->
     <Teleport to="body">
@@ -392,7 +465,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -420,6 +493,8 @@ import IssueUpdateModal from '@/components/IssueUpdateModal.vue'
 import UpdateChangelogModal from '@/components/UpdateChangelogModal.vue'
 import FeedbackModal from '@/components/FeedbackModal.vue'
 import AddonUpdateDrawer from '@/components/AddonUpdateDrawer.vue'
+import CommandPalette from '@/components/CommandPalette.vue'
+import { registerShortcut } from '@/composables/useKeyboardShortcuts'
 
 const { t, locale } = useI18n()
 const store = useAppStore()
@@ -433,6 +508,7 @@ const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
 const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
+const commandPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null)
 const addonDrawerVisible = computed({
   get: () => addonUpdateDrawerStore.show,
   set: (visible: boolean) => {
@@ -448,9 +524,338 @@ const addonDrawerVisible = computed({
 const isAlwaysOnTop = ref(false)
 const showSponsor = ref(false)
 
+// Nav expand state
+type NavId =
+  | 'home'
+  | 'management'
+  | 'screenshots'
+  | 'log-analysis'
+  | 'activity'
+  | 'disk-usage'
+  | 'presets'
+  | 'gateway'
+  | 'csl'
+  | 'settings'
+type NavMeasureId = NavId | 'more'
+type ElementRefTarget = Element | { $el?: Element | null } | null
+
+interface NavItem {
+  id: NavId
+  to: string
+  label: string
+  active: boolean
+  iconPaths: string[]
+}
+
+const NAV_ORDER: NavId[] = [
+  'home',
+  'management',
+  'screenshots',
+  'log-analysis',
+  'activity',
+  'disk-usage',
+  'presets',
+  'gateway',
+  'csl',
+  'settings',
+]
+
+const NAV_GAP = 4
+const PRIMARY_NAV_HEIGHT_PX = 40
+
+const NAV_ICON_PATHS: Record<NavId, string[]> = {
+  home: ['M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4'],
+  management: [
+    'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
+  ],
+  screenshots: [
+    'M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z',
+    'M15 13a3 3 0 11-6 0 3 3 0 016 0z',
+  ],
+  'log-analysis': [
+    'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+  ],
+  activity: ['M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'],
+  'disk-usage': [
+    'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4',
+  ],
+  presets: [
+    'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4',
+  ],
+  gateway: ['M4 11l8-5 8 5v8a2 2 0 01-2 2h-3v-6H9v6H6a2 2 0 01-2-2v-8z', 'M10 11h4'],
+  csl: ['M12 4l7 4-7 4-7-4 7-4zm7 4v8l-7 4m7-12l-7 4m-7-4v8l7 4m-7-12l7 4'],
+  settings: [
+    'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z',
+    'M15 12a3 3 0 11-6 0 3 3 0 016 0z',
+  ],
+}
+
+const navExpanded = ref(false)
+const primaryNavViewport = ref<HTMLElement | null>(null)
+const primaryNavActions = ref<HTMLElement | null>(null)
+const overflowNavContent = ref<HTMLElement | null>(null)
+const primaryVisibleNavIds = ref<NavId[]>([])
+const overflowNavIds = ref<NavId[]>([])
+const navMeasureRefs: Partial<Record<NavMeasureId, HTMLElement | null>> = {}
+let navLayoutObserver: ResizeObserver | null = null
+let navLayoutFrame = 0
+let overflowNavHeightFrame = 0
+let hintPositionFrame = 0
+const overflowNavHeight = ref(PRIMARY_NAV_HEIGHT_PX)
+const moreNavLabel = computed(() =>
+  navExpanded.value ? t('common.collapseNav') : t('common.expandNav'),
+)
+const primaryVisibleNavIdSet = computed(() => new Set(primaryVisibleNavIds.value))
+const overflowNavIdSet = computed(() => new Set(overflowNavIds.value))
+const hasOverflowNav = computed(() => overflowNavIds.value.length > 0)
+const allNavItems = computed<NavItem[]>(() => [
+  {
+    id: 'home',
+    to: '/',
+    label: t('common.home'),
+    active: route.path === '/',
+    iconPaths: NAV_ICON_PATHS.home,
+  },
+  {
+    id: 'management',
+    to: '/management',
+    label: t('management.navTitle'),
+    active: route.path.startsWith('/management'),
+    iconPaths: NAV_ICON_PATHS.management,
+  },
+  {
+    id: 'screenshots',
+    to: '/screenshots',
+    label: t('screenshot.navTitle'),
+    active: route.path === '/screenshots',
+    iconPaths: NAV_ICON_PATHS.screenshots,
+  },
+  {
+    id: 'log-analysis',
+    to: '/log-analysis',
+    label: t('logAnalysis.navTitle'),
+    active: route.path === '/log-analysis',
+    iconPaths: NAV_ICON_PATHS['log-analysis'],
+  },
+  {
+    id: 'activity',
+    to: '/activity',
+    label: t('activityLog.navTitle'),
+    active: route.path === '/activity',
+    iconPaths: NAV_ICON_PATHS.activity,
+  },
+  {
+    id: 'disk-usage',
+    to: '/disk-usage',
+    label: t('diskUsage.navTitle'),
+    active: route.path === '/disk-usage',
+    iconPaths: NAV_ICON_PATHS['disk-usage'],
+  },
+  {
+    id: 'presets',
+    to: '/presets',
+    label: t('presets.navTitle'),
+    active: route.path === '/presets',
+    iconPaths: NAV_ICON_PATHS.presets,
+  },
+  {
+    id: 'gateway',
+    to: '/gateway',
+    label: t('gatewayManager.navTitle'),
+    active: route.path === '/gateway',
+    iconPaths: NAV_ICON_PATHS.gateway,
+  },
+  {
+    id: 'csl',
+    to: '/csl',
+    label: t('csl.navTitle'),
+    active: route.path === '/csl',
+    iconPaths: NAV_ICON_PATHS.csl,
+  },
+  {
+    id: 'settings',
+    to: '/settings',
+    label: t('common.settings'),
+    active: route.path === '/settings',
+    iconPaths: NAV_ICON_PATHS.settings,
+  },
+])
+const primaryVisibleNavItems = computed(() =>
+  allNavItems.value.filter((item) => primaryVisibleNavIdSet.value.has(item.id)),
+)
+const overflowNavItems = computed(() =>
+  allNavItems.value.filter((item) => overflowNavIdSet.value.has(item.id)),
+)
+const mainContentPaddingTop = computed(() => {
+  if (!navExpanded.value || !hasOverflowNav.value) {
+    return `${PRIMARY_NAV_HEIGHT_PX}px`
+  }
+
+  return `${PRIMARY_NAV_HEIGHT_PX + overflowNavHeight.value}px`
+})
+
 // Log analysis hint
 const logAnalysisLink = ref<HTMLElement | null>(null)
 const hintPosition = ref({ top: 0, left: 0 })
+
+function resolveHTMLElement(target: ElementRefTarget) {
+  if (target instanceof HTMLElement) {
+    return target
+  }
+
+  const element = target && '$el' in target ? target.$el : null
+  return element instanceof HTMLElement ? element : null
+}
+
+function navLinkClass(item: NavItem) {
+  return item.active
+    ? 'text-blue-600 dark:text-white'
+    : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white'
+}
+
+function navLinkBackgroundClass(item: NavItem) {
+  return item.active
+    ? 'scale-x-100 opacity-100'
+    : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
+}
+
+function setLogAnalysisLinkRef(target: ElementRefTarget) {
+  logAnalysisLink.value = resolveHTMLElement(target)
+}
+
+function setNavMeasureRef(id: NavMeasureId, target: Element | null) {
+  navMeasureRefs[id] = target instanceof HTMLElement ? target : null
+}
+
+function getNavMeasureWidth(id: NavMeasureId) {
+  const width = navMeasureRefs[id]?.getBoundingClientRect().width ?? 0
+  return Math.ceil(width)
+}
+
+function updatePrimaryNavLayout() {
+  if (isOnboardingRoute.value) {
+    primaryVisibleNavIds.value = []
+    overflowNavIds.value = []
+    return
+  }
+
+  const viewportWidth = primaryNavViewport.value?.clientWidth ?? 0
+  const actionsWidth = Math.ceil(primaryNavActions.value?.getBoundingClientRect().width ?? 0)
+  const moreWidth = getNavMeasureWidth('more')
+  const itemWidths = NAV_ORDER.map((id) => ({ id, width: getNavMeasureWidth(id) }))
+
+  if (viewportWidth <= 0 || moreWidth <= 0 || itemWidths.some((item) => item.width <= 0)) {
+    return
+  }
+
+  const availableWidth = Math.max(0, viewportWidth - actionsWidth)
+  let usedWidth = 0
+  let visibleCount = 0
+
+  for (let index = 0; index < itemWidths.length; index += 1) {
+    const itemWidth = itemWidths[index].width
+    const nextUsedWidth = usedWidth + (visibleCount > 0 ? NAV_GAP : 0) + itemWidth
+    const hasRemainingItems = index < itemWidths.length - 1
+    const reservedMoreWidth = hasRemainingItems ? NAV_GAP + moreWidth : 0
+
+    if (nextUsedWidth + reservedMoreWidth > availableWidth) {
+      break
+    }
+
+    usedWidth = nextUsedWidth
+    visibleCount += 1
+  }
+
+  primaryVisibleNavIds.value = NAV_ORDER.slice(0, visibleCount)
+  overflowNavIds.value = NAV_ORDER.slice(visibleCount)
+}
+
+function schedulePrimaryNavLayout() {
+  if (navLayoutFrame) {
+    cancelAnimationFrame(navLayoutFrame)
+  }
+
+  navLayoutFrame = requestAnimationFrame(() => {
+    navLayoutFrame = 0
+    updatePrimaryNavLayout()
+    scheduleOverflowNavHeightUpdate()
+  })
+}
+
+function updateOverflowNavHeight() {
+  if (!hasOverflowNav.value) {
+    overflowNavHeight.value = 0
+    return
+  }
+
+  const height = Math.ceil(overflowNavContent.value?.getBoundingClientRect().height ?? 0)
+  overflowNavHeight.value = Math.max(PRIMARY_NAV_HEIGHT_PX, height)
+}
+
+function scheduleOverflowNavHeightUpdate() {
+  if (overflowNavHeightFrame) {
+    cancelAnimationFrame(overflowNavHeightFrame)
+  }
+
+  overflowNavHeightFrame = requestAnimationFrame(() => {
+    overflowNavHeightFrame = 0
+    updateOverflowNavHeight()
+  })
+}
+
+function updateHintPosition() {
+  if (!store.logAnalysisHintVisible) {
+    return
+  }
+
+  const rect = logAnalysisLink.value?.getBoundingClientRect()
+  if (!rect) {
+    return
+  }
+
+  hintPosition.value = {
+    top: rect.bottom + 10,
+    left: rect.left + rect.width / 2,
+  }
+}
+
+function scheduleHintPositionUpdate() {
+  if (hintPositionFrame) {
+    cancelAnimationFrame(hintPositionFrame)
+  }
+
+  hintPositionFrame = requestAnimationFrame(() => {
+    hintPositionFrame = 0
+    updateHintPosition()
+  })
+}
+
+function reconnectNavLayoutObserver() {
+  navLayoutObserver?.disconnect()
+
+  if (typeof ResizeObserver === 'undefined') {
+    schedulePrimaryNavLayout()
+    scheduleHintPositionUpdate()
+    return
+  }
+
+  navLayoutObserver = new ResizeObserver(() => {
+    schedulePrimaryNavLayout()
+    scheduleOverflowNavHeightUpdate()
+    scheduleHintPositionUpdate()
+  })
+  ;[primaryNavViewport.value, primaryNavActions.value, overflowNavContent.value].forEach(
+    (element) => {
+      if (element) {
+        navLayoutObserver?.observe(element)
+      }
+    },
+  )
+}
+
+function handleOverflowNavClick() {
+  navExpanded.value = false
+}
 
 async function toggleAlwaysOnTop() {
   try {
@@ -467,10 +872,15 @@ const routeOrder: Record<string, number> = {
   '/': 0,
   '/management': 1,
   '/management/liveries': 1,
+  '/presets': 1.5,
   '/screenshots': 2,
   '/log-analysis': 3,
-  '/feedback': 5,
-  '/settings': 6,
+  '/activity': 3.5,
+  '/disk-usage': 4,
+  '/gateway': 5,
+  '/csl': 5.5,
+  '/feedback': 6,
+  '/settings': 7,
   '/onboarding': -1,
 }
 
@@ -495,6 +905,36 @@ watch(
       feedbackStore.setModalDirty(false)
     }
   },
+)
+
+watch(
+  [() => route.fullPath, () => locale.value, () => navExpanded.value],
+  () => {
+    schedulePrimaryNavLayout()
+    scheduleOverflowNavHeightUpdate()
+    scheduleHintPositionUpdate()
+  },
+  { flush: 'post' },
+)
+
+watch(
+  hasOverflowNav,
+  (hasOverflow) => {
+    if (!hasOverflow && navExpanded.value) {
+      navExpanded.value = false
+    }
+    reconnectNavLayoutObserver()
+    scheduleOverflowNavHeightUpdate()
+  },
+  { flush: 'post' },
+)
+
+watch(
+  () => store.logAnalysisHintVisible,
+  () => {
+    scheduleHintPositionUpdate()
+  },
+  { flush: 'post' },
 )
 
 function handleFeedbackDirtyChange(isDirty: boolean) {
@@ -522,7 +962,10 @@ async function handleFeedbackClick() {
 }
 
 async function handleGlobalAddonUpdated() {
-  const refreshJobs: Promise<unknown>[] = [managementStore.loadAircraft(), managementStore.loadPlugins()]
+  const refreshJobs: Promise<unknown>[] = [
+    managementStore.loadAircraft(),
+    managementStore.loadPlugins(),
+  ]
 
   if (route.path.startsWith('/management') && String(route.query.tab || '') === 'scenery') {
     refreshJobs.push(sceneryStore.loadData())
@@ -532,6 +975,11 @@ async function handleGlobalAddonUpdated() {
 }
 
 onMounted(async () => {
+  reconnectNavLayoutObserver()
+  schedulePrimaryNavLayout()
+  scheduleOverflowNavHeightUpdate()
+  scheduleHintPositionUpdate()
+
   // Log app startup (basic level - always logged)
   logBasic(t('log.appStarted'), 'app')
   logDebug('Loading app store and initializing', 'app')
@@ -579,6 +1027,65 @@ onMounted(async () => {
   // Non-blocking sync locale to backend (moved from i18n module top-level)
   syncLocaleToBackend()
 
+  // Register keyboard shortcuts
+  registerShortcut({
+    id: 'command-palette-open',
+    keys: 'ctrl+shift+p',
+    label: t('commandPalette.title'),
+    category: t('commandPalette.categoryGlobal'),
+    action: () => commandPaletteRef.value?.toggle(),
+  })
+  registerShortcut({
+    id: 'nav-install',
+    keys: 'ctrl+1',
+    label: t('common.home'),
+    category: t('commandPalette.categoryNav'),
+    action: () => router.push('/'),
+  })
+  registerShortcut({
+    id: 'nav-management',
+    keys: 'ctrl+2',
+    label: t('management.navTitle'),
+    category: t('commandPalette.categoryNav'),
+    action: () => router.push('/management'),
+  })
+  registerShortcut({
+    id: 'nav-screenshots',
+    keys: 'ctrl+3',
+    label: t('screenshot.navTitle'),
+    category: t('commandPalette.categoryNav'),
+    action: () => router.push('/screenshots'),
+  })
+  registerShortcut({
+    id: 'nav-log-analysis',
+    keys: 'ctrl+4',
+    label: t('logAnalysis.navTitle'),
+    category: t('commandPalette.categoryNav'),
+    action: () => router.push('/log-analysis'),
+  })
+  registerShortcut({
+    id: 'nav-gateway',
+    keys: 'ctrl+5',
+    label: t('gatewayManager.navTitle'),
+    category: t('commandPalette.categoryNav'),
+    action: () => router.push('/gateway'),
+  })
+  registerShortcut({
+    id: 'nav-settings',
+    keys: 'ctrl+,',
+    label: t('common.settings'),
+    category: t('commandPalette.categoryNav'),
+    action: () => router.push('/settings'),
+  })
+  registerShortcut({
+    id: 'command-palette-close',
+    keys: 'escape',
+    label: t('commandPalette.close'),
+    category: t('commandPalette.categoryGlobal'),
+    action: () => commandPaletteRef.value?.close(),
+    when: () => commandPaletteRef.value?.visible ?? false,
+  })
+
   // Check for updates (non-blocking, delayed to avoid affecting startup performance)
   setTimeout(() => {
     updateStore.checkAndShowPostUpdateChangelog()
@@ -605,6 +1112,7 @@ onMounted(async () => {
     })
 
     // Disable F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U (devtools shortcuts)
+    // Note: Ctrl+Shift+P is reserved for command palette — not blocked
     document.addEventListener('keydown', (e) => {
       // F12
       if (e.key === 'F12') {
@@ -643,8 +1151,10 @@ onMounted(async () => {
       if (event.payload && event.payload.length > 0) {
         // Use batch processing to handle multiple file selections
         // (Windows launches separate instances for each file)
-        store.addCliArgsToBatch(event.payload)
-        await router.push('/')
+        const fileArgs = store.addCliArgsToBatch(event.payload)
+        if (fileArgs.length > 0) {
+          await router.push('/')
+        }
       }
     })
   } catch (error) {
@@ -659,8 +1169,10 @@ onMounted(async () => {
     if (args && args.length > 0) {
       logDebug(`CLI args from first launch: ${args.join(', ')}`, 'app')
       logBasic(t('log.launchedWithArgs'), 'app')
-      store.addCliArgsToBatch(args)
-      await router.push('/')
+      const fileArgs = store.addCliArgsToBatch(args)
+      if (fileArgs.length > 0) {
+        await router.push('/')
+      }
     }
   } catch (error) {
     logError(`Failed to get CLI args on startup: ${error}`, 'app')
@@ -704,6 +1216,18 @@ onMounted(async () => {
               await appWindow.destroy()
             }
           },
+          onCancel: () => {},
+        })
+      } else if (updateStore.isDownloading) {
+        // App update download in progress
+        event.preventDefault()
+        modalStore.showConfirm({
+          title: t('update.downloadInProgressTitle'),
+          message: t('update.downloadInProgressMessage'),
+          confirmText: t('modal.closeAnyway'),
+          cancelText: t('modal.goBack'),
+          type: 'warning',
+          onConfirm: async () => await appWindow.destroy(),
           onCancel: () => {},
         })
       } else if (store.isLibraryLinkSubmitting) {
@@ -755,19 +1279,18 @@ onMounted(async () => {
   }
 
   logDebug('App.vue onMounted completed', 'app')
+})
 
-  // Compute hint position after DOM is ready
-  if (store.logAnalysisHintVisible) {
-    setTimeout(() => {
-      const el = logAnalysisLink.value?.$el ?? logAnalysisLink.value
-      if (el) {
-        const rect = (el as HTMLElement).getBoundingClientRect()
-        hintPosition.value = {
-          top: rect.bottom + 10,
-          left: rect.left + rect.width / 2,
-        }
-      }
-    }, 300)
+onBeforeUnmount(() => {
+  navLayoutObserver?.disconnect()
+  if (navLayoutFrame) {
+    cancelAnimationFrame(navLayoutFrame)
+  }
+  if (overflowNavHeightFrame) {
+    cancelAnimationFrame(overflowNavHeightFrame)
+  }
+  if (hintPositionFrame) {
+    cancelAnimationFrame(hintPositionFrame)
   }
 })
 </script>
@@ -805,9 +1328,20 @@ nav {
   backface-visibility: hidden;
 }
 
+.nav-measurements {
+  position: absolute;
+  top: 0;
+  left: -9999px;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .main-content {
   flex: 1;
   min-height: 0;
+  transition: padding-top 0.3s ease;
   /* Do not reserve scrollbar gutter globally; we will control visual scrollbar per-route */
   scrollbar-gutter: auto;
   /* Allow inner container to manage the actual scrolling */
