@@ -64,10 +64,12 @@ export const useCslStore = defineStore('csl', () => {
   const progressMap = ref<Record<string, CslProgress>>({})
   const error = ref<string | null>(null)
   const searchQuery = ref('')
+  const lastScannedXplanePath = ref('')
 
   const altitudePackages = ref<CslPackageInfo[]>([])
   const altitudeLoading = ref(false)
   const altitudeProgressMap = ref<Record<string, CslProgress>>({})
+  const lastAltitudeScannedXplanePath = ref('')
 
   const installQueue = ref<QueuedInstallTask[]>([])
   const activeInstallTask = ref<QueuedInstallTask | null>(null)
@@ -81,7 +83,11 @@ export const useCslStore = defineStore('csl', () => {
   let descriptionLoadRunning = false
   let descriptionLoadGeneration = 0
   let scanGeneration = 0
+  let linkSyncDrainPromise: Promise<void> | null = null
+  let pendingFullLinkSync = false
   const descriptionLoadQueue = new Set<string>()
+  const pendingLinkSyncPackages = new Set<string>()
+  const pendingLinkCleanupPaths = new Set<string>()
 
   const totalPackages = computed(() => packages.value.length)
   const installedCount = computed(
@@ -427,24 +433,76 @@ export const useCslStore = defineStore('csl', () => {
       return
     }
 
-    const requestId = createOperationRequestId('csl-sync-links')
-
-    try {
-      logDebug(
-        `[${requestId}] invoke csl_sync_links start xplane_path=${appStore.xplanePath} custom_paths=${customPaths.value.length} packages=${packageNames?.length ?? 0} cleanup_paths=${cleanupPaths?.length ?? 0}`,
-        'csl',
-      )
-      await invoke('csl_sync_links', {
-        xplanePath: appStore.xplanePath,
-        customPaths: customPaths.value,
-        packageNames: packageNames && packageNames.length > 0 ? packageNames : null,
-        cleanupPaths: cleanupPaths && cleanupPaths.length > 0 ? cleanupPaths : null,
-        requestId,
-      })
-      logDebug(`[${requestId}] invoke csl_sync_links success`, 'csl')
-    } catch (e) {
-      logError(`[${requestId}] CSL link sync failed: ${getErrorMessage(e)}`, 'csl')
+    if (!packageNames || packageNames.length === 0) {
+      pendingFullLinkSync = true
+      pendingLinkSyncPackages.clear()
+    } else if (!pendingFullLinkSync) {
+      for (const packageName of packageNames) {
+        const normalizedPackageName = packageName.trim()
+        if (normalizedPackageName) {
+          pendingLinkSyncPackages.add(normalizedPackageName)
+        }
+      }
     }
+
+    for (const cleanupPath of cleanupPaths ?? []) {
+      const normalizedCleanupPath = cleanupPath.trim()
+      if (normalizedCleanupPath) {
+        pendingLinkCleanupPaths.add(normalizedCleanupPath)
+      }
+    }
+
+    if (linkSyncDrainPromise) {
+      await linkSyncDrainPromise
+      return
+    }
+
+    linkSyncDrainPromise = (async () => {
+      try {
+        while (true) {
+          if (
+            !pendingFullLinkSync &&
+            pendingLinkSyncPackages.size === 0 &&
+            pendingLinkCleanupPaths.size === 0
+          ) {
+            return
+          }
+
+          const queuedPackageNames = pendingFullLinkSync
+            ? null
+            : Array.from(pendingLinkSyncPackages).sort()
+          const queuedCleanupPaths = Array.from(pendingLinkCleanupPaths)
+
+          pendingFullLinkSync = false
+          pendingLinkSyncPackages.clear()
+          pendingLinkCleanupPaths.clear()
+
+          const requestId = createOperationRequestId('csl-sync-links')
+
+          try {
+            logDebug(
+              `[${requestId}] invoke csl_sync_links start xplane_path=${appStore.xplanePath} custom_paths=${customPaths.value.length} packages=${queuedPackageNames?.length ?? 0} cleanup_paths=${queuedCleanupPaths.length}`,
+              'csl',
+            )
+            await invoke('csl_sync_links', {
+              xplanePath: appStore.xplanePath,
+              customPaths: customPaths.value,
+              packageNames:
+                queuedPackageNames && queuedPackageNames.length > 0 ? queuedPackageNames : null,
+              cleanupPaths: queuedCleanupPaths.length > 0 ? queuedCleanupPaths : null,
+              requestId,
+            })
+            logDebug(`[${requestId}] invoke csl_sync_links success`, 'csl')
+          } catch (e) {
+            logError(`[${requestId}] CSL link sync failed: ${getErrorMessage(e)}`, 'csl')
+          }
+        }
+      } finally {
+        linkSyncDrainPromise = null
+      }
+    })()
+
+    await linkSyncDrainPromise
   }
 
   function clearProgressForTask(task: QueuedInstallTask) {
@@ -642,6 +700,7 @@ export const useCslStore = defineStore('csl', () => {
     await ensureServerConfigLoaded()
     isLoading.value = true
     error.value = null
+    void syncLinks()
     const requestId = createOperationRequestId('csl-scan')
 
     try {
@@ -663,6 +722,7 @@ export const useCslStore = defineStore('csl', () => {
       packages.value = result.packages
       paths.value = result.paths
       serverVersion.value = result.server_version
+      lastScannedXplanePath.value = appStore.xplanePath
       resetDescriptionLoadState(
         result.packages.filter((pkg) => !pkg.description).map((pkg) => pkg.name),
       )
@@ -670,7 +730,6 @@ export const useCslStore = defineStore('csl', () => {
         result.packages.filter((pkg) => pkg.status === 'checking').map((pkg) => pkg.name),
         generation,
       )
-      void syncLinks()
     } catch (e) {
       resetDescriptionLoadState([])
       error.value = getErrorMessage(e)
@@ -850,6 +909,7 @@ export const useCslStore = defineStore('csl', () => {
       )
 
       altitudePackages.value = result.packages
+      lastAltitudeScannedXplanePath.value = appStore.xplanePath
     } catch (e) {
       logError(`[${requestId}] ALTITUDE scan failed: ${getErrorMessage(e)}`, 'altitude')
       toast.error(t('altitude.fetchError'))
@@ -965,6 +1025,7 @@ export const useCslStore = defineStore('csl', () => {
     progressMap,
     error,
     searchQuery,
+    lastScannedXplanePath,
     pendingDescriptionPackages,
     loadingDescriptionPackages,
 
@@ -977,6 +1038,7 @@ export const useCslStore = defineStore('csl', () => {
     hasPendingInstalls,
 
     scanPackages,
+    syncLinks,
     ensureServerConfigLoaded,
     saveServerConfig,
     queuePackageDescriptions,
@@ -997,6 +1059,7 @@ export const useCslStore = defineStore('csl', () => {
     queuedAltitudePackages,
     cancellingAltitudePackages,
     altitudeProgressMap,
+    lastAltitudeScannedXplanePath,
 
     altitudeTotalPackages,
     altitudeInstalledCount,

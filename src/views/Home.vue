@@ -730,7 +730,7 @@ onBeforeUnmount(() => {
 
 async function analyzeFiles(paths: string[], passwords?: Record<string, string>) {
   // Log incoming files
-  logOperation(t('log.filesDropped'), t('log.fileCount', { count: paths.length }))
+  logOperation('Files dropped for analysis', `${paths.length} file(s)`)
   logDebug(`Analyzing paths: ${paths.join(', ')}`, 'analysis')
 
   // Reset password retry counter for new analysis (not a retry with passwords)
@@ -741,7 +741,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
   if (!store.xplanePath) {
     logDebug('No X-Plane path set', 'analysis')
     // Log the abort reason - toast.warning will also log via the store
-    logOperation(t('log.taskAborted'), t('log.xplanePathNotSet'))
+    logOperation('Task aborted', 'X-Plane path not set')
     toast.warning(t('home.pathNotSet'))
     return
   }
@@ -772,10 +772,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
 
     if (allRequiredPaths.length > 0) {
       // Log password requirement
-      logOperation(
-        t('log.passwordRequired'),
-        t('log.fileCount', { count: allRequiredPaths.length }),
-      )
+      logOperation('Password required', `${allRequiredPaths.length} file(s)`)
       logDebug(`Password required for: ${allRequiredPaths.join(', ')}`, 'analysis')
       // Store the original paths for re-analysis after password input
       pendingAnalysisPaths.value = paths
@@ -812,7 +809,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
 
         // Check if we've exceeded retry limit (use >= to prevent off-by-one error)
         if (passwordRetryCount.value >= MAX_PASSWORD_RETRIES) {
-          logOperation(t('log.taskAborted'), t('log.passwordMaxRetries'))
+          logOperation('Task aborted', 'Maximum password attempts exceeded')
           modal.showError(t('password.maxRetries') + '\n\n' + result.errors.join('\n'))
           resetPasswordState()
           store.isAnalyzing = false
@@ -880,8 +877,8 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
         // Reset password state on successful analysis
         resetPasswordState()
         // Non-blocking log call
-        logBasic(t('log.analysisCompleted'), 'analysis')
-        logOperation(t('log.analysisCompleted'), t('log.taskCount', { count: allowedTasks.length }))
+        logBasic('Analysis completed', 'analysis')
+        logOperation('Analysis completed', `${allowedTasks.length} task(s) ready`)
         logDebug(`Task types: ${allowedTasks.map((t) => t.type).join(', ')}`, 'analysis')
       } else if (ignoredCount > 0) {
         toast.warning(t('home.allIgnored'))
@@ -894,7 +891,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
     }
   } catch (error) {
     // Non-blocking log call (also prints to console.error internally)
-    logError(`${t('log.analysisFailed')}: ${error}`, 'analysis')
+    logError(`Analysis failed: ${error}`, 'analysis')
     modal.showError(t('home.failedToAnalyze') + ': ' + getErrorMessage(error))
   } finally {
     store.isAnalyzing = false
@@ -928,10 +925,7 @@ async function handlePasswordSubmit(passwords: Record<string, string>) {
 
   showPasswordModal.value = false
   passwordErrorMessage.value = '' // Clear error message
-  logOperation(
-    t('log.passwordEntered'),
-    t('log.fileCount', { count: Object.keys(passwords).length }),
-  )
+  logOperation('Password entered', `${Object.keys(passwords).length} file(s)`)
   // Merge new passwords with previously collected ones
   const allPasswords = { ...collectedPasswords.value, ...passwords }
 
@@ -943,7 +937,7 @@ async function handlePasswordSubmit(passwords: Record<string, string>) {
 // Handle password modal cancel
 async function handlePasswordCancel() {
   showPasswordModal.value = false
-  logOperation(t('log.taskAborted'), t('log.passwordCanceled'))
+  logOperation('Task aborted', 'User canceled password input')
 
   // After cancel, continue analyzing files that don't require password
   const nonPasswordPaths = pendingAnalysisPaths.value.filter(
@@ -997,8 +991,8 @@ async function handleInstall() {
 
   store.isInstalling = true
   // Non-blocking log call
-  logBasic(t('log.installationStarted'), 'installation')
-  logOperation(t('log.installationStarted'), t('log.taskCount', { count: enabledTasks.length }))
+  logBasic('Installation started', 'installation')
+  logOperation('Installation started', `${enabledTasks.length} task(s) ready`)
   logDebug(
     `Installing ${enabledTasks.length} tasks: ${enabledTasks.map((t) => t.displayName).join(', ')}`,
     'installation',
@@ -1031,11 +1025,11 @@ async function handleInstall() {
 
     // Log results
     if (result.failedTasks === 0) {
-      logBasic(t('log.installationCompleted'), 'installation')
+      logBasic('Installation completed successfully', 'installation')
     } else if (result.successfulTasks > 0) {
-      logBasic(t('completion.partialSuccess'), 'installation')
+      logBasic('Installation completed with partial failures', 'installation')
     } else {
-      logError(t('completion.allFailed'), 'installation')
+      logError('All installation tasks failed', 'installation')
     }
     logOperation(
       `${result.successfulTasks}/${result.totalTasks} tasks completed successfully (failed: ${result.failedTasks})`,

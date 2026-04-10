@@ -981,7 +981,7 @@ onMounted(async () => {
   scheduleHintPositionUpdate()
 
   // Log app startup (basic level - always logged)
-  logBasic(t('log.appStarted'), 'app')
+  logBasic('XFast Manager started', 'app')
   logDebug('Loading app store and initializing', 'app')
 
   // Non-blocking: load X-Plane path
@@ -1147,7 +1147,7 @@ onMounted(async () => {
     logDebug('Setting up CLI args listener...', 'app')
     await listen<string[]>('cli-args', async (event) => {
       logDebug(`CLI args event received: ${event.payload.join(', ')}`, 'app')
-      logBasic(t('log.launchedWithArgs'), 'app')
+      logBasic('Launched with arguments', 'app')
       if (event.payload && event.payload.length > 0) {
         // Use batch processing to handle multiple file selections
         // (Windows launches separate instances for each file)
@@ -1168,7 +1168,7 @@ onMounted(async () => {
     const args = await invoke<string[]>('get_cli_args')
     if (args && args.length > 0) {
       logDebug(`CLI args from first launch: ${args.join(', ')}`, 'app')
-      logBasic(t('log.launchedWithArgs'), 'app')
+      logBasic('Launched with arguments', 'app')
       const fileArgs = store.addCliArgsToBatch(args)
       if (fileArgs.length > 0) {
         await router.push('/')

@@ -4,6 +4,7 @@ import type {
   GatewayAirportSearchResult,
   GatewayInstallWarning,
   GatewayInstalledAirport,
+  GatewayReleaseContext,
   GatewaySceneryDetail,
 } from '@/types'
 
@@ -27,27 +28,53 @@ function isGatewayInstallArgMismatch(error: unknown): boolean {
 export async function gatewaySearchAirports(
   query: string,
   limit = 20,
+  releaseVersion?: string | null,
 ): Promise<GatewayAirportSearchResult[]> {
   return invokeCommand<GatewayAirportSearchResult[]>('gateway_search_airports', {
     query,
     limit,
+    releaseVersion: releaseVersion || null,
   })
 }
 
-export async function gatewayGetAirport(icao: string): Promise<GatewayAirportDetail> {
-  return invokeCommand<GatewayAirportDetail>('gateway_get_airport', { icao })
+export async function gatewayGetAirport(
+  icao: string,
+  releaseVersion?: string | null,
+): Promise<GatewayAirportDetail> {
+  return invokeCommand<GatewayAirportDetail>('gateway_get_airport', {
+    icao,
+    releaseVersion: releaseVersion || null,
+  })
 }
 
 export async function gatewayGetScenery(sceneryId: number): Promise<GatewaySceneryDetail> {
   return invokeCommand<GatewaySceneryDetail>('gateway_get_scenery', { sceneryId })
 }
 
-export async function gatewayListInstalled(xplanePath: string): Promise<GatewayInstalledAirport[]> {
-  return invokeCommand<GatewayInstalledAirport[]>('gateway_list_installed', { xplanePath })
+export async function gatewayListInstalled(
+  xplanePath: string,
+  releaseVersion?: string | null,
+): Promise<GatewayInstalledAirport[]> {
+  return invokeCommand<GatewayInstalledAirport[]>('gateway_list_installed', {
+    xplanePath,
+    releaseVersion: releaseVersion || null,
+  })
 }
 
-export async function gatewayCheckUpdates(xplanePath: string): Promise<GatewayInstalledAirport[]> {
-  return invokeCommand<GatewayInstalledAirport[]>('gateway_check_updates', { xplanePath })
+export async function gatewayCheckUpdates(
+  xplanePath: string,
+  releaseVersion?: string | null,
+): Promise<GatewayInstalledAirport[]> {
+  return invokeCommand<GatewayInstalledAirport[]>('gateway_check_updates', {
+    xplanePath,
+    releaseVersion: releaseVersion || null,
+  })
+}
+
+export async function gatewayResolveReleaseContext(
+  xplanePath: string,
+): Promise<GatewayReleaseContext> {
+  return invokeCommand<GatewayReleaseContext>('gateway_resolve_release_context', { xplanePath })
 }
 
 export async function gatewayCheckInstallWarning(

@@ -171,6 +171,8 @@ export interface InstallTask {
   id: string
   type: AddonType
   sourcePath: string
+  /** Stable internal source path used when the original source may be transient. */
+  resolvedSourcePath?: string
   targetPath: string
   displayName: string
   conflictExists?: boolean
@@ -625,6 +627,7 @@ export interface GatewayAirportSearchResult {
   recommendedSceneryId: number | null
   recommendedArtist: string | null
   recommendedAcceptedAt: string | null
+  aheadOfCurrentXplane?: boolean | null
 }
 
 export interface GatewayScenerySummary {
@@ -644,6 +647,12 @@ export interface GatewayAirportDetail {
   recommendedArtist: string | null
   recommendedAcceptedAt: string | null
   sceneries: GatewayScenerySummary[]
+  aheadOfCurrentXplane?: boolean | null
+  currentXplaneReleaseVersion?: string | null
+  currentXplaneReleaseDate?: string | null
+  currentXplaneSceneryId?: number | null
+  currentXplaneArtist?: string | null
+  currentXplaneApprovedDate?: string | null
 }
 
 export interface GatewaySceneryDetail {
@@ -670,9 +679,22 @@ export interface GatewayInstalledAirport {
   latestSceneryId: number | null
   latestArtist: string | null
   latestApprovedDate: string | null
+  aheadOfCurrentXplane?: boolean | null
+  currentXplaneReleaseVersion?: string | null
+  currentXplaneReleaseDate?: string | null
+  currentXplaneSceneryId?: number | null
+  currentXplaneArtist?: string | null
+  currentXplaneApprovedDate?: string | null
 }
 
 export interface GatewayInstallWarning {
   kind: string
   message: string
+}
+
+export interface GatewayReleaseContext {
+  detectedVersionRaw: string | null
+  matchedReleaseVersion: string | null
+  matchedReleaseDate: string | null
+  comparisonAvailable: boolean
 }

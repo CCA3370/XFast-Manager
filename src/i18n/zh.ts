@@ -1538,6 +1538,12 @@ export default {
     noSelection: '请选择一个机场和一个 Gateway 版本以查看详情。',
     historyEmpty: '该机场没有返回可用的 Gateway 历史版本。',
     localVersion: '本地版本',
+    notInstalled: '未安装',
+    currentXplaneVersion: '当前 X-Plane',
+    currentXplaneVersionWithVersion: '当前 X-Plane {version}',
+    currentXplaneMissing: '当前 X-Plane {version} 尚未收录该机场。',
+    notInCurrentXplane: '当前 XP 未收录',
+    versionComparisonUnavailable: '暂时无法识别当前安装的 X-Plane 版本，未启用 XP 收录对比。',
     folderName: '安装文件夹',
   },
   csl: {

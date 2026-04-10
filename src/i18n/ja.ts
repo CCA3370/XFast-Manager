@@ -1615,6 +1615,13 @@ export default {
     noSelection: '詳細を確認するには空港と Gateway バージョンを選択してください。',
     historyEmpty: 'この空港では利用可能な Gateway バージョンが返されませんでした。',
     localVersion: 'ローカルバージョン',
+    notInstalled: '未インストール',
+    currentXplaneVersion: '現在の X-Plane',
+    currentXplaneVersionWithVersion: '現在の X-Plane {version}',
+    currentXplaneMissing: '現在の X-Plane {version} にはこの空港がまだ含まれていません。',
+    notInCurrentXplane: '現在の X-Plane に未収録',
+    versionComparisonUnavailable:
+      'このインストールでは現在、X-Plane のバージョン比較を利用できません。',
     folderName: 'インストール先フォルダー',
   },
   csl: {

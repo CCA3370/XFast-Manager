@@ -54,6 +54,12 @@
     >
       {{ $t('gatewayManager.pathRequiredHint') }}
     </div>
+    <div
+      v-else-if="showReleaseComparisonUnavailable"
+      class="rounded-xl border border-sky-200 dark:border-sky-900/50 bg-sky-50 dark:bg-sky-950/20 px-4 py-3 text-sm text-sky-800 dark:text-sky-200 mb-3"
+    >
+      {{ $t('gatewayManager.versionComparisonUnavailable') }}
+    </div>
 
     <!-- Search bar -->
     <div class="flex items-center gap-2 mb-3">
@@ -135,6 +141,11 @@
                 class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
                 >{{ $t('gatewayManager.updatesAvailable') }}</span
               >
+              <span
+                v-if="airport.aheadOfCurrentXplane === true"
+                class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300"
+                >{{ $t('gatewayManager.notInCurrentXplane') }}</span
+              >
             </div>
             <div
               class="text-[10px] font-medium text-gray-400 dark:text-gray-500 flex-shrink-0 ml-2 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded"
@@ -197,6 +208,12 @@
               <div class="min-w-0 truncate text-sm text-gray-500 dark:text-gray-400">
                 {{ airport.airportName || airport.icao }}
               </div>
+              <span
+                v-if="airport.aheadOfCurrentXplane === true"
+                class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300"
+              >
+                {{ $t('gatewayManager.notInCurrentXplane') }}
+              </span>
             </div>
             <div
               class="text-[11px] text-gray-500 dark:text-gray-400 text-right flex-shrink-0 ml-2 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-md"
@@ -272,6 +289,12 @@
                         store.airportDetail.recommendedSceneryId
                       }}
                     </span>
+                    <span
+                      v-if="store.airportDetail.aheadOfCurrentXplane === true"
+                      class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300"
+                    >
+                      {{ $t('gatewayManager.notInCurrentXplane') }}
+                    </span>
                   </div>
                   <div class="min-w-0 text-sm text-gray-800 dark:text-gray-200 font-medium truncate">
                     {{ selectedAirportName }}
@@ -345,6 +368,12 @@
                             LOCAL
                           </span>
                           <span
+                            v-if="isCurrentXplaneScenery(scenery.sceneryId)"
+                            class="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300"
+                          >
+                            XP
+                          </span>
+                          <span
                             v-if="isLatestUpdateScenery(scenery.sceneryId)"
                             class="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
                           >
@@ -413,6 +442,12 @@
                                 class="px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-wide bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
                               >
                                 REC
+                              </span>
+                              <span
+                                v-if="selectedSceneryIsCurrentXplane"
+                                class="px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-wide bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300"
+                              >
+                                XP
                               </span>
                               <span
                                 v-if="selectedSceneryIsLatestUpdate"
@@ -505,6 +540,57 @@
                             >
                               {{ $t('copy.copy') }}
                             </button>
+                          </div>
+                        </div>
+                        <div
+                          v-if="
+                            store.airportDetail.currentXplaneReleaseVersion ||
+                            store.airportDetail.aheadOfCurrentXplane !== undefined
+                          "
+                          class="mt-4"
+                        >
+                          <div
+                            class="rounded-xl border border-sky-200 dark:border-sky-900/40 bg-sky-50 dark:bg-sky-950/20 px-3 py-2.5"
+                          >
+                            <div class="text-[11px] text-sky-700 dark:text-sky-300">
+                              {{ currentXplaneReleaseLabel }}
+                            </div>
+                            <div class="font-medium text-gray-900 dark:text-white mt-1">
+                              <template v-if="store.airportDetail.currentXplaneSceneryId">
+                                {{
+                                  formatGatewayVersion(store.airportDetail.currentXplaneSceneryId)
+                                }}
+                              </template>
+                              <template v-else>
+                                {{
+                                  $t('gatewayManager.currentXplaneMissing', {
+                                    version:
+                                      store.airportDetail.currentXplaneReleaseVersion ||
+                                      store.releaseContext?.matchedReleaseVersion ||
+                                      $t('common.unknown'),
+                                  })
+                                }}
+                              </template>
+                            </div>
+                            <div
+                              v-if="
+                                store.airportDetail.currentXplaneSceneryId &&
+                                (store.airportDetail.currentXplaneArtist ||
+                                  store.airportDetail.currentXplaneApprovedDate)
+                              "
+                              class="text-[11px] text-sky-700/80 dark:text-sky-200/80 mt-1"
+                            >
+                              {{
+                                [
+                                  store.airportDetail.currentXplaneArtist || $t('common.unknown'),
+                                  store.airportDetail.currentXplaneApprovedDate
+                                    ? formatDate(store.airportDetail.currentXplaneApprovedDate)
+                                    : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(' · ')
+                              }}
+                            </div>
                           </div>
                         </div>
                         <div
@@ -673,12 +759,34 @@ const hasInstalledFolderActions = computed(
   () => Boolean(appStore.xplanePath && store.selectedInstalledRecord?.folderName),
 )
 
+const showReleaseComparisonUnavailable = computed(
+  () =>
+    Boolean(
+      appStore.xplanePath &&
+        !store.isLoadingReleaseContext &&
+        store.releaseContext &&
+        !store.releaseContext.comparisonAvailable,
+    ),
+)
+
+const currentXplaneReleaseLabel = computed(() => {
+  const version =
+    store.airportDetail?.currentXplaneReleaseVersion || store.releaseContext?.matchedReleaseVersion
+  return version
+    ? t('gatewayManager.currentXplaneVersionWithVersion', { version })
+    : t('gatewayManager.currentXplaneVersion')
+})
+
 const selectedSceneryIsInstalled = computed(
   () => store.selectedSceneryId !== null && isInstalledScenery(store.selectedSceneryId),
 )
 
 const selectedSceneryIsRecommended = computed(
   () => store.selectedSceneryId !== null && isRecommendedScenery(store.selectedSceneryId),
+)
+
+const selectedSceneryIsCurrentXplane = computed(
+  () => store.selectedSceneryId !== null && isCurrentXplaneScenery(store.selectedSceneryId),
 )
 
 const selectedSceneryIsLatestUpdate = computed(
@@ -689,7 +797,14 @@ watch(
   () => appStore.xplanePath,
   async (path) => {
     try {
+      await store.loadReleaseContext(path)
       await store.loadInstalled(path)
+      if (activeTab.value === 'search' && searchText.value) {
+        await store.searchAirports(searchText.value)
+      }
+      if (path && showAirportModal.value && store.selectedAirportIcao) {
+        await store.openAirport(store.selectedAirportIcao, store.selectedSceneryId ?? undefined)
+      }
     } catch (error) {
       modal.showError(`${t('gatewayManager.loadInstalledFailed')}: ${getErrorMessage(error)}`)
     }
@@ -785,6 +900,10 @@ function isRecommendedScenery(sceneryId: number): boolean {
   return store.airportDetail?.recommendedSceneryId === sceneryId
 }
 
+function isCurrentXplaneScenery(sceneryId: number): boolean {
+  return store.airportDetail?.currentXplaneSceneryId === sceneryId
+}
+
 function isLatestUpdateScenery(sceneryId: number): boolean {
   return (
     store.selectedInstalledRecord?.updateAvailable === true &&
@@ -803,7 +922,11 @@ async function handleSelectScenery(sceneryId: number) {
 async function handleReloadInstalled() {
   if (!appStore.xplanePath) return
   try {
+    await store.loadReleaseContext(appStore.xplanePath)
     await store.loadInstalled(appStore.xplanePath)
+    if (activeTab.value === 'search' && searchText.value) {
+      await store.searchAirports(searchText.value)
+    }
   } catch (error) {
     modal.showError(`${t('gatewayManager.loadInstalledFailed')}: ${getErrorMessage(error)}`)
   }
@@ -818,6 +941,7 @@ async function handleCheckUpdates() {
   }
 
   try {
+    await store.loadReleaseContext(appStore.xplanePath)
     await store.checkUpdates(appStore.xplanePath)
   } catch (error) {
     modal.showError(`${t('gatewayManager.updateCheckFailed')}: ${getErrorMessage(error)}`)

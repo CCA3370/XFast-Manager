@@ -361,7 +361,7 @@ impl Installer {
         expected_hashes: &std::collections::HashMap<String, crate::models::FileHash>,
     ) -> Result<Vec<crate::models::FileVerificationResult>> {
         const MAX_RETRIES: u8 = 3;
-        let source = Path::new(&task.source_path);
+        let source = super::task_source_path(task);
         let target = Path::new(&task.target_path);
 
         // Reuse verifier instance across retries for better performance

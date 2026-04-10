@@ -29,36 +29,22 @@ struct RemoteRelease {
 }
 
 /// Update checker
-pub struct UpdateChecker {
-    cache_duration: Duration,
-}
+pub struct UpdateChecker;
 
 impl UpdateChecker {
     /// Create a new update checker
     pub fn new() -> Self {
-        Self {
-            cache_duration: Duration::from_secs(24 * 60 * 60), // 24 hours
-        }
+        Self
     }
 
     /// Check for updates
     pub async fn check_for_updates(
         &self,
-        manual: bool,
+        _manual: bool,
         include_pre_release: bool,
     ) -> Result<UpdateInfo, String> {
         // Get current version
         let current_version = env!("CARGO_PKG_VERSION").to_string();
-
-        // Check if we should skip the check (cache)
-        if !manual && !self.should_check_update() {
-            crate::logger::log_debug(
-                "Skipping update check (cache not expired)",
-                Some("updater"),
-                None,
-            );
-            return Err("Cache not expired".to_string());
-        }
 
         // Fetch latest release from proxy API
         let latest_release = self.fetch_latest_release(include_pre_release).await?;
@@ -168,24 +154,6 @@ impl UpdateChecker {
             .map_err(|e| format!("Failed to parse latest version: {}", e))?;
 
         Ok(latest_ver > current_ver)
-    }
-
-    /// Check if we should perform an update check (based on cache)
-    fn should_check_update(&self) -> bool {
-        let last_check = self.get_last_check_time();
-
-        match last_check {
-            Some(last) => {
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-
-                let elapsed = Duration::from_secs(now.saturating_sub(last));
-                elapsed >= self.cache_duration
-            }
-            None => true, // Never checked before
-        }
     }
 
     /// Get last check time from localStorage (via app data directory)

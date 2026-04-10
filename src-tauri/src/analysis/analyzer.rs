@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -21,6 +22,102 @@ impl Analyzer {
     pub fn new() -> Self {
         Analyzer {
             scanner: Scanner::new(),
+        }
+    }
+
+    fn copy_path_for_staging(source: &Path, target: &Path) -> Result<()> {
+        if source.is_dir() {
+            fs::create_dir_all(target)
+                .context(format!("Failed to create staging directory: {:?}", target))?;
+
+            for entry in fs::read_dir(source).context(format!(
+                "Failed to read directory for staging: {:?}",
+                source
+            ))? {
+                let entry = entry?;
+                let child_source = entry.path();
+                let child_target = target.join(entry.file_name());
+                Self::copy_path_for_staging(&child_source, &child_target)?;
+            }
+
+            return Ok(());
+        }
+
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).context(format!(
+                "Failed to create staging parent directory: {:?}",
+                parent
+            ))?;
+        }
+
+        fs::copy(source, target).context(format!(
+            "Failed to copy staged Lua source from {:?} to {:?}",
+            source, target
+        ))?;
+        Ok(())
+    }
+
+    fn stage_standalone_lua_source(
+        &self,
+        source_file: &Path,
+        companion_paths: &[String],
+    ) -> Result<String> {
+        let source_name = source_file.file_name().ok_or_else(|| {
+            anyhow::anyhow!("Lua source file has no file name: {:?}", source_file)
+        })?;
+
+        let stage_root = std::env::temp_dir()
+            .join("xfastmanager_lua_stage")
+            .join(Uuid::new_v4().to_string());
+        fs::create_dir_all(&stage_root).context(format!(
+            "Failed to create Lua staging directory: {:?}",
+            stage_root
+        ))?;
+
+        let staged_source = stage_root.join(source_name);
+        Self::copy_path_for_staging(source_file, &staged_source)?;
+
+        let source_dir = source_file.parent().ok_or_else(|| {
+            anyhow::anyhow!("Lua source file has no parent directory: {:?}", source_file)
+        })?;
+
+        for companion in companion_paths {
+            let safe_relative = crate::installer::sanitize_path(Path::new(companion))
+                .ok_or_else(|| anyhow::anyhow!("Unsafe Lua companion path: {}", companion))?;
+            let companion_source = source_dir.join(&safe_relative);
+            if !companion_source.exists() {
+                continue;
+            }
+
+            let companion_target = stage_root.join(&safe_relative);
+            Self::copy_path_for_staging(&companion_source, &companion_target)?;
+        }
+
+        Ok(staged_source.to_string_lossy().to_string())
+    }
+
+    fn resolve_stable_source_path(&self, item: &DetectedItem) -> Option<String> {
+        if item.addon_type != AddonType::LuaScript {
+            return None;
+        }
+
+        let source = Path::new(&item.path);
+        if !source.is_file() || crate::archive_input::detect_archive_format(source).is_some() {
+            return None;
+        }
+
+        match self.stage_standalone_lua_source(source, &item.companion_paths) {
+            Ok(staged) => Some(staged),
+            Err(e) => {
+                logger::log_error(
+                    &format!(
+                        "Failed to stage standalone Lua source {:?}, continuing with original path: {}",
+                        source, e
+                    ),
+                    Some("analyzer"),
+                );
+                None
+            }
         }
     }
 
@@ -933,10 +1030,13 @@ impl Analyzer {
             .and_then(|prefs| prefs.get(source_type).copied())
             .unwrap_or(true); // Default to true if not specified
 
+        let resolved_source_path = self.resolve_stable_source_path(&item);
+
         InstallTask {
             id: Uuid::new_v4().to_string(),
             addon_type: item.addon_type,
             source_path: item.path,
+            resolved_source_path,
             original_input_path: Some(item.original_input_path),
             target_path: target_path.to_string_lossy().to_string(),
             display_name: item.display_name,
@@ -1272,6 +1372,7 @@ impl Analyzer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     // Helper function to create DetectedItem for tests
     fn create_detected_item(
@@ -1324,6 +1425,7 @@ mod tests {
             id: id.to_string(),
             addon_type,
             source_path: source_path.to_string(),
+            resolved_source_path: None,
             original_input_path: Some(original_input_path.to_string()),
             target_path: target_path.to_string(),
             display_name: display_name.to_string(),
@@ -1350,6 +1452,47 @@ mod tests {
             flywithlua_installed: true,
             companion_paths: Vec::new(),
         }
+    }
+
+    #[test]
+    fn test_resolve_stable_source_path_for_standalone_lua() {
+        let analyzer = Analyzer::new();
+        let temp = tempdir().unwrap();
+        let source_dir = temp.path().join("Scripts");
+        fs::create_dir_all(source_dir.join("assets")).unwrap();
+        fs::write(
+            source_dir.join("example.lua"),
+            "dataref(\"x\", \"sim/test\")\nSCRIPT_DIRECTORY = \"assets\"\n",
+        )
+        .unwrap();
+        fs::write(source_dir.join("assets").join("config.txt"), "ok").unwrap();
+
+        let item = DetectedItem {
+            addon_type: AddonType::LuaScript,
+            path: source_dir.join("example.lua").to_string_lossy().to_string(),
+            original_input_path: temp.path().to_string_lossy().to_string(),
+            display_name: "example.lua".to_string(),
+            archive_internal_root: None,
+            extraction_chain: None,
+            navdata_info: None,
+            livery_aircraft_type: None,
+            version_info: None,
+            companion_paths: vec!["assets".to_string()],
+        };
+
+        let staged = analyzer.resolve_stable_source_path(&item).unwrap();
+        let staged_path = PathBuf::from(&staged);
+
+        assert!(staged_path.exists());
+        assert!(staged_path.parent().unwrap().join("assets").exists());
+        assert!(staged_path
+            .parent()
+            .unwrap()
+            .join("assets")
+            .join("config.txt")
+            .exists());
+
+        let _ = fs::remove_dir_all(staged_path.parent().unwrap());
     }
 
     #[test]

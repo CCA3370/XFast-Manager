@@ -111,11 +111,6 @@ export const useUpdateStore = defineStore('update', () => {
       const errorMessage =
         typeof error === 'string' ? error : ((error as Error)?.message ?? String(error))
 
-      if (errorMessage.includes('Cache not expired')) {
-        logDebug('Update check skipped (cache not expired)', 'update')
-        return
-      }
-
       const isRateLimited =
         /403\s*forbidden/i.test(errorMessage) ||
         /rate.?limit/i.test(errorMessage) ||

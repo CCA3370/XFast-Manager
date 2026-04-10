@@ -1637,6 +1637,13 @@ export default {
     noSelection: 'Выберите аэропорт и версию Gateway, чтобы посмотреть подробности.',
     historyEmpty: 'Для этого аэропорта не было получено ни одной версии Gateway.',
     localVersion: 'Локальная версия',
+    notInstalled: 'Не установлено',
+    currentXplaneVersion: 'Текущий X-Plane',
+    currentXplaneVersionWithVersion: 'Текущий X-Plane {version}',
+    currentXplaneMissing: 'Текущий X-Plane {version} пока не включает этот аэропорт.',
+    notInCurrentXplane: 'Отсутствует в текущем X-Plane',
+    versionComparisonUnavailable:
+      'Сравнение версий X-Plane сейчас недоступно для этой установки.',
     folderName: 'Установленная папка',
   },
   csl: {

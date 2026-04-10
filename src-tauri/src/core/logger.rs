@@ -30,7 +30,6 @@ impl LogLevel {
 pub enum Locale {
     #[default]
     En,
-    Zh,
 }
 
 /// Log message keys for translation
@@ -62,18 +61,6 @@ impl LogMsg {
                 LogMsg::ScanFailed => "Failed to scan",
                 LogMsg::CannotInstallFromXPlane => "Cannot install from X-Plane directory. Please drag files from outside X-Plane folder",
             },
-            Locale::Zh => match self {
-                LogMsg::AppStarted => "XFast Manager 已启动",
-                LogMsg::LaunchedWithArgs => "通过参数启动",
-                LogMsg::InstallationStarted => "开始安装",
-                LogMsg::Installing => "正在安装",
-                LogMsg::InstallationCompleted => "安装成功完成",
-                LogMsg::InstallationFailed => "安装失败",
-                LogMsg::AnalysisStarted => "开始分析",
-                LogMsg::AnalysisCompleted => "分析完成",
-                LogMsg::ScanFailed => "扫描失败",
-                LogMsg::CannotInstallFromXPlane => "无法从 X-Plane 目录内安装。请拖入 X-Plane 目录外的文件或压缩包",
-            },
         }
     }
 }
@@ -104,10 +91,6 @@ impl LoggerInner {
 
     fn set_locale(&mut self, locale: Locale) {
         self.locale = locale;
-    }
-
-    fn get_locale(&self) -> Locale {
-        self.locale
     }
 
     fn set_min_level(&mut self, level: LogLevel) {
@@ -268,25 +251,15 @@ static LOGGER: LazyLock<Mutex<LoggerInner>> = LazyLock::new(|| Mutex::new(Logger
 pub fn set_locale(locale_str: &str) {
     if let Ok(mut logger) = LOGGER.lock() {
         let locale = match locale_str {
-            "zh" | "zh-CN" | "zh-TW" | "zh-Hans" | "zh-Hant" => Locale::Zh,
             _ => Locale::En,
         };
         logger.set_locale(locale);
     }
 }
 
-pub fn get_locale() -> Locale {
-    if let Ok(logger) = LOGGER.lock() {
-        logger.get_locale()
-    } else {
-        Locale::default()
-    }
-}
-
-/// Translate a log message key to the current locale
+/// Translate a log message key to English for log-file consistency
 pub fn tr(msg: LogMsg) -> String {
-    let locale = get_locale();
-    msg.translate(locale).to_string()
+    msg.translate(Locale::En).to_string()
 }
 
 pub fn log_info(message: &str, context: Option<&str>) {

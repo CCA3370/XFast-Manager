@@ -128,6 +128,7 @@ export const STORAGE_KEYS = {
   CRASH_ANALYSIS_DMP_ENABLED: 'crashAnalysisDmpEnabled',
   CRASH_ANALYSIS_IGNORE_DATE_CHECK: 'crashAnalysisIgnoreDateCheck',
   ADDON_UPDATE_USE_BETA: 'addonUpdateUseBeta',
+  ADDON_UPDATE_ITEM_BETA_PREFERENCES: 'addonUpdateItemBetaPreferences',
   ADDON_UPDATE_INCLUDE_LIVERIES: 'addonUpdateIncludeLiveries',
   ADDON_UPDATE_APPLY_BLACKLIST: 'addonUpdateApplyBlacklist',
   ADDON_UPDATE_ROLLBACK_ON_FAILURE: 'addonUpdateRollbackOnFailure',

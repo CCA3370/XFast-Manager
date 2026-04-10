@@ -1119,6 +1119,16 @@ fn select_module_url(local: &LocalConfig, use_beta: bool) -> Result<String> {
     resolve_module_url(selected_zone.as_deref(), &selected_module)
 }
 
+pub(crate) fn resolve_local_module_url(target_path: &Path, use_beta: bool) -> Result<Option<String>> {
+    let cfg_path = target_path.join(LOCAL_CFG_FILE);
+    if !cfg_path.exists() {
+        return Ok(None);
+    }
+
+    let local = read_local_config(target_path)?;
+    Ok(Some(select_module_url(&local, use_beta)?))
+}
+
 async fn fetch_remote_config(client: &reqwest::Client, base_url: &str) -> Result<RemoteConfig> {
     let cfg_url = join_url(base_url, REMOTE_CFG_FILE)?;
     let content = fetch_text_required(client, &cfg_url).await?;
