@@ -308,14 +308,28 @@ jobs:
           echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
           echo "BUILD_MODE=standard" >> $GITHUB_ENV
 
-      - name: Build Arch Linux bundles
+      - name: Build frontend
+        shell: bash
+        run: npm run build
+
+      - name: Build Arch Linux binary
         shell: bash
         env:
           XFAST_ZIBO_GOOGLE_DRIVE_API_KEY: ${{ secrets.XFAST_ZIBO_GOOGLE_DRIVE_API_KEY }}
+        run: |
+          echo "🔨 Building native Arch Linux binary..."
+          cargo build --manifest-path src-tauri/Cargo.toml --release
+
+      - name: Build Arch Linux AppImage
+        id: arch_appimage
+        continue-on-error: true
+        shell: bash
+        env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          RUST_LOG: tauri_bundler=trace
         run: |
-          echo "🔨 Building Arch Linux AppImage and native binary..."
+          echo "🔨 Building Arch Linux AppImage (non-blocking experimental step)..."
           npm run tauri:build -- --bundles appimage
 
       - name: Package Arch Linux artifact
@@ -339,6 +353,18 @@ jobs:
         with:
           name: XFast-Manager-linux-arch-x64-appimage
           path: 'target/release/bundle/appimage/*.AppImage'
-          if-no-files-found: error
+          if-no-files-found: ignore
+          retention-days: 7
+          compression-level: 9
+
+      - name: Upload Arch Linux AppImage debug artifacts
+        if: steps.arch_appimage.outcome == 'failure'
+        uses: actions/upload-artifact@v6
+        with:
+          name: XFast-Manager-linux-arch-x64-appimage-debug
+          path: |
+            target/release/bundle/appimage/build_appimage.sh
+            /github/home/.cache/tauri/linuxdeploy*
+          if-no-files-found: ignore
           retention-days: 7
           compression-level: 9
