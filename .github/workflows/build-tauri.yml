@@ -60,7 +60,7 @@ jobs:
           rustup target add x86_64-apple-darwin
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'npm'
@@ -155,7 +155,7 @@ jobs:
 
       - name: Upload Windows portable artifact
         if: matrix.platform == 'windows-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact_name }}
           path: 'target/release/XFast-Manager.exe'
@@ -165,7 +165,7 @@ jobs:
 
       - name: Upload Windows MSI artifact
         if: matrix.platform == 'windows-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: XFast-Manager-windows-msi
           path: 'target/release/bundle/msi/*.msi'
@@ -175,7 +175,7 @@ jobs:
 
       - name: Upload macOS artifact
         if: matrix.platform == 'macos-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact_name }}
           path: 'target/universal-apple-darwin/release/bundle/dmg/*.dmg'
@@ -185,7 +185,7 @@ jobs:
 
       - name: Upload Linux artifact
         if: matrix.platform == 'ubuntu-22.04'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact_name }}
           path: 'target/release/bundle/appimage/*.AppImage'
@@ -198,6 +198,8 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: archlinux:latest
+    env:
+      APPIMAGE_EXTRACT_AND_RUN: 1
 
     steps:
       - name: Checkout
@@ -233,7 +235,7 @@ jobs:
             patchelf
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'npm'
@@ -324,7 +326,7 @@ jobs:
           tar -C artifacts -czf target/release/XFast-Manager-linux-arch-x64.tar.gz XFast-Manager
 
       - name: Upload Arch Linux tar.gz artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: XFast-Manager-linux-arch-x64
           path: 'target/release/XFast-Manager-linux-arch-x64.tar.gz'
@@ -333,7 +335,7 @@ jobs:
           compression-level: 9
 
       - name: Upload Arch Linux AppImage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: XFast-Manager-linux-arch-x64-appimage
           path: 'target/release/bundle/appimage/*.AppImage'

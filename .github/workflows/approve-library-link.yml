@@ -15,13 +15,13 @@ jobs:
 
     steps:
       - name: Checkout dev branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: dev
 
       - name: Extract library link fields from issue body
         id: extract
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const body = context.payload.issue.body || '';
@@ -128,7 +128,7 @@ jobs:
 
       - name: Comment and close issue
         if: steps.commit.outputs.changed == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const issue_number = context.payload.issue.number;
@@ -151,7 +151,7 @@ jobs:
 
       - name: Comment and close if no file changes
         if: steps.commit.outputs.changed == 'false'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const issue_number = context.payload.issue.number;
@@ -171,7 +171,7 @@ jobs:
 
       - name: Comment and close on failure
         if: failure() && !cancelled()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const issue_number = context.payload.issue.number;
