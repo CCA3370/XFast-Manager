@@ -306,17 +306,15 @@ jobs:
           echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
           echo "BUILD_MODE=standard" >> $GITHUB_ENV
 
-      - name: Build frontend
-        shell: bash
-        run: npm run build
-
-      - name: Build Arch Linux binary
+      - name: Build Arch Linux bundles
         shell: bash
         env:
           XFAST_ZIBO_GOOGLE_DRIVE_API_KEY: ${{ secrets.XFAST_ZIBO_GOOGLE_DRIVE_API_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          echo "🔨 Building native Arch Linux binary..."
-          cargo build --manifest-path src-tauri/Cargo.toml --release
+          echo "🔨 Building Arch Linux AppImage and native binary..."
+          npm run tauri:build -- --bundles appimage
 
       - name: Package Arch Linux artifact
         shell: bash
@@ -325,11 +323,20 @@ jobs:
           cp target/release/xfastmanager artifacts/XFast-Manager
           tar -C artifacts -czf target/release/XFast-Manager-linux-arch-x64.tar.gz XFast-Manager
 
-      - name: Upload Arch Linux artifact
+      - name: Upload Arch Linux tar.gz artifact
         uses: actions/upload-artifact@v4
         with:
           name: XFast-Manager-linux-arch-x64
           path: 'target/release/XFast-Manager-linux-arch-x64.tar.gz'
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 9
+
+      - name: Upload Arch Linux AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XFast-Manager-linux-arch-x64-appimage
+          path: 'target/release/bundle/appimage/*.AppImage'
           if-no-files-found: error
           retention-days: 7
           compression-level: 9
