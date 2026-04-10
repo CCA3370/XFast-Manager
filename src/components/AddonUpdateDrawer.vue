@@ -6,15 +6,11 @@ import { useI18n } from 'vue-i18n'
 import { useManagementStore } from '@/stores/management'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
-import type { AddonUpdatableItemType, AddonUpdatePlan, AddonUpdateOptions } from '@/types'
-
-interface AddonUpdateDrawerTask {
-  itemType: AddonUpdatableItemType
-  folderName: string
-  displayName: string
-  initialLocalVersion?: string
-  initialTargetVersion?: string
-}
+import type {
+  AddonUpdateDrawerTask,
+  AddonUpdatePlan,
+  AddonUpdateOptions,
+} from '@/types'
 
 interface AddonUpdateProgressEvent {
   itemType: string
@@ -375,7 +371,42 @@ async function refreshAllTaskPlansAfterPreferenceChange() {
   preferenceRefreshPending.value = false
 }
 
-async function setPreference(key: 'useBeta' | 'includeLiveries', value: boolean) {
+async function refreshTaskPlanAfterPreferenceChange(task: AddonUpdateDrawerTask) {
+  const state = stateFor(task)
+  if (state.installing) {
+    preferenceRefreshPending.value = false
+    return
+  }
+
+  state.planError = ''
+  await loadPlanForTask(task, true)
+  preferenceRefreshPending.value = false
+}
+
+async function setTaskBetaPreference(task: AddonUpdateDrawerTask, value: boolean) {
+  const token = ++preferenceMutationToken
+  preferenceSaving.value = true
+  clearPreferenceRefreshTimer()
+  preferenceRefreshPending.value = true
+  try {
+    await managementStore.setAddonUpdateItemBetaPreference(task.itemType, task.folderName, value)
+    if (token === preferenceMutationToken) {
+      await refreshTaskPlanAfterPreferenceChange(task)
+    }
+  } catch {
+    if (token === preferenceMutationToken) {
+      preferenceRefreshPending.value = false
+      preferenceSaving.value = false
+    }
+    return
+  } finally {
+    if (token === preferenceMutationToken) {
+      preferenceSaving.value = false
+    }
+  }
+}
+
+async function setPreference(key: 'includeLiveries', value: boolean) {
   const token = ++preferenceMutationToken
   preferenceSaving.value = true
   clearPreferenceRefreshTimer()
@@ -991,11 +1022,16 @@ watch(
                                 <input
                                   type="checkbox"
                                   class="peer sr-only"
-                                  :checked="managementStore.addonUpdateOptions.useBeta"
+                                  :checked="
+                                    managementStore.isAddonUpdateBetaEnabled(
+                                      task.itemType,
+                                      task.folderName,
+                                    )
+                                  "
                                   :disabled="taskUpdateOptionsDisabled(task)"
                                   @change="
-                                    setPreference(
-                                      'useBeta',
+                                    setTaskBetaPreference(
+                                      task,
                                       ($event.target as HTMLInputElement).checked,
                                     )
                                   "

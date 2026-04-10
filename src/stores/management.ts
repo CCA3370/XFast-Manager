@@ -64,6 +64,8 @@ interface UpdateCacheEntry {
   timestamp: number
 }
 
+type AddonUpdateItemBetaPreferences = Record<string, boolean>
+
 // Update cache: key is updateUrl, value is cache entry
 const updateCache = new Map<string, UpdateCacheEntry>()
 
@@ -89,7 +91,7 @@ function getUpdateCacheKey(item: {
   updateUrl?: string
   updateProvider?: string
   folderName: string
-}): string | null {
+}, useBeta: boolean = false): string | null {
   const updateUrl = item.updateUrl?.trim()
   if (!updateUrl) return null
 
@@ -98,7 +100,26 @@ function getUpdateCacheKey(item: {
     return null
   }
 
-  return `${provider}:${updateUrl}`
+  const channel = provider === 'skunkcrafts' && useBeta ? 'beta' : 'stable'
+  return `${provider}:${channel}:${updateUrl}`
+}
+
+function addonUpdateItemKey(itemType: AddonUpdatableItemType, folderName: string): string {
+  return `${itemType}:${folderName}`
+}
+
+function normalizeAddonUpdateItemBetaPreferences(
+  value: unknown,
+): AddonUpdateItemBetaPreferences {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([key, enabled]) => typeof key === 'string' && typeof enabled === 'boolean' && enabled,
+    ),
+  )
 }
 
 // Evict expired entries and oldest entries if cache is too large
@@ -177,6 +198,7 @@ export const useManagementStore = defineStore('management', () => {
   const isExecutingUpdate = ref(false)
   const error = ref<string | null>(null)
   const addonUpdateOptions = ref<AddonUpdateOptions>({ ...DEFAULT_ADDON_UPDATE_OPTIONS })
+  const addonUpdateItemBetaPreferences = ref<AddonUpdateItemBetaPreferences>({})
   const addonUpdateOptionsLoaded = ref(false)
 
   // Counts
@@ -284,11 +306,48 @@ export const useManagementStore = defineStore('management', () => {
     }
   }
 
+  function isAddonUpdateBetaEnabled(itemType: AddonUpdatableItemType, folderName: string): boolean {
+    return !!addonUpdateItemBetaPreferences.value[addonUpdateItemKey(itemType, folderName)]
+  }
+
+  async function setAddonUpdateItemBetaPreference(
+    itemType: AddonUpdatableItemType,
+    folderName: string,
+    enabled: boolean,
+  ) {
+    await loadAddonUpdateOptions()
+
+    const key = addonUpdateItemKey(itemType, folderName)
+    const nextPreferences = { ...addonUpdateItemBetaPreferences.value }
+    if (enabled) {
+      nextPreferences[key] = true
+    } else {
+      delete nextPreferences[key]
+    }
+
+    addonUpdateItemBetaPreferences.value = nextPreferences
+    updateCache.clear()
+    await setItem(STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES, nextPreferences)
+  }
+
+  function buildAddonUpdateOptionsForItem(
+    itemType: AddonUpdatableItemType,
+    folderName: string,
+    optionsOverride?: Partial<AddonUpdateOptions>,
+  ): AddonUpdateOptions {
+    const useBeta = optionsOverride?.useBeta ?? isAddonUpdateBetaEnabled(itemType, folderName)
+    return {
+      ...addonUpdateOptions.value,
+      ...optionsOverride,
+      useBeta,
+    }
+  }
+
   async function loadAddonUpdateOptions() {
     if (addonUpdateOptionsLoaded.value) return
 
     const [
-      useBeta,
+      itemBetaPreferences,
       includeLiveries,
       applyBlacklist,
       parallelDownloads,
@@ -298,7 +357,7 @@ export const useManagementStore = defineStore('management', () => {
       threadsPerTask,
       totalThreads,
     ] = await Promise.all([
-      getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_USE_BETA),
+      getItem<AddonUpdateItemBetaPreferences>(STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES),
       getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_INCLUDE_LIVERIES),
       getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_APPLY_BLACKLIST),
       getItem<number>(STORAGE_KEYS.ADDON_UPDATE_PARALLEL_DOWNLOADS),
@@ -309,8 +368,12 @@ export const useManagementStore = defineStore('management', () => {
       getItem<number>(STORAGE_KEYS.ADDON_UPDATE_TOTAL_THREADS),
     ])
 
+    addonUpdateItemBetaPreferences.value =
+      normalizeAddonUpdateItemBetaPreferences(itemBetaPreferences)
+
     addonUpdateOptions.value = {
-      useBeta: typeof useBeta === 'boolean' ? useBeta : DEFAULT_ADDON_UPDATE_OPTIONS.useBeta,
+      // Beta channel selection is tracked per item; keep the legacy global field disabled.
+      useBeta: DEFAULT_ADDON_UPDATE_OPTIONS.useBeta,
       includeLiveries:
         typeof includeLiveries === 'boolean'
           ? includeLiveries
@@ -354,14 +417,17 @@ export const useManagementStore = defineStore('management', () => {
       STORAGE_KEYS.ADDON_UPDATE_ROLLBACK_ON_FAILURE,
       DEFAULT_ADDON_UPDATE_OPTIONS.rollbackOnFailure,
     )
+    await setItem(STORAGE_KEYS.ADDON_UPDATE_USE_BETA, DEFAULT_ADDON_UPDATE_OPTIONS.useBeta)
   }
 
   async function setAddonUpdateOptions(next: Partial<AddonUpdateOptions>) {
     await loadAddonUpdateOptions()
 
+    const { useBeta: _ignoredUseBeta, ...nextWithoutUseBeta } = next
     addonUpdateOptions.value = {
       ...addonUpdateOptions.value,
-      ...next,
+      ...nextWithoutUseBeta,
+      useBeta: DEFAULT_ADDON_UPDATE_OPTIONS.useBeta,
     }
 
     await Promise.all([
@@ -405,10 +471,7 @@ export const useManagementStore = defineStore('management', () => {
     }
 
     await loadAddonUpdateOptions()
-    const options = {
-      ...addonUpdateOptions.value,
-      ...optionsOverride,
-    }
+    const options = buildAddonUpdateOptionsForItem(itemType, folderName, optionsOverride)
 
     try {
       return await invoke<AddonUpdatePreview>('fetch_addon_update_preview', {
@@ -451,8 +514,8 @@ export const useManagementStore = defineStore('management', () => {
     updateUrl?: string
     updateProvider?: string
     folderName: string
-  }): boolean {
-    const key = getUpdateCacheKey(item)
+  }, itemType: 'aircraft' | 'plugin'): boolean {
+    const key = getUpdateCacheKey(item, isAddonUpdateBetaEnabled(itemType, item.folderName))
     if (!key) return false
     const cached = updateCache.get(key)
     if (!cached) return false
@@ -461,10 +524,13 @@ export const useManagementStore = defineStore('management', () => {
 
   // Apply cached update info to items
   // hasUpdate is recalculated based on current local version vs cached remote version
-  function applyCachedUpdates<T extends UpdatableItem>(items: T[]): T[] {
+  function applyCachedUpdates<T extends UpdatableItem>(
+    items: T[],
+    itemType: 'aircraft' | 'plugin',
+  ): T[] {
     return items.map((item) => {
-      const key = getUpdateCacheKey(item)
-      if (key && isCacheValid(item)) {
+      const key = getUpdateCacheKey(item, isAddonUpdateBetaEnabled(itemType, item.folderName))
+      if (key && isCacheValid(item, itemType)) {
         const cached = updateCache.get(key)!
         const latestVersion = cached.latestVersion ?? undefined
         // Recalculate hasUpdate based on current local version
@@ -486,7 +552,7 @@ export const useManagementStore = defineStore('management', () => {
     const lockStore = useLockStore()
     return items.filter((item) => {
       if (!usesRemoteUpdateCheck(item)) return false
-      if (isCacheValid(item)) return false
+      if (isCacheValid(item, itemType)) return false
       // Skip locked items - they shouldn't be checked for updates
       if (lockStore.isLocked(itemType, item.folderName)) return false
       return true
@@ -500,6 +566,7 @@ export const useManagementStore = defineStore('management', () => {
     totalCountRef: Ref<number>
     enabledCountRef: Ref<number>
     applyCache?: boolean
+    cacheItemType?: 'aircraft' | 'plugin'
     afterLoad?: () => void
     logName: string
   }
@@ -518,9 +585,11 @@ export const useManagementStore = defineStore('management', () => {
       })
 
       // Apply cached update info if applicable (only for UpdatableItem types)
-      if (config.applyCache) {
+      if (config.applyCache && config.cacheItemType) {
+        await loadAddonUpdateOptions()
         config.itemsRef.value = applyCachedUpdates(
           result.entries as unknown as UpdatableItem[],
+          config.cacheItemType,
         ) as unknown as T[]
       } else {
         config.itemsRef.value = result.entries
@@ -565,6 +634,8 @@ export const useManagementStore = defineStore('management', () => {
       return { checked: false, updateCount: 0 }
     }
 
+    await loadAddonUpdateOptions()
+
     // Only check items that have update URLs, no valid cache, and are not locked
     const itemsToCheck = getItemsNeedingUpdateCheck(config.itemsRef.value, config.itemType)
     if (itemsToCheck.length === 0) {
@@ -576,15 +647,23 @@ export const useManagementStore = defineStore('management', () => {
     isCheckingUpdates.value = true
 
     try {
+      const betaFolders = itemsToCheck
+        .filter((item) => isAddonUpdateBetaEnabled(config.itemType, item.folderName))
+        .map((item) => item.folderName)
+
       // Send only items needing check to backend
       const updated = await invoke<T[]>(config.checkCommand, {
         ...(config.extraArgs || {}),
+        betaFolders,
         [config.checkParamName]: itemsToCheck,
       })
 
       // Update cache with results (only store latestVersion, not hasUpdate)
       for (const item of updated) {
-        const key = getUpdateCacheKey(item)
+        const key = getUpdateCacheKey(
+          item,
+          isAddonUpdateBetaEnabled(config.itemType, item.folderName),
+        )
         if (key) {
           setCacheEntry(key, {
             latestVersion: item.latestVersion ?? null,
@@ -631,6 +710,7 @@ export const useManagementStore = defineStore('management', () => {
       totalCountRef: aircraftTotalCount,
       enabledCountRef: aircraftEnabledCount,
       applyCache: true,
+      cacheItemType: 'aircraft',
       afterLoad: () => {
         syncCfgDisabledToLockStore('aircraft', aircraft.value)
         checkAircraftUpdates()
@@ -649,11 +729,13 @@ export const useManagementStore = defineStore('management', () => {
     forceRefresh: boolean = false,
     showUpToDateToast: boolean = false,
   ) {
+    await loadAddonUpdateOptions()
+
     // If force refresh, rescan to get latest cfg state first
     if (forceRefresh) {
       // Clear update cache
       for (const item of aircraft.value) {
-        const key = getUpdateCacheKey(item)
+        const key = getUpdateCacheKey(item, isAddonUpdateBetaEnabled('aircraft', item.folderName))
         if (key) {
           updateCache.delete(key)
         }
@@ -664,7 +746,7 @@ export const useManagementStore = defineStore('management', () => {
           const result = await invoke<ManagementData<AircraftInfo>>('scan_aircraft', {
             xplanePath: appStore.xplanePath,
           })
-          aircraft.value = applyCachedUpdates(result.entries)
+          aircraft.value = applyCachedUpdates(result.entries, 'aircraft')
           aircraftTotalCount.value = result.totalCount
           aircraftEnabledCount.value = result.enabledCount
           syncCfgDisabledToLockStore('aircraft', aircraft.value)
@@ -696,6 +778,7 @@ export const useManagementStore = defineStore('management', () => {
       totalCountRef: pluginsTotalCount,
       enabledCountRef: pluginsEnabledCount,
       applyCache: true,
+      cacheItemType: 'plugin',
       afterLoad: () => {
         syncCfgDisabledToLockStore('plugin', plugins.value)
         checkPluginsUpdates()
@@ -709,11 +792,13 @@ export const useManagementStore = defineStore('management', () => {
     forceRefresh: boolean = false,
     showUpToDateToast: boolean = false,
   ) {
+    await loadAddonUpdateOptions()
+
     // If force refresh, rescan to get latest cfg state first
     if (forceRefresh) {
       // Clear update cache
       for (const item of plugins.value) {
-        const key = getUpdateCacheKey(item)
+        const key = getUpdateCacheKey(item, isAddonUpdateBetaEnabled('plugin', item.folderName))
         if (key) {
           updateCache.delete(key)
         }
@@ -724,7 +809,7 @@ export const useManagementStore = defineStore('management', () => {
           const result = await invoke<ManagementData<PluginInfo>>('scan_plugins', {
             xplanePath: appStore.xplanePath,
           })
-          plugins.value = applyCachedUpdates(result.entries)
+          plugins.value = applyCachedUpdates(result.entries, 'plugin')
           pluginsTotalCount.value = result.totalCount
           pluginsEnabledCount.value = result.enabledCount
           syncCfgDisabledToLockStore('plugin', plugins.value)
@@ -740,6 +825,7 @@ export const useManagementStore = defineStore('management', () => {
       checkParamName: 'plugins',
       logName: 'plugins',
       itemType: 'plugin',
+      extraArgs: { xplanePath: appStore.xplanePath },
     })
     // Show toast when check was actually performed and no updates found
     if (showUpToDateToast && result.checked && result.updateCount === 0) {
@@ -757,11 +843,7 @@ export const useManagementStore = defineStore('management', () => {
     }
 
     await loadAddonUpdateOptions()
-
-    const options = {
-      ...addonUpdateOptions.value,
-      ...optionsOverride,
-    }
+    const options = buildAddonUpdateOptionsForItem(itemType, folderName, optionsOverride)
 
     isBuildingUpdatePlan.value = true
     try {
@@ -792,11 +874,7 @@ export const useManagementStore = defineStore('management', () => {
     }
 
     await loadAddonUpdateOptions()
-
-    const options = {
-      ...addonUpdateOptions.value,
-      ...optionsOverride,
-    }
+    const options = buildAddonUpdateOptionsForItem(itemType, folderName, optionsOverride)
 
     isExecutingUpdate.value = true
     try {
@@ -1282,6 +1360,8 @@ export const useManagementStore = defineStore('management', () => {
     checkPluginsUpdates,
     loadAddonUpdateOptions,
     setAddonUpdateOptions,
+    isAddonUpdateBetaEnabled,
+    setAddonUpdateItemBetaPreference,
     fetchAddonUpdatePreview,
     buildAddonUpdatePlan,
     executeAddonUpdate,

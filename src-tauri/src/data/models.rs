@@ -111,6 +111,9 @@ pub struct InstallTask {
     #[serde(rename = "type")]
     pub addon_type: AddonType,
     pub source_path: String,
+    /// Stable internal source path used when the original source may be transient.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_source_path: Option<String>,
     /// Original input path (the file/folder that was dragged or right-clicked)
     /// This is used for deletion after successful installation
     #[serde(skip_serializing_if = "Option::is_none")]

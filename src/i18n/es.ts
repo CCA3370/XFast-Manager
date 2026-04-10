@@ -1659,6 +1659,13 @@ export default {
     noSelection: 'Selecciona un aeropuerto y una versión de Gateway para ver sus detalles.',
     historyEmpty: 'No se devolvieron versiones de Gateway para este aeropuerto.',
     localVersion: 'Versión local',
+    notInstalled: 'No instalado',
+    currentXplaneVersion: 'X-Plane actual',
+    currentXplaneVersionWithVersion: 'X-Plane actual {version}',
+    currentXplaneMissing: 'El X-Plane actual {version} aún no incluye este aeropuerto.',
+    notInCurrentXplane: 'No está en el X-Plane actual',
+    versionComparisonUnavailable:
+      'La comparación de versiones de X-Plane no está disponible ahora mismo para esta instalación.',
     folderName: 'Carpeta instalada',
   },
   csl: {

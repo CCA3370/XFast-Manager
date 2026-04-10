@@ -1624,7 +1624,7 @@ export default {
     emptyHint: 'Klicken Sie auf „Scannen“, um die Festplattennutzung zu analysieren',
   },
   gatewayManager: {
-    details: 'Details',
+    details: 'Einzelheiten',
     navTitle: 'Gateway-Flughäfen',
     title: 'Gateway-Flughafenverwaltung',
     subtitle:
@@ -1661,6 +1661,13 @@ export default {
     noSelection: 'Wähle einen Flughafen und eine Gateway-Version aus, um die Details anzuzeigen.',
     historyEmpty: 'Für diesen Flughafen wurden keine Gateway-Versionen zurückgegeben.',
     localVersion: 'Lokale Version',
+    notInstalled: 'Nicht installiert',
+    currentXplaneVersion: 'Aktuelles X-Plane',
+    currentXplaneVersionWithVersion: 'Aktuelles X-Plane {version}',
+    currentXplaneMissing: 'Aktuelles X-Plane {version} enthält diesen Flughafen noch nicht.',
+    notInCurrentXplane: 'Nicht im aktuellen X-Plane',
+    versionComparisonUnavailable:
+      'Der X-Plane-Versionsvergleich ist für diese Installation derzeit nicht verfügbar.',
     folderName: 'Installierter Ordner',
   },
   csl: {

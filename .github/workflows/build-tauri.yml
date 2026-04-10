@@ -192,3 +192,144 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 9
+
+  build-arch-linux:
+    name: Build (linux-arch-x64)
+    runs-on: ubuntu-22.04
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check if fast build
+        id: check_fast_arch
+        shell: bash
+        run: |
+          if [[ "${{ github.event.head_commit.message }}" == *"dbuild"* ]]; then
+            echo "is_fast=true" >> $GITHUB_OUTPUT
+            echo "🚀 Fast build mode enabled (optimized for speed)"
+          else
+            echo "is_fast=false" >> $GITHUB_OUTPUT
+            echo "📦 Standard build mode (optimized for size)"
+          fi
+
+      - name: Install Arch Linux dependencies
+        shell: bash
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syu --noconfirm --needed \
+            base-devel \
+            curl \
+            git \
+            openssl \
+            pkgconf \
+            gtk3 \
+            webkit2gtk-4.1 \
+            libappindicator-gtk3 \
+            librsvg \
+            patchelf
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Validate version consistency
+        run: node scripts/validate-version-consistency.mjs
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies (Fast mode)
+        if: steps.check_fast_arch.outputs.is_fast == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v2-rust-arch-fast"
+          key: "fast-archlinux-${{ hashFiles('**/Cargo.lock') }}"
+          cache-on-failure: true
+          save-if: true
+          cache-all-crates: true
+          cache-directories: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+
+      - name: Cache Rust dependencies (Standard mode)
+        if: steps.check_fast_arch.outputs.is_fast == 'false'
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v2-rust-arch-standard"
+          key: "standard-archlinux-${{ hashFiles('**/Cargo.lock') }}"
+          cache-on-failure: false
+          cache-all-crates: true
+          cache-directories: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+
+      - name: Set fast build environment
+        if: steps.check_fast_arch.outputs.is_fast == 'true'
+        shell: bash
+        run: |
+          echo "CARGO_INCREMENTAL=1" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_LTO=off" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=1" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_DEBUG=0" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_STRIP=debuginfo" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
+          echo "RUSTFLAGS=-C embed-bitcode=no" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=unpacked" >> $GITHUB_ENV
+          echo "BUILD_MODE=fast" >> $GITHUB_ENV
+          echo "✅ Fast build environment configured"
+
+      - name: Set standard build environment
+        if: steps.check_fast_arch.outputs.is_fast == 'false'
+        shell: bash
+        run: |
+          echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_LTO=fat" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=3" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_STRIP=debuginfo" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
+          echo "BUILD_MODE=standard" >> $GITHUB_ENV
+
+      - name: Build frontend
+        shell: bash
+        run: npm run build
+
+      - name: Build Arch Linux binary
+        shell: bash
+        env:
+          XFAST_ZIBO_GOOGLE_DRIVE_API_KEY: ${{ secrets.XFAST_ZIBO_GOOGLE_DRIVE_API_KEY }}
+        run: |
+          echo "🔨 Building native Arch Linux binary..."
+          cargo build --manifest-path src-tauri/Cargo.toml --release
+
+      - name: Package Arch Linux artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cp target/release/xfastmanager artifacts/XFast-Manager
+          tar -C artifacts -czf target/release/XFast-Manager-linux-arch-x64.tar.gz XFast-Manager
+
+      - name: Upload Arch Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XFast-Manager-linux-arch-x64
+          path: 'target/release/XFast-Manager-linux-arch-x64.tar.gz'
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 9

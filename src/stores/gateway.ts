@@ -7,6 +7,7 @@ import {
   gatewayGetScenery,
   gatewayInstallScenery,
   gatewayListInstalled,
+  gatewayResolveReleaseContext,
   gatewaySearchAirports,
   gatewayUninstallAirport,
 } from '@/services/gateway-api'
@@ -14,6 +15,7 @@ import type {
   GatewayAirportDetail,
   GatewayAirportSearchResult,
   GatewayInstalledAirport,
+  GatewayReleaseContext,
   GatewaySceneryDetail,
 } from '@/types'
 
@@ -25,12 +27,14 @@ export const useGatewayStore = defineStore('gateway', () => {
   const sceneryDetail = ref<GatewaySceneryDetail | null>(null)
   const selectedSceneryId = ref<number | null>(null)
   const selectedAirportIcao = ref('')
+  const releaseContext = ref<GatewayReleaseContext | null>(null)
 
   const isSearching = ref(false)
   const isLoadingAirport = ref(false)
   const isLoadingScenery = ref(false)
   const isLoadingInstalled = ref(false)
   const isCheckingUpdates = ref(false)
+  const isLoadingReleaseContext = ref(false)
   const installingIcao = ref<string | null>(null)
   const uninstallingIcao = ref<string | null>(null)
 
@@ -60,6 +64,27 @@ export const useGatewayStore = defineStore('gateway', () => {
     () => installed.value.filter((item) => item.updateAvailable === true).length,
   )
 
+  const releaseVersion = computed(() =>
+    releaseContext.value?.comparisonAvailable ? releaseContext.value.matchedReleaseVersion : null,
+  )
+
+  async function loadReleaseContext(xplanePath: string | null | undefined) {
+    if (!xplanePath) {
+      releaseContext.value = null
+      isLoadingReleaseContext.value = false
+      return null
+    }
+
+    isLoadingReleaseContext.value = true
+    try {
+      const context = await gatewayResolveReleaseContext(xplanePath)
+      releaseContext.value = context
+      return context
+    } finally {
+      isLoadingReleaseContext.value = false
+    }
+  }
+
   async function searchAirports(query: string) {
     const trimmed = query.trim()
     searchQuery.value = query
@@ -73,7 +98,7 @@ export const useGatewayStore = defineStore('gateway', () => {
 
     isSearching.value = true
     try {
-      const results = await gatewaySearchAirports(trimmed)
+      const results = await gatewaySearchAirports(trimmed, 20, releaseVersion.value)
       if (seq !== searchSeq) return
       searchResults.value = results
     } finally {
@@ -99,7 +124,7 @@ export const useGatewayStore = defineStore('gateway', () => {
 
     isLoadingInstalled.value = true
     try {
-      installed.value = await gatewayListInstalled(xplanePath)
+      installed.value = await gatewayListInstalled(xplanePath, releaseVersion.value)
     } finally {
       isLoadingInstalled.value = false
     }
@@ -108,7 +133,7 @@ export const useGatewayStore = defineStore('gateway', () => {
   async function checkUpdates(xplanePath: string) {
     isCheckingUpdates.value = true
     try {
-      installed.value = await gatewayCheckUpdates(xplanePath)
+      installed.value = await gatewayCheckUpdates(xplanePath, releaseVersion.value)
       return installed.value
     } finally {
       isCheckingUpdates.value = false
@@ -136,7 +161,7 @@ export const useGatewayStore = defineStore('gateway', () => {
     selectedSceneryId.value = null
 
     try {
-      const detail = await gatewayGetAirport(normalized)
+      const detail = await gatewayGetAirport(normalized, releaseVersion.value)
       if (seq !== airportSeq) return
 
       airportDetail.value = detail
@@ -239,14 +264,18 @@ export const useGatewayStore = defineStore('gateway', () => {
     isLoadingScenery,
     isLoadingInstalled,
     isCheckingUpdates,
+    isLoadingReleaseContext,
     installingIcao,
     uninstallingIcao,
+    releaseContext,
     installedByIcao,
     selectedInstalledRecord,
     selectedScenerySummary,
     updatesCount,
+    releaseVersion,
     searchAirports,
     clearSearch,
+    loadReleaseContext,
     loadInstalled,
     checkUpdates,
     openAirport,

@@ -73,6 +73,13 @@ struct SourceCleanupGroup {
     successful_tasks: usize,
 }
 
+pub(super) fn task_source_path(task: &InstallTask) -> &Path {
+    task.resolved_source_path
+        .as_deref()
+        .map(Path::new)
+        .unwrap_or_else(|| Path::new(&task.source_path))
+}
+
 /// Generate a fixed-length folder name from a provider name using SHA-256.
 /// Produces a 16-character hex string (first 8 bytes of hash) that is
 /// deterministic: the same provider name always yields the same result.
@@ -1960,7 +1967,7 @@ impl Installer {
 
         for task in tasks {
             let mut task_size = 0u64;
-            let source = Path::new(&task.source_path);
+            let source = task_source_path(task);
 
             // LuaScript from direct file source may include companion files/folders.
             // Include those sizes so progress remains accurate.

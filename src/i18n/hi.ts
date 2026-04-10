@@ -1619,6 +1619,13 @@ export default {
     noSelection: 'विवरण देखने के लिए एक हवाईअड्डा और Gateway संस्करण चुनें।',
     historyEmpty: 'इस हवाईअड्डे के लिए कोई Gateway संस्करण वापस नहीं मिला।',
     localVersion: 'स्थानीय संस्करण',
+    notInstalled: 'स्थापित नहीं',
+    currentXplaneVersion: 'वर्तमान X-Plane',
+    currentXplaneVersionWithVersion: 'वर्तमान X-Plane {version}',
+    currentXplaneMissing: 'वर्तमान X-Plane {version} में यह हवाईअड्डा अभी शामिल नहीं है।',
+    notInCurrentXplane: 'वर्तमान X-Plane में नहीं',
+    versionComparisonUnavailable:
+      'इस इंस्टॉलेशन के लिए X-Plane संस्करण तुलना अभी उपलब्ध नहीं है।',
     folderName: 'स्थापित फ़ोल्डर',
   },
   csl: {

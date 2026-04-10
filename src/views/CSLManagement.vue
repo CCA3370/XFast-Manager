@@ -715,8 +715,32 @@ function handleUninstall(pkg: DisplayPackage) {
 }
 
 function scanAll() {
-  store.scanPackages()
-  store.scanAltitudePackages()
+  syncPageState(true)
+}
+
+function syncPageState(forceRefresh = false) {
+  if (!appStore.xplanePath) {
+    return
+  }
+
+  void store.syncLinks()
+
+  const shouldScanCsl =
+    forceRefresh ||
+    store.packages.length === 0 ||
+    store.lastScannedXplanePath !== appStore.xplanePath
+  const shouldScanAltitude =
+    forceRefresh ||
+    store.altitudePackages.length === 0 ||
+    store.lastAltitudeScannedXplanePath !== appStore.xplanePath
+
+  if (shouldScanCsl) {
+    void store.scanPackages()
+  }
+
+  if (shouldScanAltitude) {
+    void store.scanAltitudePackages()
+  }
 }
 
 function installAll() {
@@ -870,6 +894,17 @@ watch(
   { flush: 'post' },
 )
 
+watch(
+  () => appStore.xplanePath,
+  (path, previousPath) => {
+    if (!path || path === previousPath) {
+      return
+    }
+
+    syncPageState(true)
+  },
+)
+
 onMounted(async () => {
   await store.ensureServerConfigLoaded()
 
@@ -883,13 +918,7 @@ onMounted(async () => {
     store.updateAltitudeProgress(event.payload)
   })
 
-  // Auto-scan on mount
-  if (store.packages.length === 0) {
-    store.scanPackages()
-  }
-  if (store.altitudePackages.length === 0) {
-    store.scanAltitudePackages()
-  }
+  syncPageState()
 
   await nextTick()
   setupDescriptionObserver()

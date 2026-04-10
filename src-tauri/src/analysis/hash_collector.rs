@@ -250,6 +250,7 @@ mod tests {
             id: "task".to_string(),
             addon_type: AddonType::Aircraft,
             source_path: "archive.zip".to_string(),
+            resolved_source_path: None,
             original_input_path: None,
             target_path: "Aircraft/Test".to_string(),
             display_name: "Test".to_string(),

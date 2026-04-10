@@ -613,7 +613,7 @@ impl Installer {
         atomic_install_enabled: bool,
         xplane_path: &str,
     ) -> Result<()> {
-        let source = Path::new(&task.source_path);
+        let source = super::task_source_path(task);
         let target = Path::new(&task.target_path);
         let password = task.password.as_deref();
         let compute_inline_7z_hashes = should_compute_inline_7z_hashes(

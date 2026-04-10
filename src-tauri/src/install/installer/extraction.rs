@@ -1,5 +1,86 @@
 use super::*;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum External7zExtractorKind {
+    SevenZipStyle,
+    TarStyle,
+}
+
+#[derive(Clone, Debug)]
+struct External7zExtractorCandidate {
+    executable: PathBuf,
+    kind: External7zExtractorKind,
+}
+
+fn build_external_7z_candidates(password: Option<&str>) -> Vec<External7zExtractorCandidate> {
+    let mut candidates = Vec::<External7zExtractorCandidate>::new();
+
+    if let Ok(custom) = std::env::var("XFAST_7Z_PATH") {
+        if !custom.trim().is_empty() {
+            candidates.push(External7zExtractorCandidate {
+                executable: PathBuf::from(custom),
+                kind: External7zExtractorKind::SevenZipStyle,
+            });
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        if let Ok(program_files) = std::env::var("ProgramFiles") {
+            candidates.push(External7zExtractorCandidate {
+                executable: PathBuf::from(program_files).join("7-Zip").join("7z.exe"),
+                kind: External7zExtractorKind::SevenZipStyle,
+            });
+        }
+        if let Ok(program_files_x86) = std::env::var("ProgramFiles(x86)") {
+            candidates.push(External7zExtractorCandidate {
+                executable: PathBuf::from(program_files_x86)
+                    .join("7-Zip")
+                    .join("7z.exe"),
+                kind: External7zExtractorKind::SevenZipStyle,
+            });
+        }
+        if password.is_none() {
+            if let Ok(system_root) = std::env::var("SystemRoot") {
+                candidates.push(External7zExtractorCandidate {
+                    executable: PathBuf::from(&system_root).join("System32").join("tar.exe"),
+                    kind: External7zExtractorKind::TarStyle,
+                });
+                candidates.push(External7zExtractorCandidate {
+                    executable: PathBuf::from(system_root).join("System32").join("bsdtar.exe"),
+                    kind: External7zExtractorKind::TarStyle,
+                });
+            }
+        }
+    }
+
+    candidates.push(External7zExtractorCandidate {
+        executable: PathBuf::from("7z"),
+        kind: External7zExtractorKind::SevenZipStyle,
+    });
+    candidates.push(External7zExtractorCandidate {
+        executable: PathBuf::from("7za"),
+        kind: External7zExtractorKind::SevenZipStyle,
+    });
+    candidates.push(External7zExtractorCandidate {
+        executable: PathBuf::from("7zr"),
+        kind: External7zExtractorKind::SevenZipStyle,
+    });
+
+    if password.is_none() {
+        candidates.push(External7zExtractorCandidate {
+            executable: PathBuf::from("tar"),
+            kind: External7zExtractorKind::TarStyle,
+        });
+        candidates.push(External7zExtractorCandidate {
+            executable: PathBuf::from("bsdtar"),
+            kind: External7zExtractorKind::TarStyle,
+        });
+    }
+
+    candidates
+}
+
 impl Installer {
     /// Copy a directory recursively with progress tracking
     /// Uses parallel processing for better performance on multi-core systems
@@ -653,57 +734,41 @@ impl Installer {
     ) -> Result<()> {
         std::fs::create_dir_all(out_dir)?;
 
-        let mut candidates = Vec::<PathBuf>::new();
-
-        if let Ok(custom) = std::env::var("XFAST_7Z_PATH") {
-            if !custom.trim().is_empty() {
-                candidates.push(PathBuf::from(custom));
-            }
-        }
-
-        #[cfg(windows)]
-        {
-            if let Ok(program_files) = std::env::var("ProgramFiles") {
-                candidates.push(PathBuf::from(program_files).join("7-Zip").join("7z.exe"));
-            }
-            if let Ok(program_files_x86) = std::env::var("ProgramFiles(x86)") {
-                candidates.push(
-                    PathBuf::from(program_files_x86)
-                        .join("7-Zip")
-                        .join("7z.exe"),
-                );
-            }
-        }
-
-        candidates.push(PathBuf::from("7z"));
-        candidates.push(PathBuf::from("7za"));
-        candidates.push(PathBuf::from("7zr"));
-
         let mut attempted = Vec::<String>::new();
         let mut failed = Vec::<String>::new();
 
-        for exe in candidates {
-            let key = exe.to_string_lossy().to_string();
+        for candidate in build_external_7z_candidates(password) {
+            let key = candidate.executable.to_string_lossy().to_string();
             if attempted.iter().any(|v| v == &key) {
                 continue;
             }
             attempted.push(key.clone());
 
-            let mut cmd = std::process::Command::new(&exe);
-            cmd.arg("x")
-                .arg(archive.as_os_str())
-                .arg("-y")
-                .arg("-aoa")
-                .arg(format!("-o{}", out_dir.display()))
-                .arg("-bb0")
-                .arg("-bso0")
-                .arg("-bsp0");
+            let mut cmd = std::process::Command::new(&candidate.executable);
+            match candidate.kind {
+                External7zExtractorKind::SevenZipStyle => {
+                    cmd.arg("x")
+                        .arg(archive.as_os_str())
+                        .arg("-y")
+                        .arg("-aoa")
+                        .arg(format!("-o{}", out_dir.display()))
+                        .arg("-bb0")
+                        .arg("-bso0")
+                        .arg("-bsp0");
 
-            if let Some(pwd) = password {
-                cmd.arg(format!("-p{}", pwd));
-            } else {
-                // Prevent interactive password prompt in non-interactive execution.
-                cmd.arg("-p");
+                    if let Some(pwd) = password {
+                        cmd.arg(format!("-p{}", pwd));
+                    } else {
+                        // Prevent interactive password prompt in non-interactive execution.
+                        cmd.arg("-p");
+                    }
+                }
+                External7zExtractorKind::TarStyle => {
+                    cmd.arg("-xf")
+                        .arg(archive.as_os_str())
+                        .arg("-C")
+                        .arg(out_dir.as_os_str());
+                }
             }
 
             match cmd.output() {
@@ -902,4 +967,29 @@ fn truncate_for_log(text: &str, max_chars: usize) -> String {
     }
     let truncated: String = text.chars().take(max_chars).collect();
     format!("{}...", truncated)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_external_7z_candidates, External7zExtractorKind};
+
+    #[test]
+    fn external_7z_candidates_include_tar_when_no_password() {
+        let candidates = build_external_7z_candidates(None);
+        assert!(
+            candidates
+                .iter()
+                .any(|candidate| candidate.kind == External7zExtractorKind::TarStyle)
+        );
+    }
+
+    #[test]
+    fn external_7z_candidates_skip_tar_when_password_provided() {
+        let candidates = build_external_7z_candidates(Some("secret"));
+        assert!(
+            candidates
+                .iter()
+                .all(|candidate| candidate.kind != External7zExtractorKind::TarStyle)
+        );
+    }
 }

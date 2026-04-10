@@ -1588,6 +1588,13 @@ export default {
     noSelection: 'اختر مطاراً وإصدار Gateway لعرض التفاصيل.',
     historyEmpty: 'لم يتم إرجاع أي إصدارات Gateway لهذا المطار.',
     localVersion: 'الإصدار المحلي',
+    notInstalled: 'غير مثبت',
+    currentXplaneVersion: 'X-Plane الحالي',
+    currentXplaneVersionWithVersion: 'X-Plane الحالي {version}',
+    currentXplaneMissing: 'إصدار X-Plane الحالي {version} لا يتضمن هذا المطار بعد.',
+    notInCurrentXplane: 'غير موجود في X-Plane الحالي',
+    versionComparisonUnavailable:
+      'مقارنة إصدار X-Plane غير متاحة لهذا التثبيت حالياً.',
     folderName: 'المجلد المثبّت',
   },
   csl: {

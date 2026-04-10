@@ -1598,6 +1598,13 @@ export default {
     noSelection: '세부 정보를 보려면 공항과 Gateway 버전을 선택하세요.',
     historyEmpty: '이 공항에 대한 Gateway 버전이 반환되지 않았습니다.',
     localVersion: '로컬 버전',
+    notInstalled: '설치되지 않음',
+    currentXplaneVersion: '현재 X-Plane',
+    currentXplaneVersionWithVersion: '현재 X-Plane {version}',
+    currentXplaneMissing: '현재 X-Plane {version}에는 이 공항이 아직 포함되어 있지 않습니다.',
+    notInCurrentXplane: '현재 X-Plane에 없음',
+    versionComparisonUnavailable:
+      '이 설치에서는 현재 X-Plane 버전 비교를 사용할 수 없습니다.',
     folderName: '설치된 폴더',
   },
   csl: {

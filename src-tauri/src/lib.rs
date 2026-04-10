@@ -92,10 +92,11 @@ mod activity;
 #[path = "analysis/disk_usage.rs"]
 mod disk_usage;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::error::ToTauriError;
 use analyzer::Analyzer;
@@ -116,6 +117,20 @@ use sea_orm::DatabaseConnection;
 use tauri::{Emitter, Manager, State};
 
 use database::DatabaseState;
+
+const XPLANE_RUNNING_STATE_NOT_RUNNING: u8 = 0;
+const XPLANE_RUNNING_STATE_RUNNING: u8 = 1;
+const XPLANE_RUNNING_STATE_CHECK_FAILED: u8 = 2;
+const XPLANE_RUNNING_STATE_UNKNOWN: u8 = u8::MAX;
+
+static XPLANE_RUNNING_LOG_STATE: AtomicU8 = AtomicU8::new(XPLANE_RUNNING_STATE_UNKNOWN);
+
+fn log_xplane_running_state_once(state: u8, message: String) {
+    let previous = XPLANE_RUNNING_LOG_STATE.swap(state, Ordering::Relaxed);
+    if previous != state {
+        logger::log_debug(&message, Some("app"), None);
+    }
+}
 
 /// Cross-platform helper to open a path in the system file explorer
 fn open_in_explorer<P: AsRef<std::path::Path>>(path: P) -> Result<(), String> {
@@ -1567,23 +1582,26 @@ async fn check_process_running(
     match result {
         Ok(Ok(output)) => {
             let is_running = check_output(&output);
-            logger::log_debug(
-                &format!("X-Plane running check: {}", is_running),
-                Some("app"),
-                None,
-            );
+            let state = if is_running {
+                XPLANE_RUNNING_STATE_RUNNING
+            } else {
+                XPLANE_RUNNING_STATE_NOT_RUNNING
+            };
+            log_xplane_running_state_once(state, format!("X-Plane running check: {}", is_running));
             is_running
         }
         Ok(Err(e)) => {
-            logger::log_debug(
-                &format!("Failed to run {}: {}", command, e),
-                Some("app"),
-                None,
+            log_xplane_running_state_once(
+                XPLANE_RUNNING_STATE_CHECK_FAILED,
+                format!("Failed to run {}: {}", command, e),
             );
             false
         }
         Err(e) => {
-            logger::log_debug(&format!("Task join error: {}", e), Some("app"), None);
+            log_xplane_running_state_once(
+                XPLANE_RUNNING_STATE_CHECK_FAILED,
+                format!("Task join error: {}", e),
+            );
             false
         }
     }
@@ -2193,16 +2211,27 @@ async fn get_aircraft_folder_state(
 
 #[tauri::command]
 async fn check_aircraft_updates(
-    _xplane_path: String,
+    xplane_path: String,
     mut aircraft: Vec<AircraftInfo>,
+    beta_folders: Option<Vec<String>>,
 ) -> Result<Vec<AircraftInfo>, String> {
-    management_index::check_aircraft_updates(&mut aircraft).await;
+    let beta_folder_set: HashSet<String> = beta_folders.unwrap_or_default().into_iter().collect();
+    let xplane_path = PathBuf::from(xplane_path);
+    management_index::check_aircraft_updates(xplane_path.as_path(), &mut aircraft, &beta_folder_set)
+        .await;
     Ok(aircraft)
 }
 
 #[tauri::command]
-async fn check_plugins_updates(mut plugins: Vec<PluginInfo>) -> Result<Vec<PluginInfo>, String> {
-    management_index::check_plugins_updates(&mut plugins).await;
+async fn check_plugins_updates(
+    xplane_path: String,
+    mut plugins: Vec<PluginInfo>,
+    beta_folders: Option<Vec<String>>,
+) -> Result<Vec<PluginInfo>, String> {
+    let beta_folder_set: HashSet<String> = beta_folders.unwrap_or_default().into_iter().collect();
+    let xplane_path = PathBuf::from(xplane_path);
+    management_index::check_plugins_updates(xplane_path.as_path(), &mut plugins, &beta_folder_set)
+        .await;
     Ok(plugins)
 }
 
@@ -3594,6 +3623,7 @@ pub fn run() {
             map::map_scan_aircraft,
             map::map_get_aircraft_image,
             map::map_launch_flight,
+            gateway::gateway_resolve_release_context,
             gateway::gateway_search_airports,
             gateway::gateway_get_airport,
             gateway::gateway_get_scenery,

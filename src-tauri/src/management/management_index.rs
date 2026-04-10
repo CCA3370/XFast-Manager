@@ -13,6 +13,7 @@ use crate::models::{
     NavdataBackupInfo, NavdataBackupVerification, NavdataManagerInfo, PluginInfo,
 };
 use crate::path_utils;
+use crate::skunk_updater;
 use crate::x_updater_profile::{
     find_profile_in_folder, is_profile_file_name, tag_host_as_update_url, XUPDATER_URL_PREFIX,
 };
@@ -101,6 +102,18 @@ fn remove_dir_all_with_permission_fix(path: &Path, display_name: &str) -> Result
                 anyhow!("Permission denied when deleting {}: {}", display_name, e2)
             })?;
             Ok(())
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn remove_file_with_permission_fix(path: &Path, display_name: &str) -> Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::PermissionDenied => {
+            let _ = clear_readonly_attribute(path);
+            fs::remove_file(path)
+                .map_err(|e2| anyhow!("Permission denied when deleting {}: {}", display_name, e2))
         }
         Err(e) => Err(e.into()),
     }
@@ -259,6 +272,58 @@ fn resolve_management_path(
 
     path_utils::validate_child_path(&base_path, &target_path)
         .map_err(|e| anyhow!("Invalid path: {}", e))
+}
+
+fn directory_contains_cycle_json(path: &Path) -> bool {
+    WalkDir::new(path)
+        .follow_links(false)
+        .max_depth(10)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .any(|entry| {
+            entry.file_type().is_file() && entry.file_name().to_str() == Some("cycle.json")
+        })
+}
+
+fn should_preserve_root_navdata_entry(path: &Path, entry_name: &str) -> bool {
+    entry_name.eq_ignore_ascii_case("Backup_Data")
+        || entry_name.starts_with('.')
+        || entry_name.to_ascii_lowercase().starts_with("user_")
+        || (path.is_dir() && directory_contains_cycle_json(path))
+}
+
+fn delete_navdata_root_contents(custom_data_path: &Path) -> Result<()> {
+    let root_cycle_path = custom_data_path.join("cycle.json");
+    if !root_cycle_path.is_file() {
+        return Err(anyhow!("Root-level navdata not found"));
+    }
+
+    let entries = fs::read_dir(custom_data_path)
+        .map_err(|e| anyhow!("Failed to read Custom Data folder: {}", e))?;
+    let mut removed_any = false;
+
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        let entry_name = entry.file_name().to_string_lossy().to_string();
+
+        if should_preserve_root_navdata_entry(&path, &entry_name) {
+            continue;
+        }
+
+        if path.is_dir() {
+            remove_dir_all_with_permission_fix(&path, &entry_name)?;
+        } else {
+            remove_file_with_permission_fix(&path, &entry_name)?;
+        }
+        removed_any = true;
+    }
+
+    if !removed_any {
+        return Err(anyhow!("No removable root-level navdata files found"));
+    }
+
+    Ok(())
 }
 
 /// Scan aircraft in the X-Plane Aircraft folder
@@ -1371,8 +1436,13 @@ pub fn delete_management_item(
     item_type: &str,
     folder_name: &str,
 ) -> Result<()> {
-    let target_path = resolve_management_path(xplane_path, item_type, folder_name)?;
-    remove_dir_all_with_permission_fix(&target_path, folder_name)?;
+    if item_type == "navdata" && folder_name.is_empty() {
+        let custom_data_path = xplane_path.join("Custom Data");
+        delete_navdata_root_contents(&custom_data_path)?;
+    } else {
+        let target_path = resolve_management_path(xplane_path, item_type, folder_name)?;
+        remove_dir_all_with_permission_fix(&target_path, folder_name)?;
+    }
 
     logger::log_info(
         &format!("Deleted {} folder: {}", item_type, folder_name),
@@ -1464,7 +1534,11 @@ pub fn open_livery_folder(
 
 /// Check for aircraft updates by fetching remote skunkcrafts_updater.cfg files
 /// This function modifies the aircraft list in place, setting latest_version and has_update
-pub async fn check_aircraft_updates(aircraft: &mut [AircraftInfo]) {
+pub async fn check_aircraft_updates(
+    xplane_path: &Path,
+    aircraft: &mut [AircraftInfo],
+    beta_folders: &HashSet<String>,
+) {
     use futures::future::join_all;
 
     // Collect aircraft with update URLs
@@ -1478,7 +1552,15 @@ pub async fn check_aircraft_updates(aircraft: &mut [AircraftInfo]) {
                 {
                     None
                 } else {
-                    Some((idx, url.clone()))
+                    let use_beta = beta_folders.contains(&a.folder_name);
+                    resolve_update_check_url(
+                        xplane_path,
+                        "aircraft",
+                        &a.folder_name,
+                        url,
+                        use_beta,
+                    )
+                    .map(|resolved_url| (idx, resolved_url))
                 }
             })
         })
@@ -1527,7 +1609,11 @@ pub async fn check_aircraft_updates(aircraft: &mut [AircraftInfo]) {
 
 /// Check for plugin updates by fetching remote skunkcrafts_updater.cfg files
 /// This function modifies the plugins list in place, setting latest_version and has_update
-pub async fn check_plugins_updates(plugins: &mut [PluginInfo]) {
+pub async fn check_plugins_updates(
+    xplane_path: &Path,
+    plugins: &mut [PluginInfo],
+    beta_folders: &HashSet<String>,
+) {
     use futures::future::join_all;
 
     // Collect plugins with update URLs
@@ -1539,7 +1625,15 @@ pub async fn check_plugins_updates(plugins: &mut [PluginInfo]) {
                 if is_x_updater_url(url) {
                     None
                 } else {
-                    Some((idx, url.clone()))
+                    let use_beta = beta_folders.contains(&p.folder_name);
+                    resolve_update_check_url(
+                        xplane_path,
+                        "plugin",
+                        &p.folder_name,
+                        url,
+                        use_beta,
+                    )
+                    .map(|resolved_url| (idx, resolved_url))
                 }
             })
         })
@@ -1563,6 +1657,53 @@ pub async fn check_plugins_updates(plugins: &mut [PluginInfo]) {
             let local_version = plugins[idx].version.as_deref().unwrap_or("");
             plugins[idx].latest_version = Some(remote_version.clone());
             plugins[idx].has_update = remote_version != local_version;
+        }
+    }
+}
+
+fn resolve_update_check_url(
+    xplane_path: &Path,
+    item_type: &str,
+    folder_name: &str,
+    fallback_url: &str,
+    use_beta: bool,
+) -> Option<String> {
+    let fallback = fallback_url.trim();
+    if fallback.is_empty() {
+        return None;
+    }
+
+    if !use_beta {
+        return Some(fallback.to_string());
+    }
+
+    let target_path = match resolve_management_path(xplane_path, item_type, folder_name) {
+        Ok(path) => path,
+        Err(error) => {
+            logger::log_debug(
+                &format!(
+                    "Failed to resolve addon path for beta update check {}:{}: {}",
+                    item_type, folder_name, error
+                ),
+                Some("management"),
+                None,
+            );
+            return Some(fallback.to_string());
+        }
+    };
+    match skunk_updater::resolve_local_module_url(&target_path, true) {
+        Ok(Some(module_url)) => Some(module_url),
+        Ok(None) => Some(fallback.to_string()),
+        Err(error) => {
+            logger::log_debug(
+                &format!(
+                    "Failed to resolve beta update URL for {}:{}: {}",
+                    item_type, folder_name, error
+                ),
+                Some("management"),
+                None,
+            );
+            Some(fallback.to_string())
         }
     }
 }
@@ -2282,7 +2423,10 @@ pub fn delete_lua_script(xplane_path: &Path, file_name: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{scan_aircraft, toggle_aircraft_acf_file, toggle_management_item};
+    use super::{
+        delete_management_item, resolve_management_path, scan_aircraft, scan_navdata,
+        toggle_aircraft_acf_file, toggle_management_item,
+    };
     use std::fs;
     use tempfile::tempdir;
 
@@ -2387,5 +2531,76 @@ mod tests {
         assert!(aircraft_dir.join("DemoPlane_cargo.acf").exists());
         assert!(entry.enabled);
         assert!(!entry.has_mixed_acf_states);
+    }
+
+    #[test]
+    fn resolve_management_path_allows_root_and_nested_navdata_entries() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let custom_data = temp.path().join("Custom Data");
+        let nested_navdata = custom_data.join("GNS430").join("navdata");
+        fs::create_dir_all(&nested_navdata).expect("failed to create nested navdata dir");
+
+        let root = resolve_management_path(temp.path(), "navdata", "")
+            .expect("root navdata path should resolve");
+        let nested = resolve_management_path(temp.path(), "navdata", "GNS430/navdata")
+            .expect("nested navdata path should resolve");
+
+        assert_eq!(root, custom_data);
+        assert_eq!(nested, nested_navdata.canonicalize().expect("canonical nested"));
+    }
+
+    #[test]
+    fn delete_management_item_root_navdata_preserves_other_providers_and_backups() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let custom_data = temp.path().join("Custom Data");
+        let root_cifp = custom_data.join("CIFP");
+        let nested_gns430 = custom_data.join("GNS430").join("navdata");
+        let backup_dir = custom_data.join("Backup_Data").join("old_backup");
+
+        fs::create_dir_all(&root_cifp).expect("failed to create CIFP dir");
+        fs::create_dir_all(&nested_gns430).expect("failed to create nested navdata dir");
+        fs::create_dir_all(&backup_dir).expect("failed to create backup dir");
+
+        fs::write(custom_data.join("cycle.json"), r#"{"name":"X-Plane Navdata"}"#)
+            .expect("failed to write root cycle");
+        fs::write(custom_data.join("earth_nav.dat"), "nav").expect("failed to write nav file");
+        fs::write(custom_data.join("user_fix.dat"), "user").expect("failed to write user file");
+        fs::write(root_cifp.join("KSEA.dat"), "cifp").expect("failed to write CIFP file");
+        fs::write(nested_gns430.join("cycle.json"), r#"{"name":"GNS430 Navdata"}"#)
+            .expect("failed to write nested cycle");
+        fs::write(backup_dir.join("verification.json"), "{}").expect("failed to write backup");
+
+        delete_management_item(temp.path(), "navdata", "")
+            .expect("root navdata delete should succeed");
+
+        assert!(!custom_data.join("cycle.json").exists());
+        assert!(!custom_data.join("earth_nav.dat").exists());
+        assert!(!root_cifp.exists());
+        assert!(custom_data.join("user_fix.dat").exists());
+        assert!(nested_gns430.join("cycle.json").exists());
+        assert!(backup_dir.join("verification.json").exists());
+
+        let navdata = scan_navdata(temp.path()).expect("navdata scan should succeed");
+        assert_eq!(navdata.entries.len(), 1);
+        assert_eq!(navdata.entries[0].folder_name.replace('\\', "/"), "GNS430/navdata");
+    }
+
+    #[test]
+    fn delete_management_item_nested_navdata_only_removes_target_folder() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let custom_data = temp.path().join("Custom Data");
+        let nested_gns430 = custom_data.join("GNS430").join("navdata");
+
+        fs::create_dir_all(&nested_gns430).expect("failed to create nested navdata dir");
+        fs::write(custom_data.join("cycle.json"), r#"{"name":"X-Plane Navdata"}"#)
+            .expect("failed to write root cycle");
+        fs::write(nested_gns430.join("cycle.json"), r#"{"name":"GNS430 Navdata"}"#)
+            .expect("failed to write nested cycle");
+
+        delete_management_item(temp.path(), "navdata", "GNS430/navdata")
+            .expect("nested navdata delete should succeed");
+
+        assert!(custom_data.join("cycle.json").exists());
+        assert!(!nested_gns430.exists());
     }
 }

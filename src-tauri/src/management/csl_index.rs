@@ -1585,6 +1585,16 @@ fn remove_directory_link(link_path: &Path) -> Result<(), String> {
         .map_err(|e| format!("Failed to remove symlink {}: {}", link_path.display(), e))
 }
 
+fn is_existing_or_creatable_link_target(path: &Path) -> bool {
+    if path.is_dir() || is_link(path) {
+        return true;
+    }
+
+    path.parent()
+        .map(|parent| parent.is_dir() || is_link(parent))
+        .unwrap_or(false)
+}
+
 /// Collect all detected CSL directory paths, excluding the canonical path itself.
 fn collect_link_targets(xplane_path: &Path, custom_paths: &[String]) -> Vec<PathBuf> {
     let canonical = xplane_path.join(CSL_CANONICAL_REL);
@@ -1595,7 +1605,7 @@ fn collect_link_targets(xplane_path: &Path, custom_paths: &[String]) -> Vec<Path
         if full == canonical {
             continue;
         }
-        if full.exists() {
+        if is_existing_or_creatable_link_target(&full) {
             targets.push(full);
         }
     }
@@ -2925,5 +2935,23 @@ mod tests {
         let remove_warnings = remove_package_links("A19N", &[link_target_base], true);
         assert!(remove_warnings.is_empty());
         assert!(!link_path.exists());
+    }
+
+    #[test]
+    fn sync_package_links_creates_plugin_csl_dir_when_parent_exists() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let xplane_path = temp_dir.path();
+        let canonical_pkg_dir = xplane_path.join(CSL_CANONICAL_REL).join("A19N");
+        let xpilot_resources_dir = xplane_path.join("Resources/plugins/xPilot/Resources");
+        let linked_package_dir = xplane_path.join("Resources/plugins/xPilot/Resources/CSL/A19N");
+
+        write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
+        std::fs::create_dir_all(&xpilot_resources_dir).unwrap();
+
+        let warnings =
+            sync_package_links_internal(&xplane_path.to_string_lossy(), &[], None, None).unwrap();
+
+        assert!(warnings.is_empty());
+        assert!(is_link(&linked_package_dir));
     }
 }
