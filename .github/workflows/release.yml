@@ -273,9 +273,100 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  build-arch-linux:
+    name: Build (linux-arch-x64)
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should_release == 'true'
+    runs-on: ubuntu-22.04
+    container:
+      image: archlinux:latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Install Arch Linux dependencies
+        shell: bash
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syu --noconfirm --needed \
+            base-devel \
+            curl \
+            git \
+            openssl \
+            pkgconf \
+            gtk3 \
+            webkit2gtk-4.1 \
+            libappindicator-gtk3 \
+            librsvg
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v2-rust-release-arch"
+          key: "release-archlinux-${{ hashFiles('**/Cargo.lock') }}"
+          cache-all-crates: true
+
+      - name: Set production build environment
+        shell: bash
+        run: |
+          echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_LTO=fat" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=3" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_STRIP=debuginfo" >> $GITHUB_ENV
+          echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
+          echo "BUILD_MODE=production" >> $GITHUB_ENV
+          echo "✅ Production build environment configured"
+
+      - name: Build frontend
+        shell: bash
+        run: npm run build
+
+      - name: Build Arch Linux binary
+        shell: bash
+        env:
+          XFAST_ZIBO_GOOGLE_DRIVE_API_KEY: ${{ secrets.XFAST_ZIBO_GOOGLE_DRIVE_API_KEY }}
+        run: |
+          echo "🔨 Building native Arch Linux binary..."
+          cargo build --manifest-path src-tauri/Cargo.toml --release
+
+      - name: Package Arch Linux artifact
+        shell: bash
+        run: |
+          version="${{ needs.prepare-release.outputs.version }}"
+          mkdir -p artifacts
+          cp target/release/xfastmanager artifacts/XFast-Manager
+          tar -C artifacts -czf "target/release/XFast-Manager-${version}-linux-arch-x64.tar.gz" XFast-Manager
+
+      - name: Upload Arch Linux artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-linux-arch-x64
+          path: 'target/release/XFast-Manager-*-linux-arch-x64.tar.gz'
+          if-no-files-found: error
+          retention-days: 7
+
   release:
     name: Create Release
-    needs: [prepare-release, build]
+    needs: [prepare-release, build, build-arch-linux]
     if: needs.prepare-release.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -348,8 +439,11 @@ jobs:
             rm "XFast-Manager-${version}-linux-x64.rpm"
           fi
 
-          # Generate checksums (only for zip files)
-          sha256sum XFast-Manager-*.zip > checksums.txt
+          # Generate checksums for published archives
+          find . -maxdepth 1 -type f \( -name "XFast-Manager-*.zip" -o -name "XFast-Manager-*.tar.gz" \) -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            > checksums.txt
 
           echo "✅ Release files prepared:"
           ls -la
@@ -442,6 +536,7 @@ jobs:
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-setup.zip
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-macos-universal.zip
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-AppImage.zip
+            release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-arch-x64.tar.gz
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-deb.zip
             release-files/XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-rpm.zip
             release-files/checksums.txt
@@ -472,6 +567,7 @@ jobs:
           echo "  - Windows (installer): XFast-Manager-${{ needs.prepare-release.outputs.version }}-windows-setup.zip"
           echo "  - macOS:   XFast-Manager-${{ needs.prepare-release.outputs.version }}-macos-universal.zip"
           echo "  - Linux (AppImage): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-AppImage.zip"
+          echo "  - Linux (Arch): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-arch-x64.tar.gz"
           echo "  - Linux (deb): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-deb.zip"
           echo "  - Linux (rpm): XFast-Manager-${{ needs.prepare-release.outputs.version }}-linux-x64-rpm.zip"
           echo ""

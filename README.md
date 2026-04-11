@@ -64,6 +64,22 @@ XFast Manager makes installing and managing X-Plane addons effortless. Drop in a
 2. Launch the app and select your X-Plane folder.
 3. Drag your addon into the window and install.
 
+### Linux Downloads
+
+- **AppImage (Recommended for most Linux users)**: download the regular Linux AppImage from the
+  Releases page.
+- **Arch Linux tar.gz (Recommended on Arch/Wayland if AppImage has issues)**: download
+  `XFast-Manager-<version>-linux-arch-x64.tar.gz`.
+
+### Arch Linux Install
+
+1. Install runtime dependencies:
+   `sudo pacman -S --needed gtk3 webkit2gtk-4.1 libappindicator-gtk3 librsvg`
+2. Extract the release archive:
+   `tar -xzf XFast-Manager-<version>-linux-arch-x64.tar.gz`
+3. Enter the extracted directory and run the app:
+   `chmod +x XFast-Manager && ./XFast-Manager`
+
 ### FAQ
 
 **Does it support ZIP/7z/RAR archives?**  
@@ -94,6 +110,10 @@ On current builds, the AppImage automatically prefers X11 on problematic Wayland
 XWayland is available. If you still need to override it manually, try
 `GDK_BACKEND=x11 ./XFast-Manager-*.AppImage` or
 `XFAST_FORCE_X11=1 ./XFast-Manager-*.AppImage`.
+
+- **AppImage still has problems on Arch Linux**  
+Use the Arch Linux `tar.gz` release instead of the AppImage. It ships as a native Arch-built
+binary and avoids the extra AppImage runtime layer.
 
 - **Password requested**  
 Provide the archive password when prompted.

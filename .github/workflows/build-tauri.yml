@@ -329,6 +329,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           RUST_LOG: tauri_bundler=trace
         run: |
+          if [[ "${{ github.event.head_commit.message }}" != *"archappimage"* ]]; then
+            echo "Skipping experimental Arch AppImage build. Add 'archappimage' to the commit message to enable it."
+            exit 0
+          fi
           echo "🔨 Building Arch Linux AppImage (non-blocking experimental step)..."
           npm run tauri:build -- --bundles appimage 2>&1 | tee arch-appimage-build.log
 
@@ -349,6 +353,7 @@ jobs:
           compression-level: 9
 
       - name: Upload Arch Linux AppImage artifact
+        if: steps.arch_appimage.outcome != 'skipped'
         uses: actions/upload-artifact@v6
         with:
           name: XFast-Manager-linux-arch-x64-appimage
