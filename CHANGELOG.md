@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0-beta.2] - 2026-04-11
+
+### Added
+
+- **Per-Item Beta Channel in Addon Update** - Aircraft and plugin update items can now enable beta checks individually instead of relying on a single global beta toggle.
+- **Gateway vs Current X-Plane Comparison** - Gateway Management now shows whether an airport/scenery is already in your current X-Plane release, including `XP` tags and `Not in current X-Plane` indicators.
+- **Arch Linux Native Release Package** - Releases now include a native Arch Linux `tar.gz` package, with updated Linux download and install guidance in the README.
+
+### Changed
+
+- **Gateway Details Context** - Gateway airport details now surface the matched X-Plane baseline scenery (version/artist/date) when release comparison data is available.
+- **CSL/ALTITUDE Page Refresh Flow** - Entering the CSL page now syncs links first and only triggers rescans when needed (or when forcing refresh), reducing unnecessary repeated full scans.
+- **Update Check Behavior** - App update checks are no longer skipped by an internal cache-expiry gate, so checks run immediately when requested.
+
+### Fixed
+
+- **Scenery Misclassification for SAM Libraries** - Libraries with nested demo airport content are now less likely to be misclassified as airports.
+- **Root Navdata Deletion Safety** - Deleting root navdata now removes only root navdata files while preserving backups, user custom files, and nested provider navdata folders.
+- **CSL Link Target Creation** - CSL link sync can now create missing plugin CSL target directories (for example under xPilot resources) when parent paths exist.
+- **Log Text Consistency** - Activity/app log entries were standardized to avoid locale-related garbled text in runtime logs.
+
 ## [1.2.0-beta.1] - 2026-04-05
 
 ### Added
