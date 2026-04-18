@@ -2965,7 +2965,13 @@ function pickGatewayApprovedDate(record: Record<string, unknown>): string | null
 
 function pickGatewayStatus(record: Record<string, unknown>): string | null {
   return (
-    pickString(record, ['status', 'gatewayStatus', 'submissionStatus', 'approvalStatus', 'state']) ??
+    pickString(record, [
+      'status',
+      'gatewayStatus',
+      'submissionStatus',
+      'approvalStatus',
+      'state',
+    ]) ??
     (pickString(record, ['dateDeclined'])
       ? 'Declined'
       : pickString(record, ['dateApproved'])
@@ -2997,7 +3003,10 @@ function parseGatewayFeatureList(record: Record<string, unknown>): string[] {
 
   const featureText = pickString(record, ['features', 'featureFlags'])
   if (featureText) {
-    for (const token of featureText.split(',').map((item) => item.trim()).filter(Boolean)) {
+    for (const token of featureText
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)) {
       labels.push(resolveGatewayFeatureName(token))
     }
   }
@@ -3035,7 +3044,8 @@ function parseGatewaySummary(payload: unknown, fallbackIcao: string): GatewaySum
     pickArray(root, ['scenery', 'Sceneries', 'sceneries', 'results', 'items']) ??
     pickArray(airport, ['scenery', 'Sceneries', 'sceneries', 'results', 'items']) ??
     []
-  const metadata = pickRecord(root, ['metadata', 'Metadata']) ?? pickRecord(airport, ['metadata', 'Metadata'])
+  const metadata =
+    pickRecord(root, ['metadata', 'Metadata']) ?? pickRecord(airport, ['metadata', 'Metadata'])
   const airportCode = (
     pickGatewayAirportCode(airport) ||
     pickGatewayAirportCode(root) ||
@@ -3057,9 +3067,15 @@ function parseGatewaySummary(payload: unknown, fallbackIcao: string): GatewaySum
       'recommendedSceneryId',
       'recommended_scenery_id',
     ]) ??
-    pickNumber(root, ['RecommendedSceneryId', 'recommendedSceneryId', 'recommended_scenery_id']) ??
-    (rootRecommended ? pickNumber(rootRecommended, ['sceneryId', 'SceneryId', 'id']) : null) ??
-    (airportRecommended ? pickNumber(airportRecommended, ['sceneryId', 'SceneryId', 'id']) : null),
+      pickNumber(root, [
+        'RecommendedSceneryId',
+        'recommendedSceneryId',
+        'recommended_scenery_id',
+      ]) ??
+      (rootRecommended ? pickNumber(rootRecommended, ['sceneryId', 'SceneryId', 'id']) : null) ??
+      (airportRecommended
+        ? pickNumber(airportRecommended, ['sceneryId', 'SceneryId', 'id'])
+        : null),
   )
 
   const recommended =

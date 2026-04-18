@@ -1603,8 +1603,7 @@ export default {
     currentXplaneVersionWithVersion: '현재 X-Plane {version}',
     currentXplaneMissing: '현재 X-Plane {version}에는 이 공항이 아직 포함되어 있지 않습니다.',
     notInCurrentXplane: '현재 X-Plane에 없음',
-    versionComparisonUnavailable:
-      '이 설치에서는 현재 X-Plane 버전 비교를 사용할 수 없습니다.',
+    versionComparisonUnavailable: '이 설치에서는 현재 X-Plane 버전 비교를 사용할 수 없습니다.',
     folderName: '설치된 폴더',
   },
   airportFlatten: {
@@ -1614,8 +1613,7 @@ export default {
       '공항을 검색하고 기본/사용자 정의 apt.dat 소스를 비교한 뒤, 지도 모듈을 건드리지 않고 평탄화 메타데이터를 전환합니다.',
     results: '검색 결과',
     targets: '평탄화 소스',
-    pathRequiredHint:
-      '검색하거나 평탄화 상태를 수정하기 전에 X-Plane 루트 경로를 먼저 설정하세요.',
+    pathRequiredHint: '검색하거나 평탄화 상태를 수정하기 전에 X-Plane 루트 경로를 먼저 설정하세요.',
     searchPlaceholder: 'ICAO 또는 공항 이름으로 검색...',
     searchHint:
       '이 페이지는 자체 공항 평탄화 인덱스와 소스 스캐너를 사용합니다. 기본 소스와 사용자 정의 소스가 따로 표시됩니다.',
@@ -1633,8 +1631,7 @@ export default {
     enable: '평탄화 활성화',
     disable: '평탄화 비활성화',
     noTargets: '이 공항에 대해 편집 가능한 apt.dat 소스를 찾지 못했습니다.',
-    noSelection:
-      '공항을 선택해 기본 및 사용자 정의 평탄화 소스를 확인하세요.',
+    noSelection: '공항을 선택해 기본 및 사용자 정의 평탄화 소스를 확인하세요.',
     loadSearchFailed: '공항 검색에 실패했습니다',
     loadTargetsFailed: '공항 소스를 불러오지 못했습니다',
     toggleFailed: '평탄화 상태를 업데이트하지 못했습니다',

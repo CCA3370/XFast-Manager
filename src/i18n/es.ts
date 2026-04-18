@@ -726,7 +726,8 @@ export default {
     batchMode: 'Modo por lotes',
     protectedAircraft: 'Este es un avión X-Plane predeterminado y no se puede desactivar.',
     manageAcfFilesTitle: 'Administrar archivos ACF · {name}',
-    manageAcfFilesHint: 'Activa o desactiva archivos de modelo de aeronave individuales en esta carpeta.',
+    manageAcfFilesHint:
+      'Activa o desactiva archivos de modelo de aeronave individuales en esta carpeta.',
     partialAcfState:
       'Algunos archivos ACF están habilitados y otros deshabilitados. La entrada del avión permanece habilitada mientras alguna variante siga activa.',
     acfEnabled: 'Habilitado',

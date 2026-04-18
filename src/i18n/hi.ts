@@ -1624,8 +1624,7 @@ export default {
     currentXplaneVersionWithVersion: 'वर्तमान X-Plane {version}',
     currentXplaneMissing: 'वर्तमान X-Plane {version} में यह हवाईअड्डा अभी शामिल नहीं है।',
     notInCurrentXplane: 'वर्तमान X-Plane में नहीं',
-    versionComparisonUnavailable:
-      'इस इंस्टॉलेशन के लिए X-Plane संस्करण तुलना अभी उपलब्ध नहीं है।',
+    versionComparisonUnavailable: 'इस इंस्टॉलेशन के लिए X-Plane संस्करण तुलना अभी उपलब्ध नहीं है।',
     folderName: 'स्थापित फ़ोल्डर',
   },
   airportFlatten: {
@@ -1635,8 +1634,7 @@ export default {
       'एयरपोर्ट खोजें, डिफ़ॉल्ट और कस्टम apt.dat स्रोतों की तुलना करें, और मैप मॉड्यूल को छुए बिना फ्लैटन मेटाडेटा बदलें।',
     results: 'खोज परिणाम',
     targets: 'फ्लैटन स्रोत',
-    pathRequiredHint:
-      'एयरपोर्ट खोजने या फ्लैटन स्थिति बदलने से पहले X-Plane का रूट पथ सेट करें।',
+    pathRequiredHint: 'एयरपोर्ट खोजने या फ्लैटन स्थिति बदलने से पहले X-Plane का रूट पथ सेट करें।',
     searchPlaceholder: 'ICAO या नाम से एयरपोर्ट खोजें...',
     searchHint:
       'यह पेज अपना अलग एयरपोर्ट फ्लैटन इंडेक्स और स्रोत स्कैनर इस्तेमाल करता है। डिफ़ॉल्ट और कस्टम स्रोत अलग-अलग दिखाए जाते हैं।',
@@ -1645,8 +1643,7 @@ export default {
     customCount: 'कस्टम x{count}',
     searchEmpty: 'कोई मेल खाता एयरपोर्ट नहीं मिला।',
     targetSubtitle: '{icao} के स्रोत',
-    multiSourceHint:
-      'इस ICAO के लिए कई स्रोत मिले। जिस apt.dat को बदलना है, उसे ठीक से चुनें।',
+    multiSourceHint: 'इस ICAO के लिए कई स्रोत मिले। जिस apt.dat को बदलना है, उसे ठीक से चुनें।',
     loadingTargets: 'एयरपोर्ट स्रोत लोड हो रहे हैं...',
     stateOn: 'फ्लैटन चालू',
     stateOff: 'फ्लैटन बंद',
@@ -1654,8 +1651,7 @@ export default {
     enable: 'फ्लैटन सक्षम करें',
     disable: 'फ्लैटन अक्षम करें',
     noTargets: 'इस एयरपोर्ट के लिए संपादन योग्य apt.dat स्रोत नहीं मिला।',
-    noSelection:
-      'डिफ़ॉल्ट और कस्टम फ्लैटन स्रोत देखने के लिए एक एयरपोर्ट चुनें।',
+    noSelection: 'डिफ़ॉल्ट और कस्टम फ्लैटन स्रोत देखने के लिए एक एयरपोर्ट चुनें।',
     loadSearchFailed: 'एयरपोर्ट खोजने में विफल',
     loadTargetsFailed: 'एयरपोर्ट स्रोत लोड करने में विफल',
     toggleFailed: 'फ्लैटन स्थिति अपडेट करने में विफल',

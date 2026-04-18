@@ -87,11 +87,14 @@ function usesRemoteUpdateCheck(item: { updateProvider?: string; updateUrl?: stri
   return provider === 'skunkcrafts' || provider === 'zibo'
 }
 
-function getUpdateCacheKey(item: {
-  updateUrl?: string
-  updateProvider?: string
-  folderName: string
-}, useBeta: boolean = false): string | null {
+function getUpdateCacheKey(
+  item: {
+    updateUrl?: string
+    updateProvider?: string
+    folderName: string
+  },
+  useBeta: boolean = false,
+): string | null {
   const updateUrl = item.updateUrl?.trim()
   if (!updateUrl) return null
 
@@ -108,9 +111,7 @@ function addonUpdateItemKey(itemType: AddonUpdatableItemType, folderName: string
   return `${itemType}:${folderName}`
 }
 
-function normalizeAddonUpdateItemBetaPreferences(
-  value: unknown,
-): AddonUpdateItemBetaPreferences {
+function normalizeAddonUpdateItemBetaPreferences(value: unknown): AddonUpdateItemBetaPreferences {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {}
   }
@@ -176,7 +177,10 @@ interface LoadableItem {
 }
 
 function normalizeManagementFolderKey(folderName: string): string {
-  return folderName.replace(/[\\/]+/g, '\\').trim().toLowerCase()
+  return folderName
+    .replace(/[\\/]+/g, '\\')
+    .trim()
+    .toLowerCase()
 }
 
 export const useManagementStore = defineStore('management', () => {
@@ -510,11 +514,14 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   // Helper function to check if cache is valid
-  function isCacheValid(item: {
-    updateUrl?: string
-    updateProvider?: string
-    folderName: string
-  }, itemType: 'aircraft' | 'plugin'): boolean {
+  function isCacheValid(
+    item: {
+      updateUrl?: string
+      updateProvider?: string
+      folderName: string
+    },
+    itemType: 'aircraft' | 'plugin',
+  ): boolean {
     const key = getUpdateCacheKey(item, isAddonUpdateBetaEnabled(itemType, item.folderName))
     if (!key) return false
     const cached = updateCache.get(key)

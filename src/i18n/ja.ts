@@ -1631,8 +1631,7 @@ export default {
       '空港を検索し、標準およびカスタムの apt.dat ソースを比較して、マップモジュールに触れずに flatten メタデータを切り替えます。',
     results: '検索結果',
     targets: '平坦化ソース',
-    pathRequiredHint:
-      '検索や平坦化状態の編集を行う前に、X-Plane のルートパスを設定してください。',
+    pathRequiredHint: '検索や平坦化状態の編集を行う前に、X-Plane のルートパスを設定してください。',
     searchPlaceholder: 'ICAO または空港名で検索...',
     searchHint:
       'このページは独自の空港平坦化インデックスとソーススキャナーを使用します。標準空港ソースとカスタム空港ソースは別々に表示されます。',
@@ -1650,8 +1649,7 @@ export default {
     enable: '平坦化を有効化',
     disable: '平坦化を無効化',
     noTargets: 'この空港に対して編集可能な apt.dat ソースは見つかりませんでした。',
-    noSelection:
-      '空港を選択して、標準とカスタムの平坦化ソースを確認してください。',
+    noSelection: '空港を選択して、標準とカスタムの平坦化ソースを確認してください。',
     loadSearchFailed: '空港の検索に失敗しました',
     loadTargetsFailed: '空港ソースの読み込みに失敗しました',
     toggleFailed: '平坦化状態の更新に失敗しました',

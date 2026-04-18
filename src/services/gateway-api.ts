@@ -20,8 +20,8 @@ function isGatewayInstallArgMismatch(error: unknown): boolean {
   if (!(error instanceof CommandError)) return false
 
   return (
-    error.message.includes("invalid args `request`") ||
-    error.message.includes("invalid args `ignoreExternalConflict`")
+    error.message.includes('invalid args `request`') ||
+    error.message.includes('invalid args `ignoreExternalConflict`')
   )
 }
 
@@ -105,7 +105,7 @@ export async function gatewayInstallScenery(
     if (
       !(
         error instanceof CommandError &&
-        error.message.includes("invalid args `ignoreExternalConflict`")
+        error.message.includes('invalid args `ignoreExternalConflict`')
       )
     ) {
       throw error

@@ -729,7 +729,8 @@ export default {
     batchMode: 'Mode par lots',
     protectedAircraft: "Il s'agit d'un avion X-Plane par défaut et ne peut pas être désactivé",
     manageAcfFilesTitle: 'Gérer les fichiers ACF · {name}',
-    manageAcfFilesHint: 'Activez ou désactivez les fichiers de modèle d’avion individuels dans ce dossier.',
+    manageAcfFilesHint:
+      'Activez ou désactivez les fichiers de modèle d’avion individuels dans ce dossier.',
     partialAcfState:
       'Certains fichiers ACF sont activés tandis que d’autres sont désactivés. L’entrée de l’avion reste activée tant qu’une variante est active.',
     acfEnabled: 'Activé',
@@ -1667,7 +1668,7 @@ export default {
     notInstalled: 'Non installé',
     currentXplaneVersion: 'X-Plane actuel',
     currentXplaneVersionWithVersion: 'X-Plane actuel {version}',
-    currentXplaneMissing: "Le X-Plane actuel {version} ne contient pas encore cet aéroport.",
+    currentXplaneMissing: 'Le X-Plane actuel {version} ne contient pas encore cet aéroport.',
     notInCurrentXplane: 'Absent du X-Plane actuel',
     versionComparisonUnavailable:
       "La comparaison de version avec X-Plane n'est pas disponible pour cette installation pour le moment.",

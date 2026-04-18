@@ -665,7 +665,8 @@ export default {
     protectedAircraft: '此机模为 X-Plane 默认机模，无法禁用',
     manageAcfFilesTitle: '管理 ACF 文件 · {name}',
     manageAcfFilesHint: '可在这里单独启用或禁用该机模目录中的具体 ACF 文件。',
-    partialAcfState: '当前只有部分 ACF 文件处于启用状态，因此列表中的机模开关会保持开启并显示为黄色。',
+    partialAcfState:
+      '当前只有部分 ACF 文件处于启用状态，因此列表中的机模开关会保持开启并显示为黄色。',
     acfEnabled: '已启用',
     acfDisabled: '已禁用',
     updateDrawerTitle: '插件更新',

@@ -763,10 +763,7 @@ export const useCslStore = defineStore('csl', () => {
     }
   }
 
-  async function rescanPackages(
-    packageNames: string[],
-    options: RescanPackagesOptions = {},
-  ) {
+  async function rescanPackages(packageNames: string[], options: RescanPackagesOptions = {}) {
     if (!appStore.xplanePath || packageNames.length === 0) {
       return
     }

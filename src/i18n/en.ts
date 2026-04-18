@@ -1627,7 +1627,8 @@ export default {
       'Search airports, compare default and custom apt.dat sources, and toggle flatten metadata without touching the map module.',
     results: 'Search Results',
     targets: 'Flatten Sources',
-    pathRequiredHint: 'Configure your X-Plane root before searching or editing airport flatten state.',
+    pathRequiredHint:
+      'Configure your X-Plane root before searching or editing airport flatten state.',
     searchPlaceholder: 'Search airport by ICAO or name...',
     searchHint:
       'This page uses its own airport flatten index and source scanner. Default and custom airport sources are listed separately.',

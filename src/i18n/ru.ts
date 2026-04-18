@@ -1642,8 +1642,7 @@ export default {
     currentXplaneVersionWithVersion: 'Текущий X-Plane {version}',
     currentXplaneMissing: 'Текущий X-Plane {version} пока не включает этот аэропорт.',
     notInCurrentXplane: 'Отсутствует в текущем X-Plane',
-    versionComparisonUnavailable:
-      'Сравнение версий X-Plane сейчас недоступно для этой установки.',
+    versionComparisonUnavailable: 'Сравнение версий X-Plane сейчас недоступно для этой установки.',
     folderName: 'Установленная папка',
   },
   airportFlatten: {
