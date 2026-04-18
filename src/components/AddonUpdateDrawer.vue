@@ -6,11 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useManagementStore } from '@/stores/management'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
-import type {
-  AddonUpdateDrawerTask,
-  AddonUpdatePlan,
-  AddonUpdateOptions,
-} from '@/types'
+import type { AddonUpdateDrawerTask, AddonUpdatePlan, AddonUpdateOptions } from '@/types'
 
 interface AddonUpdateProgressEvent {
   itemType: string

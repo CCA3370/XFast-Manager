@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
@@ -102,6 +102,8 @@ let previewTimer: number | null = null
 let previewRenderSeq = 0
 let displayedPreviewSeq = 0
 let pendingHighQualityPreview = false
+let dragRenderRafHandle: number | null = null
+let dragRenderInFlight = false
 
 // Track params baked into the last rendered preview for CSS-filter delta
 let renderedEditSnapshot: ScreenshotEditParams | null = null
@@ -371,14 +373,18 @@ const activeSlider = computed(() => {
  * so crop/rotate/previous adjustments (already baked into the preview image) stay intact.
  */
 const liveFilterStyle = computed(() => {
+  // Re-read the preview URL so this recomputes whenever the baked preview swaps
+  // (renderedEditSnapshot is a plain var, but it's updated in the same synchronous
+  // block as editorPreviewUrl, so tracking the URL is a reliable refresh signal).
+  void editorPreviewUrl.value
   if (!isInteractiveAdjusting.value || !renderedEditSnapshot) return undefined
   const cur = edit.value
   const base = renderedEditSnapshot
   const parts: string[] = []
   // Exposure → brightness (multiplicative)
   if (cur.exposure !== base.exposure) {
-    const bB = Math.pow(2, (base.exposure / 100) * 1.5)
-    const cB = Math.pow(2, (cur.exposure / 100) * 1.5)
+    const bB = Math.pow(2, base.exposure / 100)
+    const cB = Math.pow(2, cur.exposure / 100)
     parts.push(`brightness(${(cB / bB).toFixed(4)})`)
   }
   // Contrast (multiplicative around midtone)
@@ -389,22 +395,30 @@ const liveFilterStyle = computed(() => {
   }
   // Saturation (multiplicative)
   if (cur.saturation !== base.saturation) {
-    const bS = 1 + base.saturation / 100
-    const cS = 1 + cur.saturation / 100
+    const bS = 1 + (base.saturation / 100) * 0.5
+    const cS = 1 + (cur.saturation / 100) * 0.5
     parts.push(`saturate(${(cS / Math.max(bS, 0.01)).toFixed(4)})`)
   }
-  // Temperature: rough warm/cool tint
+  // Temperature: linear r+/b- shift via SVG filter (matches canvas exactly).
+  // CSS sepia()/hue-rotate() would be a hue tint, not a temperature shift.
   if (cur.temperature !== base.temperature) {
-    const delta = cur.temperature - base.temperature
-    if (delta > 0) parts.push(`sepia(${((delta / 100) * 0.25).toFixed(3)})`)
-    else parts.push(`hue-rotate(${((delta / 100) * 25).toFixed(1)}deg)`)
+    parts.push('url(#editor-temp-filter)')
   }
   // Denoise → blur (additive px)
   if (cur.denoise !== base.denoise) {
-    const delta = ((cur.denoise - base.denoise) / 100) * 1.8
+    const delta = ((cur.denoise - base.denoise) / 100) * 0.9
     if (delta > 0) parts.push(`blur(${delta.toFixed(2)}px)`)
   }
   return parts.length > 0 ? { filter: parts.join(' ') } : undefined
+})
+
+const tempFilterMatrix = computed(() => {
+  void editorPreviewUrl.value
+  const base = renderedEditSnapshot?.temperature ?? 0
+  const shift = ((edit.value.temperature - base) / 100) * 0.08
+  const pos = shift.toFixed(5)
+  const neg = (-shift).toFixed(5)
+  return `1 0 0 0 ${pos} 0 1 0 0 0 0 0 1 0 ${neg} 0 0 0 1 0`
 })
 
 const activeSliderValue = computed({
@@ -445,7 +459,7 @@ function onRulerPointerDown(e: PointerEvent, isRotate = false) {
       newVal = clamp(newVal, -90, 90)
       if (edit.value.rotate !== newVal) {
         edit.value.rotate = newVal
-        // cropPreviewImageStyle computed handles instant visual via CSS transform
+        scheduleDragRender()
       }
     } else if (activeSlider.value) {
       const slider = activeSlider.value
@@ -455,18 +469,18 @@ function onRulerPointerDown(e: PointerEvent, isRotate = false) {
       newVal = clamp(Math.round(newVal), slider.min, slider.max)
       if (edit.value[slider.key] !== newVal) {
         edit.value[slider.key] = newVal
-        // CSS liveFilterStyle handles instant visual feedback; skip canvas render
+        scheduleDragRender()
       }
     }
   }
   const onUp = () => {
     rulerDragStart.value = null
-    isInteractiveAdjusting.value = false
+    cancelDragRender()
     window.removeEventListener('pointermove', onMove)
     window.removeEventListener('pointerup', onUp)
     window.removeEventListener('pointercancel', onUp)
     window.removeEventListener('blur', onUp)
-    schedulePreview(false, true)
+    schedulePreview(true, true)
   }
   window.addEventListener('pointermove', onMove)
   window.addEventListener('pointerup', onUp)
@@ -998,9 +1012,9 @@ function applyPixelAdjustments(canvas: HTMLCanvasElement, p: ScreenshotEditParam
   const temp = p.temperature / 100
   const hi = p.highlights / 100
   const sh = p.shadows / 100
-  const expMul = Math.pow(2, exp * 1.5)
+  const expMul = Math.pow(2, exp)
   const conMul = 1 + con
-  const satMul = 1 + sat
+  const satMul = 1 + sat * 0.5
 
   for (let i = 0; i < d.length; i += 4) {
     let r = d[i] / 255
@@ -1047,7 +1061,7 @@ function applyDenoise(canvas: HTMLCanvasElement, denoise: number) {
   const strength = clamp(denoise / 100, 0, 1)
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.drawImage(source, 0, 0)
-  ctx.filter = `blur(${(strength * 1.8).toFixed(2)}px)`
+  ctx.filter = `blur(${(strength * 0.9).toFixed(2)}px)`
   ctx.globalAlpha = Math.min(0.65, strength * 0.75)
   ctx.drawImage(source, 0, 0)
   ctx.filter = 'none'
@@ -1244,6 +1258,44 @@ async function renderPreviewInWorker(
   })
 }
 
+function cancelDragRender() {
+  if (dragRenderRafHandle !== null) {
+    cancelAnimationFrame(dragRenderRafHandle)
+    dragRenderRafHandle = null
+  }
+}
+
+function scheduleDragRender() {
+  if (!editorOpen.value || !editorImage.value || editorError.value) return
+  if (dragRenderInFlight || dragRenderRafHandle !== null) return
+  dragRenderRafHandle = requestAnimationFrame(() => {
+    dragRenderRafHandle = null
+    void runDragRender()
+  })
+}
+
+async function runDragRender() {
+  if (!editorOpen.value || !editorImage.value) return
+  dragRenderInFlight = true
+  const seq = ++previewRenderSeq
+  try {
+    const params = cloneEditParams(edit.value)
+    const blob = await renderPreviewInWorker(params, DRAG_PREVIEW_MAX_SIDE, true)
+    if (!blob) return
+    if (seq <= displayedPreviewSeq || !editorOpen.value) return
+    displayedPreviewSeq = seq
+    const newUrl = URL.createObjectURL(blob)
+    const prev = editorPreviewUrl.value
+    editorPreviewUrl.value = newUrl
+    if (prev) URL.revokeObjectURL(prev)
+    renderedEditSnapshot = params
+  } catch {
+    // silent: worker errors fall back to CSS filter
+  } finally {
+    dragRenderInFlight = false
+  }
+}
+
 async function openEditor(item: ScreenshotMediaItem) {
   if (!appStore.xplanePath) return
   shareMenuOpen.value = false
@@ -1299,22 +1351,44 @@ async function renderPreview(maxSide = FINAL_PREVIEW_MAX_SIDE) {
   if (!isFast) previewBusy.value = true
   try {
     const params = cloneEditParams(edit.value)
-    const canvas = processImage(editorImage.value, params, maxSide)
-    const blob = await canvasToBlob(
-      canvas,
-      isFast ? 'image/jpeg' : 'image/png',
-      isFast ? 0.8 : undefined,
-    )
+    let blob: Blob | null = null
+    try {
+      blob = await renderPreviewInWorker(params, maxSide, isFast)
+    } catch {
+      blob = null
+    }
+    if (!blob) {
+      // Worker unavailable or failed — fall back to main-thread rendering
+      const canvas = processImage(editorImage.value, params, maxSide)
+      blob = await canvasToBlob(
+        canvas,
+        isFast ? 'image/jpeg' : 'image/png',
+        isFast ? 0.8 : undefined,
+      )
+    }
     if (seq <= displayedPreviewSeq || !editorOpen.value) {
       // Stale frame — a newer render already displayed; discard silently (GC frees the blob)
       return
     }
+    const newUrl = URL.createObjectURL(blob)
+    // Preload + decode the new bitmap so the display <img> can swap with minimal paint delay
+    await preloadDecodedImage(newUrl)
+    if (seq <= displayedPreviewSeq || !editorOpen.value) {
+      URL.revokeObjectURL(newUrl)
+      return
+    }
     displayedPreviewSeq = seq
     const prev = editorPreviewUrl.value
-    editorPreviewUrl.value = URL.createObjectURL(blob)
+    editorPreviewUrl.value = newUrl
     if (prev) URL.revokeObjectURL(prev)
     // Snapshot what's baked into this preview so CSS filter can compute deltas
     renderedEditSnapshot = params
+    // Hold the CSS-filter overlay until the new <img> has painted, then release
+    await nextTick()
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    if (seq === previewRenderSeq) {
+      isInteractiveAdjusting.value = false
+    }
   } catch {
     // silent
   } finally {
@@ -1322,6 +1396,22 @@ async function renderPreview(maxSide = FINAL_PREVIEW_MAX_SIDE) {
       previewBusy.value = false
     }
   }
+}
+
+function preloadDecodedImage(url: string): Promise<void> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    const finish = () => resolve()
+    img.onload = () => {
+      if (typeof img.decode === 'function') {
+        img.decode().then(finish, finish)
+      } else {
+        finish()
+      }
+    }
+    img.onerror = () => finish()
+    img.src = url
+  })
 }
 
 let previewRaf: number | null = null
@@ -1438,6 +1528,8 @@ function closeEditor() {
     window.clearTimeout(previewTimer)
     previewTimer = null
   }
+  cancelDragRender()
+  dragRenderInFlight = false
   previewRenderSeq += 1
   editorOpen.value = false
   editorItem.value = null
@@ -1527,16 +1619,17 @@ function onCropPointerMove(e: PointerEvent) {
     c.width = nw
     c.height = nh
   }
+  scheduleDragRender()
 }
 
 function onCropPointerUp() {
   cropDragMode.value = null
-  isInteractiveAdjusting.value = false
+  cancelDragRender()
   window.removeEventListener('pointermove', onCropPointerMove)
   window.removeEventListener('pointerup', onCropPointerUp)
   window.removeEventListener('pointercancel', onCropPointerUp)
   window.removeEventListener('blur', onCropPointerUp)
-  schedulePreview(false, true)
+  schedulePreview(true, true)
 }
 
 function resetSlider() {
@@ -1603,6 +1696,8 @@ onBeforeUnmount(() => {
     window.clearTimeout(previewTimer)
     previewTimer = null
   }
+  cancelDragRender()
+  dragRenderInFlight = false
   previewRenderSeq += 1
   pendingHighQualityPreview = false
   for (const pending of previewWorkerPending.values()) {
@@ -2070,6 +2165,16 @@ onBeforeUnmount(() => {
 
     <Teleport to="body">
       <div v-if="editorOpen" class="fixed inset-0 z-[120] p-2 sm:p-4">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          style="position: absolute; width: 0; height: 0; overflow: hidden"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <filter id="editor-temp-filter" color-interpolation-filters="sRGB">
+            <feColorMatrix type="matrix" :values="tempFilterMatrix" />
+          </filter>
+        </svg>
         <div
           class="absolute inset-0 bg-black/75 backdrop-blur-sm pointer-events-none"
           aria-hidden="true"

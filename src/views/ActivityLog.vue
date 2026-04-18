@@ -24,6 +24,7 @@
           <option value="navdata">{{ $t('activityLog.typeNavdata') }}</option>
           <option value="livery">{{ $t('activityLog.typeLivery') }}</option>
           <option value="lua_script">{{ $t('activityLog.typeLuaScript') }}</option>
+          <option value="airport_flatten">{{ $t('airportFlatten.navTitle') }}</option>
           <option value="preset">{{ $t('activityLog.typePreset') }}</option>
         </select>
         <!-- Clear -->
@@ -183,6 +184,8 @@ const ACTIVITY_TYPE_KEY_MAP: Record<string, string> = {
   luascript: 'lua_script',
   'lua-script': 'lua_script',
   lua_script: 'lua_script',
+  airportflatten: 'airport_flatten',
+  airport_flatten: 'airport_flatten',
   preset: 'preset',
 }
 
@@ -195,6 +198,9 @@ function normalizeActivityType(type: string): string {
 }
 
 function typeLabel(type: string): string {
+  if (normalizeActivityType(type) === 'airport_flatten') {
+    return t('airportFlatten.navTitle')
+  }
   return t(`activityLog.type_${normalizeActivityType(type)}`, type)
 }
 

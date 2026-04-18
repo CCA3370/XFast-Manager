@@ -216,10 +216,10 @@ impl Installer {
                     password,
                 );
                 if let Err(primary_err) = primary_result {
-                    if Self::is_7z_checksum_error(&primary_err) {
+                    if Self::should_try_external_7z_fallback(&primary_err) {
                         logger::log_error(
                             &format!(
-                                "Built-in 7z extractor hit checksum verification error, trying external 7z fallback: {}",
+                                "Built-in 7z extractor hit error, trying external 7z fallback: {}",
                                 primary_err
                             ),
                             Some("installer"),
@@ -639,12 +639,17 @@ impl Installer {
         Ok(())
     }
 
-    fn is_7z_checksum_error(error: &anyhow::Error) -> bool {
+    fn should_try_external_7z_fallback(error: &anyhow::Error) -> bool {
         let text = format!("{:#}", error).to_ascii_lowercase();
         text.contains("checksumverificationfailed")
             || text.contains("checksum verification failed")
             || text.contains("nextheadercrcmismatch")
             || text.contains("next header crc mismatch")
+            || text.contains("maybebadpassword")
+            || text.contains("invalid lzma2")
+            || text.contains("invalid lzma")
+            || text.contains("badcrc")
+            || text.contains("bad_crc")
     }
 
     fn extract_7z_with_external_fallback(

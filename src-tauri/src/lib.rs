@@ -47,6 +47,8 @@ mod verifier;
 // Management
 #[path = "management/addon_updater.rs"]
 mod addon_updater;
+#[path = "management/airport_flatten.rs"]
+mod airport_flatten;
 #[path = "management/csl_index.rs"]
 mod csl_index;
 #[path = "management/gateway.rs"]
@@ -3633,6 +3635,13 @@ pub fn run() {
             gateway::gateway_install_scenery,
             gateway::gateway_force_install_scenery,
             gateway::gateway_uninstall_airport,
+            airport_flatten::airport_flatten_search_airports,
+            airport_flatten::airport_flatten_get_targets,
+            airport_flatten::airport_flatten_set_state,
+            airport_flatten::airport_flatten_list_overrides,
+            airport_flatten::airport_flatten_clear_override,
+            airport_flatten::airport_flatten_apply_all_drifted,
+            airport_flatten::scenery_get_flatten_target,
             // Scenery manager commands
             get_scenery_manager_data,
             update_scenery_entry,

@@ -218,7 +218,7 @@ impl AtomicInstaller {
             Some("atomic_installer"),
         );
 
-        match fs::rename(&self.target_dir, &backup_dir) {
+        match rename_with_retry(&self.target_dir, &backup_dir) {
             Ok(()) => {
                 // Successfully backed up
                 self.backup_dir = Some(backup_dir.clone());
@@ -233,9 +233,15 @@ impl AtomicInstaller {
                 return self.install_fresh();
             }
             Err(e) => {
+                let hint = if cfg!(target_os = "windows") {
+                    " The folder may be locked by Windows Explorer, antivirus, or another process. \
+                     If X-Plane is installed under Program Files the app may need to run as Administrator."
+                } else {
+                    ""
+                };
                 return Err(e).context(format!(
-                    "Failed to rename target to backup: {:?}",
-                    self.target_dir
+                    "Failed to rename target to backup: {:?}.{}",
+                    self.target_dir, hint
                 ));
             }
         }
@@ -842,6 +848,62 @@ impl Drop for AtomicInstaller {
             }
         }
     }
+}
+
+/// Clear the read-only attribute from a file/directory and all its descendants.
+/// Best-effort: individual failures are logged but do not abort the walk.
+/// Covers the common Windows case where an installer marked files read-only,
+/// preventing `fs::rename`/`fs::remove_*` from succeeding.
+fn clear_readonly_recursive(root: &Path) {
+    let clear_one = |p: &Path| {
+        let meta = match fs::metadata(p) {
+            Ok(m) => m,
+            Err(_) => return,
+        };
+        let mut perms = meta.permissions();
+        if perms.readonly() {
+            perms.set_readonly(false);
+            if let Err(err) = fs::set_permissions(p, perms) {
+                logger::log_info(
+                    &format!("Failed to clear read-only on {:?}: {}", p, err),
+                    Some("atomic_installer"),
+                );
+            }
+        }
+    };
+
+    clear_one(root);
+    if let Ok(meta) = fs::metadata(root) {
+        if meta.is_dir() {
+            for entry in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
+                clear_one(entry.path());
+            }
+        }
+    }
+}
+
+/// Rename with a small retry burst to ride past transient Windows file locks
+/// (antivirus, Explorer preview handlers). Between attempts the read-only bit
+/// is cleared on the source tree in case an installer marked files read-only.
+fn rename_with_retry(src: &Path, dst: &Path) -> std::io::Result<()> {
+    let backoffs = [0u64, 50, 150];
+    let mut last_err: Option<std::io::Error> = None;
+    for (attempt, delay_ms) in backoffs.iter().enumerate() {
+        if *delay_ms > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(*delay_ms));
+        }
+        if attempt > 0 {
+            clear_readonly_recursive(src);
+        }
+        match fs::rename(src, dst) {
+            Ok(()) => return Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Err(err),
+            Err(err) => last_err = Some(err),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::Other, "rename failed without error")
+    }))
 }
 
 /// Atomic move operation (rename on same filesystem)

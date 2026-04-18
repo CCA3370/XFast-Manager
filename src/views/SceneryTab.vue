@@ -8,6 +8,7 @@ import {
   onMounted,
   onBeforeUnmount,
 } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSceneryStore } from '@/stores/scenery'
 import { useToastStore } from '@/stores/toast'
@@ -18,6 +19,7 @@ import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import { useLockStore } from '@/stores/lock'
 import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
+import { airportFlattenSetState } from '@/services/airport-flatten-api'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import type { SceneryManagerEntry, SceneryCategory, SceneryIndexScanResult } from '@/types'
 import { parseApiError, getErrorMessage } from '@/types'
@@ -27,6 +29,7 @@ const SceneryEntryCard = defineAsyncComponent(() => import('@/components/Scenery
 const draggable = defineAsyncComponent(() => import('vuedraggable'))
 
 const { t, locale } = useI18n()
+const router = useRouter()
 
 // Search state (self-contained)
 const searchQuery = ref('')
@@ -74,6 +77,7 @@ const contributingLibName = ref('')
 const contributingLibUrl = ref('')
 const isSubmittingContributeLink = ref(false)
 const isDeletingEntry = ref(false)
+const flattenBusyFolders = ref<Set<string>>(new Set())
 
 // 拖拽自动滚动状态 (非响应式，无需触发渲染)
 let dragAutoScrollRafId: number | null = null
@@ -886,6 +890,55 @@ function handleOpenSceneryUpdate(folderName: string) {
     folderName,
     displayName: folderName,
   })
+}
+
+function handleOpenFlattenPage(entry: SceneryManagerEntry) {
+  if (!entry.airportId) return
+
+  router.push({
+    path: '/airport-flatten',
+    query: { icao: entry.airportId },
+  })
+}
+
+async function handleToggleFlatten(entry: SceneryManagerEntry) {
+  if (!appStore.xplanePath) {
+    modalStore.showError(t('airportFlatten.pathRequiredHint'))
+    return
+  }
+
+  if (!entry.airportId || !entry.flattenAvailable) {
+    handleOpenFlattenPage(entry)
+    return
+  }
+
+  const nextBusy = new Set(flattenBusyFolders.value)
+  nextBusy.add(entry.folderName)
+  flattenBusyFolders.value = nextBusy
+
+  try {
+    const updated = await airportFlattenSetState({
+      xplanePath: appStore.xplanePath,
+      icao: entry.airportId,
+      sourceKind: 'custom',
+      folderName: entry.folderName,
+      enabled: !entry.flattened,
+    })
+
+    sceneryStore.updateFlattenState(entry.folderName, updated.flattened, true)
+    syncLocalEntries()
+    toastStore.success(
+      t(updated.flattened ? 'airportFlatten.enableSuccess' : 'airportFlatten.disableSuccess', {
+        icao: updated.icao,
+      }),
+    )
+  } catch (error) {
+    modalStore.showError(`${t('airportFlatten.toggleFailed')}: ${getErrorMessage(error)}`)
+  } finally {
+    const doneBusy = new Set(flattenBusyFolders.value)
+    doneBusy.delete(entry.folderName)
+    flattenBusyFolders.value = doneBusy
+  }
 }
 
 function handleShowDuplicateTiles(entry: SceneryManagerEntry) {
@@ -2405,7 +2458,10 @@ onBeforeUnmount(() => {
                               :index="getGlobalIndex(element.folderName)"
                               :total-count="sceneryStore.totalCount"
                               :disable-reorder="true"
+                              :flatten-busy="flattenBusyFolders.has(element.folderName)"
                               @toggle-enabled="handleSceneryToggleEnabled"
+                              @toggle-flatten="handleToggleFlatten"
+                              @open-flatten-page="handleOpenFlattenPage"
                               @move-up="handleMoveUp"
                               @move-down="handleMoveDown"
                               @show-missing-libs="handleShowMissingLibs"
@@ -2511,7 +2567,10 @@ onBeforeUnmount(() => {
                       :index="getGlobalIndex(element.folderName)"
                       :total-count="sceneryStore.totalCount"
                       :disable-reorder="true"
+                      :flatten-busy="flattenBusyFolders.has(element.folderName)"
                       @toggle-enabled="handleSceneryToggleEnabled"
+                      @toggle-flatten="handleToggleFlatten"
+                      @open-flatten-page="handleOpenFlattenPage"
                       @move-up="handleMoveUp"
                       @move-down="handleMoveDown"
                       @show-missing-libs="handleShowMissingLibs"
@@ -2634,7 +2693,10 @@ onBeforeUnmount(() => {
                             !sceneryStore.indexExists || category === 'Unrecognized'
                           "
                           :disable-move-down="element.folderName === lastEntryBeforeUnrecognized"
+                          :flatten-busy="flattenBusyFolders.has(element.folderName)"
                           @toggle-enabled="handleSceneryToggleEnabled"
+                          @toggle-flatten="handleToggleFlatten"
+                          @open-flatten-page="handleOpenFlattenPage"
                           @move-up="handleMoveUp"
                           @move-down="handleMoveDown"
                           @show-missing-libs="handleShowMissingLibs"

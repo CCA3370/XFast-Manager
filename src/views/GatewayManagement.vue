@@ -296,7 +296,9 @@
                       {{ $t('gatewayManager.notInCurrentXplane') }}
                     </span>
                   </div>
-                  <div class="min-w-0 text-sm text-gray-800 dark:text-gray-200 font-medium truncate">
+                  <div
+                    class="min-w-0 text-sm text-gray-800 dark:text-gray-200 font-medium truncate"
+                  >
                     {{ selectedAirportName }}
                   </div>
                 </div>
@@ -314,7 +316,10 @@
           </div>
 
           <div class="flex-1 min-h-0 flex flex-col p-4 sm:p-5 bg-gray-100/90 dark:bg-gray-950/40">
-            <div v-if="!store.airportDetail" class="flex-1 min-h-0 flex items-center justify-center">
+            <div
+              v-if="!store.airportDetail"
+              class="flex-1 min-h-0 flex items-center justify-center"
+            >
               <div
                 class="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"
               ></div>
@@ -420,7 +425,9 @@
                       <div
                         class="rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900/70 p-4"
                       >
-                        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                        <div
+                          class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3"
+                        >
                           <div>
                             <div
                               class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-700 dark:text-gray-300"
@@ -514,7 +521,9 @@
                       <div
                         class="rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-900/70 p-4"
                       >
-                        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                        <div
+                          class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3"
+                        >
                           <div class="min-w-0 flex-1">
                             <div
                               class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-700 dark:text-gray-300"
@@ -617,7 +626,8 @@
                             >
                               {{
                                 [
-                                  store.selectedInstalledRecord.latestArtist || $t('common.unknown'),
+                                  store.selectedInstalledRecord.latestArtist ||
+                                    $t('common.unknown'),
                                   store.selectedInstalledRecord.latestApprovedDate
                                     ? formatDate(store.selectedInstalledRecord.latestApprovedDate)
                                     : null,
@@ -755,18 +765,17 @@ const selectedInstalledFolderLabel = computed(
   () => store.selectedInstalledRecord?.folderName || t('gatewayManager.notInstalled'),
 )
 
-const hasInstalledFolderActions = computed(
-  () => Boolean(appStore.xplanePath && store.selectedInstalledRecord?.folderName),
+const hasInstalledFolderActions = computed(() =>
+  Boolean(appStore.xplanePath && store.selectedInstalledRecord?.folderName),
 )
 
-const showReleaseComparisonUnavailable = computed(
-  () =>
-    Boolean(
-      appStore.xplanePath &&
-        !store.isLoadingReleaseContext &&
-        store.releaseContext &&
-        !store.releaseContext.comparisonAvailable,
-    ),
+const showReleaseComparisonUnavailable = computed(() =>
+  Boolean(
+    appStore.xplanePath &&
+    !store.isLoadingReleaseContext &&
+    store.releaseContext &&
+    !store.releaseContext.comparisonAvailable,
+  ),
 )
 
 const currentXplaneReleaseLabel = computed(() => {
@@ -1042,7 +1051,11 @@ async function handleInstall(ignoreExternalConflict = false) {
       showInstallBlockedWarning(externalConflictMessage)
       return
     }
-    if (error instanceof CommandError && error.code === 'conflict_exists' && !ignoreExternalConflict) {
+    if (
+      error instanceof CommandError &&
+      error.code === 'conflict_exists' &&
+      !ignoreExternalConflict
+    ) {
       showInstallBlockedWarning(error.message)
       return
     }

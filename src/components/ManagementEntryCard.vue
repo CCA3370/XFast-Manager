@@ -295,12 +295,14 @@ function handleContextMenu(event: MouseEvent) {
       : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>',
   })
 
-  menuItems.push({
-    id: 'delete',
-    label: t('common.delete'),
-    icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>',
-    danger: true,
-  })
+  if (props.itemType !== 'navdata') {
+    menuItems.push({
+      id: 'delete',
+      label: t('common.delete'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>',
+      danger: true,
+    })
+  }
 
   contextMenu.show(event, menuItems, (id: string) => {
     switch (id) {
@@ -521,6 +523,7 @@ function handleContextMenu(event: MouseEvent) {
 
     <!-- Delete button -->
     <button
+      v-if="itemType !== 'navdata'"
       class="flex-shrink-0 p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
       :title="t('common.delete')"
       @click.stop="showDeleteConfirmModal = true"
