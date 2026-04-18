@@ -332,6 +332,33 @@ export interface SetAirportFlattenRequest {
   enabled: boolean
 }
 
+export type AirportFlattenOverrideStatus = 'inSync' | 'drifted' | 'sourceMissing'
+
+export interface AirportFlattenOverride {
+  icao: string
+  airportName: string
+  sourceKind: AirportFlattenSourceKind
+  sourceLabel: string
+  sourcePath: string
+  folderName?: string
+  desiredFlattened: boolean
+  currentFlattened: boolean | null
+  status: AirportFlattenOverrideStatus
+  updatedAt: number
+}
+
+export interface AirportFlattenApplyFailure {
+  icao: string
+  sourcePath: string
+  error: string
+}
+
+export interface AirportFlattenApplyAllResult {
+  applied: number
+  skipped: number
+  failed: AirportFlattenApplyFailure[]
+}
+
 export interface SceneryPackageInfo {
   folderName: string
   category: SceneryCategory

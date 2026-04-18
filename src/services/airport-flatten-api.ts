@@ -1,5 +1,7 @@
 import { invokeCommand } from '@/services/api'
 import type {
+  AirportFlattenApplyAllResult,
+  AirportFlattenOverride,
   AirportFlattenSearchResult,
   AirportFlattenTarget,
   SetAirportFlattenRequest,
@@ -32,6 +34,34 @@ export async function airportFlattenSetState(
 ): Promise<AirportFlattenTarget> {
   return invokeCommand<AirportFlattenTarget>('airport_flatten_set_state', {
     request,
+  })
+}
+
+export async function airportFlattenListOverrides(
+  xplanePath: string,
+): Promise<AirportFlattenOverride[]> {
+  return invokeCommand<AirportFlattenOverride[]>('airport_flatten_list_overrides', {
+    xplanePath,
+  })
+}
+
+export async function airportFlattenClearOverride(
+  xplanePath: string,
+  icao: string,
+  sourcePath: string,
+): Promise<void> {
+  return invokeCommand<void>('airport_flatten_clear_override', {
+    xplanePath,
+    icao,
+    sourcePath,
+  })
+}
+
+export async function airportFlattenApplyAllDrifted(
+  xplanePath: string,
+): Promise<AirportFlattenApplyAllResult> {
+  return invokeCommand<AirportFlattenApplyAllResult>('airport_flatten_apply_all_drifted', {
+    xplanePath,
   })
 }
 

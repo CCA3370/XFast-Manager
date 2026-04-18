@@ -4,19 +4,24 @@ use std::io;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, RwLock};
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use sea_orm::DatabaseConnection;
+use sea_orm::sea_query::OnConflict;
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
+};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::activity;
 use crate::app_dirs;
 use crate::database::DatabaseState;
+use crate::database::entities::airport_flatten_overrides as override_entity;
 use crate::logger;
 use crate::models::{
-    AirportFlattenSearchResult, AirportFlattenSourceKind, AirportFlattenTarget, SceneryCategory,
-    SceneryPackageInfo, SetAirportFlattenRequest,
+    AirportFlattenApplyAllResult, AirportFlattenApplyFailure, AirportFlattenOverride,
+    AirportFlattenOverrideStatus, AirportFlattenSearchResult, AirportFlattenSourceKind,
+    AirportFlattenTarget, SceneryCategory, SceneryPackageInfo, SetAirportFlattenRequest,
 };
 use crate::scenery_index::SceneryIndexManager;
 
@@ -1156,97 +1161,143 @@ pub async fn airport_flatten_set_state(
     let xplane_root = PathBuf::from(&request.xplane_path);
     crate::validate_xplane_root_path(&xplane_root)?;
 
+    let operation = if request.enabled { "enable" } else { "disable" };
+    let icao_for_log = request.icao.trim().to_uppercase();
+    let conn = db.get();
+
+    let result = apply_flatten_state_inner(&conn, &xplane_root, request).await;
+
+    match &result {
+        Ok(target) => {
+            activity::log_activity(
+                &conn,
+                operation,
+                "airport_flatten",
+                &target.icao,
+                Some(format!(
+                    "sourceKind={:?}; sourceLabel={}; enabled={}",
+                    target.source_kind, target.source_label, target.flattened
+                )),
+                true,
+            )
+            .await;
+        }
+        Err(error) => {
+            activity::log_activity(
+                &conn,
+                operation,
+                "airport_flatten",
+                &icao_for_log,
+                Some(error.clone()),
+                false,
+            )
+            .await;
+        }
+    }
+
+    result
+}
+
+async fn apply_flatten_state_inner(
+    db: &DatabaseConnection,
+    xplane_root: &Path,
+    request: SetAirportFlattenRequest,
+) -> Result<AirportFlattenTarget, String> {
     let normalized_icao = request.icao.trim().to_uppercase();
     if normalized_icao.is_empty() {
         return Err("ICAO is required".to_string());
     }
 
-    let operation = if request.enabled { "enable" } else { "disable" };
-    let cache_key = airport_flatten_cache_key(&xplane_root);
+    let cache_key = airport_flatten_cache_key(xplane_root);
     let maybe_index = if request.source_path.is_some() {
         None
     } else {
-        Some(get_or_build_airport_flatten_index(db.get(), &xplane_root).await?)
+        Some(get_or_build_airport_flatten_index(db.clone(), xplane_root).await?)
     };
 
-    let result = (|| -> Result<AirportFlattenTarget, String> {
-        let source_ref = if let Some(source_path) = request.source_path.clone() {
-            AIRPORT_FLATTEN_INDEX_CACHE
-                .read()
-                .ok()
-                .and_then(|cache| cache.get(&cache_key).cloned())
-                .and_then(|index| {
-                    index.sources_by_icao.get(&normalized_icao).and_then(|refs| {
-                        refs.iter().find(|source| source.source_path == source_path).cloned()
-                    })
+    let source_ref = if let Some(source_path) = request.source_path.clone() {
+        let cached_ref = AIRPORT_FLATTEN_INDEX_CACHE
+            .read()
+            .ok()
+            .and_then(|cache| cache.get(&cache_key).cloned())
+            .and_then(|index| {
+                index.sources_by_icao.get(&normalized_icao).and_then(|refs| {
+                    refs.iter()
+                        .find(|source| source.source_path == source_path)
+                        .cloned()
                 })
-                .unwrap_or(FlattenSourceRef {
-                    icao: normalized_icao.clone(),
-                    source_kind: request.source_kind.clone(),
-                    source_label: match request.source_kind {
-                        AirportFlattenSourceKind::Default => "Global Airports".to_string(),
-                        AirportFlattenSourceKind::Custom => request
-                            .folder_name
-                            .clone()
-                            .ok_or_else(|| {
-                                "folderName is required for custom scenery flattening".to_string()
-                            })?,
-                    },
-                    source_path,
-                    folder_name: request.folder_name.clone(),
-                    airport_name: normalized_icao.clone(),
-                    flattened: request.enabled,
+            });
+
+        match cached_ref {
+            Some(value) => value,
+            None => FlattenSourceRef {
+                icao: normalized_icao.clone(),
+                source_kind: request.source_kind.clone(),
+                source_label: match request.source_kind {
+                    AirportFlattenSourceKind::Default => "Global Airports".to_string(),
+                    AirportFlattenSourceKind::Custom => request.folder_name.clone().ok_or_else(
+                        || "folderName is required for custom scenery flattening".to_string(),
+                    )?,
+                },
+                source_path,
+                folder_name: request.folder_name.clone(),
+                airport_name: normalized_icao.clone(),
+                flattened: request.enabled,
+            },
+        }
+    } else {
+        let index = maybe_index
+            .as_ref()
+            .ok_or_else(|| "Airport flatten index is unavailable".to_string())?;
+        match request.source_kind {
+            AirportFlattenSourceKind::Default => index
+                .sources_by_icao
+                .get(&normalized_icao)
+                .and_then(|refs| {
+                    refs.iter()
+                        .find(|source| source.source_kind == AirportFlattenSourceKind::Default)
                 })
-        } else {
-            let index = maybe_index
-                .as_ref()
-                .ok_or_else(|| "Airport flatten index is unavailable".to_string())?;
-            match request.source_kind {
-                AirportFlattenSourceKind::Default => index
-                    .sources_by_icao
-                    .get(&normalized_icao)
-                    .and_then(|refs| {
-                        refs.iter()
-                            .find(|source| source.source_kind == AirportFlattenSourceKind::Default)
-                    })
-                    .cloned()
+                .cloned()
+                .ok_or_else(|| {
+                    format!("Default airport source not found for {}", normalized_icao)
+                })?,
+            AirportFlattenSourceKind::Custom => {
+                let folder_name = request
+                    .folder_name
+                    .clone()
                     .ok_or_else(|| {
-                        format!("Default airport source not found for {}", normalized_icao)
-                    })?,
-                AirportFlattenSourceKind::Custom => {
-                    let folder_name = request.folder_name.clone().ok_or_else(|| {
                         "folderName is required for custom scenery flattening".to_string()
                     })?;
-                    index
-                        .single_custom_sources_by_folder
-                        .get(&folder_name)
-                        .cloned()
-                        .ok_or_else(|| {
-                            format!("Custom airport source not found for {}", folder_name)
-                        })?
-                }
+                index
+                    .single_custom_sources_by_folder
+                    .get(&folder_name)
+                    .cloned()
+                    .ok_or_else(|| {
+                        format!("Custom airport source not found for {}", folder_name)
+                    })?
             }
-        };
-        let apt_path = PathBuf::from(&source_ref.source_path);
-        crate::path_utils::validate_child_path(&xplane_root, &apt_path)
-            .map_err(|error| format!("Invalid airport source path: {}", error))?;
-
-        if !apt_path.is_file() {
-            return Err(format!("apt.dat not found: {}", apt_path.display()));
         }
+    };
 
-        if source_ref.flattened == request.enabled {
-            return Ok(AirportFlattenTarget {
-                icao: normalized_icao.clone(),
-                airport_name: source_ref.airport_name,
-                source_kind: source_ref.source_kind,
-                source_label: source_ref.source_label,
-                source_path: source_ref.source_path,
-                folder_name: source_ref.folder_name,
-                flattened: request.enabled,
-            });
+    let apt_path = PathBuf::from(&source_ref.source_path);
+    crate::path_utils::validate_child_path(xplane_root, &apt_path)
+        .map_err(|error| format!("Invalid airport source path: {}", error))?;
+
+    if !apt_path.is_file() {
+        return Err(format!("apt.dat not found: {}", apt_path.display()));
+    }
+
+    let target = if source_ref.flattened == request.enabled {
+        AirportFlattenTarget {
+            icao: normalized_icao.clone(),
+            airport_name: source_ref.airport_name.clone(),
+            source_kind: source_ref.source_kind.clone(),
+            source_label: source_ref.source_label.clone(),
+            source_path: source_ref.source_path.clone(),
+            folder_name: source_ref.folder_name.clone(),
+            flattened: request.enabled,
         }
-
+    } else {
         let cached_airport = AIRPORT_FLATTEN_INDEX_CACHE
             .read()
             .ok()
@@ -1269,7 +1320,7 @@ pub async fn airport_flatten_set_state(
         };
         update_cached_parsed_apt_state(&apt_path, &normalized_icao, request.enabled);
         update_cached_flatten_state(
-            &xplane_root,
+            xplane_root,
             &normalized_icao,
             &source_ref.source_path,
             request.enabled,
@@ -1277,46 +1328,309 @@ pub async fn airport_flatten_set_state(
             block_delta,
         );
 
-        Ok(AirportFlattenTarget {
+        AirportFlattenTarget {
             icao: normalized_icao.clone(),
             airport_name,
-            source_kind: source_ref.source_kind,
-            source_label: source_ref.source_label,
-            source_path: source_ref.source_path,
-            folder_name: source_ref.folder_name,
+            source_kind: source_ref.source_kind.clone(),
+            source_label: source_ref.source_label.clone(),
+            source_path: source_ref.source_path.clone(),
+            folder_name: source_ref.folder_name.clone(),
             flattened: request.enabled,
-        })
-    })();
-
-    match &result {
-        Ok(target) => {
-            activity::log_activity(
-                &db.get(),
-                operation,
-                "airport_flatten",
-                &target.icao,
-                Some(format!(
-                    "sourceKind={:?}; sourceLabel={}; enabled={}",
-                    target.source_kind, target.source_label, target.flattened
-                )),
-                true,
-            )
-            .await;
         }
-        Err(error) => {
-            activity::log_activity(
-                &db.get(),
-                operation,
-                "airport_flatten",
-                &normalized_icao,
-                Some(error.clone()),
-                false,
-            )
-            .await;
+    };
+
+    if let Err(error) = upsert_override(db, xplane_root, &target).await {
+        logger::log_info(
+            &format!("Failed to persist airport flatten override: {}", error),
+            Some("airport_flatten"),
+        );
+    }
+
+    Ok(target)
+}
+
+fn source_kind_to_db_str(kind: &AirportFlattenSourceKind) -> &'static str {
+    match kind {
+        AirportFlattenSourceKind::Default => "default",
+        AirportFlattenSourceKind::Custom => "custom",
+    }
+}
+
+fn source_kind_from_db_str(value: &str) -> AirportFlattenSourceKind {
+    if value.eq_ignore_ascii_case("default") {
+        AirportFlattenSourceKind::Default
+    } else {
+        AirportFlattenSourceKind::Custom
+    }
+}
+
+async fn upsert_override(
+    db: &DatabaseConnection,
+    xplane_root: &Path,
+    target: &AirportFlattenTarget,
+) -> Result<(), sea_orm::DbErr> {
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0);
+
+    let active = override_entity::ActiveModel {
+        xplane_path: Set(normalize_xplane_root_key(xplane_root)),
+        icao: Set(target.icao.clone()),
+        source_path: Set(target.source_path.clone()),
+        source_kind: Set(source_kind_to_db_str(&target.source_kind).to_string()),
+        source_label: Set(target.source_label.clone()),
+        folder_name: Set(target.folder_name.clone()),
+        airport_name: Set(target.airport_name.clone()),
+        desired_flattened: Set(target.flattened),
+        updated_at: Set(now_ms),
+        ..Default::default()
+    };
+
+    override_entity::Entity::insert(active)
+        .on_conflict(
+            OnConflict::columns([
+                override_entity::Column::XplanePath,
+                override_entity::Column::SourcePath,
+                override_entity::Column::Icao,
+            ])
+            .update_columns([
+                override_entity::Column::SourceKind,
+                override_entity::Column::SourceLabel,
+                override_entity::Column::FolderName,
+                override_entity::Column::AirportName,
+                override_entity::Column::DesiredFlattened,
+                override_entity::Column::UpdatedAt,
+            ])
+            .to_owned(),
+        )
+        .exec(db)
+        .await?;
+
+    Ok(())
+}
+
+fn classify_override_status(
+    current: Option<bool>,
+    desired: bool,
+) -> AirportFlattenOverrideStatus {
+    match current {
+        None => AirportFlattenOverrideStatus::SourceMissing,
+        Some(value) if value == desired => AirportFlattenOverrideStatus::InSync,
+        Some(_) => AirportFlattenOverrideStatus::Drifted,
+    }
+}
+
+fn status_priority(status: AirportFlattenOverrideStatus) -> u8 {
+    match status {
+        AirportFlattenOverrideStatus::Drifted => 0,
+        AirportFlattenOverrideStatus::SourceMissing => 1,
+        AirportFlattenOverrideStatus::InSync => 2,
+    }
+}
+
+fn current_flattened_for(
+    index: &AirportFlattenIndex,
+    source_path: &str,
+    icao: &str,
+) -> Option<bool> {
+    index
+        .source_files
+        .get(source_path)
+        .and_then(|source_file| {
+            source_file
+                .airports
+                .iter()
+                .find(|airport| airport.icao.eq_ignore_ascii_case(icao))
+        })
+        .map(|airport| airport.flattened)
+}
+
+#[tauri::command]
+pub async fn airport_flatten_list_overrides(
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+) -> Result<Vec<AirportFlattenOverride>, String> {
+    let xplane_root = PathBuf::from(&xplane_path);
+    crate::validate_xplane_root_path(&xplane_root)?;
+
+    let conn = db.get();
+    let xplane_key = normalize_xplane_root_key(&xplane_root);
+
+    let rows = override_entity::Entity::find()
+        .filter(override_entity::Column::XplanePath.eq(xplane_key))
+        .all(&conn)
+        .await
+        .map_err(|error| format!("Failed to load airport flatten overrides: {}", error))?;
+
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let index = get_or_build_airport_flatten_index(conn, &xplane_root).await?;
+
+    let mut results: Vec<AirportFlattenOverride> = rows
+        .into_iter()
+        .map(|row| {
+            let current_flattened =
+                current_flattened_for(&index, &row.source_path, &row.icao);
+            let status = classify_override_status(current_flattened, row.desired_flattened);
+            let source_kind = source_kind_from_db_str(&row.source_kind);
+            AirportFlattenOverride {
+                icao: row.icao,
+                airport_name: row.airport_name,
+                source_kind,
+                source_label: row.source_label,
+                source_path: row.source_path,
+                folder_name: row.folder_name,
+                desired_flattened: row.desired_flattened,
+                current_flattened,
+                status,
+                updated_at: row.updated_at,
+            }
+        })
+        .collect();
+
+    results.sort_by(|left, right| {
+        status_priority(left.status)
+            .cmp(&status_priority(right.status))
+            .then_with(|| left.icao.cmp(&right.icao))
+    });
+
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn airport_flatten_clear_override(
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+    icao: String,
+    source_path: String,
+) -> Result<(), String> {
+    let xplane_root = PathBuf::from(&xplane_path);
+    crate::validate_xplane_root_path(&xplane_root)?;
+
+    let normalized_icao = icao.trim().to_uppercase();
+    if normalized_icao.is_empty() {
+        return Err("ICAO is required".to_string());
+    }
+
+    let conn = db.get();
+    let xplane_key = normalize_xplane_root_key(&xplane_root);
+
+    override_entity::Entity::delete_many()
+        .filter(override_entity::Column::XplanePath.eq(xplane_key))
+        .filter(override_entity::Column::Icao.eq(normalized_icao))
+        .filter(override_entity::Column::SourcePath.eq(source_path))
+        .exec(&conn)
+        .await
+        .map_err(|error| format!("Failed to delete airport flatten override: {}", error))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn airport_flatten_apply_all_drifted(
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+) -> Result<AirportFlattenApplyAllResult, String> {
+    let xplane_root = PathBuf::from(&xplane_path);
+    crate::validate_xplane_root_path(&xplane_root)?;
+
+    let conn = db.get();
+    let xplane_key = normalize_xplane_root_key(&xplane_root);
+
+    let rows = override_entity::Entity::find()
+        .filter(override_entity::Column::XplanePath.eq(xplane_key))
+        .all(&conn)
+        .await
+        .map_err(|error| format!("Failed to load airport flatten overrides: {}", error))?;
+
+    let mut applied = 0usize;
+    let mut skipped = 0usize;
+    let mut failed: Vec<AirportFlattenApplyFailure> = Vec::new();
+
+    if rows.is_empty() {
+        return Ok(AirportFlattenApplyAllResult {
+            applied,
+            skipped,
+            failed,
+        });
+    }
+
+    let index = get_or_build_airport_flatten_index(conn.clone(), &xplane_root).await?;
+
+    for row in rows {
+        let current = current_flattened_for(&index, &row.source_path, &row.icao);
+
+        let current_flattened = match current {
+            Some(value) => value,
+            None => {
+                skipped += 1;
+                continue;
+            }
+        };
+
+        if current_flattened == row.desired_flattened {
+            continue;
+        }
+
+        let source_kind = source_kind_from_db_str(&row.source_kind);
+        let request = SetAirportFlattenRequest {
+            xplane_path: xplane_path.clone(),
+            icao: row.icao.clone(),
+            source_kind,
+            folder_name: row.folder_name.clone(),
+            source_path: Some(row.source_path.clone()),
+            enabled: row.desired_flattened,
+        };
+
+        let operation = if row.desired_flattened {
+            "enable"
+        } else {
+            "disable"
+        };
+
+        match apply_flatten_state_inner(&conn, &xplane_root, request).await {
+            Ok(target) => {
+                applied += 1;
+                activity::log_activity(
+                    &conn,
+                    operation,
+                    "airport_flatten",
+                    &target.icao,
+                    Some(format!(
+                        "applyAll; sourceLabel={}; enabled={}",
+                        target.source_label, target.flattened
+                    )),
+                    true,
+                )
+                .await;
+            }
+            Err(error) => {
+                activity::log_activity(
+                    &conn,
+                    operation,
+                    "airport_flatten",
+                    &row.icao,
+                    Some(format!("applyAll: {}", error)),
+                    false,
+                )
+                .await;
+                failed.push(AirportFlattenApplyFailure {
+                    icao: row.icao.clone(),
+                    source_path: row.source_path.clone(),
+                    error,
+                });
+            }
         }
     }
 
-    result
+    Ok(AirportFlattenApplyAllResult {
+        applied,
+        skipped,
+        failed,
+    })
 }
 
 #[cfg(test)]

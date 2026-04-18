@@ -4,6 +4,7 @@ mod m20260220_000001_init;
 mod m20260306_000002_activity_log;
 mod m20260306_000003_presets;
 mod m20260329_000004_gateway_installs;
+mod m20260418_000005_airport_flatten_overrides;
 
 pub struct Migrator;
 
@@ -15,6 +16,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260306_000002_activity_log::Migration),
             Box::new(m20260306_000003_presets::Migration),
             Box::new(m20260329_000004_gateway_installs::Migration),
+            Box::new(m20260418_000005_airport_flatten_overrides::Migration),
         ]
     }
 }

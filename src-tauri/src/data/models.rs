@@ -454,6 +454,47 @@ pub struct SetAirportFlattenRequest {
     pub enabled: bool,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum AirportFlattenOverrideStatus {
+    InSync,
+    Drifted,
+    SourceMissing,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AirportFlattenOverride {
+    pub icao: String,
+    pub airport_name: String,
+    pub source_kind: AirportFlattenSourceKind,
+    pub source_label: String,
+    pub source_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder_name: Option<String>,
+    pub desired_flattened: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_flattened: Option<bool>,
+    pub status: AirportFlattenOverrideStatus,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AirportFlattenApplyFailure {
+    pub icao: String,
+    pub source_path: String,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AirportFlattenApplyAllResult {
+    pub applied: usize,
+    pub skipped: usize,
+    pub failed: Vec<AirportFlattenApplyFailure>,
+}
+
 pub const GLOBAL_AIRPORTS_ENTRY_NAME: &str = "*GLOBAL_AIRPORTS*";
 
 pub fn is_global_airports_folder_name(folder_name: &str) -> bool {
