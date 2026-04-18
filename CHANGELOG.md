@@ -5,58 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.0-beta.2] - 2026-04-11
+## [1.2.0] - 2026-04-18
 
 ### Added
 
-- **Per-Item Beta Channel in Addon Update** - Aircraft and plugin update items can now enable beta checks individually instead of relying on a single global beta toggle.
-- **Gateway vs Current X-Plane Comparison** - Gateway Management now shows whether an airport/scenery is already in your current X-Plane release, including `XP` tags and `Not in current X-Plane` indicators.
+- **CSL and ALTITUDE Model Management** - Dedicated page to scan, search, install, update, and uninstall multiplayer model packages, with custom path support and queued/cancellable installs.
+- - **Gateway Airport Management** - New Gateway browser to search airports, inspect submission history and details, view Gateway feature tags and installed-folder state, install official Gateway sceneries, uninstall installed Gateway airports, and check for updates. Each result now shows whether it's already in your current X-Plane release (with `XP` tags or `Not in current X-Plane` indicators) and surfaces the matched baseline scenery details (version/artist/date) when available. Conflicting non-Gateway airports are flagged with an ignore-and-continue option.
+- - **Built-in Zibo Updater** - Version-aware Zibo update support with torrent downloads, manual download fallback for major-version packages, and preserve options for liveries and config files during major updates.
+- **Airport Flatten Manager** - New page to search airports by ICAO or name and toggle their flatten setting on each scenery source. Every change is remembered, and a one-click action can re-apply all saved settings whenever the underlying scenery files no longer match.
+- **Configuration Presets** - Save and apply preset workflows for aircraft, plugins, scenery, Lua scripts, and lock states, with full import/export support.
+- **Activity Log** - New history page covering installs, updates, deletions, enable/disable actions, scenery sorting, and preset applies.
+- **Disk Space Analysis** - New disk usage page that scans X-Plane content by category and drills down to per-folder size details.
+- **Per-Variant ACF Management** - Aircraft entries with multiple top-level ACF/XFMA files now expose a dedicated management dialog so each variant can be enabled or disabled independently from the right-click menu.
+- **Screenshot Background Management** - Screenshots can now be set or unset as X-Plane background images directly from Screenshot Manager.
+- **Per-Item Beta Channel in Addon Update** - Aircraft and plugin update items can now opt into beta checks individually instead of relying on a single global beta toggle.
+- **Nine New Interface Languages** - Added Arabic, German, Spanish, French, Hindi, Japanese, Korean, Portuguese, and Russian UI translations.
 - **Arch Linux Native Release Package** - Releases now include a native Arch Linux `tar.gz` package, with updated Linux download and install guidance in the README.
 
 ### Changed
 
-- **Gateway Details Context** - Gateway airport details now surface the matched X-Plane baseline scenery (version/artist/date) when release comparison data is available.
-- **CSL/ALTITUDE Page Refresh Flow** - Entering the CSL page now syncs links first and only triggers rescans when needed (or when forcing refresh), reducing unnecessary repeated full scans.
-- **Update Check Behavior** - App update checks are no longer skipped by an internal cache-expiry gate, so checks run immediately when requested.
-
-### Fixed
-
-- **Scenery Misclassification for SAM Libraries** - Libraries with nested demo airport content are now less likely to be misclassified as airports.
-- **Root Navdata Deletion Safety** - Deleting root navdata now removes only root navdata files while preserving backups, user custom files, and nested provider navdata folders.
-- **CSL Link Target Creation** - CSL link sync can now create missing plugin CSL target directories (for example under xPilot resources) when parent paths exist.
-- **Log Text Consistency** - Activity/app log entries were standardized to avoid locale-related garbled text in runtime logs.
-
-## [1.2.0-beta.1] - 2026-04-05
-
-### Added
-
-- **Per-Variant ACF Management** - Aircraft entries with multiple top-level ACF/XFMA files now expose a dedicated management dialog so each variant can be enabled or disabled independently from the right-click menu.
-- **Configuration Presets** - Added preset save/apply workflow with import/export support for aircraft, plugins, scenery, Lua scripts, and lock states.
-- **Activity Log** - Added a dedicated history page for installs, updates, deletions, enable/disable actions, scenery sorting, and preset applies.
-- **Disk Space Analysis** - Added a disk usage page that scans X-Plane content by category and drills down to per-folder size details.
-- **CSL and ALTITUDE Model Management** - Added a dedicated page to scan, search, install, update, and uninstall multiplayer model packages, with custom path support and queued/cancellable installs.
-- **Gateway Airport Management** - Added a dedicated Gateway browser to search airports, inspect submission history and details, display Gateway feature tags and installed-folder state, warn about conflicting non-Gateway airports with an ignore-and-continue option, install official Gateway sceneries, uninstall installed Gateway airports, and check for Gateway airport updates.
-- **Built-in Zibo Updater** - Added version-aware Zibo update support with torrent downloads, manual download fallback for major-version packages, and preserve options for liveries/config files during major updates.
-- **Screenshot Background Management** - Screenshots can now be set or unset as X-Plane background images directly from Screenshot Manager.
-- **More Interface Languages** - Added Arabic, German, Spanish, French, Hindi, Japanese, Korean, Portuguese, and Russian UI translations.
-
-### Changed
-
-- **Navigation and Quick Access** - Refreshed the top navigation and home/dashboard layout, and added a command palette plus keyboard shortcuts for faster page switching.
-- **Addon Update Planning** - Update tasks now show clearer plan details, including file-level add/replace/delete previews and more transparent download information.
-- **Addon Update Task Safety** - Install/update option controls are now disabled while addon updates are running to prevent conflicting changes mid-task.
+- **Navigation and Quick Access** - Refreshed the top navigation and home/dashboard layout, with a new command palette and keyboard shortcuts for faster page switching.
+- **Addon Update Workflow** - Update tasks now show clearer plan details, including file-level add/replace/delete previews and more transparent download information. Install/update option controls are also disabled while addon updates are running to prevent conflicting changes mid-task.
+- **Screenshot Editor Slider Preview** - Drag previews now update accurately in real time and match the final saved result. Releasing a slider no longer flashes the original image, and the color temperature slider previews a true warm/cool shift instead of a magenta/green tint.
+- **Screenshot Editor Slider Feel** - Exposure, saturation, and denoise respond more gently across their range so subtle tweaks no longer overshoot.
 - **Scenery Manager Airport Entries** - Scenery Manager now shows `*GLOBAL_AIRPORTS*` as a real indexed entry and keeps `DarkBlue-` airport mesh/overlay packages directly below their corresponding airport packages.
-- **Nested Archive Performance** - Analysis and installation verification are faster for large wrapped addon packages, especially ZIP files that contain a 7z aircraft archive.
-- **Nested Archive Version Display** - When direct version-file reading is skipped for a nested package, the task list can now fall back to the nested archive filename to show a version label more often.
+- **Nested Archive Handling** - Analysis and installation verification are faster for large wrapped addon packages, especially ZIP files that contain a 7z aircraft archive. The task list can also fall back to the nested archive filename to show a version label when direct version-file reading is skipped.
+- **Update Check Behavior** - App update checks are no longer skipped by an internal cache-expiry gate, so checks run immediately when requested.
+- **Install / Extract Reliability** - Clearer error messages during addon extraction and installation, and missing target folders are now created automatically instead of causing silent failures.
 - **Stable Feature Defaults** - Parallel Installation, Multi-Threaded Download, and DMP Crash Analysis are now enabled by default and no longer labeled as experimental in Settings.
+- **Bundled Library Links** - Added new community-contributed entries to the bundled library link list.
+- **Localized Strings** - Refreshed wording across the bundled UI languages for consistency.
 
 ### Fixed
 
 - **Pre-release Update Downloads** - In-app update downloads now correctly follow the pre-release setting when checking and installing new versions.
 - **Addon Update Cleanup Rules** - Blacklist-based deletions are handled more completely during addon updates, reducing leftover obsolete files.
-- **Nested Archive Installation** - Fixed some nested archive installs producing an empty target folder instead of the actual addon content.
+- **Nested Archive Installation** - Some nested archive installs no longer produce an empty target folder instead of the actual addon content.
 - **Windows Archive Filename Compatibility** - Archive entries with Windows-invalid filenames are now sanitized during install instead of failing.
 - **Incomplete Aircraft Package Scanning** - Archives missing an expected `Aircraft` folder no longer abort addon analysis as a fatal error.
+- **Scenery Misclassification for SAM Libraries** - Libraries with nested demo airport content are less likely to be misclassified as airports.
+- **Navdata Deletion Safety** - Deleting root navdata now removes only root navdata files while preserving backups, user custom files, and nested provider navdata folders. The right-click delete option is also hidden for navdata items in the management list to prevent accidental removal.
+- **Log Text Consistency** - Activity and app log entries were standardized to avoid locale-related garbled text in runtime logs.
 
 ## [1.1.2] - 2026-03-06
 
