@@ -361,6 +361,7 @@ impl Installer {
         bundle_entries: &[PathBuf],
         should_overwrite: bool,
     ) -> Result<()> {
+        let mut copied = 0usize;
         for entry in bundle_entries {
             let source_path = staging_dir.join(entry);
             if !source_path.exists() {
@@ -409,6 +410,13 @@ impl Installer {
 
                 let _ = remove_readonly_attribute(&target_path);
             }
+            copied += 1;
+        }
+
+        if copied == 0 {
+            anyhow::bail!(
+                "No Lua bundle entries were found in the extracted archive. This usually means the archive was mis-classified as a FlyWithLua script bundle."
+            );
         }
 
         Ok(())

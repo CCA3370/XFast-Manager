@@ -709,6 +709,11 @@ impl Analyzer {
     fn get_effective_path(&self, item: &DetectedItem) -> PathBuf {
         if let Some(ref internal_root) = item.archive_internal_root {
             PathBuf::from(internal_root)
+        } else if let Some(ref chain) = item.extraction_chain {
+            if let Some(first) = chain.archives.first() {
+                return PathBuf::from(&first.internal_path);
+            }
+            PathBuf::from(&item.path)
         } else {
             PathBuf::from(&item.path)
         }
@@ -1372,6 +1377,7 @@ impl Analyzer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{ExtractionChain, NestedArchiveInfo};
     use tempfile::tempdir;
 
     // Helper function to create DetectedItem for tests
@@ -1452,6 +1458,49 @@ mod tests {
             flywithlua_installed: true,
             companion_paths: Vec::new(),
         }
+    }
+
+    #[test]
+    fn test_get_effective_path_prefers_archive_internal_root() {
+        let analyzer = Analyzer::new();
+        let item = create_detected_item(
+            AddonType::Aircraft,
+            "/tmp/outer.rar",
+            "ToLissA339",
+            Some("ToLissA339_V1p1p0".to_string()),
+        );
+        assert_eq!(
+            analyzer.get_effective_path(&item),
+            PathBuf::from("ToLissA339_V1p1p0")
+        );
+    }
+
+    #[test]
+    fn test_get_effective_path_uses_first_nested_archive_when_internal_root_cleared() {
+        let analyzer = Analyzer::new();
+        let mut item = create_detected_item(
+            AddonType::LuaScript,
+            "/tmp/outer.rar",
+            "modules",
+            None,
+        );
+        item.extraction_chain = Some(ExtractionChain {
+            archives: vec![NestedArchiveInfo {
+                internal_path:
+                    "ToLissA339_V1p1p0/plugins/MangoStudios A330/data/modules.zip"
+                        .to_string(),
+                password: None,
+                format: "zip".to_string(),
+            }],
+            final_internal_root: None,
+        });
+
+        let effective = analyzer.get_effective_path(&item);
+        assert!(
+            effective.starts_with("ToLissA339_V1p1p0"),
+            "nested Lua item must resolve to its nested-archive location so the \
+             containment filter can drop it when it lives inside an aircraft tree"
+        );
     }
 
     #[test]

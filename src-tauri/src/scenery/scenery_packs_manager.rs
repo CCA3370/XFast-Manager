@@ -327,6 +327,9 @@ impl SceneryPacksManager {
             content.extend_from_slice(format!("{} {}\n", prefix, path).as_bytes());
         }
 
+        // Clear anything that might block the write (read-only bit, macOS uchg flag)
+        prepare_path_for_write(ini_path);
+
         // Strategy 1: atomic write via temp file + rename (preferred)
         let temp_path = ini_path.with_extension("ini.tmp");
         let atomic_result = (|| -> std::io::Result<()> {
@@ -346,9 +349,13 @@ impl SceneryPacksManager {
 
         // Strategy 2: direct overwrite (works when rename is blocked but file itself is writable,
         // e.g. macOS directory permission edge cases or X-Plane holding a rename lock)
+        prepare_path_for_write(ini_path);
         if let Err(direct_err) = fs::write(ini_path, &content) {
             let hint = if cfg!(target_os = "macos") {
-                " If X-Plane is running, close it and try again. Otherwise check permissions: right-click Custom Scenery > Get Info > Sharing & Permissions."
+                " If X-Plane is running, close it and try again. Otherwise: the file may be flagged \
+                 immutable (run `chflags nouchg <path>` in Terminal), the app may need Full Disk Access \
+                 (System Settings → Privacy & Security → Full Disk Access), or check Custom Scenery > \
+                 Get Info > Sharing & Permissions."
             } else {
                 " Make sure X-Plane is not running, and that the Custom Scenery folder is writable."
             };
@@ -400,6 +407,7 @@ impl SceneryPacksManager {
         let backup_name = format!("scenery_packs.ini.backup.{}", timestamp);
         let backup_path = parent_dir.join(&backup_name);
 
+        prepare_path_for_write(ini_path);
         fs::rename(ini_path, &backup_path)?;
         logger::log_info(
             &format!("Created backup: {:?}", backup_path),
@@ -641,6 +649,37 @@ impl SceneryPacksManager {
         }
 
         Ok(true)
+    }
+}
+
+/// Best-effort clearing of attributes that commonly block writes to `scenery_packs.ini`.
+/// All failures are silently ignored — this is a pre-write sweetener, not a hard requirement.
+///
+/// Covers:
+/// - The POSIX/Windows read-only bit.
+/// - On macOS, the user-immutable flag (`UF_IMMUTABLE`) set via `chflags uchg`, which causes
+///   EPERM (os error 1) on rename/write even when the file is otherwise owner-writable.
+fn prepare_path_for_write(path: &Path) {
+    let Ok(metadata) = fs::metadata(path) else {
+        return;
+    };
+    let mut perms = metadata.permissions();
+    if perms.readonly() {
+        perms.set_readonly(false);
+        let _ = fs::set_permissions(path, perms);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        if let Ok(c_path) = CString::new(path.as_os_str().as_bytes()) {
+            // SAFETY: c_path lives for the duration of the call. flags=0 clears all BSD flags;
+            // EPERM on failure is expected when the caller doesn't own the file and is ignored.
+            unsafe {
+                libc::chflags(c_path.as_ptr(), 0);
+            }
+        }
     }
 }
 
