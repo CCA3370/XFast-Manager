@@ -20,10 +20,12 @@ const props = withDefaults(
     totalCount: number
     disableReorder?: boolean
     disableMoveDown?: boolean
+    flattenBusy?: boolean
   }>(),
   {
     disableReorder: false,
     disableMoveDown: false,
+    flattenBusy: false,
   },
 )
 
@@ -35,6 +37,8 @@ const emit = defineEmits<{
   (e: 'show-duplicate-tiles', entry: SceneryManagerEntry): void
   (e: 'show-delete-confirm', entry: SceneryManagerEntry): void
   (e: 'update', folderName: string): void
+  (e: 'toggle-flatten', entry: SceneryManagerEntry): void
+  (e: 'open-flatten-page', entry: SceneryManagerEntry): void
 }>()
 
 const { t } = useI18n()
@@ -141,6 +145,12 @@ const duplicatesCount = computed(() => {
 const isGlobalAirportsEntry = computed(() => props.entry.folderName === GLOBAL_AIRPORTS_ENTRY_NAME)
 const isFirst = computed(() => props.index === 0)
 const isLast = computed(() => props.index === props.totalCount - 1)
+const canToggleFlatten = computed(
+  () => props.entry.flattenAvailable && !!props.entry.airportId && !isGlobalAirportsEntry.value,
+)
+const canOpenFlattenPage = computed(
+  () => !!props.entry.airportId && !isGlobalAirportsEntry.value && !canToggleFlatten.value,
+)
 
 // Lock state
 const isItemLocked = computed(() => lockStore.isLocked('scenery', props.entry.folderName))
@@ -216,6 +226,23 @@ function handleContextMenu(event: MouseEvent) {
     })
   }
 
+  if (canToggleFlatten.value) {
+    menuItems.push({
+      id: 'toggle-flatten',
+      label: props.entry.flattened ? t('airportFlatten.disable') : t('airportFlatten.enable'),
+      icon: props.entry.flattened
+        ? '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M7 7h10M7 17h10"/></svg>'
+        : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5v14"/></svg>',
+      disabled: props.flattenBusy,
+    })
+  } else if (canOpenFlattenPage.value) {
+    menuItems.push({
+      id: 'open-flatten-page',
+      label: t('airportFlatten.openPage'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M13 5l7 7-7 7"/></svg>',
+    })
+  }
+
   if (!props.disableReorder) {
     menuItems.push({
       id: 'move-up',
@@ -279,6 +306,12 @@ function handleContextMenu(event: MouseEvent) {
         break
       case 'update':
         emit('update', props.entry.folderName)
+        break
+      case 'toggle-flatten':
+        emit('toggle-flatten', props.entry)
+        break
+      case 'open-flatten-page':
+        emit('open-flatten-page', props.entry)
         break
       case 'move-up':
         emit('move-up', props.entry.folderName)
@@ -407,6 +440,23 @@ function handleContextMenu(event: MouseEvent) {
     >
       {{ entry.continent }}
     </span>
+
+    <button
+      v-if="canToggleFlatten"
+      class="flex-shrink-0 inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-semibold text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+      :class="entry.flattened ? 'bg-rose-500 hover:bg-rose-600' : 'bg-sky-600 hover:bg-sky-700'"
+      :title="entry.flattened ? t('airportFlatten.disable') : t('airportFlatten.enable')"
+      :disabled="flattenBusy"
+      @click.stop="emit('toggle-flatten', entry)"
+    >
+      <span
+        v-if="flattenBusy"
+        class="w-3 h-3 border border-white/80 border-t-transparent rounded-full animate-spin"
+      ></span>
+      <template v-else>
+        {{ entry.flattened ? t('airportFlatten.disable') : t('airportFlatten.enable') }}
+      </template>
+    </button>
 
     <button
       v-if="canOpenUpdater && !isGlobalAirportsEntry"

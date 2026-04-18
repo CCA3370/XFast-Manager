@@ -1670,6 +1670,41 @@ export default {
       'Der X-Plane-Versionsvergleich ist für diese Installation derzeit nicht verfügbar.',
     folderName: 'Installierter Ordner',
   },
+  airportFlatten: {
+    navTitle: 'Airport-Glättung',
+    title: 'Airport-Glättungsverwaltung',
+    subtitle:
+      'Suche Flughäfen, vergleiche standardmäßige und benutzerdefinierte apt.dat-Quellen und schalte Flatten-Metadaten um, ohne das Kartenmodul anzufassen.',
+    results: 'Suchergebnisse',
+    targets: 'Glättungsquellen',
+    pathRequiredHint:
+      'Konfigurieren Sie zuerst Ihr X-Plane-Stammverzeichnis, bevor Sie den Flatten-Status suchen oder bearbeiten.',
+    searchPlaceholder: 'Flughafen nach ICAO oder Namen suchen...',
+    searchHint:
+      'Diese Seite verwendet einen eigenen Airport-Flatten-Index und Quellenscanner. Standard- und benutzerdefinierte Flughafenquellen werden getrennt aufgeführt.',
+    defaultSource: 'Standard',
+    customSource: 'Benutzerdefiniert',
+    customCount: 'Benutzerdefiniert x{count}',
+    searchEmpty: 'Keine passenden Flughäfen gefunden.',
+    targetSubtitle: 'Quellen für {icao}',
+    multiSourceHint:
+      'Für diese ICAO wurden mehrere Quellen gefunden. Wählen Sie genau die apt.dat, die Sie ändern möchten.',
+    loadingTargets: 'Flughafenquellen werden geladen...',
+    stateOn: 'Glättung aktiv',
+    stateOff: 'Glättung aus',
+    pathLabel: 'apt.dat-Pfad',
+    enable: 'Glättung aktivieren',
+    disable: 'Glättung deaktivieren',
+    noTargets: 'Für diesen Flughafen wurde keine bearbeitbare apt.dat-Quelle gefunden.',
+    noSelection:
+      'Wählen Sie einen Flughafen, um seine Standard- und benutzerdefinierten Glättungsquellen zu prüfen.',
+    loadSearchFailed: 'Flughafensuche fehlgeschlagen',
+    loadTargetsFailed: 'Flughafenquellen konnten nicht geladen werden',
+    toggleFailed: 'Flatten-Status konnte nicht aktualisiert werden',
+    enableSuccess: 'Glättung für {icao} aktiviert',
+    disableSuccess: 'Glättung für {icao} deaktiviert',
+    openPage: 'Glättungsseite öffnen',
+  },
   csl: {
     navTitle: 'CSL-Modelle',
     title: 'CSL-Modellmanagement',

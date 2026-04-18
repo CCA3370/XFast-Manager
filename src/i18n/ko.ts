@@ -1607,6 +1607,41 @@ export default {
       '이 설치에서는 현재 X-Plane 버전 비교를 사용할 수 없습니다.',
     folderName: '설치된 폴더',
   },
+  airportFlatten: {
+    navTitle: '공항 평탄화',
+    title: '공항 평탄화 관리자',
+    subtitle:
+      '공항을 검색하고 기본/사용자 정의 apt.dat 소스를 비교한 뒤, 지도 모듈을 건드리지 않고 평탄화 메타데이터를 전환합니다.',
+    results: '검색 결과',
+    targets: '평탄화 소스',
+    pathRequiredHint:
+      '검색하거나 평탄화 상태를 수정하기 전에 X-Plane 루트 경로를 먼저 설정하세요.',
+    searchPlaceholder: 'ICAO 또는 공항 이름으로 검색...',
+    searchHint:
+      '이 페이지는 자체 공항 평탄화 인덱스와 소스 스캐너를 사용합니다. 기본 소스와 사용자 정의 소스가 따로 표시됩니다.',
+    defaultSource: '기본',
+    customSource: '사용자 정의',
+    customCount: '사용자 정의 x{count}',
+    searchEmpty: '일치하는 공항을 찾지 못했습니다.',
+    targetSubtitle: '{icao}의 소스',
+    multiSourceHint:
+      '이 ICAO에 대해 여러 소스가 발견되었습니다. 수정할 apt.dat를 정확히 선택하세요.',
+    loadingTargets: '공항 소스를 불러오는 중...',
+    stateOn: '평탄화 켜짐',
+    stateOff: '평탄화 꺼짐',
+    pathLabel: 'apt.dat 경로',
+    enable: '평탄화 활성화',
+    disable: '평탄화 비활성화',
+    noTargets: '이 공항에 대해 편집 가능한 apt.dat 소스를 찾지 못했습니다.',
+    noSelection:
+      '공항을 선택해 기본 및 사용자 정의 평탄화 소스를 확인하세요.',
+    loadSearchFailed: '공항 검색에 실패했습니다',
+    loadTargetsFailed: '공항 소스를 불러오지 못했습니다',
+    toggleFailed: '평탄화 상태를 업데이트하지 못했습니다',
+    enableSuccess: '{icao} 평탄화가 활성화되었습니다',
+    disableSuccess: '{icao} 평탄화가 비활성화되었습니다',
+    openPage: '평탄화 페이지 열기',
+  },
   csl: {
     navTitle: 'CSL 모델',
     title: 'CSL 모델 관리',

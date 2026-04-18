@@ -1631,6 +1631,8 @@ impl SceneryIndexManager {
             Vec::with_capacity(packages.len() + 1);
 
         for info in packages.drain(..) {
+            let flatten_target =
+                crate::airport_flatten::inspect_scenery_flatten_target(&self.xplane_path, info);
             entries_with_sort.push((
                 info.sort_order,
                 false,
@@ -1656,6 +1658,11 @@ impl SceneryIndexManager {
                         .unwrap_or_default(),
                     airport_id: info.airport_id.clone(),
                     original_category: info.original_category.clone(),
+                    flatten_available: flatten_target.is_some(),
+                    flattened: flatten_target
+                        .as_ref()
+                        .map(|target| target.flattened)
+                        .unwrap_or(false),
                 },
             ));
         }
@@ -1677,6 +1684,8 @@ impl SceneryIndexManager {
                 duplicate_airports: Vec::new(),
                 airport_id: None,
                 original_category: None,
+                flatten_available: false,
+                flattened: false,
             },
         ));
 

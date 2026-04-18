@@ -412,6 +412,46 @@ impl SceneryCategory {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub enum AirportFlattenSourceKind {
+    Default,
+    Custom,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AirportFlattenTarget {
+    pub icao: String,
+    pub airport_name: String,
+    pub source_kind: AirportFlattenSourceKind,
+    pub source_label: String,
+    pub source_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder_name: Option<String>,
+    pub flattened: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AirportFlattenSearchResult {
+    pub icao: String,
+    pub airport_name: String,
+    pub has_default_source: bool,
+    pub custom_source_count: usize,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetAirportFlattenRequest {
+    pub xplane_path: String,
+    pub icao: String,
+    pub source_kind: AirportFlattenSourceKind,
+    #[serde(default)]
+    pub folder_name: Option<String>,
+    pub enabled: bool,
+}
+
 pub const GLOBAL_AIRPORTS_ENTRY_NAME: &str = "*GLOBAL_AIRPORTS*";
 
 pub fn is_global_airports_folder_name(folder_name: &str) -> bool {
@@ -553,6 +593,10 @@ pub struct SceneryManagerEntry {
     /// Used to show original label when package is manually moved to FixedHighPriority
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub original_category: Option<SceneryCategory>,
+    #[serde(default)]
+    pub flatten_available: bool,
+    #[serde(default)]
+    pub flattened: bool,
 }
 
 /// Simplified entry for batch updates (only fields that can be changed)
@@ -1071,6 +1115,8 @@ mod tests {
             duplicate_airports: vec![],
             airport_id: None,
             original_category: Some(SceneryCategory::Airport),
+            flatten_available: true,
+            flattened: false,
         };
 
         let json = serde_json::to_string(&entry).unwrap();

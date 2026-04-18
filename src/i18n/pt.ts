@@ -1653,6 +1653,41 @@ export default {
       'A comparação de versões do X-Plane não está disponível para esta instalação no momento.',
     folderName: 'Pasta instalada',
   },
+  airportFlatten: {
+    navTitle: 'Nivelamento de aeroportos',
+    title: 'Gerenciador de nivelamento de aeroportos',
+    subtitle:
+      'Pesquise aeroportos, compare fontes apt.dat padrão e personalizadas e altere os metadados de nivelamento sem mexer no módulo de mapa.',
+    results: 'Resultados da pesquisa',
+    targets: 'Fontes de nivelamento',
+    pathRequiredHint:
+      'Configure a pasta raiz do X-Plane antes de pesquisar ou editar o estado de nivelamento do aeroporto.',
+    searchPlaceholder: 'Pesquisar aeroporto por ICAO ou nome...',
+    searchHint:
+      'Esta página usa seu próprio índice e scanner de fontes de nivelamento. As fontes padrão e personalizadas são listadas separadamente.',
+    defaultSource: 'Padrão',
+    customSource: 'Personalizada',
+    customCount: 'Personalizada x{count}',
+    searchEmpty: 'Nenhum aeroporto correspondente foi encontrado.',
+    targetSubtitle: 'Fontes para {icao}',
+    multiSourceHint:
+      'Foram encontradas múltiplas fontes para este ICAO. Escolha exatamente qual apt.dat você quer modificar.',
+    loadingTargets: 'Carregando fontes do aeroporto...',
+    stateOn: 'Nivelamento ativado',
+    stateOff: 'Nivelamento desativado',
+    pathLabel: 'Caminho do apt.dat',
+    enable: 'Ativar nivelamento',
+    disable: 'Desativar nivelamento',
+    noTargets: 'Nenhuma fonte apt.dat editável foi encontrada para este aeroporto.',
+    noSelection:
+      'Selecione um aeroporto para inspecionar suas fontes de nivelamento padrão e personalizadas.',
+    loadSearchFailed: 'Falha ao pesquisar aeroportos',
+    loadTargetsFailed: 'Falha ao carregar as fontes do aeroporto',
+    toggleFailed: 'Falha ao atualizar o estado de nivelamento',
+    enableSuccess: 'Nivelamento ativado para {icao}',
+    disableSuccess: 'Nivelamento desativado para {icao}',
+    openPage: 'Abrir página de nivelamento',
+  },
   csl: {
     navTitle: 'Modelos CSL',
     title: 'Gerenciamento de modelos CSL',

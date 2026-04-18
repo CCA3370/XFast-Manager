@@ -1673,6 +1673,41 @@ export default {
       "La comparaison de version avec X-Plane n'est pas disponible pour cette installation pour le moment.",
     folderName: 'Dossier installé',
   },
+  airportFlatten: {
+    navTitle: 'Aplanissement aéroport',
+    title: 'Gestionnaire d’aplanissement des aéroports',
+    subtitle:
+      'Recherchez des aéroports, comparez les sources apt.dat par défaut et personnalisées, et activez ou désactivez les métadonnées d’aplanissement sans toucher au module cartographique.',
+    results: 'Résultats de recherche',
+    targets: 'Sources d’aplanissement',
+    pathRequiredHint:
+      'Configurez d’abord votre dossier racine X-Plane avant de rechercher ou modifier l’état d’aplanissement.',
+    searchPlaceholder: 'Rechercher un aéroport par ICAO ou par nom...',
+    searchHint:
+      'Cette page utilise son propre index et son propre analyseur de sources pour l’aplanissement des aéroports. Les sources par défaut et personnalisées sont listées séparément.',
+    defaultSource: 'Par défaut',
+    customSource: 'Personnalisée',
+    customCount: 'Personnalisée x{count}',
+    searchEmpty: 'Aucun aéroport correspondant trouvé.',
+    targetSubtitle: 'Sources pour {icao}',
+    multiSourceHint:
+      'Plusieurs sources ont été trouvées pour cet ICAO. Choisissez précisément le fichier apt.dat à modifier.',
+    loadingTargets: 'Chargement des sources de l’aéroport...',
+    stateOn: 'Aplanissement activé',
+    stateOff: 'Aplanissement désactivé',
+    pathLabel: 'Chemin apt.dat',
+    enable: 'Activer l’aplanissement',
+    disable: 'Désactiver l’aplanissement',
+    noTargets: 'Aucune source apt.dat modifiable n’a été trouvée pour cet aéroport.',
+    noSelection:
+      'Sélectionnez un aéroport pour examiner ses sources d’aplanissement par défaut et personnalisées.',
+    loadSearchFailed: 'Échec de la recherche des aéroports',
+    loadTargetsFailed: 'Échec du chargement des sources de l’aéroport',
+    toggleFailed: 'Échec de la mise à jour de l’état d’aplanissement',
+    enableSuccess: 'Aplanissement activé pour {icao}',
+    disableSuccess: 'Aplanissement désactivé pour {icao}',
+    openPage: 'Ouvrir la page d’aplanissement',
+  },
   csl: {
     navTitle: 'Modèles CSL',
     title: 'Gestion du modèle CSL',

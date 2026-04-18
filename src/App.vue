@@ -534,6 +534,7 @@ type NavId =
   | 'disk-usage'
   | 'presets'
   | 'gateway'
+  | 'airport-flatten'
   | 'csl'
   | 'settings'
 type NavMeasureId = NavId | 'more'
@@ -556,6 +557,7 @@ const NAV_ORDER: NavId[] = [
   'disk-usage',
   'presets',
   'gateway',
+  'airport-flatten',
   'csl',
   'settings',
 ]
@@ -583,6 +585,10 @@ const NAV_ICON_PATHS: Record<NavId, string[]> = {
     'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4',
   ],
   gateway: ['M4 11l8-5 8 5v8a2 2 0 01-2 2h-3v-6H9v6H6a2 2 0 01-2-2v-8z', 'M10 11h4'],
+  'airport-flatten': [
+    'M4 7h16M4 12h10M4 17h16',
+    'M16 9l4 3-4 3M14 7l4 5-4 5',
+  ],
   csl: ['M12 4l7 4-7 4-7-4 7-4zm7 4v8l-7 4m7-12l-7 4m-7-4v8l7 4m-7-12l7 4'],
   settings: [
     'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z',
@@ -664,6 +670,13 @@ const allNavItems = computed<NavItem[]>(() => [
     label: t('gatewayManager.navTitle'),
     active: route.path === '/gateway',
     iconPaths: NAV_ICON_PATHS.gateway,
+  },
+  {
+    id: 'airport-flatten',
+    to: '/airport-flatten',
+    label: t('airportFlatten.navTitle'),
+    active: route.path === '/airport-flatten',
+    iconPaths: NAV_ICON_PATHS['airport-flatten'],
   },
   {
     id: 'csl',
@@ -878,6 +891,7 @@ const routeOrder: Record<string, number> = {
   '/activity': 3.5,
   '/disk-usage': 4,
   '/gateway': 5,
+  '/airport-flatten': 5.25,
   '/csl': 5.5,
   '/feedback': 6,
   '/settings': 7,
@@ -1069,6 +1083,13 @@ onMounted(async () => {
     label: t('gatewayManager.navTitle'),
     category: t('commandPalette.categoryNav'),
     action: () => router.push('/gateway'),
+  })
+  registerShortcut({
+    id: 'nav-airport-flatten',
+    keys: 'ctrl+6',
+    label: t('airportFlatten.navTitle'),
+    category: t('commandPalette.categoryNav'),
+    action: () => router.push('/airport-flatten'),
   })
   registerShortcut({
     id: 'nav-settings',

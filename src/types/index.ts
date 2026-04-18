@@ -304,6 +304,33 @@ export enum SceneryCategory {
   Unrecognized = 'Unrecognized',
 }
 
+export type AirportFlattenSourceKind = 'default' | 'custom'
+
+export interface AirportFlattenTarget {
+  icao: string
+  airportName: string
+  sourceKind: AirportFlattenSourceKind
+  sourceLabel: string
+  sourcePath: string
+  folderName?: string
+  flattened: boolean
+}
+
+export interface AirportFlattenSearchResult {
+  icao: string
+  airportName: string
+  hasDefaultSource: boolean
+  customSourceCount: number
+}
+
+export interface SetAirportFlattenRequest {
+  xplanePath: string
+  icao: string
+  sourceKind: AirportFlattenSourceKind
+  folderName?: string
+  enabled: boolean
+}
+
 export interface SceneryPackageInfo {
   folderName: string
   category: SceneryCategory
@@ -355,6 +382,8 @@ export interface SceneryManagerEntry {
   duplicateAirports: string[]
   airportId?: string
   originalCategory?: SceneryCategory
+  flattenAvailable: boolean
+  flattened: boolean
 }
 
 export interface SceneryManagerData {

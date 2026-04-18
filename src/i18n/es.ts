@@ -1668,6 +1668,41 @@ export default {
       'La comparación de versiones de X-Plane no está disponible ahora mismo para esta instalación.',
     folderName: 'Carpeta instalada',
   },
+  airportFlatten: {
+    navTitle: 'Aplanado de aeropuertos',
+    title: 'Gestor de aplanado de aeropuertos',
+    subtitle:
+      'Busca aeropuertos, compara las fuentes apt.dat predeterminadas y personalizadas, y cambia los metadatos de aplanado sin tocar el módulo del mapa.',
+    results: 'Resultados de búsqueda',
+    targets: 'Fuentes de aplanado',
+    pathRequiredHint:
+      'Configura la ruta raíz de X-Plane antes de buscar o editar el estado de aplanado.',
+    searchPlaceholder: 'Buscar aeropuerto por ICAO o nombre...',
+    searchHint:
+      'Esta página usa su propio índice y escáner de fuentes para el aplanado de aeropuertos. Las fuentes predeterminadas y personalizadas se muestran por separado.',
+    defaultSource: 'Predeterminado',
+    customSource: 'Personalizado',
+    customCount: 'Personalizado x{count}',
+    searchEmpty: 'No se encontraron aeropuertos coincidentes.',
+    targetSubtitle: 'Fuentes para {icao}',
+    multiSourceHint:
+      'Se encontraron varias fuentes para este ICAO. Elige exactamente qué apt.dat quieres modificar.',
+    loadingTargets: 'Cargando fuentes del aeropuerto...',
+    stateOn: 'Aplanado activado',
+    stateOff: 'Aplanado desactivado',
+    pathLabel: 'Ruta de apt.dat',
+    enable: 'Activar aplanado',
+    disable: 'Desactivar aplanado',
+    noTargets: 'No se encontró una fuente apt.dat editable para este aeropuerto.',
+    noSelection:
+      'Selecciona un aeropuerto para revisar sus fuentes de aplanado predeterminadas y personalizadas.',
+    loadSearchFailed: 'No se pudieron buscar aeropuertos',
+    loadTargetsFailed: 'No se pudieron cargar las fuentes del aeropuerto',
+    toggleFailed: 'No se pudo actualizar el estado de aplanado',
+    enableSuccess: 'Aplanado activado para {icao}',
+    disableSuccess: 'Aplanado desactivado para {icao}',
+    openPage: 'Abrir página de aplanado',
+  },
   csl: {
     navTitle: 'Modelos CSL',
     title: 'Gestión de modelos CSL',

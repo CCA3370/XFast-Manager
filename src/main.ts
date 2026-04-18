@@ -202,6 +202,7 @@ const router = createRouter({
     { path: '/presets', component: () => import('./views/Presets.vue') },
     { path: '/map', component: preloadMap },
     { path: '/gateway', component: preloadGateway },
+    { path: '/airport-flatten', component: () => import('./views/AirportFlatten.vue') },
     { path: '/log-analysis', component: () => import('./views/LogAnalysis.vue') },
     { path: '/activity', component: () => import('./views/ActivityLog.vue') },
     { path: '/screenshots', component: () => import('./views/ScreenshotManager.vue') },

@@ -458,6 +458,16 @@ export const useSceneryStore = defineStore('scenery', () => {
     }
   }
 
+  function updateFlattenState(folderName: string, flattened: boolean, flattenAvailable = true) {
+    if (!data.value) return
+
+    const entry = data.value.entries.find((item) => item.folderName === folderName)
+    if (!entry) return
+
+    entry.flattened = flattened
+    entry.flattenAvailable = flattenAvailable
+  }
+
   // Clear store state
   function clear() {
     data.value = null
@@ -501,6 +511,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     applyChanges,
     resetChanges,
     deleteEntry,
+    updateFlattenState,
     clear,
   }
 })
