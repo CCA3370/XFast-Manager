@@ -328,6 +328,7 @@ export interface SetAirportFlattenRequest {
   icao: string
   sourceKind: AirportFlattenSourceKind
   folderName?: string
+  sourcePath?: string
   enabled: boolean
 }
 

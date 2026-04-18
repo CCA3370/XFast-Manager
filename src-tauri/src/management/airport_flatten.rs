@@ -1,12 +1,19 @@
+use std::collections::HashMap;
 use std::fs;
 use std::io;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, RwLock};
+use std::time::UNIX_EPOCH;
 
 use sea_orm::DatabaseConnection;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::activity;
+use crate::app_dirs;
 use crate::database::DatabaseState;
+use crate::logger;
 use crate::models::{
     AirportFlattenSearchResult, AirportFlattenSourceKind, AirportFlattenTarget, SceneryCategory,
     SceneryPackageInfo, SetAirportFlattenRequest,
@@ -14,6 +21,78 @@ use crate::models::{
 use crate::scenery_index::SceneryIndexManager;
 
 const FLATTEN_LINE: &str = "1302 flatten 1";
+
+static PARSED_APT_CACHE: LazyLock<RwLock<HashMap<String, ParsedAptCacheEntry>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+static AIRPORT_FLATTEN_INDEX_CACHE: LazyLock<RwLock<HashMap<String, AirportFlattenIndex>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+const AIRPORT_FLATTEN_INDEX_VERSION: u32 = 2;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct FileStamp {
+    modified_ms: Option<u64>,
+    len: u64,
+}
+
+#[derive(Debug, Clone)]
+struct ParsedAptCacheEntry {
+    stamp: FileStamp,
+    airports: Vec<AptAirportBlock>,
+}
+
+#[derive(Debug, Clone)]
+struct FlattenSourceRef {
+    icao: String,
+    source_kind: AirportFlattenSourceKind,
+    source_label: String,
+    source_path: String,
+    folder_name: Option<String>,
+    airport_name: String,
+    flattened: bool,
+}
+
+#[derive(Debug, Clone)]
+struct AirportFlattenIndex {
+    source_files: HashMap<String, SourceFileIndexEntry>,
+    search_rows: Vec<AirportFlattenSearchResult>,
+    sources_by_icao: HashMap<String, Vec<FlattenSourceRef>>,
+    single_custom_sources_by_folder: HashMap<String, FlattenSourceRef>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CachedAirportRecord {
+    icao: String,
+    airport_name: String,
+    flattened: bool,
+    byte_start: u64,
+    byte_end: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SourceFileIndexEntry {
+    source_kind: AirportFlattenSourceKind,
+    source_label: String,
+    source_path: String,
+    folder_name: Option<String>,
+    stamp: FileStamp,
+    airports: Vec<CachedAirportRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedAirportFlattenIndex {
+    version: u32,
+    xplane_root: String,
+    source_files: Vec<SourceFileIndexEntry>,
+}
+
+#[derive(Debug, Clone)]
+struct CandidateSourceFile {
+    source_kind: AirportFlattenSourceKind,
+    source_label: String,
+    source_path: String,
+    folder_name: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 struct AptAirportBlock {
@@ -24,10 +103,50 @@ struct AptAirportBlock {
     end: usize,
 }
 
-#[derive(Debug, Clone)]
-struct AptIcaoSummary {
-    airport_name: String,
-    flattened: bool,
+fn read_file_stamp(path: &Path) -> io::Result<FileStamp> {
+    let metadata = fs::metadata(path)?;
+    Ok(FileStamp {
+        modified_ms: metadata
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_millis() as u64),
+        len: metadata.len(),
+    })
+}
+
+fn read_optional_file_stamp(path: &Path) -> Option<FileStamp> {
+    read_file_stamp(path).ok()
+}
+
+fn parsed_apt_blocks(path: &Path) -> io::Result<Vec<AptAirportBlock>> {
+    let key = path.to_string_lossy().to_string();
+    let stamp = read_file_stamp(path)?;
+
+    if let Some(cached) = PARSED_APT_CACHE
+        .read()
+        .ok()
+        .and_then(|cache| cache.get(&key).cloned())
+    {
+        if cached.stamp == stamp {
+            return Ok(cached.airports);
+        }
+    }
+
+    let text = fs::read_to_string(path)?;
+    let airports = summarize_apt_text(&text);
+
+    if let Ok(mut cache) = PARSED_APT_CACHE.write() {
+        cache.insert(
+            key,
+            ParsedAptCacheEntry {
+                stamp,
+                airports: airports.clone(),
+            },
+        );
+    }
+
+    Ok(airports)
 }
 
 fn global_airports_apt_path(xplane_root: &Path) -> PathBuf {
@@ -114,35 +233,63 @@ fn summarize_apt_text(text: &str) -> Vec<AptAirportBlock> {
     parse_airport_blocks(&lines)
 }
 
-fn inspect_apt_file_for_icao(apt_path: &Path, icao: &str) -> io::Result<Option<AptIcaoSummary>> {
-    let text = fs::read_to_string(apt_path)?;
-    let matches: Vec<AptAirportBlock> = summarize_apt_text(&text)
-        .into_iter()
-        .filter(|block| block.icao.eq_ignore_ascii_case(icao))
-        .collect();
-
-    if matches.is_empty() {
-        return Ok(None);
+fn trim_line_bytes(line: &[u8]) -> &[u8] {
+    let mut end = line.len();
+    while end > 0 && (line[end - 1] == b'\n' || line[end - 1] == b'\r') {
+        end -= 1;
     }
-
-    Ok(Some(AptIcaoSummary {
-        airport_name: matches[0].name.clone(),
-        flattened: matches.iter().all(|block| block.flattened),
-    }))
+    &line[..end]
 }
 
-fn search_apt_file(apt_path: &Path, query: &str) -> io::Result<Vec<(String, String)>> {
-    let text = fs::read_to_string(apt_path)?;
-    let query_upper = query.to_uppercase();
-    let query_lower = query.to_lowercase();
+fn scan_apt_file_for_cache(path: &Path) -> io::Result<Vec<CachedAirportRecord>> {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
 
-    Ok(summarize_apt_text(&text)
-        .into_iter()
-        .filter(|block| {
-            block.icao.contains(&query_upper) || block.name.to_lowercase().contains(&query_lower)
-        })
-        .map(|block| (block.icao, block.name))
-        .collect())
+    let file = File::open(path)?;
+    let mut reader = BufReader::new(file);
+    let mut airports = Vec::new();
+    let mut current: Option<CachedAirportRecord> = None;
+    let mut raw_line = Vec::<u8>::new();
+    let mut byte_offset = 0u64;
+
+    loop {
+        raw_line.clear();
+        let bytes_read = reader.read_until(b'\n', &mut raw_line)?;
+        if bytes_read == 0 {
+            break;
+        }
+
+        let trimmed = String::from_utf8_lossy(trim_line_bytes(&raw_line));
+        let trimmed = trimmed.trim();
+
+        if is_airport_header(trimmed) {
+            if let Some(mut airport) = current.take() {
+                airport.byte_end = byte_offset;
+                airports.push(airport);
+            }
+
+            current = parse_airport_header(trimmed).map(|(icao, name)| CachedAirportRecord {
+                icao,
+                airport_name: name,
+                flattened: false,
+                byte_start: byte_offset,
+                byte_end: byte_offset,
+            });
+        } else if let Some(airport) = current.as_mut() {
+            if is_flatten_line(trimmed) {
+                airport.flattened = true;
+            }
+        }
+
+        byte_offset += bytes_read as u64;
+    }
+
+    if let Some(mut airport) = current.take() {
+        airport.byte_end = byte_offset;
+        airports.push(airport);
+    }
+
+    Ok(airports)
 }
 
 fn summarize_single_scenery_target(
@@ -154,8 +301,7 @@ fn summarize_single_scenery_target(
         return Ok(None);
     }
 
-    let text = fs::read_to_string(&apt_path)?;
-    let airports = summarize_apt_text(&text);
+    let airports = parsed_apt_blocks(&apt_path)?;
     if airports.len() != 1 {
         return Ok(None);
     }
@@ -271,6 +417,20 @@ fn backup_apt_file_if_needed(apt_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+fn clear_readonly_attribute(path: &Path) -> io::Result<()> {
+    let metadata = match fs::metadata(path) {
+        Ok(value) => value,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    let mut permissions = metadata.permissions();
+    if permissions.readonly() {
+        permissions.set_readonly(false);
+        fs::set_permissions(path, permissions)?;
+    }
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
 fn replace_file_atomically(source: &Path, destination: &Path) -> io::Result<()> {
     use std::ffi::OsStr;
@@ -314,10 +474,23 @@ fn write_updated_apt_file(apt_path: &Path, contents: &str) -> io::Result<()> {
     ));
 
     fs::write(&temp_path, contents.as_bytes())?;
+    let _ = clear_readonly_attribute(apt_path);
 
     if let Err(error) = replace_file_atomically(&temp_path, apt_path) {
         let _ = fs::remove_file(&temp_path);
         return Err(error);
+    }
+
+    Ok(())
+}
+
+fn store_parsed_apt_cache(apt_path: &Path, contents: &str) -> io::Result<()> {
+    let key = apt_path.to_string_lossy().to_string();
+    let stamp = read_file_stamp(apt_path)?;
+    let airports = summarize_apt_text(contents);
+
+    if let Ok(mut cache) = PARSED_APT_CACHE.write() {
+        cache.insert(key, ParsedAptCacheEntry { stamp, airports });
     }
 
     Ok(())
@@ -333,69 +506,115 @@ fn update_apt_flatten_state(apt_path: &Path, icao: &str, enabled: bool) -> Resul
             .map_err(|error| format!("Failed to back up {}: {}", apt_path.display(), error))?;
         write_updated_apt_file(apt_path, &updated)
             .map_err(|error| format!("Failed to write {}: {}", apt_path.display(), error))?;
+        store_parsed_apt_cache(apt_path, &updated)
+            .map_err(|error| format!("Failed to refresh apt cache for {}: {}", apt_path.display(), error))?;
     }
 
     Ok(airport_name)
 }
 
-fn default_target_for_icao(xplane_root: &Path, icao: &str) -> Result<Option<AirportFlattenTarget>, String> {
-    let apt_path = global_airports_apt_path(xplane_root);
-    if !apt_path.is_file() {
-        return Ok(None);
+fn update_cached_parsed_apt_state(apt_path: &Path, icao: &str, flattened: bool) {
+    let key = apt_path.to_string_lossy().to_string();
+    let new_stamp = read_optional_file_stamp(apt_path);
+
+    if let Ok(mut cache) = PARSED_APT_CACHE.write() {
+        if let Some(entry) = cache.get_mut(&key) {
+            for airport in entry.airports.iter_mut() {
+                if airport.icao.eq_ignore_ascii_case(icao) {
+                    airport.flattened = flattened;
+                }
+            }
+            if let Some(stamp) = new_stamp {
+                entry.stamp = stamp;
+            }
+        }
     }
-
-    let Some(summary) = inspect_apt_file_for_icao(&apt_path, icao)
-        .map_err(|error| format!("Failed to inspect {}: {}", apt_path.display(), error))?
-    else {
-        return Ok(None);
-    };
-
-    Ok(Some(AirportFlattenTarget {
-        icao: icao.to_string(),
-        airport_name: summary.airport_name,
-        source_kind: AirportFlattenSourceKind::Default,
-        source_label: "Global Airports".to_string(),
-        source_path: apt_path.display().to_string(),
-        folder_name: None,
-        flattened: summary.flattened,
-    }))
 }
 
-fn custom_targets_for_icao(
-    xplane_root: &Path,
-    packages: &[SceneryPackageInfo],
-    icao: &str,
-) -> Vec<AirportFlattenTarget> {
-    let mut targets = Vec::new();
+fn rewrite_airport_block_by_offsets(
+    apt_path: &Path,
+    airport: &CachedAirportRecord,
+    enabled: bool,
+) -> Result<(String, i64), String> {
+    use std::fs::File;
+    use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 
-    for info in packages.iter().filter(|info| {
-        info.category != SceneryCategory::DefaultAirport
-            && info.has_apt_dat
-            && !info.folder_name.trim().eq_ignore_ascii_case("Global Airports")
-    }) {
-        let scenery_dir = resolve_scenery_dir(xplane_root, info);
-        let apt_path = scenery_dir.join("Earth nav data").join("apt.dat");
-        if !apt_path.is_file() {
-            continue;
-        }
+    let mut source = File::open(apt_path)
+        .map_err(|error| format!("Failed to read {}: {}", apt_path.display(), error))?;
 
-        let Some(summary) = inspect_apt_file_for_icao(&apt_path, icao).ok().flatten() else {
-            continue;
-        };
+    let block_len = airport.byte_end.saturating_sub(airport.byte_start);
+    source
+        .seek(SeekFrom::Start(airport.byte_start))
+        .map_err(|error| format!("Failed to seek {}: {}", apt_path.display(), error))?;
 
-        targets.push(AirportFlattenTarget {
-            icao: icao.to_string(),
-            airport_name: summary.airport_name,
-            source_kind: AirportFlattenSourceKind::Custom,
-            source_label: info.folder_name.clone(),
-            source_path: apt_path.display().to_string(),
-            folder_name: Some(info.folder_name.clone()),
-            flattened: summary.flattened,
-        });
+    let mut original_block = vec![0u8; block_len as usize];
+    source
+        .read_exact(&mut original_block)
+        .map_err(|error| format!("Failed to read airport block from {}: {}", apt_path.display(), error))?;
+
+    let original_block_text = String::from_utf8_lossy(&original_block).into_owned();
+    let (updated_block_text, airport_name) =
+        set_flatten_state_in_text(&original_block_text, &airport.icao, enabled)?;
+
+    if updated_block_text == original_block_text {
+        return Ok((airport_name, 0));
     }
 
-    targets.sort_by(|left, right| left.source_label.cmp(&right.source_label));
-    targets
+    backup_apt_file_if_needed(apt_path)
+        .map_err(|error| format!("Failed to back up {}: {}", apt_path.display(), error))?;
+
+    let parent = apt_path
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "apt.dat parent directory missing"))
+        .map_err(|error| error.to_string())?;
+    let temp_path = parent.join(format!("apt.dat.xfast.tmp.{}", std::process::id()));
+    let temp_file = File::create(&temp_path)
+        .map_err(|error| format!("Failed to create {}: {}", temp_path.display(), error))?;
+    let mut writer = BufWriter::new(temp_file);
+
+    source
+        .seek(SeekFrom::Start(0))
+        .map_err(|error| format!("Failed to seek {}: {}", apt_path.display(), error))?;
+    io::copy(
+        &mut std::io::Read::by_ref(&mut source).take(airport.byte_start),
+        &mut writer,
+    )
+        .map_err(|error| format!("Failed to copy prelude for {}: {}", apt_path.display(), error))?;
+
+    writer
+        .write_all(updated_block_text.as_bytes())
+        .map_err(|error| format!("Failed to write updated block for {}: {}", apt_path.display(), error))?;
+
+    source
+        .seek(SeekFrom::Start(airport.byte_end))
+        .map_err(|error| format!("Failed to seek {}: {}", apt_path.display(), error))?;
+    io::copy(&mut source, &mut writer)
+        .map_err(|error| format!("Failed to copy tail for {}: {}", apt_path.display(), error))?;
+    writer
+        .flush()
+        .map_err(|error| format!("Failed to flush {}: {}", temp_path.display(), error))?;
+    drop(writer);
+    drop(source);
+
+    let _ = clear_readonly_attribute(apt_path);
+
+    replace_file_atomically(&temp_path, apt_path)
+        .map_err(|error| format!("Failed to replace {}: {}", apt_path.display(), error))?;
+
+    let delta = updated_block_text.as_bytes().len() as i64 - original_block.len() as i64;
+    Ok((airport_name, delta))
+}
+
+fn build_target_from_source_ref(source_ref: &FlattenSourceRef, icao: &str) -> Result<AirportFlattenTarget, String> {
+    Ok(AirportFlattenTarget {
+        icao: icao.to_string(),
+        airport_name: source_ref.airport_name.clone(),
+        source_kind: source_ref.source_kind.clone(),
+        source_label: source_ref.source_label.clone(),
+        source_path: source_ref.source_path.clone(),
+        folder_name: source_ref.folder_name.clone(),
+        flattened: source_ref.flattened,
+    })
 }
 
 fn upsert_search_entry(
@@ -440,6 +659,217 @@ fn search_score(row: &AirportFlattenSearchResult, query_upper: &str) -> (i32, us
     (primary, row.icao.len(), row.airport_name.len())
 }
 
+fn airport_flatten_cache_key(xplane_root: &Path) -> String {
+    xplane_root.to_string_lossy().to_string()
+}
+
+fn normalize_xplane_root_key(xplane_root: &Path) -> String {
+    let value = xplane_root.to_string_lossy().to_string();
+
+    #[cfg(target_os = "windows")]
+    {
+        value.to_lowercase()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        value
+    }
+}
+
+fn airport_flatten_cache_path(xplane_root: &Path) -> PathBuf {
+    let normalized = normalize_xplane_root_key(xplane_root);
+    let mut hasher = DefaultHasher::new();
+    normalized.hash(&mut hasher);
+    let file_name = format!("airport_flatten_{:016x}.json", hasher.finish());
+    app_dirs::get_app_data_dir()
+        .join("cache")
+        .join("airport_flatten")
+        .join(file_name)
+}
+
+fn load_persisted_airport_flatten_source_files(
+    xplane_root: &Path,
+) -> Result<Option<HashMap<String, SourceFileIndexEntry>>, String> {
+    let cache_path = airport_flatten_cache_path(xplane_root);
+    if !cache_path.is_file() {
+        return Ok(None);
+    }
+
+    let content = fs::read_to_string(&cache_path)
+        .map_err(|error| format!("Failed to read {}: {}", cache_path.display(), error))?;
+    let persisted: PersistedAirportFlattenIndex = match serde_json::from_str(&content) {
+        Ok(value) => value,
+        Err(error) => {
+            logger::log_info(
+                &format!(
+                    "Discarding incompatible airport flatten cache {}: {}",
+                    cache_path.display(),
+                    error
+                ),
+                Some("airport_flatten"),
+            );
+            let _ = fs::remove_file(&cache_path);
+            return Ok(None);
+        }
+    };
+
+    if persisted.version != AIRPORT_FLATTEN_INDEX_VERSION
+        || persisted.xplane_root != normalize_xplane_root_key(xplane_root)
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(
+        persisted
+            .source_files
+            .into_iter()
+            .map(|entry| (entry.source_path.clone(), entry))
+            .collect(),
+    ))
+}
+
+fn persist_airport_flatten_source_files(
+    xplane_root: &Path,
+    source_files: &HashMap<String, SourceFileIndexEntry>,
+) -> Result<(), String> {
+    let cache_path = airport_flatten_cache_path(xplane_root);
+    if let Some(parent) = cache_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to create {}: {}", parent.display(), error))?;
+    }
+
+    let persisted = PersistedAirportFlattenIndex {
+        version: AIRPORT_FLATTEN_INDEX_VERSION,
+        xplane_root: normalize_xplane_root_key(xplane_root),
+        source_files: source_files.values().cloned().collect(),
+    };
+    let json = serde_json::to_string_pretty(&persisted)
+        .map_err(|error| format!("Failed to serialize airport flatten index: {}", error))?;
+    let temp_path = cache_path.with_extension("tmp");
+    fs::write(&temp_path, json)
+        .map_err(|error| format!("Failed to write {}: {}", temp_path.display(), error))?;
+    fs::rename(&temp_path, &cache_path)
+        .map_err(|error| format!("Failed to replace {}: {}", cache_path.display(), error))?;
+
+    Ok(())
+}
+
+fn candidate_source_files(
+    xplane_root: &Path,
+    packages: &[SceneryPackageInfo],
+) -> Vec<CandidateSourceFile> {
+    let mut files = Vec::new();
+    let default_apt = global_airports_apt_path(xplane_root);
+    if default_apt.is_file() {
+        files.push(CandidateSourceFile {
+            source_kind: AirportFlattenSourceKind::Default,
+            source_label: "Global Airports".to_string(),
+            source_path: default_apt.display().to_string(),
+            folder_name: None,
+        });
+    }
+
+    for info in packages.iter().filter(|info| {
+        info.category != SceneryCategory::DefaultAirport
+            && info.has_apt_dat
+            && !info.folder_name.trim().eq_ignore_ascii_case("Global Airports")
+    }) {
+        let apt_path = resolve_scenery_dir(xplane_root, info)
+            .join("Earth nav data")
+            .join("apt.dat");
+        if !apt_path.is_file() {
+            continue;
+        }
+
+        files.push(CandidateSourceFile {
+            source_kind: AirportFlattenSourceKind::Custom,
+            source_label: info.folder_name.clone(),
+            source_path: apt_path.display().to_string(),
+            folder_name: Some(info.folder_name.clone()),
+        });
+    }
+
+    files
+}
+
+fn compress_airports_for_cache(airports: Vec<CachedAirportRecord>) -> Vec<CachedAirportRecord> {
+    let mut unique = HashMap::<String, CachedAirportRecord>::new();
+
+    for airport in airports {
+        unique
+            .entry(airport.icao.clone())
+            .and_modify(|entry| {
+                entry.flattened &= airport.flattened;
+                entry.byte_start = entry.byte_start.min(airport.byte_start);
+                entry.byte_end = entry.byte_end.max(airport.byte_end);
+            })
+            .or_insert(airport);
+    }
+
+    let mut rows: Vec<CachedAirportRecord> = unique.into_values().collect();
+    rows.sort_by(|left, right| left.icao.cmp(&right.icao));
+    rows
+}
+
+fn derive_airport_flatten_index(
+    source_files: HashMap<String, SourceFileIndexEntry>,
+) -> AirportFlattenIndex {
+    let mut search_rows = HashMap::<String, AirportFlattenSearchResult>::new();
+    let mut sources_by_icao = HashMap::<String, Vec<FlattenSourceRef>>::new();
+    let mut single_custom_sources_by_folder = HashMap::<String, FlattenSourceRef>::new();
+
+    for source_file in source_files.values() {
+        let is_single_custom_source =
+            source_file.source_kind == AirportFlattenSourceKind::Custom && source_file.airports.len() == 1;
+
+        for airport in &source_file.airports {
+            upsert_search_entry(
+                &mut search_rows,
+                airport.icao.clone(),
+                airport.airport_name.clone(),
+                source_file.source_kind.clone(),
+            );
+
+            let source_ref = FlattenSourceRef {
+                icao: airport.icao.clone(),
+                source_kind: source_file.source_kind.clone(),
+                source_label: source_file.source_label.clone(),
+                source_path: source_file.source_path.clone(),
+                folder_name: source_file.folder_name.clone(),
+                airport_name: airport.airport_name.clone(),
+                flattened: airport.flattened,
+            };
+
+            if is_single_custom_source {
+                if let Some(folder_name) = source_file.folder_name.as_ref() {
+                    single_custom_sources_by_folder
+                        .insert(folder_name.clone(), source_ref.clone());
+                }
+            }
+
+            sources_by_icao
+                .entry(airport.icao.clone())
+                .or_default()
+                .push(source_ref);
+        }
+    }
+
+    for refs in sources_by_icao.values_mut() {
+        refs.sort_by(|left, right| left.source_label.cmp(&right.source_label));
+    }
+
+    let mut search_rows: Vec<AirportFlattenSearchResult> = search_rows.into_values().collect();
+    search_rows.sort_by(|left, right| left.icao.cmp(&right.icao));
+
+    AirportFlattenIndex {
+        source_files,
+        search_rows,
+        sources_by_icao,
+        single_custom_sources_by_folder,
+    }
+}
+
 async fn load_scenery_packages(
     db: DatabaseConnection,
     xplane_root: &Path,
@@ -460,6 +890,181 @@ async fn load_scenery_packages(
     Ok(index.packages.into_values().collect())
 }
 
+async fn refresh_airport_flatten_source_files(
+    db: DatabaseConnection,
+    xplane_root: &Path,
+    previous: HashMap<String, SourceFileIndexEntry>,
+) -> Result<HashMap<String, SourceFileIndexEntry>, String> {
+    let packages = load_scenery_packages(db, xplane_root).await?;
+    let candidates = candidate_source_files(xplane_root, &packages);
+    let mut refreshed = HashMap::<String, SourceFileIndexEntry>::new();
+
+    for candidate in candidates {
+        let path = PathBuf::from(&candidate.source_path);
+        let stamp = match read_file_stamp(&path) {
+            Ok(value) => value,
+            Err(error) => {
+                return Err(format!("Failed to stat {}: {}", path.display(), error));
+            }
+        };
+
+        if let Some(existing) = previous.get(&candidate.source_path) {
+            if existing.stamp == stamp
+                && existing.source_kind == candidate.source_kind
+                && existing.source_label == candidate.source_label
+                && existing.folder_name == candidate.folder_name
+            {
+                refreshed.insert(candidate.source_path.clone(), existing.clone());
+                continue;
+            }
+        }
+
+        let airports = scan_apt_file_for_cache(&path)
+            .map_err(|error| format!("Failed to inspect {}: {}", path.display(), error))?;
+        if airports.is_empty() {
+            continue;
+        }
+
+        refreshed.insert(
+            candidate.source_path.clone(),
+            SourceFileIndexEntry {
+                source_kind: candidate.source_kind,
+                source_label: candidate.source_label,
+                source_path: candidate.source_path,
+                folder_name: candidate.folder_name,
+                stamp,
+                airports: compress_airports_for_cache(airports),
+            },
+        );
+    }
+
+    Ok(refreshed)
+}
+
+async fn get_or_build_airport_flatten_index(
+    db: DatabaseConnection,
+    xplane_root: &Path,
+) -> Result<AirportFlattenIndex, String> {
+    let key = airport_flatten_cache_key(xplane_root);
+    let previous_source_files = if let Some(cached) = AIRPORT_FLATTEN_INDEX_CACHE
+        .read()
+        .ok()
+        .and_then(|cache| cache.get(&key).cloned())
+    {
+        cached.source_files
+    } else {
+        load_persisted_airport_flatten_source_files(xplane_root)?.unwrap_or_default()
+    };
+
+    let refreshed_source_files =
+        refresh_airport_flatten_source_files(db, xplane_root, previous_source_files).await?;
+    let built = derive_airport_flatten_index(refreshed_source_files.clone());
+
+    if let Ok(mut cache) = AIRPORT_FLATTEN_INDEX_CACHE.write() {
+        cache.insert(key, built.clone());
+    }
+
+    if let Err(error) = persist_airport_flatten_source_files(xplane_root, &refreshed_source_files) {
+        logger::log_info(
+            &format!("Failed to persist airport flatten index: {}", error),
+            Some("airport_flatten"),
+        );
+    }
+
+    Ok(built)
+}
+
+fn update_cached_flatten_state(
+    xplane_root: &Path,
+    icao: &str,
+    source_path: &str,
+    flattened: bool,
+    airport_name: &str,
+    block_delta: i64,
+) {
+    let key = airport_flatten_cache_key(xplane_root);
+    let mut source_files_to_persist: Option<HashMap<String, SourceFileIndexEntry>> = None;
+
+    if let Ok(mut cache) = AIRPORT_FLATTEN_INDEX_CACHE.write() {
+        if let Some(entry) = cache.get_mut(&key) {
+            let mut persisted_changed = false;
+
+            if let Some(source_refs) = entry.sources_by_icao.get_mut(icao) {
+                for source_ref in source_refs.iter_mut() {
+                    if source_ref.source_path == source_path {
+                        source_ref.flattened = flattened;
+                        source_ref.airport_name = airport_name.to_string();
+                        persisted_changed = true;
+                    }
+                }
+            }
+
+            if let Some(source_file) = entry.source_files.get_mut(source_path) {
+                let mut target_end_before = None::<u64>;
+                for airport in source_file.airports.iter_mut() {
+                    if airport.icao.eq_ignore_ascii_case(icao) {
+                        target_end_before = Some(airport.byte_end);
+                        airport.flattened = flattened;
+                        airport.airport_name = airport_name.to_string();
+                        airport.byte_end = ((airport.byte_end as i64) + block_delta) as u64;
+                        persisted_changed = true;
+                    }
+                }
+
+                if block_delta != 0 {
+                    if let Some(old_end) = target_end_before {
+                        for airport in source_file.airports.iter_mut() {
+                            if airport.byte_start >= old_end {
+                                airport.byte_start = ((airport.byte_start as i64) + block_delta) as u64;
+                                airport.byte_end = ((airport.byte_end as i64) + block_delta) as u64;
+                            }
+                        }
+                    }
+                }
+
+                if let Some(stamp) = read_optional_file_stamp(Path::new(&source_file.source_path)) {
+                    source_file.stamp = stamp;
+                }
+            }
+
+            if let Some(source_file) = entry.source_files.get(source_path) {
+                if let Some(folder_name) = source_file.folder_name.as_deref() {
+                    if let Some(source_ref) =
+                        entry.single_custom_sources_by_folder.get_mut(folder_name)
+                    {
+                        source_ref.flattened = flattened;
+                        source_ref.airport_name = airport_name.to_string();
+                        persisted_changed = true;
+                    }
+                }
+            }
+
+            if let Some(source_refs) = entry.sources_by_icao.get_mut(icao) {
+                source_refs.sort_by(|left, right| left.source_label.cmp(&right.source_label));
+            }
+
+            if let Some(source_file) = entry.source_files.get_mut(source_path) {
+                source_file
+                    .airports
+                    .sort_by(|left, right| left.byte_start.cmp(&right.byte_start));
+            }
+
+            if persisted_changed {
+                source_files_to_persist = Some(entry.source_files.clone());
+            }
+        }
+    }
+
+    if let Some(source_files) = source_files_to_persist {
+        if let Err(error) = persist_airport_flatten_source_files(xplane_root, &source_files) {
+            logger::log_info(
+                &format!("Failed to persist airport flatten index: {}", error),
+                Some("airport_flatten"),
+            );
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn airport_flatten_search_airports(
     db: State<'_, DatabaseState>,
@@ -478,50 +1083,17 @@ pub async fn airport_flatten_search_airports(
     let normalized_query_upper = trimmed.to_uppercase();
     let limit = limit.unwrap_or(20).clamp(1, 100);
 
-    let packages = load_scenery_packages(db.get(), &xplane_root).await?;
-
-    let mut rows = std::collections::HashMap::<String, AirportFlattenSearchResult>::new();
-
-    let default_apt = global_airports_apt_path(&xplane_root);
-    if default_apt.is_file() {
-        for (icao, airport_name) in
-            search_apt_file(&default_apt, trimmed).map_err(|error| {
-                format!("Failed to search {}: {}", default_apt.display(), error)
-            })?
-        {
-            upsert_search_entry(
-                &mut rows,
-                icao,
-                airport_name,
-                AirportFlattenSourceKind::Default,
-            );
-        }
-    }
-
-    for info in packages.iter().filter(|info| {
-        info.category != SceneryCategory::DefaultAirport
-            && info.has_apt_dat
-            && !info.folder_name.trim().eq_ignore_ascii_case("Global Airports")
-    }) {
-        let apt_path = resolve_scenery_dir(&xplane_root, info)
-            .join("Earth nav data")
-            .join("apt.dat");
-        if !apt_path.is_file() {
-            continue;
-        }
-
-        let matches = search_apt_file(&apt_path, trimmed).unwrap_or_default();
-        let mut per_package = std::collections::HashMap::<String, String>::new();
-        for (icao, airport_name) in matches {
-            per_package.entry(icao).or_insert(airport_name);
-        }
-
-        for (icao, airport_name) in per_package {
-            upsert_search_entry(&mut rows, icao, airport_name, AirportFlattenSourceKind::Custom);
-        }
-    }
-
-    let mut results: Vec<AirportFlattenSearchResult> = rows.into_values().collect();
+    let index = get_or_build_airport_flatten_index(db.get(), &xplane_root).await?;
+    let query_lower = trimmed.to_lowercase();
+    let mut results: Vec<AirportFlattenSearchResult> = index
+        .search_rows
+        .iter()
+        .filter(|row| {
+            row.icao.contains(&normalized_query_upper)
+                || row.airport_name.to_lowercase().contains(&query_lower)
+        })
+        .cloned()
+        .collect();
     results.sort_by(|left, right| {
         search_score(left, &normalized_query_upper)
             .cmp(&search_score(right, &normalized_query_upper))
@@ -546,18 +1118,15 @@ pub async fn airport_flatten_get_targets(
         return Err("ICAO is required".to_string());
     }
 
-    let packages = load_scenery_packages(db.get(), &xplane_root).await?;
-    let mut targets = Vec::new();
+    let index = get_or_build_airport_flatten_index(db.get(), &xplane_root).await?;
+    let Some(source_refs) = index.sources_by_icao.get(&normalized_icao) else {
+        return Ok(Vec::new());
+    };
 
-    if let Some(default_target) = default_target_for_icao(&xplane_root, &normalized_icao)? {
-        targets.push(default_target);
+    let mut targets = Vec::with_capacity(source_refs.len());
+    for source_ref in source_refs {
+        targets.push(build_target_from_source_ref(source_ref, &normalized_icao)?);
     }
-
-    targets.extend(custom_targets_for_icao(
-        &xplane_root,
-        &packages,
-        &normalized_icao,
-    ));
 
     Ok(targets)
 }
@@ -571,27 +1140,12 @@ pub async fn scenery_get_flatten_target(
     let xplane_root = PathBuf::from(&xplane_path);
     crate::validate_xplane_root_path(&xplane_root)?;
 
-    let packages = load_scenery_packages(db.get(), &xplane_root).await?;
-    let package = packages
-        .into_iter()
-        .find(|info| info.folder_name == folder_name)
-        .ok_or_else(|| format!("Scenery package not found: {}", folder_name))?;
+    let index = get_or_build_airport_flatten_index(db.get(), &xplane_root).await?;
+    let Some(source_ref) = index.single_custom_sources_by_folder.get(&folder_name) else {
+        return Ok(None);
+    };
 
-    Ok(inspect_scenery_flatten_target(&xplane_root, &package))
-}
-
-fn resolve_custom_apt_path(
-    xplane_root: &Path,
-    packages: &[SceneryPackageInfo],
-    folder_name: &str,
-) -> Result<PathBuf, String> {
-    let package = packages
-        .iter()
-        .find(|info| info.folder_name == folder_name)
-        .ok_or_else(|| format!("Scenery package not found: {}", folder_name))?;
-    Ok(resolve_scenery_dir(xplane_root, package)
-        .join("Earth nav data")
-        .join("apt.dat"))
+    Ok(Some(build_target_from_source_ref(source_ref, &source_ref.icao)?))
 }
 
 #[tauri::command]
@@ -607,44 +1161,129 @@ pub async fn airport_flatten_set_state(
         return Err("ICAO is required".to_string());
     }
 
-    let packages = load_scenery_packages(db.get(), &xplane_root).await?;
     let operation = if request.enabled { "enable" } else { "disable" };
+    let cache_key = airport_flatten_cache_key(&xplane_root);
+    let maybe_index = if request.source_path.is_some() {
+        None
+    } else {
+        Some(get_or_build_airport_flatten_index(db.get(), &xplane_root).await?)
+    };
 
     let result = (|| -> Result<AirportFlattenTarget, String> {
-        let (apt_path, source_kind, source_label, folder_name) = match request.source_kind {
-            AirportFlattenSourceKind::Default => (
-                global_airports_apt_path(&xplane_root),
-                AirportFlattenSourceKind::Default,
-                "Global Airports".to_string(),
-                None,
-            ),
-            AirportFlattenSourceKind::Custom => {
-                let folder_name = request
-                    .folder_name
-                    .clone()
-                    .ok_or_else(|| "folderName is required for custom scenery flattening".to_string())?;
-                (
-                    resolve_custom_apt_path(&xplane_root, &packages, &folder_name)?,
-                    AirportFlattenSourceKind::Custom,
-                    folder_name.clone(),
-                    Some(folder_name),
-                )
+        let source_ref = if let Some(source_path) = request.source_path.clone() {
+            AIRPORT_FLATTEN_INDEX_CACHE
+                .read()
+                .ok()
+                .and_then(|cache| cache.get(&cache_key).cloned())
+                .and_then(|index| {
+                    index.sources_by_icao.get(&normalized_icao).and_then(|refs| {
+                        refs.iter().find(|source| source.source_path == source_path).cloned()
+                    })
+                })
+                .unwrap_or(FlattenSourceRef {
+                    icao: normalized_icao.clone(),
+                    source_kind: request.source_kind.clone(),
+                    source_label: match request.source_kind {
+                        AirportFlattenSourceKind::Default => "Global Airports".to_string(),
+                        AirportFlattenSourceKind::Custom => request
+                            .folder_name
+                            .clone()
+                            .ok_or_else(|| {
+                                "folderName is required for custom scenery flattening".to_string()
+                            })?,
+                    },
+                    source_path,
+                    folder_name: request.folder_name.clone(),
+                    airport_name: normalized_icao.clone(),
+                    flattened: request.enabled,
+                })
+        } else {
+            let index = maybe_index
+                .as_ref()
+                .ok_or_else(|| "Airport flatten index is unavailable".to_string())?;
+            match request.source_kind {
+                AirportFlattenSourceKind::Default => index
+                    .sources_by_icao
+                    .get(&normalized_icao)
+                    .and_then(|refs| {
+                        refs.iter()
+                            .find(|source| source.source_kind == AirportFlattenSourceKind::Default)
+                    })
+                    .cloned()
+                    .ok_or_else(|| {
+                        format!("Default airport source not found for {}", normalized_icao)
+                    })?,
+                AirportFlattenSourceKind::Custom => {
+                    let folder_name = request.folder_name.clone().ok_or_else(|| {
+                        "folderName is required for custom scenery flattening".to_string()
+                    })?;
+                    index
+                        .single_custom_sources_by_folder
+                        .get(&folder_name)
+                        .cloned()
+                        .ok_or_else(|| {
+                            format!("Custom airport source not found for {}", folder_name)
+                        })?
+                }
             }
         };
+        let apt_path = PathBuf::from(&source_ref.source_path);
+        crate::path_utils::validate_child_path(&xplane_root, &apt_path)
+            .map_err(|error| format!("Invalid airport source path: {}", error))?;
 
         if !apt_path.is_file() {
             return Err(format!("apt.dat not found: {}", apt_path.display()));
         }
 
-        let airport_name = update_apt_flatten_state(&apt_path, &normalized_icao, request.enabled)?;
+        if source_ref.flattened == request.enabled {
+            return Ok(AirportFlattenTarget {
+                icao: normalized_icao.clone(),
+                airport_name: source_ref.airport_name,
+                source_kind: source_ref.source_kind,
+                source_label: source_ref.source_label,
+                source_path: source_ref.source_path,
+                folder_name: source_ref.folder_name,
+                flattened: request.enabled,
+            });
+        }
+
+        let cached_airport = AIRPORT_FLATTEN_INDEX_CACHE
+            .read()
+            .ok()
+            .and_then(|cache| cache.get(&cache_key).cloned())
+            .and_then(|index| index.source_files.get(&source_ref.source_path).cloned())
+            .and_then(|source_file| {
+                source_file
+                    .airports
+                    .into_iter()
+                    .find(|airport| airport.icao.eq_ignore_ascii_case(&normalized_icao))
+            });
+
+        let (airport_name, block_delta) = if let Some(cached_airport) = cached_airport {
+            rewrite_airport_block_by_offsets(&apt_path, &cached_airport, request.enabled)?
+        } else {
+            (
+                update_apt_flatten_state(&apt_path, &normalized_icao, request.enabled)?,
+                0,
+            )
+        };
+        update_cached_parsed_apt_state(&apt_path, &normalized_icao, request.enabled);
+        update_cached_flatten_state(
+            &xplane_root,
+            &normalized_icao,
+            &source_ref.source_path,
+            request.enabled,
+            &airport_name,
+            block_delta,
+        );
 
         Ok(AirportFlattenTarget {
             icao: normalized_icao.clone(),
             airport_name,
-            source_kind,
-            source_label,
-            source_path: apt_path.display().to_string(),
-            folder_name,
+            source_kind: source_ref.source_kind,
+            source_label: source_ref.source_label,
+            source_path: source_ref.source_path,
+            folder_name: source_ref.folder_name,
             flattened: request.enabled,
         })
     })();

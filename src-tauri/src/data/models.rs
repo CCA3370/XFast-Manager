@@ -449,6 +449,8 @@ pub struct SetAirportFlattenRequest {
     pub source_kind: AirportFlattenSourceKind,
     #[serde(default)]
     pub folder_name: Option<String>,
+    #[serde(default)]
+    pub source_path: Option<String>,
     pub enabled: bool,
 }
 

@@ -374,6 +374,7 @@ async function setTargetState(target: AirportFlattenTarget, enabled: boolean) {
       icao: target.icao,
       sourceKind: target.sourceKind,
       folderName: target.folderName,
+      sourcePath: target.sourcePath,
       enabled,
     })
 
