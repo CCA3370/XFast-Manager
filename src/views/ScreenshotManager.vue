@@ -383,8 +383,8 @@ const liveFilterStyle = computed(() => {
   const parts: string[] = []
   // Exposure → brightness (multiplicative)
   if (cur.exposure !== base.exposure) {
-    const bB = Math.pow(2, (base.exposure / 100) * 1.5)
-    const cB = Math.pow(2, (cur.exposure / 100) * 1.5)
+    const bB = Math.pow(2, base.exposure / 100)
+    const cB = Math.pow(2, cur.exposure / 100)
     parts.push(`brightness(${(cB / bB).toFixed(4)})`)
   }
   // Contrast (multiplicative around midtone)
@@ -1004,7 +1004,7 @@ function applyPixelAdjustments(canvas: HTMLCanvasElement, p: ScreenshotEditParam
   const temp = p.temperature / 100
   const hi = p.highlights / 100
   const sh = p.shadows / 100
-  const expMul = Math.pow(2, exp * 1.5)
+  const expMul = Math.pow(2, exp)
   const conMul = 1 + con
   const satMul = 1 + sat
 

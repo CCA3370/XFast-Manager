@@ -76,7 +76,7 @@ function applyPixelAdjustments(canvas: OffscreenCanvas, p: ScreenshotEditParams)
   const temp = p.temperature / 100
   const hi = p.highlights / 100
   const sh = p.shadows / 100
-  const expMul = Math.pow(2, exp * 1.5)
+  const expMul = Math.pow(2, exp)
   const conMul = 1 + con
   const satMul = 1 + sat
 
