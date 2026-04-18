@@ -395,22 +395,30 @@ const liveFilterStyle = computed(() => {
   }
   // Saturation (multiplicative)
   if (cur.saturation !== base.saturation) {
-    const bS = 1 + base.saturation / 100
-    const cS = 1 + cur.saturation / 100
+    const bS = 1 + (base.saturation / 100) * 0.5
+    const cS = 1 + (cur.saturation / 100) * 0.5
     parts.push(`saturate(${(cS / Math.max(bS, 0.01)).toFixed(4)})`)
   }
-  // Temperature: rough warm/cool tint
+  // Temperature: linear r+/b- shift via SVG filter (matches canvas exactly).
+  // CSS sepia()/hue-rotate() would be a hue tint, not a temperature shift.
   if (cur.temperature !== base.temperature) {
-    const delta = cur.temperature - base.temperature
-    if (delta > 0) parts.push(`sepia(${((delta / 100) * 0.25).toFixed(3)})`)
-    else parts.push(`hue-rotate(${((delta / 100) * 25).toFixed(1)}deg)`)
+    parts.push('url(#editor-temp-filter)')
   }
   // Denoise → blur (additive px)
   if (cur.denoise !== base.denoise) {
-    const delta = ((cur.denoise - base.denoise) / 100) * 1.8
+    const delta = ((cur.denoise - base.denoise) / 100) * 0.9
     if (delta > 0) parts.push(`blur(${delta.toFixed(2)}px)`)
   }
   return parts.length > 0 ? { filter: parts.join(' ') } : undefined
+})
+
+const tempFilterMatrix = computed(() => {
+  void editorPreviewUrl.value
+  const base = renderedEditSnapshot?.temperature ?? 0
+  const shift = ((edit.value.temperature - base) / 100) * 0.08
+  const pos = shift.toFixed(5)
+  const neg = (-shift).toFixed(5)
+  return `1 0 0 0 ${pos} 0 1 0 0 0 0 0 1 0 ${neg} 0 0 0 1 0`
 })
 
 const activeSliderValue = computed({
@@ -1006,7 +1014,7 @@ function applyPixelAdjustments(canvas: HTMLCanvasElement, p: ScreenshotEditParam
   const sh = p.shadows / 100
   const expMul = Math.pow(2, exp)
   const conMul = 1 + con
-  const satMul = 1 + sat
+  const satMul = 1 + sat * 0.5
 
   for (let i = 0; i < d.length; i += 4) {
     let r = d[i] / 255
@@ -1053,7 +1061,7 @@ function applyDenoise(canvas: HTMLCanvasElement, denoise: number) {
   const strength = clamp(denoise / 100, 0, 1)
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.drawImage(source, 0, 0)
-  ctx.filter = `blur(${(strength * 1.8).toFixed(2)}px)`
+  ctx.filter = `blur(${(strength * 0.9).toFixed(2)}px)`
   ctx.globalAlpha = Math.min(0.65, strength * 0.75)
   ctx.drawImage(source, 0, 0)
   ctx.filter = 'none'
@@ -2157,6 +2165,16 @@ onBeforeUnmount(() => {
 
     <Teleport to="body">
       <div v-if="editorOpen" class="fixed inset-0 z-[120] p-2 sm:p-4">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          style="position: absolute; width: 0; height: 0; overflow: hidden"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <filter id="editor-temp-filter" color-interpolation-filters="sRGB">
+            <feColorMatrix type="matrix" :values="tempFilterMatrix" />
+          </filter>
+        </svg>
         <div
           class="absolute inset-0 bg-black/75 backdrop-blur-sm pointer-events-none"
           aria-hidden="true"

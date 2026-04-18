@@ -78,7 +78,7 @@ function applyPixelAdjustments(canvas: OffscreenCanvas, p: ScreenshotEditParams)
   const sh = p.shadows / 100
   const expMul = Math.pow(2, exp)
   const conMul = 1 + con
-  const satMul = 1 + sat
+  const satMul = 1 + sat * 0.5
 
   for (let i = 0; i < d.length; i += 4) {
     let r = d[i] / 255
@@ -125,7 +125,7 @@ function applyDenoise(canvas: OffscreenCanvas, denoise: number) {
   const strength = clamp(denoise / 100, 0, 1)
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.drawImage(source, 0, 0)
-  ctx.filter = `blur(${(strength * 1.8).toFixed(2)}px)`
+  ctx.filter = `blur(${(strength * 0.9).toFixed(2)}px)`
   ctx.globalAlpha = Math.min(0.65, strength * 0.75)
   ctx.drawImage(source, 0, 0)
   ctx.filter = 'none'
