@@ -1,7 +1,7 @@
 <template>
-  <div class="h-full flex flex-col px-6 pt-3 pb-6 gap-4 max-w-4xl mx-auto w-full">
+  <div class="h-full flex flex-col px-5 pt-3 pb-5 gap-2 max-w-4xl mx-auto w-full">
     <header
-      class="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-gray-800"
+      class="flex items-center justify-between pb-1.5 border-b border-gray-200 dark:border-gray-800"
     >
       <h1 class="text-lg font-bold text-gray-900 dark:text-white">
         {{ $t('airportFlatten.title') }}
@@ -20,18 +20,18 @@
 
     <div
       v-if="!appStore.xplanePath"
-      class="rounded-2xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-800 dark:text-amber-200"
+      class="rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 text-xs text-amber-800 dark:text-amber-200"
     >
       {{ $t('airportFlatten.pathRequiredHint') }}
     </div>
 
-    <section class="flex items-center gap-3 shrink-0">
+    <section class="flex items-center gap-2 shrink-0">
       <div class="relative flex-1">
         <input
           v-model="searchText"
           type="text"
           :placeholder="$t('airportFlatten.searchPlaceholder')"
-          class="w-full rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 pr-8 text-sm text-gray-900 dark:text-white shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-500/10"
+          class="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 pr-8 text-sm text-gray-900 dark:text-white shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-500/10"
           :disabled="!appStore.xplanePath"
         />
         <button
@@ -60,11 +60,11 @@
       </div>
     </section>
 
-    <div class="flex-1 min-h-0 overflow-y-auto pr-2 space-y-3">
+    <div class="flex-1 min-h-0 overflow-y-auto pr-2 space-y-2">
       <div
         v-for="airport in searchResults"
         :key="airport.icao"
-        class="rounded-2xl border transition shadow-sm overflow-hidden"
+        class="rounded-lg border transition shadow-sm overflow-hidden"
         :class="
           selectedIcao === airport.icao
             ? 'border-sky-300 bg-sky-50/30 dark:bg-sky-950/10 dark:border-sky-800/80'
@@ -72,13 +72,13 @@
         "
       >
         <button
-          class="w-full px-4 py-3 text-left flex items-center justify-between gap-4 focus:outline-none"
+          class="w-full px-3 py-2 text-left flex items-center justify-between gap-3 focus:outline-none"
           :disabled="!appStore.xplanePath"
           @click="selectAirport(airport)"
         >
           <div class="min-w-0">
             <div class="flex items-center gap-2">
-              <span class="font-mono text-sm font-bold text-gray-900 dark:text-white">
+              <span class="font-mono text-base font-bold text-gray-900 dark:text-white">
                 {{ airport.icao }}
               </span>
               <span
@@ -116,11 +116,11 @@
 
         <div
           v-if="selectedIcao === airport.icao"
-          class="border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 p-4"
+          class="border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 p-2.5"
         >
           <div
             v-if="isLoadingTargets"
-            class="flex items-center justify-center py-6 text-sm text-sky-600 dark:text-sky-300"
+            class="flex items-center justify-center py-3 text-sm text-sky-600 dark:text-sky-300"
           >
             <div
               class="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin mr-3"
@@ -128,10 +128,10 @@
             {{ $t('airportFlatten.loadingTargets') }}
           </div>
 
-          <div v-else-if="targets.length > 0" class="space-y-3">
+          <div v-else-if="targets.length > 0" class="space-y-2">
             <div
               v-if="targets.length > 1"
-              class="mb-3 rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200"
+              class="mb-3 rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200"
             >
               {{ $t('airportFlatten.multiSourceHint') }}
             </div>
@@ -139,7 +139,7 @@
             <article
               v-for="target in targets"
               :key="targetKey(target)"
-              class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 shadow-sm"
+              class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2.5 shadow-sm"
             >
               <div class="flex flex-wrap items-start justify-between gap-3">
                 <div class="min-w-0 flex-1">
@@ -217,7 +217,7 @@
 
       <div
         v-if="!isSearching && searchText && searchResults.length === 0"
-        class="rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400"
+        class="rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400"
       >
         {{ $t('airportFlatten.searchEmpty') }}
       </div>
