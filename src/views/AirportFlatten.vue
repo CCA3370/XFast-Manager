@@ -199,7 +199,9 @@
                     <h3 class="mt-2.5 text-sm font-semibold text-gray-900 dark:text-white">
                       {{ target.sourceLabel }}
                     </h3>
-                    <p class="mt-1 text-[11px] leading-5 text-gray-500 dark:text-gray-400 break-all">
+                    <p
+                      class="mt-1 text-[11px] leading-5 text-gray-500 dark:text-gray-400 break-all"
+                    >
                       <span class="font-semibold text-gray-600 dark:text-gray-300">
                         {{ $t('airportFlatten.pathLabel') }}:
                       </span>
@@ -423,9 +425,7 @@
                   class="w-3 h-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin"
                 ></div>
                 <span v-else>{{
-                  item.currentFlattened
-                    ? $t('airportFlatten.disable')
-                    : $t('airportFlatten.enable')
+                  item.currentFlattened ? $t('airportFlatten.disable') : $t('airportFlatten.enable')
                 }}</span>
               </button>
               <button

@@ -1645,8 +1645,7 @@ export default {
     reapplySuccess: 'تم إعادة تطبيق {icao}',
     removeSaved: 'إزالة',
     removeSavedConfirmTitle: 'إزالة سجل التسوية المحفوظ؟',
-    removeSavedConfirmMessage:
-      'سيُزال فقط سجل {icao}. لن يتم تعديل ملف apt.dat.',
+    removeSavedConfirmMessage: 'سيُزال فقط سجل {icao}. لن يتم تعديل ملف apt.dat.',
     removeSavedConfirm: 'إزالة',
     removeSavedFailed: 'فشل إزالة السجل المحفوظ',
     statusInSync: 'متزامن',

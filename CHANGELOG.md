@@ -5,13 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.0] - 2026-04-18
+## [1.2.1] - 2026-04-18
 
 ### Added
 
 - **CSL and ALTITUDE Model Management** - Dedicated page to scan, search, install, update, and uninstall multiplayer model packages, with custom path support and queued/cancellable installs.
-- - **Gateway Airport Management** - New Gateway browser to search airports, inspect submission history and details, view Gateway feature tags and installed-folder state, install official Gateway sceneries, uninstall installed Gateway airports, and check for updates. Each result now shows whether it's already in your current X-Plane release (with `XP` tags or `Not in current X-Plane` indicators) and surfaces the matched baseline scenery details (version/artist/date) when available. Conflicting non-Gateway airports are flagged with an ignore-and-continue option.
-- - **Built-in Zibo Updater** - Version-aware Zibo update support with torrent downloads, manual download fallback for major-version packages, and preserve options for liveries and config files during major updates.
+- **Gateway Airport Management** - New Gateway browser to search airports, inspect submission history and details, view Gateway feature tags and installed-folder state, install official Gateway sceneries, uninstall installed Gateway airports, and check for updates. Each result now shows whether it's already in your current X-Plane release (with `XP` tags or `Not in current X-Plane` indicators) and surfaces the matched baseline scenery details (version/artist/date) when available. Conflicting non-Gateway airports are flagged with an ignore-and-continue option.
+- **Built-in Zibo Updater** - Version-aware Zibo update support with torrent downloads, manual download fallback for major-version packages, and preserve options for liveries and config files during major updates.
 - **Airport Flatten Manager** - New page to search airports by ICAO or name and toggle their flatten setting on each scenery source. Every change is remembered, and a one-click action can re-apply all saved settings whenever the underlying scenery files no longer match.
 - **Configuration Presets** - Save and apply preset workflows for aircraft, plugins, scenery, Lua scripts, and lock states, with full import/export support.
 - **Activity Log** - New history page covering installs, updates, deletions, enable/disable actions, scenery sorting, and preset applies.
