@@ -575,8 +575,16 @@ fn scan_single_aircraft_folder(
 }
 
 fn rescan_aircraft_folder_entry(xplane_path: &Path, folder_name: &str) -> Result<AircraftInfo> {
+    // Validate path (existence + traversal check). The canonical path it
+    // returns is intentionally discarded: scan_single_aircraft_folder derives
+    // the relative folder_name via strip_prefix against a non-canonical base,
+    // and on Windows a canonical path carries a `\\?\` prefix that breaks the
+    // match — the fallback would then return the full absolute path as
+    // folder_name, causing duplicate entries in the UI list after a toggle.
+    resolve_management_path(xplane_path, "aircraft", folder_name)?;
+
     let aircraft_path = xplane_path.join("Aircraft");
-    let folder_path = resolve_management_path(xplane_path, "aircraft", folder_name)?;
+    let folder_path = aircraft_path.join(folder_name);
     let display_name = folder_path
         .file_name()
         .and_then(|name| name.to_str())
