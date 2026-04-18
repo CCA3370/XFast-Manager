@@ -1655,8 +1655,7 @@ export default {
     reapplySuccess: '{icao} 다시 적용됨',
     removeSaved: '제거',
     removeSavedConfirmTitle: '저장된 평탄화 기록을 제거하시겠습니까?',
-    removeSavedConfirmMessage:
-      '{icao}의 저장된 기록만 제거되며, apt.dat 파일은 수정되지 않습니다.',
+    removeSavedConfirmMessage: '{icao}의 저장된 기록만 제거되며, apt.dat 파일은 수정되지 않습니다.',
     removeSavedConfirm: '제거',
     removeSavedFailed: '저장된 평탄화 기록 제거에 실패했습니다',
     statusInSync: '동기화됨',
