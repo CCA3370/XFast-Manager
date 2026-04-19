@@ -1,7 +1,7 @@
 {
-  "productName": "XFast Manager",
-  "version": "1.2.2",
-  "identifier": "com.xfastmanager.tool",
+  "productName": "XFast Manager Full",
+  "version": "1.2.2-full.1",
+  "identifier": "com.xfastmanager.tool.full",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "XFast Manager - X-Plane Addon Auto Manager",
+        "title": "XFast Manager Full - X-Plane Addon Auto Manager",
         "width": 700,
         "height": 600,
         "minWidth": 650,
@@ -33,7 +33,7 @@
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "targets": ["app", "dmg", "deb", "rpm", "appimage", "msi"],
     "icon": [
       "icons/32x32.png",
@@ -67,12 +67,6 @@
     }
   },
   "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://x-fast-manager.vercel.app/api/latest-json"
-      ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM1RDY0OUVGOURGNTdFNkQKUldSdGZ2V2Q3MG5XTmQ4UDVuNXdXM25SSmJvSnlqN2dlWkRKSEwzV202QnBrVzhlb2dlOGRkUTcK"
-    },
     "http": {
       "scope": [
         "https://x-fast-manager.vercel.app/*",

@@ -130,7 +130,7 @@ const hasDuplicateAirports = computed(
 const hasDuplicates = computed(() => hasDuplicateTiles.value || hasDuplicateAirports.value)
 const canOpenUpdater = computed(() => {
   const updateUrl = (props.entry.updateUrl || '').trim().toLowerCase()
-  return !!updateUrl && !updateUrl.startsWith('x-updater:')
+  return !!updateUrl
 })
 const duplicatesCount = computed(() => {
   const all = new Set<string>()

@@ -287,10 +287,9 @@ function toggleSelect(folderName: string) {
 const isBatchProcessing = ref(false)
 
 function isDrawerUpdatable(item: { updateUrl?: string; updateProvider?: string }): boolean {
-  if (item.updateProvider === 'x-updater') return false
   if (item.updateProvider === 'zibo') return true
   const value = (item.updateUrl || '').trim().toLowerCase()
-  return !!value && !value.startsWith('x-updater:')
+  return !!value
 }
 
 const skunkUpdatableAircraftCount = computed(() => {
@@ -315,6 +314,7 @@ const selectedSkunkUpdateTasks = computed<AddonUpdateDrawerTask[]>(() => {
         itemType: 'aircraft' as const,
         folderName: item.folderName,
         displayName: item.displayName,
+        provider: item.updateProvider,
         initialLocalVersion: item.version || '',
         initialTargetVersion: item.latestVersion || '',
       }))
@@ -327,6 +327,7 @@ const selectedSkunkUpdateTasks = computed<AddonUpdateDrawerTask[]>(() => {
         itemType: 'plugin' as const,
         folderName: item.folderName,
         displayName: item.displayName,
+        provider: item.updateProvider,
         initialLocalVersion: item.version || '',
         initialTargetVersion: item.latestVersion || '',
       }))
@@ -377,6 +378,7 @@ function buildUpdateAllTargets(tab: 'aircraft' | 'plugin'): AddonUpdateDrawerTas
         itemType: 'aircraft' as const,
         folderName: item.folderName,
         displayName: item.displayName,
+        provider: item.updateProvider,
         initialLocalVersion: item.version || '',
         initialTargetVersion: item.latestVersion || '',
       }))
@@ -388,6 +390,7 @@ function buildUpdateAllTargets(tab: 'aircraft' | 'plugin'): AddonUpdateDrawerTas
       itemType: 'plugin' as const,
       folderName: item.folderName,
       displayName: item.displayName,
+      provider: item.updateProvider,
       initialLocalVersion: item.version || '',
       initialTargetVersion: item.latestVersion || '',
     }))
@@ -595,11 +598,13 @@ function handleOpenUpdate(
   displayName: string,
   currentVersion?: string,
   latestVersion?: string,
+  provider?: 'skunkcrafts' | 'x-updater' | 'zibo',
 ) {
   const task: AddonUpdateDrawerTask = {
     itemType,
     folderName,
     displayName,
+    provider,
     initialLocalVersion: currentVersion || '',
     initialTargetVersion: latestVersion || '',
   }
@@ -1145,6 +1150,7 @@ const isLoading = computed(() => {
                         item.displayName,
                         item.version,
                         item.latestVersion,
+                        item.updateProvider,
                       )
                   "
                 />
@@ -1182,6 +1188,7 @@ const isLoading = computed(() => {
                         item.displayName,
                         item.version,
                         item.latestVersion,
+                        item.updateProvider,
                       )
                   "
                 />

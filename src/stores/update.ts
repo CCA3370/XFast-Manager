@@ -17,6 +17,11 @@ const RELEASE_REDIRECT_API_BASE =
   import.meta.env.VITE_XFAST_RELEASE_REDIRECT_API_URL ||
   'https://x-fast-manager.vercel.app/api/release-redirect'
 
+// Self-updater is disabled on the full-updater distribution: accepting a public
+// release over this build would wipe the restored X-Updater capability. The
+// in-app update check and auto-install paths are both short-circuited.
+const SELF_UPDATER_DISABLED = true
+
 export const useUpdateStore = defineStore('update', () => {
   const toast = useToastStore()
   const modal = useModalStore()
@@ -66,6 +71,12 @@ export const useUpdateStore = defineStore('update', () => {
   }
 
   async function checkForUpdates(manual = false) {
+    if (SELF_UPDATER_DISABLED) {
+      if (manual) {
+        toast.info(t('update.upToDate'))
+      }
+      return
+    }
     if (checkInProgress.value) return
 
     checkInProgress.value = true
@@ -361,6 +372,10 @@ export const useUpdateStore = defineStore('update', () => {
   }
 
   async function performUpdate() {
+    if (SELF_UPDATER_DISABLED) {
+      openReleaseUrl()
+      return
+    }
     if (isDownloading.value) return
 
     resetUpdateState()

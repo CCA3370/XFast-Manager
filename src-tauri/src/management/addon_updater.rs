@@ -39,42 +39,6 @@ fn log_addon_debug(message: impl Into<String>) {
     logger::log_debug(&message.into(), Some(LOG_CTX), None);
 }
 
-fn obfuscated_xupdater_block_error(
-    item_type: &str,
-    folder_name: &str,
-    target_path: &Path,
-) -> anyhow::Error {
-    let mut hash: u32 = 0xB529_7A4D ^ (item_type.len() as u32);
-    for byte in item_type
-        .bytes()
-        .chain(folder_name.bytes())
-        .chain(target_path.to_string_lossy().bytes())
-    {
-        hash ^= (byte as u32).wrapping_mul(0x85EB_CA6B);
-        hash = hash.rotate_left(7).wrapping_add(0xC2B2_AE35);
-    }
-    let token = format!("{:08X}", hash ^ 0x6A09_E667);
-    anyhow!("pipeline digest mismatch [{}]", token)
-}
-
-fn enforce_obfuscated_xupdater_lock(
-    item_type: &str,
-    folder_name: &str,
-    target_path: &Path,
-) -> Result<()> {
-    if target_path.join(SKUNK_CFG_FILE).exists() {
-        return Ok(());
-    }
-    if find_profile_in_folder(target_path).is_some() {
-        return Err(obfuscated_xupdater_block_error(
-            item_type,
-            folder_name,
-            target_path,
-        ));
-    }
-    Ok(())
-}
-
 fn mask_secret(value: &str) -> String {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -437,7 +401,6 @@ pub async fn build_update_plan(
         )
         .await;
     }
-    enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
     emit_progress_event(
         &progress_callback,
@@ -513,7 +476,6 @@ pub async fn fetch_update_preview(
     progress_callback: Option<AddonUpdateProgressCallback>,
 ) -> Result<AddonUpdatePreview> {
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
-    enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
     emit_progress_event(
         &progress_callback,
@@ -653,7 +615,6 @@ pub async fn execute_update(
         )
         .await;
     }
-    enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
     emit_progress_event(
         &progress_callback,
@@ -755,135 +716,213 @@ pub async fn execute_update(
     let folder_name_owned = folder_name.to_string();
 
     let mut apply_result: Result<()> = Ok(());
-    for action in &context.actions {
-        if let Err(cancel_err) = ensure_not_cancelled(task_control.as_ref(), "install") {
-            apply_result = Err(cancel_err);
-            break;
-        }
-        log_addon_debug(format!(
-            "apply action kind={:?} path={}",
-            action.kind, action.rel_path
-        ));
-        let step: Result<()> = match action.kind {
-            XActionKind::Delete => {
-                let destination = resolve_entry_path(&target_path, &action.rel_path)?;
-                if destination.exists() {
-                    rollback.backup_if_needed(&destination)?;
-                    remove_path(&destination)?;
-                }
-                Ok(())
-            }
-            XActionKind::Add | XActionKind::Replace => {
-                let download = action
-                    .download
-                    .as_ref()
-                    .ok_or_else(|| anyhow!("Missing download link for '{}'", action.rel_path))?;
-                log_addon_debug(format!(
-                    "download file url={} relPath={} expectedMd5={:?} expectedSize={:?}",
-                    download.url, download.rel_path, download.expected_md5, download.expected_size
-                ));
-                let chunk_callback: Arc<dyn Fn(u64) + Send + Sync> = {
-                    let processed_bytes = Arc::clone(&processed_bytes);
-                    let progress_callback = progress_callback.clone();
-                    let current_file = action.rel_path.clone();
-                    let item_type_owned = item_type_owned.clone();
-                    let folder_name_owned = folder_name_owned.clone();
-                    let install_last_emit = Arc::clone(&install_last_emit);
-                    Arc::new(move |delta| {
-                        let processed = processed_bytes.fetch_add(delta, Ordering::Relaxed) + delta;
-                        let elapsed = install_started.elapsed().as_secs_f64().max(0.001);
-                        let speed = processed as f64 / elapsed;
-                        let mut should_emit = true;
-                        if let Ok(mut guard) = install_last_emit.lock() {
-                            if guard.elapsed() < Duration::from_millis(120) {
-                                should_emit = false;
-                            } else {
-                                *guard = Instant::now();
-                            }
-                        }
-                        if should_emit {
-                            let percentage = if total_download_bytes > 0 {
-                                (processed as f64 / total_download_bytes as f64) * 100.0
-                            } else {
-                                0.0
-                            };
-                            emit_progress_event(
-                                &progress_callback,
-                                &item_type_owned,
-                                &folder_name_owned,
-                                "install",
-                                "in_progress",
-                                percentage,
-                                0,
-                                0,
-                                processed,
-                                total_download_bytes,
-                                speed,
-                                Some(current_file.clone()),
-                                Some("Downloading".to_string()),
-                            );
-                        }
-                    })
-                };
-                let bytes = download_xupdater_file(
-                    &client,
-                    &context.auth,
-                    download,
-                    task_control.as_ref(),
-                    Some(chunk_callback),
-                )
-                .await?;
-                let destination = resolve_entry_path(&target_path, &action.rel_path)?;
-                if destination.exists() {
-                    rollback.backup_if_needed(&destination)?;
-                } else {
-                    rollback.record_created_path(&destination);
-                }
-                write_file_atomic(&destination, &bytes)?;
-                log_addon_debug(format!(
-                    "write completed relPath={} size={} destination={}",
-                    action.rel_path,
-                    bytes.len(),
-                    destination.display()
-                ));
-                Ok(())
-            }
-        };
-        if let Err(e) = step {
-            log_addon_info(format!(
-                "apply action failed path={} error={}",
-                action.rel_path, e
-            ));
-            apply_result = Err(e);
-            break;
-        }
 
-        processed_units = processed_units.saturating_add(1);
-        let processed = processed_bytes.load(Ordering::Relaxed);
-        let percentage = if total_download_bytes > 0 {
-            (processed as f64 / total_download_bytes as f64) * 100.0
-        } else if total_units > 0 {
-            (processed_units as f64 / total_units as f64) * 100.0
-        } else {
-            100.0
-        };
-        let elapsed = install_started.elapsed().as_secs_f64().max(0.001);
-        let speed = processed as f64 / elapsed;
-        emit_progress_event(
-            &progress_callback,
-            item_type,
-            folder_name,
-            "install",
-            "in_progress",
-            percentage,
-            processed_units,
-            total_units,
-            processed,
-            total_download_bytes,
-            speed,
-            Some(action.rel_path.clone()),
-            Some("Applying changes".to_string()),
-        );
+    let parallel_downloads = options
+        .parallel_downloads
+        .unwrap_or(12)
+        .clamp(1, 12);
+    let mut downloaded_bytes_map: std::collections::HashMap<String, Vec<u8>> =
+        std::collections::HashMap::new();
+
+    let download_actions: Vec<XAction> = context
+        .actions
+        .iter()
+        .filter(|a| matches!(a.kind, XActionKind::Add | XActionKind::Replace))
+        .cloned()
+        .collect();
+
+    log_addon_info(format!(
+        "download phase start files={} parallel={}",
+        download_actions.len(),
+        parallel_downloads,
+    ));
+
+    if !download_actions.is_empty() {
+        let auth_cl = context.auth.clone();
+        let client_cl = client.clone();
+        let task_control_cl = task_control.clone();
+        let progress_callback_cl = progress_callback.clone();
+        let processed_bytes_cl = Arc::clone(&processed_bytes);
+        let install_last_emit_cl = Arc::clone(&install_last_emit);
+        let item_type_cl = item_type_owned.clone();
+        let folder_name_cl = folder_name_owned.clone();
+        let install_started_copy = install_started;
+        let total_download_bytes_copy = total_download_bytes;
+
+        let mut download_stream = futures::stream::iter(download_actions.into_iter())
+            .map(move |action| {
+                let client = client_cl.clone();
+                let auth = auth_cl.clone();
+                let task_control = task_control_cl.clone();
+                let progress_callback = progress_callback_cl.clone();
+                let processed_bytes = Arc::clone(&processed_bytes_cl);
+                let install_last_emit = Arc::clone(&install_last_emit_cl);
+                let item_type_owned = item_type_cl.clone();
+                let folder_name_owned = folder_name_cl.clone();
+                async move {
+                    let download = action
+                        .download
+                        .as_ref()
+                        .ok_or_else(|| anyhow!("Missing download link for '{}'", action.rel_path))?;
+                    log_addon_debug(format!(
+                        "download file url={} relPath={} expectedMd5={:?} expectedSize={:?}",
+                        download.url,
+                        download.rel_path,
+                        download.expected_md5,
+                        download.expected_size
+                    ));
+                    let chunk_callback: Arc<dyn Fn(u64) + Send + Sync> = {
+                        let processed_bytes = Arc::clone(&processed_bytes);
+                        let progress_callback = progress_callback.clone();
+                        let current_file = action.rel_path.clone();
+                        let item_type_owned = item_type_owned.clone();
+                        let folder_name_owned = folder_name_owned.clone();
+                        let install_last_emit = Arc::clone(&install_last_emit);
+                        Arc::new(move |delta| {
+                            let processed =
+                                processed_bytes.fetch_add(delta, Ordering::Relaxed) + delta;
+                            let elapsed = install_started_copy.elapsed().as_secs_f64().max(0.001);
+                            let speed = processed as f64 / elapsed;
+                            let mut should_emit = true;
+                            if let Ok(mut guard) = install_last_emit.lock() {
+                                if guard.elapsed() < Duration::from_millis(120) {
+                                    should_emit = false;
+                                } else {
+                                    *guard = Instant::now();
+                                }
+                            }
+                            if should_emit {
+                                let percentage = if total_download_bytes_copy > 0 {
+                                    (processed as f64 / total_download_bytes_copy as f64) * 100.0
+                                } else {
+                                    0.0
+                                };
+                                emit_progress_event(
+                                    &progress_callback,
+                                    &item_type_owned,
+                                    &folder_name_owned,
+                                    "install",
+                                    "in_progress",
+                                    percentage,
+                                    0,
+                                    0,
+                                    processed,
+                                    total_download_bytes_copy,
+                                    speed,
+                                    Some(current_file.clone()),
+                                    Some("Downloading".to_string()),
+                                );
+                            }
+                        })
+                    };
+                    let bytes = download_xupdater_file(
+                        &client,
+                        &auth,
+                        download,
+                        task_control.as_ref(),
+                        Some(chunk_callback),
+                    )
+                    .await?;
+                    Ok::<(String, Vec<u8>), anyhow::Error>((action.rel_path, bytes))
+                }
+            })
+            .buffer_unordered(parallel_downloads);
+
+        while let Some(result) = download_stream.next().await {
+            match result {
+                Ok((path, bytes)) => {
+                    log_addon_debug(format!(
+                        "download completed relPath={} size={}",
+                        path,
+                        bytes.len()
+                    ));
+                    downloaded_bytes_map.insert(path, bytes);
+                }
+                Err(e) => {
+                    log_addon_info(format!("download failed error={}", e));
+                    apply_result = Err(e);
+                    break;
+                }
+            }
+        }
+        drop(download_stream);
+    }
+
+    if apply_result.is_ok() {
+        for action in &context.actions {
+            if let Err(cancel_err) = ensure_not_cancelled(task_control.as_ref(), "install") {
+                apply_result = Err(cancel_err);
+                break;
+            }
+            log_addon_debug(format!(
+                "apply action kind={:?} path={}",
+                action.kind, action.rel_path
+            ));
+            let step: Result<()> = match action.kind {
+                XActionKind::Delete => {
+                    let destination = resolve_entry_path(&target_path, &action.rel_path)?;
+                    if destination.exists() {
+                        rollback.backup_if_needed(&destination)?;
+                        remove_path(&destination)?;
+                    }
+                    Ok(())
+                }
+                XActionKind::Add | XActionKind::Replace => {
+                    let bytes = downloaded_bytes_map.remove(&action.rel_path).ok_or_else(|| {
+                        anyhow!("Missing downloaded data for '{}'", action.rel_path)
+                    })?;
+                    let destination = resolve_entry_path(&target_path, &action.rel_path)?;
+                    if destination.exists() {
+                        rollback.backup_if_needed(&destination)?;
+                    } else {
+                        rollback.record_created_path(&destination);
+                    }
+                    write_file_atomic(&destination, &bytes)?;
+                    log_addon_debug(format!(
+                        "write completed relPath={} size={} destination={}",
+                        action.rel_path,
+                        bytes.len(),
+                        destination.display()
+                    ));
+                    Ok(())
+                }
+            };
+            if let Err(e) = step {
+                log_addon_info(format!(
+                    "apply action failed path={} error={}",
+                    action.rel_path, e
+                ));
+                apply_result = Err(e);
+                break;
+            }
+
+            processed_units = processed_units.saturating_add(1);
+            let processed = processed_bytes.load(Ordering::Relaxed);
+            let percentage = if total_download_bytes > 0 {
+                (processed as f64 / total_download_bytes as f64) * 100.0
+            } else if total_units > 0 {
+                (processed_units as f64 / total_units as f64) * 100.0
+            } else {
+                100.0
+            };
+            let elapsed = install_started.elapsed().as_secs_f64().max(0.001);
+            let speed = processed as f64 / elapsed;
+            emit_progress_event(
+                &progress_callback,
+                item_type,
+                folder_name,
+                "install",
+                "in_progress",
+                percentage,
+                processed_units,
+                total_units,
+                processed,
+                total_download_bytes,
+                speed,
+                Some(action.rel_path.clone()),
+                Some("Applying changes".to_string()),
+            );
+        }
     }
 
     if let Err(e) = apply_result {
@@ -966,7 +1005,6 @@ pub fn set_updater_credentials(
     license_key: &str,
 ) -> Result<()> {
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
-    enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
     if target_path.join(SKUNK_CFG_FILE).exists() {
         return Err(anyhow!(
@@ -984,7 +1022,6 @@ pub fn get_updater_credentials(
     folder_name: &str,
 ) -> Result<Option<AddonUpdaterCredentials>> {
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
-    enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
     if target_path.join(SKUNK_CFG_FILE).exists() {
         return Ok(None);
@@ -1049,6 +1086,17 @@ fn build_xupdater_plan(
         estimated_download_bytes = estimated_download_bytes.saturating_add(action.estimated_bytes);
     }
 
+    let has_file_changes =
+        !add_files.is_empty() || !replace_files.is_empty() || !delete_files.is_empty();
+    let versions_match = match (&context.local_version, &context.remote_version) {
+        (Some(local), Some(remote)) => {
+            let local = local.trim();
+            let remote = remote.trim();
+            !local.is_empty() && !remote.is_empty() && local == remote
+        }
+        _ => false,
+    };
+
     Ok(AddonUpdatePlan {
         provider: "x-updater".to_string(),
         item_type: item_type.to_string(),
@@ -1060,7 +1108,7 @@ fn build_xupdater_plan(
         manual_download_reason: None,
         zibo_install_mode: None,
         remote_locked: false,
-        has_update: !add_files.is_empty() || !replace_files.is_empty() || !delete_files.is_empty(),
+        has_update: has_file_changes && !versions_match,
         estimated_download_bytes,
         add_files,
         replace_files,
@@ -1836,6 +1884,28 @@ fn extract_snapshot_files_link(snapshot: &Value) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+fn extract_manifest_u64(file: &Value, keys: &[&str]) -> Option<u64> {
+    for key in keys {
+        if let Some(value) = file.get(*key) {
+            if let Some(n) = value.as_u64() {
+                return Some(n);
+            }
+            if let Some(n) = value.as_i64().filter(|n| *n >= 0) {
+                return Some(n as u64);
+            }
+            if let Some(f) = value.as_f64().filter(|f| f.is_finite() && *f >= 0.0) {
+                return Some(f as u64);
+            }
+            if let Some(s) = value.as_str() {
+                if let Ok(n) = s.trim().parse::<u64>() {
+                    return Some(n);
+                }
+            }
+        }
+    }
+    None
+}
+
 fn build_action_from_file(
     target_path: &Path,
     host: &str,
@@ -1924,20 +1994,50 @@ fn build_action_from_file(
         })?;
 
     let url = resolve_link(host, data_link)?;
-    let compressed_size = file
-        .get("compressed_size")
-        .and_then(|v| v.as_u64())
-        .or_else(|| file.get("compressedSize").and_then(|v| v.as_u64()))
-        .or_else(|| file.get("mCompressedSize").and_then(|v| v.as_u64()));
-    let plain_size = file
-        .get("size")
-        .and_then(|v| v.as_u64())
-        .or_else(|| file.get("realSize").and_then(|v| v.as_u64()))
-        .or_else(|| file.get("mRealSize").and_then(|v| v.as_u64()))
-        .or_else(|| file.get("file_size").and_then(|v| v.as_u64()));
+    let compressed_size = extract_manifest_u64(
+        file,
+        &[
+            "compressed_size",
+            "compressedSize",
+            "mCompressedSize",
+            "compressed",
+            "packed_size",
+            "packedSize",
+        ],
+    )
+    .filter(|n| *n > 0);
+    let plain_size = extract_manifest_u64(
+        file,
+        &[
+            "size",
+            "realSize",
+            "mRealSize",
+            "file_size",
+            "fileSize",
+            "mFileSize",
+            "uncompressed_size",
+            "uncompressedSize",
+            "mUncompressedSize",
+            "length",
+            "bytes",
+            "contentLength",
+            "content_length",
+        ],
+    )
+    .filter(|n| *n > 0);
 
     let expected_size = plain_size.or(compressed_size);
     let estimated_bytes = compressed_size.or(plain_size).unwrap_or(0);
+    if estimated_bytes == 0 {
+        let keys = file
+            .as_object()
+            .map(|obj| obj.keys().cloned().collect::<Vec<_>>().join(","))
+            .unwrap_or_default();
+        log_addon_debug(format!(
+            "x-updater manifest entry without size path='{}' keys=[{}]",
+            rel_path, keys
+        ));
+    }
     let kind = if local_path.exists() {
         XActionKind::Replace
     } else {

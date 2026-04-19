@@ -31,6 +31,14 @@ interface TaskUiState {
   message: string
   ziboPreserveLiveries: boolean
   ziboPreserveConfigFiles: boolean
+  credentialsLogin: string
+  credentialsKey: string
+  credentialsLoginInput: string
+  credentialsKeyInput: string
+  credentialsLoaded: boolean
+  credentialsSaving: boolean
+  credentialsEditing: boolean
+  credentialsError: string
 }
 
 const props = defineProps<{
@@ -78,6 +86,10 @@ function taskKeyOf(task: Pick<AddonUpdateDrawerTask, 'itemType' | 'folderName'>)
   return `${task.itemType}:${task.folderName}`
 }
 
+function isXUpdaterTask(task: Pick<AddonUpdateDrawerTask, 'provider'>): boolean {
+  return task.provider === 'x-updater'
+}
+
 const taskCards = computed(() => props.tasks || [])
 const taskKeySet = computed(() => new Set(taskCards.value.map((task) => taskKeyOf(task))))
 
@@ -98,6 +110,14 @@ function createTaskState(): TaskUiState {
     message: '',
     ziboPreserveLiveries: true,
     ziboPreserveConfigFiles: true,
+    credentialsLogin: '',
+    credentialsKey: '',
+    credentialsLoginInput: '',
+    credentialsKeyInput: '',
+    credentialsLoaded: false,
+    credentialsSaving: false,
+    credentialsEditing: false,
+    credentialsError: '',
   }
 }
 
@@ -139,6 +159,9 @@ function primePlansForVisibleTasks() {
   if (!props.show) return
   for (const task of taskCards.value) {
     const state = stateFor(task)
+    if (isXUpdaterTask(task) && !state.credentialsLoaded && !state.credentialsSaving) {
+      void loadCredentialsForTask(task)
+    }
     if (state.plan || state.loadingPlan || state.installing) continue
     void loadPlanForTask(task, false)
   }
@@ -474,6 +497,95 @@ async function loadPlanForTask(task: AddonUpdateDrawerTask, force = false) {
   }
 }
 
+async function loadCredentialsForTask(task: AddonUpdateDrawerTask) {
+  if (!isXUpdaterTask(task)) return
+  const key = taskKeyOf(task)
+  const state = ensureTaskState(key)
+  if (state.credentialsLoaded || state.credentialsSaving) return
+  try {
+    const credentials = await managementStore.getAddonUpdaterCredentials(
+      task.itemType,
+      task.folderName,
+    )
+    if (credentials) {
+      state.credentialsLogin = credentials.login || ''
+      state.credentialsKey = credentials.licenseKey || ''
+    }
+  } catch (e) {
+    state.credentialsError = String(e)
+  } finally {
+    state.credentialsLoaded = true
+    state.credentialsEditing = !(state.credentialsLogin && state.credentialsKey)
+    if (state.credentialsEditing) {
+      state.credentialsLoginInput = ''
+      state.credentialsKeyInput = ''
+    }
+  }
+}
+
+function startEditingCredentials(task: AddonUpdateDrawerTask) {
+  const key = taskKeyOf(task)
+  const state = ensureTaskState(key)
+  state.credentialsEditing = true
+  state.credentialsLoginInput = ''
+  state.credentialsKeyInput = ''
+  state.credentialsError = ''
+}
+
+function cancelEditingCredentials(task: AddonUpdateDrawerTask) {
+  const key = taskKeyOf(task)
+  const state = ensureTaskState(key)
+  if (!state.credentialsLogin || !state.credentialsKey) return
+  state.credentialsEditing = false
+  state.credentialsLoginInput = ''
+  state.credentialsKeyInput = ''
+  state.credentialsError = ''
+}
+
+function maskLicenseKey(key: string): string {
+  const trimmed = (key || '').trim()
+  if (!trimmed) return ''
+  const segments = trimmed.split('-').filter((part) => part.length > 0)
+  if (segments.length <= 4) return segments.join('-')
+  const head = segments.slice(0, 2).join('-')
+  const tail = segments.slice(-2).join('-')
+  return `${head}-...-${tail}`
+}
+
+async function saveCredentialsForTask(task: AddonUpdateDrawerTask) {
+  const key = taskKeyOf(task)
+  const state = ensureTaskState(key)
+  const login = state.credentialsLoginInput.trim()
+  const licenseKey = state.credentialsKeyInput.trim()
+  if (!login || !licenseKey) {
+    state.credentialsError = 'Please enter both login and license key.'
+    return
+  }
+  state.credentialsSaving = true
+  state.credentialsError = ''
+  try {
+    await managementStore.setAddonUpdaterCredentials(
+      task.itemType,
+      task.folderName,
+      login,
+      licenseKey,
+    )
+    state.credentialsLogin = login
+    state.credentialsKey = licenseKey
+    state.credentialsLoginInput = ''
+    state.credentialsKeyInput = ''
+    state.credentialsEditing = false
+    toast.success('X-Updater credentials saved')
+    state.plan = null
+    state.planError = ''
+    await loadPlanForTask(task, true)
+  } catch (e) {
+    state.credentialsError = String(e)
+  } finally {
+    state.credentialsSaving = false
+  }
+}
+
 function toggleTaskDetails(task: AddonUpdateDrawerTask) {
   const key = taskKeyOf(task)
   if (expandedTaskKey.value === key) {
@@ -483,6 +595,9 @@ function toggleTaskDetails(task: AddonUpdateDrawerTask) {
   expandedTaskKey.value = key
   emit('select-task', key)
   const state = ensureTaskState(key)
+  if (isXUpdaterTask(task) && !state.credentialsLoaded) {
+    void loadCredentialsForTask(task)
+  }
   if (!state.plan && !state.loadingPlan && !state.planError) {
     void loadPlanForTask(task, false)
   }
@@ -917,6 +1032,112 @@ watch(
                       v-if="expandedTaskKey === taskKeyOf(task)"
                       class="px-3 pb-3 border-t border-slate-200/70 dark:border-slate-700/70"
                     >
+                      <div
+                        v-if="isXUpdaterTask(task)"
+                        class="pt-3 pb-2 mb-1 rounded-lg border border-indigo-200 dark:border-indigo-700/60 bg-indigo-50/60 dark:bg-indigo-900/20 p-3 space-y-2"
+                      >
+                        <p class="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                          X-Updater credentials
+                        </p>
+                        <template
+                          v-if="
+                            !stateFor(task).credentialsEditing &&
+                            stateFor(task).credentialsLogin &&
+                            stateFor(task).credentialsKey
+                          "
+                        >
+                          <div
+                            class="flex items-center justify-between gap-3 rounded-md border border-indigo-200/70 dark:border-indigo-700/50 bg-white/70 dark:bg-slate-900/40 px-3 py-2"
+                          >
+                            <div class="min-w-0 flex-1 space-y-1">
+                              <div class="flex items-baseline gap-2 min-w-0">
+                                <span
+                                  class="text-[11px] font-medium text-slate-500 dark:text-slate-400 shrink-0"
+                                >Account</span>
+                                <span
+                                  class="text-xs font-mono text-slate-800 dark:text-slate-100 truncate"
+                                >{{ stateFor(task).credentialsLogin }}</span>
+                              </div>
+                              <div class="flex items-baseline gap-2 min-w-0">
+                                <span
+                                  class="text-[11px] font-medium text-slate-500 dark:text-slate-400 shrink-0"
+                                >License</span>
+                                <span
+                                  class="text-xs font-mono text-slate-800 dark:text-slate-100 truncate"
+                                >{{ maskLicenseKey(stateFor(task).credentialsKey) }}</span>
+                              </div>
+                            </div>
+                            <button
+                              class="px-3 py-1.5 rounded-lg text-xs text-indigo-700 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-600/80 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors shrink-0"
+                              @click="startEditingCredentials(task)"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        </template>
+                        <template v-else>
+                          <p class="text-[11px] text-indigo-600/90 dark:text-indigo-300/80">
+                            Enter the account and license key issued by the add-on vendor. These are
+                            stored locally in the add-on's x-updater profile file.
+                          </p>
+                          <div class="grid gap-2 sm:grid-cols-2">
+                            <label class="flex flex-col gap-1">
+                              <span
+                                class="text-[11px] font-medium text-slate-600 dark:text-slate-300"
+                              >Login / Email</span>
+                              <input
+                                type="text"
+                                autocomplete="off"
+                                spellcheck="false"
+                                v-model="stateFor(task).credentialsLoginInput"
+                                :disabled="stateFor(task).credentialsSaving"
+                                class="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1.5 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </label>
+                            <label class="flex flex-col gap-1">
+                              <span
+                                class="text-[11px] font-medium text-slate-600 dark:text-slate-300"
+                              >License key</span>
+                              <input
+                                type="password"
+                                autocomplete="off"
+                                spellcheck="false"
+                                v-model="stateFor(task).credentialsKeyInput"
+                                :disabled="stateFor(task).credentialsSaving"
+                                class="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1.5 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </label>
+                          </div>
+                          <div class="flex items-center gap-2">
+                            <button
+                              class="px-3 py-1.5 rounded-lg text-xs text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
+                              :disabled="
+                                stateFor(task).credentialsSaving ||
+                                !stateFor(task).credentialsLoginInput.trim() ||
+                                !stateFor(task).credentialsKeyInput.trim()
+                              "
+                              @click="saveCredentialsForTask(task)"
+                            >
+                              {{ stateFor(task).credentialsSaving ? 'Saving...' : 'Save & rescan' }}
+                            </button>
+                            <button
+                              v-if="
+                                stateFor(task).credentialsLogin && stateFor(task).credentialsKey
+                              "
+                              class="px-3 py-1.5 rounded-lg text-xs text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors disabled:opacity-50"
+                              :disabled="stateFor(task).credentialsSaving"
+                              @click="cancelEditingCredentials(task)"
+                            >
+                              Cancel
+                            </button>
+                            <span
+                              v-if="stateFor(task).credentialsError"
+                              class="text-[11px] text-rose-600 dark:text-rose-400"
+                            >{{ stateFor(task).credentialsError }}</span>
+                          </div>
+                        </template>
+                      </div>
+
                       <div class="pt-3 flex items-center justify-between">
                         <p class="text-xs font-semibold text-slate-900 dark:text-slate-100">
                           {{ t('management.planDetails') }}

@@ -478,6 +478,7 @@ export interface AddonUpdateDrawerTask {
   itemType: AddonUpdatableItemType
   folderName: string
   displayName: string
+  provider?: 'skunkcrafts' | 'x-updater' | 'zibo'
   initialLocalVersion?: string
   initialTargetVersion?: string
 }

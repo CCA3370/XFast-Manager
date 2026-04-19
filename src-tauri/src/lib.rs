@@ -2138,54 +2138,6 @@ fn emit_addon_update_status(
     );
 }
 
-fn resolve_addon_target_path(
-    xplane_path: &str,
-    item_type: &str,
-    folder_name: &str,
-) -> Option<PathBuf> {
-    if folder_name.trim().is_empty() || folder_name.contains("..") {
-        return None;
-    }
-
-    let base = PathBuf::from(xplane_path);
-    let normalized = folder_name.replace('\\', "/");
-    let relative = PathBuf::from(normalized);
-    let target = match item_type {
-        "aircraft" | "livery" => base.join("Aircraft").join(relative),
-        "plugin" => base.join("Resources").join("plugins").join(relative),
-        "scenery" => base.join("Custom Scenery").join(relative),
-        _ => return None,
-    };
-
-    if !target.exists() {
-        return None;
-    }
-
-    Some(target)
-}
-
-fn is_xupdater_disabled_target(xplane_path: &str, item_type: &str, folder_name: &str) -> bool {
-    let Some(target_path) = resolve_addon_target_path(xplane_path, item_type, folder_name) else {
-        return false;
-    };
-
-    if target_path.join("skunkcrafts_updater.cfg").exists() {
-        return false;
-    }
-
-    x_updater_profile::find_profile_in_folder(&target_path).is_some()
-}
-
-fn blocked_addon_update_error(item_type: &str, folder_name: &str) -> String {
-    let mut checksum: u32 = 0x6D2B_79F5;
-    for byte in item_type.bytes().chain(folder_name.bytes()) {
-        checksum = checksum.rotate_left(5) ^ ((byte as u32).wrapping_mul(0x45D9_F3B));
-        checksum = checksum.wrapping_add(0x27D4_EB2D);
-    }
-    let token = format!("{:08X}", checksum ^ 0xA1C3_0F71);
-    format!("resolver handshake mismatch [{}]", token)
-}
-
 #[tauri::command]
 async fn scan_aircraft(xplane_path: String) -> Result<ManagementData<AircraftInfo>, String> {
     tokio::task::spawn_blocking(move || {
@@ -2247,18 +2199,6 @@ async fn build_addon_update_plan(
     options: addon_updater::AddonUpdateOptions,
 ) -> Result<addon_updater::AddonUpdatePlan, String> {
     task_control.reset();
-    if is_xupdater_disabled_target(&xplane_path, &item_type, &folder_name) {
-        let message = blocked_addon_update_error(&item_type, &folder_name);
-        emit_addon_update_status(
-            &app_handle,
-            &item_type,
-            &folder_name,
-            "scan",
-            "failed",
-            Some(message.clone()),
-        );
-        return Err(message);
-    }
     let event_handle = app_handle.clone();
     let progress_callback: addon_updater::AddonUpdateProgressCallback = Arc::new(move |event| {
         let _ = event_handle.emit("addon-update-progress", event);
@@ -2305,18 +2245,6 @@ async fn fetch_addon_update_preview(
     license_key: Option<String>,
 ) -> Result<addon_updater::AddonUpdatePreview, String> {
     task_control.reset();
-    if is_xupdater_disabled_target(&xplane_path, &item_type, &folder_name) {
-        let message = blocked_addon_update_error(&item_type, &folder_name);
-        emit_addon_update_status(
-            &app_handle,
-            &item_type,
-            &folder_name,
-            "check",
-            "failed",
-            Some(message.clone()),
-        );
-        return Err(message);
-    }
     let event_handle = app_handle.clone();
     let progress_callback: addon_updater::AddonUpdateProgressCallback = Arc::new(move |event| {
         let _ = event_handle.emit("addon-update-progress", event);
@@ -2364,18 +2292,6 @@ async fn execute_addon_update(
     options: addon_updater::AddonUpdateOptions,
 ) -> Result<addon_updater::AddonUpdateResult, String> {
     task_control.reset();
-    if is_xupdater_disabled_target(&xplane_path, &item_type, &folder_name) {
-        let message = blocked_addon_update_error(&item_type, &folder_name);
-        emit_addon_update_status(
-            &app_handle,
-            &item_type,
-            &folder_name,
-            "install",
-            "failed",
-            Some(message.clone()),
-        );
-        return Err(message);
-    }
     let event_handle = app_handle.clone();
     let progress_callback: addon_updater::AddonUpdateProgressCallback = Arc::new(move |event| {
         let _ = event_handle.emit("addon-update-progress", event);
@@ -2431,9 +2347,6 @@ async fn set_addon_updater_credentials(
     login: String,
     license_key: String,
 ) -> Result<(), String> {
-    if is_xupdater_disabled_target(&xplane_path, &item_type, &folder_name) {
-        return Err(blocked_addon_update_error(&item_type, &folder_name));
-    }
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
         addon_updater::set_updater_credentials(
@@ -2455,9 +2368,6 @@ async fn get_addon_updater_credentials(
     item_type: String,
     folder_name: String,
 ) -> Result<Option<addon_updater::AddonUpdaterCredentials>, String> {
-    if is_xupdater_disabled_target(&xplane_path, &item_type, &folder_name) {
-        return Err(blocked_addon_update_error(&item_type, &folder_name));
-    }
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
         addon_updater::get_updater_credentials(xplane_path, &item_type, &folder_name)
@@ -3516,7 +3426,6 @@ async fn scan_folder_disk_usage(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {

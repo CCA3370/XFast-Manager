@@ -175,10 +175,8 @@ const latestVersion = computed(() => {
 
 const canOpenUpdater = computed(() => {
   if (!(isAircraft(props.entry) || isPlugin(props.entry))) return false
-  if (props.entry.updateProvider === 'x-updater') return false
   if (props.entry.updateProvider === 'zibo') return true
   const updateUrl = (props.entry.updateUrl || '').toLowerCase()
-  if (updateUrl.startsWith('x-updater:')) return false
   return !!updateUrl
 })
 
