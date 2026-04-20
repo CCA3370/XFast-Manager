@@ -207,6 +207,40 @@ fn copy_file_with_crc32<R: std::io::Read + ?Sized, W: std::io::Write>(
     Ok((total_bytes, hasher.finalize()))
 }
 
+fn is_retryable_file_open_error(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::WouldBlock
+    ) || matches!(error.raw_os_error(), Some(5 | 32 | 33))
+}
+
+/// Retry opening a file for reading to ride past transient Windows locks from
+/// antivirus/indexing immediately after extraction to a temp directory.
+fn open_file_for_read_with_retry(path: &Path) -> std::io::Result<fs::File> {
+    const MAX_RETRIES: u32 = 4;
+    const INITIAL_DELAY_MS: u64 = 60;
+
+    let mut last_error = None;
+    for attempt in 0..=MAX_RETRIES {
+        match fs::File::open(path) {
+            Ok(file) => return Ok(file),
+            Err(error) => {
+                let retryable = is_retryable_file_open_error(&error);
+                last_error = Some(error);
+
+                if !retryable || attempt >= MAX_RETRIES {
+                    break;
+                }
+
+                let delay_ms = INITIAL_DELAY_MS * (1 << attempt);
+                std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| std::io::Error::other("Unknown file open failure")))
+}
+
 fn should_compute_inline_7z_hashes(enable_verification: bool, is_nested_archive: bool) -> bool {
     enable_verification && !is_nested_archive
 }
