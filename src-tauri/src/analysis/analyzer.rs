@@ -1478,17 +1478,12 @@ mod tests {
     #[test]
     fn test_get_effective_path_uses_first_nested_archive_when_internal_root_cleared() {
         let analyzer = Analyzer::new();
-        let mut item = create_detected_item(
-            AddonType::LuaScript,
-            "/tmp/outer.rar",
-            "modules",
-            None,
-        );
+        let mut item =
+            create_detected_item(AddonType::LuaScript, "/tmp/outer.rar", "modules", None);
         item.extraction_chain = Some(ExtractionChain {
             archives: vec![NestedArchiveInfo {
-                internal_path:
-                    "ToLissA339_V1p1p0/plugins/MangoStudios A330/data/modules.zip"
-                        .to_string(),
+                internal_path: "ToLissA339_V1p1p0/plugins/MangoStudios A330/data/modules.zip"
+                    .to_string(),
                 password: None,
                 format: "zip".to_string(),
             }],

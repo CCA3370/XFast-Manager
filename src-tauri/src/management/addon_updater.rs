@@ -717,10 +717,7 @@ pub async fn execute_update(
 
     let mut apply_result: Result<()> = Ok(());
 
-    let parallel_downloads = options
-        .parallel_downloads
-        .unwrap_or(12)
-        .clamp(1, 12);
+    let parallel_downloads = options.parallel_downloads.unwrap_or(12).clamp(1, 12);
     let mut downloaded_bytes_map: std::collections::HashMap<String, Vec<u8>> =
         std::collections::HashMap::new();
 
@@ -760,10 +757,9 @@ pub async fn execute_update(
                 let item_type_owned = item_type_cl.clone();
                 let folder_name_owned = folder_name_cl.clone();
                 async move {
-                    let download = action
-                        .download
-                        .as_ref()
-                        .ok_or_else(|| anyhow!("Missing download link for '{}'", action.rel_path))?;
+                    let download = action.download.as_ref().ok_or_else(|| {
+                        anyhow!("Missing download link for '{}'", action.rel_path)
+                    })?;
                     log_addon_debug(format!(
                         "download file url={} relPath={} expectedMd5={:?} expectedSize={:?}",
                         download.url,
@@ -868,9 +864,11 @@ pub async fn execute_update(
                     Ok(())
                 }
                 XActionKind::Add | XActionKind::Replace => {
-                    let bytes = downloaded_bytes_map.remove(&action.rel_path).ok_or_else(|| {
-                        anyhow!("Missing downloaded data for '{}'", action.rel_path)
-                    })?;
+                    let bytes = downloaded_bytes_map
+                        .remove(&action.rel_path)
+                        .ok_or_else(|| {
+                            anyhow!("Missing downloaded data for '{}'", action.rel_path)
+                        })?;
                     let destination = resolve_entry_path(&target_path, &action.rel_path)?;
                     if destination.exists() {
                         rollback.backup_if_needed(&destination)?;

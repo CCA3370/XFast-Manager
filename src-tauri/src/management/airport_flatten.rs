@@ -1,22 +1,20 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::activity;
 use crate::app_dirs;
-use crate::database::DatabaseState;
 use crate::database::entities::airport_flatten_overrides as override_entity;
+use crate::database::DatabaseState;
 use crate::logger;
 use crate::models::{
     AirportFlattenApplyAllResult, AirportFlattenApplyFailure, AirportFlattenOverride,
@@ -342,7 +340,10 @@ pub fn inspect_scenery_flatten_target(
 ) -> Option<AirportFlattenTarget> {
     if info.category == SceneryCategory::DefaultAirport
         || !info.has_apt_dat
-        || info.folder_name.trim().eq_ignore_ascii_case("Global Airports")
+        || info
+            .folder_name
+            .trim()
+            .eq_ignore_ascii_case("Global Airports")
         || info.airport_id.as_deref().unwrap_or("").is_empty()
     {
         return None;
@@ -382,7 +383,11 @@ fn upsert_flatten_in_block(block: &[String], enabled: bool) -> Vec<String> {
 }
 
 fn rebuild_text(lines: &[String], original: &str) -> String {
-    let line_ending = if original.contains("\r\n") { "\r\n" } else { "\n" };
+    let line_ending = if original.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
     let mut rebuilt = lines.join(line_ending);
     if original.ends_with('\n') {
         rebuilt.push_str(line_ending);
@@ -390,7 +395,11 @@ fn rebuild_text(lines: &[String], original: &str) -> String {
     rebuilt
 }
 
-fn set_flatten_state_in_text(original: &str, icao: &str, enabled: bool) -> Result<(String, String), String> {
+fn set_flatten_state_in_text(
+    original: &str,
+    icao: &str,
+    enabled: bool,
+) -> Result<(String, String), String> {
     let mut lines = split_text_into_lines(original);
     let blocks = parse_airport_blocks(&lines);
     let matching_blocks: Vec<AptAirportBlock> = blocks
@@ -440,7 +449,7 @@ fn clear_readonly_attribute(path: &Path) -> io::Result<()> {
 fn replace_file_atomically(source: &Path, destination: &Path) -> io::Result<()> {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
-    use winapi::um::winbase::{MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW};
+    use winapi::um::winbase::{MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH};
 
     fn wide(path: &OsStr) -> Vec<u16> {
         path.encode_wide().chain(std::iter::once(0)).collect()
@@ -470,13 +479,10 @@ fn replace_file_atomically(source: &Path, destination: &Path) -> io::Result<()> 
 }
 
 fn write_updated_apt_file(apt_path: &Path, contents: &str) -> io::Result<()> {
-    let parent = apt_path
-        .parent()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "apt.dat parent directory missing"))?;
-    let temp_path = parent.join(format!(
-        "apt.dat.xfast.tmp.{}",
-        std::process::id()
-    ));
+    let parent = apt_path.parent().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::NotFound, "apt.dat parent directory missing")
+    })?;
+    let temp_path = parent.join(format!("apt.dat.xfast.tmp.{}", std::process::id()));
 
     fs::write(&temp_path, contents.as_bytes())?;
     let _ = clear_readonly_attribute(apt_path);
@@ -511,8 +517,13 @@ fn update_apt_flatten_state(apt_path: &Path, icao: &str, enabled: bool) -> Resul
             .map_err(|error| format!("Failed to back up {}: {}", apt_path.display(), error))?;
         write_updated_apt_file(apt_path, &updated)
             .map_err(|error| format!("Failed to write {}: {}", apt_path.display(), error))?;
-        store_parsed_apt_cache(apt_path, &updated)
-            .map_err(|error| format!("Failed to refresh apt cache for {}: {}", apt_path.display(), error))?;
+        store_parsed_apt_cache(apt_path, &updated).map_err(|error| {
+            format!(
+                "Failed to refresh apt cache for {}: {}",
+                apt_path.display(),
+                error
+            )
+        })?;
     }
 
     Ok(airport_name)
@@ -553,9 +564,13 @@ fn rewrite_airport_block_by_offsets(
         .map_err(|error| format!("Failed to seek {}: {}", apt_path.display(), error))?;
 
     let mut original_block = vec![0u8; block_len as usize];
-    source
-        .read_exact(&mut original_block)
-        .map_err(|error| format!("Failed to read airport block from {}: {}", apt_path.display(), error))?;
+    source.read_exact(&mut original_block).map_err(|error| {
+        format!(
+            "Failed to read airport block from {}: {}",
+            apt_path.display(),
+            error
+        )
+    })?;
 
     let original_block_text = String::from_utf8_lossy(&original_block).into_owned();
     let (updated_block_text, airport_name) =
@@ -584,11 +599,23 @@ fn rewrite_airport_block_by_offsets(
         &mut std::io::Read::by_ref(&mut source).take(airport.byte_start),
         &mut writer,
     )
-        .map_err(|error| format!("Failed to copy prelude for {}: {}", apt_path.display(), error))?;
+    .map_err(|error| {
+        format!(
+            "Failed to copy prelude for {}: {}",
+            apt_path.display(),
+            error
+        )
+    })?;
 
     writer
         .write_all(updated_block_text.as_bytes())
-        .map_err(|error| format!("Failed to write updated block for {}: {}", apt_path.display(), error))?;
+        .map_err(|error| {
+            format!(
+                "Failed to write updated block for {}: {}",
+                apt_path.display(),
+                error
+            )
+        })?;
 
     source
         .seek(SeekFrom::Start(airport.byte_end))
@@ -610,7 +637,10 @@ fn rewrite_airport_block_by_offsets(
     Ok((airport_name, delta))
 }
 
-fn build_target_from_source_ref(source_ref: &FlattenSourceRef, icao: &str) -> Result<AirportFlattenTarget, String> {
+fn build_target_from_source_ref(
+    source_ref: &FlattenSourceRef,
+    icao: &str,
+) -> Result<AirportFlattenTarget, String> {
     Ok(AirportFlattenTarget {
         icao: icao.to_string(),
         airport_name: source_ref.airport_name.clone(),
@@ -778,7 +808,10 @@ fn candidate_source_files(
     for info in packages.iter().filter(|info| {
         info.category != SceneryCategory::DefaultAirport
             && info.has_apt_dat
-            && !info.folder_name.trim().eq_ignore_ascii_case("Global Airports")
+            && !info
+                .folder_name
+                .trim()
+                .eq_ignore_ascii_case("Global Airports")
     }) {
         let apt_path = resolve_scenery_dir(xplane_root, info)
             .join("Earth nav data")
@@ -825,8 +858,8 @@ fn derive_airport_flatten_index(
     let mut single_custom_sources_by_folder = HashMap::<String, FlattenSourceRef>::new();
 
     for source_file in source_files.values() {
-        let is_single_custom_source =
-            source_file.source_kind == AirportFlattenSourceKind::Custom && source_file.airports.len() == 1;
+        let is_single_custom_source = source_file.source_kind == AirportFlattenSourceKind::Custom
+            && source_file.airports.len() == 1;
 
         for airport in &source_file.airports {
             upsert_search_entry(
@@ -848,8 +881,7 @@ fn derive_airport_flatten_index(
 
             if is_single_custom_source {
                 if let Some(folder_name) = source_file.folder_name.as_ref() {
-                    single_custom_sources_by_folder
-                        .insert(folder_name.clone(), source_ref.clone());
+                    single_custom_sources_by_folder.insert(folder_name.clone(), source_ref.clone());
                 }
             }
 
@@ -1020,7 +1052,8 @@ fn update_cached_flatten_state(
                     if let Some(old_end) = target_end_before {
                         for airport in source_file.airports.iter_mut() {
                             if airport.byte_start >= old_end {
-                                airport.byte_start = ((airport.byte_start as i64) + block_delta) as u64;
+                                airport.byte_start =
+                                    ((airport.byte_start as i64) + block_delta) as u64;
                                 airport.byte_end = ((airport.byte_end as i64) + block_delta) as u64;
                             }
                         }
@@ -1150,7 +1183,10 @@ pub async fn scenery_get_flatten_target(
         return Ok(None);
     };
 
-    Ok(Some(build_target_from_source_ref(source_ref, &source_ref.icao)?))
+    Ok(Some(build_target_from_source_ref(
+        source_ref,
+        &source_ref.icao,
+    )?))
 }
 
 #[tauri::command]
@@ -1221,11 +1257,14 @@ async fn apply_flatten_state_inner(
             .ok()
             .and_then(|cache| cache.get(&cache_key).cloned())
             .and_then(|index| {
-                index.sources_by_icao.get(&normalized_icao).and_then(|refs| {
-                    refs.iter()
-                        .find(|source| source.source_path == source_path)
-                        .cloned()
-                })
+                index
+                    .sources_by_icao
+                    .get(&normalized_icao)
+                    .and_then(|refs| {
+                        refs.iter()
+                            .find(|source| source.source_path == source_path)
+                            .cloned()
+                    })
             });
 
         match cached_ref {
@@ -1235,9 +1274,11 @@ async fn apply_flatten_state_inner(
                 source_kind: request.source_kind.clone(),
                 source_label: match request.source_kind {
                     AirportFlattenSourceKind::Default => "Global Airports".to_string(),
-                    AirportFlattenSourceKind::Custom => request.folder_name.clone().ok_or_else(
-                        || "folderName is required for custom scenery flattening".to_string(),
-                    )?,
+                    AirportFlattenSourceKind::Custom => {
+                        request.folder_name.clone().ok_or_else(|| {
+                            "folderName is required for custom scenery flattening".to_string()
+                        })?
+                    }
                 },
                 source_path,
                 folder_name: request.folder_name.clone(),
@@ -1262,19 +1303,14 @@ async fn apply_flatten_state_inner(
                     format!("Default airport source not found for {}", normalized_icao)
                 })?,
             AirportFlattenSourceKind::Custom => {
-                let folder_name = request
-                    .folder_name
-                    .clone()
-                    .ok_or_else(|| {
-                        "folderName is required for custom scenery flattening".to_string()
-                    })?;
+                let folder_name = request.folder_name.clone().ok_or_else(|| {
+                    "folderName is required for custom scenery flattening".to_string()
+                })?;
                 index
                     .single_custom_sources_by_folder
                     .get(&folder_name)
                     .cloned()
-                    .ok_or_else(|| {
-                        format!("Custom airport source not found for {}", folder_name)
-                    })?
+                    .ok_or_else(|| format!("Custom airport source not found for {}", folder_name))?
             }
         }
     };
@@ -1410,10 +1446,7 @@ async fn upsert_override(
     Ok(())
 }
 
-fn classify_override_status(
-    current: Option<bool>,
-    desired: bool,
-) -> AirportFlattenOverrideStatus {
+fn classify_override_status(current: Option<bool>, desired: bool) -> AirportFlattenOverrideStatus {
     match current {
         None => AirportFlattenOverrideStatus::SourceMissing,
         Some(value) if value == desired => AirportFlattenOverrideStatus::InSync,
@@ -1472,8 +1505,7 @@ pub async fn airport_flatten_list_overrides(
     let mut results: Vec<AirportFlattenOverride> = rows
         .into_iter()
         .map(|row| {
-            let current_flattened =
-                current_flattened_for(&index, &row.source_path, &row.icao);
+            let current_flattened = current_flattened_for(&index, &row.source_path, &row.icao);
             let status = classify_override_status(current_flattened, row.desired_flattened);
             let source_kind = source_kind_from_db_str(&row.source_kind);
             AirportFlattenOverride {

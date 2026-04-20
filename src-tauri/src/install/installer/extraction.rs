@@ -47,7 +47,9 @@ fn build_external_7z_candidates(password: Option<&str>) -> Vec<External7zExtract
                     kind: External7zExtractorKind::TarStyle,
                 });
                 candidates.push(External7zExtractorCandidate {
-                    executable: PathBuf::from(system_root).join("System32").join("bsdtar.exe"),
+                    executable: PathBuf::from(system_root)
+                        .join("System32")
+                        .join("bsdtar.exe"),
                     kind: External7zExtractorKind::TarStyle,
                 });
             }
@@ -981,20 +983,16 @@ mod tests {
     #[test]
     fn external_7z_candidates_include_tar_when_no_password() {
         let candidates = build_external_7z_candidates(None);
-        assert!(
-            candidates
-                .iter()
-                .any(|candidate| candidate.kind == External7zExtractorKind::TarStyle)
-        );
+        assert!(candidates
+            .iter()
+            .any(|candidate| candidate.kind == External7zExtractorKind::TarStyle));
     }
 
     #[test]
     fn external_7z_candidates_skip_tar_when_password_provided() {
         let candidates = build_external_7z_candidates(Some("secret"));
-        assert!(
-            candidates
-                .iter()
-                .all(|candidate| candidate.kind != External7zExtractorKind::TarStyle)
-        );
+        assert!(candidates
+            .iter()
+            .all(|candidate| candidate.kind != External7zExtractorKind::TarStyle));
     }
 }

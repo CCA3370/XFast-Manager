@@ -97,8 +97,8 @@ mod disk_usage;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::Arc;
 
 use crate::error::ToTauriError;
 use analyzer::Analyzer;
@@ -2171,8 +2171,12 @@ async fn check_aircraft_updates(
 ) -> Result<Vec<AircraftInfo>, String> {
     let beta_folder_set: HashSet<String> = beta_folders.unwrap_or_default().into_iter().collect();
     let xplane_path = PathBuf::from(xplane_path);
-    management_index::check_aircraft_updates(xplane_path.as_path(), &mut aircraft, &beta_folder_set)
-        .await;
+    management_index::check_aircraft_updates(
+        xplane_path.as_path(),
+        &mut aircraft,
+        &beta_folder_set,
+    )
+    .await;
     Ok(aircraft)
 }
 
