@@ -97,8 +97,8 @@ mod disk_usage;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::Arc;
 
 use crate::error::ToTauriError;
 use analyzer::Analyzer;
@@ -1495,14 +1495,66 @@ fn check_path_exists(path: String) -> bool {
     std::path::Path::new(&path).exists()
 }
 
+#[cfg(target_os = "windows")]
+fn find_xplane_executable_in_root(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let exact = path.join("X-Plane.exe");
+    if exact.is_file() {
+        return Some(exact);
+    }
+
+    let mut candidates: Vec<std::path::PathBuf> = std::fs::read_dir(path)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|entry_path| {
+            entry_path.is_file()
+                && entry_path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("X-Plane") && name.ends_with(".exe"))
+        })
+        .collect();
+
+    candidates.sort();
+    candidates.into_iter().next()
+}
+
+#[cfg(target_os = "macos")]
+fn find_xplane_executable_in_root(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let app_path = path.join("X-Plane.app");
+    app_path.exists().then_some(app_path)
+}
+
+#[cfg(target_os = "linux")]
+fn find_xplane_executable_in_root(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut candidates: Vec<std::path::PathBuf> = std::fs::read_dir(path)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|entry_path| {
+            entry_path.is_file()
+                && entry_path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("X-Plane"))
+        })
+        .collect();
+
+    candidates.sort();
+    candidates.into_iter().next()
+}
+
 #[tauri::command]
 fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), String> {
     let path = std::path::Path::new(&xplane_path);
     let extra_args = args.unwrap_or_default();
 
+    validate_xplane_root_path(path)?;
+
     #[cfg(target_os = "windows")]
     {
-        let exe_path = path.join("X-Plane.exe");
+        let exe_path = find_xplane_executable_in_root(path)
+            .ok_or_else(|| "X-Plane executable not found (expected X-Plane*.exe)".to_string())?;
 
         // Try to launch without elevation first
         let result = std::process::Command::new(&exe_path)
@@ -1527,7 +1579,8 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
     #[cfg(target_os = "macos")]
     {
         // macOS uses 'open' command for .app bundles
-        let app_path = path.join("X-Plane.app");
+        let app_path = find_xplane_executable_in_root(path)
+            .ok_or_else(|| "X-Plane.app not found in selected folder".to_string())?;
         let mut cmd = std::process::Command::new("open");
         cmd.arg(&app_path);
         if !extra_args.is_empty() {
@@ -1540,17 +1593,7 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
 
     #[cfg(target_os = "linux")]
     {
-        // Find the first file matching X-Plane-*
-        let exe_path = std::fs::read_dir(path)
-            .map_err(|e| format!("Failed to read X-Plane directory: {}", e))?
-            .flatten()
-            .find(|entry| {
-                entry
-                    .file_name()
-                    .to_str()
-                    .is_some_and(|name| name.starts_with("X-Plane"))
-            })
-            .map(|entry| entry.path())
+        let exe_path = find_xplane_executable_in_root(path)
             .ok_or_else(|| "X-Plane executable not found (expected X-Plane*)".to_string())?;
         std::process::Command::new(exe_path)
             .args(&extra_args)
@@ -1656,31 +1699,7 @@ fn validate_xplane_path(path: String) -> Result<bool, String> {
         return Ok(false);
     }
 
-    // Check for X-Plane executable
-    if cfg!(target_os = "linux") {
-        // Linux: match any file named X-Plane-*
-        match std::fs::read_dir(path_obj) {
-            Ok(entries) => {
-                for entry in entries.flatten() {
-                    if let Some(name) = entry.file_name().to_str() {
-                        if name.starts_with("X-Plane") {
-                            return Ok(true);
-                        }
-                    }
-                }
-                Ok(false)
-            }
-            Err(_) => Ok(false),
-        }
-    } else {
-        let exe_name = if cfg!(target_os = "windows") {
-            "X-Plane.exe"
-        } else {
-            "X-Plane.app"
-        };
-        let exe_path = path_obj.join(exe_name);
-        Ok(exe_path.exists())
-    }
+    Ok(find_xplane_executable_in_root(path_obj).is_some())
 }
 
 fn validate_xplane_root_path(path: &std::path::Path) -> Result<(), String> {
@@ -1699,7 +1718,41 @@ fn validate_xplane_root_path(path: &std::path::Path) -> Result<(), String> {
         ));
     }
 
+    if find_xplane_executable_in_root(path).is_none() {
+        return Err(format!(
+            "X-Plane executable not found in path: {}",
+            path.display()
+        ));
+    }
+
     Ok(())
+}
+
+#[cfg(test)]
+mod launch_tests {
+    use super::*;
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn validate_xplane_path_accepts_prefixed_windows_executable() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("X-Plane12.exe"), b"").unwrap();
+
+        assert_eq!(
+            validate_xplane_path(temp.path().display().to_string()).unwrap(),
+            true
+        );
+        assert!(find_xplane_executable_in_root(temp.path()).is_some());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn validate_xplane_root_path_rejects_missing_executable() {
+        let temp = tempfile::tempdir().unwrap();
+
+        let error = validate_xplane_root_path(temp.path()).unwrap_err();
+        assert!(error.contains("X-Plane executable not found"));
+    }
 }
 
 // ========== Update Commands ==========
@@ -2219,8 +2272,12 @@ async fn check_aircraft_updates(
 ) -> Result<Vec<AircraftInfo>, String> {
     let beta_folder_set: HashSet<String> = beta_folders.unwrap_or_default().into_iter().collect();
     let xplane_path = PathBuf::from(xplane_path);
-    management_index::check_aircraft_updates(xplane_path.as_path(), &mut aircraft, &beta_folder_set)
-        .await;
+    management_index::check_aircraft_updates(
+        xplane_path.as_path(),
+        &mut aircraft,
+        &beta_folder_set,
+    )
+    .await;
     Ok(aircraft)
 }
 

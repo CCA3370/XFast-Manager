@@ -121,8 +121,8 @@ impl Installer {
             .unwrap_or("unknown")
             .to_string();
 
-        let mut source_file =
-            fs::File::open(source).context(format!("Failed to open source file {:?}", source))?;
+        let mut source_file = open_file_for_read_with_retry(source)
+            .context(format!("Failed to open source file {:?}", source))?;
         let mut target_file = fs::File::create(&final_target)
             .context(format!("Failed to create target file {:?}", final_target))?;
         copy_file_optimized(&mut source_file, &mut target_file)?;

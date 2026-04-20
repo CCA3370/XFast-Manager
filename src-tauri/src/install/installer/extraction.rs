@@ -47,7 +47,9 @@ fn build_external_7z_candidates(password: Option<&str>) -> Vec<External7zExtract
                     kind: External7zExtractorKind::TarStyle,
                 });
                 candidates.push(External7zExtractorCandidate {
-                    executable: PathBuf::from(system_root).join("System32").join("bsdtar.exe"),
+                    executable: PathBuf::from(system_root)
+                        .join("System32")
+                        .join("bsdtar.exe"),
                     kind: External7zExtractorKind::TarStyle,
                 });
             }
@@ -153,7 +155,7 @@ impl Installer {
                     .to_string();
 
                 // Use optimized buffered copy
-                let mut source_file = fs::File::open(source_path)
+                let mut source_file = open_file_for_read_with_retry(source_path)
                     .context(format!("Failed to open source file {:?}", source_path))?;
                 let mut target_file = fs::File::create(&target_path)
                     .context(format!("Failed to create target file {:?}", target_path))?;
@@ -707,7 +709,7 @@ impl Installer {
                 .unwrap_or("unknown")
                 .to_string();
 
-            let mut source_file = fs::File::open(&source_path).context(format!(
+            let mut source_file = open_file_for_read_with_retry(&source_path).context(format!(
                 "Failed to open source file for 7z fallback copy: {:?}",
                 source_path
             ))?;
@@ -976,25 +978,29 @@ fn truncate_for_log(text: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_external_7z_candidates, External7zExtractorKind};
+    use super::{build_external_7z_candidates, External7zExtractorKind, Installer};
 
     #[test]
     fn external_7z_candidates_include_tar_when_no_password() {
         let candidates = build_external_7z_candidates(None);
-        assert!(
-            candidates
-                .iter()
-                .any(|candidate| candidate.kind == External7zExtractorKind::TarStyle)
-        );
+        assert!(candidates
+            .iter()
+            .any(|candidate| candidate.kind == External7zExtractorKind::TarStyle));
     }
 
     #[test]
     fn external_7z_candidates_skip_tar_when_password_provided() {
         let candidates = build_external_7z_candidates(Some("secret"));
-        assert!(
-            candidates
-                .iter()
-                .all(|candidate| candidate.kind != External7zExtractorKind::TarStyle)
+        assert!(candidates
+            .iter()
+            .all(|candidate| candidate.kind != External7zExtractorKind::TarStyle));
+    }
+
+    #[test]
+    fn checksum_failure_triggers_external_7z_fallback() {
+        let error = anyhow::anyhow!(
+            "Failed to extract 7z: Io(Custom {{ kind: Other, error: ChecksumVerificationFailed }}, \"\")"
         );
+        assert!(Installer::should_try_external_7z_fallback(&error));
     }
 }
