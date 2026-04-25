@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"updated": "2026-04-21",
+	"updated": "2026-04-25",
 	"libraries": {
 		"3d_people": "https://forums.x-plane.org/index.php?/files/file/26611-3d-people-library/",
 		"3d_people_library": "https://forums.x-plane.org/files/file/26611-3d-people-library/",
@@ -15,6 +15,7 @@
 		"european_vehicles_static": "https://forums.x-plane.org/files/file/24708-library-european-vehicles-static/",
 		"faib_aircraft": "https://forums.x-plane.org/files/file/29079-the-faib-aircraft-library/",
 		"fjs_scenery_library": "https://forums.x-plane.org/files/file/28594-fjs_scenery_library/",
+		"flyagi_vegetation": "https://www.opensceneryx.com/",
 		"fruitstand_aircraft": "https://forums.x-plane.org/files/file/27545-the-fruit-stand-aircraft-library/",
 		"ground_services-tw": "https://forums.x-plane.org/files/file/39537-ground_services-twground-service-pack-for-taiwan/",
 		"gt_library": "https://forums.x-plane.org/index.php?/files/file/29461-ground-textures-library/",
