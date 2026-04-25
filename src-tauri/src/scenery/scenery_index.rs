@@ -1622,10 +1622,7 @@ impl SceneryIndexManager {
         let mut packages: Vec<_> = index
             .packages
             .values()
-            .filter(|info| {
-                !(info.category == SceneryCategory::DefaultAirport
-                    || is_global_airports_folder_name(&info.folder_name))
-            })
+            .filter(|info| !is_global_airports_folder_name(&info.folder_name))
             .collect();
         let mut entries_with_sort: Vec<(u32, bool, SceneryManagerEntry)> =
             Vec::with_capacity(packages.len() + 1);

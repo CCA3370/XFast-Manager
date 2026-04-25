@@ -1561,14 +1561,8 @@ pub async fn check_aircraft_updates(
                     None
                 } else {
                     let use_beta = beta_folders.contains(&a.folder_name);
-                    resolve_update_check_url(
-                        xplane_path,
-                        "aircraft",
-                        &a.folder_name,
-                        url,
-                        use_beta,
-                    )
-                    .map(|resolved_url| (idx, resolved_url))
+                    resolve_update_check_url(xplane_path, "aircraft", &a.folder_name, url, use_beta)
+                        .map(|resolved_url| (idx, resolved_url))
                 }
             })
         })
@@ -1634,14 +1628,8 @@ pub async fn check_plugins_updates(
                     None
                 } else {
                     let use_beta = beta_folders.contains(&p.folder_name);
-                    resolve_update_check_url(
-                        xplane_path,
-                        "plugin",
-                        &p.folder_name,
-                        url,
-                        use_beta,
-                    )
-                    .map(|resolved_url| (idx, resolved_url))
+                    resolve_update_check_url(xplane_path, "plugin", &p.folder_name, url, use_beta)
+                        .map(|resolved_url| (idx, resolved_url))
                 }
             })
         })
@@ -2554,7 +2542,10 @@ mod tests {
             .expect("nested navdata path should resolve");
 
         assert_eq!(root, custom_data);
-        assert_eq!(nested, nested_navdata.canonicalize().expect("canonical nested"));
+        assert_eq!(
+            nested,
+            nested_navdata.canonicalize().expect("canonical nested")
+        );
     }
 
     #[test]
@@ -2569,13 +2560,19 @@ mod tests {
         fs::create_dir_all(&nested_gns430).expect("failed to create nested navdata dir");
         fs::create_dir_all(&backup_dir).expect("failed to create backup dir");
 
-        fs::write(custom_data.join("cycle.json"), r#"{"name":"X-Plane Navdata"}"#)
-            .expect("failed to write root cycle");
+        fs::write(
+            custom_data.join("cycle.json"),
+            r#"{"name":"X-Plane Navdata"}"#,
+        )
+        .expect("failed to write root cycle");
         fs::write(custom_data.join("earth_nav.dat"), "nav").expect("failed to write nav file");
         fs::write(custom_data.join("user_fix.dat"), "user").expect("failed to write user file");
         fs::write(root_cifp.join("KSEA.dat"), "cifp").expect("failed to write CIFP file");
-        fs::write(nested_gns430.join("cycle.json"), r#"{"name":"GNS430 Navdata"}"#)
-            .expect("failed to write nested cycle");
+        fs::write(
+            nested_gns430.join("cycle.json"),
+            r#"{"name":"GNS430 Navdata"}"#,
+        )
+        .expect("failed to write nested cycle");
         fs::write(backup_dir.join("verification.json"), "{}").expect("failed to write backup");
 
         delete_management_item(temp.path(), "navdata", "")
@@ -2590,7 +2587,10 @@ mod tests {
 
         let navdata = scan_navdata(temp.path()).expect("navdata scan should succeed");
         assert_eq!(navdata.entries.len(), 1);
-        assert_eq!(navdata.entries[0].folder_name.replace('\\', "/"), "GNS430/navdata");
+        assert_eq!(
+            navdata.entries[0].folder_name.replace('\\', "/"),
+            "GNS430/navdata"
+        );
     }
 
     #[test]
@@ -2600,10 +2600,16 @@ mod tests {
         let nested_gns430 = custom_data.join("GNS430").join("navdata");
 
         fs::create_dir_all(&nested_gns430).expect("failed to create nested navdata dir");
-        fs::write(custom_data.join("cycle.json"), r#"{"name":"X-Plane Navdata"}"#)
-            .expect("failed to write root cycle");
-        fs::write(nested_gns430.join("cycle.json"), r#"{"name":"GNS430 Navdata"}"#)
-            .expect("failed to write nested cycle");
+        fs::write(
+            custom_data.join("cycle.json"),
+            r#"{"name":"X-Plane Navdata"}"#,
+        )
+        .expect("failed to write root cycle");
+        fs::write(
+            nested_gns430.join("cycle.json"),
+            r#"{"name":"GNS430 Navdata"}"#,
+        )
+        .expect("failed to write nested cycle");
 
         delete_management_item(temp.path(), "navdata", "GNS430/navdata")
             .expect("nested navdata delete should succeed");

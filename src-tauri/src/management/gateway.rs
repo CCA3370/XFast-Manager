@@ -319,7 +319,8 @@ pub async fn gateway_check_updates(
     let xplane_root = validate_xplane_root(&xplane_path)?;
     let xplane_key = normalize_xplane_key(&xplane_root);
     let release_info = fetch_release_info(release_version.as_deref()).await;
-    let release_scenery = std::sync::Arc::new(fetch_release_scenery_set(release_version.as_deref()).await);
+    let release_scenery =
+        std::sync::Arc::new(fetch_release_scenery_set(release_version.as_deref()).await);
     let installed = list_installed_internal(&db.get(), &xplane_root, &xplane_key).await?;
     if installed.is_empty() {
         return Ok(installed);
@@ -330,49 +331,52 @@ pub async fn gateway_check_updates(
             let release_info = release_info.clone();
             let release_scenery = release_scenery.clone();
             async move {
-            match fetch_gateway_airport_payload(&installed.airport_icao).await {
-                Ok(payload) => {
-                    let summary = parse_gateway_airport_summary(&payload, &installed.airport_icao);
-                    let detail = parse_gateway_airport_detail(&payload, &installed.airport_icao);
-                    let mut next = installed.clone();
-                    if let Some(summary) = summary {
-                        next.latest_scenery_id = summary.recommended_scenery_id;
-                        next.latest_artist = summary.recommended_artist;
-                        next.latest_approved_date = summary.recommended_accepted_at;
-                        next.update_available = summary
-                            .recommended_scenery_id
-                            .map(|latest| latest != next.scenery_id);
-                        if let Some(detail) = detail {
-                            let comparison = compute_release_comparison(
-                                &detail,
-                                release_scenery.as_ref().as_ref(),
-                            );
-                            apply_release_comparison_to_installed(
-                                &mut next,
-                                release_info.as_ref(),
-                                comparison.as_ref(),
-                            );
+                match fetch_gateway_airport_payload(&installed.airport_icao).await {
+                    Ok(payload) => {
+                        let summary =
+                            parse_gateway_airport_summary(&payload, &installed.airport_icao);
+                        let detail =
+                            parse_gateway_airport_detail(&payload, &installed.airport_icao);
+                        let mut next = installed.clone();
+                        if let Some(summary) = summary {
+                            next.latest_scenery_id = summary.recommended_scenery_id;
+                            next.latest_artist = summary.recommended_artist;
+                            next.latest_approved_date = summary.recommended_accepted_at;
+                            next.update_available = summary
+                                .recommended_scenery_id
+                                .map(|latest| latest != next.scenery_id);
+                            if let Some(detail) = detail {
+                                let comparison = compute_release_comparison(
+                                    &detail,
+                                    release_scenery.as_ref().as_ref(),
+                                );
+                                apply_release_comparison_to_installed(
+                                    &mut next,
+                                    release_info.as_ref(),
+                                    comparison.as_ref(),
+                                );
+                            }
+                            (next, true)
+                        } else {
+                            next.update_available = None;
+                            (next, false)
                         }
-                        (next, true)
-                    } else {
+                    }
+                    Err(error) => {
+                        logger::log_error(
+                            &format!(
+                                "Failed to check Gateway updates for {}: {}",
+                                installed.airport_icao, error
+                            ),
+                            Some("gateway"),
+                        );
+                        let mut next = installed.clone();
                         next.update_available = None;
                         (next, false)
                     }
                 }
-                Err(error) => {
-                    logger::log_error(
-                        &format!(
-                            "Failed to check Gateway updates for {}: {}",
-                            installed.airport_icao, error
-                        ),
-                        Some("gateway"),
-                    );
-                    let mut next = installed.clone();
-                    next.update_available = None;
-                    (next, false)
-                }
             }
-        }})
+        })
         .buffer_unordered(UPDATE_CHECK_CONCURRENCY)
         .collect()
         .await;
@@ -392,7 +396,9 @@ pub async fn gateway_check_updates(
 }
 
 #[tauri::command]
-pub async fn gateway_resolve_release_context(xplane_path: String) -> ApiResult<GatewayReleaseContext> {
+pub async fn gateway_resolve_release_context(
+    xplane_path: String,
+) -> ApiResult<GatewayReleaseContext> {
     let xplane_root = validate_xplane_root(&xplane_path)?;
     resolve_release_context(&xplane_root).await
 }
@@ -444,7 +450,11 @@ async fn resolve_release_context(xplane_root: &Path) -> ApiResult<GatewayRelease
 }
 
 async fn fetch_release_directory() -> Option<Vec<GatewayReleaseInfo>> {
-    if let Some(cached) = RELEASE_DIRECTORY_CACHE.read().ok().and_then(|cache| cache.clone()) {
+    if let Some(cached) = RELEASE_DIRECTORY_CACHE
+        .read()
+        .ok()
+        .and_then(|cache| cache.clone())
+    {
         if cached
             .fetched_at
             .elapsed()
@@ -468,7 +478,10 @@ async fn fetch_release_directory() -> Option<Vec<GatewayReleaseInfo>> {
 
     let releases = parse_gateway_release_directory(&payload);
     if releases.is_empty() {
-        logger::log_error("Gateway release directory returned no usable versions", Some("gateway"));
+        logger::log_error(
+            "Gateway release directory returned no usable versions",
+            Some("gateway"),
+        );
         return None;
     }
 
@@ -485,7 +498,9 @@ async fn fetch_release_directory() -> Option<Vec<GatewayReleaseInfo>> {
 async fn fetch_release_info(version: Option<&str>) -> Option<GatewayReleaseInfo> {
     let version = version.map(str::trim).filter(|value| !value.is_empty())?;
     let releases = fetch_release_directory().await?;
-    releases.into_iter().find(|release| release.version == version)
+    releases
+        .into_iter()
+        .find(|release| release.version == version)
 }
 
 async fn fetch_release_scenery_set(version: Option<&str>) -> Option<HashSet<i64>> {
@@ -506,20 +521,20 @@ async fn fetch_release_scenery_set(version: Option<&str>) -> Option<HashSet<i64>
         }
     }
 
-    let payload = match fetch_gateway_json(&format!("{}/release/{}", GATEWAY_API_BASE, version)).await
-    {
-        Ok(payload) => payload,
-        Err(error) => {
-            logger::log_error(
-                &format!(
-                    "Failed to fetch Gateway release scenery packs for {}: {}",
-                    version, error
-                ),
-                Some("gateway"),
-            );
-            return None;
-        }
-    };
+    let payload =
+        match fetch_gateway_json(&format!("{}/release/{}", GATEWAY_API_BASE, version)).await {
+            Ok(payload) => payload,
+            Err(error) => {
+                logger::log_error(
+                    &format!(
+                        "Failed to fetch Gateway release scenery packs for {}: {}",
+                        version, error
+                    ),
+                    Some("gateway"),
+                );
+                return None;
+            }
+        };
 
     let scenery_packs = parse_release_scenery_set(&payload);
     if scenery_packs.is_empty() {
@@ -554,7 +569,9 @@ fn parse_gateway_release_directory(payload: &Value) -> Vec<GatewayReleaseInfo> {
         .iter()
         .filter_map(|entry| {
             let record = entry.as_object()?;
-            let version = pick_string(record, &["Version", "version"])?.trim().to_string();
+            let version = pick_string(record, &["Version", "version"])?
+                .trim()
+                .to_string();
             let date = pick_string(record, &["Date", "date"])?.trim().to_string();
             let parsed_version = parse_xplane_version_for_compare(&version)?;
             Some(GatewayReleaseInfo {
@@ -602,7 +619,9 @@ fn parse_xplane_version_for_compare(raw: &str) -> Option<Version> {
 }
 
 fn normalize_xplane_version_token(raw: &str) -> Option<String> {
-    let trimmed = raw.trim().trim_start_matches(|ch: char| ch == 'v' || ch == 'V');
+    let trimmed = raw
+        .trim()
+        .trim_start_matches(|ch: char| ch == 'v' || ch == 'V');
     if trimmed.is_empty() {
         return None;
     }
@@ -783,12 +802,18 @@ fn read_windows_file_version(path: &Path) -> Option<String> {
             (0x0409, 0x04b0)
         };
 
-        let product_key = format!("\\StringFileInfo\\{:04x}{:04x}\\ProductVersion", lang, codepage);
+        let product_key = format!(
+            "\\StringFileInfo\\{:04x}{:04x}\\ProductVersion",
+            lang, codepage
+        );
         if let Some(version) = query_windows_version_string(&mut data, &product_key) {
             return Some(version);
         }
 
-        let file_key = format!("\\StringFileInfo\\{:04x}{:04x}\\FileVersion", lang, codepage);
+        let file_key = format!(
+            "\\StringFileInfo\\{:04x}{:04x}\\FileVersion",
+            lang, codepage
+        );
         if let Some(version) = query_windows_version_string(&mut data, &file_key) {
             return Some(version);
         }
@@ -825,7 +850,9 @@ unsafe fn query_windows_version_string(data: &mut [u8], key: &str) -> Option<Str
         .iter()
         .position(|value| *value == 0)
         .unwrap_or(value_slice.len());
-    let value = String::from_utf16_lossy(&value_slice[..end]).trim().to_string();
+    let value = String::from_utf16_lossy(&value_slice[..end])
+        .trim()
+        .to_string();
     (!value.is_empty()).then_some(value)
 }
 

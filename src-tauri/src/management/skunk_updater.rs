@@ -1119,7 +1119,10 @@ fn select_module_url(local: &LocalConfig, use_beta: bool) -> Result<String> {
     resolve_module_url(selected_zone.as_deref(), &selected_module)
 }
 
-pub(crate) fn resolve_local_module_url(target_path: &Path, use_beta: bool) -> Result<Option<String>> {
+pub(crate) fn resolve_local_module_url(
+    target_path: &Path,
+    use_beta: bool,
+) -> Result<Option<String>> {
     let cfg_path = target_path.join(LOCAL_CFG_FILE);
     if !cfg_path.exists() {
         return Ok(None);
