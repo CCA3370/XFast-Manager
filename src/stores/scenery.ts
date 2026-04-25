@@ -340,7 +340,7 @@ export const useSceneryStore = defineStore('scenery', () => {
   }
 
   // Apply changes to scenery_packs.ini
-  async function applyChanges() {
+  async function applyChanges(orderedEntries?: SceneryManagerEntry[]) {
     // Prevent concurrent calls (race condition protection)
     if (isSaving.value) return
 
@@ -353,13 +353,15 @@ export const useSceneryStore = defineStore('scenery', () => {
     error.value = null
 
     try {
-      // Ensure sortOrder fields are aligned with current order
-      const normalizedEntries = data.value.entries
-        .sort((a, b) => a.sortOrder - b.sortOrder)
-        .map((entry, index) => ({
-          ...entry,
-          sortOrder: index,
-        }))
+      const entriesToApply = orderedEntries
+        ? orderedEntries.slice()
+        : data.value.entries.slice().sort((a, b) => a.sortOrder - b.sortOrder)
+
+      // Ensure sortOrder fields are aligned with the order being applied
+      const normalizedEntries = entriesToApply.map((entry, index) => ({
+        ...entry,
+        sortOrder: index,
+      }))
 
       // Update local data with normalized sortOrder
       data.value.entries = normalizedEntries

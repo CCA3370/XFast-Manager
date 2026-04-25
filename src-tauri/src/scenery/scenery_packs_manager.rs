@@ -21,6 +21,7 @@ const INI_HEADER: &str = "I\n1000 Version\nSCENERY\n\n";
 const GLOBAL_AIRPORTS_ENABLED_METADATA_KEY: &str = "global_airports_enabled";
 const GLOBAL_AIRPORTS_SORT_ORDER_METADATA_KEY: &str = "global_airports_sort_order";
 const GLOBAL_AIRPORTS_CATEGORY_METADATA_KEY: &str = "global_airports_category";
+const XPLANE_12_GLOBAL_AIRPORTS_PRIORITY: u8 = 5;
 
 /// Normalize a scenery path for scenery_packs.ini
 /// Converts backslashes to forward slashes and ensures trailing slash
@@ -44,8 +45,159 @@ fn entry_path_for_ini(entry: &SceneryPackEntry) -> String {
 }
 
 fn is_global_airports_package(info: &SceneryPackageInfo) -> bool {
-    info.category == SceneryCategory::DefaultAirport
-        || is_global_airports_folder_name(&info.folder_name)
+    is_global_airports_folder_name(&info.folder_name)
+}
+
+fn infer_xplane_major_version_from_text(text: &str) -> Option<u8> {
+    let lower = text.to_ascii_lowercase();
+    for marker in ["x-plane 12", "x-plane12", "xp12"] {
+        if lower.contains(marker) {
+            return Some(12);
+        }
+    }
+    for marker in ["x-plane 11", "x-plane11", "xp11"] {
+        if lower.contains(marker) {
+            return Some(11);
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn xplane_executable_major_version(exe_path: &Path) -> Option<u8> {
+    use std::ffi::OsStr;
+    use std::mem;
+    use std::os::windows::ffi::OsStrExt;
+    use std::ptr;
+    use winapi::shared::minwindef::{DWORD, LPVOID, UINT};
+    use winapi::um::winver::{GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW};
+
+    #[repr(C)]
+    struct VsFixedFileInfo {
+        signature: DWORD,
+        struct_version: DWORD,
+        file_version_ms: DWORD,
+        file_version_ls: DWORD,
+        product_version_ms: DWORD,
+        product_version_ls: DWORD,
+        file_flags_mask: DWORD,
+        file_flags: DWORD,
+        file_os: DWORD,
+        file_type: DWORD,
+        file_subtype: DWORD,
+        file_date_ms: DWORD,
+        file_date_ls: DWORD,
+    }
+
+    let wide_path: Vec<u16> = exe_path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut handle: DWORD = 0;
+    let size = unsafe { GetFileVersionInfoSizeW(wide_path.as_ptr(), &mut handle) };
+    if size == 0 {
+        return None;
+    }
+
+    let mut buffer = vec![0u8; size as usize];
+    let ok =
+        unsafe { GetFileVersionInfoW(wide_path.as_ptr(), 0, size, buffer.as_mut_ptr() as LPVOID) };
+    if ok == 0 {
+        return None;
+    }
+
+    let root: Vec<u16> = OsStr::new("\\")
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut version_info: LPVOID = ptr::null_mut();
+    let mut len: UINT = 0;
+    let ok = unsafe {
+        VerQueryValueW(
+            buffer.as_mut_ptr() as LPVOID,
+            root.as_ptr(),
+            &mut version_info,
+            &mut len,
+        )
+    };
+    if ok == 0 || version_info.is_null() || (len as usize) < mem::size_of::<VsFixedFileInfo>() {
+        return None;
+    }
+
+    let fixed = unsafe { &*(version_info as *const VsFixedFileInfo) };
+    if fixed.signature != 0xfeef04bd {
+        return None;
+    }
+
+    Some((fixed.product_version_ms >> 16) as u8)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn xplane_executable_major_version(_exe_path: &Path) -> Option<u8> {
+    None
+}
+
+fn find_xplane_executable_in_root(path: &Path) -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let exact = path.join("X-Plane.exe");
+        if exact.is_file() {
+            return Some(exact);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let app_path = path.join("X-Plane.app");
+        if app_path.exists() {
+            return Some(app_path);
+        }
+    }
+
+    let mut candidates: Vec<PathBuf> = fs::read_dir(path)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|entry_path| {
+            let is_candidate = if cfg!(target_os = "macos") {
+                entry_path.is_dir()
+            } else {
+                entry_path.is_file()
+            };
+            is_candidate
+                && entry_path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("X-Plane"))
+        })
+        .collect();
+    candidates.sort();
+    candidates.into_iter().next()
+}
+
+fn detect_xplane_major_version(xplane_path: &Path) -> Option<u8> {
+    if let Some(exe_path) = find_xplane_executable_in_root(xplane_path) {
+        if let Some(version) = xplane_executable_major_version(&exe_path) {
+            return Some(version);
+        }
+
+        if let Some(name) = exe_path.file_name().and_then(|name| name.to_str()) {
+            if let Some(version) = infer_xplane_major_version_from_text(name) {
+                return Some(version);
+            }
+        }
+    }
+
+    if let Some(name) = xplane_path.file_name().and_then(|name| name.to_str()) {
+        if let Some(version) = infer_xplane_major_version_from_text(name) {
+            return Some(version);
+        }
+    }
+
+    fs::read_to_string(xplane_path.join("Log.txt"))
+        .ok()
+        .and_then(|content| infer_xplane_major_version_from_text(&content))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,6 +261,32 @@ fn build_entries_from_sorted_packages(
     entries.into_iter().map(|(_, _, entry)| entry).collect()
 }
 
+fn entries_match_expected(
+    ini_entries: &[SceneryPackEntry],
+    expected_entries: &[SceneryPackEntry],
+) -> bool {
+    if ini_entries.len() != expected_entries.len() {
+        return false;
+    }
+
+    ini_entries
+        .iter()
+        .zip(expected_entries.iter())
+        .all(|(ini_entry, expected_entry)| {
+            ini_entry.enabled == expected_entry.enabled
+                && ini_entry.is_global_airports == expected_entry.is_global_airports
+                && entry_path_for_ini(ini_entry) == entry_path_for_ini(expected_entry)
+        })
+}
+
+fn global_airports_default_priority(is_xplane_12: bool) -> u8 {
+    if is_xplane_12 {
+        XPLANE_12_GLOBAL_AIRPORTS_PRIORITY
+    } else {
+        SceneryCategory::DefaultAirport.priority()
+    }
+}
+
 fn parse_ini_entries(content: &str) -> Vec<SceneryPackEntry> {
     let mut entries = Vec::new();
 
@@ -163,7 +341,10 @@ impl SceneryPacksManager {
             .unwrap_or(true)
     }
 
-    fn default_global_airports_sort_order(packages: &[&SceneryPackageInfo]) -> u32 {
+    fn default_global_airports_sort_order(
+        packages: &[&SceneryPackageInfo],
+        is_xplane_12: bool,
+    ) -> u32 {
         let mut visible_packages: Vec<_> = packages
             .iter()
             .copied()
@@ -176,7 +357,9 @@ impl SceneryPacksManager {
 
         visible_packages
             .iter()
-            .position(|info| info.category.priority() >= SceneryCategory::DefaultAirport.priority())
+            .position(|info| {
+                info.category.priority() >= global_airports_default_priority(is_xplane_12)
+            })
             .unwrap_or(visible_packages.len()) as u32
     }
 
@@ -188,6 +371,7 @@ impl SceneryPacksManager {
         &self,
         packages: &[&SceneryPackageInfo],
     ) -> Result<GlobalAirportsState> {
+        let is_xplane_12 = matches!(detect_xplane_major_version(&self.xplane_path), Some(12));
         let enabled = match SceneryQueries::get_metadata(
             &self.db,
             GLOBAL_AIRPORTS_ENABLED_METADATA_KEY,
@@ -212,17 +396,16 @@ impl SceneryPacksManager {
             match SceneryQueries::get_metadata(&self.db, GLOBAL_AIRPORTS_SORT_ORDER_METADATA_KEY)
                 .await
             {
-                Ok(Some(value)) => value
-                    .trim()
-                    .parse::<u32>()
-                    .unwrap_or_else(|_| Self::default_global_airports_sort_order(packages)),
-                Ok(None) => Self::default_global_airports_sort_order(packages),
+                Ok(Some(value)) => value.trim().parse::<u32>().unwrap_or_else(|_| {
+                    Self::default_global_airports_sort_order(packages, is_xplane_12)
+                }),
+                Ok(None) => Self::default_global_airports_sort_order(packages, is_xplane_12),
                 Err(error) => {
                     logger::log_info(
                         &format!("Failed to load Global Airports sort metadata: {}", error),
                         Some("scenery_packs"),
                     );
-                    Self::default_global_airports_sort_order(packages)
+                    Self::default_global_airports_sort_order(packages, is_xplane_12)
                 }
             };
 
@@ -304,7 +487,8 @@ impl SceneryPacksManager {
         let index_manager = SceneryIndexManager::new(&self.xplane_path, self.db.clone());
         let index = index_manager.load_index().await?;
         let packages: Vec<_> = index.packages.values().collect();
-        let default_sort_order = Self::default_global_airports_sort_order(&packages);
+        let is_xplane_12 = matches!(detect_xplane_major_version(&self.xplane_path), Some(12));
+        let default_sort_order = Self::default_global_airports_sort_order(&packages, is_xplane_12);
         self.set_global_airports_sort_order(default_sort_order)
             .await?;
         self.set_global_airports_category(&SceneryCategory::DefaultAirport)
@@ -635,20 +819,7 @@ impl SceneryPacksManager {
         let expected_entries = build_entries_from_sorted_packages(&packages, &global_airports);
         let ini_entries = parse_ini_entries(&content);
 
-        if ini_entries.len() != expected_entries.len() {
-            return Ok(false);
-        }
-
-        for (ini_entry, expected_entry) in ini_entries.iter().zip(expected_entries.iter()) {
-            if ini_entry.enabled != expected_entry.enabled
-                || ini_entry.is_global_airports != expected_entry.is_global_airports
-                || entry_path_for_ini(ini_entry) != entry_path_for_ini(expected_entry)
-            {
-                return Ok(false);
-            }
-        }
-
-        Ok(true)
+        Ok(entries_match_expected(&ini_entries, &expected_entries))
     }
 }
 
@@ -774,18 +945,28 @@ mod tests {
         let global_airports =
             make_package("Global Airports", SceneryCategory::DefaultAirport, 0, true);
         let airport = make_package("Airport A", SceneryCategory::Airport, 0, true);
+        let default_airport = make_package(
+            "X-Plane Airports - EGPR Barra",
+            SceneryCategory::DefaultAirport,
+            1,
+            true,
+        );
         let library = make_package("Library A", SceneryCategory::Library, 2, true);
-        let packages = vec![&global_airports, &airport, &library];
+        let packages = vec![&global_airports, &airport, &default_airport, &library];
 
         let entries = build_entries_from_sorted_packages(
             &packages,
             &global_airports_state(true, 1, SceneryCategory::DefaultAirport),
         );
 
-        assert_eq!(entries.len(), 3);
+        assert_eq!(entries.len(), 4);
         assert_eq!(entries[0].path, "Custom Scenery/Airport A/");
         assert!(entries[1].is_global_airports);
-        assert_eq!(entries[2].path, "Custom Scenery/Library A/");
+        assert_eq!(
+            entries[2].path,
+            "Custom Scenery/X-Plane Airports - EGPR Barra/"
+        );
+        assert_eq!(entries[3].path, "Custom Scenery/Library A/");
     }
 
     #[test]
@@ -804,6 +985,45 @@ mod tests {
         assert!(entries[1].is_global_airports);
         assert!(!entries[1].enabled);
         assert_eq!(entries[2].path, "Custom Scenery/Overlay Pack/");
+    }
+
+    #[test]
+    fn places_global_airports_before_libraries_for_xplane_11() {
+        let airport = make_package("Airport A", SceneryCategory::Airport, 0, true);
+        let default_airport = make_package(
+            "X-Plane Airports - EGPR Barra",
+            SceneryCategory::DefaultAirport,
+            1,
+            true,
+        );
+        let library = make_package("Library A", SceneryCategory::Library, 2, true);
+        let overlay = make_package("Overlay A", SceneryCategory::Overlay, 3, true);
+        let packages = vec![&airport, &default_airport, &library, &overlay];
+
+        assert_eq!(
+            SceneryPacksManager::default_global_airports_sort_order(&packages, false),
+            1
+        );
+    }
+
+    #[test]
+    fn places_global_airports_between_overlays_and_libraries_for_xplane_12() {
+        let airport = make_package("Airport A", SceneryCategory::Airport, 0, true);
+        let default_airport = make_package(
+            "X-Plane Airports - EGPR Barra",
+            SceneryCategory::DefaultAirport,
+            1,
+            true,
+        );
+        let library = make_package("Library A", SceneryCategory::Library, 2, true);
+        let overlay = make_package("Overlay A", SceneryCategory::Overlay, 3, true);
+        let mesh = make_package("Mesh A", SceneryCategory::Mesh, 4, true);
+        let packages = vec![&airport, &default_airport, &library, &overlay, &mesh];
+
+        assert_eq!(
+            SceneryPacksManager::default_global_airports_sort_order(&packages, true),
+            3
+        );
     }
 
     #[test]
@@ -829,6 +1049,35 @@ mod tests {
             entry_path_for_ini(&entries[2]),
             "D:/External/Shortcut Scenery/"
         );
+    }
+
+    #[test]
+    fn detects_global_airports_position_mismatch_in_ini() {
+        let expected = vec![
+            SceneryPackEntry {
+                enabled: true,
+                path: "Custom Scenery/Overlay A/".to_string(),
+                is_global_airports: false,
+            },
+            SceneryPackEntry {
+                enabled: true,
+                path: GLOBAL_AIRPORTS_ENTRY_NAME.to_string(),
+                is_global_airports: true,
+            },
+            SceneryPackEntry {
+                enabled: true,
+                path: "Custom Scenery/Library A/".to_string(),
+                is_global_airports: false,
+            },
+        ];
+        let ini_entries = parse_ini_entries(concat!(
+            "I\n1000 Version\nSCENERY\n\n",
+            "SCENERY_PACK Custom Scenery/Overlay A/\n",
+            "SCENERY_PACK Custom Scenery/Library A/\n",
+            "SCENERY_PACK *GLOBAL_AIRPORTS*\n"
+        ));
+
+        assert!(!entries_match_expected(&ini_entries, &expected));
     }
 
     #[test]

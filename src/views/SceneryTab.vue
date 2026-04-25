@@ -100,6 +100,7 @@ const collapsedContinentCategories = ref<Record<string, boolean>>({})
 const isUpdatingIndex = ref(false)
 const showIndexChangesModal = ref(false)
 const indexChangesResult = ref<SceneryIndexScanResult | null>(null)
+let lastExternalSyncCheckAt = 0
 
 const hasActiveFilters = computed(() => {
   return (
@@ -297,12 +298,37 @@ function dismissIndexChangesModal() {
 
 async function handleIndexChangesSyncToIni() {
   try {
-    await sceneryStore.applyChanges()
+    const orderedEntries = categoryOrder.flatMap(
+      (category) => localGroupedEntries.value[category] || [],
+    )
+    await sceneryStore.applyChanges(orderedEntries)
     toastStore.success(t('sceneryManager.changesApplied'))
     syncLocalEntries()
     dismissIndexChangesModal()
   } catch (e) {
     modalStore.showError(String(e), t('sceneryManager.applyFailed'))
+  }
+}
+
+async function refreshScenerySyncStateIfIdle() {
+  if (!appStore.xplanePath || sceneryStore.isLoading || sceneryStore.isSaving) return
+  if (sceneryStore.hasLocalChanges) return
+
+  const now = Date.now()
+  if (now - lastExternalSyncCheckAt < 1000) return
+  lastExternalSyncCheckAt = now
+
+  await sceneryStore.loadData()
+  syncLocalEntries()
+}
+
+function handleWindowFocusRefresh() {
+  void refreshScenerySyncStateIfIdle()
+}
+
+function handleVisibilityRefresh() {
+  if (document.visibilityState === 'visible') {
+    void refreshScenerySyncStateIfIdle()
   }
 }
 
@@ -1162,7 +1188,10 @@ async function handleGroupChange(category: string, evt: DraggableChangeEvent<Sce
 
 async function handleApplyChanges() {
   try {
-    await sceneryStore.applyChanges()
+    const orderedEntries = categoryOrder.flatMap(
+      (category) => localGroupedEntries.value[category] || [],
+    )
+    await sceneryStore.applyChanges(orderedEntries)
     toastStore.success(t('sceneryManager.changesApplied'))
     syncLocalEntries()
   } catch (e) {
@@ -1530,6 +1559,8 @@ const isLoading = computed(() => sceneryStore.isLoading)
 // Lifecycle hooks
 onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
+  window.addEventListener('focus', handleWindowFocusRefresh)
+  document.addEventListener('visibilitychange', handleVisibilityRefresh)
   // Load scenery data on mount
   if (appStore.xplanePath) {
     if (!sceneryStore.hasLocalChanges) {
@@ -1545,6 +1576,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('focus', handleWindowFocusRefresh)
+  document.removeEventListener('visibilitychange', handleVisibilityRefresh)
   stopDragAutoScroll()
 })
 </script>
