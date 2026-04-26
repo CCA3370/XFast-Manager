@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-04-26
+
+<div class="changelog-important">
+  <p class="changelog-important-label">IMPORTANT FOR USERS UPGRADING FROM 1.2.2</p>
+  <p class="changelog-important-title">If scenery sorting caused problems in the previous version, rebuild the scenery index before using Auto Sort again.</p>
+  <p class="changelog-important-body">Go to Settings, rebuild the scenery index, and then run Auto Sort again.</p>
+</div>
+
+### Added
+
+- **Output Cleanup** - Added a new page to clean selected X-Plane Output caches and generated files without removing the top-level Output folders.
+- **CSL Path Sync** - CSL packages can now be synced across CSL paths with a dedicated progress window during sync.
+
+### Changed
+
+- **Scenery Index Recovery** - Rebuild and reset flow is now clearer when the local scenery index becomes outdated or incompatible.
+- **Airport Flatten Workflow** - Airport Flatten Manager now makes it easier to compare default and custom apt.dat sources and re-apply saved flatten settings.
+- **Renderer Cache Cleanup** - Log Analysis now includes a one-click renderer cache cleanup action.
+- **Bundled Library Links** - Added more community-contributed download links for missing libraries.
+
+### Fixed
+
+- **Scenery Sorting Reliability** - Fixed scenery index and sorting issues that could affect load order stability.
+- **Addon Install Path Handling** - Improved install and extraction reliability when target folders are missing or paths resolve unexpectedly.
+- **Management Path Validation** - Reduced false path-related failures in addon analysis and management actions.
+
 ## [1.2.2] - 2026-04-18
 
 ### Fixed
