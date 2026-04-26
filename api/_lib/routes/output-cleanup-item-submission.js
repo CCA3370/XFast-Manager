@@ -5,7 +5,9 @@ const LEVEL_LABELS = {
 }
 
 function normalizeLevel(input) {
-  const value = String(input || '').trim().toLowerCase()
+  const value = String(input || '')
+    .trim()
+    .toLowerCase()
   return LEVEL_LABELS[value] ? value : 'cleanable'
 }
 
@@ -93,12 +95,12 @@ export default async function handler(req, res) {
     return res.status(ghResponse.status).json({ error: ghData })
   }
 
-  const forwardedHost = req.headers['x-forwarded-host'] || req.headers.host || 'x-fast-manager.vercel.app'
+  const forwardedHost =
+    req.headers['x-forwarded-host'] || req.headers.host || 'x-fast-manager.vercel.app'
   const forwardedProto = req.headers['x-forwarded-proto'] || 'https'
   const origin = `${forwardedProto}://${forwardedHost}`
   const issueNumber = Number(ghData.number || 0)
-  const proxyIssueUrl =
-    issueNumber > 0 ? `${origin}/api/issue-redirect?number=${issueNumber}` : ''
+  const proxyIssueUrl = issueNumber > 0 ? `${origin}/api/issue-redirect?number=${issueNumber}` : ''
 
   return res.status(200).json({
     issueUrl: proxyIssueUrl || ghData.html_url,

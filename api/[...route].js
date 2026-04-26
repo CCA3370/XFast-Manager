@@ -1,16 +1,18 @@
-import bugReportHandler from '../bug-report.js'
-import feedbackIssueHandler from '../feedback-issue.js'
-import issueCommentHandler from '../issue-comment.js'
-import issueDetailHandler from '../issue-detail.js'
-import issueDraftHandler from '../issue-draft.js'
-import issueRedirectHandler from '../issue-redirect.js'
-import issueUpdatesHandler from '../issue-updates.js'
-import latestJsonHandler from '../latest-json.js'
-import libraryLinkHandler from '../library-link.js'
-import libraryLinksDataHandler from '../library-links-data.js'
-import liveryPatternsDataHandler from '../livery-patterns-data.js'
-import releaseRedirectHandler from '../release-redirect.js'
-import updateReleaseHandler from '../update-release.js'
+import bugReportHandler from './_lib/routes/bug-report.js'
+import feedbackIssueHandler from './_lib/routes/feedback-issue.js'
+import issueCommentHandler from './_lib/routes/issue-comment.js'
+import issueDetailHandler from './_lib/routes/issue-detail.js'
+import issueDraftHandler from './_lib/routes/issue-draft.js'
+import issueRedirectHandler from './_lib/routes/issue-redirect.js'
+import issueUpdatesHandler from './_lib/routes/issue-updates.js'
+import latestJsonHandler from './_lib/routes/latest-json.js'
+import libraryLinkHandler from './_lib/routes/library-link.js'
+import libraryLinksDataHandler from './_lib/routes/library-links-data.js'
+import liveryPatternsDataHandler from './_lib/routes/livery-patterns-data.js'
+import outputCleanupItemSubmissionHandler from './_lib/routes/output-cleanup-item-submission.js'
+import outputCleanupItemsDataHandler from './_lib/routes/output-cleanup-items-data.js'
+import releaseRedirectHandler from './_lib/routes/release-redirect.js'
+import updateReleaseHandler from './_lib/routes/update-release.js'
 
 const handlers = {
   'bug-report': bugReportHandler,
@@ -24,6 +26,8 @@ const handlers = {
   'library-link': libraryLinkHandler,
   'library-links-data': libraryLinksDataHandler,
   'livery-patterns-data': liveryPatternsDataHandler,
+  'output-cleanup-item-submission': outputCleanupItemSubmissionHandler,
+  'output-cleanup-items-data': outputCleanupItemsDataHandler,
   'release-redirect': releaseRedirectHandler,
   'update-release': updateReleaseHandler,
 }

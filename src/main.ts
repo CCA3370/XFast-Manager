@@ -207,6 +207,7 @@ const router = createRouter({
     { path: '/activity', component: () => import('./views/ActivityLog.vue') },
     { path: '/screenshots', component: () => import('./views/ScreenshotManager.vue') },
     { path: '/disk-usage', component: () => import('./views/DiskUsage.vue') },
+    { path: '/disk-usage/output-cleanup', component: () => import('./views/OutputCleanup.vue') },
     { path: '/feedback', component: () => import('./views/FeedbackCenter.vue') },
     { path: '/scenery', redirect: '/management?tab=scenery' },
     { path: '/settings', component: preloadSettings },

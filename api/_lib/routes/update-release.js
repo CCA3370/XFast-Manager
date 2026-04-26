@@ -3,7 +3,7 @@ import {
   getProxyOrigin,
   parseIncludePreRelease,
   selectRelease,
-} from './_lib/github-release.js'
+} from '../github-release.js'
 
 function normalizeRelease(release, req) {
   const tag = String(release?.tag_name || '').trim()

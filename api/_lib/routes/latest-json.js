@@ -1,8 +1,4 @@
-import {
-  buildGitHubHeaders,
-  parseIncludePreRelease,
-  selectRelease,
-} from './_lib/github-release.js'
+import { buildGitHubHeaders, parseIncludePreRelease, selectRelease } from '../github-release.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {

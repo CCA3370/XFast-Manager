@@ -651,7 +651,7 @@ const allNavItems = computed<NavItem[]>(() => [
     id: 'disk-usage',
     to: '/disk-usage',
     label: t('diskUsage.navTitle'),
-    active: route.path === '/disk-usage',
+    active: route.path.startsWith('/disk-usage'),
     iconPaths: NAV_ICON_PATHS['disk-usage'],
   },
   {
@@ -887,6 +887,7 @@ const routeOrder: Record<string, number> = {
   '/log-analysis': 3,
   '/activity': 3.5,
   '/disk-usage': 4,
+  '/disk-usage/output-cleanup': 4.1,
   '/gateway': 5,
   '/airport-flatten': 5.25,
   '/csl': 5.5,

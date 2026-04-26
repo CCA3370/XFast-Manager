@@ -27,7 +27,9 @@ export default function handler(req, res) {
   const labels = String(req.query.labels || '').trim()
   const title = String(req.query.title || '').trim()
   const body = String(req.query.body || '').trim()
-  const mode = String(req.query.mode || '').trim().toLowerCase()
+  const mode = String(req.query.mode || '')
+    .trim()
+    .toLowerCase()
 
   const url = buildIssueNewUrl({
     owner,
