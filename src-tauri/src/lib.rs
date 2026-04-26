@@ -33,6 +33,8 @@ mod crash_analysis;
 mod hash_collector;
 #[path = "analysis/livery_patterns.rs"]
 mod livery_patterns;
+#[path = "analysis/output_cleanup.rs"]
+mod output_cleanup;
 #[path = "analysis/scanner/mod.rs"]
 mod scanner;
 
@@ -3569,6 +3571,59 @@ async fn scan_folder_disk_usage(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+#[tauri::command]
+async fn scan_output_cleanup_items(
+    xplane_path: String,
+) -> Result<output_cleanup::OutputCleanupReport, String> {
+    tokio::task::spawn_blocking(move || output_cleanup::scan_output_cleanup_items(&xplane_path))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn refresh_output_cleanup_items() -> Result<output_cleanup::OutputCleanupConfigInfo, String> {
+    output_cleanup::refresh_remote_catalog().await
+}
+
+#[tauri::command]
+fn reset_output_cleanup_items_to_embedded() -> output_cleanup::OutputCleanupConfigInfo {
+    output_cleanup::reset_to_embedded_catalog()
+}
+
+#[tauri::command]
+async fn clean_output_items(
+    xplane_path: String,
+    targets: Vec<output_cleanup::OutputCleanupTarget>,
+) -> Result<output_cleanup::OutputCleanupResult, String> {
+    if is_xplane_running().await {
+        return Err("X-Plane is running. Close X-Plane before cleaning Output files.".to_string());
+    }
+
+    tokio::task::spawn_blocking(move || output_cleanup::clean_output_items(&xplane_path, targets))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn submit_unknown_output_cleanup_item(
+    folder_name: String,
+    relative_path: String,
+    description: String,
+    expected_level: String,
+    size_bytes: u64,
+    file_count: usize,
+) -> Result<output_cleanup::OutputCleanupSubmissionResult, String> {
+    output_cleanup::submit_unknown_output_cleanup_item(
+        folder_name,
+        relative_path,
+        description,
+        expected_level,
+        size_bytes,
+        file_count,
+    )
+    .await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -3754,6 +3809,11 @@ pub fn run() {
             // Disk usage commands
             scan_disk_usage,
             scan_folder_disk_usage,
+            scan_output_cleanup_items,
+            refresh_output_cleanup_items,
+            reset_output_cleanup_items_to_embedded,
+            clean_output_items,
+            submit_unknown_output_cleanup_item,
             // CSL management commands
             csl_index::csl_fetch_package_descriptions,
             csl_index::csl_scan_packages,

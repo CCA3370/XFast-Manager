@@ -1144,6 +1144,10 @@ export default {
     medium: 'Предупреждение',
     low: 'Замечание',
     noIssues: 'В этом логе известных проблем не обнаружено.',
+    cleanRendererCache: 'Очистить кэш рендерера',
+    rendererCacheCleaning: 'Очистка кэша...',
+    rendererCacheCleanSuccess:
+      'Кэш рендерера очищен ({size}). X-Plane создаст его заново при следующем запуске.',
     lineNumbers: 'Строка {nums}',
     systemInfo: 'Информация о системе',
     xplaneVersion: 'Версия X-Plane',
@@ -1598,6 +1602,114 @@ export default {
     openFolder: 'Открыть папку',
     empty: 'Нет данных сканирования',
     emptyHint: 'Нажмите «Сканировать», чтобы проанализировать использование диска',
+    outputCleanup: {
+      title: 'Очистка Output',
+      subtitle:
+        'Очищает выбранные кэши и созданные файлы в Output X-Plane. Верхние папки сохраняются.',
+      loading: 'Загрузка элементов очистки...',
+      empty: 'В Output не найдены элементы для очистки.',
+      refresh: 'Обновить правила',
+      refreshing: 'Обновление...',
+      selectRecommended: 'Выбрать рекомендуемые',
+      cleanSelected: 'Очистить {size}',
+      cleaning: 'Очистка...',
+      available: 'Доступно',
+      selected: 'Выбрано',
+      fileCount: 'Файлы',
+      files: 'файлов',
+      source: 'Источник: {source} v{version}',
+      sourceEmbedded: 'Встроено',
+      sourceRemote: 'Удалённо',
+      notFound: 'Не найдено',
+      noSelection: 'Выберите хотя бы один элемент очистки.',
+      confirmTitle: 'Очистить выбранные элементы Output?',
+      confirmMessage:
+        'Содержимое {count} выбранных элемент(ов) будет удалено навсегда, освободив примерно {size}. Сами папки сохранятся.',
+      confirmClean: 'Очистить сейчас',
+      cleanSuccess: 'Очищено {size} в {count} файл(ах)',
+      submitUnknown: 'Отправить описание',
+      submitTitle: 'Описать неизвестную папку Output',
+      expectedLevel: 'Ожидаемый уровень',
+      descriptionLabel: 'Описание',
+      descriptionPlaceholder: 'Опишите, что создаёт эту папку и безопасно ли её очищать.',
+      submit: 'Отправить в GitHub',
+      submitting: 'Отправка...',
+      submitSuccess: 'Описание элемента очистки отправлено',
+      issueTitle: '[Очистка Output] {name}',
+      unknownDescription:
+        'Эта папка Output пока отсутствует в каталоге очистки. Её всё равно можно очистить или отправить описание для классификации.',
+      levelRecommended: 'Рекомендуемая очистка',
+      levelCleanable: 'Можно очистить',
+      levelCautious: 'Осторожная очистка',
+      levelUnknown: 'Не распознано',
+      warnings: {
+        shadercache:
+          'Кэш рендерера будет создан заново автоматически; следующий запуск или загрузка сцен может быть медленнее.',
+        replays: 'Удаление этого элемента очистит сохранённые файлы повторов.',
+        fms_plans: 'Удаление этого элемента очистит сохранённые планы полёта FMS.',
+        screenshots: 'Удаление этого элемента очистит снимки экрана и видео симулятора.',
+        situations: 'Удаление этого элемента очистит сохранённые ситуации полёта.',
+      },
+      items: {
+        shadercache: {
+          name: 'Кэш шейдеров рендерера',
+          description:
+            'Скомпилированный кэш рендерера и шейдеров Vulkan. X-Plane автоматически создаст его заново после очистки.',
+        },
+        caches: {
+          name: 'Кэши выполнения',
+          description: 'Общие файлы кэша выполнения и дополнений.',
+        },
+        real_weather: {
+          name: 'Кэш реальной погоды',
+          description: 'Загруженные или созданные файлы кэша реальной погоды.',
+        },
+        log_archive: {
+          name: 'Архив журналов',
+          description: 'Архивные исторические журналы X-Plane.',
+        },
+        crash_reports: {
+          name: 'Отчёты о сбоях',
+          description: 'Старые файлы отчётов о сбоях.',
+        },
+        diagnostic_reports: {
+          name: 'Диагностические отчёты',
+          description: 'Старые файлы диагностических отчётов.',
+        },
+        analytics: {
+          name: 'Данные аналитики',
+          description: 'Данные анализа сеанса, созданные X-Plane.',
+        },
+        autodgs: {
+          name: 'Данные AutoDGS',
+          description: 'Данные и файлы кэша, созданные AutoDGS.',
+        },
+        logbooks: {
+          name: 'Бортовые журналы',
+          description: 'Файлы бортового журнала X-Plane.',
+        },
+        backgrounds: {
+          name: 'Фоновые изображения',
+          description: 'Изображения, используемые как фоновые экраны X-Plane.',
+        },
+        replays: {
+          name: 'Повторы',
+          description: 'Сохранённые файлы повторов.',
+        },
+        fms_plans: {
+          name: 'Планы FMS',
+          description: 'Сохранённые планы полёта FMS.',
+        },
+        screenshots: {
+          name: 'Снимки экрана и видео',
+          description: 'Снимки экрана симулятора и записанные видео.',
+        },
+        situations: {
+          name: 'Ситуации',
+          description: 'Сохранённые ситуации полёта.',
+        },
+      },
+    },
   },
   gatewayManager: {
     details: 'Подробности',

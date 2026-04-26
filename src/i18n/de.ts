@@ -1154,6 +1154,10 @@ export default {
     medium: 'Warnung',
     low: 'Hinweis',
     noIssues: 'In diesem Protokoll wurden keine bekannten Probleme festgestellt.',
+    cleanRendererCache: 'Renderer-Cache leeren',
+    rendererCacheCleaning: 'Cache wird geleert...',
+    rendererCacheCleanSuccess:
+      'Renderer-Cache geleert ({size}). X-Plane erstellt ihn beim nächsten Start neu.',
     lineNumbers: 'Zeile {nums}',
     systemInfo: 'Systeminformationen',
     xplaneVersion: 'X-Plane-Version',
@@ -1622,6 +1626,116 @@ export default {
     openFolder: 'Ordner öffnen',
     empty: 'Keine Scandaten verfügbar',
     emptyHint: 'Klicken Sie auf „Scannen“, um die Festplattennutzung zu analysieren',
+    outputCleanup: {
+      title: 'Output-Bereinigung',
+      subtitle:
+        'Bereinigt ausgewählte X-Plane-Output-Caches und erzeugte Dateien. Die obersten Ordner bleiben erhalten.',
+      loading: 'Bereinigungseinträge werden geladen...',
+      empty: 'Keine Bereinigungseinträge in Output gefunden.',
+      refresh: 'Regeln aktualisieren',
+      refreshing: 'Aktualisierung...',
+      selectRecommended: 'Empfohlene auswählen',
+      cleanSelected: '{size} bereinigen',
+      cleaning: 'Bereinigung...',
+      available: 'Verfügbar',
+      selected: 'Ausgewählt',
+      fileCount: 'Dateien',
+      files: 'Dateien',
+      source: 'Quelle: {source} v{version}',
+      sourceEmbedded: 'Gebündelt',
+      sourceRemote: 'Online',
+      notFound: 'Nicht gefunden',
+      noSelection: 'Wählen Sie mindestens einen Bereinigungseintrag aus.',
+      confirmTitle: 'Ausgewählte Output-Einträge bereinigen?',
+      confirmMessage:
+        'Dadurch werden die Inhalte von {count} ausgewählten Eintrag(en) dauerhaft gelöscht und etwa {size} freigegeben. Die Ordner selbst bleiben erhalten.',
+      confirmClean: 'Jetzt bereinigen',
+      cleanSuccess: '{size} in {count} Datei(en) bereinigt',
+      submitUnknown: 'Beschreibung senden',
+      submitTitle: 'Unbekannten Output-Ordner beschreiben',
+      expectedLevel: 'Erwartete Stufe',
+      descriptionLabel: 'Beschreibung',
+      descriptionPlaceholder:
+        'Beschreiben Sie, wodurch dieser Ordner erstellt wird und ob er sicher bereinigt werden kann.',
+      submit: 'An GitHub senden',
+      submitting: 'Wird gesendet...',
+      submitSuccess: 'Beschreibung des Bereinigungseintrags gesendet',
+      issueTitle: '[Output-Bereinigung] {name}',
+      unknownDescription:
+        'Dieser Output-Ordner ist noch nicht im Bereinigungskatalog enthalten. Sie können ihn trotzdem bereinigen oder eine Beschreibung zur Einstufung senden.',
+      levelRecommended: 'Empfohlene Bereinigung',
+      levelCleanable: 'Bereinigbar',
+      levelCautious: 'Vorsichtige Bereinigung',
+      levelUnknown: 'Nicht erkannt',
+      warnings: {
+        shadercache:
+          'Der Renderer-Cache wird automatisch neu erstellt; der nächste Start oder das Laden von Szenerien kann langsamer sein.',
+        replays: 'Durch Löschen dieses Eintrags werden gespeicherte Wiederholungen entfernt.',
+        fms_plans: 'Durch Löschen dieses Eintrags werden gespeicherte FMS-Flugpläne entfernt.',
+        screenshots:
+          'Durch Löschen dieses Eintrags werden Simulator-Screenshots und Videos entfernt.',
+        situations: 'Durch Löschen dieses Eintrags werden gespeicherte Flugsituationen entfernt.',
+      },
+      items: {
+        shadercache: {
+          name: 'Renderer-Shader-Cache',
+          description:
+            'Kompilierter Renderer- und Vulkan-Shader-Cache. X-Plane erstellt ihn nach der Bereinigung automatisch neu.',
+        },
+        caches: {
+          name: 'Laufzeit-Caches',
+          description: 'Allgemeine Laufzeit- und Add-on-Cachedateien.',
+        },
+        real_weather: {
+          name: 'Echtwetter-Cache',
+          description: 'Heruntergeladene oder erzeugte Echtwetter-Cachedateien.',
+        },
+        log_archive: {
+          name: 'Protokollarchiv',
+          description: 'Archivierte historische X-Plane-Protokolle.',
+        },
+        crash_reports: {
+          name: 'Absturzberichte',
+          description: 'Alte Absturzberichtdateien.',
+        },
+        diagnostic_reports: {
+          name: 'Diagnoseberichte',
+          description: 'Alte Diagnoseberichtdateien.',
+        },
+        analytics: {
+          name: 'Analysedaten',
+          description: 'Von X-Plane erzeugte Sitzungsanalysedaten.',
+        },
+        autodgs: {
+          name: 'AutoDGS-Daten',
+          description: 'Von AutoDGS erzeugte Daten und Cachedateien.',
+        },
+        logbooks: {
+          name: 'Logbücher',
+          description: 'X-Plane-Logbuchdateien.',
+        },
+        backgrounds: {
+          name: 'Hintergrundbilder',
+          description: 'Bilder für X-Plane-Hintergrundbildschirme.',
+        },
+        replays: {
+          name: 'Wiederholungen',
+          description: 'Gespeicherte Wiederholungsdateien.',
+        },
+        fms_plans: {
+          name: 'FMS-Flugpläne',
+          description: 'Gespeicherte FMS-Flugpläne.',
+        },
+        screenshots: {
+          name: 'Screenshots und Videos',
+          description: 'Simulator-Screenshots und aufgenommene Videos.',
+        },
+        situations: {
+          name: 'Situationen',
+          description: 'Gespeicherte Flugsituationen.',
+        },
+      },
+    },
   },
   gatewayManager: {
     details: 'Einzelheiten',

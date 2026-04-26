@@ -1124,6 +1124,10 @@ export default {
     medium: '警告',
     low: 'お知らせ',
     noIssues: 'このログでは既知の問題は検出されませんでした。',
+    cleanRendererCache: 'レンダラーキャッシュを削除',
+    rendererCacheCleaning: 'キャッシュを削除中...',
+    rendererCacheCleanSuccess:
+      'レンダラーキャッシュを削除しました（{size}）。次回起動時に X-Plane が再生成します。',
     lineNumbers: '行 {nums}',
     systemInfo: 'システム情報',
     xplaneVersion: 'X-Planeバージョン',
@@ -1575,6 +1579,116 @@ export default {
     openFolder: 'フォルダーを開く',
     empty: '利用可能なスキャンデータがありません',
     emptyHint: '「スキャン」をクリックしてディスク使用量を分析します',
+    outputCleanup: {
+      title: 'Output のクリーンアップ',
+      subtitle:
+        'X-Plane の Output にある選択したキャッシュと生成ファイルを削除します。最上位フォルダーは残します。',
+      loading: 'クリーンアップ項目を読み込み中...',
+      empty: 'Output にクリーンアップ項目が見つかりません。',
+      refresh: 'ルールを更新',
+      refreshing: '更新中...',
+      selectRecommended: '推奨項目を選択',
+      cleanSelected: '{size} を削除',
+      cleaning: '削除中...',
+      available: '削除可能',
+      selected: '選択中',
+      fileCount: 'ファイル',
+      files: 'ファイル',
+      source: '提供元：{source} v{version}',
+      sourceEmbedded: '内蔵',
+      sourceRemote: 'リモート',
+      notFound: '見つかりません',
+      noSelection: 'クリーンアップ項目を少なくとも 1 つ選択してください。',
+      confirmTitle: '選択した Output 項目を削除しますか？',
+      confirmMessage:
+        '選択した {count} 項目の内容を完全に削除し、約 {size} を解放します。フォルダー自体は残ります。',
+      confirmClean: '今すぐ削除',
+      cleanSuccess: '{count} 個のファイルから {size} を削除しました',
+      submitUnknown: '説明を送信',
+      submitTitle: '未識別の Output フォルダーを説明',
+      expectedLevel: '希望レベル',
+      descriptionLabel: '説明',
+      descriptionPlaceholder:
+        'このフォルダーを作成するものと、削除して安全かどうかを説明してください。',
+      submit: 'GitHub に送信',
+      submitting: '送信中...',
+      submitSuccess: 'クリーンアップ項目の説明を送信しました',
+      issueTitle: '[Output クリーンアップ] {name}',
+      unknownDescription:
+        'この Output フォルダーはまだクリーンアップカタログにありません。削除することも、分類用の説明を送信することもできます。',
+      levelRecommended: '推奨クリーンアップ',
+      levelCleanable: '削除可能',
+      levelCautious: '慎重に削除',
+      levelUnknown: '未識別',
+      warnings: {
+        shadercache:
+          'レンダラーキャッシュは自動的に再生成されます。次回起動またはシーナリー読み込みが遅くなる場合があります。',
+        replays: 'この項目を削除すると、保存済みリプレイファイルが消去されます。',
+        fms_plans: 'この項目を削除すると、保存済み FMS 飛行計画が消去されます。',
+        screenshots:
+          'この項目を削除すると、シミュレーターのスクリーンショットと動画が消去されます。',
+        situations: 'この項目を削除すると、保存済み飛行シチュエーションが消去されます。',
+      },
+      items: {
+        shadercache: {
+          name: 'レンダラーシェーダーキャッシュ',
+          description:
+            'コンパイル済みのレンダラーおよび Vulkan シェーダーキャッシュです。削除後は X-Plane が自動的に再生成します。',
+        },
+        caches: {
+          name: '実行時キャッシュ',
+          description: '一般的な実行時キャッシュとアドオンのキャッシュファイルです。',
+        },
+        real_weather: {
+          name: '実天候キャッシュ',
+          description: 'ダウンロードまたは生成された実天候キャッシュファイルです。',
+        },
+        log_archive: {
+          name: 'ログアーカイブ',
+          description: '保存された過去の X-Plane ログです。',
+        },
+        crash_reports: {
+          name: 'クラッシュレポート',
+          description: '古いクラッシュレポートファイルです。',
+        },
+        diagnostic_reports: {
+          name: '診断レポート',
+          description: '古い診断レポートファイルです。',
+        },
+        analytics: {
+          name: '分析データ',
+          description: 'X-Plane が生成したセッション分析データです。',
+        },
+        autodgs: {
+          name: 'AutoDGS データ',
+          description: 'AutoDGS が生成したデータとキャッシュファイルです。',
+        },
+        logbooks: {
+          name: 'ログブック',
+          description: 'X-Plane のログブックファイルです。',
+        },
+        backgrounds: {
+          name: '背景画像',
+          description: 'X-Plane の背景画面として使用される画像です。',
+        },
+        replays: {
+          name: 'リプレイ',
+          description: '保存済みリプレイファイルです。',
+        },
+        fms_plans: {
+          name: 'FMS 飛行計画',
+          description: '保存済み FMS 飛行計画です。',
+        },
+        screenshots: {
+          name: 'スクリーンショットと動画',
+          description: 'シミュレーターのスクリーンショットと録画動画です。',
+        },
+        situations: {
+          name: 'シチュエーション',
+          description: '保存済み飛行シチュエーションです。',
+        },
+      },
+    },
   },
   gatewayManager: {
     details: '詳細',
