@@ -352,6 +352,11 @@ export default {
     installInProgressTitle: 'التثبيت قيد التنفيذ',
     installInProgressMessage: 'توجد عملية تثبيت قيد التنفيذ حاليًا. هل تريد الإغلاق حقًا؟',
     installInProgressWarning: 'قد يؤدي الإغلاق الآن إلى إتلاف الملفات المثبتة',
+    cslSyncInProgressTitle: 'CSL Sync In Progress',
+    cslSyncInProgressMessage:
+      'CSL paths are currently syncing. Are you sure you want to close?',
+    cslSyncInProgressWarning:
+      'Closing now may leave some CSL paths only partially synced',
     // تأكيد التثبيت المعلق
     confirmationOpenTitle: 'تثبيت معلّق',
     confirmationOpenMessage: 'هناك عملية تثبيت معلقة لم يتم تأكيدها بعد. هل تريد الإغلاق حقًا؟',
@@ -1834,6 +1839,18 @@ export default {
     files: 'ملفات',
     downloadSize: 'حجم التنزيل',
     selectTargetPath: 'اختر مسار هدف التثبيت',
+    syncDialogTitle: 'Syncing CSL Paths',
+    syncPreparing: 'Preparing sync...',
+    syncInProgress: 'Applying file links to CSL paths',
+    syncCompleted: 'Sync completed',
+    syncFailed: 'Sync failed',
+    syncProgressFiles: 'Files',
+    syncProgressPaths: 'Paths',
+    syncCurrentPackage: 'Current package',
+    syncCurrentPath: 'Current path',
+    syncCurrentFile: 'Current file',
+    syncFallbackNotice: '{path} is on a different volume, so directory links are used instead.',
+    syncError: 'Failed to sync CSL paths',
     progress: 'التقدم: {current}/{total} ملفات',
   },
   altitude: {

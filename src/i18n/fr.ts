@@ -378,6 +378,11 @@ export default {
     installInProgressMessage:
       'Une installation est actuellement en cours. Êtes-vous sûr de vouloir fermer ?',
     installInProgressWarning: 'La fermeture maintenant peut corrompre les fichiers installés',
+    cslSyncInProgressTitle: 'CSL Sync In Progress',
+    cslSyncInProgressMessage:
+      'CSL paths are currently syncing. Are you sure you want to close?',
+    cslSyncInProgressWarning:
+      'Closing now may leave some CSL paths only partially synced',
     confirmationOpenTitle: "En attente d'installation",
     confirmationOpenMessage:
       "Vous avez une installation en attente qui n'a pas été confirmée. Êtes-vous sûr de vouloir fermer ?",
@@ -1918,6 +1923,18 @@ export default {
     files: 'fichiers',
     downloadSize: 'Taille de téléchargement',
     selectTargetPath: "Sélectionnez le chemin cible d'installation",
+    syncDialogTitle: 'Syncing CSL Paths',
+    syncPreparing: 'Preparing sync...',
+    syncInProgress: 'Applying file links to CSL paths',
+    syncCompleted: 'Sync completed',
+    syncFailed: 'Sync failed',
+    syncProgressFiles: 'Files',
+    syncProgressPaths: 'Paths',
+    syncCurrentPackage: 'Current package',
+    syncCurrentPath: 'Current path',
+    syncCurrentFile: 'Current file',
+    syncFallbackNotice: '{path} is on a different volume, so directory links are used instead.',
+    syncError: 'Failed to sync CSL paths',
     progress: 'Progression : {current}/{total} fichiers',
   },
   altitude: {

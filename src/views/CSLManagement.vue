@@ -86,7 +86,7 @@
       <button
         v-if="store.paths.length > 0 || store.customPaths.length > 0"
         class="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 flex-shrink-0"
-        @click="showPathsDialog = true"
+        @click="openPathsDialog"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -98,7 +98,7 @@
         </svg>
         {{ $t('csl.cslPaths') }}
         <span class="text-xs text-gray-400 dark:text-gray-500"
-          >({{ store.paths.length + store.customPaths.length }})</span
+          >({{ store.allPaths.length }})</span
         >
       </button>
     </div>
@@ -319,7 +319,7 @@
       <div
         v-if="showPathsDialog"
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-        @click.self="showPathsDialog = false"
+        @click.self="closePathsDialog"
       >
         <div
           class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden"
@@ -332,7 +332,7 @@
             </h3>
             <button
               class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-lg"
-              @click="showPathsDialog = false"
+              @click="closePathsDialog"
             >
               &#x2715;
             </button>
@@ -350,7 +350,7 @@
                 relativePath(p.path)
               }}</span>
             </div>
-            <div v-for="cp in store.customPaths" :key="cp" class="flex items-center gap-2 text-sm">
+            <div v-for="cp in customPathDraft" :key="cp" class="flex items-center gap-2 text-sm">
               <span
                 class="px-1.5 py-0.5 rounded text-xs bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 flex-shrink-0"
                 >{{ $t('csl.custom') }}</span
@@ -360,13 +360,13 @@
               }}</span>
               <button
                 class="text-red-500 hover:text-red-600 text-xs flex-shrink-0"
-                @click="store.removeCustomPath(cp)"
+                @click="removeCustomPathDraft(cp)"
               >
                 {{ $t('csl.removePath') }}
               </button>
             </div>
             <div
-              v-if="store.paths.length === 0 && store.customPaths.length === 0"
+              v-if="store.paths.length === 0 && customPathDraft.length === 0"
               class="text-sm text-gray-400 dark:text-gray-500 text-center py-4"
             >
               {{ $t('csl.noPathsDetected') }}
@@ -375,16 +375,25 @@
           <div class="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-between">
             <button
               class="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-              @click="addCustomPath"
+              @click="addCustomPathDraft"
             >
               + {{ $t('csl.addPath') }}
             </button>
-            <button
-              class="text-sm px-4 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-              @click="showPathsDialog = false"
-            >
-              {{ $t('common.close') }}
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                class="text-sm px-4 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                @click="closePathsDialog"
+              >
+                {{ $t('common.cancel') }}
+              </button>
+              <button
+                class="text-sm px-4 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
+                :disabled="!hasPathDraftChanges || store.linkSyncRunning"
+                @click="confirmPathDraft"
+              >
+                {{ $t('common.confirm') }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -489,6 +498,89 @@
         </div>
       </div>
     </Teleport>
+
+    <Teleport to="body">
+      <div
+        v-if="showLinkSyncDialog"
+        class="fixed inset-0 z-[1200] flex items-center justify-center bg-black/55 backdrop-blur-sm px-4"
+      >
+        <div
+          class="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-2xl overflow-hidden"
+        >
+          <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800">
+            <div class="flex items-center gap-3">
+              <div
+                class="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 flex items-center justify-center"
+              >
+                <div
+                  class="h-5 w-5 rounded-full border-2 border-current border-t-transparent animate-spin"
+                ></div>
+              </div>
+              <div class="min-w-0">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                  {{ linkSyncTitle }}
+                </h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {{ linkSyncSubtitle }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="px-5 py-4 space-y-4">
+            <div class="space-y-2">
+              <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>{{ $t('csl.syncProgressFiles') }}</span>
+                <span>{{ linkSyncProcessedText }}</span>
+              </div>
+              <div class="h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                <div
+                  class="h-full bg-blue-600 dark:bg-blue-500 transition-[width] duration-200"
+                  :style="{ width: `${linkSyncPercent}%` }"
+                ></div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 text-xs">
+              <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 px-3 py-2">
+                <div class="text-gray-500 dark:text-gray-400">{{ $t('csl.syncProgressPaths') }}</div>
+                <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                  {{ linkSyncTargetProgressText }}
+                </div>
+              </div>
+              <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 px-3 py-2">
+                <div class="text-gray-500 dark:text-gray-400">{{ $t('csl.syncCurrentPackage') }}</div>
+                <div class="mt-1 font-medium text-gray-900 dark:text-white truncate">
+                  {{ linkSyncCurrentPackage || $t('csl.syncPreparing') }}
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-2 text-xs">
+              <div class="rounded-xl border border-gray-200 dark:border-gray-800 px-3 py-2">
+                <div class="text-gray-500 dark:text-gray-400">{{ $t('csl.syncCurrentPath') }}</div>
+                <div class="mt-1 font-medium text-gray-900 dark:text-white break-all">
+                  {{ linkSyncCurrentTarget || $t('csl.syncPreparing') }}
+                </div>
+              </div>
+              <div class="rounded-xl border border-gray-200 dark:border-gray-800 px-3 py-2">
+                <div class="text-gray-500 dark:text-gray-400">{{ $t('csl.syncCurrentFile') }}</div>
+                <div class="mt-1 font-medium text-gray-900 dark:text-white break-all">
+                  {{ linkSyncCurrentFile || $t('csl.syncPreparing') }}
+                </div>
+              </div>
+            </div>
+
+            <p
+              v-if="linkSyncNotice"
+              class="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-200"
+            >
+              {{ linkSyncNotice }}
+            </p>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -500,7 +592,12 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { useCslStore } from '@/stores/csl'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
-import { getErrorMessage, type CslPackageInfo, type CslProgress } from '@/types'
+import {
+  getErrorMessage,
+  type CslLinkSyncProgress,
+  type CslPackageInfo,
+  type CslProgress,
+} from '@/types'
 
 interface DisplayPackage extends CslPackageInfo {
   source: 'csl' | 'altitude'
@@ -525,6 +622,7 @@ const packageListRef = ref<HTMLElement | null>(null)
 const serverEntries = ref<EditableServerEntry[]>([])
 const selectedServerEntryId = ref<number | null>(null)
 const serverSettingsError = ref('')
+const customPathDraft = ref<string[]>([])
 
 let nextServerEntryId = 0
 let descriptionObserver: IntersectionObserver | null = null
@@ -553,6 +651,7 @@ function createServerEntry(url: string): EditableServerEntry {
 
 let unlistenProgress: UnlistenFn | null = null
 let unlistenAltitudeProgress: UnlistenFn | null = null
+let unlistenLinkSync: UnlistenFn | null = null
 
 // Combined packages: ALTITUDE first, then CSL
 const combinedPackages = computed<DisplayPackage[]>(() => {
@@ -609,6 +708,77 @@ const filteredPackages = computed(() => {
 const totalSizeBytes = computed(() =>
   combinedPackages.value.reduce((sum, p) => sum + p.total_size_bytes, 0),
 )
+const hasPathDraftChanges = computed(() => {
+  if (customPathDraft.value.length !== store.customPaths.length) {
+    return true
+  }
+
+  return customPathDraft.value.some((path, index) => path !== store.customPaths[index])
+})
+const linkSyncTitle = computed(() => t('csl.syncDialogTitle'))
+const showLinkSyncDialog = computed(
+  () =>
+    store.linkSyncRunning &&
+    store.linkSyncInteractive &&
+    store.linkSyncHasWork &&
+    store.linkSyncProgress?.phase !== 'preparing',
+)
+const linkSyncSubtitle = computed(() => {
+  const phase = store.linkSyncProgress?.phase
+  if (phase === 'completed') {
+    return t('csl.syncCompleted')
+  }
+  if (phase === 'failed') {
+    return t('csl.syncFailed')
+  }
+  if (phase === 'syncing') {
+    return t('csl.syncInProgress')
+  }
+  return t('csl.syncPreparing')
+})
+const linkSyncPercent = computed(() => {
+  const totalFiles = store.linkSyncProgress?.total_files ?? 0
+  const processedFiles = store.linkSyncProgress?.processed_files ?? 0
+
+  if (totalFiles <= 0) {
+    return store.linkSyncProgress?.phase === 'completed' ? 100 : 0
+  }
+
+  return Math.max(0, Math.min(100, Math.round((processedFiles / totalFiles) * 100)))
+})
+const linkSyncProcessedText = computed(() => {
+  const processedFiles = store.linkSyncProgress?.processed_files ?? 0
+  const totalFiles = store.linkSyncProgress?.total_files ?? 0
+  return `${processedFiles}/${totalFiles}`
+})
+const linkSyncTargetProgressText = computed(() => {
+  const completedTargets = store.linkSyncProgress?.completed_targets ?? 0
+  const totalTargets = store.linkSyncProgress?.total_targets ?? 0
+  return `${completedTargets}/${totalTargets}`
+})
+const linkSyncCurrentTarget = computed(
+  () => store.linkSyncProgress?.current_target_path?.trim() || '',
+)
+const linkSyncCurrentPackage = computed(
+  () => store.linkSyncProgress?.current_package_name?.trim() || '',
+)
+const linkSyncCurrentFile = computed(
+  () => store.linkSyncProgress?.current_file_name?.trim() || '',
+)
+const linkSyncNotice = computed(() => {
+  const rawNotice = store.linkSyncNotice.trim()
+  if (!rawNotice) {
+    return ''
+  }
+
+  if (rawNotice.includes('Falling back to directory links.')) {
+    return t('csl.syncFallbackNotice', {
+      path: linkSyncCurrentTarget.value || rawNotice,
+    })
+  }
+
+  return rawNotice
+})
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -723,7 +893,7 @@ function syncPageState(forceRefresh = false) {
     return
   }
 
-  void store.syncLinks()
+  void store.syncLinks({ interactive: true })
 
   const shouldScanCsl =
     forceRefresh ||
@@ -735,7 +905,7 @@ function syncPageState(forceRefresh = false) {
     store.lastAltitudeScannedXplanePath !== appStore.xplanePath
 
   if (shouldScanCsl) {
-    void store.scanPackages()
+    void store.scanPackages({ syncLinks: false })
   }
 
   if (shouldScanAltitude) {
@@ -751,16 +921,37 @@ function installAll() {
   )
 }
 
-async function addCustomPath() {
+async function openPathsDialog() {
+  await store.ensureCustomPathsLoaded()
+  customPathDraft.value = [...store.customPaths]
+  showPathsDialog.value = true
+}
+
+function closePathsDialog() {
+  showPathsDialog.value = false
+  customPathDraft.value = []
+}
+
+async function addCustomPathDraft() {
   const selected = await open({
     directory: true,
     multiple: false,
     title: t('csl.selectTargetPath'),
   })
 
-  if (selected && typeof selected === 'string') {
-    store.addCustomPath(selected)
+  if (selected && typeof selected === 'string' && !customPathDraft.value.includes(selected)) {
+    customPathDraft.value = [...customPathDraft.value, selected]
   }
+}
+
+function removeCustomPathDraft(path: string) {
+  customPathDraft.value = customPathDraft.value.filter((item) => item !== path)
+}
+
+async function confirmPathDraft() {
+  const nextPaths = [...customPathDraft.value]
+  closePathsDialog()
+  await store.applyCustomPaths(nextPaths)
 }
 
 async function openServerSettingsDialog() {
@@ -907,6 +1098,7 @@ watch(
 
 onMounted(async () => {
   await store.ensureServerConfigLoaded()
+  await store.ensureCustomPathsLoaded()
 
   // Listen for CSL progress events
   unlistenProgress = await listen<CslProgress>('csl-progress', (event) => {
@@ -916,6 +1108,10 @@ onMounted(async () => {
   // Listen for ALTITUDE progress events
   unlistenAltitudeProgress = await listen<CslProgress>('altitude-progress', (event) => {
     store.updateAltitudeProgress(event.payload)
+  })
+
+  unlistenLinkSync = await listen<CslLinkSyncProgress>('csl-link-sync-progress', (event) => {
+    store.updateLinkSyncProgress(event.payload)
   })
 
   syncPageState()
@@ -930,6 +1126,9 @@ onUnmounted(() => {
   }
   if (unlistenAltitudeProgress) {
     unlistenAltitudeProgress()
+  }
+  if (unlistenLinkSync) {
+    unlistenLinkSync()
   }
   if (descriptionObserver) {
     descriptionObserver.disconnect()

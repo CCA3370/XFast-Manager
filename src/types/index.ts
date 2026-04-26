@@ -698,6 +698,19 @@ export interface CslProgress {
   total_bytes: number
 }
 
+export interface CslLinkSyncProgress {
+  request_id: string
+  phase: 'preparing' | 'syncing' | 'completed' | 'failed'
+  current_target_path: string
+  current_package_name: string
+  current_file_name: string
+  processed_files: number
+  total_files: number
+  completed_targets: number
+  total_targets: number
+  message?: string | null
+}
+
 // ========== Gateway Management Types ==========
 
 export interface GatewayAirportSearchResult {
