@@ -148,6 +148,7 @@ export const STORAGE_KEYS = {
   MAP_WEIGHT_UNIT: 'mapWeightUnit',
   CSL_SERVER_BASE_URLS: 'cslServerBaseUrls',
   CSL_ACTIVE_SERVER_BASE_URL: 'cslActiveServerBaseUrl',
+  CSL_CUSTOM_PATHS: 'cslCustomPaths',
 } as const
 
 export type TrackedIssueSource = 'feedback' | 'auto-report' | 'library-link' | 'output-cleanup-item'

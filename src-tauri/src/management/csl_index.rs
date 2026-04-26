@@ -30,6 +30,8 @@ const CSL_SCAN_COMPARE_CONCURRENCY_LIMIT: usize = 8;
 const CSL_RESCAN_COMPARE_CONCURRENCY_LIMIT: usize = 4;
 const DESCRIPTION_FETCH_CONCURRENCY: usize = 6;
 const DESCRIPTION_FETCH_ATTEMPTS: u32 = 3;
+const CSL_LINK_SYNC_EVENT: &str = "csl-link-sync-progress";
+const CSL_LINK_SYNC_STATE_DIR: &str = ".xfast-csl-sync";
 
 /// Cached index with TTL, keyed by server URL
 static INDEX_CACHE: std::sync::LazyLock<Mutex<HashMap<String, (std::time::Instant, String)>>> =
@@ -298,6 +300,144 @@ pub struct CslProgressEvent {
     pub current_file_name: String,
     pub bytes_downloaded: u64,
     pub total_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CslLinkSyncProgressEvent {
+    pub request_id: String,
+    pub phase: String,
+    pub current_target_path: String,
+    pub current_package_name: String,
+    pub current_file_name: String,
+    pub processed_files: usize,
+    pub total_files: usize,
+    pub completed_targets: usize,
+    pub total_targets: usize,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SyncTargetMode {
+    HardLinks,
+    DirectoryLinkFallback,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LinkSyncMode {
+    MissingOnly,
+    Reconcile,
+}
+
+#[derive(Debug, Clone)]
+struct SyncTarget {
+    base: PathBuf,
+    mode: SyncTargetMode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct CslHardLinkManifest {
+    version: u8,
+    package_name: String,
+    files: Vec<String>,
+}
+
+struct LinkSyncProgressTracker {
+    app_handle: Option<AppHandle>,
+    request_id: String,
+    processed_files: usize,
+    total_files: usize,
+    completed_targets: usize,
+    total_targets: usize,
+    current_target_path: String,
+    current_package_name: String,
+    current_file_name: String,
+}
+
+impl LinkSyncProgressTracker {
+    fn new(
+        app_handle: Option<AppHandle>,
+        request_id: String,
+        total_files: usize,
+        total_targets: usize,
+    ) -> Self {
+        Self {
+            app_handle,
+            request_id,
+            processed_files: 0,
+            total_files,
+            completed_targets: 0,
+            total_targets,
+            current_target_path: String::new(),
+            current_package_name: String::new(),
+            current_file_name: String::new(),
+        }
+    }
+
+    fn emit(&self, phase: &str, message: Option<String>) {
+        if let Some(app_handle) = &self.app_handle {
+            let _ = app_handle.emit(
+                CSL_LINK_SYNC_EVENT,
+                CslLinkSyncProgressEvent {
+                    request_id: self.request_id.clone(),
+                    phase: phase.to_string(),
+                    current_target_path: self.current_target_path.clone(),
+                    current_package_name: self.current_package_name.clone(),
+                    current_file_name: self.current_file_name.clone(),
+                    processed_files: self.processed_files,
+                    total_files: self.total_files,
+                    completed_targets: self.completed_targets,
+                    total_targets: self.total_targets,
+                    message,
+                },
+            );
+        }
+    }
+
+    fn emit_preparing(&self) {
+        self.emit("preparing", None);
+    }
+
+    fn begin_target(&mut self, target_base: &Path, message: Option<String>) {
+        self.current_target_path = target_base.to_string_lossy().to_string();
+        self.current_package_name.clear();
+        self.current_file_name.clear();
+        self.emit("syncing", message);
+    }
+
+    fn begin_package(&mut self, package_name: &str) {
+        self.current_package_name = package_name.to_string();
+        self.current_file_name.clear();
+    }
+
+    fn advance_file(&mut self, file_name: &str) {
+        self.current_file_name = file_name.to_string();
+        self.processed_files = self.processed_files.saturating_add(1);
+        self.emit("syncing", None);
+    }
+
+    fn advance_by(&mut self, count: usize, file_name: &str, message: Option<String>) {
+        self.current_file_name = file_name.to_string();
+        self.processed_files = self.processed_files.saturating_add(count);
+        self.emit("syncing", message);
+    }
+
+    fn finish_target(&mut self) {
+        self.completed_targets = self.completed_targets.saturating_add(1);
+        self.current_package_name.clear();
+        self.current_file_name.clear();
+        self.emit("syncing", None);
+    }
+
+    fn complete(&mut self) {
+        self.processed_files = self.total_files;
+        self.current_package_name.clear();
+        self.current_file_name.clear();
+        self.emit("completed", None);
+    }
+
+    fn fail(&self, message: String) {
+        self.emit("failed", Some(message));
+    }
 }
 
 // ============================================================================
@@ -1534,7 +1674,7 @@ fn collect_scan_paths(xplane_path: &str, custom_paths: &[String]) -> (Vec<CslPat
 }
 
 // ============================================================================
-// Directory Link Helpers (Junction on Windows, Symlink on Unix)
+// CSL Sync Helpers
 // ============================================================================
 
 #[cfg(windows)]
@@ -1569,7 +1709,7 @@ fn is_link(path: &Path) -> bool {
 #[cfg(unix)]
 fn is_link(path: &Path) -> bool {
     path.symlink_metadata()
-        .map(|m| m.file_type().is_symlink())
+        .map(|metadata| metadata.file_type().is_symlink())
         .unwrap_or(false)
 }
 
@@ -1585,7 +1725,89 @@ fn remove_directory_link(link_path: &Path) -> Result<(), String> {
         .map_err(|e| format!("Failed to remove symlink {}: {}", link_path.display(), e))
 }
 
-fn is_existing_or_creatable_link_target(path: &Path) -> bool {
+#[cfg(windows)]
+fn read_directory_link_target(link_path: &Path) -> Result<PathBuf, String> {
+    junction::get_target(link_path).map_err(|e| {
+        format!(
+            "Failed to inspect junction target {}: {}",
+            link_path.display(),
+            e
+        )
+    })
+}
+
+#[cfg(unix)]
+fn read_directory_link_target(link_path: &Path) -> Result<PathBuf, String> {
+    std::fs::read_link(link_path).map_err(|e| {
+        format!(
+            "Failed to inspect symlink target {}: {}",
+            link_path.display(),
+            e
+        )
+    })
+}
+
+fn normalize_path_for_comparison(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn directory_link_points_to(link_path: &Path, expected_target: &Path) -> Result<bool, String> {
+    let actual_target = read_directory_link_target(link_path)?;
+    let resolved_target = if actual_target.is_absolute() {
+        actual_target
+    } else {
+        link_path
+            .parent()
+            .unwrap_or_else(|| Path::new(""))
+            .join(actual_target)
+    };
+
+    Ok(normalize_path_for_comparison(&resolved_target)
+        == normalize_path_for_comparison(expected_target))
+}
+
+#[cfg(windows)]
+fn volume_key(path: &Path) -> Option<String> {
+    use std::path::Component;
+
+    match path.components().next() {
+        Some(Component::Prefix(prefix)) => {
+            Some(prefix.as_os_str().to_string_lossy().to_ascii_lowercase())
+        }
+        _ => None,
+    }
+}
+
+#[cfg(windows)]
+fn supports_hard_links(canonical_base: &Path, target_base: &Path) -> bool {
+    volume_key(canonical_base) == volume_key(target_base)
+}
+
+#[cfg(unix)]
+fn existing_device_id(path: &Path) -> Option<u64> {
+    use std::os::unix::fs::MetadataExt;
+
+    for ancestor in path.ancestors() {
+        if let Ok(metadata) = std::fs::metadata(ancestor) {
+            return Some(metadata.dev());
+        }
+    }
+
+    None
+}
+
+#[cfg(unix)]
+fn supports_hard_links(canonical_base: &Path, target_base: &Path) -> bool {
+    match (
+        existing_device_id(canonical_base),
+        existing_device_id(target_base),
+    ) {
+        (Some(left), Some(right)) => left == right,
+        _ => false,
+    }
+}
+
+fn is_existing_or_creatable_sync_target(path: &Path) -> bool {
     if path.is_dir() || is_link(path) {
         return true;
     }
@@ -1595,29 +1817,43 @@ fn is_existing_or_creatable_link_target(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Collect all detected CSL directory paths, excluding the canonical path itself.
-fn collect_link_targets(xplane_path: &Path, custom_paths: &[String]) -> Vec<PathBuf> {
+fn collect_sync_targets(xplane_path: &Path, custom_paths: &[String]) -> Vec<SyncTarget> {
     let canonical = xplane_path.join(CSL_CANONICAL_REL);
     let mut targets = Vec::new();
 
     for (rel_path, _) in CSL_PLUGIN_PATHS {
         let full = xplane_path.join(rel_path);
-        if full == canonical {
+        if full == canonical || !is_existing_or_creatable_sync_target(&full) {
             continue;
         }
-        if is_existing_or_creatable_link_target(&full) {
-            targets.push(full);
-        }
+
+        targets.push(SyncTarget {
+            mode: if supports_hard_links(&canonical, &full) {
+                SyncTargetMode::HardLinks
+            } else {
+                SyncTargetMode::DirectoryLinkFallback
+            },
+            base: full,
+        });
     }
 
-    for cp in custom_paths {
-        let p = PathBuf::from(cp);
-        if p == canonical {
+    for custom_path in custom_paths {
+        let path = PathBuf::from(custom_path);
+        if path == canonical || !is_existing_or_creatable_sync_target(&path) {
             continue;
         }
-        if !targets.contains(&p) {
-            targets.push(p);
+        if targets.iter().any(|target| target.base == path) {
+            continue;
         }
+
+        targets.push(SyncTarget {
+            mode: if supports_hard_links(&canonical, &path) {
+                SyncTargetMode::HardLinks
+            } else {
+                SyncTargetMode::DirectoryLinkFallback
+            },
+            base: path,
+        });
     }
 
     targets
@@ -1626,7 +1862,6 @@ fn collect_link_targets(xplane_path: &Path, custom_paths: &[String]) -> Vec<Path
 fn directory_is_empty(path: &Path) -> Result<bool, String> {
     let mut entries = std::fs::read_dir(path)
         .map_err(|e| format!("Failed to read directory {}: {}", path.display(), e))?;
-
     Ok(entries.next().is_none())
 }
 
@@ -1664,88 +1899,710 @@ fn remove_link_or_empty_directory(
     Ok(false)
 }
 
-/// Create links from each link_target/{package_name} → canonical_pkg_dir.
-/// Replaces empty real directories with a link, but preserves non-empty user folders.
-fn create_package_links(
+fn normalize_rel_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn hardlink_state_dir(base: &Path) -> PathBuf {
+    base.join(CSL_LINK_SYNC_STATE_DIR)
+}
+
+fn sanitize_manifest_file_name(package_name: &str) -> String {
+    package_name
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn hardlink_manifest_path(base: &Path, package_name: &str) -> PathBuf {
+    hardlink_state_dir(base).join(format!(
+        "{}.json",
+        sanitize_manifest_file_name(package_name)
+    ))
+}
+
+fn read_hardlink_manifest(
+    base: &Path,
+    package_name: &str,
+) -> Result<Option<CslHardLinkManifest>, String> {
+    let manifest_path = hardlink_manifest_path(base, package_name);
+    if !manifest_path.exists() {
+        return Ok(None);
+    }
+
+    let bytes = std::fs::read(&manifest_path).map_err(|e| {
+        format!(
+            "Failed to read sync manifest {}: {}",
+            manifest_path.display(),
+            e
+        )
+    })?;
+    let manifest: CslHardLinkManifest = serde_json::from_slice(&bytes).map_err(|e| {
+        format!(
+            "Failed to parse sync manifest {}: {}",
+            manifest_path.display(),
+            e
+        )
+    })?;
+
+    Ok(Some(manifest))
+}
+
+fn remove_hardlink_manifest(base: &Path, package_name: &str) -> Result<(), String> {
+    let manifest_path = hardlink_manifest_path(base, package_name);
+    if manifest_path.exists() {
+        std::fs::remove_file(&manifest_path).map_err(|e| {
+            format!(
+                "Failed to remove sync manifest {}: {}",
+                manifest_path.display(),
+                e
+            )
+        })?;
+    }
+
+    let state_dir = hardlink_state_dir(base);
+    if state_dir.is_dir() && directory_is_empty(&state_dir)? {
+        std::fs::remove_dir(&state_dir).map_err(|e| {
+            format!(
+                "Failed to remove empty sync state dir {}: {}",
+                state_dir.display(),
+                e
+            )
+        })?;
+    }
+
+    Ok(())
+}
+
+fn write_hardlink_manifest(
+    base: &Path,
+    package_name: &str,
+    files: &[String],
+) -> Result<(), String> {
+    if files.is_empty() {
+        return remove_hardlink_manifest(base, package_name);
+    }
+
+    let state_dir = hardlink_state_dir(base);
+    std::fs::create_dir_all(&state_dir).map_err(|e| {
+        format!(
+            "Failed to create sync state dir {}: {}",
+            state_dir.display(),
+            e
+        )
+    })?;
+
+    let manifest = CslHardLinkManifest {
+        version: 1,
+        package_name: package_name.to_string(),
+        files: files.to_vec(),
+    };
+
+    let bytes = serde_json::to_vec_pretty(&manifest).map_err(|e| {
+        format!(
+            "Failed to serialize sync manifest for {}: {}",
+            package_name, e
+        )
+    })?;
+    let manifest_path = hardlink_manifest_path(base, package_name);
+    std::fs::write(&manifest_path, bytes).map_err(|e| {
+        format!(
+            "Failed to write sync manifest {}: {}",
+            manifest_path.display(),
+            e
+        )
+    })
+}
+
+fn list_manifest_packages(base: &Path) -> Result<Vec<String>, String> {
+    let state_dir = hardlink_state_dir(base);
+    if !state_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut packages = Vec::new();
+    for entry in std::fs::read_dir(&state_dir).map_err(|e| {
+        format!(
+            "Failed to read sync state dir {}: {}",
+            state_dir.display(),
+            e
+        )
+    })? {
+        let entry = entry.map_err(|e| {
+            format!(
+                "Failed to read sync state entry in {}: {}",
+                state_dir.display(),
+                e
+            )
+        })?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(_) => continue,
+        };
+        let manifest: CslHardLinkManifest = match serde_json::from_slice(&bytes) {
+            Ok(manifest) => manifest,
+            Err(_) => continue,
+        };
+        if !manifest.package_name.trim().is_empty() {
+            packages.push(manifest.package_name);
+        }
+    }
+
+    packages.sort();
+    packages.dedup();
+    Ok(packages)
+}
+
+fn collect_package_files(package_dir: &Path) -> Result<Vec<String>, String> {
+    let mut files = Vec::new();
+
+    for entry in walkdir::WalkDir::new(package_dir) {
+        let entry = entry.map_err(|e| {
+            format!(
+                "Failed to walk package directory {}: {}",
+                package_dir.display(),
+                e
+            )
+        })?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+
+        let rel_path = entry.path().strip_prefix(package_dir).map_err(|e| {
+            format!(
+                "Failed to strip package path prefix {} from {}: {}",
+                package_dir.display(),
+                entry.path().display(),
+                e
+            )
+        })?;
+        files.push(normalize_rel_path(rel_path));
+    }
+
+    files.sort();
+    files.dedup();
+    Ok(files)
+}
+
+fn remove_file_if_exists(path: &Path) -> Result<bool, String> {
+    match path.symlink_metadata() {
+        Ok(metadata) => {
+            if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "Cannot replace {} because a directory exists where a file is expected",
+                    path.display()
+                ));
+            }
+
+            std::fs::remove_file(path)
+                .map_err(|e| format!("Failed to remove file {}: {}", path.display(), e))?;
+            Ok(true)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(format!("Failed to inspect {}: {}", path.display(), e)),
+    }
+}
+
+fn files_match_canonical(source_path: &Path, target_path: &Path) -> Result<bool, String> {
+    let source_meta = std::fs::metadata(source_path).map_err(|e| {
+        format!(
+            "Failed to inspect canonical file {}: {}",
+            source_path.display(),
+            e
+        )
+    })?;
+    let target_meta = std::fs::metadata(target_path).map_err(|e| {
+        format!(
+            "Failed to inspect target file {}: {}",
+            target_path.display(),
+            e
+        )
+    })?;
+
+    if !source_meta.is_file() || !target_meta.is_file() {
+        return Ok(false);
+    }
+
+    if source_meta.len() != target_meta.len() {
+        return Ok(false);
+    }
+
+    let source_hash = compute_file_md5_cached(source_path, &source_meta).map_err(|e| {
+        format!(
+            "Failed to hash canonical file {}: {}",
+            source_path.display(),
+            e
+        )
+    })?;
+    let target_hash = compute_file_md5_cached(target_path, &target_meta).map_err(|e| {
+        format!(
+            "Failed to hash target file {}: {}",
+            target_path.display(),
+            e
+        )
+    })?;
+
+    Ok(source_hash == target_hash)
+}
+
+fn files_match_canonical_fast(source_path: &Path, target_path: &Path) -> Result<bool, String> {
+    let source_meta = std::fs::metadata(source_path).map_err(|e| {
+        format!(
+            "Failed to inspect canonical file {}: {}",
+            source_path.display(),
+            e
+        )
+    })?;
+    let target_meta = std::fs::metadata(target_path).map_err(|e| {
+        format!(
+            "Failed to inspect target file {}: {}",
+            target_path.display(),
+            e
+        )
+    })?;
+
+    if !source_meta.is_file() || !target_meta.is_file() {
+        return Ok(false);
+    }
+
+    Ok(source_meta.len() == target_meta.len()
+        && mtime_secs(&source_meta) == mtime_secs(&target_meta))
+}
+
+fn remove_empty_parent_dirs(start_path: &Path, stop_at: &Path) -> Result<(), String> {
+    let mut current = start_path.parent();
+
+    while let Some(dir) = current {
+        if dir == stop_at || !dir.starts_with(stop_at) {
+            break;
+        }
+
+        if !dir.is_dir() {
+            break;
+        }
+
+        if directory_is_empty(dir)? {
+            std::fs::remove_dir(dir).map_err(|e| {
+                format!("Failed to remove empty directory {}: {}", dir.display(), e)
+            })?;
+            current = dir.parent();
+        } else {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+fn cleanup_hardlink_managed_files(
+    base: &Path,
+    package_name: &str,
+    warnings: &mut Vec<String>,
+) -> usize {
+    let manifest = match read_hardlink_manifest(base, package_name) {
+        Ok(manifest) => manifest,
+        Err(err) => {
+            warnings.push(err);
+            None
+        }
+    };
+
+    let Some(manifest) = manifest else {
+        return 0;
+    };
+
+    let package_root = base.join(package_name);
+    let managed_files: std::collections::BTreeSet<String> = manifest.files.into_iter().collect();
+    let mut removed = 0usize;
+
+    for rel_path in managed_files {
+        let target_file = package_root.join(&rel_path);
+        if let Err(err) = remove_file_if_exists(&target_file) {
+            warnings.push(err);
+        }
+        if let Err(err) = remove_empty_parent_dirs(&target_file, &package_root) {
+            warnings.push(err);
+        }
+        removed += 1;
+    }
+
+    if package_root.is_dir() {
+        match directory_is_empty(&package_root) {
+            Ok(true) => {
+                if let Err(err) = std::fs::remove_dir(&package_root) {
+                    warnings.push(format!(
+                        "Failed to remove empty managed package directory {}: {}",
+                        package_root.display(),
+                        err
+                    ));
+                }
+            }
+            Ok(false) => {}
+            Err(err) => warnings.push(err),
+        }
+    }
+
+    if let Err(err) = remove_hardlink_manifest(base, package_name) {
+        warnings.push(err);
+    }
+
+    removed
+}
+
+fn cleanup_target_package(
+    base: &Path,
+    package_name: &str,
+    allow_empty_directory: bool,
+    warnings: &mut Vec<String>,
+) {
+    let package_path = base.join(package_name);
+
+    if let Err(err) = remove_link_or_empty_directory(&package_path, allow_empty_directory) {
+        warnings.push(err);
+    }
+
+    cleanup_hardlink_managed_files(base, package_name, warnings);
+
+    if allow_empty_directory && package_path.is_dir() {
+        match directory_is_empty(&package_path) {
+            Ok(true) => {
+                if let Err(err) = std::fs::remove_dir(&package_path) {
+                    warnings.push(format!(
+                        "Failed to remove empty package directory {}: {}",
+                        package_path.display(),
+                        err
+                    ));
+                }
+            }
+            Ok(false) => {}
+            Err(err) => warnings.push(err),
+        }
+    }
+}
+
+fn sync_directory_link_package(
+    base: &Path,
     package_name: &str,
     canonical_pkg_dir: &Path,
-    link_targets: &[PathBuf],
-) -> Vec<String> {
-    let mut warnings = Vec::new();
+    mode: LinkSyncMode,
+    warnings: &mut Vec<String>,
+) {
+    let package_path = base.join(package_name);
 
-    for base in link_targets {
-        let link_path = base.join(package_name);
-
-        if link_path.exists() || is_link(&link_path) {
-            if is_link(&link_path) {
-                // Remove existing link and recreate
-                if let Err(e) = remove_directory_link(&link_path) {
-                    warnings.push(e);
-                    continue;
+    if is_link(&package_path) {
+        match directory_link_points_to(&package_path, canonical_pkg_dir) {
+            Ok(true) => return,
+            Ok(false) => {
+                if let Err(err) = remove_directory_link(&package_path) {
+                    warnings.push(err);
+                    return;
                 }
-            } else if link_path.is_dir() {
-                match directory_is_empty(&link_path) {
+            }
+            Err(err) => {
+                warnings.push(err);
+                if let Err(remove_err) = remove_directory_link(&package_path) {
+                    warnings.push(remove_err);
+                    return;
+                }
+            }
+        }
+    } else if package_path.exists() {
+        if package_path.is_dir() {
+            match directory_is_empty(&package_path) {
+                Ok(true) => {
+                    if let Err(err) = std::fs::remove_dir(&package_path) {
+                        warnings.push(format!(
+                            "Failed to remove empty directory {} before creating directory link: {}",
+                            package_path.display(),
+                            err
+                        ));
+                        return;
+                    }
+                }
+                Ok(false) => {
+                    if mode == LinkSyncMode::Reconcile {
+                        warnings.push(format!(
+                            "Skipped {}: non-empty real directory exists (directory-link fallback cannot replace it)",
+                            package_path.display()
+                        ));
+                    }
+                    return;
+                }
+                Err(err) => {
+                    warnings.push(err);
+                    return;
+                }
+            }
+        } else {
+            warnings.push(format!(
+                "Skipped {}: file exists and cannot be replaced with a directory link",
+                package_path.display()
+            ));
+            return;
+        }
+    }
+
+    cleanup_hardlink_managed_files(base, package_name, warnings);
+
+    if let Some(parent) = package_path.parent() {
+        if let Err(err) = std::fs::create_dir_all(parent) {
+            warnings.push(format!(
+                "Failed to create parent directory {}: {}",
+                parent.display(),
+                err
+            ));
+            return;
+        }
+    }
+
+    if let Err(err) = create_directory_link(canonical_pkg_dir, &package_path) {
+        warnings.push(err);
+    }
+}
+
+fn sync_hardlink_package(
+    base: &Path,
+    package_name: &str,
+    canonical_pkg_dir: &Path,
+    current_files: &[String],
+    mode: LinkSyncMode,
+    tracker: &mut LinkSyncProgressTracker,
+    warnings: &mut Vec<String>,
+) {
+    let package_path = base.join(package_name);
+
+    if let Err(err) = std::fs::create_dir_all(base) {
+        warnings.push(format!(
+            "Failed to create target CSL directory {}: {}",
+            base.display(),
+            err
+        ));
+        if mode == LinkSyncMode::Reconcile {
+            tracker.advance_by(current_files.len().max(1), package_name, None);
+        }
+        return;
+    }
+
+    if is_link(&package_path) {
+        if mode == LinkSyncMode::MissingOnly {
+            match directory_link_points_to(&package_path, canonical_pkg_dir) {
+                Ok(true) => return,
+                Ok(false) | Err(_) => {
+                    if let Err(err) = remove_link_or_empty_directory(&package_path, true) {
+                        warnings.push(err);
+                        return;
+                    }
+                }
+            }
+        } else if let Err(err) = remove_link_or_empty_directory(&package_path, true) {
+            warnings.push(err);
+            tracker.advance_by(current_files.len().max(1), package_name, None);
+            return;
+        }
+    } else if package_path.exists() && !package_path.is_dir() {
+        warnings.push(format!(
+            "Skipped {}: file exists and cannot be replaced with managed hard links",
+            package_path.display()
+        ));
+        if mode == LinkSyncMode::Reconcile {
+            tracker.advance_by(current_files.len().max(1), package_name, None);
+        }
+        return;
+    }
+
+    if let Err(err) = std::fs::create_dir_all(&package_path) {
+        warnings.push(format!(
+            "Failed to create package directory {}: {}",
+            package_path.display(),
+            err
+        ));
+        if mode == LinkSyncMode::Reconcile {
+            tracker.advance_by(current_files.len().max(1), package_name, None);
+        }
+        return;
+    }
+
+    let previous_manifest = match read_hardlink_manifest(base, package_name) {
+        Ok(manifest) => manifest,
+        Err(err) => {
+            warnings.push(err);
+            None
+        }
+    };
+    let previous_files: std::collections::HashSet<String> = previous_manifest
+        .as_ref()
+        .map(|manifest| manifest.files.iter().cloned().collect())
+        .unwrap_or_default();
+    let current_file_set: std::collections::HashSet<String> =
+        current_files.iter().cloned().collect();
+
+    if mode == LinkSyncMode::Reconcile {
+        for stale_rel_path in previous_files.difference(&current_file_set) {
+            let stale_target = package_path.join(stale_rel_path);
+            if let Err(err) = remove_file_if_exists(&stale_target) {
+                warnings.push(err);
+            }
+            if let Err(err) = remove_empty_parent_dirs(&stale_target, &package_path) {
+                warnings.push(err);
+            }
+        }
+    }
+
+    let mut next_manifest_files: std::collections::BTreeSet<String> =
+        if mode == LinkSyncMode::MissingOnly {
+            previous_files.iter().cloned().collect()
+        } else {
+            std::collections::BTreeSet::new()
+        };
+
+    for rel_path in current_files {
+        let source_path = canonical_pkg_dir.join(rel_path);
+        let target_path = package_path.join(rel_path);
+        let was_managed = previous_files.contains(rel_path);
+
+        let target_exists = match target_path.symlink_metadata() {
+            Ok(_) => true,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
+            Err(err) => {
+                warnings.push(format!(
+                    "Failed to inspect target file {}: {}",
+                    target_path.display(),
+                    err
+                ));
+                tracker.advance_file(rel_path);
+                continue;
+            }
+        };
+
+        if target_exists {
+            if mode == LinkSyncMode::MissingOnly {
+                match files_match_canonical_fast(&source_path, &target_path) {
                     Ok(true) => {
-                        if let Err(e) = std::fs::remove_dir(&link_path) {
-                            warnings.push(format!(
-                                "Failed to remove empty directory {} before recreating link: {}",
-                                link_path.display(),
-                                e
-                            ));
+                        next_manifest_files.insert(rel_path.clone());
+                        continue;
+                    }
+                    Ok(false) if was_managed => {
+                        if let Err(err) = remove_file_if_exists(&target_path) {
+                            warnings.push(err);
                             continue;
                         }
                     }
                     Ok(false) => {
                         warnings.push(format!(
-                            "Skipped {}: non-empty real directory exists (not a link)",
-                            link_path.display()
+                            "Skipped {}: user file already exists and will be preserved",
+                            target_path.display()
                         ));
                         continue;
                     }
-                    Err(e) => {
-                        warnings.push(e);
+                    Err(err) if was_managed => {
+                        warnings.push(err);
+                        if let Err(remove_err) = remove_file_if_exists(&target_path) {
+                            warnings.push(remove_err);
+                            continue;
+                        }
+                    }
+                    Err(err) => {
+                        warnings.push(err);
                         continue;
                     }
                 }
             } else {
+                match files_match_canonical(&source_path, &target_path) {
+                    Ok(true) => {
+                        next_manifest_files.insert(rel_path.clone());
+                        tracker.advance_file(rel_path);
+                        continue;
+                    }
+                    Ok(false) if was_managed => {
+                        if let Err(err) = remove_file_if_exists(&target_path) {
+                            warnings.push(err);
+                            tracker.advance_file(rel_path);
+                            continue;
+                        }
+                    }
+                    Ok(false) => {
+                        warnings.push(format!(
+                            "Skipped {}: user file already exists and will be preserved",
+                            target_path.display()
+                        ));
+                        tracker.advance_file(rel_path);
+                        continue;
+                    }
+                    Err(err) if was_managed => {
+                        warnings.push(err);
+                        if let Err(remove_err) = remove_file_if_exists(&target_path) {
+                            warnings.push(remove_err);
+                            tracker.advance_file(rel_path);
+                            continue;
+                        }
+                    }
+                    Err(err) => {
+                        warnings.push(err);
+                        tracker.advance_file(rel_path);
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if let Some(parent) = target_path.parent() {
+            if let Err(err) = std::fs::create_dir_all(parent) {
                 warnings.push(format!(
-                    "Skipped {}: file exists and cannot be replaced with a link",
-                    link_path.display()
+                    "Failed to create parent directory {}: {}",
+                    parent.display(),
+                    err
                 ));
+                tracker.advance_file(rel_path);
                 continue;
             }
         }
 
-        // Ensure parent exists
-        if let Some(parent) = link_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+        match std::fs::hard_link(&source_path, &target_path) {
+            Ok(()) => {
+                next_manifest_files.insert(rel_path.clone());
+            }
+            Err(err) => warnings.push(format!(
+                "Failed to create hard link {} -> {}: {}",
+                target_path.display(),
+                source_path.display(),
+                err
+            )),
         }
 
-        if let Err(e) = create_directory_link(canonical_pkg_dir, &link_path) {
-            warnings.push(e);
-        }
+        tracker.advance_file(rel_path);
     }
 
-    warnings
-}
-
-/// Remove links for a package from all link targets.
-fn remove_package_links(
-    package_name: &str,
-    link_targets: &[PathBuf],
-    allow_empty_directories: bool,
-) -> Vec<String> {
-    let mut warnings = Vec::new();
-
-    for base in link_targets {
-        let link_path = base.join(package_name);
-        match remove_link_or_empty_directory(&link_path, allow_empty_directories) {
-            Ok(_) => {}
-            Err(e) => warnings.push(e),
-        }
+    let next_manifest_files: Vec<String> = next_manifest_files.into_iter().collect();
+    if let Err(err) = write_hardlink_manifest(base, package_name, &next_manifest_files) {
+        warnings.push(err);
     }
 
-    warnings
+    if package_path.is_dir() {
+        match directory_is_empty(&package_path) {
+            Ok(true) => {
+                if let Err(err) = std::fs::remove_dir(&package_path) {
+                    warnings.push(format!(
+                        "Failed to remove empty package directory {}: {}",
+                        package_path.display(),
+                        err
+                    ));
+                }
+            }
+            Ok(false) => {}
+            Err(err) => warnings.push(err),
+        }
+    }
 }
 
 fn collect_cleanup_package_names(
@@ -1756,6 +2613,10 @@ fn collect_cleanup_package_names(
         canonical_packages.iter().cloned().collect();
 
     for target in cleanup_targets {
+        for package_name in list_manifest_packages(target)? {
+            package_names.insert(package_name);
+        }
+
         let entries = match std::fs::read_dir(target) {
             Ok(entries) => entries,
             Err(_) => continue,
@@ -1773,6 +2634,9 @@ fn collect_cleanup_package_names(
             let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
                 continue;
             };
+            if name == CSL_LINK_SYNC_STATE_DIR {
+                continue;
+            }
 
             if is_link(&path) || (path.is_dir() && directory_is_empty(&path).unwrap_or(false)) {
                 package_names.insert(name.to_string());
@@ -1812,19 +2676,171 @@ fn list_installed_canonical_packages(canonical_base: &Path) -> Result<Vec<String
     Ok(packages)
 }
 
+fn count_files_under(path: &Path) -> usize {
+    if !path.exists() {
+        return 0;
+    }
+
+    walkdir::WalkDir::new(path)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+        .count()
+}
+
+fn estimate_missing_only_directory_link_units(
+    target_base: &Path,
+    package_name: &str,
+    canonical_pkg_dir: &Path,
+) -> usize {
+    let package_path = target_base.join(package_name);
+
+    if is_link(&package_path) {
+        return match directory_link_points_to(&package_path, canonical_pkg_dir) {
+            Ok(true) => 0,
+            Ok(false) | Err(_) => 1,
+        };
+    }
+
+    if !package_path.exists() {
+        return 1;
+    }
+
+    if package_path.is_dir() {
+        return match directory_is_empty(&package_path) {
+            Ok(true) => 1,
+            Ok(false) | Err(_) => 0,
+        };
+    }
+
+    0
+}
+
+fn estimate_missing_only_hardlink_units(
+    target_base: &Path,
+    package_name: &str,
+    canonical_pkg_dir: &Path,
+    current_files: &[String],
+) -> usize {
+    let package_path = target_base.join(package_name);
+
+    if is_link(&package_path) {
+        return match directory_link_points_to(&package_path, canonical_pkg_dir) {
+            Ok(true) => 0,
+            Ok(false) | Err(_) => current_files.len().max(1),
+        };
+    }
+
+    let previous_files: std::collections::HashSet<String> =
+        read_hardlink_manifest(target_base, package_name)
+            .ok()
+            .flatten()
+            .map(|manifest| manifest.files.into_iter().collect())
+            .unwrap_or_default();
+
+    let mut units = 0usize;
+
+    for rel_path in current_files {
+        let source_path = canonical_pkg_dir.join(rel_path);
+        let target_path = package_path.join(rel_path);
+        let was_managed = previous_files.contains(rel_path);
+
+        match target_path.symlink_metadata() {
+            Ok(metadata) => {
+                if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() {
+                    if was_managed {
+                        units += 1;
+                    }
+                    continue;
+                }
+
+                match files_match_canonical_fast(&source_path, &target_path) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        if was_managed {
+                            units += 1;
+                        }
+                    }
+                    Err(_) => {
+                        if was_managed {
+                            units += 1;
+                        }
+                    }
+                }
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                units += 1;
+            }
+            Err(_) => {
+                if was_managed {
+                    units += 1;
+                }
+            }
+        }
+    }
+
+    units
+}
+
+fn estimate_target_package_units(
+    target_base: &Path,
+    package_name: &str,
+    canonical_file_count: Option<usize>,
+) -> usize {
+    if let Ok(Some(manifest)) = read_hardlink_manifest(target_base, package_name) {
+        if !manifest.files.is_empty() {
+            return manifest.files.len();
+        }
+    }
+
+    if let Some(count) = canonical_file_count {
+        if count > 0 {
+            return count;
+        }
+    }
+
+    let package_path = target_base.join(package_name);
+    if is_link(&package_path) {
+        return canonical_file_count.unwrap_or(1).max(1);
+    }
+
+    let discovered_files = count_files_under(&package_path);
+    if discovered_files > 0 {
+        discovered_files
+    } else if package_path.exists() {
+        1
+    } else {
+        0
+    }
+}
+
 fn sync_package_links_internal(
+    app_handle: Option<AppHandle>,
+    request_ctx: &RequestContext,
     xplane_path: &str,
     custom_paths: &[String],
     package_names: Option<&[String]>,
+    target_paths: Option<&[String]>,
     cleanup_paths: Option<&[String]>,
 ) -> Result<Vec<String>, String> {
     let xplane = Path::new(xplane_path);
     let canonical_base = xplane.join(CSL_CANONICAL_REL);
-    if !canonical_base.exists() {
-        return Ok(Vec::new());
+    let sync_mode = if package_names.is_some() {
+        LinkSyncMode::Reconcile
+    } else {
+        LinkSyncMode::MissingOnly
+    };
+    let mut active_targets = collect_sync_targets(xplane, custom_paths);
+
+    if let Some(target_paths) = target_paths {
+        let allowed_targets: std::collections::HashSet<PathBuf> = target_paths
+            .iter()
+            .map(|path| PathBuf::from(path.trim()))
+            .filter(|path| !path.as_os_str().is_empty())
+            .collect();
+        active_targets.retain(|target| allowed_targets.contains(&target.base));
     }
 
-    let active_targets = collect_link_targets(xplane, custom_paths);
     let packages = match package_names {
         Some(names) => {
             let mut names = names.to_vec();
@@ -1832,8 +2848,25 @@ fn sync_package_links_internal(
             names.dedup();
             names
         }
-        None => list_installed_canonical_packages(&canonical_base)?,
+        None => {
+            if !canonical_base.exists() {
+                Vec::new()
+            } else {
+                list_installed_canonical_packages(&canonical_base)?
+            }
+        }
     };
+
+    let mut canonical_files_by_package: HashMap<String, Vec<String>> = HashMap::new();
+    for package_name in &packages {
+        let canonical_pkg_dir = canonical_base.join(package_name);
+        if canonical_pkg_dir.is_dir() {
+            canonical_files_by_package.insert(
+                package_name.clone(),
+                collect_package_files(&canonical_pkg_dir)?,
+            );
+        }
+    }
 
     let cleanup_targets: Vec<PathBuf> = cleanup_paths
         .unwrap_or(&[])
@@ -1841,7 +2874,6 @@ fn sync_package_links_internal(
         .map(PathBuf::from)
         .filter(|path| *path != canonical_base)
         .collect();
-    let mut warnings = Vec::new();
     let cleanup_package_names = if cleanup_targets.is_empty() {
         Vec::new()
     } else if package_names.is_some() {
@@ -1850,27 +2882,143 @@ fn sync_package_links_internal(
         collect_cleanup_package_names(&cleanup_targets, &packages)?
     };
 
-    if !cleanup_targets.is_empty() {
+    let total_targets = active_targets.len() + cleanup_targets.len();
+    let mut total_files = 0usize;
+
+    for target in &cleanup_targets {
         for package_name in &cleanup_package_names {
-            warnings.extend(remove_package_links(package_name, &cleanup_targets, true));
+            total_files += estimate_target_package_units(
+                target,
+                package_name,
+                canonical_files_by_package.get(package_name).map(Vec::len),
+            );
         }
     }
 
-    for package_name in packages {
-        let canonical_pkg_dir = canonical_base.join(&package_name);
-
-        if canonical_pkg_dir.is_dir() {
-            warnings.extend(create_package_links(
-                &package_name,
-                &canonical_pkg_dir,
-                &active_targets,
-            ));
-        } else if package_names.is_some() {
-            warnings.extend(remove_package_links(&package_name, &active_targets, false));
+    for target in &active_targets {
+        for package_name in &packages {
+            if let Some(files) = canonical_files_by_package.get(package_name) {
+                let canonical_pkg_dir = canonical_base.join(package_name);
+                total_files += match sync_mode {
+                    LinkSyncMode::MissingOnly => match target.mode {
+                        SyncTargetMode::HardLinks => estimate_missing_only_hardlink_units(
+                            &target.base,
+                            package_name,
+                            &canonical_pkg_dir,
+                            files,
+                        ),
+                        SyncTargetMode::DirectoryLinkFallback => {
+                            estimate_missing_only_directory_link_units(
+                                &target.base,
+                                package_name,
+                                &canonical_pkg_dir,
+                            )
+                        }
+                    },
+                    LinkSyncMode::Reconcile => files.len().max(1),
+                };
+            } else if package_names.is_some() {
+                total_files += estimate_target_package_units(&target.base, package_name, None);
+            }
         }
     }
 
-    Ok(warnings)
+    let mut tracker = LinkSyncProgressTracker::new(
+        app_handle,
+        request_ctx.operation_id().to_string(),
+        total_files,
+        total_targets,
+    );
+    tracker.emit_preparing();
+
+    let sync_result: Result<Vec<String>, String> = (|| {
+        let mut warnings = Vec::new();
+
+        for target in &cleanup_targets {
+            tracker.begin_target(target, None);
+            for package_name in &cleanup_package_names {
+                tracker.begin_package(package_name);
+                let units = estimate_target_package_units(
+                    target,
+                    package_name,
+                    canonical_files_by_package.get(package_name).map(Vec::len),
+                );
+                cleanup_target_package(target, package_name, true, &mut warnings);
+                if units > 0 {
+                    tracker.advance_by(units, package_name, None);
+                }
+            }
+            tracker.finish_target();
+        }
+
+        for target in &active_targets {
+            let fallback_message = if target.mode == SyncTargetMode::DirectoryLinkFallback {
+                Some(format!(
+                    "Path {} is on a different volume. Falling back to directory links.",
+                    target.base.display()
+                ))
+            } else {
+                None
+            };
+            tracker.begin_target(&target.base, fallback_message);
+
+            for package_name in &packages {
+                tracker.begin_package(package_name);
+                if let Some(current_files) = canonical_files_by_package.get(package_name) {
+                    let canonical_pkg_dir = canonical_base.join(package_name);
+                    match target.mode {
+                        SyncTargetMode::HardLinks => sync_hardlink_package(
+                            &target.base,
+                            package_name,
+                            &canonical_pkg_dir,
+                            current_files,
+                            sync_mode,
+                            &mut tracker,
+                            &mut warnings,
+                        ),
+                        SyncTargetMode::DirectoryLinkFallback => {
+                            let units = if sync_mode == LinkSyncMode::MissingOnly {
+                                estimate_missing_only_directory_link_units(
+                                    &target.base,
+                                    package_name,
+                                    &canonical_pkg_dir,
+                                )
+                            } else {
+                                current_files.len().max(1)
+                            };
+                            sync_directory_link_package(
+                                &target.base,
+                                package_name,
+                                &canonical_pkg_dir,
+                                sync_mode,
+                                &mut warnings,
+                            );
+                            if units > 0 {
+                                tracker.advance_by(units, package_name, None);
+                            }
+                        }
+                    }
+                } else if package_names.is_some() {
+                    let units = estimate_target_package_units(&target.base, package_name, None);
+                    cleanup_target_package(&target.base, package_name, false, &mut warnings);
+                    if units > 0 {
+                        tracker.advance_by(units, package_name, None);
+                    }
+                }
+            }
+
+            tracker.finish_target();
+        }
+
+        Ok(warnings)
+    })();
+
+    match &sync_result {
+        Ok(_) => tracker.complete(),
+        Err(err) => tracker.fail(err.clone()),
+    }
+
+    sync_result
 }
 
 // ============================================================================
@@ -2069,8 +3217,8 @@ pub async fn csl_rescan_packages(
 }
 
 /// Install or update a specific CSL package.
-/// Downloads to the canonical path (Resources/plugins/IVAO_CSL/CSL) and creates
-/// junction/symlink in other detected CSL directories.
+/// Downloads to the canonical path (Resources/plugins/IVAO_CSL/CSL) and then
+/// syncs the package to all other detected CSL directories.
 #[tauri::command]
 pub async fn csl_install_package(
     package_name: String,
@@ -2113,7 +3261,7 @@ pub async fn csl_install_package(
         package_name.clone(),
         canonical_base_str,
         parallel_downloads,
-        app_handle,
+        app_handle.clone(),
         cancel_flag,
         &request_ctx,
     )
@@ -2129,16 +3277,20 @@ pub async fn csl_install_package(
         return Err(err);
     }
 
-    // Create links in other plugin CSL directories
-    let link_targets = collect_link_targets(xplane, &custom_paths);
-    let canonical_pkg_dir = canonical_base.join(&package_name);
-    let warnings = create_package_links(&package_name, &canonical_pkg_dir, &link_targets);
+    let warnings = sync_package_links_internal(
+        Some(app_handle.clone()),
+        &request_ctx,
+        &xplane_path,
+        &custom_paths,
+        Some(std::slice::from_ref(&package_name)),
+        None,
+        None,
+    )?;
 
     csl_debug!(
-        "[{}] CSL install command completed package={} link_targets={} link_warnings={}",
+        "[{}] CSL install command completed package={} link_warnings={}",
         request_ctx.operation_id(),
         package_name,
-        link_targets.len(),
         warnings.len()
     );
 
@@ -2182,30 +3334,38 @@ pub async fn csl_uninstall_package(
     xplane_path: String,
     custom_paths: Vec<String>,
     request_id: Option<String>,
+    app_handle: AppHandle,
 ) -> Result<(), String> {
     let request_ctx = RequestContext::new("csl_uninstall_package", request_id);
     let xplane = Path::new(&xplane_path);
-    let link_targets = collect_link_targets(xplane, &custom_paths);
+    let active_targets = collect_sync_targets(xplane, &custom_paths);
 
     csl_debug!(
-        "[{}] CSL uninstall command start package={} xplane_path={} custom_paths={} link_targets={}",
+        "[{}] CSL uninstall command start package={} xplane_path={} custom_paths={} active_targets={}",
         request_ctx.operation_id(),
         package_name,
         xplane_path,
         custom_paths.len(),
-        link_targets.len()
+        active_targets.len()
     );
-
-    // Remove links first
-    let warnings = remove_package_links(&package_name, &link_targets, false);
 
     // Remove the canonical copy
     let canonical_pkg_dir = xplane.join(CSL_CANONICAL_REL).join(&package_name);
     if canonical_pkg_dir.exists() && canonical_pkg_dir.is_dir() {
         std::fs::remove_dir_all(&canonical_pkg_dir)
             .map_err(|e| format!("Failed to remove {}: {}", canonical_pkg_dir.display(), e))?;
+
+        let warnings = sync_package_links_internal(
+            Some(app_handle.clone()),
+            &request_ctx,
+            &xplane_path,
+            &custom_paths,
+            Some(std::slice::from_ref(&package_name)),
+            None,
+            None,
+        )?;
         csl_debug!(
-            "[{}] CSL uninstall command completed package={} removed_path={} link_warnings={}",
+            "[{}] CSL uninstall command completed package={} removed_path={} sync_warnings={}",
             request_ctx.operation_id(),
             package_name,
             canonical_pkg_dir.display(),
@@ -2214,20 +3374,38 @@ pub async fn csl_uninstall_package(
         return Ok(());
     }
 
+    let warnings = sync_package_links_internal(
+        Some(app_handle.clone()),
+        &request_ctx,
+        &xplane_path,
+        &custom_paths,
+        Some(std::slice::from_ref(&package_name)),
+        None,
+        None,
+    )?;
+    if !warnings.is_empty() {
+        csl_debug!(
+            "[{}] CSL uninstall post-sync warnings package={} warnings={}",
+            request_ctx.operation_id(),
+            package_name,
+            warnings.len()
+        );
+    }
+
     // Fallback: try old paths for backward compatibility
     let (_, all_paths) = collect_scan_paths(&xplane_path, &custom_paths);
     let result = uninstall_package_internal(&package_name, &all_paths);
 
     match &result {
         Ok(()) => csl_debug!(
-            "[{}] CSL uninstall fallback completed package={} searched_paths={} link_warnings={}",
+            "[{}] CSL uninstall fallback completed package={} searched_paths={} sync_warnings={}",
             request_ctx.operation_id(),
             package_name,
             all_paths.len(),
             warnings.len()
         ),
         Err(err) => csl_debug!(
-            "[{}] CSL uninstall fallback failed package={} error={} link_warnings={}",
+            "[{}] CSL uninstall fallback failed package={} error={} sync_warnings={}",
             request_ctx.operation_id(),
             package_name,
             err,
@@ -2249,23 +3427,29 @@ pub async fn csl_sync_links(
     xplane_path: String,
     custom_paths: Vec<String>,
     package_names: Option<Vec<String>>,
+    target_paths: Option<Vec<String>>,
     cleanup_paths: Option<Vec<String>>,
     request_id: Option<String>,
+    app_handle: AppHandle,
 ) -> Result<(), String> {
     let request_ctx = RequestContext::new("csl_sync_links", request_id);
     csl_debug!(
-        "[{}] CSL link sync command start xplane_path={} custom_paths={} package_count={} cleanup_paths={}",
+        "[{}] CSL link sync command start xplane_path={} custom_paths={} package_count={} target_paths={} cleanup_paths={}",
         request_ctx.operation_id(),
         xplane_path,
         custom_paths.len(),
         package_names.as_ref().map(|names| names.len()).unwrap_or(0),
+        target_paths.as_ref().map(|paths| paths.len()).unwrap_or(0),
         cleanup_paths.as_ref().map(|paths| paths.len()).unwrap_or(0)
     );
 
     let result = sync_package_links_internal(
+        Some(app_handle),
+        &request_ctx,
         &xplane_path,
         &custom_paths,
         package_names.as_deref(),
+        target_paths.as_deref(),
         cleanup_paths.as_deref(),
     );
 
@@ -2885,73 +4069,344 @@ mod tests {
     }
 
     #[test]
-    fn create_package_links_replaces_empty_real_directory() {
+    fn sync_hardlink_package_creates_managed_hardlinks() {
         let temp_dir = tempfile::tempdir().unwrap();
         let canonical_pkg_dir = temp_dir.path().join("canonical").join("A19N");
-        let link_target_base = temp_dir.path().join("xpilot");
-        let existing_dir = link_target_base.join("A19N");
+        let target_base = temp_dir.path().join("xpilot");
+        let current_files = vec![
+            "xsb_aircraft.txt".to_string(),
+            "objects/model.obj".to_string(),
+        ];
+        let mut tracker = LinkSyncProgressTracker::new(None, "test-sync".to_string(), 2, 1);
+        let mut warnings = Vec::new();
+
+        write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
+        write_test_file(&canonical_pkg_dir.join("objects/model.obj"), b"world");
+
+        sync_hardlink_package(
+            &target_base,
+            "A19N",
+            &canonical_pkg_dir,
+            &current_files,
+            LinkSyncMode::Reconcile,
+            &mut tracker,
+            &mut warnings,
+        );
+
+        assert!(warnings.is_empty());
+        let linked_file = target_base.join("A19N/xsb_aircraft.txt");
+        assert!(linked_file.is_file());
+        std::fs::write(canonical_pkg_dir.join("xsb_aircraft.txt"), b"updated").unwrap();
+        assert_eq!(std::fs::read(&linked_file).unwrap(), b"updated");
+
+        let manifest = read_hardlink_manifest(&target_base, "A19N")
+            .unwrap()
+            .expect("manifest should exist");
+        assert_eq!(manifest.files.len(), 2);
+    }
+
+    #[test]
+    fn sync_hardlink_package_preserves_existing_user_file() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let canonical_pkg_dir = temp_dir.path().join("canonical").join("A19N");
+        let target_base = temp_dir.path().join("xpilot");
+        let existing_file = target_base.join("A19N/xsb_aircraft.txt");
+        let current_files = vec!["xsb_aircraft.txt".to_string()];
+        let mut tracker = LinkSyncProgressTracker::new(None, "test-sync".to_string(), 1, 1);
+        let mut warnings = Vec::new();
+
+        write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
+        write_test_file(&existing_file, b"user-data");
+
+        sync_hardlink_package(
+            &target_base,
+            "A19N",
+            &canonical_pkg_dir,
+            &current_files,
+            LinkSyncMode::MissingOnly,
+            &mut tracker,
+            &mut warnings,
+        );
+
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("user file already exists"));
+        assert_eq!(std::fs::read(&existing_file).unwrap(), b"user-data");
+        assert!(read_hardlink_manifest(&target_base, "A19N")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn cleanup_target_package_removes_manifest_managed_files() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let canonical_pkg_dir = temp_dir.path().join("canonical").join("A19N");
+        let target_base = temp_dir.path().join("xpilot");
+        let current_files = vec![
+            "xsb_aircraft.txt".to_string(),
+            "objects/model.obj".to_string(),
+        ];
+        let mut tracker = LinkSyncProgressTracker::new(None, "test-sync".to_string(), 2, 1);
+        let mut warnings = Vec::new();
+
+        write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
+        write_test_file(&canonical_pkg_dir.join("objects/model.obj"), b"world");
+        sync_hardlink_package(
+            &target_base,
+            "A19N",
+            &canonical_pkg_dir,
+            &current_files,
+            LinkSyncMode::Reconcile,
+            &mut tracker,
+            &mut warnings,
+        );
+        assert!(warnings.is_empty());
+
+        cleanup_target_package(&target_base, "A19N", true, &mut warnings);
+
+        assert!(warnings.is_empty());
+        assert!(!target_base.join("A19N/xsb_aircraft.txt").exists());
+        assert!(!target_base.join("A19N").exists());
+        assert!(read_hardlink_manifest(&target_base, "A19N")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn sync_hardlink_package_removes_stale_managed_files() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let canonical_pkg_dir = temp_dir.path().join("canonical").join("A19N");
+        let target_base = temp_dir.path().join("xpilot");
+        let initial_files = vec!["xsb_aircraft.txt".to_string(), "old.obj".to_string()];
+        let mut tracker = LinkSyncProgressTracker::new(None, "test-sync".to_string(), 2, 1);
+        let mut warnings = Vec::new();
+
+        write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
+        write_test_file(&canonical_pkg_dir.join("old.obj"), b"old");
+        sync_hardlink_package(
+            &target_base,
+            "A19N",
+            &canonical_pkg_dir,
+            &initial_files,
+            LinkSyncMode::Reconcile,
+            &mut tracker,
+            &mut warnings,
+        );
+        assert!(warnings.is_empty());
+
+        std::fs::remove_file(canonical_pkg_dir.join("old.obj")).unwrap();
+        let next_files = vec!["xsb_aircraft.txt".to_string()];
+        let mut tracker = LinkSyncProgressTracker::new(None, "test-sync-2".to_string(), 1, 1);
+        sync_hardlink_package(
+            &target_base,
+            "A19N",
+            &canonical_pkg_dir,
+            &next_files,
+            LinkSyncMode::Reconcile,
+            &mut tracker,
+            &mut warnings,
+        );
+
+        assert!(warnings.is_empty());
+        assert!(!target_base.join("A19N/old.obj").exists());
+        let manifest = read_hardlink_manifest(&target_base, "A19N")
+            .unwrap()
+            .expect("manifest should still exist");
+        assert_eq!(manifest.files, vec!["xsb_aircraft.txt".to_string()]);
+    }
+
+    #[test]
+    fn sync_hardlink_package_missing_only_keeps_stale_managed_files() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let canonical_pkg_dir = temp_dir.path().join("canonical").join("A19N");
+        let target_base = temp_dir.path().join("xpilot");
+        let initial_files = vec!["xsb_aircraft.txt".to_string(), "old.obj".to_string()];
+        let mut tracker = LinkSyncProgressTracker::new(None, "test-sync".to_string(), 2, 1);
+        let mut warnings = Vec::new();
+
+        write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
+        write_test_file(&canonical_pkg_dir.join("old.obj"), b"old");
+        sync_hardlink_package(
+            &target_base,
+            "A19N",
+            &canonical_pkg_dir,
+            &initial_files,
+            LinkSyncMode::Reconcile,
+            &mut tracker,
+            &mut warnings,
+        );
+        assert!(warnings.is_empty());
+
+        std::fs::remove_file(canonical_pkg_dir.join("old.obj")).unwrap();
+        let next_files = vec!["xsb_aircraft.txt".to_string()];
+        let mut tracker = LinkSyncProgressTracker::new(None, "test-sync-2".to_string(), 1, 1);
+        sync_hardlink_package(
+            &target_base,
+            "A19N",
+            &canonical_pkg_dir,
+            &next_files,
+            LinkSyncMode::MissingOnly,
+            &mut tracker,
+            &mut warnings,
+        );
+
+        assert!(warnings.is_empty());
+        assert!(target_base.join("A19N/old.obj").exists());
+        let manifest = read_hardlink_manifest(&target_base, "A19N")
+            .unwrap()
+            .expect("manifest should still exist");
+        assert_eq!(
+            manifest.files,
+            vec!["old.obj".to_string(), "xsb_aircraft.txt".to_string()]
+        );
+    }
+
+    #[test]
+    fn sync_hardlink_package_missing_only_skips_healthy_managed_files() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let canonical_pkg_dir = temp_dir.path().join("canonical").join("A19N");
+        let target_base = temp_dir.path().join("xpilot");
+        let current_files = vec![
+            "xsb_aircraft.txt".to_string(),
+            "objects/model.obj".to_string(),
+        ];
+        let mut tracker = LinkSyncProgressTracker::new(None, "test-sync".to_string(), 2, 1);
+        let mut warnings = Vec::new();
+
+        write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
+        write_test_file(&canonical_pkg_dir.join("objects/model.obj"), b"world");
+        sync_hardlink_package(
+            &target_base,
+            "A19N",
+            &canonical_pkg_dir,
+            &current_files,
+            LinkSyncMode::Reconcile,
+            &mut tracker,
+            &mut warnings,
+        );
+        assert!(warnings.is_empty());
+
+        let planned_units = estimate_missing_only_hardlink_units(
+            &target_base,
+            "A19N",
+            &canonical_pkg_dir,
+            &current_files,
+        );
+        assert_eq!(planned_units, 0);
+
+        let mut tracker = LinkSyncProgressTracker::new(None, "test-sync-2".to_string(), 0, 1);
+        sync_hardlink_package(
+            &target_base,
+            "A19N",
+            &canonical_pkg_dir,
+            &current_files,
+            LinkSyncMode::MissingOnly,
+            &mut tracker,
+            &mut warnings,
+        );
+
+        assert!(warnings.is_empty());
+        assert_eq!(tracker.processed_files, 0);
+    }
+
+    #[test]
+    fn sync_directory_link_package_replaces_empty_real_directory() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let canonical_pkg_dir = temp_dir.path().join("canonical").join("A19N");
+        let target_base = temp_dir.path().join("xpilot");
+        let existing_dir = target_base.join("A19N");
+        let mut warnings = Vec::new();
 
         write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
         std::fs::create_dir_all(&existing_dir).unwrap();
 
-        let warnings = create_package_links("A19N", &canonical_pkg_dir, &[link_target_base]);
+        sync_directory_link_package(
+            &target_base,
+            "A19N",
+            &canonical_pkg_dir,
+            LinkSyncMode::Reconcile,
+            &mut warnings,
+        );
 
         assert!(warnings.is_empty());
         assert!(is_link(&existing_dir));
     }
 
     #[test]
-    fn create_package_links_preserves_non_empty_real_directory() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let canonical_pkg_dir = temp_dir.path().join("canonical").join("A19N");
-        let link_target_base = temp_dir.path().join("xpilot");
-        let existing_dir = link_target_base.join("A19N");
-
-        write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
-        write_test_file(&existing_dir.join("placeholder.txt"), b"user-data");
-
-        let warnings = create_package_links("A19N", &canonical_pkg_dir, &[link_target_base]);
-
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("non-empty real directory exists"));
-        assert!(!is_link(&existing_dir));
-        assert!(existing_dir.join("placeholder.txt").is_file());
-    }
-
-    #[test]
-    fn remove_package_links_removes_links_from_cleanup_targets() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let canonical_pkg_dir = temp_dir.path().join("canonical").join("A19N");
-        let link_target_base = temp_dir.path().join("xpilot");
-        let link_path = link_target_base.join("A19N");
-
-        write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
-
-        let create_warnings =
-            create_package_links("A19N", &canonical_pkg_dir, &[link_target_base.clone()]);
-        assert!(create_warnings.is_empty());
-        assert!(is_link(&link_path));
-
-        let remove_warnings = remove_package_links("A19N", &[link_target_base], true);
-        assert!(remove_warnings.is_empty());
-        assert!(!link_path.exists());
-    }
-
-    #[test]
-    fn sync_package_links_creates_plugin_csl_dir_when_parent_exists() {
+    fn sync_package_links_creates_file_links_when_parent_exists() {
         let temp_dir = tempfile::tempdir().unwrap();
         let xplane_path = temp_dir.path();
         let canonical_pkg_dir = xplane_path.join(CSL_CANONICAL_REL).join("A19N");
-        let xpilot_resources_dir = xplane_path.join("Resources/plugins/xPilot/Resources");
-        let linked_package_dir = xplane_path.join("Resources/plugins/xPilot/Resources/CSL/A19N");
+        let xpilot_resources_dir = xplane_path.join("Resources/plugins/xPilot/Resources/CSL");
+        let linked_file = xpilot_resources_dir.join("A19N/xsb_aircraft.txt");
 
         write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
         std::fs::create_dir_all(&xpilot_resources_dir).unwrap();
+        let request_ctx =
+            RequestContext::new("test_sync_links", Some("test-sync-links".to_string()));
 
-        let warnings =
-            sync_package_links_internal(&xplane_path.to_string_lossy(), &[], None, None).unwrap();
+        let warnings = sync_package_links_internal(
+            None,
+            &request_ctx,
+            &xplane_path.to_string_lossy(),
+            &[],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         assert!(warnings.is_empty());
-        assert!(is_link(&linked_package_dir));
+        assert!(linked_file.is_file());
+        std::fs::write(canonical_pkg_dir.join("xsb_aircraft.txt"), b"updated").unwrap();
+        assert_eq!(std::fs::read(&linked_file).unwrap(), b"updated");
+    }
+
+    #[test]
+    fn sync_package_links_target_paths_only_sync_requested_targets() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let xplane_path = temp_dir.path();
+        let canonical_pkg_dir = xplane_path.join(CSL_CANONICAL_REL).join("A19N");
+        let auto_target = xplane_path.join("Resources/plugins/xPilot/Resources/CSL");
+        let custom_target = temp_dir.path().join("custom-csl");
+        let custom_target_str = custom_target.to_string_lossy().to_string();
+
+        write_test_file(&canonical_pkg_dir.join("xsb_aircraft.txt"), b"hello");
+        std::fs::create_dir_all(&auto_target).unwrap();
+        std::fs::create_dir_all(&custom_target).unwrap();
+        let request_ctx = RequestContext::new(
+            "test_sync_links",
+            Some("test-sync-links-target".to_string()),
+        );
+        let no_targets: Vec<String> = Vec::new();
+
+        let warnings = sync_package_links_internal(
+            None,
+            &request_ctx,
+            &xplane_path.to_string_lossy(),
+            std::slice::from_ref(&custom_target_str),
+            None,
+            Some(&no_targets),
+            None,
+        )
+        .unwrap();
+        assert!(warnings.is_empty());
+        assert!(!auto_target.join("A19N/xsb_aircraft.txt").exists());
+        assert!(!custom_target.join("A19N/xsb_aircraft.txt").exists());
+
+        let target_filter = vec![custom_target_str.clone()];
+        let warnings = sync_package_links_internal(
+            None,
+            &request_ctx,
+            &xplane_path.to_string_lossy(),
+            std::slice::from_ref(&custom_target_str),
+            None,
+            Some(&target_filter),
+            None,
+        )
+        .unwrap();
+
+        assert!(warnings.is_empty());
+        assert!(!auto_target.join("A19N/xsb_aircraft.txt").exists());
+        assert!(custom_target.join("A19N/xsb_aircraft.txt").is_file());
     }
 }

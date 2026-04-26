@@ -355,6 +355,11 @@ export default {
     installInProgressMessage: '現在インストールが進行中です。閉じてもよろしいですか?',
     installInProgressWarning:
       '今すぐ閉じると、インストールされているファイルが破損する可能性があります',
+    cslSyncInProgressTitle: 'CSL Sync In Progress',
+    cslSyncInProgressMessage:
+      'CSL paths are currently syncing. Are you sure you want to close?',
+    cslSyncInProgressWarning:
+      'Closing now may leave some CSL paths only partially synced',
     confirmationOpenTitle: 'インストール保留中',
     confirmationOpenMessage: '未確認の保留中のインストールがあります。閉じてもよろしいですか?',
   },
@@ -1865,6 +1870,18 @@ export default {
     files: 'ファイル',
     downloadSize: 'ダウンロードサイズ',
     selectTargetPath: 'インストール先のパスを選択',
+    syncDialogTitle: 'Syncing CSL Paths',
+    syncPreparing: 'Preparing sync...',
+    syncInProgress: 'Applying file links to CSL paths',
+    syncCompleted: 'Sync completed',
+    syncFailed: 'Sync failed',
+    syncProgressFiles: 'Files',
+    syncProgressPaths: 'Paths',
+    syncCurrentPackage: 'Current package',
+    syncCurrentPath: 'Current path',
+    syncCurrentFile: 'Current file',
+    syncFallbackNotice: '{path} is on a different volume, so directory links are used instead.',
+    syncError: 'Failed to sync CSL paths',
     progress: '進行状況: {current}/{total} ファイル',
   },
   altitude: {

@@ -370,6 +370,11 @@ export default {
     installInProgressTitle: 'Установка выполняется',
     installInProgressMessage: 'Установка сейчас выполняется. Вы действительно хотите закрыть окно?',
     installInProgressWarning: 'Закрытие сейчас может повредить установленные файлы',
+    cslSyncInProgressTitle: 'CSL Sync In Progress',
+    cslSyncInProgressMessage:
+      'CSL paths are currently syncing. Are you sure you want to close?',
+    cslSyncInProgressWarning:
+      'Closing now may leave some CSL paths only partially synced',
     // Ожидающая установка
     confirmationOpenTitle: 'Ожидающая установка',
     confirmationOpenMessage:
@@ -1887,6 +1892,18 @@ export default {
     files: 'файлов',
     downloadSize: 'Размер загрузки',
     selectTargetPath: 'Выберите целевой путь установки',
+    syncDialogTitle: 'Syncing CSL Paths',
+    syncPreparing: 'Preparing sync...',
+    syncInProgress: 'Applying file links to CSL paths',
+    syncCompleted: 'Sync completed',
+    syncFailed: 'Sync failed',
+    syncProgressFiles: 'Files',
+    syncProgressPaths: 'Paths',
+    syncCurrentPackage: 'Current package',
+    syncCurrentPath: 'Current path',
+    syncCurrentFile: 'Current file',
+    syncFallbackNotice: '{path} is on a different volume, so directory links are used instead.',
+    syncError: 'Failed to sync CSL paths',
     progress: 'Прогресс: {current}/{total} файлов',
   },
   altitude: {

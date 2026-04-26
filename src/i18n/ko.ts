@@ -357,6 +357,11 @@ export default {
     installInProgressTitle: '설치 진행 중',
     installInProgressMessage: '설치가 진행 중입니다. 정말 닫으시겠습니까?',
     installInProgressWarning: '지금 닫으면 설치된 파일이 손상될 수 있습니다',
+    cslSyncInProgressTitle: 'CSL Sync In Progress',
+    cslSyncInProgressMessage:
+      'CSL paths are currently syncing. Are you sure you want to close?',
+    cslSyncInProgressWarning:
+      'Closing now may leave some CSL paths only partially synced',
     // 대기 중인 설치 확인
     confirmationOpenTitle: '대기 중인 설치',
     confirmationOpenMessage: '아직 확인하지 않은 대기 중 설치가 있습니다. 정말 닫으시겠습니까?',
@@ -1843,6 +1848,18 @@ export default {
     files: '개 파일',
     downloadSize: '다운로드 크기',
     selectTargetPath: '설치 대상 경로를 선택하세요',
+    syncDialogTitle: 'Syncing CSL Paths',
+    syncPreparing: 'Preparing sync...',
+    syncInProgress: 'Applying file links to CSL paths',
+    syncCompleted: 'Sync completed',
+    syncFailed: 'Sync failed',
+    syncProgressFiles: 'Files',
+    syncProgressPaths: 'Paths',
+    syncCurrentPackage: 'Current package',
+    syncCurrentPath: 'Current path',
+    syncCurrentFile: 'Current file',
+    syncFallbackNotice: '{path} is on a different volume, so directory links are used instead.',
+    syncError: 'Failed to sync CSL paths',
     progress: '진행률: {current}/{total}개 파일',
   },
   altitude: {

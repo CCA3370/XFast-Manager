@@ -364,6 +364,11 @@ export default {
     installInProgressTitle: 'स्थापना जारी है',
     installInProgressMessage: 'एक स्थापना वर्तमान में चल रही है। क्या आप वाकई बंद करना चाहते हैं?',
     installInProgressWarning: 'अभी बंद करने से स्थापित फ़ाइलें खराब हो सकती हैं',
+    cslSyncInProgressTitle: 'CSL Sync In Progress',
+    cslSyncInProgressMessage:
+      'CSL paths are currently syncing. Are you sure you want to close?',
+    cslSyncInProgressWarning:
+      'Closing now may leave some CSL paths only partially synced',
     // लंबित स्थापना पुष्टि
     confirmationOpenTitle: 'लंबित स्थापना',
     confirmationOpenMessage:
@@ -1865,6 +1870,18 @@ export default {
     files: 'फ़ाइलें',
     downloadSize: 'डाउनलोड आकार',
     selectTargetPath: 'स्थापना लक्ष्य पथ चुनें',
+    syncDialogTitle: 'Syncing CSL Paths',
+    syncPreparing: 'Preparing sync...',
+    syncInProgress: 'Applying file links to CSL paths',
+    syncCompleted: 'Sync completed',
+    syncFailed: 'Sync failed',
+    syncProgressFiles: 'Files',
+    syncProgressPaths: 'Paths',
+    syncCurrentPackage: 'Current package',
+    syncCurrentPath: 'Current path',
+    syncCurrentFile: 'Current file',
+    syncFallbackNotice: '{path} is on a different volume, so directory links are used instead.',
+    syncError: 'Failed to sync CSL paths',
     progress: 'प्रगति: {current}/{total} फ़ाइलें',
   },
   altitude: {

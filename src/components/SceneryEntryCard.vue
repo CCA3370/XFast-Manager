@@ -442,23 +442,6 @@ function handleContextMenu(event: MouseEvent) {
     </span>
 
     <button
-      v-if="canToggleFlatten"
-      class="flex-shrink-0 inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-semibold text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-      :class="entry.flattened ? 'bg-rose-500 hover:bg-rose-600' : 'bg-sky-600 hover:bg-sky-700'"
-      :title="entry.flattened ? t('airportFlatten.disable') : t('airportFlatten.enable')"
-      :disabled="flattenBusy"
-      @click.stop="emit('toggle-flatten', entry)"
-    >
-      <span
-        v-if="flattenBusy"
-        class="w-3 h-3 border border-white/80 border-t-transparent rounded-full animate-spin"
-      ></span>
-      <template v-else>
-        {{ entry.flattened ? t('airportFlatten.disable') : t('airportFlatten.enable') }}
-      </template>
-    </button>
-
-    <button
       v-if="canOpenUpdater && !isGlobalAirportsEntry"
       class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-white bg-emerald-500 hover:bg-emerald-600 transition-colors"
       :title="t('management.startUpdate')"

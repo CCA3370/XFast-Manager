@@ -21,6 +21,7 @@
                       :to="item.to"
                       class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
                       :class="navLinkClass(item)"
+                      @click="handleNavItemClick(item.id)"
                     >
                       <div
                         class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
@@ -79,6 +80,7 @@
                     :to="item.to"
                     class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
                     :class="navLinkClass(item)"
+                    @click="handleNavItemClick(item.id)"
                   >
                     <div
                       class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
@@ -254,7 +256,7 @@
                   :to="item.to"
                   class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
                   :class="navLinkClass(item)"
-                  @click="handleOverflowNavClick"
+                  @click="handleOverflowNavItemClick(item.id)"
                 >
                   <div
                     class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
@@ -313,7 +315,7 @@
                 :to="item.to"
                 class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
                 :class="navLinkClass(item)"
-                @click="handleOverflowNavClick"
+                @click="handleOverflowNavItemClick(item.id)"
               >
                 <div
                   class="absolute inset-0 bg-blue-50 dark:bg-white/10 rounded-lg transition-all duration-300 transform origin-left"
@@ -476,6 +478,7 @@ import { useIssueTrackerStore } from '@/stores/issueTracker'
 import { useFeedbackStore } from '@/stores/feedback'
 import { useManagementStore } from '@/stores/management'
 import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
+import { useCslStore } from '@/stores/csl'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -505,6 +508,7 @@ const issueTrackerStore = useIssueTrackerStore()
 const feedbackStore = useFeedbackStore()
 const managementStore = useManagementStore()
 const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
+const cslStore = useCslStore()
 const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
@@ -548,7 +552,10 @@ interface NavItem {
   iconPaths: string[]
 }
 
-const NAV_ORDER: NavId[] = [
+type NavUsageCounts = Partial<Record<NavId, number>>
+
+const NAV_USAGE_STORAGE_KEY = 'xfast.navUsageCounts'
+const DEFAULT_NAV_ORDER: NavId[] = [
   'home',
   'management',
   'screenshots',
@@ -561,6 +568,13 @@ const NAV_ORDER: NavId[] = [
   'csl',
   'settings',
 ]
+const DEFAULT_NAV_ORDER_INDEX: Record<NavId, number> = DEFAULT_NAV_ORDER.reduce(
+  (acc, id, index) => {
+    acc[id] = index
+    return acc
+  },
+  {} as Record<NavId, number>,
+)
 
 const NAV_GAP = 4
 const PRIMARY_NAV_HEIGHT_PX = 40
@@ -599,6 +613,7 @@ const primaryNavActions = ref<HTMLElement | null>(null)
 const overflowNavContent = ref<HTMLElement | null>(null)
 const primaryVisibleNavIds = ref<NavId[]>([])
 const overflowNavIds = ref<NavId[]>([])
+const sessionNavOrder = ref<NavId[]>(loadStartupNavOrder())
 const navMeasureRefs: Partial<Record<NavMeasureId, HTMLElement | null>> = {}
 let navLayoutObserver: ResizeObserver | null = null
 let navLayoutFrame = 0
@@ -611,85 +626,88 @@ const moreNavLabel = computed(() =>
 const primaryVisibleNavIdSet = computed(() => new Set(primaryVisibleNavIds.value))
 const overflowNavIdSet = computed(() => new Set(overflowNavIds.value))
 const hasOverflowNav = computed(() => overflowNavIds.value.length > 0)
-const allNavItems = computed<NavItem[]>(() => [
-  {
+const navItemsById = computed<Record<NavId, NavItem>>(() => ({
+  home: {
     id: 'home',
     to: '/',
     label: t('common.home'),
     active: route.path === '/',
     iconPaths: NAV_ICON_PATHS.home,
   },
-  {
+  management: {
     id: 'management',
     to: '/management',
     label: t('management.navTitle'),
     active: route.path.startsWith('/management'),
     iconPaths: NAV_ICON_PATHS.management,
   },
-  {
+  screenshots: {
     id: 'screenshots',
     to: '/screenshots',
     label: t('screenshot.navTitle'),
     active: route.path === '/screenshots',
     iconPaths: NAV_ICON_PATHS.screenshots,
   },
-  {
+  'log-analysis': {
     id: 'log-analysis',
     to: '/log-analysis',
     label: t('logAnalysis.navTitle'),
     active: route.path === '/log-analysis',
     iconPaths: NAV_ICON_PATHS['log-analysis'],
   },
-  {
+  activity: {
     id: 'activity',
     to: '/activity',
     label: t('activityLog.navTitle'),
     active: route.path === '/activity',
     iconPaths: NAV_ICON_PATHS.activity,
   },
-  {
+  'disk-usage': {
     id: 'disk-usage',
     to: '/disk-usage',
     label: t('diskUsage.navTitle'),
     active: route.path.startsWith('/disk-usage'),
     iconPaths: NAV_ICON_PATHS['disk-usage'],
   },
-  {
+  presets: {
     id: 'presets',
     to: '/presets',
     label: t('presets.navTitle'),
     active: route.path === '/presets',
     iconPaths: NAV_ICON_PATHS.presets,
   },
-  {
+  gateway: {
     id: 'gateway',
     to: '/gateway',
     label: t('gatewayManager.navTitle'),
     active: route.path === '/gateway',
     iconPaths: NAV_ICON_PATHS.gateway,
   },
-  {
+  'airport-flatten': {
     id: 'airport-flatten',
     to: '/airport-flatten',
     label: t('airportFlatten.navTitle'),
     active: route.path === '/airport-flatten',
     iconPaths: NAV_ICON_PATHS['airport-flatten'],
   },
-  {
+  csl: {
     id: 'csl',
     to: '/csl',
     label: t('csl.navTitle'),
     active: route.path === '/csl',
     iconPaths: NAV_ICON_PATHS.csl,
   },
-  {
+  settings: {
     id: 'settings',
     to: '/settings',
     label: t('common.settings'),
     active: route.path === '/settings',
     iconPaths: NAV_ICON_PATHS.settings,
   },
-])
+}))
+const allNavItems = computed<NavItem[]>(() =>
+  sessionNavOrder.value.map((id) => navItemsById.value[id]),
+)
 const primaryVisibleNavItems = computed(() =>
   allNavItems.value.filter((item) => primaryVisibleNavIdSet.value.has(item.id)),
 )
@@ -715,6 +733,75 @@ function resolveHTMLElement(target: ElementRefTarget) {
 
   const element = target && '$el' in target ? target.$el : null
   return element instanceof HTMLElement ? element : null
+}
+
+function normalizeNavUsageCounts(raw: unknown): NavUsageCounts {
+  if (!raw || typeof raw !== 'object') {
+    return {}
+  }
+
+  const counts: NavUsageCounts = {}
+  for (const id of DEFAULT_NAV_ORDER) {
+    const value = (raw as Record<string, unknown>)[id]
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      counts[id] = Math.floor(value)
+    }
+  }
+
+  return counts
+}
+
+function readNavUsageCounts(): NavUsageCounts {
+  if (typeof window === 'undefined') {
+    return {}
+  }
+
+  try {
+    const stored = window.localStorage.getItem(NAV_USAGE_STORAGE_KEY)
+    if (!stored) {
+      return {}
+    }
+
+    return normalizeNavUsageCounts(JSON.parse(stored))
+  } catch {
+    return {}
+  }
+}
+
+function writeNavUsageCounts(counts: NavUsageCounts) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(NAV_USAGE_STORAGE_KEY, JSON.stringify(counts))
+  } catch {
+    // Ignore storage write failures and keep navigation functional.
+  }
+}
+
+function buildNavOrderFromCounts(counts: NavUsageCounts): NavId[] {
+  const pinnedFirst: NavId = 'home'
+  const orderedRest = DEFAULT_NAV_ORDER.filter((id) => id !== pinnedFirst).sort((left, right) => {
+    const countDiff = (counts[right] ?? 0) - (counts[left] ?? 0)
+    if (countDiff !== 0) {
+      return countDiff
+    }
+
+    return DEFAULT_NAV_ORDER_INDEX[left] - DEFAULT_NAV_ORDER_INDEX[right]
+  })
+
+  return [pinnedFirst, ...orderedRest]
+}
+
+function loadStartupNavOrder(): NavId[] {
+  return buildNavOrderFromCounts(readNavUsageCounts())
+}
+
+function recordNavClick(id: NavId) {
+  const counts = readNavUsageCounts()
+  counts[id] = (counts[id] ?? 0) + 1
+  writeNavUsageCounts(counts)
 }
 
 function navLinkClass(item: NavItem) {
@@ -752,7 +839,7 @@ function updatePrimaryNavLayout() {
   const viewportWidth = primaryNavViewport.value?.clientWidth ?? 0
   const actionsWidth = Math.ceil(primaryNavActions.value?.getBoundingClientRect().width ?? 0)
   const moreWidth = getNavMeasureWidth('more')
-  const itemWidths = NAV_ORDER.map((id) => ({ id, width: getNavMeasureWidth(id) }))
+  const itemWidths = sessionNavOrder.value.map((id) => ({ id, width: getNavMeasureWidth(id) }))
 
   if (viewportWidth <= 0 || moreWidth <= 0 || itemWidths.some((item) => item.width <= 0)) {
     return
@@ -776,8 +863,8 @@ function updatePrimaryNavLayout() {
     visibleCount += 1
   }
 
-  primaryVisibleNavIds.value = NAV_ORDER.slice(0, visibleCount)
-  overflowNavIds.value = NAV_ORDER.slice(visibleCount)
+  primaryVisibleNavIds.value = sessionNavOrder.value.slice(0, visibleCount)
+  overflowNavIds.value = sessionNavOrder.value.slice(visibleCount)
 }
 
 function schedulePrimaryNavLayout() {
@@ -867,6 +954,15 @@ function handleOverflowNavClick() {
   navExpanded.value = false
 }
 
+function handleNavItemClick(id: NavId) {
+  recordNavClick(id)
+}
+
+function handleOverflowNavItemClick(id: NavId) {
+  handleNavItemClick(id)
+  handleOverflowNavClick()
+}
+
 async function toggleAlwaysOnTop() {
   try {
     const appWindow = getCurrentWindow()
@@ -877,23 +973,31 @@ async function toggleAlwaysOnTop() {
   }
 }
 
-// Route order for determining transition direction
-const routeOrder: Record<string, number> = {
-  '/': 0,
-  '/management': 1,
-  '/management/liveries': 1,
-  '/presets': 1.5,
-  '/screenshots': 2,
-  '/log-analysis': 3,
-  '/activity': 3.5,
-  '/disk-usage': 4,
-  '/disk-usage/output-cleanup': 4.1,
-  '/gateway': 5,
-  '/airport-flatten': 5.25,
-  '/csl': 5.5,
-  '/feedback': 6,
-  '/settings': 7,
-  '/onboarding': -1,
+const navOrderIndex = computed<Record<NavId, number>>(() => {
+  const order = {} as Record<NavId, number>
+  sessionNavOrder.value.forEach((id, index) => {
+    order[id] = index
+  })
+  return order
+})
+
+function getRouteOrder(path: string): number {
+  if (path === '/onboarding') return -1
+  if (path === '/' || path === '') return navOrderIndex.value.home
+  if (path.startsWith('/management')) return navOrderIndex.value.management
+  if (path === '/screenshots') return navOrderIndex.value.screenshots
+  if (path === '/log-analysis') return navOrderIndex.value['log-analysis']
+  if (path === '/activity') return navOrderIndex.value.activity
+  if (path === '/disk-usage') return navOrderIndex.value['disk-usage']
+  if (path === '/disk-usage/output-cleanup') return navOrderIndex.value['disk-usage'] + 0.1
+  if (path === '/presets') return navOrderIndex.value.presets
+  if (path === '/gateway') return navOrderIndex.value.gateway
+  if (path === '/airport-flatten') return navOrderIndex.value['airport-flatten']
+  if (path === '/csl') return navOrderIndex.value.csl
+  if (path === '/settings') return navOrderIndex.value.settings
+  if (path === '/feedback') return sessionNavOrder.value.length + 0.5
+
+  return sessionNavOrder.value.length + 1
 }
 
 // Track transition direction based on route navigation
@@ -903,8 +1007,8 @@ const transitionName = ref('page-right')
 watch(
   () => route.path,
   (newPath, oldPath) => {
-    const newOrder = routeOrder[newPath] ?? 0
-    const oldOrder = routeOrder[oldPath] ?? 0
+    const newOrder = getRouteOrder(newPath)
+    const oldOrder = getRouteOrder(oldPath)
     // Going to higher index (right in nav) = slide left, going to lower index = slide right
     transitionName.value = newOrder > oldOrder ? 'page-left' : 'page-right'
   },
@@ -1243,6 +1347,19 @@ onMounted(async () => {
         modalStore.showConfirm({
           title: t('update.downloadInProgressTitle'),
           message: t('update.downloadInProgressMessage'),
+          confirmText: t('modal.closeAnyway'),
+          cancelText: t('modal.goBack'),
+          type: 'warning',
+          onConfirm: async () => await appWindow.destroy(),
+          onCancel: () => {},
+        })
+      } else if (cslStore.linkSyncRunning && cslStore.linkSyncHasWork) {
+        // CSL path sync in progress
+        event.preventDefault()
+        modalStore.showConfirm({
+          title: t('modal.cslSyncInProgressTitle'),
+          message: t('modal.cslSyncInProgressMessage'),
+          warning: t('modal.cslSyncInProgressWarning'),
           confirmText: t('modal.closeAnyway'),
           cancelText: t('modal.goBack'),
           type: 'warning',

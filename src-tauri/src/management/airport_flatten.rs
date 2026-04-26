@@ -1016,9 +1016,8 @@ fn store_airport_flatten_index(
         cache.insert(key, built.clone());
     }
 
-    persist_airport_flatten_source_files(xplane_root, &built.source_files).map_err(|error| {
-        format!("Failed to persist airport flatten index: {}", error)
-    })?;
+    persist_airport_flatten_source_files(xplane_root, &built.source_files)
+        .map_err(|error| format!("Failed to persist airport flatten index: {}", error))?;
 
     Ok(())
 }
@@ -1033,7 +1032,11 @@ async fn rebuild_airport_flatten_index(
         .ok()
         .and_then(|cache| cache.get(&key).cloned())
         .map(|cached| cached.source_files)
-        .or_else(|| load_persisted_airport_flatten_source_files(xplane_root).ok().flatten())
+        .or_else(|| {
+            load_persisted_airport_flatten_source_files(xplane_root)
+                .ok()
+                .flatten()
+        })
         .unwrap_or_default();
 
     let refreshed_source_files =
@@ -1108,7 +1111,12 @@ fn find_flatten_source_ref_in_index(
                     })
                     .cloned()
             })
-            .or_else(|| index.single_custom_sources_by_folder.get(folder_name).cloned())
+            .or_else(|| {
+                index
+                    .single_custom_sources_by_folder
+                    .get(folder_name)
+                    .cloned()
+            })
         }
     }
 }
