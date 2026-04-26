@@ -313,6 +313,7 @@ import {
 } from '@/stores/issueTracker'
 import { useToastStore } from '@/stores/toast'
 import { logError } from '@/services/logger'
+import { buildVercelApiUrl } from '@/services/vercelApi'
 import { useFeedbackStore } from '@/stores/feedback'
 
 const route = useRoute()
@@ -463,9 +464,10 @@ function displayFeedbackType(type?: string): string {
 }
 
 async function openIssue(url: string) {
-  const issueRedirectApiBase =
-    import.meta.env.VITE_XFAST_ISSUE_REDIRECT_API_URL ||
-    'https://x-fast-manager.vercel.app/api/issue-redirect'
+  const issueRedirectApiBase = buildVercelApiUrl(
+    'issue-redirect',
+    import.meta.env.VITE_XFAST_ISSUE_REDIRECT_API_URL,
+  )
   let finalUrl = String(url || '').trim()
   if (!finalUrl) return
 

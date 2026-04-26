@@ -29,9 +29,6 @@ static CACHE: LazyLock<Mutex<Option<CachedLinks>>> = LazyLock::new(|| Mutex::new
 /// Cache TTL: 24 hours (matching updater pattern)
 const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// Remote URL for the library links JSON file via proxy
-const REMOTE_URL: &str = "https://x-fast-manager.vercel.app/api/library-links-data";
-
 fn normalize_library_key(raw: &str) -> String {
     let trimmed = raw
         .trim()
@@ -129,8 +126,10 @@ async fn fetch_remote_links() -> Result<HashMap<String, String>, String> {
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    let remote_url =
-        std::env::var("XFAST_LIBRARY_LINKS_API_URL").unwrap_or_else(|_| REMOTE_URL.to_string());
+    let remote_url = crate::vercel_api::endpoint_with_override(
+        "library-links-data",
+        "XFAST_LIBRARY_LINKS_API_URL",
+    );
     let response = client
         .get(&remote_url)
         .send()

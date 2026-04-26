@@ -17,6 +17,8 @@ mod performance;
 mod registry;
 #[path = "core/task_control.rs"]
 mod task_control;
+#[path = "core/vercel_api.rs"]
+mod vercel_api;
 
 // Data
 #[path = "data/database/mod.rs"]
@@ -217,8 +219,7 @@ async fn create_library_link_issue(
         return Err("Download URL must be http/https".to_string());
     }
 
-    let api_url = std::env::var("XFAST_LINK_API_URL")
-        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/library-link".to_string());
+    let api_url = crate::vercel_api::endpoint_with_override("library-link", "XFAST_LINK_API_URL");
 
     let client = reqwest::Client::builder()
         .user_agent("XFast Manager")
@@ -286,8 +287,8 @@ async fn create_bug_report_issue(
     let os = std::env::consts::OS.to_string();
     let arch = std::env::consts::ARCH.to_string();
 
-    let api_url = std::env::var("XFAST_BUG_REPORT_API_URL")
-        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/bug-report".to_string());
+    let api_url =
+        crate::vercel_api::endpoint_with_override("bug-report", "XFAST_BUG_REPORT_API_URL");
 
     let client = reqwest::Client::builder()
         .user_agent("XFast Manager")
@@ -382,8 +383,8 @@ async fn create_feedback_issue(
     let arch = std::env::consts::ARCH.to_string();
     let feedback_type = feedback_type.trim().to_lowercase();
 
-    let api_url = std::env::var("XFAST_FEEDBACK_API_URL")
-        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/feedback-issue".to_string());
+    let api_url =
+        crate::vercel_api::endpoint_with_override("feedback-issue", "XFAST_FEEDBACK_API_URL");
 
     let client = reqwest::Client::builder()
         .user_agent("XFast Manager")
@@ -475,8 +476,8 @@ async fn post_issue_comment(
         return Err("comment_body is required".to_string());
     }
 
-    let api_url = std::env::var("XFAST_ISSUE_COMMENT_API_URL")
-        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/issue-comment".to_string());
+    let api_url =
+        crate::vercel_api::endpoint_with_override("issue-comment", "XFAST_ISSUE_COMMENT_API_URL");
 
     let client = reqwest::Client::builder()
         .user_agent("XFast Manager")
@@ -551,13 +552,11 @@ struct IssueUpdateResult {
 }
 
 fn issue_updates_api_url() -> String {
-    std::env::var("XFAST_ISSUE_UPDATES_API_URL")
-        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/issue-updates".to_string())
+    crate::vercel_api::endpoint_with_override("issue-updates", "XFAST_ISSUE_UPDATES_API_URL")
 }
 
 fn issue_detail_api_url() -> String {
-    std::env::var("XFAST_ISSUE_DETAIL_API_URL")
-        .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/issue-detail".to_string())
+    crate::vercel_api::endpoint_with_override("issue-detail", "XFAST_ISSUE_DETAIL_API_URL")
 }
 
 #[tauri::command]

@@ -13,7 +13,6 @@ use walkdir::WalkDir;
 
 use crate::logger;
 
-const REMOTE_URL: &str = "https://x-fast-manager.vercel.app/api/output-cleanup-items-data";
 const UNKNOWN_PREFIX: &str = "unknown:";
 const PROTECTED_OUTPUT_DIRS: &[&str] = &["preferences"];
 const ALLOWED_LEVELS: &[&str] = &["recommended", "cleanable", "cautious"];
@@ -325,8 +324,10 @@ async fn fetch_remote_catalog() -> Result<OutputCleanupCatalog, String> {
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    let remote_url = std::env::var("XFAST_OUTPUT_CLEANUP_ITEMS_API_URL")
-        .unwrap_or_else(|_| REMOTE_URL.to_string());
+    let remote_url = crate::vercel_api::endpoint_with_override(
+        "output-cleanup-items-data",
+        "XFAST_OUTPUT_CLEANUP_ITEMS_API_URL",
+    );
     let response = client
         .get(&remote_url)
         .send()
@@ -721,9 +722,10 @@ pub async fn submit_unknown_output_cleanup_item(
     let app_version = env!("CARGO_PKG_VERSION").to_string();
     let os = std::env::consts::OS.to_string();
     let arch = std::env::consts::ARCH.to_string();
-    let api_url = std::env::var("XFAST_OUTPUT_CLEANUP_SUBMISSION_API_URL").unwrap_or_else(|_| {
-        "https://x-fast-manager.vercel.app/api/output-cleanup-item-submission".to_string()
-    });
+    let api_url = crate::vercel_api::endpoint_with_override(
+        "output-cleanup-item-submission",
+        "XFAST_OUTPUT_CLEANUP_SUBMISSION_API_URL",
+    );
 
     let client = reqwest::Client::builder()
         .user_agent("XFast Manager")
