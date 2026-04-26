@@ -1121,6 +1121,10 @@ export default {
     medium: 'تحذير',
     low: 'ملاحظة',
     noIssues: 'لم يتم اكتشاف مشكلات معروفة في هذا السجل.',
+    cleanRendererCache: 'تنظيف ذاكرة التصيير المؤقتة',
+    rendererCacheCleaning: 'جارٍ تنظيف الذاكرة المؤقتة...',
+    rendererCacheCleanSuccess:
+      'تم تنظيف ذاكرة التصيير المؤقتة ({size}). سيعيد X-Plane إنشاءها عند التشغيل التالي.',
     lineNumbers: 'السطر {nums}',
     systemInfo: 'معلومات النظام',
     xplaneVersion: 'إصدار X-Plane',
@@ -1550,6 +1554,114 @@ export default {
     openFolder: 'فتح المجلد',
     empty: 'لا توجد بيانات فحص متاحة',
     emptyHint: 'انقر على فحص لتحليل استخدام القرص',
+    outputCleanup: {
+      title: 'تنظيف Output',
+      subtitle:
+        'ينظف ملفات الذاكرة المؤقتة والملفات المنشأة المحددة داخل Output في X-Plane. سيتم إبقاء المجلدات الرئيسية.',
+      loading: 'جارٍ تحميل عناصر التنظيف...',
+      empty: 'لم يتم العثور على عناصر تنظيف في Output.',
+      refresh: 'تحديث القواعد',
+      refreshing: 'جارٍ التحديث...',
+      selectRecommended: 'تحديد الموصى بها',
+      cleanSelected: 'تنظيف {size}',
+      cleaning: 'جارٍ التنظيف...',
+      available: 'متاح',
+      selected: 'محدد',
+      fileCount: 'الملفات',
+      files: 'ملفات',
+      source: 'المصدر: {source} v{version}',
+      sourceEmbedded: 'مضمّن',
+      sourceRemote: 'بعيد',
+      notFound: 'غير موجود',
+      noSelection: 'حدد عنصر تنظيف واحداً على الأقل.',
+      confirmTitle: 'هل تريد تنظيف عناصر Output المحددة؟',
+      confirmMessage:
+        'سيؤدي ذلك إلى حذف محتويات {count} عنصر محدد نهائياً وتحرير نحو {size}. ستبقى المجلدات نفسها.',
+      confirmClean: 'نظّف الآن',
+      cleanSuccess: 'تم تنظيف {size} من {count} ملف',
+      submitUnknown: 'إرسال وصف',
+      submitTitle: 'وصف مجلد Output غير معروف',
+      expectedLevel: 'المستوى المتوقع',
+      descriptionLabel: 'الوصف',
+      descriptionPlaceholder: 'صف ما الذي ينشئ هذا المجلد وما إذا كان تنظيفه آمناً.',
+      submit: 'إرسال إلى GitHub',
+      submitting: 'جارٍ الإرسال...',
+      submitSuccess: 'تم إرسال وصف عنصر التنظيف',
+      issueTitle: '[تنظيف Output] {name}',
+      unknownDescription:
+        'هذا المجلد داخل Output غير موجود بعد في قائمة التنظيف. يمكنك تنظيفه أو إرسال وصف لتصنيفه.',
+      levelRecommended: 'تنظيف موصى به',
+      levelCleanable: 'قابل للتنظيف',
+      levelCautious: 'تنظيف بحذر',
+      levelUnknown: 'غير معروف',
+      warnings: {
+        shadercache:
+          'سيتم إعادة إنشاء ذاكرة التصيير المؤقتة تلقائياً؛ قد يكون التشغيل التالي أو تحميل المشاهد أبطأ.',
+        replays: 'سيؤدي حذف هذا العنصر إلى مسح ملفات الإعادة المحفوظة.',
+        fms_plans: 'سيؤدي حذف هذا العنصر إلى مسح خطط الطيران FMS المحفوظة.',
+        screenshots: 'سيؤدي حذف هذا العنصر إلى مسح لقطات الشاشة ومقاطع الفيديو الخاصة بالمحاكي.',
+        situations: 'سيؤدي حذف هذا العنصر إلى مسح أوضاع الطيران المحفوظة.',
+      },
+      items: {
+        shadercache: {
+          name: 'ذاكرة مظللات التصيير المؤقتة',
+          description:
+            'ذاكرة مؤقتة مجمعة للمصيّر ومظللات Vulkan. يعيد X-Plane إنشاءها تلقائياً بعد التنظيف.',
+        },
+        caches: {
+          name: 'ذاكرات تشغيل مؤقتة',
+          description: 'ملفات ذاكرة مؤقتة عامة للتشغيل والإضافات.',
+        },
+        real_weather: {
+          name: 'ذاكرة الطقس الحقيقي المؤقتة',
+          description: 'ملفات ذاكرة مؤقتة للطقس الحقيقي تم تنزيلها أو إنشاؤها.',
+        },
+        log_archive: {
+          name: 'أرشيف السجلات',
+          description: 'سجلات X-Plane التاريخية المؤرشفة.',
+        },
+        crash_reports: {
+          name: 'تقارير التعطل',
+          description: 'ملفات تقارير تعطل قديمة.',
+        },
+        diagnostic_reports: {
+          name: 'تقارير التشخيص',
+          description: 'ملفات تقارير تشخيص قديمة.',
+        },
+        analytics: {
+          name: 'بيانات التحليل',
+          description: 'بيانات تحليل الجلسة التي أنشأها X-Plane.',
+        },
+        autodgs: {
+          name: 'بيانات AutoDGS',
+          description: 'بيانات وملفات ذاكرة مؤقتة أنشأها AutoDGS.',
+        },
+        logbooks: {
+          name: 'دفاتر السجل',
+          description: 'ملفات دفتر سجل X-Plane.',
+        },
+        backgrounds: {
+          name: 'صور الخلفية',
+          description: 'صور مستخدمة كشاشات خلفية في X-Plane.',
+        },
+        replays: {
+          name: 'الإعادات',
+          description: 'ملفات إعادة محفوظة.',
+        },
+        fms_plans: {
+          name: 'خطط FMS',
+          description: 'خطط طيران FMS محفوظة.',
+        },
+        screenshots: {
+          name: 'لقطات الشاشة والفيديو',
+          description: 'لقطات شاشة المحاكي ومقاطع الفيديو المسجلة.',
+        },
+        situations: {
+          name: 'الأوضاع',
+          description: 'أوضاع طيران محفوظة.',
+        },
+      },
+    },
   },
   gatewayManager: {
     details: 'التفاصيل',

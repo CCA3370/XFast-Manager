@@ -1151,6 +1151,10 @@ export default {
     medium: 'Aviso',
     low: 'Observação',
     noIssues: 'Nenhum problema conhecido detectado neste log.',
+    cleanRendererCache: 'Limpar cache do renderizador',
+    rendererCacheCleaning: 'Limpando cache...',
+    rendererCacheCleanSuccess:
+      'Cache do renderizador limpo ({size}). O X-Plane o recriará na próxima inicialização.',
     lineNumbers: 'Linha {nums}',
     systemInfo: 'Informações do sistema',
     xplaneVersion: 'Versão do X-Plane',
@@ -1604,6 +1608,114 @@ export default {
     openFolder: 'Abrir pasta',
     empty: 'Nenhum dado de verificação disponível',
     emptyHint: 'Clique em Verificar para analisar o uso de disco',
+    outputCleanup: {
+      title: 'Limpeza do Output',
+      subtitle:
+        'Limpa caches e arquivos gerados selecionados no Output do X-Plane. As pastas principais são preservadas.',
+      loading: 'Carregando itens de limpeza...',
+      empty: 'Nenhum item de limpeza encontrado em Output.',
+      refresh: 'Atualizar regras',
+      refreshing: 'Atualizando...',
+      selectRecommended: 'Selecionar recomendados',
+      cleanSelected: 'Limpar {size}',
+      cleaning: 'Limpando...',
+      available: 'Disponível',
+      selected: 'Selecionado',
+      fileCount: 'Arquivos',
+      files: 'arquivos',
+      source: 'Fonte: {source} v{version}',
+      sourceEmbedded: 'Embutido',
+      sourceRemote: 'Remoto',
+      notFound: 'Não encontrado',
+      noSelection: 'Selecione pelo menos um item de limpeza.',
+      confirmTitle: 'Limpar os itens de Output selecionados?',
+      confirmMessage:
+        'Isso excluirá permanentemente o conteúdo de {count} item(ns) selecionado(s), liberando cerca de {size}. As pastas serão preservadas.',
+      confirmClean: 'Limpar agora',
+      cleanSuccess: '{size} limpos em {count} arquivo(s)',
+      submitUnknown: 'Enviar descrição',
+      submitTitle: 'Descrever pasta Output não reconhecida',
+      expectedLevel: 'Nível esperado',
+      descriptionLabel: 'Descrição',
+      descriptionPlaceholder: 'Descreva o que cria esta pasta e se é seguro limpá-la.',
+      submit: 'Enviar para GitHub',
+      submitting: 'Enviando...',
+      submitSuccess: 'Descrição do item de limpeza enviada',
+      issueTitle: '[Limpeza Output] {name}',
+      unknownDescription:
+        'Esta pasta Output ainda não está no catálogo de limpeza. Você ainda pode limpá-la ou enviar uma descrição para classificação.',
+      levelRecommended: 'Limpeza recomendada',
+      levelCleanable: 'Pode ser limpo',
+      levelCautious: 'Limpeza cautelosa',
+      levelUnknown: 'Não reconhecido',
+      warnings: {
+        shadercache:
+          'O cache do renderizador será recriado automaticamente; a próxima inicialização ou carregamento de cenário pode ser mais lento.',
+        replays: 'Excluir este item limpará os arquivos de replay salvos.',
+        fms_plans: 'Excluir este item limpará os planos de voo FMS salvos.',
+        screenshots: 'Excluir este item limpará capturas de tela e vídeos do simulador.',
+        situations: 'Excluir este item limpará situações de voo salvas.',
+      },
+      items: {
+        shadercache: {
+          name: 'Cache de shaders do renderizador',
+          description:
+            'Cache compilado do renderizador e de shaders Vulkan. O X-Plane o recria automaticamente após a limpeza.',
+        },
+        caches: {
+          name: 'Caches de execução',
+          description: 'Arquivos gerais de cache de execução e addons.',
+        },
+        real_weather: {
+          name: 'Cache de clima real',
+          description: 'Arquivos de cache de clima real baixados ou gerados.',
+        },
+        log_archive: {
+          name: 'Arquivo de logs',
+          description: 'Logs históricos arquivados do X-Plane.',
+        },
+        crash_reports: {
+          name: 'Relatórios de falha',
+          description: 'Arquivos antigos de relatórios de falha.',
+        },
+        diagnostic_reports: {
+          name: 'Relatórios de diagnóstico',
+          description: 'Arquivos antigos de relatórios de diagnóstico.',
+        },
+        analytics: {
+          name: 'Dados de análise',
+          description: 'Dados de análise de sessão gerados pelo X-Plane.',
+        },
+        autodgs: {
+          name: 'Dados do AutoDGS',
+          description: 'Dados e arquivos de cache gerados pelo AutoDGS.',
+        },
+        logbooks: {
+          name: 'Diários de bordo',
+          description: 'Arquivos de diário de bordo do X-Plane.',
+        },
+        backgrounds: {
+          name: 'Imagens de fundo',
+          description: 'Imagens usadas como telas de fundo do X-Plane.',
+        },
+        replays: {
+          name: 'Reproduções',
+          description: 'Arquivos de replay salvos.',
+        },
+        fms_plans: {
+          name: 'Planos FMS',
+          description: 'Planos de voo FMS salvos.',
+        },
+        screenshots: {
+          name: 'Capturas e vídeos',
+          description: 'Capturas do simulador e vídeos gravados.',
+        },
+        situations: {
+          name: 'Situações',
+          description: 'Situações de voo salvas.',
+        },
+      },
+    },
   },
   gatewayManager: {
     details: 'Detalhes',

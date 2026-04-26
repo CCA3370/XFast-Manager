@@ -12,6 +12,40 @@
       </div>
       <div class="flex items-center space-x-2">
         <button
+          v-if="hasRendererCleanupHint"
+          :disabled="rendererCacheCleaning"
+          class="flex items-center space-x-1.5 px-3 py-1.5 text-sm font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-500/15 transition-colors disabled:opacity-50"
+          @click="cleanRendererCache"
+        >
+          <svg
+            v-if="rendererCacheCleaning"
+            class="w-4 h-4 animate-spin"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 7h16M10 11v6m4-6v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2"
+            />
+          </svg>
+          <span>{{
+            rendererCacheCleaning
+              ? $t('logAnalysis.rendererCacheCleaning')
+              : $t('logAnalysis.cleanRendererCache')
+          }}</span>
+        </button>
+        <button
           v-if="result"
           class="flex items-center space-x-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white/80 dark:bg-gray-800/40 border border-gray-200 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
           @click="openLog"
@@ -717,10 +751,12 @@ import { ref, computed, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { useToastStore } from '@/stores/toast'
 import AnimatedText from '@/components/AnimatedText.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const toast = useToastStore()
 
 interface SystemInfo {
   xplane_version: string | null
@@ -798,6 +834,7 @@ const error = ref<string | null>(null)
 const crashAnalysis = ref<DeepCrashAnalysis | null>(null)
 const crashAnalysisLoading = ref(false)
 const crashAnalysisError = ref<string | null>(null)
+const rendererCacheCleaning = ref(false)
 
 const analysisCache = new Map<string, XPlaneLogAnalysis>()
 const crashCache = new Map<string, DeepCrashAnalysis>()
@@ -818,6 +855,18 @@ const crashContextLines = computed<string[]>(() => {
   const info = result.value?.crash_info
   if (!info) return []
   return info.split('\n')
+})
+
+const hasRendererCleanupHint = computed(() => {
+  const issueCategories = new Set((result.value?.issues || []).map((issue) => issue.category))
+  return (
+    issueCategories.has('vulkan_device_error') ||
+    issueCategories.has('vulkan_gfx_error') ||
+    issueCategories.has('gfx_error') ||
+    (crashAnalysis.value?.crash_causes || []).some(
+      (cause) => cause.cause_key === 'gpu_driver_crash',
+    )
+  )
 })
 
 async function analyze(force = false) {
@@ -896,6 +945,26 @@ async function openLog() {
     await invoke('open_url', { url: result.value.log_path })
   } catch {
     // ignore
+  }
+}
+
+async function cleanRendererCache() {
+  if (!appStore.xplanePath || rendererCacheCleaning.value) return
+  rendererCacheCleaning.value = true
+  try {
+    const result = await invoke<{ totalDeletedBytes: number }>('clean_output_items', {
+      xplanePath: appStore.xplanePath,
+      targets: [{ id: 'shadercache', relativePath: 'Output/shadercache' }],
+    })
+    toast.success(
+      t('logAnalysis.rendererCacheCleanSuccess', {
+        size: formatFileSize(result.totalDeletedBytes),
+      }),
+    )
+  } catch (e) {
+    toast.error(String(e))
+  } finally {
+    rendererCacheCleaning.value = false
   }
 }
 

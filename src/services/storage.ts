@@ -150,7 +150,7 @@ export const STORAGE_KEYS = {
   CSL_ACTIVE_SERVER_BASE_URL: 'cslActiveServerBaseUrl',
 } as const
 
-export type TrackedIssueSource = 'feedback' | 'auto-report' | 'library-link'
+export type TrackedIssueSource = 'feedback' | 'auto-report' | 'library-link' | 'output-cleanup-item'
 export type FeedbackType = 'bug' | 'feature-request' | 'improvement' | 'other'
 
 export interface TrackedIssue {

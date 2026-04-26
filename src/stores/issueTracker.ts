@@ -58,6 +58,7 @@ function inferIssueSource(issue: TrackedIssue): TrackedIssueSource {
   const title = issue.issueTitle || ''
   if (title.startsWith('[Feedback]')) return 'feedback'
   if (title.startsWith('[Library Link]')) return 'library-link'
+  if (title.startsWith('[Output Cleanup]')) return 'output-cleanup-item'
   return 'auto-report'
 }
 

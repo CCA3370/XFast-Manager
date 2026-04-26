@@ -1137,6 +1137,10 @@ export default {
     medium: 'चेतावनी',
     low: 'सूचना',
     noIssues: 'इस लॉग में कोई ज्ञात समस्या नहीं पाई गई।',
+    cleanRendererCache: 'रेंडरर कैश साफ़ करें',
+    rendererCacheCleaning: 'कैश साफ़ हो रहा है...',
+    rendererCacheCleanSuccess:
+      'रेंडरर कैश साफ़ हुआ ({size})। X-Plane अगली शुरुआत में इसे फिर बनाएगा।',
     lineNumbers: 'पंक्ति {nums}',
     systemInfo: 'सिस्टम जानकारी',
     xplaneVersion: 'X-Plane संस्करण',
@@ -1580,6 +1584,114 @@ export default {
     openFolder: 'फ़ोल्डर खोलें',
     empty: 'कोई स्कैन डेटा उपलब्ध नहीं है',
     emptyHint: 'डिस्क उपयोग का विश्लेषण करने के लिए स्कैन पर क्लिक करें',
+    outputCleanup: {
+      title: 'Output सफ़ाई',
+      subtitle:
+        'X-Plane के Output में चुने गए कैश और बनाए गए फ़ाइलों को साफ़ करता है। मुख्य फ़ोल्डर बने रहते हैं।',
+      loading: 'सफ़ाई आइटम लोड हो रहे हैं...',
+      empty: 'Output में कोई सफ़ाई आइटम नहीं मिला।',
+      refresh: 'नियम ताज़ा करें',
+      refreshing: 'ताज़ा हो रहा है...',
+      selectRecommended: 'अनुशंसित चुनें',
+      cleanSelected: '{size} साफ़ करें',
+      cleaning: 'साफ़ हो रहा है...',
+      available: 'उपलब्ध',
+      selected: 'चुना गया',
+      fileCount: 'फ़ाइलें',
+      files: 'फ़ाइलें',
+      source: 'स्रोत: {source} v{version}',
+      sourceEmbedded: 'अंतर्निहित',
+      sourceRemote: 'दूरस्थ',
+      notFound: 'नहीं मिला',
+      noSelection: 'कम से कम एक सफ़ाई आइटम चुनें।',
+      confirmTitle: 'चुने गए Output आइटम साफ़ करें?',
+      confirmMessage:
+        'यह {count} चुने गए आइटम की सामग्री स्थायी रूप से हटाएगा और लगभग {size} खाली करेगा। फ़ोल्डर बने रहेंगे।',
+      confirmClean: 'अभी साफ़ करें',
+      cleanSuccess: '{count} फ़ाइलों से {size} साफ़ हुआ',
+      submitUnknown: 'विवरण भेजें',
+      submitTitle: 'अज्ञात Output फ़ोल्डर का विवरण',
+      expectedLevel: 'अपेक्षित स्तर',
+      descriptionLabel: 'विवरण',
+      descriptionPlaceholder:
+        'बताएँ यह फ़ोल्डर किससे बनता है और इसे साफ़ करना सुरक्षित है या नहीं।',
+      submit: 'GitHub पर भेजें',
+      submitting: 'भेजा जा रहा है...',
+      submitSuccess: 'सफ़ाई आइटम का विवरण भेजा गया',
+      issueTitle: '[Output सफ़ाई] {name}',
+      unknownDescription:
+        'यह Output फ़ोल्डर अभी सफ़ाई सूची में नहीं है। आप इसे फिर भी साफ़ कर सकते हैं, या वर्गीकरण के लिए विवरण भेज सकते हैं।',
+      levelRecommended: 'अनुशंसित सफ़ाई',
+      levelCleanable: 'साफ़ किया जा सकता है',
+      levelCautious: 'सावधानी से सफ़ाई',
+      levelUnknown: 'अज्ञात',
+      warnings: {
+        shadercache: 'रेंडरर कैश अपने आप फिर बनेगा; अगली शुरुआत या दृश्य लोड धीमा हो सकता है।',
+        replays: 'इसे हटाने से सहेजी गई रिप्ले फ़ाइलें साफ़ हो जाएँगी।',
+        fms_plans: 'इसे हटाने से सहेजे गए FMS उड़ान प्लान साफ़ हो जाएँगे।',
+        screenshots: 'इसे हटाने से सिम्युलेटर स्क्रीनशॉट और वीडियो साफ़ हो जाएँगे।',
+        situations: 'इसे हटाने से सहेजी गई उड़ान स्थितियाँ साफ़ हो जाएँगी।',
+      },
+      items: {
+        shadercache: {
+          name: 'रेंडरर शेडर कैश',
+          description:
+            'कंपाइल किया हुआ रेंडरर और Vulkan शेडर कैश। सफ़ाई के बाद X-Plane इसे अपने आप फिर बनाता है।',
+        },
+        caches: {
+          name: 'रनटाइम कैश',
+          description: 'सामान्य रनटाइम और ऐडऑन कैश फ़ाइलें।',
+        },
+        real_weather: {
+          name: 'वास्तविक मौसम कैश',
+          description: 'डाउनलोड या बनाई गई वास्तविक मौसम कैश फ़ाइलें।',
+        },
+        log_archive: {
+          name: 'लॉग संग्रह',
+          description: 'पुराने X-Plane लॉग का संग्रह।',
+        },
+        crash_reports: {
+          name: 'क्रैश रिपोर्ट',
+          description: 'पुरानी क्रैश रिपोर्ट फ़ाइलें।',
+        },
+        diagnostic_reports: {
+          name: 'निदान रिपोर्ट',
+          description: 'पुरानी निदान रिपोर्ट फ़ाइलें।',
+        },
+        analytics: {
+          name: 'विश्लेषण डेटा',
+          description: 'X-Plane द्वारा बनाया गया सत्र विश्लेषण डेटा।',
+        },
+        autodgs: {
+          name: 'AutoDGS डेटा',
+          description: 'AutoDGS द्वारा बनाया गया डेटा और कैश फ़ाइलें।',
+        },
+        logbooks: {
+          name: 'लॉगबुक',
+          description: 'X-Plane लॉगबुक फ़ाइलें।',
+        },
+        backgrounds: {
+          name: 'पृष्ठभूमि चित्र',
+          description: 'X-Plane पृष्ठभूमि स्क्रीन में उपयोग होने वाले चित्र।',
+        },
+        replays: {
+          name: 'रिप्ले',
+          description: 'सहेजी गई रिप्ले फ़ाइलें।',
+        },
+        fms_plans: {
+          name: 'FMS उड़ान प्लान',
+          description: 'सहेजे गए FMS उड़ान प्लान।',
+        },
+        screenshots: {
+          name: 'स्क्रीनशॉट और वीडियो',
+          description: 'सिम्युलेटर स्क्रीनशॉट और रिकॉर्ड किए गए वीडियो।',
+        },
+        situations: {
+          name: 'उड़ान स्थितियाँ',
+          description: 'सहेजी गई उड़ान स्थितियाँ।',
+        },
+      },
+    },
   },
   gatewayManager: {
     details: 'विवरण',

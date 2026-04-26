@@ -1123,6 +1123,10 @@ export default {
     medium: '경고',
     low: '알림',
     noIssues: '이 로그에서 알려진 문제가 감지되지 않았습니다.',
+    cleanRendererCache: '렌더러 캐시 정리',
+    rendererCacheCleaning: '캐시 정리 중...',
+    rendererCacheCleanSuccess:
+      '렌더러 캐시를 정리했습니다({size}). X-Plane이 다음 실행 때 다시 생성합니다.',
     lineNumbers: '{nums}번 줄',
     systemInfo: '시스템 정보',
     xplaneVersion: 'X-Plane 버전',
@@ -1560,6 +1564,114 @@ export default {
     openFolder: '폴더 열기',
     empty: '스캔 데이터가 없습니다',
     emptyHint: '디스크 사용량을 분석하려면 스캔을 클릭하세요',
+    outputCleanup: {
+      title: 'Output 정리',
+      subtitle:
+        'X-Plane Output에서 선택한 캐시와 생성 파일을 정리합니다. 최상위 폴더는 유지됩니다.',
+      loading: '정리 항목을 불러오는 중...',
+      empty: 'Output에서 정리할 항목을 찾지 못했습니다.',
+      refresh: '규칙 새로고침',
+      refreshing: '새로고침 중...',
+      selectRecommended: '권장 항목 선택',
+      cleanSelected: '{size} 정리',
+      cleaning: '정리 중...',
+      available: '정리 가능',
+      selected: '선택됨',
+      fileCount: '파일',
+      files: '개 파일',
+      source: '출처: {source} v{version}',
+      sourceEmbedded: '내장',
+      sourceRemote: '원격',
+      notFound: '찾을 수 없음',
+      noSelection: '정리 항목을 하나 이상 선택하세요.',
+      confirmTitle: '선택한 Output 항목을 정리할까요?',
+      confirmMessage:
+        '선택한 {count}개 항목의 내용을 영구 삭제하여 약 {size}를 확보합니다. 폴더 자체는 유지됩니다.',
+      confirmClean: '지금 정리',
+      cleanSuccess: '{count}개 파일에서 {size}를 정리했습니다',
+      submitUnknown: '설명 제출',
+      submitTitle: '알 수 없는 Output 폴더 설명',
+      expectedLevel: '희망 수준',
+      descriptionLabel: '설명',
+      descriptionPlaceholder: '이 폴더를 만드는 대상과 정리해도 안전한지 설명하세요.',
+      submit: 'GitHub에 제출',
+      submitting: '제출 중...',
+      submitSuccess: '정리 항목 설명을 제출했습니다',
+      issueTitle: '[Output 정리] {name}',
+      unknownDescription:
+        '이 Output 폴더는 아직 정리 목록에 없습니다. 그래도 정리할 수 있으며, 분류를 위해 설명을 제출할 수도 있습니다.',
+      levelRecommended: '권장 정리',
+      levelCleanable: '정리 가능',
+      levelCautious: '주의해서 정리',
+      levelUnknown: '알 수 없음',
+      warnings: {
+        shadercache:
+          '렌더러 캐시는 자동으로 다시 생성됩니다. 다음 실행 또는 시너리 로딩이 느려질 수 있습니다.',
+        replays: '이 항목을 삭제하면 저장된 리플레이 파일이 비워집니다.',
+        fms_plans: '이 항목을 삭제하면 저장된 FMS 비행 계획이 비워집니다.',
+        screenshots: '이 항목을 삭제하면 시뮬레이터 스크린샷과 동영상이 비워집니다.',
+        situations: '이 항목을 삭제하면 저장된 비행 상황이 비워집니다.',
+      },
+      items: {
+        shadercache: {
+          name: '렌더러 셰이더 캐시',
+          description:
+            '컴파일된 렌더러 및 Vulkan 셰이더 캐시입니다. 정리 후 X-Plane이 자동으로 다시 생성합니다.',
+        },
+        caches: {
+          name: '실행 캐시',
+          description: '일반 실행 및 애드온 캐시 파일입니다.',
+        },
+        real_weather: {
+          name: '실제 날씨 캐시',
+          description: '다운로드되었거나 생성된 실제 날씨 캐시 파일입니다.',
+        },
+        log_archive: {
+          name: '로그 보관함',
+          description: '보관된 과거 X-Plane 로그입니다.',
+        },
+        crash_reports: {
+          name: '충돌 보고서',
+          description: '오래된 충돌 보고서 파일입니다.',
+        },
+        diagnostic_reports: {
+          name: '진단 보고서',
+          description: '오래된 진단 보고서 파일입니다.',
+        },
+        analytics: {
+          name: '분석 데이터',
+          description: 'X-Plane이 생성한 세션 분석 데이터입니다.',
+        },
+        autodgs: {
+          name: 'AutoDGS 데이터',
+          description: 'AutoDGS가 생성한 데이터와 캐시 파일입니다.',
+        },
+        logbooks: {
+          name: '로그북',
+          description: 'X-Plane 로그북 파일입니다.',
+        },
+        backgrounds: {
+          name: '배경 이미지',
+          description: 'X-Plane 배경 화면으로 사용되는 이미지입니다.',
+        },
+        replays: {
+          name: '리플레이',
+          description: '저장된 리플레이 파일입니다.',
+        },
+        fms_plans: {
+          name: 'FMS 계획',
+          description: '저장된 FMS 비행 계획입니다.',
+        },
+        screenshots: {
+          name: '스크린샷과 동영상',
+          description: '시뮬레이터 스크린샷과 녹화된 동영상입니다.',
+        },
+        situations: {
+          name: '상황',
+          description: '저장된 비행 상황입니다.',
+        },
+      },
+    },
   },
   gatewayManager: {
     details: '세부 정보',

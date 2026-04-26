@@ -1162,6 +1162,10 @@ export default {
     medium: 'Avertissement',
     low: 'Avis',
     noIssues: 'Aucun problème connu détecté dans ce journal.',
+    cleanRendererCache: 'Nettoyer le cache du moteur de rendu',
+    rendererCacheCleaning: 'Nettoyage du cache...',
+    rendererCacheCleanSuccess:
+      'Cache du moteur de rendu nettoyé ({size}). X-Plane le reconstruira au prochain lancement.',
     lineNumbers: 'Ligne {nums}',
     systemInfo: 'Informations système',
     xplaneVersion: 'Version X-Plane',
@@ -1625,6 +1629,115 @@ export default {
     openFolder: 'Ouvrir le dossier',
     empty: "Aucune donnée d'analyse disponible",
     emptyHint: "Cliquez sur Analyser pour analyser l'utilisation du disque",
+    outputCleanup: {
+      title: 'Nettoyage d’Output',
+      subtitle:
+        'Nettoie les caches et fichiers générés sélectionnés dans Output de X-Plane. Les dossiers principaux sont conservés.',
+      loading: 'Chargement des éléments de nettoyage...',
+      empty: 'Aucun élément de nettoyage trouvé dans Output.',
+      refresh: 'Actualiser les règles',
+      refreshing: 'Actualisation...',
+      selectRecommended: 'Sélectionner les recommandés',
+      cleanSelected: 'Nettoyer {size}',
+      cleaning: 'Nettoyage...',
+      available: 'Disponible',
+      selected: 'Sélectionné',
+      fileCount: 'Fichiers',
+      files: 'fichiers',
+      source: 'Source : {source} v{version}',
+      sourceEmbedded: 'Intégré',
+      sourceRemote: 'Distant',
+      notFound: 'Introuvable',
+      noSelection: 'Sélectionnez au moins un élément à nettoyer.',
+      confirmTitle: 'Nettoyer les éléments Output sélectionnés ?',
+      confirmMessage:
+        'Cela supprimera définitivement le contenu de {count} élément(s) sélectionné(s), libérant environ {size}. Les dossiers seront conservés.',
+      confirmClean: 'Nettoyer maintenant',
+      cleanSuccess: '{size} nettoyés dans {count} fichier(s)',
+      submitUnknown: 'Envoyer une description',
+      submitTitle: 'Décrire un dossier Output non reconnu',
+      expectedLevel: 'Niveau attendu',
+      descriptionLabel: 'Description détaillée',
+      descriptionPlaceholder:
+        'Décrivez ce qui crée ce dossier et s’il peut être nettoyé sans risque.',
+      submit: 'Envoyer à GitHub',
+      submitting: 'Envoi...',
+      submitSuccess: 'Description de l’élément de nettoyage envoyée',
+      issueTitle: '[Nettoyage Output] {name}',
+      unknownDescription:
+        'Ce dossier Output n’est pas encore dans le catalogue de nettoyage. Vous pouvez quand même le nettoyer ou envoyer une description pour le classer.',
+      levelRecommended: 'Nettoyage recommandé',
+      levelCleanable: 'Nettoyable',
+      levelCautious: 'Nettoyage prudent',
+      levelUnknown: 'Non reconnu',
+      warnings: {
+        shadercache:
+          'Le cache du moteur de rendu sera reconstruit automatiquement ; le prochain lancement ou chargement de décor peut être plus lent.',
+        replays: 'La suppression de cet élément effacera les fichiers de relecture enregistrés.',
+        fms_plans: 'La suppression de cet élément effacera les plans de vol FMS enregistrés.',
+        screenshots: 'La suppression de cet élément effacera les captures et vidéos du simulateur.',
+        situations: 'La suppression de cet élément effacera les situations de vol enregistrées.',
+      },
+      items: {
+        shadercache: {
+          name: 'Cache de shaders du moteur de rendu',
+          description:
+            'Cache compilé du moteur de rendu et des shaders Vulkan. X-Plane le reconstruit automatiquement après nettoyage.',
+        },
+        caches: {
+          name: 'Caches d’exécution',
+          description: 'Fichiers généraux de cache d’exécution et d’extensions.',
+        },
+        real_weather: {
+          name: 'Cache météo réelle',
+          description: 'Fichiers de cache météo réelle téléchargés ou générés.',
+        },
+        log_archive: {
+          name: 'Archive des journaux',
+          description: 'Anciens journaux X-Plane archivés.',
+        },
+        crash_reports: {
+          name: 'Rapports de crash',
+          description: 'Anciens fichiers de rapports de crash.',
+        },
+        diagnostic_reports: {
+          name: 'Rapports de diagnostic',
+          description: 'Anciens fichiers de rapports de diagnostic.',
+        },
+        analytics: {
+          name: 'Données d’analyse',
+          description: 'Données d’analyse de session générées par X-Plane.',
+        },
+        autodgs: {
+          name: 'Données AutoDGS',
+          description: 'Données et fichiers cache générés par AutoDGS.',
+        },
+        logbooks: {
+          name: 'Carnets de vol',
+          description: 'Fichiers de carnet de vol X-Plane.',
+        },
+        backgrounds: {
+          name: 'Images d’arrière-plan',
+          description: 'Images utilisées comme écrans d’arrière-plan de X-Plane.',
+        },
+        replays: {
+          name: 'Relectures',
+          description: 'Fichiers de relecture enregistrés.',
+        },
+        fms_plans: {
+          name: 'Plans FMS',
+          description: 'Plans de vol FMS enregistrés.',
+        },
+        screenshots: {
+          name: 'Captures et vidéos',
+          description: 'Captures du simulateur et vidéos enregistrées.',
+        },
+        situations: {
+          name: 'Situations de vol',
+          description: 'Situations de vol enregistrées.',
+        },
+      },
+    },
   },
   gatewayManager: {
     details: 'Détails',
