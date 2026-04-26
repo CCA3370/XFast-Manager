@@ -1571,6 +1571,12 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
                 // Return a structured error that frontend can handle
                 return Err(format!("ELEVATION_REQUIRED:{}", exe_path.display()));
             }
+            Err(e) if e.raw_os_error() == Some(193) => {
+                return Err(
+                    "Selected X-Plane executable is not a valid Windows executable. Check that the X-Plane path points to the real X-Plane installation."
+                        .to_string(),
+                );
+            }
             Err(e) => {
                 return Err(format!("Failed to launch X-Plane: {}", e));
             }
@@ -1599,7 +1605,14 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
         std::process::Command::new(exe_path)
             .args(&extra_args)
             .spawn()
-            .map_err(|e| format!("Failed to launch X-Plane: {}", e))?;
+            .map_err(|e| {
+                if e.raw_os_error() == Some(8) {
+                    "Selected X-Plane executable is not runnable on this system (Exec format error). Check that the X-Plane path points to the correct executable for your platform and that the file has execute permission."
+                        .to_string()
+                } else {
+                    format!("Failed to launch X-Plane: {}", e)
+                }
+            })?;
     }
 
     logger::log_info("X-Plane launched", Some("app"));

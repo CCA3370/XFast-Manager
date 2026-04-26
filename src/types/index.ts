@@ -123,6 +123,29 @@ export function getErrorMessage(error: unknown): string {
   return String(error)
 }
 
+/**
+ * Known user/environment/data errors that should not show the bug-report CTA.
+ */
+export function shouldHideBugReportForMessage(message: string): boolean {
+  const lower = message.toLowerCase()
+
+  return (
+    lower.includes('invalid or incomplete zip archive') ||
+    lower.includes('invalid zip archive') ||
+    lower.includes('could not find eocd') ||
+    lower.includes('exec format error') ||
+    lower.includes('not runnable on this system') ||
+    lower.includes('not a valid windows executable') ||
+    lower.includes('invalid airport source path') ||
+    lower.includes('airport flatten source is no longer available') ||
+    lower.includes('airport flatten source was not found') ||
+    lower.includes('apt.dat not found:') ||
+    lower.includes('source file is no longer available:') ||
+    lower.includes('source path is not a regular file or directory:') ||
+    lower.includes('source path is neither file nor directory')
+  )
+}
+
 // ========== Addon Types ==========
 
 export enum AddonType {
