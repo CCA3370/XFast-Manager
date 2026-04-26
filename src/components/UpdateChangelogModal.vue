@@ -233,6 +233,58 @@ async function openRelease() {
   border-left-color: rgb(75 85 99);
 }
 
+.markdown-content :deep(.changelog-important) {
+  margin: 0 0 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 2px solid rgb(220 38 38);
+  border-radius: 1rem;
+  background: linear-gradient(135deg, rgb(254 242 242), rgb(255 247 237));
+  box-shadow: 0 12px 30px -20px rgb(220 38 38 / 0.65);
+}
+
+:root.dark .markdown-content :deep(.changelog-important) {
+  border-color: rgb(248 113 113);
+  background: linear-gradient(135deg, rgb(69 10 10), rgb(67 20 7));
+  box-shadow: 0 14px 34px -22px rgb(248 113 113 / 0.7);
+}
+
+.markdown-content :deep(.changelog-important-label) {
+  margin: 0 0 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(185 28 28);
+}
+
+:root.dark .markdown-content :deep(.changelog-important-label) {
+  color: rgb(252 165 165);
+}
+
+.markdown-content :deep(.changelog-important-title) {
+  margin: 0 0 0.6rem;
+  font-size: 1.7rem;
+  line-height: 1.15;
+  font-weight: 800;
+  color: rgb(127 29 29);
+}
+
+:root.dark .markdown-content :deep(.changelog-important-title) {
+  color: rgb(254 226 226);
+}
+
+.markdown-content :deep(.changelog-important-body) {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  font-weight: 600;
+  color: rgb(153 27 27);
+}
+
+:root.dark .markdown-content :deep(.changelog-important-body) {
+  color: rgb(254 202 202);
+}
+
 .markdown-content :deep(hr) {
   border-color: rgb(229 231 235);
   margin: 1.5em 0;
