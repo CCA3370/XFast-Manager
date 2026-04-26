@@ -608,8 +608,8 @@ impl Installer {
         }
 
         Err(anyhow::anyhow!(
-            "Lua source path is neither file nor directory: {:?}",
-            source
+            "Source path is not a regular file or directory: {}",
+            source.display()
         ))
     }
 
@@ -764,7 +764,17 @@ impl Installer {
                 self.copy_single_file_with_progress(source, target, ctx)?;
             }
         } else {
-            return Err(anyhow::anyhow!("Source path is neither file nor directory"));
+            if !source.exists() {
+                return Err(anyhow::anyhow!(
+                    "Source file is no longer available: {}",
+                    source.display()
+                ));
+            }
+
+            return Err(anyhow::anyhow!(
+                "Source path is not a regular file or directory: {}",
+                source.display()
+            ));
         }
         Ok(())
     }

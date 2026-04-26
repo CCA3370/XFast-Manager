@@ -328,13 +328,27 @@ fn resolve_scenery_dir(xplane_root: &Path, info: &SceneryPackageInfo) -> PathBuf
     if let Some(actual_path) = info.actual_path.as_deref() {
         let resolved = PathBuf::from(actual_path);
         if resolved.is_absolute() {
-            resolved
+            return resolved;
         } else {
-            xplane_root.join(resolved)
+            return xplane_root.join(resolved);
         }
-    } else {
-        xplane_root.join("Custom Scenery").join(&info.folder_name)
     }
+
+    let custom_scenery_path = xplane_root.join("Custom Scenery");
+    let direct_path = custom_scenery_path.join(&info.folder_name);
+    if direct_path.exists() {
+        return direct_path;
+    }
+
+    #[cfg(windows)]
+    {
+        let shortcut_path = custom_scenery_path.join(format!("{}.lnk", &info.folder_name));
+        if let Some(target) = crate::scenery_index::resolve_shortcut(&shortcut_path) {
+            return target;
+        }
+    }
+
+    direct_path
 }
 
 pub fn inspect_scenery_flatten_target(
@@ -925,6 +939,17 @@ async fn load_scenery_packages(
             .rebuild_index()
             .await
             .map_err(|error| format!("Failed to build scenery index: {}", error))?;
+    } else if xplane_root.join("Custom Scenery").is_dir() {
+        match manager.update_index().await {
+            Ok(updated) => index = updated,
+            Err(error) => logger::log_info(
+                &format!(
+                    "Failed to refresh scenery index before airport flatten scan, using cached index: {}",
+                    error
+                ),
+                Some("airport_flatten"),
+            ),
+        }
     }
 
     Ok(index.packages.into_values().collect())
@@ -981,6 +1006,47 @@ async fn refresh_airport_flatten_source_files(
     Ok(refreshed)
 }
 
+fn store_airport_flatten_index(
+    xplane_root: &Path,
+    built: &AirportFlattenIndex,
+) -> Result<(), String> {
+    let key = airport_flatten_cache_key(xplane_root);
+
+    if let Ok(mut cache) = AIRPORT_FLATTEN_INDEX_CACHE.write() {
+        cache.insert(key, built.clone());
+    }
+
+    persist_airport_flatten_source_files(xplane_root, &built.source_files).map_err(|error| {
+        format!("Failed to persist airport flatten index: {}", error)
+    })?;
+
+    Ok(())
+}
+
+async fn rebuild_airport_flatten_index(
+    db: DatabaseConnection,
+    xplane_root: &Path,
+) -> Result<AirportFlattenIndex, String> {
+    let key = airport_flatten_cache_key(xplane_root);
+    let previous_source_files = AIRPORT_FLATTEN_INDEX_CACHE
+        .read()
+        .ok()
+        .and_then(|cache| cache.get(&key).cloned())
+        .map(|cached| cached.source_files)
+        .or_else(|| load_persisted_airport_flatten_source_files(xplane_root).ok().flatten())
+        .unwrap_or_default();
+
+    let refreshed_source_files =
+        refresh_airport_flatten_source_files(db, xplane_root, previous_source_files).await?;
+    let built = derive_airport_flatten_index(refreshed_source_files);
+
+    if let Err(error) = store_airport_flatten_index(xplane_root, &built) {
+        logger::log_info(&error, Some("airport_flatten"));
+    }
+
+    Ok(built)
+}
+
 async fn get_or_build_airport_flatten_index(
     db: DatabaseConnection,
     xplane_root: &Path,
@@ -1005,32 +1071,68 @@ async fn get_or_build_airport_flatten_index(
         return Ok(cached);
     }
 
-    let previous_source_files = if let Some(cached) = AIRPORT_FLATTEN_INDEX_CACHE
-        .read()
-        .ok()
-        .and_then(|cache| cache.get(&key).cloned())
-    {
-        cached.source_files
-    } else {
-        load_persisted_airport_flatten_source_files(xplane_root)?.unwrap_or_default()
-    };
+    rebuild_airport_flatten_index(db, xplane_root).await
+}
 
-    let refreshed_source_files =
-        refresh_airport_flatten_source_files(db, xplane_root, previous_source_files).await?;
-    let built = derive_airport_flatten_index(refreshed_source_files.clone());
+fn find_flatten_source_ref_in_index(
+    index: &AirportFlattenIndex,
+    normalized_icao: &str,
+    request: &SetAirportFlattenRequest,
+) -> Option<FlattenSourceRef> {
+    let refs = index.sources_by_icao.get(normalized_icao);
 
-    if let Ok(mut cache) = AIRPORT_FLATTEN_INDEX_CACHE.write() {
-        cache.insert(key, built.clone());
+    if let Some(source_path) = request.source_path.as_deref() {
+        if let Some(found) = refs.and_then(|rows| {
+            rows.iter()
+                .find(|source| source.source_path == source_path)
+                .cloned()
+        }) {
+            return Some(found);
+        }
     }
 
-    if let Err(error) = persist_airport_flatten_source_files(xplane_root, &refreshed_source_files) {
-        logger::log_info(
-            &format!("Failed to persist airport flatten index: {}", error),
-            Some("airport_flatten"),
-        );
-    }
+    match request.source_kind {
+        AirportFlattenSourceKind::Default => refs.and_then(|rows| {
+            rows.iter()
+                .find(|source| source.source_kind == AirportFlattenSourceKind::Default)
+                .cloned()
+        }),
+        AirportFlattenSourceKind::Custom => {
+            let folder_name = request.folder_name.as_deref()?;
 
-    Ok(built)
+            refs.and_then(|rows| {
+                rows.iter()
+                    .find(|source| {
+                        source.source_kind == AirportFlattenSourceKind::Custom
+                            && source.folder_name.as_deref() == Some(folder_name)
+                    })
+                    .cloned()
+            })
+            .or_else(|| index.single_custom_sources_by_folder.get(folder_name).cloned())
+        }
+    }
+}
+
+fn missing_flatten_source_message(
+    normalized_icao: &str,
+    request: &SetAirportFlattenRequest,
+) -> String {
+    match request.source_kind {
+        AirportFlattenSourceKind::Default => format!(
+            "Airport flatten source was not found for {}. Refresh the scenery index and try again.",
+            normalized_icao
+        ),
+        AirportFlattenSourceKind::Custom => match request.folder_name.as_deref() {
+            Some(folder_name) => format!(
+                "Airport flatten source is no longer available for {} in {}. Refresh the scenery index and try again.",
+                normalized_icao, folder_name
+            ),
+            None => format!(
+                "Airport flatten source is no longer available for {}. Refresh the scenery index and try again.",
+                normalized_icao
+            ),
+        },
+    }
 }
 
 fn update_cached_flatten_state(
@@ -1267,82 +1369,39 @@ async fn apply_flatten_state_inner(
     }
 
     let cache_key = airport_flatten_cache_key(xplane_root);
-    let maybe_index = if request.source_path.is_some() {
-        None
-    } else {
-        Some(get_or_build_airport_flatten_index(db.clone(), xplane_root).await?)
-    };
-
-    let source_ref = if let Some(source_path) = request.source_path.clone() {
-        let cached_ref = AIRPORT_FLATTEN_INDEX_CACHE
-            .read()
-            .ok()
-            .and_then(|cache| cache.get(&cache_key).cloned())
-            .and_then(|index| {
-                index
-                    .sources_by_icao
-                    .get(&normalized_icao)
-                    .and_then(|refs| {
-                        refs.iter()
-                            .find(|source| source.source_path == source_path)
-                            .cloned()
-                    })
-            });
-
-        match cached_ref {
-            Some(value) => value,
-            None => FlattenSourceRef {
-                icao: normalized_icao.clone(),
-                source_kind: request.source_kind.clone(),
-                source_label: match request.source_kind {
-                    AirportFlattenSourceKind::Default => "Global Airports".to_string(),
-                    AirportFlattenSourceKind::Custom => {
-                        request.folder_name.clone().ok_or_else(|| {
-                            "folderName is required for custom scenery flattening".to_string()
-                        })?
-                    }
-                },
-                source_path,
-                folder_name: request.folder_name.clone(),
-                airport_name: normalized_icao.clone(),
-                flattened: request.enabled,
-            },
-        }
-    } else {
-        let index = maybe_index
-            .as_ref()
-            .ok_or_else(|| "Airport flatten index is unavailable".to_string())?;
-        match request.source_kind {
-            AirportFlattenSourceKind::Default => index
-                .sources_by_icao
-                .get(&normalized_icao)
-                .and_then(|refs| {
-                    refs.iter()
-                        .find(|source| source.source_kind == AirportFlattenSourceKind::Default)
+    let mut index = get_or_build_airport_flatten_index(db.clone(), xplane_root).await?;
+    let mut source_ref = find_flatten_source_ref_in_index(&index, &normalized_icao, &request)
+        .or_else(|| {
+            AIRPORT_FLATTEN_INDEX_CACHE
+                .read()
+                .ok()
+                .and_then(|cache| cache.get(&cache_key).cloned())
+                .and_then(|cached| {
+                    find_flatten_source_ref_in_index(&cached, &normalized_icao, &request)
                 })
-                .cloned()
-                .ok_or_else(|| {
-                    format!("Default airport source not found for {}", normalized_icao)
-                })?,
-            AirportFlattenSourceKind::Custom => {
-                let folder_name = request.folder_name.clone().ok_or_else(|| {
-                    "folderName is required for custom scenery flattening".to_string()
-                })?;
-                index
-                    .single_custom_sources_by_folder
-                    .get(&folder_name)
-                    .cloned()
-                    .ok_or_else(|| format!("Custom airport source not found for {}", folder_name))?
-            }
-        }
-    };
+        });
 
-    let apt_path = PathBuf::from(&source_ref.source_path);
-    crate::path_utils::validate_child_path(xplane_root, &apt_path)
-        .map_err(|error| format!("Invalid airport source path: {}", error))?;
+    if source_ref.is_none() {
+        index = rebuild_airport_flatten_index(db.clone(), xplane_root).await?;
+        source_ref = find_flatten_source_ref_in_index(&index, &normalized_icao, &request);
+    }
+
+    let mut source_ref =
+        source_ref.ok_or_else(|| missing_flatten_source_message(&normalized_icao, &request))?;
+    let mut apt_path = PathBuf::from(&source_ref.source_path);
 
     if !apt_path.is_file() {
-        return Err(format!("apt.dat not found: {}", apt_path.display()));
+        index = rebuild_airport_flatten_index(db.clone(), xplane_root).await?;
+        if let Some(refreshed_source_ref) =
+            find_flatten_source_ref_in_index(&index, &normalized_icao, &request)
+        {
+            apt_path = PathBuf::from(&refreshed_source_ref.source_path);
+            source_ref = refreshed_source_ref;
+        }
+    }
+
+    if !apt_path.is_file() {
+        return Err(missing_flatten_source_message(&normalized_icao, &request));
     }
 
     let target = if source_ref.flattened == request.enabled {
@@ -1731,5 +1790,57 @@ mod tests {
 
         let result = summarize_single_scenery_target(dir.path(), "Demo Airport").unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn find_flatten_source_ref_falls_back_to_folder_name_when_source_path_is_stale() {
+        let source_ref = FlattenSourceRef {
+            icao: "KSEA".to_string(),
+            source_kind: AirportFlattenSourceKind::Custom,
+            source_label: "Demo Airport".to_string(),
+            source_path: "E:/Scenery/Demo Airport/Earth nav data/apt.dat".to_string(),
+            folder_name: Some("Demo Airport".to_string()),
+            airport_name: "Seattle Intl".to_string(),
+            flattened: false,
+        };
+
+        let index = AirportFlattenIndex {
+            source_files: HashMap::new(),
+            search_rows: Vec::new(),
+            sources_by_icao: HashMap::from([("KSEA".to_string(), vec![source_ref.clone()])]),
+            single_custom_sources_by_folder: HashMap::from([(
+                "Demo Airport".to_string(),
+                source_ref.clone(),
+            )]),
+        };
+
+        let request = SetAirportFlattenRequest {
+            xplane_path: "E:/X-Plane".to_string(),
+            icao: "KSEA".to_string(),
+            source_kind: AirportFlattenSourceKind::Custom,
+            folder_name: Some("Demo Airport".to_string()),
+            source_path: Some("E:/OldPath/Earth nav data/apt.dat".to_string()),
+            enabled: true,
+        };
+
+        let resolved = find_flatten_source_ref_in_index(&index, "KSEA", &request).unwrap();
+        assert_eq!(resolved.source_path, source_ref.source_path);
+        assert_eq!(resolved.folder_name, source_ref.folder_name);
+    }
+
+    #[test]
+    fn missing_flatten_source_message_mentions_folder_name_for_custom_sources() {
+        let request = SetAirportFlattenRequest {
+            xplane_path: "E:/X-Plane".to_string(),
+            icao: "KSEA".to_string(),
+            source_kind: AirportFlattenSourceKind::Custom,
+            folder_name: Some("Demo Airport".to_string()),
+            source_path: None,
+            enabled: true,
+        };
+
+        let message = missing_flatten_source_message("KSEA", &request);
+        assert!(message.contains("Demo Airport"));
+        assert!(message.contains("Refresh the scenery index"));
     }
 }

@@ -96,29 +96,39 @@ impl Analyzer {
         Ok(staged_source.to_string_lossy().to_string())
     }
 
+    fn canonicalize_existing_source_path(&self, source: &Path) -> Option<String> {
+        if !source.exists() {
+            return None;
+        }
+
+        source
+            .canonicalize()
+            .ok()
+            .map(|path| path.to_string_lossy().to_string())
+    }
+
     fn resolve_stable_source_path(&self, item: &DetectedItem) -> Option<String> {
-        if item.addon_type != AddonType::LuaScript {
-            return None;
-        }
-
         let source = Path::new(&item.path);
-        if !source.is_file() || crate::archive_input::detect_archive_format(source).is_some() {
-            return None;
-        }
 
-        match self.stage_standalone_lua_source(source, &item.companion_paths) {
-            Ok(staged) => Some(staged),
-            Err(e) => {
-                logger::log_error(
-                    &format!(
-                        "Failed to stage standalone Lua source {:?}, continuing with original path: {}",
-                        source, e
-                    ),
-                    Some("analyzer"),
-                );
-                None
+        if item.addon_type == AddonType::LuaScript
+            && source.is_file()
+            && crate::archive_input::detect_archive_format(source).is_none()
+        {
+            match self.stage_standalone_lua_source(source, &item.companion_paths) {
+                Ok(staged) => return Some(staged),
+                Err(e) => {
+                    logger::log_error(
+                        &format!(
+                            "Failed to stage standalone Lua source {:?}, falling back to canonical source path: {}",
+                            source, e
+                        ),
+                        Some("analyzer"),
+                    );
+                }
             }
         }
+
+        self.canonicalize_existing_source_path(source)
     }
 
     /// Analyze a list of paths and return installation tasks

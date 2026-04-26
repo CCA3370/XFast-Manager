@@ -230,12 +230,12 @@ mod shortcut_resolver {
 
 /// Resolve Windows shortcut (.lnk) to actual path using Windows COM API
 #[cfg(windows)]
-fn resolve_shortcut(lnk_path: &Path) -> Option<PathBuf> {
+pub(crate) fn resolve_shortcut(lnk_path: &Path) -> Option<PathBuf> {
     shortcut_resolver::resolve(lnk_path)
 }
 
 #[cfg(not(windows))]
-fn resolve_shortcut(_lnk_path: &Path) -> Option<PathBuf> {
+pub(crate) fn resolve_shortcut(_lnk_path: &Path) -> Option<PathBuf> {
     None
 }
 

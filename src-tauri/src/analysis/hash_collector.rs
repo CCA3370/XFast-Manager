@@ -31,7 +31,11 @@ impl HashCollector {
             return Ok(HashMap::new());
         }
 
-        let source = Path::new(&task.source_path);
+        let source = task
+            .resolved_source_path
+            .as_deref()
+            .map(Path::new)
+            .unwrap_or_else(|| Path::new(&task.source_path));
 
         if source.is_dir() {
             // Direct directory: compute SHA256 for all files

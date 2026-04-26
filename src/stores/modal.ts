@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { logger } from '@/services/logger'
+import { shouldHideBugReportForMessage } from '@/types'
 
 /** Options for showing a confirmation modal */
 export interface ConfirmOptions {
@@ -38,12 +39,13 @@ export const useModalStore = defineStore('modal', () => {
     const lines = message.split('\n').filter((line) => line.trim() !== '')
     const uniqueLines = Array.from(new Set(lines))
     const deduplicatedMessage = uniqueLines.join('\n')
+    const hideReport = options?.hideReport ?? shouldHideBugReportForMessage(deduplicatedMessage)
 
     errorModal.value = {
       visible: true,
       title,
       message: deduplicatedMessage,
-      hideReport: options?.hideReport,
+      hideReport,
     }
     // Automatically log error modal messages
     logger.error(`[Modal] ${title ? title + ': ' : ''}${deduplicatedMessage}`, 'ui')
