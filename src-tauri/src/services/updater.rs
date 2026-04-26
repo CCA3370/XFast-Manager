@@ -84,15 +84,14 @@ impl UpdateChecker {
     }
 
     fn update_release_api_url(include_pre_release: bool) -> String {
-        let base = std::env::var("XFAST_UPDATE_RELEASE_API_URL")
-            .unwrap_or_else(|_| "https://x-fast-manager.vercel.app/api/update-release".to_string());
-        let has_query = base.contains('?');
-        let sep = if has_query { "&" } else { "?" };
-        format!(
-            "{}{}includePreRelease={}",
-            base,
-            sep,
-            if include_pre_release { "1" } else { "0" }
+        let base = crate::vercel_api::endpoint_with_override(
+            "update-release",
+            "XFAST_UPDATE_RELEASE_API_URL",
+        );
+        crate::vercel_api::append_query_param(
+            &base,
+            "includePreRelease",
+            if include_pre_release { "1" } else { "0" },
         )
     }
 

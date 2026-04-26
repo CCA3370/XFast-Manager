@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
 import { getItem, setItem, STORAGE_KEYS, type TrackedIssue } from '@/services/storage'
+import { buildVercelApiUrl } from '@/services/vercelApi'
 import { useIssueTrackerStore } from '@/stores/issueTracker'
 
 export interface BugReportToast {
@@ -18,9 +19,10 @@ export interface SubmitBugReportParams {
 }
 
 const DEFAULT_BUG_REPORT_TIMEOUT_MS = 20000
-const ISSUE_DRAFT_API_BASE =
-  import.meta.env.VITE_XFAST_ISSUE_DRAFT_API_URL ||
-  'https://x-fast-manager.vercel.app/api/issue-draft'
+const ISSUE_DRAFT_API_BASE = buildVercelApiUrl(
+  'issue-draft',
+  import.meta.env.VITE_XFAST_ISSUE_DRAFT_API_URL,
+)
 
 function buildFallbackBugReportUrl(errorTitle: string, errorMessage: string, logs: string): string {
   const fallbackTitle = `[Bug]: ${(errorTitle || errorMessage).slice(0, 80)}`

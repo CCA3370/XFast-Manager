@@ -51,9 +51,6 @@ struct LiveryPatternsData {
     patterns: Vec<LiveryPattern>,
 }
 
-/// Remote URL for the livery patterns JSON file via proxy
-const REMOTE_URL: &str = "https://x-fast-manager.vercel.app/api/livery-patterns-data";
-
 /// Loaded livery patterns (embedded by default, remote override when available)
 static LIVERY_PATTERNS: LazyLock<RwLock<Vec<LiveryPattern>>> =
     LazyLock::new(|| RwLock::new(load_embedded_patterns()));
@@ -102,8 +99,10 @@ async fn fetch_remote_patterns() -> Result<Vec<LiveryPattern>, String> {
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    let remote_url =
-        std::env::var("XFAST_LIVERY_PATTERNS_API_URL").unwrap_or_else(|_| REMOTE_URL.to_string());
+    let remote_url = crate::vercel_api::endpoint_with_override(
+        "livery-patterns-data",
+        "XFAST_LIVERY_PATTERNS_API_URL",
+    );
     let response = client
         .get(&remote_url)
         .send()

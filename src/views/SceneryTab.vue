@@ -20,6 +20,7 @@ import { useLockStore } from '@/stores/lock'
 import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
 import { airportFlattenSetState } from '@/services/airport-flatten-api'
+import { buildVercelApiUrl } from '@/services/vercelApi'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import type { SceneryManagerEntry, SceneryCategory, SceneryIndexScanResult } from '@/types'
 import { parseApiError, getErrorMessage } from '@/types'
@@ -1083,9 +1084,10 @@ async function handleSubmitContributeLink() {
     'Please review this link. If valid, add the `approved-link` label to trigger auto-update for `data/library_links.json` on `dev`.',
   ].join('\n')
 
-  const issueDraftApiBase =
-    import.meta.env.VITE_XFAST_ISSUE_DRAFT_API_URL ||
-    'https://x-fast-manager.vercel.app/api/issue-draft'
+  const issueDraftApiBase = buildVercelApiUrl(
+    'issue-draft',
+    import.meta.env.VITE_XFAST_ISSUE_DRAFT_API_URL,
+  )
   const issueUrl = `${issueDraftApiBase}?template=${encodeURIComponent('library_link_submission.yml')}&labels=${encodeURIComponent('library-link')}&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
 
   isSubmittingContributeLink.value = true

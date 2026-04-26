@@ -10,12 +10,14 @@ import { i18n } from '@/i18n'
 import { logError, logDebug, logBasic } from '@/services/logger'
 import { invokeVoidCommand, CommandError } from '@/services/api'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
+import { buildVercelApiUrl } from '@/services/vercelApi'
 import bundledChangelog from '@/generated/changelog'
 
 const t = i18n.global.t
-const RELEASE_REDIRECT_API_BASE =
-  import.meta.env.VITE_XFAST_RELEASE_REDIRECT_API_URL ||
-  'https://x-fast-manager.vercel.app/api/release-redirect'
+const RELEASE_REDIRECT_API_BASE = buildVercelApiUrl(
+  'release-redirect',
+  import.meta.env.VITE_XFAST_RELEASE_REDIRECT_API_URL,
+)
 
 export const useUpdateStore = defineStore('update', () => {
   const toast = useToastStore()
