@@ -71,7 +71,7 @@ export default async function handler(req, res) {
     `- Operating System: \`${String(os || 'unknown').trim()}\``,
     `- CPU Architecture: \`${String(arch || 'unknown').trim()}\``,
     '',
-    'Please review this folder. If accepted, update `data/output_cleanup_items.json` on `dev`.',
+    'Please review this folder. If accepted, add the `approved-output-cleanup-item` label to trigger auto-update for `data/output_cleanup_items.json` on `dev`.',
   ].join('\n')
 
   const ghResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {

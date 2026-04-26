@@ -1,0 +1,300 @@
+name: Approve Output Cleanup Item
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  apply-approved-output-cleanup-item:
+    if: github.event.label.name == 'approved-output-cleanup-item' && contains(github.event.issue.labels.*.name, 'output-cleanup-item')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout dev branch
+        uses: actions/checkout@v5
+        with:
+          ref: dev
+
+      - name: Extract output cleanup fields from issue body
+        id: extract
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+
+            const normalizeText = (value) =>
+              String(value || '')
+                .replace(/\r/g, '')
+                .trim();
+
+            const fieldInline = (name) => {
+              const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const re = new RegExp(`^\\s*[-*]?\\s*${escaped}\\s*:\\s*` + '`?' + `([^\\n` + '`' + `]+)` + '`?' + `(?:\\s*\\([^\\n]*\\))?\\s*$`, 'im');
+              const match = body.match(re);
+              return match ? normalizeText(match[1]) : null;
+            };
+
+            const fieldBySection = (name) => {
+              const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const re = new RegExp(
+                `(?:^|\\r?\\n)###\\s*${escaped}\\s*\\r?\\n([\\s\\S]*?)(?=\\r?\\n###\\s|$)`,
+                'i',
+              );
+              const match = body.match(re);
+              if (!match) {
+                return null;
+              }
+
+              const lines = match[1]
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter((line) => line && line !== '_No response_' && line !== 'No response');
+
+              return lines.length ? lines.join('\n') : null;
+            };
+
+            const normalizeLevel = (value) => {
+              const normalized = normalizeText(value).toLowerCase();
+              return ['recommended', 'cleanable', 'cautious'].includes(normalized)
+                ? normalized
+                : null;
+            };
+
+            let folderName = fieldInline('Folder Name') || fieldBySection('Folder Name');
+            let relativePath = fieldInline('Relative Path') || fieldBySection('Relative Path');
+            let expectedLevel = normalizeLevel(
+              fieldInline('Expected Level') || fieldBySection('Expected Level'),
+            );
+            let description = fieldBySection('User Description');
+
+            if (!folderName) {
+              const match = body.match(/-\s*Folder Name\s*:\s*`?([^`\n]+)`?/i);
+              folderName = match ? normalizeText(match[1]) : null;
+            }
+            if (!relativePath) {
+              const match = body.match(/-\s*Relative Path\s*:\s*`?([^`\n]+)`?/i);
+              relativePath = match ? normalizeText(match[1]) : null;
+            }
+            if (!expectedLevel) {
+              const match = body.match(/-\s*Expected Level\s*:\s*`?([^`\n]+)`?/i);
+              expectedLevel = normalizeLevel(match ? match[1] : '');
+            }
+
+            if (!description) {
+              const match = body.match(
+                /(?:^|\r?\n)###\s*User Description\s*\r?\n([\s\S]*?)(?=\r?\n###\s|$)/i,
+              );
+              description = match ? normalizeText(match[1]) : null;
+            }
+
+            if (!folderName || !relativePath || !expectedLevel || !description) {
+              core.setFailed(
+                'Could not parse Folder Name / Relative Path / Expected Level / User Description from issue body.',
+              );
+              return;
+            }
+
+            const normalizedPath = relativePath.replace(/\\/g, '/').replace(/\/+/g, '/').trim();
+            const pathParts = normalizedPath.split('/').filter(Boolean);
+            if (pathParts.length !== 2 || pathParts[0].toLowerCase() !== 'output') {
+              core.setFailed('Relative Path must target a direct child of Output.');
+              return;
+            }
+
+            const protectedDirs = new Set(['preferences']);
+            if (protectedDirs.has(pathParts[1].toLowerCase())) {
+              core.setFailed('Protected Output folders cannot be approved automatically.');
+              return;
+            }
+
+            const normalizedDescription = description
+              .split(/\r?\n+/)
+              .map((line) => line.trim())
+              .filter(Boolean)
+              .join(' ')
+              .trim();
+
+            if (!normalizedDescription) {
+              core.setFailed('Description is empty after normalization.');
+              return;
+            }
+
+            core.setOutput('folder_name', folderName);
+            core.setOutput('relative_path', normalizedPath);
+            core.setOutput('expected_level', expectedLevel);
+            core.setOutput('description', normalizedDescription);
+
+      - name: Update data/output_cleanup_items.json
+        env:
+          FOLDER_NAME: ${{ steps.extract.outputs.folder_name }}
+          RELATIVE_PATH: ${{ steps.extract.outputs.relative_path }}
+          EXPECTED_LEVEL: ${{ steps.extract.outputs.expected_level }}
+          DESCRIPTION: ${{ steps.extract.outputs.description }}
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+
+          const path = 'data/output_cleanup_items.json';
+          const folderName = process.env.FOLDER_NAME;
+          const relativePath = process.env.RELATIVE_PATH;
+          const expectedLevel = process.env.EXPECTED_LEVEL;
+          const description = process.env.DESCRIPTION;
+
+          const levelRank = {
+            recommended: 0,
+            cleanable: 1,
+            cautious: 2,
+          };
+
+          const normalizeId = (raw) =>
+            String(raw || '')
+              .trim()
+              .toLowerCase()
+              .replace(/[^a-z0-9_-]+/g, '_')
+              .replace(/^_+|_+$/g, '');
+
+          const relativePathTail = relativePath.split('/').pop() || folderName;
+          const nextId = normalizeId(relativePathTail);
+          if (!nextId) {
+            throw new Error('Failed to generate a valid item id.');
+          }
+
+          const raw = fs.readFileSync(path, 'utf8');
+          const data = JSON.parse(raw);
+
+          if (!Array.isArray(data.items)) {
+            throw new Error('Invalid data/output_cleanup_items.json: missing items array');
+          }
+
+          const nextItem = {
+            id: nextId,
+            relativePath,
+            displayName: folderName,
+            description,
+            level: expectedLevel,
+            defaultSelected: expectedLevel === 'recommended',
+          };
+
+          const existingIndex = data.items.findIndex(
+            (item) =>
+              String(item.relativePath || '').toLowerCase() === relativePath.toLowerCase() ||
+              String(item.id || '').toLowerCase() === nextId.toLowerCase(),
+          );
+
+          if (existingIndex >= 0) {
+            const current = data.items[existingIndex] || {};
+            data.items[existingIndex] = {
+              ...current,
+              ...nextItem,
+            };
+          } else {
+            const targetRank = levelRank[expectedLevel] ?? 999;
+            const sameLevelIndexes = data.items
+              .map((item, index) => ({ item, index }))
+              .filter(({ item }) => item.level === expectedLevel)
+              .map(({ index }) => index);
+
+            if (sameLevelIndexes.length > 0) {
+              const insertIndex = sameLevelIndexes[sameLevelIndexes.length - 1] + 1;
+              data.items.splice(insertIndex, 0, nextItem);
+            } else {
+              const higherLevelIndex = data.items.findIndex(
+                (item) => (levelRank[item.level] ?? 999) > targetRank,
+              );
+              if (higherLevelIndex >= 0) {
+                data.items.splice(higherLevelIndex, 0, nextItem);
+              } else {
+                data.items.push(nextItem);
+              }
+            }
+          }
+
+          data.updated = new Date().toISOString().slice(0, 10);
+
+          fs.writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
+          NODE
+
+      - name: Commit and push changes
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- data/output_cleanup_items.json; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          git add data/output_cleanup_items.json
+          git commit -m "chore(data): add output cleanup item from #${{ github.event.issue.number }}"
+          git push origin dev
+          echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Comment and close issue
+        if: steps.commit.outputs.changed == 'true'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issue_number = context.payload.issue.number;
+            const folderName = `${{ steps.extract.outputs.folder_name }}`;
+            const relativePath = `${{ steps.extract.outputs.relative_path }}`;
+            const expectedLevel = `${{ steps.extract.outputs.expected_level }}`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body: `✅ Approved and merged into dev branch.\n\n- Folder: ${folderName}\n- Relative Path: ${relativePath}\n- Level: ${expectedLevel}\n- File: data/output_cleanup_items.json`
+            });
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              state: 'closed'
+            });
+
+      - name: Comment and close if no file changes
+        if: steps.commit.outputs.changed == 'false'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issue_number = context.payload.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body: 'ℹ️ No changes were applied to data/output_cleanup_items.json (possibly already up to date). Issue closed automatically.'
+            });
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              state: 'closed'
+            });
+
+      - name: Comment and close on failure
+        if: failure() && !cancelled()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issue_number = context.payload.issue.number;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body: '❌ Approval automation failed (for example: issue fields could not be parsed or the relative path was invalid). Please fix the issue content and re-apply the `approved-output-cleanup-item` label. Issue closed automatically.'
+            });
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              state: 'closed'
+            });

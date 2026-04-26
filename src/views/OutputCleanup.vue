@@ -20,17 +20,6 @@
           <h1 class="text-xl font-bold text-gray-900 dark:text-white">
             {{ $t('diskUsage.outputCleanup.title') }}
           </h1>
-          <span
-            v-if="store.outputCleanupReport"
-            class="text-[11px] px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-white/10 text-slate-600 dark:text-slate-300"
-          >
-            {{
-              $t('diskUsage.outputCleanup.source', {
-                source: cleanupSourceLabel(store.outputCleanupReport.source),
-                version: store.outputCleanupReport.version,
-              })
-            }}
-          </span>
         </div>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
           {{ $t('diskUsage.outputCleanup.subtitle') }}
@@ -146,7 +135,7 @@
             <label
               v-for="item in group.items"
               :key="item.id"
-              class="group flex items-start gap-2.5 rounded-xl border px-3 py-2 transition-colors cursor-pointer"
+              class="group relative flex items-start gap-2.5 rounded-xl border px-3 py-2 transition-colors cursor-pointer"
               :class="cleanupItemClass(item)"
             >
               <input
@@ -419,12 +408,6 @@ function cleanupLevelLabel(level: OutputCleanupLevel): string {
     unknown: 'diskUsage.outputCleanup.levelUnknown',
   }[level]
   return t(key)
-}
-
-function cleanupSourceLabel(source: string): string {
-  return source === 'remote'
-    ? t('diskUsage.outputCleanup.sourceRemote')
-    : t('diskUsage.outputCleanup.sourceEmbedded')
 }
 
 function cleanupLevelBadgeClass(level: OutputCleanupLevel): string {
