@@ -21,7 +21,10 @@ export default async function handler(req, res) {
 
   const issueNumber = toPositiveInt(req.query.issueNumber || req.query.issue_number)
   const page = Math.max(1, toPositiveInt(req.query.page, 1))
-  const perPage = Math.min(100, Math.max(1, toPositiveInt(req.query.perPage || req.query.per_page, 30)))
+  const perPage = Math.min(
+    100,
+    Math.max(1, toPositiveInt(req.query.perPage || req.query.per_page, 30)),
+  )
   if (!issueNumber) {
     return res.status(400).json({ error: 'issueNumber must be a positive integer' })
   }
@@ -30,7 +33,8 @@ export default async function handler(req, res) {
   const repo = process.env.GITHUB_REPO || 'XFast-Manager'
   const token = process.env.XFAST_GITHUB_TOKEN || ''
   const headers = buildGitHubHeaders(token, 'XFast-Manager-Issue-Detail-Proxy')
-  const forwardedHost = req.headers['x-forwarded-host'] || req.headers.host || 'x-fast-manager.vercel.app'
+  const forwardedHost =
+    req.headers['x-forwarded-host'] || req.headers.host || 'x-fast-manager.vercel.app'
   const forwardedProto = req.headers['x-forwarded-proto'] || 'https'
   const origin = `${forwardedProto}://${forwardedHost}`
 

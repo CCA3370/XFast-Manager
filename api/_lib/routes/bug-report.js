@@ -1,32 +1,12 @@
-const TYPE_LABEL_MAP = {
-  bug: ['bug', 'feedback'],
-  'feature-request': ['enhancement', 'feedback'],
-  improvement: ['improvement', 'feedback'],
-  other: ['feedback'],
-}
-
-const TYPE_TITLE_MAP = {
-  bug: 'Bug',
-  'feature-request': 'Feature Request',
-  improvement: 'Improvement',
-  other: 'Other',
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { title, type, content, appVersion, os, arch } = req.body || {}
-  const feedbackTitle = String(title || '').trim()
-  const feedbackType = String(type || 'other').trim().toLowerCase()
-  const feedbackContent = String(content || '').trim()
+  const { appVersion, os, arch, errorTitle, errorMessage, logs, category } = req.body || {}
 
-  if (!feedbackTitle) {
-    return res.status(400).json({ error: 'title is required' })
-  }
-  if (!feedbackContent) {
-    return res.status(400).json({ error: 'content is required' })
+  if (!errorMessage) {
+    return res.status(400).json({ error: 'errorMessage is required' })
   }
 
   const token = process.env.XFAST_GITHUB_TOKEN
@@ -37,30 +17,41 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'server token not configured' })
   }
 
-  const normalizedType = TYPE_LABEL_MAP[feedbackType] ? feedbackType : 'other'
-  const typeDisplay = TYPE_TITLE_MAP[normalizedType]
-  const issueTitle = `[Feedback][${typeDisplay}] ${feedbackTitle.slice(0, 100)}`
-  const labels = TYPE_LABEL_MAP[normalizedType]
+  const summary = String(errorTitle || errorMessage)
+    .trim()
+    .slice(0, 80)
+  const issueTitle = `[Bug]: ${summary}`
 
   const issueBody = [
-    '### User Feedback',
+    '### Bug Report (Auto-submitted)',
     '',
-    '**Title**',
-    feedbackTitle,
+    '**Brief Description**',
+    String(errorTitle || '(not provided)').trim(),
     '',
-    '**Type**',
-    typeDisplay,
-    '',
-    '**Content**',
-    feedbackContent.slice(0, 50000),
+    '**Error Message**',
+    '```',
+    String(errorMessage).trim(),
+    '```',
     '',
     '**Environment**',
     `- XFast Manager Version: \`${String(appVersion || 'unknown').trim()}\``,
     `- Operating System: \`${String(os || 'unknown').trim()}\``,
     `- CPU Architecture: \`${String(arch || 'unknown').trim()}\``,
+    `- Category: ${String(category || 'Other').trim()}`,
+    '',
+    '**Logs**',
+    '<details>',
+    '<summary>Click to expand logs</summary>',
+    '',
+    '```',
+    String(logs || '(no logs provided)')
+      .trim()
+      .slice(0, 50000),
+    '```',
+    '</details>',
     '',
     '---',
-    '*Submitted from XFast Manager Feedback Dialog.*',
+    '*This issue was auto-submitted from the XFast Manager error dialog.*',
   ].join('\n')
 
   const ghResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
@@ -69,12 +60,12 @@ export default async function handler(req, res) {
       Authorization: `Bearer ${token}`,
       Accept: 'application/vnd.github+json',
       'Content-Type': 'application/json',
-      'User-Agent': 'XFast-Manager-Feedback-Proxy',
+      'User-Agent': 'XFast-Manager-Bug-Reporter',
     },
     body: JSON.stringify({
       title: issueTitle,
       body: issueBody,
-      labels,
+      labels: ['bug', 'auto-reported'],
     }),
   })
 
@@ -84,17 +75,15 @@ export default async function handler(req, res) {
     return res.status(ghResponse.status).json({ error: ghData })
   }
 
-  const forwardedHost = req.headers['x-forwarded-host'] || req.headers.host || 'x-fast-manager.vercel.app'
+  const forwardedHost =
+    req.headers['x-forwarded-host'] || req.headers.host || 'x-fast-manager.vercel.app'
   const forwardedProto = req.headers['x-forwarded-proto'] || 'https'
   const origin = `${forwardedProto}://${forwardedHost}`
   const issueNumber = Number(ghData.number || 0)
-  const proxyIssueUrl = issueNumber > 0
-    ? `${origin}/api/issue-redirect?number=${issueNumber}`
-    : ''
+  const proxyIssueUrl = issueNumber > 0 ? `${origin}/api/issue-redirect?number=${issueNumber}` : ''
 
   return res.status(200).json({
     issueUrl: proxyIssueUrl || ghData.html_url,
     issueNumber,
-    issueTitle,
   })
 }

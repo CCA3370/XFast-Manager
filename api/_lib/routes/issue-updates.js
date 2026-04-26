@@ -51,9 +51,7 @@ export default async function handler(req, res) {
   }
 
   const commentsResponse = await fetch(commentsUrl.toString(), { headers })
-  const commentsData = commentsResponse.ok
-    ? await commentsResponse.json().catch(() => [])
-    : []
+  const commentsData = commentsResponse.ok ? await commentsResponse.json().catch(() => []) : []
 
   const newComments = Array.isArray(commentsData)
     ? commentsData.map((comment) => ({

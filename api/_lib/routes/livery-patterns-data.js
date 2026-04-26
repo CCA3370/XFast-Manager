@@ -1,7 +1,7 @@
 function buildGitHubHeaders(token) {
   const headers = {
     Accept: 'application/vnd.github+json',
-    'User-Agent': 'XFast-Manager-Library-Links-Proxy',
+    'User-Agent': 'XFast-Manager-Livery-Patterns-Proxy',
   }
   if (token) {
     headers.Authorization = `Bearer ${token}`
@@ -22,7 +22,9 @@ async function fetchJsonFileFromRepo(path, owner, repo, token, ref = 'dev') {
   }
 
   if (metaData?.content) {
-    const content = Buffer.from(String(metaData.content).replace(/\n/g, ''), 'base64').toString('utf8')
+    const content = Buffer.from(String(metaData.content).replace(/\n/g, ''), 'base64').toString(
+      'utf8',
+    )
     return JSON.parse(content)
   }
 
@@ -55,12 +57,18 @@ export default async function handler(req, res) {
   const ref = String(req.query.ref || process.env.GITHUB_REF || 'dev').trim() || 'dev'
 
   try {
-    const payload = await fetchJsonFileFromRepo('data/library_links.json', owner, repo, token, ref)
+    const payload = await fetchJsonFileFromRepo(
+      'data/livery_patterns.json',
+      owner,
+      repo,
+      token,
+      ref,
+    )
     res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=3600')
     return res.status(200).json(payload)
   } catch (error) {
     return res.status(error?.status || 500).json({
-      error: error?.message || 'Failed to fetch library links data',
+      error: error?.message || 'Failed to fetch livery patterns data',
       detail: error?.detail || null,
     })
   }
