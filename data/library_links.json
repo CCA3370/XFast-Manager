@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"updated": "2026-04-25",
+	"updated": "2026-05-01",
 	"libraries": {
 		"3d_people": "https://forums.x-plane.org/index.php?/files/file/26611-3d-people-library/",
 		"3d_people_library": "https://forums.x-plane.org/files/file/26611-3d-people-library/",
@@ -20,6 +20,7 @@
 		"ground_services-tw": "https://forums.x-plane.org/files/file/39537-ground_services-twground-service-pack-for-taiwan/",
 		"gt_library": "https://forums.x-plane.org/index.php?/files/file/29461-ground-textures-library/",
 		"handyobjects": "https://forums.x-plane.org/index.php?/files/file/24261-the-handy-objects-library/",
+		"hungaryvfr-library": "https://forums.x-plane.org/files/file/43436-hungaryvfr/",
 		"jb_library": "https://forums.x-plane.org/files/file/26531-jb_libraryzip/",
 		"madagascar_lib": "https://drive.google.com/file/d/1QB9eenzLagfkdFGKtfpIYvbMCk9VDJ2D/view?usp=drive_link",
 		"misterx_library": "https://forums.x-plane.org/index.php?/files/file/28167-misterx-library-and-static-aircraft-extension/",
