@@ -57,7 +57,6 @@ tmp/
 .gemini/
 GEMINI.md
 CLAUDE.md
-CHATGPT.md
 AI.md
 .copilot/
 .github/copilot-instructions.md
