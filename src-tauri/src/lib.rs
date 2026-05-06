@@ -2253,6 +2253,15 @@ fn blocked_addon_update_error(item_type: &str, folder_name: &str) -> String {
     format!("resolver handshake mismatch [{}]", token)
 }
 
+fn addon_update_error_status_and_message(error: &anyhow::Error) -> (&'static str, String) {
+    let raw = error.to_string();
+    if raw.to_lowercase().contains("cancelled") {
+        return ("cancelled", raw);
+    }
+
+    ("failed", addon_updater::user_facing_update_error(&raw))
+}
+
 #[tauri::command]
 async fn scan_aircraft(xplane_path: String) -> Result<ManagementData<AircraftInfo>, String> {
     tokio::task::spawn_blocking(move || {
@@ -2347,19 +2356,16 @@ async fn build_addon_update_plan(
     {
         Ok(plan) => Ok(plan),
         Err(e) => {
+            let (status, message) = addon_update_error_status_and_message(&e);
             emit_addon_update_status(
                 &app_handle,
                 &item_type,
                 &folder_name,
                 "scan",
-                if e.to_string().to_lowercase().contains("cancelled") {
-                    "cancelled"
-                } else {
-                    "failed"
-                },
-                Some(e.to_string()),
+                status,
+                Some(message.clone()),
             );
-            Err(e.to_string())
+            Err(message)
         }
     }
 }
@@ -2407,19 +2413,16 @@ async fn fetch_addon_update_preview(
     {
         Ok(preview) => Ok(preview),
         Err(e) => {
+            let (status, message) = addon_update_error_status_and_message(&e);
             emit_addon_update_status(
                 &app_handle,
                 &item_type,
                 &folder_name,
                 "check",
-                if e.to_string().to_lowercase().contains("cancelled") {
-                    "cancelled"
-                } else {
-                    "failed"
-                },
-                Some(e.to_string()),
+                status,
+                Some(message.clone()),
             );
-            Err(e.to_string())
+            Err(message)
         }
     }
 }
@@ -2467,12 +2470,13 @@ async fn execute_addon_update(
             Ok(result)
         }
         Err(e) => {
+            let (status, message) = addon_update_error_status_and_message(&e);
             activity::log_activity(
                 &db.get(),
                 "update",
                 &item_type,
                 &folder_name,
-                Some(e.to_string()),
+                Some(message.clone()),
                 false,
             )
             .await;
@@ -2481,14 +2485,10 @@ async fn execute_addon_update(
                 &item_type,
                 &folder_name,
                 "install",
-                if e.to_string().to_lowercase().contains("cancelled") {
-                    "cancelled"
-                } else {
-                    "failed"
-                },
-                Some(e.to_string()),
+                status,
+                Some(message.clone()),
             );
-            Err(e.to_string())
+            Err(message)
         }
     };
     result
