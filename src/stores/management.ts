@@ -1164,11 +1164,7 @@ export const useManagementStore = defineStore('management', () => {
     }
   }
 
-  async function toggleAircraftAcfFile(
-    folderName: string,
-    fileName: string,
-    syncList: boolean = true,
-  ): Promise<AircraftInfo> {
+  async function toggleAircraftAcfFile(folderName: string, fileName: string): Promise<AircraftInfo> {
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
@@ -1186,7 +1182,7 @@ export const useManagementStore = defineStore('management', () => {
         latestVersion: updated.latestVersion ?? existing?.latestVersion,
         hasUpdate: updated.hasUpdate ?? existing?.hasUpdate ?? false,
       }
-      const entry = syncList ? upsertAircraftEntry(merged) : merged
+      const entry = upsertAircraftEntry(merged)
       await syncLockAfterToggle('aircraft', folderName, merged.enabled)
       return entry
     } catch (e) {
