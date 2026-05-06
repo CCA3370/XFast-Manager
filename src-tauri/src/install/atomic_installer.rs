@@ -19,6 +19,40 @@ const MIN_FREE_SPACE_BYTES: u64 = 1024 * 1024 * 1024;
 /// Maximum symlink resolution depth to prevent infinite loops
 const MAX_SYMLINK_DEPTH: usize = 40;
 
+fn push_unique_path(paths: &mut Vec<PathBuf>, candidate: PathBuf) {
+    if !paths.iter().any(|path| path == &candidate) {
+        paths.push(candidate);
+    }
+}
+
+fn atomic_staging_base_candidates(target_dir: &Path, xplane_root: &Path) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    push_unique_path(&mut candidates, xplane_root.to_path_buf());
+
+    if let Some(parent) = target_dir.parent() {
+        push_unique_path(&mut candidates, parent.to_path_buf());
+    }
+
+    push_unique_path(
+        &mut candidates,
+        std::env::temp_dir().join("xfastmanager_atomic_stage"),
+    );
+
+    candidates
+}
+
+fn create_atomic_temp_dir(base_dir: &Path) -> Result<PathBuf> {
+    fs::create_dir_all(base_dir).context(format!(
+        "Failed to create atomic staging base directory: {:?}",
+        base_dir
+    ))?;
+
+    let temp_dir = base_dir.join(format!(".xfastmanager_temp_{}", Uuid::new_v4()));
+    fs::create_dir_all(&temp_dir)
+        .context(format!("Failed to create temp directory: {:?}", temp_dir))?;
+    Ok(temp_dir)
+}
+
 /// Atomic installer for safer installation operations
 pub struct AtomicInstaller {
     /// Temporary directory for staging files (same drive as target)
@@ -65,11 +99,42 @@ impl AtomicInstaller {
         // Check available disk space
         check_disk_space(xplane_root)?;
 
-        // Create temp directory in X-Plane root directory
-        let temp_dir = xplane_root.join(format!(".xfastmanager_temp_{}", Uuid::new_v4()));
+        let mut temp_dir = None;
+        let mut failures = Vec::new();
+        for candidate in atomic_staging_base_candidates(target_dir, xplane_root) {
+            match create_atomic_temp_dir(&candidate) {
+                Ok(created) => {
+                    if candidate != xplane_root {
+                        logger::log_info(
+                            &format!(
+                                "Using atomic install staging fallback directory: {:?}",
+                                candidate
+                            ),
+                            Some("atomic_installer"),
+                        );
+                    }
+                    temp_dir = Some(created);
+                    break;
+                }
+                Err(e) => {
+                    logger::log_error(
+                        &format!(
+                            "Atomic install staging candidate unavailable: {:?}: {}",
+                            candidate, e
+                        ),
+                        Some("atomic_installer"),
+                    );
+                    failures.push(format!("{:?}: {}", candidate, e));
+                }
+            }
+        }
 
-        fs::create_dir_all(&temp_dir)
-            .context(format!("Failed to create temp directory: {:?}", temp_dir))?;
+        let temp_dir = temp_dir.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Failed to create atomic staging directory. Tried: {}",
+                failures.join(" | ")
+            )
+        })?;
 
         logger::log_info(
             &format!("Created atomic install temp directory: {:?}", temp_dir),
@@ -1446,6 +1511,41 @@ fn check_disk_space(path: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{atomic_staging_base_candidates, create_atomic_temp_dir};
+    use tempfile::tempdir;
+
+    #[test]
+    fn staging_candidates_include_target_parent_before_system_temp() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let xplane_root = temp.path().join("X-Plane 12");
+        let target = xplane_root.join("Custom Scenery").join("Demo");
+
+        let candidates = atomic_staging_base_candidates(&target, &xplane_root);
+
+        assert_eq!(candidates[0], xplane_root);
+        assert_eq!(candidates[1], target.parent().unwrap());
+        assert!(candidates
+            .last()
+            .expect("system temp fallback")
+            .ends_with("xfastmanager_atomic_stage"));
+    }
+
+    #[test]
+    fn create_atomic_temp_dir_creates_unique_hidden_child() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let staging = create_atomic_temp_dir(temp.path()).expect("create staging dir");
+
+        assert!(staging.exists());
+        assert!(staging
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default()
+            .starts_with(".xfastmanager_temp_"));
+    }
 }
 
 /// Check disk space (Unix/Linux/macOS - using statvfs)

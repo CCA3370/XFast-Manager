@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use rayon::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -141,16 +141,7 @@ impl Analyzer {
     ) -> AnalysisResult {
         // Normalize split-volume inputs (e.g. .z01/.zip.001/part2.rar) to a stable
         // archive entry path and deduplicate equivalent paths.
-        let mut normalized_paths: Vec<String> = Vec::new();
-        let mut seen_paths: HashSet<String> = HashSet::new();
-        for path_str in paths {
-            let normalized =
-                crate::archive_input::normalize_archive_entry_path(Path::new(&path_str));
-            let normalized_str = normalized.to_string_lossy().to_string();
-            if seen_paths.insert(normalized_str.clone()) {
-                normalized_paths.push(normalized_str);
-            }
-        }
+        let normalized_paths = crate::archive_input::normalize_archive_input_paths(paths);
 
         // Keep original password map entries, but also add normalized aliases for
         // filesystem-backed keys so split-volume retries can resolve correctly.
@@ -381,6 +372,18 @@ impl Analyzer {
         if lower.contains("invalid zip archive") || lower.contains("could not find eocd") {
             return format!(
                 "{}: Invalid or incomplete ZIP archive. The file may be corrupted, partially downloaded, or use the wrong extension.",
+                prefix
+            );
+        }
+
+        if (lower.contains("7z") || lower.contains("sevenz"))
+            && (lower.contains("unexpected eof")
+                || lower.contains("failed to fill whole buffer")
+                || lower.contains("incomplete")
+                || lower.contains("next header crc mismatch"))
+        {
+            return format!(
+                "{}: Invalid or incomplete 7z archive. The file may still be downloading, may be missing split volumes, or may be corrupted.",
                 prefix
             );
         }
@@ -702,6 +705,24 @@ impl Analyzer {
         let path_normalized = Path::new(path).to_string_lossy().to_string();
         if let Some(pwd) = archive_passwords.get(&path_normalized) {
             return Some(pwd.clone());
+        }
+
+        // Try split-volume entry normalization in both directions. This lets a password
+        // keyed to any volume (.z01, .7z.002, .part2.rar) unlock the canonical entry.
+        let archive_normalized =
+            crate::archive_input::normalize_archive_entry_path(Path::new(path))
+                .to_string_lossy()
+                .to_string();
+        if let Some(pwd) = archive_passwords.get(&archive_normalized) {
+            return Some(pwd.clone());
+        }
+        for (key, pwd) in archive_passwords {
+            let key_normalized = crate::archive_input::normalize_archive_entry_path(Path::new(key))
+                .to_string_lossy()
+                .to_string();
+            if key_normalized == archive_normalized {
+                return Some(pwd.clone());
+            }
         }
 
         // Try filename only (for nested archives)
@@ -1993,5 +2014,33 @@ mod tests {
 
         assert!(formatted.contains("Invalid or incomplete ZIP archive"));
         assert!(!formatted.contains("Could not find EOCD"));
+    }
+
+    #[test]
+    fn test_format_scan_error_for_incomplete_7z_is_user_friendly() {
+        let error = anyhow::anyhow!("Failed to open 7z archive: failed to fill whole buffer");
+
+        let formatted = Analyzer::format_scan_error_for_display("C:\\test\\bad.7z.part", &error);
+
+        assert!(formatted.contains("Invalid or incomplete 7z archive"));
+        assert!(!formatted.contains("failed to fill whole buffer"));
+    }
+
+    #[test]
+    fn find_password_accepts_split_volume_aliases() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let first = temp.path().join("addon.7z.001");
+        let second = temp.path().join("addon.7z.002");
+        fs::write(&first, [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C])
+            .expect("failed to write first volume");
+        fs::write(&second, b"part2").expect("failed to write second volume");
+
+        let mut passwords = HashMap::new();
+        passwords.insert(second.to_string_lossy().to_string(), "secret".to_string());
+
+        assert_eq!(
+            Analyzer::find_password(&passwords, &first.to_string_lossy()),
+            Some("secret".to_string())
+        );
     }
 }
