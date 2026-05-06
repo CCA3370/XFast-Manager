@@ -1795,6 +1795,9 @@ export default {
     enable: 'Ativar nivelamento',
     disable: 'Desativar nivelamento',
     noTargets: 'Nenhuma fonte apt.dat editável foi encontrada para este aeroporto.',
+    noTargetsHint:
+      '{icao} está no índice de flatten ({sources}), mas nenhuma fonte editável pôde ser carregada. Atualize o índice e tente novamente.',
+    refreshIndexAndRetry: 'Atualizar índice e tentar novamente',
     noSelection:
       'Selecione um aeroporto para inspecionar suas fontes de nivelamento padrão e personalizadas.',
     loadSearchFailed: 'Falha ao pesquisar aeroportos',

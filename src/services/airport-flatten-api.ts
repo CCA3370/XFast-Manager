@@ -11,21 +11,25 @@ export async function airportFlattenSearchAirports(
   xplanePath: string,
   query: string,
   limit = 20,
+  forceRefresh = false,
 ): Promise<AirportFlattenSearchResult[]> {
   return invokeCommand<AirportFlattenSearchResult[]>('airport_flatten_search_airports', {
     xplanePath,
     query,
     limit,
+    forceRefresh,
   })
 }
 
 export async function airportFlattenGetTargets(
   xplanePath: string,
   icao: string,
+  forceRefresh = false,
 ): Promise<AirportFlattenTarget[]> {
   return invokeCommand<AirportFlattenTarget[]>('airport_flatten_get_targets', {
     xplanePath,
     icao,
+    forceRefresh,
   })
 }
 

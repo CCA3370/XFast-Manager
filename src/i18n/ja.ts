@@ -1766,6 +1766,9 @@ export default {
     enable: '平坦化を有効化',
     disable: '平坦化を無効化',
     noTargets: 'この空港に対して編集可能な apt.dat ソースは見つかりませんでした。',
+    noTargetsHint:
+      '{icao} は平坦化インデックス（{sources}）にありますが、編集可能なソースを読み込めませんでした。インデックスを更新して再試行してください。',
+    refreshIndexAndRetry: 'インデックスを更新して再試行',
     noSelection: '空港を選択して、標準とカスタムの平坦化ソースを確認してください。',
     loadSearchFailed: '空港の検索に失敗しました',
     loadTargetsFailed: '空港ソースの読み込みに失敗しました',

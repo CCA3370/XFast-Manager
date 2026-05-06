@@ -372,8 +372,7 @@ export default {
       'Actualmente hay una instalación en progreso. ¿Estás seguro de que quieres cerrar?',
     installInProgressWarning: 'Cerrar ahora puede dañar los archivos instalados',
     cslSyncInProgressTitle: 'Sincronización de CSL en curso',
-    cslSyncInProgressMessage:
-      'Las rutas CSL se están sincronizando. ¿Seguro que quieres cerrar?',
+    cslSyncInProgressMessage: 'Las rutas CSL se están sincronizando. ¿Seguro que quieres cerrar?',
     cslSyncInProgressWarning:
       'Cerrar ahora puede dejar algunas rutas CSL solo parcialmente sincronizadas',
     confirmationOpenTitle: 'Instalación pendiente',
@@ -1810,6 +1809,9 @@ export default {
     enable: 'Activar aplanado',
     disable: 'Desactivar aplanado',
     noTargets: 'No se encontró una fuente apt.dat editable para este aeropuerto.',
+    noTargetsHint:
+      '{icao} está en el índice de flatten ({sources}), pero no se pudo cargar ninguna fuente editable. Actualiza el índice e inténtalo de nuevo.',
+    refreshIndexAndRetry: 'Actualizar índice y reintentar',
     noSelection:
       'Selecciona un aeropuerto para revisar sus fuentes de aplanado predeterminadas y personalizadas.',
     loadSearchFailed: 'No se pudieron buscar aeropuertos',

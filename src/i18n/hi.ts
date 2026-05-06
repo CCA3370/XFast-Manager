@@ -365,10 +365,8 @@ export default {
     installInProgressMessage: 'एक स्थापना वर्तमान में चल रही है। क्या आप वाकई बंद करना चाहते हैं?',
     installInProgressWarning: 'अभी बंद करने से स्थापित फ़ाइलें खराब हो सकती हैं',
     cslSyncInProgressTitle: 'CSL सिंक प्रगति पर है',
-    cslSyncInProgressMessage:
-      'CSL पथ अभी सिंक हो रहे हैं। क्या आप वाकई बंद करना चाहते हैं?',
-    cslSyncInProgressWarning:
-      'अभी बंद करने पर कुछ CSL पथ केवल आंशिक रूप से ही सिंक हो सकते हैं',
+    cslSyncInProgressMessage: 'CSL पथ अभी सिंक हो रहे हैं। क्या आप वाकई बंद करना चाहते हैं?',
+    cslSyncInProgressWarning: 'अभी बंद करने पर कुछ CSL पथ केवल आंशिक रूप से ही सिंक हो सकते हैं',
     // लंबित स्थापना पुष्टि
     confirmationOpenTitle: 'लंबित स्थापना',
     confirmationOpenMessage:
@@ -1766,6 +1764,9 @@ export default {
     enable: 'फ्लैटन सक्षम करें',
     disable: 'फ्लैटन अक्षम करें',
     noTargets: 'इस एयरपोर्ट के लिए संपादन योग्य apt.dat स्रोत नहीं मिला।',
+    noTargetsHint:
+      '{icao} फ्लैटन इंडेक्स ({sources}) में है, लेकिन कोई संपादन योग्य स्रोत लोड नहीं हुआ। इंडेक्स रिफ्रेश करके फिर कोशिश करें।',
+    refreshIndexAndRetry: 'इंडेक्स रिफ्रेश कर फिर कोशिश करें',
     noSelection: 'डिफ़ॉल्ट और कस्टम फ्लैटन स्रोत देखने के लिए एक एयरपोर्ट चुनें।',
     loadSearchFailed: 'एयरपोर्ट खोजने में विफल',
     loadTargetsFailed: 'एयरपोर्ट स्रोत लोड करने में विफल',

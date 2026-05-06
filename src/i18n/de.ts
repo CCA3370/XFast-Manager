@@ -1813,6 +1813,9 @@ export default {
     enable: 'Glättung aktivieren',
     disable: 'Glättung deaktivieren',
     noTargets: 'Für diesen Flughafen wurde keine bearbeitbare apt.dat-Quelle gefunden.',
+    noTargetsHint:
+      '{icao} ist im Glättungsindex ({sources}), aber es konnte keine bearbeitbare Quelle geladen werden. Aktualisieren Sie den Index und versuchen Sie es erneut.',
+    refreshIndexAndRetry: 'Index aktualisieren und erneut versuchen',
     noSelection:
       'Wählen Sie einen Flughafen, um seine Standard- und benutzerdefinierten Glättungsquellen zu prüfen.',
     loadSearchFailed: 'Flughafensuche fehlgeschlagen',

@@ -359,10 +359,8 @@ export default {
       'An installation is currently in progress. Are you sure you want to close?',
     installInProgressWarning: 'Closing now may corrupt installed files',
     cslSyncInProgressTitle: 'CSL Sync In Progress',
-    cslSyncInProgressMessage:
-      'CSL paths are currently syncing. Are you sure you want to close?',
-    cslSyncInProgressWarning:
-      'Closing now may leave some CSL paths only partially synced',
+    cslSyncInProgressMessage: 'CSL paths are currently syncing. Are you sure you want to close?',
+    cslSyncInProgressWarning: 'Closing now may leave some CSL paths only partially synced',
     // Pending installation confirmation
     confirmationOpenTitle: 'Pending Installation',
     confirmationOpenMessage:
@@ -1762,6 +1760,9 @@ export default {
     enable: 'Enable Flatten',
     disable: 'Disable Flatten',
     noTargets: 'No editable apt.dat source was found for this airport.',
+    noTargetsHint:
+      '{icao} is in the flatten index ({sources}), but no editable source could be loaded. Refresh the index and try again.',
+    refreshIndexAndRetry: 'Refresh index and retry',
     noSelection: 'Select an airport to inspect its default and custom flatten sources.',
     loadSearchFailed: 'Failed to search airports',
     loadTargetsFailed: 'Failed to load airport sources',

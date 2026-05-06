@@ -235,7 +235,32 @@
               v-else
               class="flex items-center justify-center rounded-xl border border-dashed border-gray-200 dark:border-gray-700 py-6 text-sm text-gray-500 dark:text-gray-400 text-center"
             >
-              {{ $t('airportFlatten.noTargets') }}
+              <div class="max-w-md space-y-3 px-3">
+                <p>
+                  {{ targetEmptyMessage || $t('airportFlatten.noTargets') }}
+                </p>
+                <button
+                  class="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 shadow-sm transition hover:border-sky-300 hover:text-sky-700 dark:hover:border-sky-700 dark:hover:text-sky-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                  :disabled="isLoadingTargets || isRefreshing"
+                  @click.stop="retryTargetsWithRefresh"
+                >
+                  <svg
+                    class="w-3.5 h-3.5"
+                    :class="isLoadingTargets ? 'animate-spin' : ''"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
+                  </svg>
+                  {{ $t('airportFlatten.refreshIndexAndRetry') }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -494,6 +519,7 @@ const searchResults = ref<AirportFlattenSearchResult[]>([])
 const targets = ref<AirportFlattenTarget[]>([])
 const selectedIcao = ref('')
 const selectedAirportName = ref('')
+const targetEmptyMessage = ref('')
 const isSearching = ref(false)
 const isLoadingTargets = ref(false)
 const busyTargetKeys = ref<Set<string>>(new Set())
@@ -522,6 +548,26 @@ function targetKey(target: AirportFlattenTarget) {
 
 function overrideKey(item: AirportFlattenOverride) {
   return `${item.sourcePath}|${item.icao}`
+}
+
+function buildTargetEmptyMessage(icao: string) {
+  const airport = searchResults.value.find((item) => item.icao === icao)
+  if (!airport) {
+    return t('airportFlatten.noTargets')
+  }
+
+  const sources: string[] = []
+  if (airport.hasDefaultSource) {
+    sources.push(t('airportFlatten.defaultSource'))
+  }
+  if (airport.customSourceCount > 0) {
+    sources.push(t('airportFlatten.customCount', { count: airport.customSourceCount }))
+  }
+
+  return t('airportFlatten.noTargetsHint', {
+    icao,
+    sources: sources.join(' / ') || t('airportFlatten.targets'),
+  })
 }
 
 function syncRouteIcao(icao: string) {
@@ -558,7 +604,7 @@ async function loadOverrides() {
   }
 }
 
-async function runSearch(query: string) {
+async function runSearch(query: string, forceRefresh = false) {
   const trimmed = query.trim()
   const seq = ++searchSeq
 
@@ -570,7 +616,12 @@ async function runSearch(query: string) {
 
   isSearching.value = true
   try {
-    const results = await airportFlattenSearchAirports(appStore.xplanePath, trimmed, 20)
+    const results = await airportFlattenSearchAirports(
+      appStore.xplanePath,
+      trimmed,
+      20,
+      forceRefresh,
+    )
     if (seq !== searchSeq) return
     searchResults.value = results
 
@@ -589,11 +640,12 @@ async function runSearch(query: string) {
   }
 }
 
-async function loadTargets(icao: string, airportName?: string) {
+async function loadTargets(icao: string, airportName?: string, forceRefresh = false) {
   const normalized = icao.trim().toUpperCase()
   const seq = ++targetSeq
 
   selectedIcao.value = normalized
+  targetEmptyMessage.value = ''
   if (airportName) {
     selectedAirportName.value = airportName
   } else if (!selectedAirportName.value) {
@@ -608,16 +660,22 @@ async function loadTargets(icao: string, airportName?: string) {
 
   isLoadingTargets.value = true
   try {
-    const nextTargets = await airportFlattenGetTargets(appStore.xplanePath, normalized)
+    const nextTargets = await airportFlattenGetTargets(
+      appStore.xplanePath,
+      normalized,
+      forceRefresh,
+    )
     if (seq !== targetSeq) return
     targets.value = nextTargets
     if (nextTargets[0]) {
       selectedAirportName.value = nextTargets[0].airportName
+    } else {
+      targetEmptyMessage.value = buildTargetEmptyMessage(normalized)
     }
   } catch (error) {
     if (seq === targetSeq) {
       targets.value = []
-      modalStore.showError(`${t('airportFlatten.loadTargetsFailed')}: ${getErrorMessage(error)}`)
+      targetEmptyMessage.value = `${t('airportFlatten.loadTargetsFailed')}: ${getErrorMessage(error)}`
     }
   } finally {
     if (seq === targetSeq) {
@@ -628,10 +686,7 @@ async function loadTargets(icao: string, airportName?: string) {
 
 async function selectAirport(airport: AirportFlattenSearchResult) {
   if (selectedIcao.value === airport.icao) {
-    selectedIcao.value = ''
-    selectedAirportName.value = ''
-    targets.value = []
-    syncRouteIcao('')
+    await loadTargets(airport.icao, airport.airportName)
     return
   }
 
@@ -639,6 +694,15 @@ async function selectAirport(airport: AirportFlattenSearchResult) {
   selectedAirportName.value = airport.airportName
   syncRouteIcao(airport.icao)
   await loadTargets(airport.icao, airport.airportName)
+}
+
+async function retryTargetsWithRefresh() {
+  if (!selectedIcao.value || !appStore.xplanePath) return
+
+  await loadTargets(selectedIcao.value, selectedAirportName.value, true)
+  if (hasSearchQuery.value) {
+    await runSearch(searchText.value)
+  }
 }
 
 async function setTargetState(target: AirportFlattenTarget, enabled: boolean) {
@@ -784,6 +848,7 @@ function clearSearch() {
   searchResults.value = []
   selectedIcao.value = ''
   selectedAirportName.value = ''
+  targetEmptyMessage.value = ''
   targets.value = []
   isSearching.value = false
   isLoadingTargets.value = false
@@ -794,14 +859,13 @@ async function refreshAll() {
   if (!appStore.xplanePath || isRefreshing.value) return
   isRefreshing.value = true
   try {
-    const tasks: Array<Promise<unknown>> = [loadOverrides()]
+    await loadOverrides()
     if (hasSearchQuery.value) {
-      tasks.push(runSearch(searchText.value))
+      await runSearch(searchText.value, true)
     }
     if (selectedIcao.value) {
-      tasks.push(loadTargets(selectedIcao.value))
+      await loadTargets(selectedIcao.value, selectedAirportName.value)
     }
-    await Promise.all(tasks)
   } finally {
     isRefreshing.value = false
   }
@@ -836,6 +900,7 @@ watch(
       targets.value = []
       selectedIcao.value = ''
       selectedAirportName.value = ''
+      targetEmptyMessage.value = ''
       overrides.value = []
       return
     }

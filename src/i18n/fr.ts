@@ -1816,6 +1816,9 @@ export default {
     enable: 'Activer l’aplanissement',
     disable: 'Désactiver l’aplanissement',
     noTargets: 'Aucune source apt.dat modifiable n’a été trouvée pour cet aéroport.',
+    noTargetsHint:
+      '{icao} figure dans l’index de flatten ({sources}), mais aucune source modifiable n’a pu être chargée. Actualisez l’index puis réessayez.',
+    refreshIndexAndRetry: 'Actualiser l’index et réessayer',
     noSelection:
       'Sélectionnez un aéroport pour examiner ses sources d’aplanissement par défaut et personnalisées.',
     loadSearchFailed: 'Échec de la recherche des aéroports',
