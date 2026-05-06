@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Log Analysis Navigation** - Removed the first-time Log Analysis tip bubble from the top navigation.
 
+### Fixed
+
+- **Split Archive Installation** - Multi-part ZIP, 7z, and RAR downloads are now recognized as one addon source, with clearer messages when a required volume is missing or a download is incomplete.
+- **Atomic Install Staging** - Atomic installs can now fall back to another staging location when the X-Plane root cannot create the temporary install folder.
+
 ## [1.2.3] - 2026-04-26
 
 <div class="changelog-important">

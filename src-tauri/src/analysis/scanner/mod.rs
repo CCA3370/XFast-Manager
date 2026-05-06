@@ -445,6 +445,12 @@ impl Scanner {
         if let Some(pwd) = password {
             ctx.passwords
                 .insert(path.to_string_lossy().to_string(), pwd.to_string());
+            let normalized = crate::archive_input::normalize_archive_entry_path(path)
+                .to_string_lossy()
+                .to_string();
+            ctx.passwords
+                .entry(normalized)
+                .or_insert_with(|| pwd.to_string());
         }
         let mut items = self.scan_path_with_context(path, &mut ctx)?;
 
@@ -472,6 +478,12 @@ impl Scanner {
         // and nested archive passwords (key = "parent_path/nested_name")
         for (key, value) in passwords {
             ctx.passwords.insert(key.clone(), value.clone());
+            let normalized = crate::archive_input::normalize_archive_entry_path(Path::new(key))
+                .to_string_lossy()
+                .to_string();
+            ctx.passwords
+                .entry(normalized)
+                .or_insert_with(|| value.clone());
         }
         let mut items = self.scan_path_with_context(path, &mut ctx)?;
 
