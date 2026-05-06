@@ -76,7 +76,6 @@
 
                   <router-link
                     v-else
-                    :ref="item.id === 'log-analysis' ? setLogAnalysisLinkRef : undefined"
                     :to="item.to"
                     class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
                     :class="navLinkClass(item)"
@@ -311,7 +310,6 @@
 
               <router-link
                 v-else
-                :ref="item.id === 'log-analysis' ? setLogAnalysisLinkRef : undefined"
                 :to="item.to"
                 class="relative px-2.5 py-1.5 rounded-lg group overflow-hidden transition-all duration-300"
                 :class="navLinkClass(item)"
@@ -424,45 +422,6 @@
       @updated="handleGlobalAddonUpdated"
     />
     <CommandPalette ref="commandPaletteRef" />
-
-    <!-- Log Analysis First-time Hint -->
-    <Teleport to="body">
-      <Transition name="hint-fade">
-        <div
-          v-if="store.logAnalysisHintVisible"
-          class="fixed z-50 pointer-events-none"
-          :style="{
-            top: hintPosition.top + 'px',
-            left: hintPosition.left + 'px',
-            transform: 'translateX(-50%)',
-          }"
-        >
-          <!-- Arrow pointing up -->
-          <div class="flex flex-col items-center">
-            <svg
-              width="16"
-              height="10"
-              viewBox="0 0 16 10"
-              class="text-blue-600 dark:text-blue-500 flex-shrink-0"
-            >
-              <path d="M8 0 L16 10 L0 10 Z" fill="currentColor" />
-            </svg>
-            <!-- Bubble -->
-            <div
-              class="pointer-events-auto bg-blue-600 dark:bg-blue-500 text-white rounded-xl px-4 py-3 shadow-xl max-w-[200px] text-center"
-            >
-              <p class="text-xs font-medium leading-relaxed">{{ $t('logAnalysis.hintText') }}</p>
-              <button
-                class="mt-2 text-xs text-blue-100 hover:text-white underline underline-offset-2 transition-colors"
-                @click="store.dismissLogAnalysisHint()"
-              >
-                {{ $t('common.gotIt') }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
   </div>
 </template>
 
@@ -542,7 +501,6 @@ type NavId =
   | 'csl'
   | 'settings'
 type NavMeasureId = NavId | 'more'
-type ElementRefTarget = Element | { $el?: Element | null } | null
 
 interface NavItem {
   id: NavId
@@ -618,7 +576,6 @@ const navMeasureRefs: Partial<Record<NavMeasureId, HTMLElement | null>> = {}
 let navLayoutObserver: ResizeObserver | null = null
 let navLayoutFrame = 0
 let overflowNavHeightFrame = 0
-let hintPositionFrame = 0
 const overflowNavHeight = ref(PRIMARY_NAV_HEIGHT_PX)
 const moreNavLabel = computed(() =>
   navExpanded.value ? t('common.collapseNav') : t('common.expandNav'),
@@ -722,19 +679,6 @@ const mainContentPaddingTop = computed(() => {
   return `${PRIMARY_NAV_HEIGHT_PX + overflowNavHeight.value}px`
 })
 
-// Log analysis hint
-const logAnalysisLink = ref<HTMLElement | null>(null)
-const hintPosition = ref({ top: 0, left: 0 })
-
-function resolveHTMLElement(target: ElementRefTarget) {
-  if (target instanceof HTMLElement) {
-    return target
-  }
-
-  const element = target && '$el' in target ? target.$el : null
-  return element instanceof HTMLElement ? element : null
-}
-
 function normalizeNavUsageCounts(raw: unknown): NavUsageCounts {
   if (!raw || typeof raw !== 'object') {
     return {}
@@ -814,10 +758,6 @@ function navLinkBackgroundClass(item: NavItem) {
   return item.active
     ? 'scale-x-100 opacity-100'
     : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
-}
-
-function setLogAnalysisLinkRef(target: ElementRefTarget) {
-  logAnalysisLink.value = resolveHTMLElement(target)
 }
 
 function setNavMeasureRef(id: NavMeasureId, target: Element | null) {
@@ -900,46 +840,17 @@ function scheduleOverflowNavHeightUpdate() {
   })
 }
 
-function updateHintPosition() {
-  if (!store.logAnalysisHintVisible) {
-    return
-  }
-
-  const rect = logAnalysisLink.value?.getBoundingClientRect()
-  if (!rect) {
-    return
-  }
-
-  hintPosition.value = {
-    top: rect.bottom + 10,
-    left: rect.left + rect.width / 2,
-  }
-}
-
-function scheduleHintPositionUpdate() {
-  if (hintPositionFrame) {
-    cancelAnimationFrame(hintPositionFrame)
-  }
-
-  hintPositionFrame = requestAnimationFrame(() => {
-    hintPositionFrame = 0
-    updateHintPosition()
-  })
-}
-
 function reconnectNavLayoutObserver() {
   navLayoutObserver?.disconnect()
 
   if (typeof ResizeObserver === 'undefined') {
     schedulePrimaryNavLayout()
-    scheduleHintPositionUpdate()
     return
   }
 
   navLayoutObserver = new ResizeObserver(() => {
     schedulePrimaryNavLayout()
     scheduleOverflowNavHeightUpdate()
-    scheduleHintPositionUpdate()
   })
   ;[primaryNavViewport.value, primaryNavActions.value, overflowNavContent.value].forEach(
     (element) => {
@@ -1028,7 +939,6 @@ watch(
   () => {
     schedulePrimaryNavLayout()
     scheduleOverflowNavHeightUpdate()
-    scheduleHintPositionUpdate()
   },
   { flush: 'post' },
 )
@@ -1041,14 +951,6 @@ watch(
     }
     reconnectNavLayoutObserver()
     scheduleOverflowNavHeightUpdate()
-  },
-  { flush: 'post' },
-)
-
-watch(
-  () => store.logAnalysisHintVisible,
-  () => {
-    scheduleHintPositionUpdate()
   },
   { flush: 'post' },
 )
@@ -1094,7 +996,6 @@ onMounted(async () => {
   reconnectNavLayoutObserver()
   schedulePrimaryNavLayout()
   scheduleOverflowNavHeightUpdate()
-  scheduleHintPositionUpdate()
 
   // Log app startup (basic level - always logged)
   logBasic('XFast Manager started', 'app')
@@ -1425,9 +1326,6 @@ onBeforeUnmount(() => {
   if (overflowNavHeightFrame) {
     cancelAnimationFrame(overflowNavHeightFrame)
   }
-  if (hintPositionFrame) {
-    cancelAnimationFrame(hintPositionFrame)
-  }
 })
 </script>
 
@@ -1440,22 +1338,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
   background: linear-gradient(135deg, var(--app-bg-from), var(--app-bg-via), var(--app-bg-to));
   background-color: var(--app-bg-from);
-}
-
-.hint-fade-enter-active {
-  transition:
-    opacity 0.3s ease,
-    transform 0.3s ease;
-}
-.hint-fade-leave-active {
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
-}
-.hint-fade-enter-from,
-.hint-fade-leave-to {
-  opacity: 0;
-  transform: translateX(-50%) translateY(-6px);
 }
 
 nav {

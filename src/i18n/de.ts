@@ -1144,8 +1144,6 @@ export default {
     navTitle: 'Protokollanalyse',
     title: 'X-Plane-Protokollanalyse',
     subtitle: 'Analysieren Sie X-Plane Log.txt auf Warnungen, Fehler und Abstürze',
-    hintText:
-      'Neu! Klicken Sie hier, um Ihr X-Plane-Protokoll auf Fehler und Abstürze zu analysieren.',
     analyze: 'Protokoll analysieren',
     analyzing: 'Analysieren...',
     openLog: 'Öffnen Sie die Protokolldatei',

@@ -1115,7 +1115,6 @@ export default {
     navTitle: 'ログ分析',
     title: 'X-Plane ログ分析',
     subtitle: 'X-Plane Log.txt を分析して警告、エラー、クラッシュを検出します',
-    hintText: '新しい！ここをクリックして、X-Plane ログのエラーやクラッシュを分析します。',
     analyze: 'ログの分析',
     analyzing: '分析中...',
     openLog: 'ログファイルを開く',

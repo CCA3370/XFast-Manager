@@ -1148,8 +1148,6 @@ export default {
     navTitle: 'Análisis de registros',
     title: 'Análisis de registros de X-Plane',
     subtitle: 'Analice X-Plane Log.txt en busca de advertencias, errores y fallas',
-    hintText:
-      '¡Nuevo! Haga clic aquí para analizar su registro de X-Plane en busca de errores y fallas.',
     analyze: 'Analizar registro',
     analyzing: 'Analizando...',
     openLog: 'Abrir archivo de registro',

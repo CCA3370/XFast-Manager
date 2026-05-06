@@ -1153,8 +1153,6 @@ export default {
     navTitle: 'Analyse des journaux',
     title: 'Analyse du journal X-Plane',
     subtitle: 'Analysez X-Plane Log.txt pour les avertissements, les erreurs et les plantages',
-    hintText:
-      "Nouveau ! Cliquez ici pour analyser votre journal X-Plane à la recherche d'erreurs et de plantages.",
     analyze: 'Analyser le journal',
     analyzing: 'Analyser...',
     openLog: 'Ouvrir le fichier journal',
