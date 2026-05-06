@@ -144,6 +144,40 @@ fn is_cancelled_error(err: &anyhow::Error) -> bool {
     message.contains("cancelled")
 }
 
+pub fn user_facing_update_error(message: &str) -> String {
+    if is_temporary_upstream_update_error(message) {
+        return "The add-on update service is temporarily unavailable. Please try again later. Local add-on details are still available; the update area can be retried later.".to_string();
+    }
+
+    message.to_string()
+}
+
+fn is_temporary_upstream_update_error(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    let temporary_status = [
+        "http 429",
+        "http 502",
+        "http 503",
+        "http 504",
+        "429 too many requests",
+        "502 bad gateway",
+        "503 service unavailable",
+        "504 gateway timeout",
+        "bad gateway",
+        "service unavailable",
+        "gateway timeout",
+        "too many requests",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle));
+
+    temporary_status
+        || lower.contains("timed out")
+        || lower.contains("timeout")
+        || lower.contains("deadline has elapsed")
+        || lower.contains("operation timed out")
+}
+
 fn ensure_not_cancelled(task_control: Option<&TaskControl>, stage: &str) -> Result<()> {
     if task_control.map(|tc| tc.is_cancelled()).unwrap_or(false) {
         return Err(anyhow!(
@@ -3238,4 +3272,28 @@ fn ensure_since_parameter(url: &str, since: i64) -> Result<String> {
             .append_pair("since", &since.to_string());
     }
     Ok(parsed.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn temporary_upstream_errors_use_user_facing_message() {
+        let message = user_facing_update_error(
+            "Download failed for 'https://example.test': HTTP 502 (<html>Bad Gateway</html>)",
+        );
+
+        assert!(message.contains("temporarily unavailable"));
+        assert!(message.contains("Local add-on details are still available"));
+        assert!(!message.contains("<html>"));
+        assert!(!message.contains("Bad Gateway"));
+    }
+
+    #[test]
+    fn non_temporary_update_errors_keep_context() {
+        let message = user_facing_update_error("x-updater profile is missing license key");
+
+        assert_eq!(message, "x-updater profile is missing license key");
+    }
 }

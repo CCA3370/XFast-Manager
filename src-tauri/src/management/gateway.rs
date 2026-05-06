@@ -35,6 +35,7 @@ const RELEASE_DIRECTORY_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 const RELEASE_SCENERY_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 const UPDATE_CHECK_CONCURRENCY: usize = 4;
 const EXTERNAL_AIRPORT_CONFLICT_DETAIL: &str = "gateway_external_airport_conflict";
+const GATEWAY_REQUEST_ATTEMPTS: usize = 3;
 
 static GATEWAY_HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
@@ -1045,25 +1046,106 @@ async fn fetch_gateway_scenery_payload(scenery_id: i64) -> ApiResult<Value> {
 }
 
 async fn fetch_gateway_json(url: &str) -> ApiResult<Value> {
-    let response = GATEWAY_HTTP_CLIENT
-        .get(url)
-        .send()
-        .await
-        .map_err(|error| ApiError::new(ApiErrorCode::NetworkError, error.to_string()))?;
+    let mut last_error: Option<ApiError> = None;
 
-    if !response.status().is_success() {
-        return Err(ApiError::new(
-            ApiErrorCode::NetworkError,
-            format!(
-                "Gateway API request failed with status {}",
-                response.status()
-            ),
-        ));
+    for attempt in 0..GATEWAY_REQUEST_ATTEMPTS {
+        let response = match GATEWAY_HTTP_CLIENT.get(url).send().await {
+            Ok(response) => response,
+            Err(error) => {
+                let should_retry = gateway_transport_error_is_retryable(&error);
+                let message = gateway_transport_error_message(&error);
+                logger::log_info(
+                    &format!(
+                        "Gateway API request failed url={} attempt={}/{} retry={} error={}",
+                        url,
+                        attempt + 1,
+                        GATEWAY_REQUEST_ATTEMPTS,
+                        should_retry,
+                        error
+                    ),
+                    Some("gateway"),
+                );
+                last_error = Some(ApiError::new(ApiErrorCode::NetworkError, message));
+                if should_retry && attempt + 1 < GATEWAY_REQUEST_ATTEMPTS {
+                    tokio::time::sleep(gateway_retry_delay(attempt)).await;
+                    continue;
+                }
+                break;
+            }
+        };
+
+        let status = response.status();
+        if !status.is_success() {
+            if gateway_status_is_retryable(status) {
+                let message = gateway_status_error_message(status);
+                logger::log_info(
+                    &format!(
+                        "Gateway API returned temporary status url={} attempt={}/{} status={}",
+                        url,
+                        attempt + 1,
+                        GATEWAY_REQUEST_ATTEMPTS,
+                        status
+                    ),
+                    Some("gateway"),
+                );
+                last_error = Some(ApiError::new(ApiErrorCode::NetworkError, message));
+                if attempt + 1 < GATEWAY_REQUEST_ATTEMPTS {
+                    tokio::time::sleep(gateway_retry_delay(attempt)).await;
+                    continue;
+                }
+                break;
+            }
+
+            return Err(ApiError::new(
+                ApiErrorCode::NetworkError,
+                format!("Gateway API request failed with status {}", status),
+            ));
+        }
+
+        return response.json::<Value>().await.map_err(|error| {
+            ApiError::corrupted(format!("Failed to parse Gateway response: {}", error))
+        });
     }
 
-    response.json::<Value>().await.map_err(|error| {
-        ApiError::corrupted(format!("Failed to parse Gateway response: {}", error))
+    Err(last_error.unwrap_or_else(|| {
+        ApiError::new(
+            ApiErrorCode::NetworkError,
+            "Gateway service is temporarily unavailable. Please try again later.",
+        )
+    }))
+}
+
+fn gateway_retry_delay(attempt: usize) -> Duration {
+    Duration::from_millis(match attempt {
+        0 => 350,
+        1 => 900,
+        _ => 1500,
     })
+}
+
+fn gateway_status_is_retryable(status: reqwest::StatusCode) -> bool {
+    matches!(status.as_u16(), 429 | 502 | 503 | 504)
+}
+
+fn gateway_status_error_message(status: reqwest::StatusCode) -> String {
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return "Gateway service is busy right now. Please wait a moment and try again."
+            .to_string();
+    }
+
+    "Gateway service is temporarily unavailable. Please try again later.".to_string()
+}
+
+fn gateway_transport_error_is_retryable(error: &reqwest::Error) -> bool {
+    error.is_timeout() || error.is_connect() || error.is_request()
+}
+
+fn gateway_transport_error_message(error: &reqwest::Error) -> String {
+    if error.is_timeout() {
+        return "Gateway service did not respond in time. Please try again later.".to_string();
+    }
+
+    "Gateway service is temporarily unavailable. Please try again later.".to_string()
 }
 
 fn extract_airport_directory_entries(payload: &Value) -> Vec<GatewayAirportSearchResult> {
@@ -2431,5 +2513,26 @@ mod tests {
 
         assert!(!comparison.ahead_of_current_xplane);
         assert_eq!(comparison.current_xplane_scenery.scenery_id, Some(200));
+    }
+
+    #[test]
+    fn gateway_temporary_statuses_are_retryable_without_html_body() {
+        assert!(gateway_status_is_retryable(
+            reqwest::StatusCode::BAD_GATEWAY
+        ));
+        assert!(gateway_status_is_retryable(
+            reqwest::StatusCode::SERVICE_UNAVAILABLE
+        ));
+        assert!(gateway_status_is_retryable(
+            reqwest::StatusCode::GATEWAY_TIMEOUT
+        ));
+        assert!(gateway_status_is_retryable(
+            reqwest::StatusCode::TOO_MANY_REQUESTS
+        ));
+
+        let message = gateway_status_error_message(reqwest::StatusCode::BAD_GATEWAY);
+        assert!(message.contains("temporarily unavailable"));
+        assert!(!message.to_lowercase().contains("bad gateway"));
+        assert!(!message.contains("<html"));
     }
 }
