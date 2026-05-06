@@ -1068,7 +1068,6 @@ export default {
     navTitle: '日志分析',
     title: 'X-Plane 日志分析',
     subtitle: '分析 X-Plane Log.txt 中的警告、错误和崩溃信息',
-    hintText: '新功能！点击此处可分析 X-Plane 日志，快速发现错误与崩溃原因。',
     analyze: '分析日志',
     analyzing: '分析中...',
     openLog: '打开日志文件',

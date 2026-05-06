@@ -1113,7 +1113,6 @@ export default {
     navTitle: 'تحليل السجل',
     title: 'تحليل سجل X-Plane',
     subtitle: 'حلّل ملف Log.txt الخاص بـ X-Plane بحثاً عن التحذيرات والأخطاء والتعطلات',
-    hintText: 'جديد! انقر هنا لتحليل سجل X-Plane الخاص بك بحثاً عن الأخطاء والتعطلات.',
     analyze: 'تحليل السجل',
     analyzing: 'جارٍ التحليل...',
     openLog: 'فتح ملف السجل',

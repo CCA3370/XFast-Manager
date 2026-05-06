@@ -1143,7 +1143,6 @@ export default {
     navTitle: 'Análise de log',
     title: 'Análise de log do X-Plane',
     subtitle: 'Analise o Log.txt do X-Plane em busca de avisos, erros e falhas',
-    hintText: 'Novo! Clique aqui para analisar seu log do X-Plane em busca de erros e falhas.',
     analyze: 'Analisar log',
     analyzing: 'Analisando...',
     openLog: 'Abrir arquivo de log',
