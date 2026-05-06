@@ -1746,6 +1746,9 @@ export default {
     enable: '평탄화 활성화',
     disable: '평탄화 비활성화',
     noTargets: '이 공항에 대해 편집 가능한 apt.dat 소스를 찾지 못했습니다.',
+    noTargetsHint:
+      '{icao}는 평탄화 인덱스({sources})에 있지만 편집 가능한 소스를 불러오지 못했습니다. 인덱스를 새로 고친 뒤 다시 시도하세요.',
+    refreshIndexAndRetry: '인덱스 새로 고침 후 재시도',
     noSelection: '공항을 선택해 기본 및 사용자 정의 평탄화 소스를 확인하세요.',
     loadSearchFailed: '공항 검색에 실패했습니다',
     loadTargetsFailed: '공항 소스를 불러오지 못했습니다',
@@ -1856,8 +1859,7 @@ export default {
     syncCurrentPackage: '현재 패키지',
     syncCurrentPath: '현재 경로',
     syncCurrentFile: '현재 파일',
-    syncFallbackNotice:
-      '{path} 이(가) 다른 볼륨에 있으므로 대신 디렉터리 링크를 사용합니다.',
+    syncFallbackNotice: '{path} 이(가) 다른 볼륨에 있으므로 대신 디렉터리 링크를 사용합니다.',
     syncError: 'CSL 경로를 동기화하지 못했습니다',
     progress: '진행률: {current}/{total}개 파일',
   },

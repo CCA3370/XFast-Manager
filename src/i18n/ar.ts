@@ -353,10 +353,8 @@ export default {
     installInProgressMessage: 'توجد عملية تثبيت قيد التنفيذ حاليًا. هل تريد الإغلاق حقًا؟',
     installInProgressWarning: 'قد يؤدي الإغلاق الآن إلى إتلاف الملفات المثبتة',
     cslSyncInProgressTitle: 'مزامنة CSL قيد التنفيذ',
-    cslSyncInProgressMessage:
-      'تتم الآن مزامنة مسارات CSL. هل أنت متأكد من أنك تريد الإغلاق؟',
-    cslSyncInProgressWarning:
-      'قد يؤدي الإغلاق الآن إلى ترك بعض مسارات CSL متزامنة جزئياً فقط',
+    cslSyncInProgressMessage: 'تتم الآن مزامنة مسارات CSL. هل أنت متأكد من أنك تريد الإغلاق؟',
+    cslSyncInProgressWarning: 'قد يؤدي الإغلاق الآن إلى ترك بعض مسارات CSL متزامنة جزئياً فقط',
     // تأكيد التثبيت المعلق
     confirmationOpenTitle: 'تثبيت معلّق',
     confirmationOpenMessage: 'هناك عملية تثبيت معلقة لم يتم تأكيدها بعد. هل تريد الإغلاق حقًا؟',
@@ -1737,6 +1735,9 @@ export default {
     enable: 'تفعيل التسوية',
     disable: 'تعطيل التسوية',
     noTargets: 'لم يتم العثور على مصدر apt.dat قابل للتعديل لهذا المطار.',
+    noTargetsHint:
+      '{icao} موجود في فهرس التسوية ({sources})، لكن تعذر تحميل مصدر قابل للتعديل. حدّث الفهرس ثم حاول مرة أخرى.',
+    refreshIndexAndRetry: 'تحديث الفهرس وإعادة المحاولة',
     noSelection: 'اختر مطارًا لعرض مصادر التسوية الافتراضية والمخصصة.',
     loadSearchFailed: 'فشل البحث عن المطارات',
     loadTargetsFailed: 'فشل تحميل مصادر المطار',

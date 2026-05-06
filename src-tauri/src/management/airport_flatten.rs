@@ -1077,6 +1077,19 @@ async fn get_or_build_airport_flatten_index(
     rebuild_airport_flatten_index(db, xplane_root).await
 }
 
+async fn get_airport_flatten_index_for_request(
+    db: DatabaseConnection,
+    xplane_root: &Path,
+    force_refresh: bool,
+) -> Result<AirportFlattenIndex, String> {
+    if !force_refresh {
+        return get_or_build_airport_flatten_index(db, xplane_root).await;
+    }
+
+    let _build_guard = AIRPORT_FLATTEN_INDEX_BUILD_LOCK.lock().await;
+    rebuild_airport_flatten_index(db, xplane_root).await
+}
+
 fn find_flatten_source_ref_in_index(
     index: &AirportFlattenIndex,
     normalized_icao: &str,
@@ -1241,6 +1254,7 @@ pub async fn airport_flatten_search_airports(
     xplane_path: String,
     query: String,
     limit: Option<usize>,
+    force_refresh: Option<bool>,
 ) -> Result<Vec<AirportFlattenSearchResult>, String> {
     let xplane_root = PathBuf::from(&xplane_path);
     crate::validate_xplane_root_path(&xplane_root)?;
@@ -1253,7 +1267,12 @@ pub async fn airport_flatten_search_airports(
     let normalized_query_upper = trimmed.to_uppercase();
     let limit = limit.unwrap_or(20).clamp(1, 100);
 
-    let index = get_or_build_airport_flatten_index(db.get(), &xplane_root).await?;
+    let index = get_airport_flatten_index_for_request(
+        db.get(),
+        &xplane_root,
+        force_refresh.unwrap_or(false),
+    )
+    .await?;
     let query_lower = trimmed.to_lowercase();
     let mut results: Vec<AirportFlattenSearchResult> = index
         .search_rows
@@ -1279,6 +1298,7 @@ pub async fn airport_flatten_get_targets(
     db: State<'_, DatabaseState>,
     xplane_path: String,
     icao: String,
+    force_refresh: Option<bool>,
 ) -> Result<Vec<AirportFlattenTarget>, String> {
     let xplane_root = PathBuf::from(&xplane_path);
     crate::validate_xplane_root_path(&xplane_root)?;
@@ -1288,7 +1308,14 @@ pub async fn airport_flatten_get_targets(
         return Err("ICAO is required".to_string());
     }
 
-    let index = get_or_build_airport_flatten_index(db.get(), &xplane_root).await?;
+    let force_refresh = force_refresh.unwrap_or(false);
+    let mut index =
+        get_airport_flatten_index_for_request(db.get(), &xplane_root, force_refresh).await?;
+
+    if !index.sources_by_icao.contains_key(&normalized_icao) && !force_refresh {
+        index = get_airport_flatten_index_for_request(db.get(), &xplane_root, true).await?;
+    }
+
     let Some(source_refs) = index.sources_by_icao.get(&normalized_icao) else {
         return Ok(Vec::new());
     };

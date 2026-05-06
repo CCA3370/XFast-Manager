@@ -1680,6 +1680,9 @@ export default {
     enable: '开启平整',
     disable: '取消平整',
     noTargets: '没有找到可编辑的 apt.dat 来源。',
+    noTargetsHint:
+      '{icao} 已存在于平整索引（{sources}），但当前没有加载到可编辑来源。请刷新索引后重试。',
+    refreshIndexAndRetry: '刷新索引并重试',
     noSelection: '请选择一个机场，以查看默认与自定义的平整来源。',
     loadSearchFailed: '搜索机场失败',
     loadTargetsFailed: '加载机场来源失败',
