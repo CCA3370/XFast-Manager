@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Split Archive Installation** - Multi-part ZIP, 7z, and RAR downloads are now recognized as one addon source, with clearer messages when a required volume is missing or a download is incomplete.
 - **Atomic Install Staging** - Atomic installs can now fall back to another staging location when the X-Plane root cannot create the temporary install folder.
+- **Aircraft Variant Toggles** - Per-variant aircraft enable/disable controls now stay in sync after each click and no longer fail when the file state changes while the ACF manager is open.
 
 ## [1.2.3] - 2026-04-26
 

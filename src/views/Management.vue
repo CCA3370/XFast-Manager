@@ -58,7 +58,6 @@ const togglingAcfItems = ref<Set<string>>(new Set())
 const acfManagerFolderName = ref<string | null>(null)
 const acfManagerAircraft = ref<AircraftInfo | null>(null)
 const pendingCloseAcfManager = ref(false)
-const acfManagerDirty = ref(false)
 let acfManagerSyncToken = 0
 
 // Filter state for non-scenery tabs
@@ -480,7 +479,6 @@ function setAcfManagerAircraftState(aircraft: AircraftInfo | null) {
 
 function clearAcfManagerState() {
   pendingCloseAcfManager.value = false
-  acfManagerDirty.value = false
   acfManagerFolderName.value = null
   acfManagerAircraft.value = null
   acfManagerSyncToken += 1
@@ -490,7 +488,6 @@ async function handleManageAcfFiles(folderName: string) {
   const syncToken = ++acfManagerSyncToken
   acfManagerFolderName.value = folderName
   pendingCloseAcfManager.value = false
-  acfManagerDirty.value = false
   setAcfManagerAircraftState(
     managementStore.aircraft.find((item) => item.folderName === folderName) || null,
   )
@@ -505,25 +502,13 @@ async function handleManageAcfFiles(folderName: string) {
   }
 }
 
-async function finishCloseAcfManager() {
+function finishCloseAcfManager() {
   const folderName = acfManagerFolderName.value
   const syncToken = acfManagerSyncToken
 
   if (!folderName) {
     clearAcfManagerState()
     return
-  }
-
-  if (acfManagerFolderName.value !== folderName || acfManagerSyncToken !== syncToken) {
-    return
-  }
-
-  if (acfManagerDirty.value) {
-    try {
-      await managementStore.loadAircraft()
-    } catch (e) {
-      modalStore.showError(t('management.scanFailed') + ': ' + String(e))
-    }
   }
 
   if (acfManagerFolderName.value !== folderName || acfManagerSyncToken !== syncToken) {
@@ -554,9 +539,8 @@ async function handleToggleAircraftAcfFile(fileName: string) {
 
   togglingAcfItems.value.add(key)
   try {
-    const updated = await managementStore.toggleAircraftAcfFile(folderName, fileName, false)
+    const updated = await managementStore.toggleAircraftAcfFile(folderName, fileName)
     if (acfManagerFolderName.value === folderName) {
-      acfManagerDirty.value = true
       setAcfManagerAircraftState(updated)
     }
   } catch (e) {
@@ -568,7 +552,7 @@ async function handleToggleAircraftAcfFile(fileName: string) {
       busyKey.startsWith(`${folderName}::`),
     )
     if (pendingCloseAcfManager.value && !hasRemainingBusy) {
-      await finishCloseAcfManager()
+      finishCloseAcfManager()
     }
   }
 }

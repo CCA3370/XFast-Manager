@@ -138,6 +138,93 @@ fn normalize_aircraft_variant_stem_from_path(path: &Path) -> Option<String> {
         .filter(|stem| !stem.is_empty())
 }
 
+fn aircraft_variant_extension(path: &Path) -> Option<String> {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.trim().to_lowercase())
+        .filter(|ext| ext == "acf" || ext == "xfma")
+}
+
+fn resolve_aircraft_variant_file(folder_path: &Path, file_name: &str) -> Result<PathBuf> {
+    if file_name.contains(['/', '\\']) {
+        return Err(anyhow!("Invalid aircraft file name"));
+    }
+
+    let requested_path = Path::new(file_name);
+    let requested_stem = normalize_aircraft_variant_stem(file_name)
+        .ok_or_else(|| anyhow!("Invalid aircraft file name"))?;
+    let requested_extension = requested_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.trim().to_lowercase());
+
+    if let Some(extension) = requested_extension.as_deref() {
+        if extension != "acf" && extension != "xfma" {
+            return Err(anyhow!(
+                "Unsupported aircraft file extension: {}",
+                extension
+            ));
+        }
+    }
+
+    let exact_path = folder_path.join(file_name);
+    if exact_path.is_file() {
+        aircraft_variant_extension(&exact_path)
+            .ok_or_else(|| anyhow!("Unsupported aircraft file extension: {}", file_name))?;
+        return Ok(exact_path);
+    }
+
+    let mut candidates: Vec<(PathBuf, String)> = Vec::new();
+    for entry in fs::read_dir(folder_path)?.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let Some(stem) = normalize_aircraft_variant_stem_from_path(&path) else {
+            continue;
+        };
+        if stem != requested_stem {
+            continue;
+        }
+
+        let Some(extension) = aircraft_variant_extension(&path) else {
+            continue;
+        };
+        candidates.push((path, extension));
+    }
+
+    if candidates.is_empty() {
+        return Err(anyhow!("Aircraft file not found: {}", file_name));
+    }
+
+    if let Some(extension) = requested_extension.as_deref() {
+        let current_extension = if extension == "acf" { "xfma" } else { "acf" };
+        if let Some((path, _)) = candidates
+            .iter()
+            .find(|(_, candidate_extension)| candidate_extension == current_extension)
+        {
+            return Ok(path.clone());
+        }
+
+        if let Some((path, _)) = candidates
+            .iter()
+            .find(|(_, candidate_extension)| candidate_extension == extension)
+        {
+            return Ok(path.clone());
+        }
+    }
+
+    if candidates.len() == 1 {
+        return Ok(candidates.remove(0).0);
+    }
+
+    Err(anyhow!(
+        "Aircraft file state is ambiguous for variant: {}",
+        file_name
+    ))
+}
+
 fn read_aircraft_acf_state(folder_path: &Path) -> AircraftAcfState {
     let state_path = aircraft_acf_state_path(folder_path);
     let content = match fs::read_to_string(&state_path) {
@@ -1220,23 +1307,13 @@ pub fn toggle_aircraft_acf_file(
 ) -> Result<AircraftInfo> {
     let folder_path = resolve_management_path(xplane_path, "aircraft", folder_name)?;
 
-    if file_name.contains(['/', '\\']) {
-        return Err(anyhow!("Invalid aircraft file name"));
-    }
-
-    let source_path = folder_path.join(file_name);
-    if !source_path.is_file() {
-        return Err(anyhow!("Aircraft file not found: {}", file_name));
-    }
-
-    let extension = source_path
-        .extension()
-        .and_then(|ext| ext.to_str())
+    let source_path = resolve_aircraft_variant_file(&folder_path, file_name)?;
+    let extension = aircraft_variant_extension(&source_path)
         .ok_or_else(|| anyhow!("Aircraft file has no supported extension"))?;
 
-    let target_extension = if extension.eq_ignore_ascii_case("acf") {
+    let target_extension = if extension == "acf" {
         "xfma"
-    } else if extension.eq_ignore_ascii_case("xfma") {
+    } else if extension == "xfma" {
         "acf"
     } else {
         return Err(anyhow!(
@@ -2468,6 +2545,54 @@ mod tests {
         assert!(aircraft_dir.join("DemoPlane_cargo.xfma").exists());
         assert!(entry.enabled);
         assert!(entry.has_mixed_acf_states);
+    }
+
+    #[test]
+    fn toggle_aircraft_acf_file_uses_current_state_when_filename_is_stale() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let aircraft_dir = temp.path().join("Aircraft").join("DemoPlane");
+        fs::create_dir_all(&aircraft_dir).expect("failed to create aircraft dir");
+        fs::write(aircraft_dir.join("DemoPlane.acf"), "acf").expect("failed to write acf");
+        fs::write(aircraft_dir.join("DemoPlane_cargo.acf"), "acf")
+            .expect("failed to write second acf");
+
+        toggle_aircraft_acf_file(temp.path(), "DemoPlane", "DemoPlane_cargo.acf")
+            .expect("first toggle should disable cargo variant");
+        let entry = toggle_aircraft_acf_file(temp.path(), "DemoPlane", "DemoPlane_cargo.acf")
+            .expect("stale ACF file name should resolve by variant stem");
+
+        assert!(aircraft_dir.join("DemoPlane_cargo.acf").exists());
+        assert!(entry
+            .acf_files
+            .iter()
+            .any(|file| file.file_name == "DemoPlane_cargo.acf" && file.enabled));
+        assert!(entry.enabled);
+        assert!(!entry.has_mixed_acf_states);
+    }
+
+    #[test]
+    fn toggle_aircraft_acf_file_preserves_skunkcrafts_cfg_content() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let aircraft_dir = temp.path().join("Aircraft").join("DemoPlane");
+        let cfg_path = aircraft_dir.join("skunkcrafts_updater.cfg");
+        fs::create_dir_all(&aircraft_dir).expect("failed to create aircraft dir");
+        fs::write(aircraft_dir.join("DemoPlane.acf"), "acf").expect("failed to write acf");
+        fs::write(aircraft_dir.join("DemoPlane_cargo.acf"), "acf")
+            .expect("failed to write second acf");
+        fs::write(
+            &cfg_path,
+            "module|https://example.test/updates\nversion|1.0.0\ncustom|keep-me\ndisabled|false\n",
+        )
+        .expect("failed to write cfg");
+
+        toggle_aircraft_acf_file(temp.path(), "DemoPlane", "DemoPlane_cargo.acf")
+            .expect("toggle_aircraft_acf_file should succeed");
+
+        let content = fs::read_to_string(cfg_path).expect("failed to read cfg");
+        assert!(content.contains("module|https://example.test/updates"));
+        assert!(content.contains("version|1.0.0"));
+        assert!(content.contains("custom|keep-me"));
+        assert!(content.contains("disabled|false"));
     }
 
     #[test]
