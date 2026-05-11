@@ -443,11 +443,25 @@ function handleContextMenu(event: MouseEvent) {
 
     <button
       v-if="canOpenUpdater && !isGlobalAirportsEntry"
-      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-white bg-emerald-500 hover:bg-emerald-600 transition-colors"
-      :title="t('management.startUpdate')"
+      class="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium text-white transition-colors flex items-center gap-1"
+      :class="
+        entry.hasUpdate
+          ? 'bg-emerald-500 hover:bg-emerald-600 ring-2 ring-emerald-300 dark:ring-emerald-700'
+          : 'bg-emerald-500 hover:bg-emerald-600'
+      "
+      :title="
+        entry.hasUpdate && entry.latestVersion
+          ? `${entry.version || ''} → ${entry.latestVersion}`
+          : t('management.startUpdate')
+      "
       @click.stop="emit('update', entry.folderName)"
     >
-      {{ t('management.startUpdate') }}
+      <span
+        v-if="entry.hasUpdate"
+        class="inline-block w-1.5 h-1.5 rounded-full bg-white"
+        aria-hidden="true"
+      ></span>
+      <span>{{ entry.hasUpdate ? t('management.hasUpdate') : t('management.startUpdate') }}</span>
     </button>
 
     <!-- Move buttons -->

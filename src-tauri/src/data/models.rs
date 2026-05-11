@@ -618,6 +618,18 @@ pub struct SceneryManagerEntry {
     /// URL for checking updates (from skunkcrafts_updater.cfg module| field)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update_url: Option<String>,
+    /// Update provider (currently always "skunkcrafts" when update_url is set)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update_provider: Option<String>,
+    /// Local version from skunkcrafts_updater.cfg version| field
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Latest version fetched from remote (populated by check_scenery_updates)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_version: Option<String>,
+    /// True when latest_version differs from local version (set by check_scenery_updates)
+    #[serde(default)]
+    pub has_update: bool,
     pub missing_libraries: Vec<String>,
     pub required_libraries: Vec<String>,
     /// Continent name (e.g., "Asia", "Europe", "North America")
@@ -1151,6 +1163,10 @@ mod tests {
             enabled: true,
             sort_order: 10,
             update_url: Some("https://example.com".to_string()),
+            update_provider: Some("skunkcrafts".to_string()),
+            version: Some("1.0".to_string()),
+            latest_version: None,
+            has_update: false,
             missing_libraries: vec![],
             required_libraries: vec!["opensceneryx".to_string()],
             continent: Some("Asia".to_string()),

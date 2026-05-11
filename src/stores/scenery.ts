@@ -9,17 +9,22 @@ import type {
 } from '@/types'
 import { parseApiError, getErrorMessage } from '@/types'
 import { useAppStore } from './app'
+import { useToastStore } from './toast'
+import { useManagementStore } from './management'
 import { logError } from '@/services/logger'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
 import { validateXPlanePath } from '@/utils/validation'
+import { i18n } from '@/i18n'
 
 export const useSceneryStore = defineStore('scenery', () => {
   const appStore = useAppStore()
+  const t = i18n.global.t
 
   // State
   const data = ref<SceneryManagerData | null>(null)
   const isLoading = ref(false)
   const isSaving = ref(false)
+  const isCheckingUpdates = ref(false)
   const error = ref<string | null>(null)
   const indexExists = ref(false)
   const needsDatabaseReset = ref(false)
@@ -56,6 +61,7 @@ export const useSceneryStore = defineStore('scenery', () => {
   const entries = computed(() => data.value?.entries ?? [])
   const totalCount = computed(() => data.value?.totalCount ?? 0)
   const enabledCount = computed(() => data.value?.enabledCount ?? 0)
+  const updateCount = computed(() => entries.value.filter((e) => e.hasUpdate).length)
   const missingDepsCount = computed(() => data.value?.missingDepsCount ?? 0)
   const duplicateTilesCount = computed(() => data.value?.duplicateTilesCount ?? 0)
   const duplicateAirportsCount = computed(() => data.value?.duplicateAirportsCount ?? 0)
@@ -145,6 +151,9 @@ export const useSceneryStore = defineStore('scenery', () => {
       originalEntries.value = JSON.parse(JSON.stringify(result.entries))
       // Clear any previous database reset flag on successful load
       needsDatabaseReset.value = false
+      // Kick off a background SkunkCrafts update check — non-blocking so the UI
+      // renders immediately while remote versions trickle in.
+      void checkSceneryUpdates()
     } catch (e) {
       const errorStr = String(e)
       error.value = errorStr
@@ -178,6 +187,61 @@ export const useSceneryStore = defineStore('scenery', () => {
     } catch (e) {
       indexExists.value = false
       logError(`Failed to load scenery index status: ${e}`, 'scenery')
+    }
+  }
+
+  // Check remote SkunkCrafts versions for the currently-loaded scenery entries.
+  // Mirrors checkAircraftUpdates / checkPluginsUpdates in the management store —
+  // shares the same in-memory update cache so refresh-cycles are deduped across
+  // tabs.
+  async function checkSceneryUpdates(
+    forceRefresh: boolean = false,
+    showUpToDateToast: boolean = false,
+  ) {
+    if (!data.value || data.value.entries.length === 0) return
+    if (!validateXPlanePath()) return
+
+    const managementStore = useManagementStore()
+    const toastStore = useToastStore()
+    await managementStore.loadAddonUpdateOptions()
+
+    // forceRefresh: rescan local data first so any cfg version edits on disk are
+    // picked up before re-checking remote.
+    if (forceRefresh) {
+      try {
+        const result = await invoke<SceneryManagerData>('get_scenery_manager_data', {
+          xplanePath: appStore.xplanePath,
+        })
+        data.value = result
+        originalEntries.value = JSON.parse(JSON.stringify(result.entries))
+      } catch (e) {
+        logError(`Failed to rescan scenery: ${e}`, 'scenery')
+      }
+    }
+
+    // Use a Ref view of data.value.entries so the generic helper can mutate in place.
+    const entriesRef = computed({
+      get: () => data.value?.entries ?? [],
+      set: (next: SceneryManagerEntry[]) => {
+        if (data.value) data.value.entries = next
+      },
+    })
+
+    isCheckingUpdates.value = true
+    try {
+      const result = await managementStore.checkItemUpdates<SceneryManagerEntry>({
+        itemsRef: entriesRef,
+        checkCommand: 'check_scenery_updates',
+        checkParamName: 'scenery',
+        logName: 'scenery',
+        itemType: 'scenery',
+        extraArgs: { xplanePath: appStore.xplanePath },
+      })
+      if (showUpToDateToast && result.checked && result.updateCount === 0) {
+        toastStore.info(t('management.allUpToDate'))
+      }
+    } finally {
+      isCheckingUpdates.value = false
     }
   }
 
@@ -483,6 +547,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     data,
     isLoading,
     isSaving,
+    isCheckingUpdates,
     error,
     collapsedGroups,
     needsDatabaseReset,
@@ -493,6 +558,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     groupedEntries,
     totalCount,
     enabledCount,
+    updateCount,
     missingDepsCount,
     duplicateTilesCount,
     duplicateAirportsCount,
@@ -505,6 +571,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     initStore,
     loadData,
     loadIndexStatus,
+    checkSceneryUpdates,
     resetDatabase,
     toggleEnabled,
     updateCategory,

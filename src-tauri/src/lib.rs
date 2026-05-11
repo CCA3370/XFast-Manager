@@ -112,7 +112,7 @@ use models::{
     LiveryInfo, LuaScriptInfo, ManagementData, NavdataBackupInfo, NavdataManagerInfo, PluginInfo,
     PresetApplyResult, PresetExportFormat, PresetLockState, PresetSnapshot, PresetSummary,
     SceneryIndexScanResult, SceneryIndexStats, SceneryIndexStatus, SceneryManagerData,
-    SceneryPackageInfo, GLOBAL_AIRPORTS_ENTRY_NAME,
+    SceneryManagerEntry, SceneryPackageInfo, GLOBAL_AIRPORTS_ENTRY_NAME,
 };
 use scenery_index::SceneryIndexManager;
 use scenery_packs_manager::SceneryPacksManager;
@@ -2448,6 +2448,19 @@ async fn check_plugins_updates(
 }
 
 #[tauri::command]
+async fn check_scenery_updates(
+    xplane_path: String,
+    mut scenery: Vec<SceneryManagerEntry>,
+    beta_folders: Option<Vec<String>>,
+) -> Result<Vec<SceneryManagerEntry>, String> {
+    let beta_folder_set: HashSet<String> = beta_folders.unwrap_or_default().into_iter().collect();
+    let xplane_path = PathBuf::from(xplane_path);
+    management_index::check_scenery_updates(xplane_path.as_path(), &mut scenery, &beta_folder_set)
+        .await;
+    Ok(scenery)
+}
+
+#[tauri::command]
 async fn build_addon_update_plan(
     app_handle: tauri::AppHandle,
     task_control: State<'_, TaskControl>,
@@ -3907,6 +3920,7 @@ pub fn run() {
             check_aircraft_updates,
             scan_plugins,
             check_plugins_updates,
+            check_scenery_updates,
             build_addon_update_plan,
             fetch_addon_update_preview,
             execute_addon_update,

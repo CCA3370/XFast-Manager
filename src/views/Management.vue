@@ -8,6 +8,7 @@ import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import { getNavdataCycleStatus } from '@/utils/airac'
+import { isDrawerUpdatable } from '@/utils/addonUpdate'
 import AircraftAcfManagerModal from '@/components/AircraftAcfManagerModal.vue'
 import ManagementEntryCard from '@/components/ManagementEntryCard.vue'
 import SceneryTab from '@/views/SceneryTab.vue'
@@ -284,13 +285,6 @@ function toggleSelect(folderName: string) {
 }
 
 const isBatchProcessing = ref(false)
-
-function isDrawerUpdatable(item: { updateUrl?: string; updateProvider?: string }): boolean {
-  if (item.updateProvider === 'x-updater') return false
-  if (item.updateProvider === 'zibo') return true
-  const value = (item.updateUrl || '').trim().toLowerCase()
-  return !!value && !value.startsWith('x-updater:')
-}
 
 const skunkUpdatableAircraftCount = computed(() => {
   return managementStore.sortedAircraft.filter((item) => isDrawerUpdatable(item)).length
