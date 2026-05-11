@@ -426,6 +426,10 @@ export interface SceneryManagerEntry {
   enabled: boolean
   sortOrder: number
   updateUrl?: string
+  updateProvider?: 'skunkcrafts'
+  version?: string
+  latestVersion?: string
+  hasUpdate: boolean
   missingLibraries: string[]
   requiredLibraries: string[]
   continent?: string

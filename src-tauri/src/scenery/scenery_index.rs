@@ -269,14 +269,14 @@ fn should_promote_to_fixed_high_priority(folder_name: &str, info: &SceneryPackag
         && !info.has_apt_dat
 }
 
-fn read_scenery_update_url(folder_path: &Path) -> Option<String> {
+fn read_scenery_update_info(folder_path: &Path) -> (Option<String>, Option<String>) {
     let cfg_path = folder_path.join("skunkcrafts_updater.cfg");
     if !cfg_path.is_file() {
-        return None;
+        return (None, None);
     }
 
-    let (_version, update_url, _cfg_disabled) = read_version_from_paths(Some(&cfg_path), &[]);
-    update_url
+    let (version, update_url, _cfg_disabled) = read_version_from_paths(Some(&cfg_path), &[]);
+    (version, update_url)
 }
 
 /// Common sorting comparison for non-FixedHighPriority scenery packages
@@ -1630,6 +1630,11 @@ impl SceneryIndexManager {
         for info in packages.drain(..) {
             let flatten_target =
                 crate::airport_flatten::inspect_scenery_flatten_target(&self.xplane_path, info);
+            let (version, update_url) =
+                read_scenery_update_info(&custom_scenery_path.join(&info.folder_name));
+            let update_provider = update_url
+                .as_ref()
+                .map(|_| "skunkcrafts".to_string());
             entries_with_sort.push((
                 info.sort_order,
                 false,
@@ -1639,9 +1644,11 @@ impl SceneryIndexManager {
                     sub_priority: info.sub_priority,
                     enabled: info.enabled,
                     sort_order: info.sort_order,
-                    update_url: read_scenery_update_url(
-                        &custom_scenery_path.join(&info.folder_name),
-                    ),
+                    update_url,
+                    update_provider,
+                    version,
+                    latest_version: None,
+                    has_update: false,
                     missing_libraries: info.missing_libraries.clone(),
                     required_libraries: info.required_libraries.clone(),
                     continent: info.continent.clone(),
@@ -1674,6 +1681,10 @@ impl SceneryIndexManager {
                 enabled: global_airports.enabled,
                 sort_order: global_airports.sort_order,
                 update_url: None,
+                update_provider: None,
+                version: None,
+                latest_version: None,
+                has_update: false,
                 missing_libraries: Vec::new(),
                 required_libraries: Vec::new(),
                 continent: None,

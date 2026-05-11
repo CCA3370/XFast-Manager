@@ -629,79 +629,82 @@ export const useCslStore = defineStore('csl', () => {
       return
     }
 
-    linkSyncDrainPromise = (async () => {
-      try {
-        while (true) {
-          if (
-            !pendingMissingLinkSyncAllTargets &&
-            pendingMissingLinkSyncTargets.size === 0 &&
-            pendingReconcileLinkSyncPackages.size === 0 &&
-            pendingLinkCleanupPaths.size === 0
-          ) {
-            return
-          }
-
-          const shouldRunMissingOnlySync =
-            pendingMissingLinkSyncAllTargets ||
-            pendingMissingLinkSyncTargets.size > 0 ||
-            pendingLinkCleanupPaths.size > 0
-
-          const queuedPackageNames = shouldRunMissingOnlySync
-            ? null
-            : Array.from(pendingReconcileLinkSyncPackages).sort()
-          const queuedTargetPaths = shouldRunMissingOnlySync
-            ? pendingMissingLinkSyncAllTargets
-              ? null
-              : Array.from(pendingMissingLinkSyncTargets)
-            : null
-          const queuedCleanupPaths = shouldRunMissingOnlySync
-            ? Array.from(pendingLinkCleanupPaths)
-            : []
-          const queuedInteractive = shouldRunMissingOnlySync && pendingMissingLinkSyncInteractive
-
-          if (shouldRunMissingOnlySync) {
-            pendingMissingLinkSyncAllTargets = false
-            pendingMissingLinkSyncTargets.clear()
-            pendingLinkCleanupPaths.clear()
-            pendingMissingLinkSyncInteractive = false
-          } else {
-            pendingReconcileLinkSyncPackages.clear()
-          }
-
-          const requestId = createOperationRequestId('csl-sync-links')
-
-          try {
-            beginTrackedLinkSync(requestId, queuedInteractive)
-            logDebug(
-              `[${requestId}] invoke csl_sync_links start xplane_path=${appStore.xplanePath} custom_paths=${customPaths.value.length} packages=${queuedPackageNames?.length ?? 0} cleanup_paths=${queuedCleanupPaths.length} target_paths=${queuedTargetPaths?.length ?? 0} interactive=${queuedInteractive}`,
-              'csl',
-            )
-            await invoke('csl_sync_links', {
-              xplanePath: appStore.xplanePath,
-              customPaths: customPaths.value,
-              installLocation: installLocation.value || null,
-              packageNames:
-                queuedPackageNames && queuedPackageNames.length > 0 ? queuedPackageNames : null,
-              targetPaths: queuedTargetPaths ?? null,
-              cleanupPaths: queuedCleanupPaths.length > 0 ? queuedCleanupPaths : null,
-              requestId,
-            })
-            logDebug(`[${requestId}] invoke csl_sync_links success`, 'csl')
-          } catch (e) {
-            logError(`[${requestId}] CSL link sync failed: ${getErrorMessage(e)}`, 'csl')
-            if (queuedInteractive) {
-              toast.error(t('csl.syncError'))
-            }
-          } finally {
-            finishTrackedLinkSync(requestId)
-          }
+    const drainPromise = (async () => {
+      while (true) {
+        if (
+          !pendingMissingLinkSyncAllTargets &&
+          pendingMissingLinkSyncTargets.size === 0 &&
+          pendingReconcileLinkSyncPackages.size === 0 &&
+          pendingLinkCleanupPaths.size === 0
+        ) {
+          return
         }
-      } finally {
-        linkSyncDrainPromise = null
+
+        const shouldRunMissingOnlySync =
+          pendingMissingLinkSyncAllTargets ||
+          pendingMissingLinkSyncTargets.size > 0 ||
+          pendingLinkCleanupPaths.size > 0
+
+        const queuedPackageNames = shouldRunMissingOnlySync
+          ? null
+          : Array.from(pendingReconcileLinkSyncPackages).sort()
+        const queuedTargetPaths = shouldRunMissingOnlySync
+          ? pendingMissingLinkSyncAllTargets
+            ? null
+            : Array.from(pendingMissingLinkSyncTargets)
+          : null
+        const queuedCleanupPaths = shouldRunMissingOnlySync
+          ? Array.from(pendingLinkCleanupPaths)
+          : []
+        const queuedInteractive = shouldRunMissingOnlySync && pendingMissingLinkSyncInteractive
+
+        if (shouldRunMissingOnlySync) {
+          pendingMissingLinkSyncAllTargets = false
+          pendingMissingLinkSyncTargets.clear()
+          pendingLinkCleanupPaths.clear()
+          pendingMissingLinkSyncInteractive = false
+        } else {
+          pendingReconcileLinkSyncPackages.clear()
+        }
+
+        const requestId = createOperationRequestId('csl-sync-links')
+
+        try {
+          beginTrackedLinkSync(requestId, queuedInteractive)
+          logDebug(
+            `[${requestId}] invoke csl_sync_links start xplane_path=${appStore.xplanePath} custom_paths=${customPaths.value.length} packages=${queuedPackageNames?.length ?? 0} cleanup_paths=${queuedCleanupPaths.length} target_paths=${queuedTargetPaths?.length ?? 0} interactive=${queuedInteractive}`,
+            'csl',
+          )
+          await invoke('csl_sync_links', {
+            xplanePath: appStore.xplanePath,
+            customPaths: customPaths.value,
+            installLocation: installLocation.value || null,
+            packageNames:
+              queuedPackageNames && queuedPackageNames.length > 0 ? queuedPackageNames : null,
+            targetPaths: queuedTargetPaths ?? null,
+            cleanupPaths: queuedCleanupPaths.length > 0 ? queuedCleanupPaths : null,
+            requestId,
+          })
+          logDebug(`[${requestId}] invoke csl_sync_links success`, 'csl')
+        } catch (e) {
+          logError(`[${requestId}] CSL link sync failed: ${getErrorMessage(e)}`, 'csl')
+          if (queuedInteractive) {
+            toast.error(t('csl.syncError'))
+          }
+        } finally {
+          finishTrackedLinkSync(requestId)
+        }
       }
     })()
+    linkSyncDrainPromise = drainPromise
 
-    await linkSyncDrainPromise
+    try {
+      await drainPromise
+    } finally {
+      if (linkSyncDrainPromise === drainPromise) {
+        linkSyncDrainPromise = null
+      }
+    }
   }
 
   function clearProgressForTask(task: QueuedInstallTask) {
@@ -1086,11 +1089,13 @@ export const useCslStore = defineStore('csl', () => {
 
     customPaths.value = normalizedNextPaths
     await setItem(STORAGE_KEYS.CSL_CUSTOM_PATHS, normalizedNextPaths)
-    await syncLinks({
-      targetPaths: addedPaths,
-      cleanupPaths: removedPaths,
-      interactive: true,
-    })
+    if (addedPaths.length > 0 || removedPaths.length > 0) {
+      await syncLinks({
+        targetPaths: addedPaths,
+        cleanupPaths: removedPaths,
+        interactive: true,
+      })
+    }
   }
 
   function updateProgress(prog: CslProgress) {

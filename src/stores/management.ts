@@ -171,6 +171,9 @@ interface UpdatableItem {
   folderName: string
 }
 
+// Item kinds that can participate in update checks (lock store supports all three)
+type CheckableItemType = 'aircraft' | 'plugin' | 'scenery'
+
 // Base type for any loadable management item
 interface LoadableItem {
   folderName: string
@@ -520,7 +523,7 @@ export const useManagementStore = defineStore('management', () => {
       updateProvider?: string
       folderName: string
     },
-    itemType: 'aircraft' | 'plugin',
+    itemType: CheckableItemType,
   ): boolean {
     const key = getUpdateCacheKey(item, isAddonUpdateBetaEnabled(itemType, item.folderName))
     if (!key) return false
@@ -533,7 +536,7 @@ export const useManagementStore = defineStore('management', () => {
   // hasUpdate is recalculated based on current local version vs cached remote version
   function applyCachedUpdates<T extends UpdatableItem>(
     items: T[],
-    itemType: 'aircraft' | 'plugin',
+    itemType: CheckableItemType,
   ): T[] {
     return items.map((item) => {
       const key = getUpdateCacheKey(item, isAddonUpdateBetaEnabled(itemType, item.folderName))
@@ -555,7 +558,7 @@ export const useManagementStore = defineStore('management', () => {
   // Get items that need update check (no valid cache, and not locked)
   function getItemsNeedingUpdateCheck<
     T extends { updateUrl?: string; updateProvider?: string; folderName: string },
-  >(items: T[], itemType: 'aircraft' | 'plugin'): T[] {
+  >(items: T[], itemType: CheckableItemType): T[] {
     const lockStore = useLockStore()
     return items.filter((item) => {
       if (!usesRemoteUpdateCheck(item)) return false
@@ -573,7 +576,7 @@ export const useManagementStore = defineStore('management', () => {
     totalCountRef: Ref<number>
     enabledCountRef: Ref<number>
     applyCache?: boolean
-    cacheItemType?: 'aircraft' | 'plugin'
+    cacheItemType?: CheckableItemType
     afterLoad?: () => void
     logName: string
   }
@@ -625,7 +628,7 @@ export const useManagementStore = defineStore('management', () => {
     checkCommand: string
     checkParamName: string
     logName: string
-    itemType: 'aircraft' | 'plugin'
+    itemType: CheckableItemType
     extraArgs?: Record<string, unknown>
   }
 
@@ -1361,6 +1364,7 @@ export const useManagementStore = defineStore('management', () => {
     checkAircraftUpdates,
     loadPlugins,
     checkPluginsUpdates,
+    checkItemUpdates,
     loadAddonUpdateOptions,
     setAddonUpdateOptions,
     isAddonUpdateBetaEnabled,

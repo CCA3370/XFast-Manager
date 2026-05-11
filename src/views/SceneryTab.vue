@@ -21,8 +21,14 @@ import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
 import { airportFlattenSetState } from '@/services/airport-flatten-api'
 import { buildVercelApiUrl } from '@/services/vercelApi'
+import { isDrawerUpdatable } from '@/utils/addonUpdate'
 import ConfirmModal from '@/components/ConfirmModal.vue'
-import type { SceneryManagerEntry, SceneryCategory, SceneryIndexScanResult } from '@/types'
+import type {
+  SceneryManagerEntry,
+  SceneryCategory,
+  SceneryIndexScanResult,
+  AddonUpdateDrawerTask,
+} from '@/types'
 import { parseApiError, getErrorMessage } from '@/types'
 
 // Lazy load heavy components to reduce initial render time
@@ -53,6 +59,7 @@ const searchExpandedContinents = ref<Record<string, boolean>>({})
 const searchExpandedContinentCategories = ref<Record<string, boolean>>({})
 const showOnlyMissingLibs = ref(false)
 const showOnlyDuplicates = ref(false)
+const showOnlyUpdates = ref(false)
 const showMoreMenu = ref(false)
 const moreMenuRef = ref<HTMLElement | null>(null)
 const syncWarningDismissed = ref(false)
@@ -107,6 +114,7 @@ const hasActiveFilters = computed(() => {
   return (
     showOnlyMissingLibs.value ||
     showOnlyDuplicates.value ||
+    showOnlyUpdates.value ||
     enabledFilter.value !== 'all' ||
     viewMode.value === 'continent'
   )
@@ -114,7 +122,12 @@ const hasActiveFilters = computed(() => {
 
 // Whether any data-level filter is active (excluding view mode)
 const hasDataFilters = computed(() => {
-  return showOnlyMissingLibs.value || showOnlyDuplicates.value || enabledFilter.value !== 'all'
+  return (
+    showOnlyMissingLibs.value ||
+    showOnlyDuplicates.value ||
+    showOnlyUpdates.value ||
+    enabledFilter.value !== 'all'
+  )
 })
 
 // Local copy of grouped entries for drag-and-drop
@@ -594,6 +607,11 @@ const filteredSceneryEntries = computed(() => {
     )
   }
 
+  // Filter to entries with a SkunkCrafts update available
+  if (showOnlyUpdates.value) {
+    entries = entries.filter((entry) => entry.hasUpdate)
+  }
+
   // Filter by continent
   if (selectedContinent.value) {
     entries = entries.filter((entry) => entry.continent === selectedContinent.value)
@@ -916,6 +934,48 @@ function handleOpenSceneryUpdate(folderName: string) {
     itemType: 'scenery',
     folderName,
     displayName: folderName,
+  })
+}
+
+async function handleCheckSceneryUpdates() {
+  if (sceneryStore.isCheckingUpdates) return
+  await sceneryStore.checkSceneryUpdates(true, true)
+}
+
+const sceneryUpdatableCount = computed(() => {
+  return sceneryStore.entries.filter((entry) => isDrawerUpdatable(entry) && entry.hasUpdate).length
+})
+
+function buildSceneryUpdateAllTargets(): AddonUpdateDrawerTask[] {
+  return sceneryStore.entries
+    .filter((entry) => isDrawerUpdatable(entry) && entry.hasUpdate)
+    .map((entry) => ({
+      itemType: 'scenery' as const,
+      folderName: entry.folderName,
+      displayName: entry.folderName,
+      initialLocalVersion: entry.version || '',
+      initialTargetVersion: entry.latestVersion || '',
+    }))
+}
+
+function handleSceneryUpdateAll() {
+  if (sceneryStore.isCheckingUpdates) return
+  const targets = buildSceneryUpdateAllTargets()
+  if (targets.length === 0) {
+    toastStore.info(t('management.allUpToDate'))
+    return
+  }
+
+  modalStore.showConfirm({
+    title: t('management.updateAll'),
+    message: t('management.updateAllConfirm', { count: targets.length }),
+    confirmText: t('management.updateAll'),
+    cancelText: t('common.cancel'),
+    type: 'warning',
+    onConfirm: () => {
+      addonUpdateDrawerStore.openTasks(targets, `${targets[0].itemType}:${targets[0].folderName}`)
+    },
+    onCancel: () => {},
   })
 }
 
@@ -1726,6 +1786,58 @@ onBeforeUnmount(() => {
         </button>
       </Transition>
 
+      <!-- Check SkunkCrafts updates -->
+      <button
+        v-if="sceneryStore.indexExists"
+        :disabled="sceneryStore.isCheckingUpdates"
+        class="px-3 py-1.5 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
+        @click="handleCheckSceneryUpdates"
+      >
+        <svg
+          v-if="!sceneryStore.isCheckingUpdates"
+          class="w-3.5 h-3.5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+          ></path>
+        </svg>
+        <svg
+          v-else
+          class="w-3.5 h-3.5 animate-spin [animation-direction:reverse]"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+          ></path>
+        </svg>
+        <Transition name="text-fade" mode="out-in">
+          <span :key="locale">{{ t('management.checkUpdates') }}</span>
+        </Transition>
+      </button>
+
+      <!-- Update all SkunkCrafts addons in scenery -->
+      <button
+        v-if="sceneryStore.indexExists && sceneryUpdatableCount > 0"
+        :disabled="sceneryStore.isCheckingUpdates"
+        class="px-3 py-1.5 rounded-lg bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
+        @click="handleSceneryUpdateAll"
+      >
+        <Transition name="text-fade" mode="out-in">
+          <span :key="locale">{{ t('management.updateAll') }} ({{ sceneryUpdatableCount }})</span>
+        </Transition>
+      </button>
+
       <button
         v-if="sceneryStore.hasLocalChanges && sceneryStore.indexExists"
         class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
@@ -1876,6 +1988,55 @@ onBeforeUnmount(() => {
         <span class="font-semibold text-orange-600 dark:text-orange-400">{{
           sceneryStore.duplicatesCount
         }}</span>
+      </div>
+      <!-- Update available count for scenery -->
+      <div v-if="sceneryStore.updateCount > 0" class="flex items-center gap-2">
+        <Transition name="text-fade" mode="out-in">
+          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+            >{{ t('management.hasUpdate') }}:</span
+          >
+        </Transition>
+        <span class="font-semibold text-emerald-600 dark:text-emerald-400">
+          {{ sceneryStore.updateCount }}
+        </span>
+        <button
+          class="ml-1 px-2 py-0.5 rounded text-xs transition-colors"
+          :class="
+            showOnlyUpdates
+              ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+              : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50'
+          "
+          :title="t('management.filterUpdatesOnly')"
+          @click="showOnlyUpdates = !showOnlyUpdates"
+        >
+          <Transition name="text-fade" mode="out-in">
+            <span :key="locale">{{
+              showOnlyUpdates ? t('management.showAll') : t('management.filterUpdatesOnly')
+            }}</span>
+          </Transition>
+        </button>
+      </div>
+      <!-- Checking updates indicator -->
+      <div
+        v-if="sceneryStore.isCheckingUpdates"
+        class="flex items-center gap-2 text-gray-500 dark:text-gray-400"
+      >
+        <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle
+            class="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            stroke-width="4"
+          ></circle>
+          <path
+            class="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          ></path>
+        </svg>
+        <span class="text-xs">{{ t('management.checkingUpdates') }}</span>
       </div>
       <!-- Filter dropdown menu -->
       <div ref="filterDropdownRef" class="relative">

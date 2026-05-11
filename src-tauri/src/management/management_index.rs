@@ -11,6 +11,7 @@ use crate::logger;
 use crate::models::{
     AircraftAcfFileInfo, AircraftInfo, LiveryInfo, LuaScriptInfo, ManagementData,
     NavdataBackupInfo, NavdataBackupVerification, NavdataManagerInfo, PluginInfo,
+    SceneryManagerEntry,
 };
 use crate::path_utils;
 use crate::skunk_updater;
@@ -341,6 +342,7 @@ fn resolve_management_path(
         "aircraft" => xplane_path.join("Aircraft"),
         "plugin" => xplane_path.join("Resources").join("plugins"),
         "navdata" => xplane_path.join("Custom Data"),
+        "scenery" => xplane_path.join("Custom Scenery"),
         _ => return Err(anyhow!("Unknown item type: {}", item_type)),
     };
 
@@ -1730,6 +1732,51 @@ pub async fn check_plugins_updates(
             let local_version = plugins[idx].version.as_deref().unwrap_or("");
             plugins[idx].latest_version = Some(remote_version.clone());
             plugins[idx].has_update = remote_version != local_version;
+        }
+    }
+}
+
+/// Check for scenery updates by fetching remote skunkcrafts_updater.cfg files.
+/// Modifies the entries slice in place, setting latest_version and has_update.
+pub async fn check_scenery_updates(
+    xplane_path: &Path,
+    scenery: &mut [SceneryManagerEntry],
+    beta_folders: &HashSet<String>,
+) {
+    use futures::future::join_all;
+
+    let update_tasks: Vec<_> = scenery
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, entry)| {
+            entry.update_url.as_ref().and_then(|url| {
+                if is_x_updater_url(url) {
+                    None
+                } else {
+                    let use_beta = beta_folders.contains(&entry.folder_name);
+                    resolve_update_check_url(xplane_path, "scenery", &entry.folder_name, url, use_beta)
+                        .map(|resolved_url| (idx, resolved_url))
+                }
+            })
+        })
+        .collect();
+
+    if update_tasks.is_empty() {
+        return;
+    }
+
+    let fetch_futures: Vec<_> = update_tasks
+        .iter()
+        .map(|(_, url)| fetch_remote_version(url.clone()))
+        .collect();
+
+    let results = join_all(fetch_futures).await;
+
+    for ((idx, _), result) in update_tasks.into_iter().zip(results) {
+        if let Some(remote_version) = result {
+            let local_version = scenery[idx].version.as_deref().unwrap_or("");
+            scenery[idx].latest_version = Some(remote_version.clone());
+            scenery[idx].has_update = remote_version != local_version;
         }
     }
 }
