@@ -887,7 +887,7 @@ fn build_patterns() -> Vec<Pattern> {
         Pattern {
             category: "crash",
             severity: "high",
-            matcher: Box::new(|l, _| l.contains("This application has crashed")),
+            matcher: Box::new(|l, _| is_xplane_crash_marker(l)),
         },
         Pattern {
             category: "plugin_manager_error",
@@ -1142,6 +1142,37 @@ fn extract_crash_context(lines: &[String], crash_idx: usize) -> String {
     lines[start..=end].join("\n")
 }
 
+fn is_xplane_crash_marker(line: &str) -> bool {
+    line.contains("This application has crashed")
+}
+
+fn is_xplane_normal_shutdown_marker(line: &str) -> bool {
+    line.trim()
+        .to_ascii_lowercase()
+        .contains("x-plane has shut down")
+}
+
+fn has_normal_shutdown_ending(lines: &[String]) -> bool {
+    lines
+        .iter()
+        .rev()
+        .filter(|line| !line.trim().is_empty())
+        .take(20)
+        .any(|line| is_xplane_normal_shutdown_marker(line))
+}
+
+fn last_non_empty_line_index(lines: &[String]) -> Option<usize> {
+    lines.iter().rposition(|line| !line.trim().is_empty())
+}
+
+fn extract_log_tail_context(lines: &[String]) -> String {
+    let Some(end) = last_non_empty_line_index(lines) else {
+        return String::new();
+    };
+    let start = (end + 1).saturating_sub(30);
+    lines[start..=end].join("\n")
+}
+
 fn extract_system_info(lines: &[String]) -> SystemInfo {
     let mut info = SystemInfo::default();
 
@@ -1253,17 +1284,13 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
     let mut issue_map: std::collections::HashMap<&'static str, (&'static str, Vec<usize>, String)> =
         std::collections::HashMap::new();
 
-    let mut crash_detected = false;
-    let mut crash_info: Option<String> = None;
+    let mut first_crash_marker_idx: Option<usize> = None;
 
     for (idx, line) in lines.iter().enumerate() {
         let line_lower = line.to_lowercase();
 
-        if line.contains("This application has crashed") {
-            crash_detected = true;
-            if crash_info.is_none() {
-                crash_info = Some(extract_crash_context(&lines, idx));
-            }
+        if is_xplane_crash_marker(line) && first_crash_marker_idx.is_none() {
+            first_crash_marker_idx = Some(idx);
         }
 
         for pat in &patterns {
@@ -1282,6 +1309,40 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
                     }
                 }
             }
+        }
+    }
+
+    let missing_log_ending =
+        is_xplane_log && first_crash_marker_idx.is_none() && !has_normal_shutdown_ending(&lines);
+    let crash_detected = first_crash_marker_idx.is_some() || missing_log_ending;
+    let crash_info = first_crash_marker_idx
+        .map(|idx| extract_crash_context(&lines, idx))
+        .or_else(|| {
+            if missing_log_ending {
+                let context = extract_log_tail_context(&lines);
+                if context.is_empty() {
+                    None
+                } else {
+                    Some(context)
+                }
+            } else {
+                None
+            }
+        });
+
+    if missing_log_ending {
+        let line_number = last_non_empty_line_index(&lines)
+            .map(|idx| idx + 1)
+            .unwrap_or(1);
+        let sample_line = extract_log_tail_context(&lines);
+        let entry = issue_map
+            .entry("crash")
+            .or_insert(("high", Vec::new(), String::new()));
+        if entry.1.len() < 5 {
+            entry.1.push(line_number);
+        }
+        if entry.2.is_empty() {
+            entry.2 = sample_line;
         }
     }
 
@@ -1325,6 +1386,75 @@ async fn analyze_crash_report(
     skip_date_check: bool,
 ) -> Result<Option<crash_analysis::DeepCrashAnalysis>, String> {
     crash_analysis::analyze_crash_report(&xplane_path, &log_issues, skip_date_check).await
+}
+
+#[cfg(test)]
+mod log_analysis_tests {
+    use super::*;
+
+    fn analyze_log_lines(lines: &[&str]) -> XPlaneLogAnalysis {
+        let temp = tempfile::tempdir().expect("failed to create tempdir");
+        std::fs::write(temp.path().join("Log.txt"), lines.join("\n"))
+            .expect("failed to write Log.txt");
+
+        analyze_xplane_log(temp.path().to_string_lossy().to_string())
+            .expect("failed to analyze Log.txt")
+    }
+
+    #[test]
+    fn unfinished_xplane_log_is_detected_as_crash() {
+        let result = analyze_log_lines(&[
+            "Log.txt for X-Plane 12.4.0",
+            "X-System folder:'C:\\X-Plane 12', case sensitive=0",
+            "0:00:01.000 I/FLT: Init flight",
+            "0:00:02.000 I/SCN: Loading scenery",
+        ]);
+
+        assert!(result.is_xplane_log);
+        assert!(result.crash_detected);
+        assert!(result
+            .crash_info
+            .as_deref()
+            .unwrap_or("")
+            .contains("Loading scenery"));
+        assert!(result
+            .issues
+            .iter()
+            .any(|issue| issue.category == "crash" && issue.severity == "high"));
+    }
+
+    #[test]
+    fn normal_xplane_shutdown_marker_is_not_detected_as_crash() {
+        let result = analyze_log_lines(&[
+            "Log.txt for X-Plane 12.4.0",
+            "X-System folder:'C:\\X-Plane 12', case sensitive=0",
+            "Plugin unload complete.",
+            "Clean exit from threads.",
+            "----- X-Plane has shut down -----",
+        ]);
+
+        assert!(result.is_xplane_log);
+        assert!(!result.crash_detected);
+        assert!(result.issues.iter().all(|issue| issue.category != "crash"));
+    }
+
+    #[test]
+    fn explicit_xplane_crash_marker_is_detected_as_crash() {
+        let result = analyze_log_lines(&[
+            "Log.txt for X-Plane 12.4.0",
+            "X-System folder:'C:\\X-Plane 12', case sensitive=0",
+            "0:00:02.000 E/GFX: VK_ERROR_DEVICE_LOST",
+            "--=={This application has crashed!}==--",
+        ]);
+
+        assert!(result.is_xplane_log);
+        assert!(result.crash_detected);
+        assert!(result
+            .crash_info
+            .as_deref()
+            .unwrap_or("")
+            .contains("This application has crashed"));
+    }
 }
 
 // ========== Scenery Folder Commands ==========
