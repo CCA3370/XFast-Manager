@@ -216,7 +216,7 @@
     <div
       v-if="unknownSubmissionItem"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4"
-      @click.self="closeUnknownSubmission"
+      @click.self="closeUnknownSubmission()"
     >
       <div
         class="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-2xl overflow-hidden"
@@ -262,7 +262,7 @@
         >
           <button
             class="px-3 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
-            @click="closeUnknownSubmission"
+            @click="closeUnknownSubmission()"
           >
             {{ $t('common.cancel') }}
           </button>

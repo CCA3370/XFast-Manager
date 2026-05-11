@@ -338,47 +338,115 @@
             </button>
           </div>
           <div class="px-5 py-4 space-y-2 max-h-80 overflow-y-auto">
-            <div v-for="p in store.paths" :key="p.path" class="flex items-center gap-2 text-sm">
-              <span
-                class="px-1.5 py-0.5 rounded text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 flex-shrink-0"
-                >{{ $t('csl.autoDetected') }}</span
-              >
-              <span v-if="p.plugin_name" class="text-gray-500 dark:text-gray-400 flex-shrink-0"
-                >{{ p.plugin_name }}:</span
-              >
-              <span class="text-gray-700 dark:text-gray-300 truncate">{{
-                relativePath(p.path)
-              }}</span>
-            </div>
-            <div v-for="cp in customPathDraft" :key="cp" class="flex items-center gap-2 text-sm">
-              <span
-                class="px-1.5 py-0.5 rounded text-xs bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 flex-shrink-0"
-                >{{ $t('csl.custom') }}</span
-              >
-              <span class="text-gray-700 dark:text-gray-300 truncate flex-1">{{
-                relativePath(cp)
-              }}</span>
-              <button
-                class="text-red-500 hover:text-red-600 text-xs flex-shrink-0"
-                @click="removeCustomPathDraft(cp)"
-              >
-                {{ $t('csl.removePath') }}
-              </button>
-            </div>
+            <button
+              v-for="row in pathRows"
+              :key="row.path"
+              type="button"
+              class="w-full text-left rounded-lg border px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              :class="
+                isInstallPath(row.path)
+                  ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/60 dark:bg-emerald-900/20'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer'
+              "
+              :aria-pressed="isInstallPath(row.path)"
+              @click="setInstallPathDraft(row.path)"
+            >
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span
+                  v-if="row.isAuto"
+                  class="px-1.5 py-0.5 rounded text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 flex-shrink-0"
+                  >{{ $t('csl.autoDetected') }}</span
+                >
+                <span
+                  v-if="row.isCustom"
+                  class="px-1.5 py-0.5 rounded text-xs bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 flex-shrink-0"
+                  >{{ $t('csl.custom') }}</span
+                >
+                <span
+                  v-if="row.isDefault"
+                  class="px-1.5 py-0.5 rounded text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 flex-shrink-0"
+                  >{{ $t('csl.default') }}</span
+                >
+                <span
+                  v-if="row.pluginName"
+                  class="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0"
+                  >{{ row.pluginName }}</span
+                >
+                <span
+                  v-if="isInstallPath(row.path)"
+                  class="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 flex-shrink-0"
+                >
+                  <svg
+                    class="w-3 h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="3"
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                  {{ $t('csl.installPathActive') }}
+                </span>
+              </div>
+              <div class="mt-1 flex items-center gap-2 min-w-0">
+                <span
+                  class="font-mono text-xs text-gray-700 dark:text-gray-300 break-all flex-1 min-w-0"
+                  :title="row.path"
+                  >{{ relativePath(row.path) }}</span
+                >
+                <button
+                  v-if="row.isCustom"
+                  type="button"
+                  class="inline-flex items-center justify-center w-7 h-7 rounded-md text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors flex-shrink-0"
+                  :title="$t('csl.removePath')"
+                  :aria-label="$t('csl.removePath')"
+                  @click.stop="removeCustomPathDraft(row.path)"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </button>
             <div
-              v-if="store.paths.length === 0 && customPathDraft.length === 0"
+              v-if="pathRows.length === 0"
               class="text-sm text-gray-400 dark:text-gray-500 text-center py-4"
             >
               {{ $t('csl.noPathsDetected') }}
             </div>
           </div>
           <div class="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-between">
-            <button
-              class="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-              @click="addCustomPathDraft"
-            >
-              + {{ $t('csl.addPath') }}
-            </button>
+            <div class="flex items-center gap-3">
+              <button
+                class="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                @click="addCustomPathDraft"
+              >
+                + {{ $t('csl.addPath') }}
+              </button>
+              <button
+                v-if="installLocationDraft"
+                class="text-sm text-gray-500 dark:text-gray-400 hover:underline"
+                @click="resetInstallPathDraft"
+              >
+                {{ $t('csl.resetToDefault') }}
+              </button>
+            </div>
             <div class="flex items-center gap-2">
               <button
                 class="text-sm px-4 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -623,6 +691,81 @@ const serverEntries = ref<EditableServerEntry[]>([])
 const selectedServerEntryId = ref<number | null>(null)
 const serverSettingsError = ref('')
 const customPathDraft = ref<string[]>([])
+const installLocationDraft = ref<string>('')
+
+const defaultCanonicalPath = computed(() => store.defaultCanonicalPath)
+
+function pathKey(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/+$/, '')
+}
+
+function pathsEqual(a: string, b: string): boolean {
+  return pathKey(a) === pathKey(b)
+}
+
+interface PathRow {
+  path: string
+  isAuto: boolean
+  isCustom: boolean
+  isDefault: boolean
+  pluginName?: string
+}
+
+const pathRows = computed<PathRow[]>(() => {
+  const rows: PathRow[] = []
+  const seen = new Set<string>()
+  const defaultPath = defaultCanonicalPath.value
+  const defaultKey = defaultPath ? pathKey(defaultPath) : ''
+
+  for (const p of store.paths) {
+    const key = pathKey(p.path)
+    if (seen.has(key)) continue
+    seen.add(key)
+    rows.push({
+      path: p.path,
+      isAuto: true,
+      isCustom: false,
+      isDefault: defaultKey !== '' && key === defaultKey,
+      pluginName: p.plugin_name ?? undefined,
+    })
+  }
+
+  for (const cp of customPathDraft.value) {
+    const key = pathKey(cp)
+    if (seen.has(key)) continue
+    seen.add(key)
+    rows.push({
+      path: cp,
+      isAuto: false,
+      isCustom: true,
+      isDefault: defaultKey !== '' && key === defaultKey,
+    })
+  }
+
+  if (defaultPath !== '' && !seen.has(defaultKey)) {
+    rows.unshift({
+      path: defaultPath,
+      isAuto: false,
+      isCustom: false,
+      isDefault: true,
+    })
+  }
+
+  return rows
+})
+
+function isInstallPath(path: string): boolean {
+  const resolved = installLocationDraft.value || defaultCanonicalPath.value
+  return resolved !== '' && pathsEqual(path, resolved)
+}
+
+function setInstallPathDraft(path: string) {
+  installLocationDraft.value = pathsEqual(path, defaultCanonicalPath.value) ? '' : path
+}
+
+function resetInstallPathDraft() {
+  installLocationDraft.value = ''
+}
 
 let nextServerEntryId = 0
 let descriptionObserver: IntersectionObserver | null = null
@@ -713,7 +856,11 @@ const hasPathDraftChanges = computed(() => {
     return true
   }
 
-  return customPathDraft.value.some((path, index) => path !== store.customPaths[index])
+  if (customPathDraft.value.some((path, index) => path !== store.customPaths[index])) {
+    return true
+  }
+
+  return !pathsEqual(installLocationDraft.value, store.installLocation)
 })
 const linkSyncTitle = computed(() => t('csl.syncDialogTitle'))
 const showLinkSyncDialog = computed(
@@ -922,14 +1069,16 @@ function installAll() {
 }
 
 async function openPathsDialog() {
-  await store.ensureCustomPathsLoaded()
+  await Promise.all([store.ensureCustomPathsLoaded(), store.ensureInstallLocationLoaded()])
   customPathDraft.value = [...store.customPaths]
+  installLocationDraft.value = store.installLocation
   showPathsDialog.value = true
 }
 
 function closePathsDialog() {
   showPathsDialog.value = false
   customPathDraft.value = []
+  installLocationDraft.value = ''
 }
 
 async function addCustomPathDraft() {
@@ -946,12 +1095,27 @@ async function addCustomPathDraft() {
 
 function removeCustomPathDraft(path: string) {
   customPathDraft.value = customPathDraft.value.filter((item) => item !== path)
+  if (installLocationDraft.value === path) {
+    installLocationDraft.value = ''
+  }
 }
 
 async function confirmPathDraft() {
   const nextPaths = [...customPathDraft.value]
+  const nextInstallLocation = installLocationDraft.value
+  const installLocationChanged = !pathsEqual(nextInstallLocation, store.installLocation)
   closePathsDialog()
+
+  if (installLocationChanged) {
+    await store.setInstallLocation(nextInstallLocation)
+  }
+
   await store.applyCustomPaths(nextPaths)
+
+  if (installLocationChanged) {
+    await store.syncLinks({ interactive: true })
+    await store.scanPackages()
+  }
 }
 
 async function openServerSettingsDialog() {
