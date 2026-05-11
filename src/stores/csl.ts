@@ -73,6 +73,7 @@ export const useCslStore = defineStore('csl', () => {
   const packages = ref<CslPackageInfo[]>([])
   const paths = ref<CslPath[]>([])
   const customPaths = ref<string[]>([])
+  const installLocation = ref<string>('')
   const serverVersion = ref('')
   const serverBaseUrls = ref<string[]>([DEFAULT_CSL_SERVER_BASE_URL])
   const activeServerBaseUrl = ref(DEFAULT_CSL_SERVER_BASE_URL)
@@ -106,10 +107,12 @@ export const useCslStore = defineStore('csl', () => {
   let scanGeneration = 0
   let linkSyncDrainPromise: Promise<void> | null = null
   let customPathsLoadPromise: Promise<void> | null = null
+  let installLocationLoadPromise: Promise<void> | null = null
   let pendingMissingLinkSyncAllTargets = false
   let pendingMissingLinkSyncInteractive = false
   let activeLinkSyncRequestId = ''
   let isCustomPathsLoaded = false
+  let isInstallLocationLoaded = false
   const descriptionLoadQueue = new Set<string>()
   const pendingReconcileLinkSyncPackages = new Set<string>()
   const pendingMissingLinkSyncTargets = new Set<string>()
@@ -135,6 +138,19 @@ export const useCslStore = defineStore('csl', () => {
     }
     return pathStrings
   })
+
+  const defaultCanonicalPath = computed(() => {
+    const root = appStore.xplanePath
+    if (!root) return ''
+    const separator = root.includes('\\') && !root.includes('/') ? '\\' : '/'
+    const trimmed = root.replace(/[\\/]+$/, '')
+    const tail = 'Resources/plugins/IVAO_CSL/CSL'.split('/').join(separator)
+    return `${trimmed}${separator}${tail}`
+  })
+
+  const resolvedInstallLocation = computed(
+    () => installLocation.value || defaultCanonicalPath.value,
+  )
 
   const allScansDone = computed(() => !isLoading.value && !altitudeLoading.value)
 
@@ -351,6 +367,50 @@ export const useCslStore = defineStore('csl', () => {
     }
   }
 
+  async function ensureInstallLocationLoaded() {
+    if (isInstallLocationLoaded) {
+      return
+    }
+
+    if (installLocationLoadPromise) {
+      await installLocationLoadPromise
+      return
+    }
+
+    installLocationLoadPromise = (async () => {
+      const saved = await getItem<string>(STORAGE_KEYS.CSL_INSTALL_LOCATION)
+      installLocation.value = typeof saved === 'string' ? saved.trim() : ''
+      isInstallLocationLoaded = true
+    })()
+
+    try {
+      await installLocationLoadPromise
+    } finally {
+      installLocationLoadPromise = null
+    }
+  }
+
+  function pathKey(p: string): string {
+    return p.replace(/\\/g, '/').replace(/\/+$/, '')
+  }
+
+  async function setInstallLocation(absolutePath: string): Promise<boolean> {
+    await ensureInstallLocationLoaded()
+
+    const trimmed = absolutePath.trim()
+    const defaultKey = pathKey(defaultCanonicalPath.value)
+    const next = trimmed === '' || pathKey(trimmed) === defaultKey ? '' : trimmed
+
+    if (next === installLocation.value) {
+      return false
+    }
+
+    installLocation.value = next
+    await setItem(STORAGE_KEYS.CSL_INSTALL_LOCATION, next)
+    toast.info(t('csl.installLocationChanged'))
+    return true
+  }
+
   async function pruneDetectedCustomPaths(detectedPaths: CslPath[]) {
     const detectedPathSet = new Set(
       detectedPaths
@@ -530,7 +590,7 @@ export const useCslStore = defineStore('csl', () => {
       return
     }
 
-    await ensureCustomPathsLoaded()
+    await Promise.all([ensureCustomPathsLoaded(), ensureInstallLocationLoaded()])
 
     if (!packageNames || packageNames.length === 0) {
       if (!hasExplicitTargetPaths) {
@@ -619,6 +679,7 @@ export const useCslStore = defineStore('csl', () => {
             await invoke('csl_sync_links', {
               xplanePath: appStore.xplanePath,
               customPaths: customPaths.value,
+              installLocation: installLocation.value || null,
               packageNames:
                 queuedPackageNames && queuedPackageNames.length > 0 ? queuedPackageNames : null,
               targetPaths: queuedTargetPaths ?? null,
@@ -692,7 +753,7 @@ export const useCslStore = defineStore('csl', () => {
   async function runInstallTask(task: QueuedInstallTask): Promise<boolean> {
     await managementStore.loadAddonUpdateOptions()
     await ensureServerConfigLoaded()
-    await ensureCustomPathsLoaded()
+    await Promise.all([ensureCustomPathsLoaded(), ensureInstallLocationLoaded()])
 
     const parallelDownloads = getParallelDownloads()
     const requestId = createOperationRequestId(
@@ -750,6 +811,7 @@ export const useCslStore = defineStore('csl', () => {
         packageName: task.name,
         xplanePath: appStore.xplanePath,
         customPaths: customPaths.value,
+        installLocation: installLocation.value || null,
         parallelDownloads,
         serverBaseUrl: activeServerBaseUrl.value,
         requestId,
@@ -837,7 +899,7 @@ export const useCslStore = defineStore('csl', () => {
 
     const generation = ++scanGeneration
     await ensureServerConfigLoaded()
-    await ensureCustomPathsLoaded()
+    await Promise.all([ensureCustomPathsLoaded(), ensureInstallLocationLoaded()])
     isLoading.value = true
     error.value = null
     if (options.syncLinks) {
@@ -853,6 +915,7 @@ export const useCslStore = defineStore('csl', () => {
       const result = await invoke<CslScanResult>('csl_scan_packages', {
         xplanePath: appStore.xplanePath,
         customPaths: customPaths.value,
+        installLocation: installLocation.value || null,
         serverBaseUrl: activeServerBaseUrl.value,
         requestId,
       })
@@ -932,6 +995,7 @@ export const useCslStore = defineStore('csl', () => {
       const updated = await invoke<CslPackageInfo[]>('csl_rescan_packages', {
         xplanePath: appStore.xplanePath,
         packageNames,
+        installLocation: installLocation.value || null,
         serverBaseUrl: activeServerBaseUrl.value,
         requestId,
       })
@@ -980,7 +1044,7 @@ export const useCslStore = defineStore('csl', () => {
     const requestId = createOperationRequestId('csl-uninstall')
 
     try {
-      await ensureCustomPathsLoaded()
+      await Promise.all([ensureCustomPathsLoaded(), ensureInstallLocationLoaded()])
       logDebug(
         `[${requestId}] invoke csl_uninstall_package start package=${packageName} xplane_path=${appStore.xplanePath} custom_paths=${customPaths.value.length}`,
         'csl',
@@ -989,6 +1053,7 @@ export const useCslStore = defineStore('csl', () => {
         packageName,
         xplanePath: appStore.xplanePath,
         customPaths: customPaths.value,
+        installLocation: installLocation.value || null,
         requestId,
       })
       logDebug(`[${requestId}] invoke csl_uninstall_package success package=${packageName}`, 'csl')
@@ -1014,8 +1079,10 @@ export const useCslStore = defineStore('csl', () => {
     await ensureCustomPathsLoaded()
 
     const normalizedNextPaths = normalizeCustomPaths(nextPaths)
-    const addedPaths = normalizedNextPaths.filter((path) => !customPaths.value.includes(path))
-    const removedPaths = customPaths.value.filter((path) => !normalizedNextPaths.includes(path))
+    const existingKeys = new Set(customPaths.value.map(pathKey))
+    const nextKeys = new Set(normalizedNextPaths.map(pathKey))
+    const addedPaths = normalizedNextPaths.filter((path) => !existingKeys.has(pathKey(path)))
+    const removedPaths = customPaths.value.filter((path) => !nextKeys.has(pathKey(path)))
 
     customPaths.value = normalizedNextPaths
     await setItem(STORAGE_KEYS.CSL_CUSTOM_PATHS, normalizedNextPaths)
@@ -1173,6 +1240,9 @@ export const useCslStore = defineStore('csl', () => {
     packages,
     paths,
     customPaths,
+    installLocation,
+    defaultCanonicalPath,
+    resolvedInstallLocation,
     serverVersion,
     serverBaseUrls,
     activeServerBaseUrl,
@@ -1204,6 +1274,8 @@ export const useCslStore = defineStore('csl', () => {
     syncLinks,
     ensureServerConfigLoaded,
     ensureCustomPathsLoaded,
+    ensureInstallLocationLoaded,
+    setInstallLocation,
     saveServerConfig,
     queuePackageDescriptions,
     isDescriptionPending,

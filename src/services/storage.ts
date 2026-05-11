@@ -148,6 +148,7 @@ export const STORAGE_KEYS = {
   CSL_SERVER_BASE_URLS: 'cslServerBaseUrls',
   CSL_ACTIVE_SERVER_BASE_URL: 'cslActiveServerBaseUrl',
   CSL_CUSTOM_PATHS: 'cslCustomPaths',
+  CSL_INSTALL_LOCATION: 'cslInstallLocation',
 } as const
 
 export type TrackedIssueSource = 'feedback' | 'auto-report' | 'library-link' | 'output-cleanup-item'

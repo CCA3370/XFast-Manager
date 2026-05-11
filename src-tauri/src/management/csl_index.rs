@@ -1,4 +1,5 @@
 use futures::stream::{self, StreamExt};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
@@ -32,6 +33,27 @@ const DESCRIPTION_FETCH_CONCURRENCY: usize = 6;
 const DESCRIPTION_FETCH_ATTEMPTS: u32 = 3;
 const CSL_LINK_SYNC_EVENT: &str = "csl-link-sync-progress";
 const CSL_LINK_SYNC_STATE_DIR: &str = ".xfast-csl-sync";
+
+/// Resolve the canonical CSL install base for a given X-Plane root, honoring
+/// an optional user-configured override. Absolute overrides are used as-is;
+/// relative overrides are joined with `xplane_path`; missing/empty values
+/// fall back to `Resources/plugins/IVAO_CSL/CSL`.
+fn resolve_canonical_base(xplane_path: &Path, install_location: Option<&str>) -> PathBuf {
+    match install_location
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(value) => {
+            let candidate = PathBuf::from(value);
+            if candidate.is_absolute() {
+                candidate
+            } else {
+                xplane_path.join(candidate)
+            }
+        }
+        None => xplane_path.join(CSL_CANONICAL_REL),
+    }
+}
 
 /// Cached index with TTL, keyed by server URL
 static INDEX_CACHE: std::sync::LazyLock<Mutex<HashMap<String, (std::time::Instant, String)>>> =
@@ -351,7 +373,12 @@ struct LinkSyncProgressTracker {
     current_target_path: String,
     current_package_name: String,
     current_file_name: String,
+    last_emit_at: Option<std::time::Instant>,
+    files_since_last_emit: usize,
 }
+
+const LINK_SYNC_EMIT_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+const LINK_SYNC_EMIT_MAX_FILE_BATCH: usize = 256;
 
 impl LinkSyncProgressTracker {
     fn new(
@@ -370,6 +397,8 @@ impl LinkSyncProgressTracker {
             current_target_path: String::new(),
             current_package_name: String::new(),
             current_file_name: String::new(),
+            last_emit_at: None,
+            files_since_last_emit: 0,
         }
     }
 
@@ -393,15 +422,15 @@ impl LinkSyncProgressTracker {
         }
     }
 
-    fn emit_preparing(&self) {
-        self.emit("preparing", None);
+    fn emit_preparing(&mut self) {
+        self.force_emit("preparing", None);
     }
 
     fn begin_target(&mut self, target_base: &Path, message: Option<String>) {
         self.current_target_path = target_base.to_string_lossy().to_string();
         self.current_package_name.clear();
         self.current_file_name.clear();
-        self.emit("syncing", message);
+        self.force_emit("syncing", message);
     }
 
     fn begin_package(&mut self, package_name: &str) {
@@ -409,34 +438,59 @@ impl LinkSyncProgressTracker {
         self.current_file_name.clear();
     }
 
-    fn advance_file(&mut self, file_name: &str) {
+    /// Throttled file-advance: bumps the counter by `count` and emits at most
+    /// every `LINK_SYNC_EMIT_MIN_INTERVAL` or every `LINK_SYNC_EMIT_MAX_FILE_BATCH`
+    /// files — whichever comes first.
+    fn advance_file_count(&mut self, count: usize, file_name: &str) {
+        if count == 0 {
+            return;
+        }
         self.current_file_name = file_name.to_string();
-        self.processed_files = self.processed_files.saturating_add(1);
-        self.emit("syncing", None);
+        self.processed_files = self.processed_files.saturating_add(count);
+        self.files_since_last_emit = self.files_since_last_emit.saturating_add(count);
+
+        let elapsed_ok = self
+            .last_emit_at
+            .map(|t| t.elapsed() >= LINK_SYNC_EMIT_MIN_INTERVAL)
+            .unwrap_or(true);
+        let batch_ok = self.files_since_last_emit >= LINK_SYNC_EMIT_MAX_FILE_BATCH;
+
+        if elapsed_ok || batch_ok {
+            self.last_emit_at = Some(std::time::Instant::now());
+            self.files_since_last_emit = 0;
+            self.emit("syncing", None);
+        }
     }
 
     fn advance_by(&mut self, count: usize, file_name: &str, message: Option<String>) {
         self.current_file_name = file_name.to_string();
         self.processed_files = self.processed_files.saturating_add(count);
-        self.emit("syncing", message);
+        self.force_emit("syncing", message);
     }
 
     fn finish_target(&mut self) {
         self.completed_targets = self.completed_targets.saturating_add(1);
         self.current_package_name.clear();
         self.current_file_name.clear();
-        self.emit("syncing", None);
+        self.force_emit("syncing", None);
     }
 
     fn complete(&mut self) {
         self.processed_files = self.total_files;
         self.current_package_name.clear();
         self.current_file_name.clear();
-        self.emit("completed", None);
+        self.force_emit("completed", None);
     }
 
-    fn fail(&self, message: String) {
-        self.emit("failed", Some(message));
+    fn fail(&mut self, message: String) {
+        self.force_emit("failed", Some(message));
+    }
+
+    /// Emit unconditionally and reset throttle state.
+    fn force_emit(&mut self, phase: &str, message: Option<String>) {
+        self.last_emit_at = Some(std::time::Instant::now());
+        self.files_since_last_emit = 0;
+        self.emit(phase, message);
     }
 }
 
@@ -1657,7 +1711,10 @@ fn uninstall_package_internal(package_name: &str, paths: &[String]) -> Result<()
     ))
 }
 
-fn collect_scan_paths(xplane_path: &str, custom_paths: &[String]) -> (Vec<CslPath>, Vec<String>) {
+fn collect_scan_paths(
+    xplane_path: &str,
+    custom_paths: &[String],
+) -> (Vec<CslPath>, Vec<String>) {
     let xplane = Path::new(xplane_path);
     let mut paths = detect_csl_paths(xplane);
     for cp in custom_paths {
@@ -1817,8 +1874,11 @@ fn is_existing_or_creatable_sync_target(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn collect_sync_targets(xplane_path: &Path, custom_paths: &[String]) -> Vec<SyncTarget> {
-    let canonical = xplane_path.join(CSL_CANONICAL_REL);
+fn collect_sync_targets(
+    xplane_path: &Path,
+    custom_paths: &[String],
+    canonical: &Path,
+) -> Vec<SyncTarget> {
     let mut targets = Vec::new();
 
     for (rel_path, _) in CSL_PLUGIN_PATHS {
@@ -1828,7 +1888,7 @@ fn collect_sync_targets(xplane_path: &Path, custom_paths: &[String]) -> Vec<Sync
         }
 
         targets.push(SyncTarget {
-            mode: if supports_hard_links(&canonical, &full) {
+            mode: if supports_hard_links(canonical, &full) {
                 SyncTargetMode::HardLinks
             } else {
                 SyncTargetMode::DirectoryLinkFallback
@@ -1847,7 +1907,7 @@ fn collect_sync_targets(xplane_path: &Path, custom_paths: &[String]) -> Vec<Sync
         }
 
         targets.push(SyncTarget {
-            mode: if supports_hard_links(&canonical, &path) {
+            mode: if supports_hard_links(canonical, &path) {
                 SyncTargetMode::HardLinks
             } else {
                 SyncTargetMode::DirectoryLinkFallback
@@ -2466,121 +2526,30 @@ fn sync_hardlink_package(
             std::collections::BTreeSet::new()
         };
 
-    for rel_path in current_files {
-        let source_path = canonical_pkg_dir.join(rel_path);
-        let target_path = package_path.join(rel_path);
-        let was_managed = previous_files.contains(rel_path);
+    // Per-file work runs in parallel; result is merged serially below.
+    let outcomes: Vec<FileSyncOutcome> = current_files
+        .par_iter()
+        .map(|rel_path| {
+            process_file_for_sync(
+                rel_path,
+                canonical_pkg_dir,
+                &package_path,
+                &previous_files,
+                mode,
+            )
+        })
+        .collect();
 
-        let target_exists = match target_path.symlink_metadata() {
-            Ok(_) => true,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
-            Err(err) => {
-                warnings.push(format!(
-                    "Failed to inspect target file {}: {}",
-                    target_path.display(),
-                    err
-                ));
-                tracker.advance_file(rel_path);
-                continue;
-            }
-        };
-
-        if target_exists {
-            if mode == LinkSyncMode::MissingOnly {
-                match files_match_canonical_fast(&source_path, &target_path) {
-                    Ok(true) => {
-                        next_manifest_files.insert(rel_path.clone());
-                        continue;
-                    }
-                    Ok(false) if was_managed => {
-                        if let Err(err) = remove_file_if_exists(&target_path) {
-                            warnings.push(err);
-                            continue;
-                        }
-                    }
-                    Ok(false) => {
-                        warnings.push(format!(
-                            "Skipped {}: user file already exists and will be preserved",
-                            target_path.display()
-                        ));
-                        continue;
-                    }
-                    Err(err) if was_managed => {
-                        warnings.push(err);
-                        if let Err(remove_err) = remove_file_if_exists(&target_path) {
-                            warnings.push(remove_err);
-                            continue;
-                        }
-                    }
-                    Err(err) => {
-                        warnings.push(err);
-                        continue;
-                    }
-                }
-            } else {
-                match files_match_canonical(&source_path, &target_path) {
-                    Ok(true) => {
-                        next_manifest_files.insert(rel_path.clone());
-                        tracker.advance_file(rel_path);
-                        continue;
-                    }
-                    Ok(false) if was_managed => {
-                        if let Err(err) = remove_file_if_exists(&target_path) {
-                            warnings.push(err);
-                            tracker.advance_file(rel_path);
-                            continue;
-                        }
-                    }
-                    Ok(false) => {
-                        warnings.push(format!(
-                            "Skipped {}: user file already exists and will be preserved",
-                            target_path.display()
-                        ));
-                        tracker.advance_file(rel_path);
-                        continue;
-                    }
-                    Err(err) if was_managed => {
-                        warnings.push(err);
-                        if let Err(remove_err) = remove_file_if_exists(&target_path) {
-                            warnings.push(remove_err);
-                            tracker.advance_file(rel_path);
-                            continue;
-                        }
-                    }
-                    Err(err) => {
-                        warnings.push(err);
-                        tracker.advance_file(rel_path);
-                        continue;
-                    }
-                }
-            }
+    for outcome in outcomes {
+        if outcome.add_to_manifest {
+            next_manifest_files.insert(outcome.rel_path.clone());
         }
-
-        if let Some(parent) = target_path.parent() {
-            if let Err(err) = std::fs::create_dir_all(parent) {
-                warnings.push(format!(
-                    "Failed to create parent directory {}: {}",
-                    parent.display(),
-                    err
-                ));
-                tracker.advance_file(rel_path);
-                continue;
-            }
+        if !outcome.warnings.is_empty() {
+            warnings.extend(outcome.warnings);
         }
-
-        match std::fs::hard_link(&source_path, &target_path) {
-            Ok(()) => {
-                next_manifest_files.insert(rel_path.clone());
-            }
-            Err(err) => warnings.push(format!(
-                "Failed to create hard link {} -> {}: {}",
-                target_path.display(),
-                source_path.display(),
-                err
-            )),
+        if outcome.advanced {
+            tracker.advance_file_count(1, &outcome.rel_path);
         }
-
-        tracker.advance_file(rel_path);
     }
 
     let next_manifest_files: Vec<String> = next_manifest_files.into_iter().collect();
@@ -2603,6 +2572,126 @@ fn sync_hardlink_package(
             Err(err) => warnings.push(err),
         }
     }
+}
+
+struct FileSyncOutcome {
+    rel_path: String,
+    add_to_manifest: bool,
+    advanced: bool,
+    warnings: Vec<String>,
+}
+
+fn process_file_for_sync(
+    rel_path: &str,
+    canonical_pkg_dir: &Path,
+    package_path: &Path,
+    previous_files: &std::collections::HashSet<String>,
+    mode: LinkSyncMode,
+) -> FileSyncOutcome {
+    let source_path = canonical_pkg_dir.join(rel_path);
+    let target_path = package_path.join(rel_path);
+    let was_managed = previous_files.contains(rel_path);
+    let mut outcome = FileSyncOutcome {
+        rel_path: rel_path.to_string(),
+        add_to_manifest: false,
+        advanced: false,
+        warnings: Vec::new(),
+    };
+
+    let target_exists = match target_path.symlink_metadata() {
+        Ok(_) => true,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
+        Err(err) => {
+            outcome.warnings.push(format!(
+                "Failed to inspect target file {}: {}",
+                target_path.display(),
+                err
+            ));
+            outcome.advanced = true;
+            return outcome;
+        }
+    };
+
+    if target_exists {
+        let compare = if mode == LinkSyncMode::MissingOnly {
+            files_match_canonical_fast(&source_path, &target_path)
+        } else {
+            files_match_canonical(&source_path, &target_path)
+        };
+
+        match compare {
+            Ok(true) => {
+                outcome.add_to_manifest = true;
+                if mode == LinkSyncMode::Reconcile {
+                    outcome.advanced = true;
+                }
+                return outcome;
+            }
+            Ok(false) if was_managed => {
+                if let Err(err) = remove_file_if_exists(&target_path) {
+                    outcome.warnings.push(err);
+                    if mode == LinkSyncMode::Reconcile {
+                        outcome.advanced = true;
+                    }
+                    return outcome;
+                }
+            }
+            Ok(false) => {
+                outcome.warnings.push(format!(
+                    "Skipped {}: user file already exists and will be preserved",
+                    target_path.display()
+                ));
+                if mode == LinkSyncMode::Reconcile {
+                    outcome.advanced = true;
+                }
+                return outcome;
+            }
+            Err(err) if was_managed => {
+                outcome.warnings.push(err);
+                if let Err(remove_err) = remove_file_if_exists(&target_path) {
+                    outcome.warnings.push(remove_err);
+                    if mode == LinkSyncMode::Reconcile {
+                        outcome.advanced = true;
+                    }
+                    return outcome;
+                }
+            }
+            Err(err) => {
+                outcome.warnings.push(err);
+                if mode == LinkSyncMode::Reconcile {
+                    outcome.advanced = true;
+                }
+                return outcome;
+            }
+        }
+    }
+
+    if let Some(parent) = target_path.parent() {
+        if let Err(err) = std::fs::create_dir_all(parent) {
+            outcome.warnings.push(format!(
+                "Failed to create parent directory {}: {}",
+                parent.display(),
+                err
+            ));
+            outcome.advanced = true;
+            return outcome;
+        }
+    }
+
+    match std::fs::hard_link(&source_path, &target_path) {
+        Ok(()) => {
+            outcome.add_to_manifest = true;
+        }
+        Err(err) => outcome.warnings.push(format!(
+            "Failed to create hard link {} -> {}: {}",
+            target_path.display(),
+            source_path.display(),
+            err
+        )),
+    }
+
+    outcome.advanced = true;
+    outcome
 }
 
 fn collect_cleanup_package_names(
@@ -2738,48 +2827,44 @@ fn estimate_missing_only_hardlink_units(
             .map(|manifest| manifest.files.into_iter().collect())
             .unwrap_or_default();
 
-    let mut units = 0usize;
+    current_files
+        .par_iter()
+        .map(|rel_path| -> usize {
+            let source_path = canonical_pkg_dir.join(rel_path);
+            let target_path = package_path.join(rel_path);
+            let was_managed = previous_files.contains(rel_path);
 
-    for rel_path in current_files {
-        let source_path = canonical_pkg_dir.join(rel_path);
-        let target_path = package_path.join(rel_path);
-        let was_managed = previous_files.contains(rel_path);
+            match target_path.symlink_metadata() {
+                Ok(metadata) => {
+                    if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() {
+                        if was_managed {
+                            return 1;
+                        }
+                        return 0;
+                    }
 
-        match target_path.symlink_metadata() {
-            Ok(metadata) => {
-                if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() {
+                    match files_match_canonical_fast(&source_path, &target_path) {
+                        Ok(true) => 0,
+                        Ok(false) | Err(_) => {
+                            if was_managed {
+                                1
+                            } else {
+                                0
+                            }
+                        }
+                    }
+                }
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => 1,
+                Err(_) => {
                     if was_managed {
-                        units += 1;
-                    }
-                    continue;
-                }
-
-                match files_match_canonical_fast(&source_path, &target_path) {
-                    Ok(true) => {}
-                    Ok(false) => {
-                        if was_managed {
-                            units += 1;
-                        }
-                    }
-                    Err(_) => {
-                        if was_managed {
-                            units += 1;
-                        }
+                        1
+                    } else {
+                        0
                     }
                 }
             }
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                units += 1;
-            }
-            Err(_) => {
-                if was_managed {
-                    units += 1;
-                }
-            }
-        }
-    }
-
-    units
+        })
+        .sum()
 }
 
 fn estimate_target_package_units(
@@ -2822,15 +2907,16 @@ fn sync_package_links_internal(
     package_names: Option<&[String]>,
     target_paths: Option<&[String]>,
     cleanup_paths: Option<&[String]>,
+    install_location: Option<&str>,
 ) -> Result<Vec<String>, String> {
     let xplane = Path::new(xplane_path);
-    let canonical_base = xplane.join(CSL_CANONICAL_REL);
+    let canonical_base = resolve_canonical_base(xplane, install_location);
     let sync_mode = if package_names.is_some() {
         LinkSyncMode::Reconcile
     } else {
         LinkSyncMode::MissingOnly
     };
-    let mut active_targets = collect_sync_targets(xplane, custom_paths);
+    let mut active_targets = collect_sync_targets(xplane, custom_paths, &canonical_base);
 
     if let Some(target_paths) = target_paths {
         let allowed_targets: std::collections::HashSet<PathBuf> = target_paths
@@ -3021,6 +3107,34 @@ fn sync_package_links_internal(
     sync_result
 }
 
+/// Run `sync_package_links_internal` on a blocking thread so the parallel
+/// rayon work and per-file syscalls don't hold up the tokio runtime worker.
+async fn spawn_sync_package_links(
+    app_handle: AppHandle,
+    request_ctx: RequestContext,
+    xplane_path: String,
+    custom_paths: Vec<String>,
+    package_names: Option<Vec<String>>,
+    target_paths: Option<Vec<String>>,
+    cleanup_paths: Option<Vec<String>>,
+    install_location: Option<String>,
+) -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(move || {
+        sync_package_links_internal(
+            Some(app_handle),
+            &request_ctx,
+            &xplane_path,
+            &custom_paths,
+            package_names.as_deref(),
+            target_paths.as_deref(),
+            cleanup_paths.as_deref(),
+            install_location.as_deref(),
+        )
+    })
+    .await
+    .map_err(|err| format!("Link sync task panicked: {err}"))?
+}
+
 // ============================================================================
 // Tauri Commands — CSL
 // ============================================================================
@@ -3071,6 +3185,7 @@ pub async fn csl_fetch_package_descriptions(
 pub async fn csl_scan_packages(
     xplane_path: String,
     custom_paths: Vec<String>,
+    install_location: Option<String>,
     server_base_url: Option<String>,
     request_id: Option<String>,
 ) -> Result<CslScanResult, String> {
@@ -3079,7 +3194,7 @@ pub async fn csl_scan_packages(
 
     // Scan only from canonical path for local comparison
     let xplane = Path::new(&xplane_path);
-    let canonical = xplane.join(CSL_CANONICAL_REL);
+    let canonical = resolve_canonical_base(xplane, install_location.as_deref());
     let scan_paths = if canonical.exists() {
         vec![canonical.to_string_lossy().to_string()]
     } else {
@@ -3124,12 +3239,13 @@ pub async fn csl_scan_packages(
 pub async fn csl_rescan_packages(
     xplane_path: String,
     package_names: Vec<String>,
+    install_location: Option<String>,
     server_base_url: Option<String>,
     request_id: Option<String>,
 ) -> Result<Vec<CslPackageInfo>, String> {
     let request_ctx = RequestContext::new("csl_rescan_packages", request_id);
     let xplane = Path::new(&xplane_path);
-    let canonical = xplane.join(CSL_CANONICAL_REL);
+    let canonical = resolve_canonical_base(xplane, install_location.as_deref());
     let scan_paths = vec![canonical.to_string_lossy().to_string()];
     let server_base_url = resolve_server_base_url(server_base_url.as_deref());
 
@@ -3224,6 +3340,7 @@ pub async fn csl_install_package(
     package_name: String,
     xplane_path: String,
     custom_paths: Vec<String>,
+    install_location: Option<String>,
     parallel_downloads: Option<usize>,
     server_base_url: Option<String>,
     request_id: Option<String>,
@@ -3238,7 +3355,7 @@ pub async fn csl_install_package(
     let cancel_flag = _registration.cancel_flag();
 
     let xplane = Path::new(&xplane_path);
-    let canonical_base = xplane.join(CSL_CANONICAL_REL);
+    let canonical_base = resolve_canonical_base(xplane, install_location.as_deref());
     let api_base = resolve_csl_api_base(server_base_url.as_deref());
     csl_debug!(
         "[{}] CSL install command start package={} xplane_path={} custom_paths={} target={} server={} requested_parallel_downloads={:?}",
@@ -3277,15 +3394,17 @@ pub async fn csl_install_package(
         return Err(err);
     }
 
-    let warnings = sync_package_links_internal(
-        Some(app_handle.clone()),
-        &request_ctx,
-        &xplane_path,
-        &custom_paths,
-        Some(std::slice::from_ref(&package_name)),
+    let warnings = spawn_sync_package_links(
+        app_handle.clone(),
+        request_ctx.clone(),
+        xplane_path.clone(),
+        custom_paths.clone(),
+        Some(vec![package_name.clone()]),
         None,
         None,
-    )?;
+        install_location.clone(),
+    )
+    .await?;
 
     csl_debug!(
         "[{}] CSL install command completed package={} link_warnings={}",
@@ -3333,12 +3452,14 @@ pub async fn csl_uninstall_package(
     package_name: String,
     xplane_path: String,
     custom_paths: Vec<String>,
+    install_location: Option<String>,
     request_id: Option<String>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
     let request_ctx = RequestContext::new("csl_uninstall_package", request_id);
     let xplane = Path::new(&xplane_path);
-    let active_targets = collect_sync_targets(xplane, &custom_paths);
+    let canonical_base = resolve_canonical_base(xplane, install_location.as_deref());
+    let active_targets = collect_sync_targets(xplane, &custom_paths, &canonical_base);
 
     csl_debug!(
         "[{}] CSL uninstall command start package={} xplane_path={} custom_paths={} active_targets={}",
@@ -3350,20 +3471,22 @@ pub async fn csl_uninstall_package(
     );
 
     // Remove the canonical copy
-    let canonical_pkg_dir = xplane.join(CSL_CANONICAL_REL).join(&package_name);
+    let canonical_pkg_dir = canonical_base.join(&package_name);
     if canonical_pkg_dir.exists() && canonical_pkg_dir.is_dir() {
         std::fs::remove_dir_all(&canonical_pkg_dir)
             .map_err(|e| format!("Failed to remove {}: {}", canonical_pkg_dir.display(), e))?;
 
-        let warnings = sync_package_links_internal(
-            Some(app_handle.clone()),
-            &request_ctx,
-            &xplane_path,
-            &custom_paths,
-            Some(std::slice::from_ref(&package_name)),
+        let warnings = spawn_sync_package_links(
+            app_handle.clone(),
+            request_ctx.clone(),
+            xplane_path.clone(),
+            custom_paths.clone(),
+            Some(vec![package_name.clone()]),
             None,
             None,
-        )?;
+            install_location.clone(),
+        )
+        .await?;
         csl_debug!(
             "[{}] CSL uninstall command completed package={} removed_path={} sync_warnings={}",
             request_ctx.operation_id(),
@@ -3374,15 +3497,17 @@ pub async fn csl_uninstall_package(
         return Ok(());
     }
 
-    let warnings = sync_package_links_internal(
-        Some(app_handle.clone()),
-        &request_ctx,
-        &xplane_path,
-        &custom_paths,
-        Some(std::slice::from_ref(&package_name)),
+    let warnings = spawn_sync_package_links(
+        app_handle.clone(),
+        request_ctx.clone(),
+        xplane_path.clone(),
+        custom_paths.clone(),
+        Some(vec![package_name.clone()]),
         None,
         None,
-    )?;
+        install_location.clone(),
+    )
+    .await?;
     if !warnings.is_empty() {
         csl_debug!(
             "[{}] CSL uninstall post-sync warnings package={} warnings={}",
@@ -3393,7 +3518,11 @@ pub async fn csl_uninstall_package(
     }
 
     // Fallback: try old paths for backward compatibility
-    let (_, all_paths) = collect_scan_paths(&xplane_path, &custom_paths);
+    let (_, mut all_paths) = collect_scan_paths(&xplane_path, &custom_paths);
+    let canonical_str = canonical_base.to_string_lossy().to_string();
+    if !all_paths.iter().any(|p| p == &canonical_str) {
+        all_paths.push(canonical_str);
+    }
     let result = uninstall_package_internal(&package_name, &all_paths);
 
     match &result {
@@ -3426,6 +3555,7 @@ pub async fn csl_detect_paths(xplane_path: String) -> Result<Vec<CslPath>, Strin
 pub async fn csl_sync_links(
     xplane_path: String,
     custom_paths: Vec<String>,
+    install_location: Option<String>,
     package_names: Option<Vec<String>>,
     target_paths: Option<Vec<String>>,
     cleanup_paths: Option<Vec<String>>,
@@ -3443,15 +3573,17 @@ pub async fn csl_sync_links(
         cleanup_paths.as_ref().map(|paths| paths.len()).unwrap_or(0)
     );
 
-    let result = sync_package_links_internal(
-        Some(app_handle),
-        &request_ctx,
-        &xplane_path,
-        &custom_paths,
-        package_names.as_deref(),
-        target_paths.as_deref(),
-        cleanup_paths.as_deref(),
-    );
+    let result = spawn_sync_package_links(
+        app_handle,
+        request_ctx.clone(),
+        xplane_path,
+        custom_paths,
+        package_names,
+        target_paths,
+        cleanup_paths,
+        install_location,
+    )
+    .await;
 
     match &result {
         Ok(warnings) => {
@@ -4352,6 +4484,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .unwrap();
 
@@ -4387,6 +4520,7 @@ mod tests {
             None,
             Some(&no_targets),
             None,
+            None,
         )
         .unwrap();
         assert!(warnings.is_empty());
@@ -4401,6 +4535,7 @@ mod tests {
             std::slice::from_ref(&custom_target_str),
             None,
             Some(&target_filter),
+            None,
             None,
         )
         .unwrap();
