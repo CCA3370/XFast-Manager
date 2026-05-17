@@ -1553,6 +1553,14 @@ impl Scanner {
                         companion_paths.push(companion_name);
                     }
                 }
+
+                if companion_paths.is_empty() {
+                    let sibling_entries = Self::list_lua_sibling_entries_from_directory(parent_dir);
+                    companion_paths = Self::infer_lua_companions_from_archive_entries(
+                        &display_name,
+                        &sibling_entries,
+                    );
+                }
             }
         }
 
@@ -1602,8 +1610,7 @@ impl Scanner {
             Vec::new()
         };
 
-        let use_layout_inference =
-            companion_names.is_empty() && lua_content.map(|s| s.is_empty()).unwrap_or(false);
+        let use_layout_inference = companion_names.is_empty();
 
         if !companion_names.is_empty() || use_layout_inference {
             let owned_entries;
@@ -1791,6 +1798,29 @@ impl Scanner {
 
         result.sort();
         result
+    }
+
+    /// Build archive-like relative entries for Lua sibling inference from an on-disk folder.
+    fn list_lua_sibling_entries_from_directory(parent_dir: &Path) -> Vec<String> {
+        let mut entries = Vec::new();
+
+        for entry in walkdir::WalkDir::new(parent_dir)
+            .follow_links(false)
+            .min_depth(1)
+            .max_depth(4)
+            .into_iter()
+            .filter_map(|entry| entry.ok())
+        {
+            let Ok(relative) = entry.path().strip_prefix(parent_dir) else {
+                continue;
+            };
+            let rel = relative.to_string_lossy().replace('\\', "/");
+            if !rel.is_empty() {
+                entries.push(rel);
+            }
+        }
+
+        entries
     }
 
     fn detect_lua_script_in_archive(
@@ -2501,9 +2531,12 @@ impl Scanner {
 #[cfg(test)]
 mod tests {
     use super::{
-        infer_version_from_name, plan_version_file_reads, resolve_nested_display_name,
-        VersionFileReadPlan,
+        infer_version_from_name, plan_version_file_reads, resolve_nested_display_name, AddonType,
+        Scanner, VersionFileReadPlan,
     };
+    use std::fs;
+    use std::io::Write;
+    use tempfile::tempdir;
 
     #[test]
     fn nested_archive_display_name_preserves_detected_name() {
@@ -2593,5 +2626,62 @@ mod tests {
     #[test]
     fn infer_version_from_name_ignores_plain_model_numbers() {
         assert_eq!(infer_version_from_name("737NG Series"), None);
+    }
+
+    #[test]
+    fn direct_lua_detection_infers_sibling_resource_folder() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let root = temp.path();
+        let resources = root.join("SimLoadManager");
+        fs::create_dir_all(&resources).expect("failed to create resources");
+        fs::write(root.join("SimLoadManager.lua"), "print('ok')\n").expect("failed to write lua");
+        fs::write(resources.join("settings.json"), "{}").expect("failed to write resource");
+
+        let scanner = Scanner::new();
+        let item = scanner
+            .check_lua_script(&root.join("SimLoadManager.lua"), root)
+            .expect("lua detection should not fail")
+            .expect("lua script should be detected");
+
+        assert_eq!(item.addon_type, AddonType::LuaScript);
+        assert_eq!(item.companion_paths, vec!["SimLoadManager".to_string()]);
+    }
+
+    #[test]
+    fn zip_lua_detection_infers_sibling_resource_folder_without_script_directory() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let zip_path = temp.path().join("simload.zip");
+        {
+            let file = fs::File::create(&zip_path).expect("failed to create zip");
+            let mut writer = zip::ZipWriter::new(file);
+            let options = zip::write::FileOptions::<()>::default();
+            writer
+                .start_file("SimLoadManager.lua", options)
+                .expect("failed to add lua");
+            writer
+                .write_all(b"print('ok')\n")
+                .expect("failed to write lua");
+            writer
+                .add_directory("SimLoadManager/", options)
+                .expect("failed to add resource dir");
+            writer
+                .start_file("SimLoadManager/settings.json", options)
+                .expect("failed to add resource file");
+            writer
+                .write_all(b"{}")
+                .expect("failed to write resource file");
+            writer.finish().expect("failed to finish zip");
+        }
+
+        let scanner = Scanner::new();
+        let items = scanner
+            .scan_archive(&zip_path, None)
+            .expect("zip scan should succeed");
+        let lua = items
+            .iter()
+            .find(|item| item.addon_type == AddonType::LuaScript)
+            .expect("lua script should be detected");
+
+        assert_eq!(lua.companion_paths, vec!["SimLoadManager".to_string()]);
     }
 }

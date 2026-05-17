@@ -245,6 +245,45 @@ fn should_compute_inline_7z_hashes(enable_verification: bool, is_nested_archive:
     enable_verification && !is_nested_archive
 }
 
+fn format_install_error_for_display(error: &anyhow::Error) -> String {
+    let raw = format!("{:#}", error);
+    let lower = raw.to_ascii_lowercase();
+
+    if lower.contains("missing split archive volume")
+        || lower.contains("could not open next volume")
+        || lower.contains("unexpected eof")
+    {
+        return "This archive appears to be incomplete. Place every split volume from the download in the same folder, make sure the download has finished, then try again."
+            .to_string();
+    }
+
+    if lower.contains("failed to extract rar entry")
+        || lower.contains("failed to open rar")
+        || lower.contains("failed to read rar")
+    {
+        return "This RAR archive could not be extracted. Make sure all RAR volumes are present in the same folder and that the archive is not still downloading or corrupted."
+            .to_string();
+    }
+
+    if lower.contains("checksumverificationfailed")
+        || lower.contains("checksum verification failed")
+        || lower.contains("next header crc mismatch")
+        || lower.contains("no usable external 7z extractor succeeded")
+        || lower.contains("lzma codec is unsupported")
+        || lower.contains("failed to extract 7z")
+    {
+        return "This 7z archive could not be extracted. It may be incomplete, corrupted, missing another volume, or require 7-Zip for this compression method. Install 7-Zip or place all split volumes next to the first file, then try again."
+            .to_string();
+    }
+
+    if lower.contains("failed to create atomic staging directory") {
+        return "XFast Manager could not create a temporary staging folder for atomic install. Check that the X-Plane folder, the target folder, or the system temp folder is writable, then try again."
+            .to_string();
+    }
+
+    raw
+}
+
 /// Remove read-only attribute from a file (Windows only)
 #[cfg(target_os = "windows")]
 #[allow(clippy::permissions_set_readonly_false)]
@@ -1499,7 +1538,15 @@ impl Installer {
                     );
 
                     failed += 1;
-                    let error_msg = format!("{}", e);
+                    logger::log_debug(
+                        &format!(
+                            "Raw installation failure for {}: {:#}",
+                            task.display_name, e
+                        ),
+                        Some("installer"),
+                        None,
+                    );
+                    let error_msg = format_install_error_for_display(&e);
                     logger::log_error(
                         &format!(
                             "{} {}: {}",
@@ -1822,7 +1869,15 @@ impl Installer {
                         }
                         Err(e) => {
                             ctx.mark_failed(index);
-                            let error_msg = format!("{}", e);
+                            logger::log_debug(
+                                &format!(
+                                    "Raw installation failure for {}: {:#}",
+                                    task.display_name, e
+                                ),
+                                Some("installer"),
+                                None,
+                            );
+                            let error_msg = format_install_error_for_display(&e);
                             logger::log_error(
                                 &format!(
                                     "{} {}: {}",
