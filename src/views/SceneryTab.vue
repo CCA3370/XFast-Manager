@@ -24,6 +24,9 @@ import { buildVercelApiUrl } from '@/services/vercelApi'
 import { isDrawerUpdatable } from '@/utils/addonUpdate'
 import {
   buildSmartSceneryRows,
+  type SceneryCustomGroup,
+  type SceneryCustomGroupRule,
+  type SceneryCustomGroupRuleMode,
   type SmartSceneryGroup,
   type SmartSceneryGroupKind,
 } from '@/utils/scenerySmartGroups'
@@ -70,6 +73,13 @@ const showOnlyUpdates = ref(false)
 const showMoreMenu = ref(false)
 const moreMenuRef = ref<HTMLElement | null>(null)
 const syncWarningDismissed = ref(false)
+const scenerySelectionMode = ref(false)
+const selectedScenery = ref<Set<string>>(new Set())
+const showAssignGroupModal = ref(false)
+const assignNewGroupName = ref('')
+const showCustomGroupsModal = ref(false)
+const editableCustomGroups = ref<SceneryCustomGroup[]>([])
+const newCustomGroupName = ref('')
 const showFilterDropdown = ref(false)
 const filterDropdownRef = ref<HTMLElement | null>(null)
 const enabledFilter = ref<'all' | 'enabled' | 'disabled'>('all')
@@ -257,6 +267,7 @@ const sceneryDataTrigger = computed(() => ({
 
 watch(sceneryDataTrigger, () => {
   syncLocalEntries()
+  pruneSelectedScenery()
 })
 
 // Auto-reset filter when no missing dependencies remain
@@ -643,6 +654,23 @@ const filteredSceneryEntries = computed(() => {
   return entries
 })
 
+const batchSelectableSceneryEntries = computed(() => filteredSceneryEntries.value)
+
+const isAllScenerySelected = computed(() => {
+  const entries = batchSelectableSceneryEntries.value
+  return entries.length > 0 && entries.every((entry) => selectedScenery.value.has(entry.folderName))
+})
+
+const isScenerySelectionIndeterminate = computed(() => {
+  const entries = batchSelectableSceneryEntries.value
+  const selectedCount = entries.filter((entry) =>
+    selectedScenery.value.has(entry.folderName),
+  ).length
+  return selectedCount > 0 && selectedCount < entries.length
+})
+
+const selectedSceneryCount = computed(() => selectedScenery.value.size)
+
 // Filtered entries grouped by category (for grouped filtered view)
 const filteredGroupedEntries = computed(() => {
   return buildDisplayGroupedEntries(filteredSceneryEntries.value)
@@ -673,6 +701,7 @@ const smartSceneryRows = computed(() => {
     ? filteredSceneryEntries.value
     : allSceneryEntries.value
   return buildSmartSceneryRows(sourceEntries, {
+    customGroups: sceneryStore.customGroups,
     ungroupedTitle: t('sceneryManager.smartGroupUngrouped'),
   })
 })
@@ -701,6 +730,233 @@ function setSmartGroupEnabled(group: SmartSceneryGroup, enabled: boolean) {
     }
   }
   syncLocalEntries()
+}
+
+function createLocalId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function cloneCustomGroups(groups = sceneryStore.customGroups): SceneryCustomGroup[] {
+  return groups.map((group) => ({
+    ...group,
+    manualFolderNames: [...group.manualFolderNames],
+    rules: group.rules.map((rule) => ({ ...rule })),
+  }))
+}
+
+function sanitizeCustomGroups(groups: SceneryCustomGroup[]): SceneryCustomGroup[] {
+  const seenGroupIds = new Set<string>()
+  const seenManualFolderNames = new Set<string>()
+
+  return groups
+    .map((group) => {
+      const id = group.id.trim()
+      const name = group.name.trim()
+      if (!id || !name || seenGroupIds.has(id)) return null
+      seenGroupIds.add(id)
+
+      const manualFolderNames = group.manualFolderNames
+        .map((folderName) => folderName.trim())
+        .filter((folderName) => {
+          if (!folderName || seenManualFolderNames.has(folderName)) return false
+          seenManualFolderNames.add(folderName)
+          return true
+        })
+
+      const seenRuleKeys = new Set<string>()
+      const rules = group.rules
+        .map((rule) => ({
+          id: rule.id.trim(),
+          mode: rule.mode,
+          pattern: rule.pattern.trim(),
+        }))
+        .filter((rule): rule is SceneryCustomGroupRule => {
+          if (!rule.id || !rule.pattern) return false
+          if (rule.mode !== 'prefix' && rule.mode !== 'contains') return false
+
+          const key = `${rule.mode}:${rule.pattern.toLowerCase()}`
+          if (seenRuleKeys.has(key)) return false
+          seenRuleKeys.add(key)
+          return true
+        })
+
+      return { id, name, manualFolderNames, rules }
+    })
+    .filter((group): group is SceneryCustomGroup => group !== null)
+}
+
+function saveCustomGroups(groups: SceneryCustomGroup[]) {
+  sceneryStore.upsertCustomGroups(sanitizeCustomGroups(groups))
+}
+
+function applyManualAssignmentToGroups(
+  groups: SceneryCustomGroup[],
+  targetGroupId: string,
+  folderNames: string[],
+): SceneryCustomGroup[] {
+  const selectedNames = new Set(folderNames)
+  return groups.map((group) => {
+    const manualFolderNames = group.manualFolderNames.filter(
+      (folderName) => !selectedNames.has(folderName),
+    )
+
+    if (group.id === targetGroupId) {
+      for (const folderName of folderNames) {
+        if (!manualFolderNames.includes(folderName)) {
+          manualFolderNames.push(folderName)
+        }
+      }
+    }
+
+    return {
+      ...group,
+      manualFolderNames,
+    }
+  })
+}
+
+function pruneSelectedScenery() {
+  if (selectedScenery.value.size === 0) return
+
+  const availableNames = new Set(allSceneryEntries.value.map((entry) => entry.folderName))
+  const nextSelected = [...selectedScenery.value].filter((folderName) =>
+    availableNames.has(folderName),
+  )
+  if (nextSelected.length !== selectedScenery.value.size) {
+    selectedScenery.value = new Set(nextSelected)
+  }
+}
+
+function toggleScenerySelectionMode() {
+  scenerySelectionMode.value = !scenerySelectionMode.value
+  if (!scenerySelectionMode.value) {
+    selectedScenery.value = new Set()
+    showAssignGroupModal.value = false
+  }
+}
+
+function toggleScenerySelect(folderName: string) {
+  const nextSelected = new Set(selectedScenery.value)
+  if (nextSelected.has(folderName)) {
+    nextSelected.delete(folderName)
+  } else {
+    nextSelected.add(folderName)
+  }
+  selectedScenery.value = nextSelected
+}
+
+function toggleSelectAllScenery() {
+  const entries = batchSelectableSceneryEntries.value
+  const nextSelected = new Set(selectedScenery.value)
+
+  if (isAllScenerySelected.value) {
+    for (const entry of entries) {
+      nextSelected.delete(entry.folderName)
+    }
+  } else {
+    for (const entry of entries) {
+      nextSelected.add(entry.folderName)
+    }
+  }
+
+  selectedScenery.value = nextSelected
+}
+
+function openAssignGroupModal() {
+  if (selectedSceneryCount.value === 0) return
+  assignNewGroupName.value = ''
+  showAssignGroupModal.value = true
+}
+
+function assignSelectedToCustomGroup(groupId: string) {
+  const folderNames = [...selectedScenery.value]
+  if (folderNames.length === 0) return
+
+  const groups = applyManualAssignmentToGroups(cloneCustomGroups(), groupId, folderNames)
+  saveCustomGroups(groups)
+  selectedScenery.value = new Set()
+  showAssignGroupModal.value = false
+  viewMode.value = 'smart'
+  toastStore.success(t('sceneryManager.customGroupAssigned', { count: folderNames.length }))
+}
+
+function quickCreateGroupAndAssign() {
+  const name = assignNewGroupName.value.trim()
+  const folderNames = [...selectedScenery.value]
+  if (!name || folderNames.length === 0) return
+
+  const newGroup: SceneryCustomGroup = {
+    id: createLocalId('scenery-group'),
+    name,
+    manualFolderNames: [],
+    rules: [],
+  }
+  const groups = applyManualAssignmentToGroups(
+    [...cloneCustomGroups(), newGroup],
+    newGroup.id,
+    folderNames,
+  )
+  saveCustomGroups(groups)
+  selectedScenery.value = new Set()
+  showAssignGroupModal.value = false
+  assignNewGroupName.value = ''
+  viewMode.value = 'smart'
+  toastStore.success(t('sceneryManager.customGroupAssigned', { count: folderNames.length }))
+}
+
+function openCustomGroupsModal() {
+  editableCustomGroups.value = cloneCustomGroups()
+  newCustomGroupName.value = ''
+  showCustomGroupsModal.value = true
+}
+
+function closeCustomGroupsModal() {
+  saveCustomGroups(editableCustomGroups.value)
+  showCustomGroupsModal.value = false
+  newCustomGroupName.value = ''
+}
+
+function commitCustomGroupEditor() {
+  saveCustomGroups(editableCustomGroups.value)
+}
+
+function createCustomGroupFromEditor() {
+  const name = newCustomGroupName.value.trim()
+  if (!name) return
+
+  editableCustomGroups.value.push({
+    id: createLocalId('scenery-group'),
+    name,
+    manualFolderNames: [],
+    rules: [],
+  })
+  newCustomGroupName.value = ''
+  commitCustomGroupEditor()
+  toastStore.success(t('sceneryManager.customGroupCreated'))
+}
+
+function deleteCustomGroupFromEditor(groupId: string) {
+  editableCustomGroups.value = editableCustomGroups.value.filter((group) => group.id !== groupId)
+  commitCustomGroupEditor()
+  toastStore.success(t('sceneryManager.customGroupDeleted'))
+}
+
+function addRuleToCustomGroup(group: SceneryCustomGroup) {
+  group.rules.push({
+    id: createLocalId('scenery-rule'),
+    mode: 'prefix',
+    pattern: '',
+  })
+}
+
+function deleteRuleFromCustomGroup(group: SceneryCustomGroup, ruleId: string) {
+  group.rules = group.rules.filter((rule) => rule.id !== ruleId)
+  commitCustomGroupEditor()
+}
+
+function setRuleMode(rule: SceneryCustomGroupRule, mode: SceneryCustomGroupRuleMode) {
+  rule.mode = mode
+  commitCustomGroupEditor()
 }
 
 function isSmartGroupExpanded(group: SmartSceneryGroup): boolean {
@@ -1917,6 +2173,48 @@ onBeforeUnmount(() => {
       </button>
 
       <button
+        v-if="sceneryStore.indexExists"
+        class="px-3 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1.5 text-sm"
+        :class="
+          scenerySelectionMode
+            ? 'bg-blue-500 text-white hover:bg-blue-600'
+            : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+        "
+        :title="t('management.batchMode')"
+        @click="toggleScenerySelectionMode"
+      >
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+          />
+        </svg>
+        <Transition name="text-fade" mode="out-in">
+          <span :key="locale">{{ t('management.batchMode') }}</span>
+        </Transition>
+      </button>
+
+      <button
+        v-if="sceneryStore.indexExists"
+        class="px-3 py-1.5 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
+        @click="openCustomGroupsModal"
+      >
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M6 6.75h12M6 12h12M6 17.25h12M9 3.75v15m6-15v15"
+          />
+        </svg>
+        <Transition name="text-fade" mode="out-in">
+          <span :key="locale">{{ t('sceneryManager.manageCustomGroups') }}</span>
+        </Transition>
+      </button>
+
+      <button
         v-if="sceneryStore.hasLocalChanges && sceneryStore.indexExists"
         class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
         @click="handleReset"
@@ -2023,400 +2321,481 @@ onBeforeUnmount(() => {
         </Transition>
       </div>
     </div>
-    <!-- Statistics bar -->
-    <div
-      class="flex items-center gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700 mb-3 text-sm"
-    >
-      <div class="flex items-center gap-2">
-        <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
-            >{{ t('sceneryManager.total') }}:</span
-          >
-        </Transition>
-        <span class="font-semibold text-gray-900 dark:text-gray-100">{{
-          sceneryStore.totalCount
-        }}</span>
-      </div>
-      <div class="flex items-center gap-2">
-        <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
-            >{{ t('sceneryManager.enabled') }}:</span
-          >
-        </Transition>
-        <span class="font-semibold text-green-600 dark:text-green-400">{{
-          sceneryStore.enabledCount
-        }}</span>
-      </div>
-      <div v-if="sceneryStore.missingDepsCount > 0" class="flex items-center gap-2">
-        <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
-            >{{ t('sceneryManager.missingDeps') }}:</span
-          >
-        </Transition>
-        <span class="font-semibold text-amber-600 dark:text-amber-400">{{
-          sceneryStore.missingDepsCount
-        }}</span>
-      </div>
-      <div v-if="sceneryStore.duplicatesCount > 0" class="flex items-center gap-2">
-        <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
-            >{{ t('sceneryManager.duplicates') }}:</span
-          >
-        </Transition>
-        <span class="font-semibold text-orange-600 dark:text-orange-400">{{
-          sceneryStore.duplicatesCount
-        }}</span>
-      </div>
-      <!-- Update available count for scenery -->
-      <div v-if="sceneryStore.updateCount > 0" class="flex items-center gap-2">
-        <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
-            >{{ t('management.hasUpdate') }}:</span
-          >
-        </Transition>
-        <span class="font-semibold text-emerald-600 dark:text-emerald-400">
-          {{ sceneryStore.updateCount }}
-        </span>
-        <button
-          class="ml-1 px-2 py-0.5 rounded text-xs transition-colors"
-          :class="
-            showOnlyUpdates
-              ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-              : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50'
-          "
-          :title="t('management.filterUpdatesOnly')"
-          @click="showOnlyUpdates = !showOnlyUpdates"
-        >
-          <Transition name="text-fade" mode="out-in">
-            <span :key="locale">{{
-              showOnlyUpdates ? t('management.showAll') : t('management.filterUpdatesOnly')
-            }}</span>
-          </Transition>
-        </button>
-        <button
-          v-if="sceneryUpdatableCount > 0"
-          :disabled="sceneryStore.isCheckingUpdates"
-          class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-          @click="handleSceneryUpdateAll"
-        >
-          <Transition name="text-fade" mode="out-in">
-            <span :key="locale">{{ t('management.updateAll') }}</span>
-          </Transition>
-        </button>
-      </div>
-      <!-- Checking updates indicator -->
+    <Transition name="bar-swap" mode="out-in">
       <div
-        v-if="sceneryStore.isCheckingUpdates"
-        class="flex items-center gap-2 text-gray-500 dark:text-gray-400"
+        v-if="scenerySelectionMode"
+        key="batch-bar"
+        class="flex flex-wrap items-center gap-3 min-h-11 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 mb-3 text-sm cursor-pointer"
+        :title="t('management.selectAll')"
+        @click="toggleSelectAllScenery"
       >
-        <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-          <circle
-            class="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            stroke-width="4"
-          ></circle>
-          <path
-            class="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          ></path>
-        </svg>
-        <span class="text-xs">{{ t('management.checkingUpdates') }}</span>
-      </div>
-      <!-- Filter dropdown menu -->
-      <div ref="filterDropdownRef" class="relative">
         <button
-          class="text-xs px-2.5 py-1 rounded-md transition-all duration-200 flex items-center gap-1.5 border"
+          class="flex-shrink-0 w-4 h-4 rounded border-2 transition-all duration-150 flex items-center justify-center"
           :class="
-            hasActiveFilters
-              ? 'bg-blue-500 text-white border-blue-500 hover:bg-blue-600 hover:border-blue-600 shadow-sm shadow-blue-500/25'
-              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700'
+            isAllScenerySelected
+              ? 'bg-blue-500 border-blue-500'
+              : isScenerySelectionIndeterminate
+                ? 'bg-blue-500 border-blue-500'
+                : 'border-blue-300 dark:border-blue-500 hover:border-blue-400'
           "
-          @click="showFilterDropdown = !showFilterDropdown"
+          :title="t('management.selectAll')"
+          @click.stop="toggleSelectAllScenery"
         >
           <svg
-            class="w-3.5 h-3.5"
+            v-if="isAllScenerySelected"
+            class="w-3 h-3 text-white"
             fill="none"
             stroke="currentColor"
-            stroke-width="1.5"
             viewBox="0 0 24 24"
           >
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
-              d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z"
+              stroke-width="3"
+              d="M5 13l4 4L19 7"
+            />
+          </svg>
+          <svg
+            v-else-if="isScenerySelectionIndeterminate"
+            class="w-3 h-3 text-white"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 12h14" />
+          </svg>
+        </button>
+
+        <span class="text-xs text-blue-600 dark:text-blue-300">
+          {{
+            selectedSceneryCount > 0
+              ? t('management.selectedCount', { count: selectedSceneryCount })
+              : t('management.selectAll')
+          }}
+        </span>
+
+        <div class="flex-1 min-w-2"></div>
+
+        <button
+          v-if="selectedSceneryCount > 0"
+          class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50"
+          @click.stop="openAssignGroupModal"
+        >
+          <Transition name="text-fade" mode="out-in">
+            <span :key="locale">{{ t('sceneryManager.assignToGroup') }}</span>
+          </Transition>
+        </button>
+      </div>
+
+      <div
+        v-else
+        key="stats-bar"
+        class="flex items-center gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700 mb-3 text-sm"
+      >
+        <div class="flex items-center gap-2">
+          <Transition name="text-fade" mode="out-in">
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('sceneryManager.total') }}:</span
+            >
+          </Transition>
+          <span class="font-semibold text-gray-900 dark:text-gray-100">{{
+            sceneryStore.totalCount
+          }}</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <Transition name="text-fade" mode="out-in">
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('sceneryManager.enabled') }}:</span
+            >
+          </Transition>
+          <span class="font-semibold text-green-600 dark:text-green-400">{{
+            sceneryStore.enabledCount
+          }}</span>
+        </div>
+        <div v-if="sceneryStore.missingDepsCount > 0" class="flex items-center gap-2">
+          <Transition name="text-fade" mode="out-in">
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('sceneryManager.missingDeps') }}:</span
+            >
+          </Transition>
+          <span class="font-semibold text-amber-600 dark:text-amber-400">{{
+            sceneryStore.missingDepsCount
+          }}</span>
+        </div>
+        <div v-if="sceneryStore.duplicatesCount > 0" class="flex items-center gap-2">
+          <Transition name="text-fade" mode="out-in">
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('sceneryManager.duplicates') }}:</span
+            >
+          </Transition>
+          <span class="font-semibold text-orange-600 dark:text-orange-400">{{
+            sceneryStore.duplicatesCount
+          }}</span>
+        </div>
+        <!-- Update available count for scenery -->
+        <div v-if="sceneryStore.updateCount > 0" class="flex items-center gap-2">
+          <Transition name="text-fade" mode="out-in">
+            <span :key="locale" class="text-xs text-gray-600 dark:text-gray-400"
+              >{{ t('management.hasUpdate') }}:</span
+            >
+          </Transition>
+          <span class="font-semibold text-emerald-600 dark:text-emerald-400">
+            {{ sceneryStore.updateCount }}
+          </span>
+          <button
+            class="ml-1 px-2 py-0.5 rounded text-xs transition-colors"
+            :class="
+              showOnlyUpdates
+                ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50'
+            "
+            :title="t('management.filterUpdatesOnly')"
+            @click="showOnlyUpdates = !showOnlyUpdates"
+          >
+            <Transition name="text-fade" mode="out-in">
+              <span :key="locale">{{
+                showOnlyUpdates ? t('management.showAll') : t('management.filterUpdatesOnly')
+              }}</span>
+            </Transition>
+          </button>
+          <button
+            v-if="sceneryUpdatableCount > 0"
+            :disabled="sceneryStore.isCheckingUpdates"
+            class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+            @click="handleSceneryUpdateAll"
+          >
+            <Transition name="text-fade" mode="out-in">
+              <span :key="locale">{{ t('management.updateAll') }}</span>
+            </Transition>
+          </button>
+        </div>
+        <!-- Checking updates indicator -->
+        <div
+          v-if="sceneryStore.isCheckingUpdates"
+          class="flex items-center gap-2 text-gray-500 dark:text-gray-400"
+        >
+          <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          <span class="text-xs">{{ t('management.checkingUpdates') }}</span>
+        </div>
+        <!-- Filter dropdown menu -->
+        <div ref="filterDropdownRef" class="relative">
+          <button
+            class="text-xs px-2.5 py-1 rounded-md transition-all duration-200 flex items-center gap-1.5 border"
+            :class="
+              hasActiveFilters
+                ? 'bg-blue-500 text-white border-blue-500 hover:bg-blue-600 hover:border-blue-600 shadow-sm shadow-blue-500/25'
+                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700'
+            "
+            @click="showFilterDropdown = !showFilterDropdown"
+          >
+            <svg
+              class="w-3.5 h-3.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z"
+              />
+            </svg>
+            <Transition name="text-fade" mode="out-in">
+              <span :key="locale">{{ t('sceneryManager.filters') }}</span>
+            </Transition>
+            <svg
+              class="w-3 h-3 transition-transform duration-200"
+              :class="showFilterDropdown ? 'rotate-180' : ''"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M19.5 8.25l-7.5 7.5-7.5-7.5"
+              />
+            </svg>
+          </button>
+          <!-- Dropdown panel -->
+          <Transition name="dropdown">
+            <div
+              v-if="showFilterDropdown"
+              class="absolute right-0 top-full mt-1.5 w-60 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-black/8 dark:shadow-black/25 z-50 py-1.5 ring-1 ring-black/5 dark:ring-white/5"
+            >
+              <!-- Issues section -->
+              <template
+                v-if="sceneryStore.missingDepsCount > 0 || sceneryStore.duplicatesCount > 0"
+              >
+                <!-- Missing deps -->
+                <div
+                  v-if="sceneryStore.missingDepsCount > 0"
+                  class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+                  @click="
+                    applyFilterWithTransition(() => (showOnlyMissingLibs = !showOnlyMissingLibs))
+                  "
+                >
+                  <span
+                    class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-amber-400 dark:group-hover:border-amber-500"
+                    :class="
+                      showOnlyMissingLibs && 'filter-check-active bg-amber-500 !border-amber-500'
+                    "
+                  >
+                    <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
+                      <path
+                        d="M3.5 6L5.5 8L8.5 4"
+                        stroke="currentColor"
+                        stroke-width="1.75"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </span>
+                  <span class="flex-1 text-gray-700 dark:text-gray-200">{{
+                    t('sceneryManager.missingDeps')
+                  }}</span>
+                  <span
+                    class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium"
+                    >{{ sceneryStore.missingDepsCount }}</span
+                  >
+                </div>
+                <!-- Duplicates -->
+                <div
+                  v-if="sceneryStore.duplicatesCount > 0"
+                  class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+                  @click="
+                    applyFilterWithTransition(() => (showOnlyDuplicates = !showOnlyDuplicates))
+                  "
+                >
+                  <span
+                    class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-orange-400 dark:group-hover:border-orange-500"
+                    :class="
+                      showOnlyDuplicates && 'filter-check-active bg-orange-500 !border-orange-500'
+                    "
+                  >
+                    <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
+                      <path
+                        d="M3.5 6L5.5 8L8.5 4"
+                        stroke="currentColor"
+                        stroke-width="1.75"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </span>
+                  <span class="flex-1 text-gray-700 dark:text-gray-200">{{
+                    t('sceneryManager.duplicates')
+                  }}</span>
+                  <span
+                    class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium"
+                    >{{ sceneryStore.duplicatesCount }}</span
+                  >
+                </div>
+                <!-- Separator -->
+                <div class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"></div>
+              </template>
+              <!-- Enabled only -->
+              <div
+                class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+                @click="
+                  applyFilterWithTransition(
+                    () => (enabledFilter = enabledFilter === 'enabled' ? 'all' : 'enabled'),
+                  )
+                "
+              >
+                <span
+                  class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-green-400 dark:group-hover:border-green-500"
+                  :class="
+                    enabledFilter === 'enabled' &&
+                    'filter-check-active bg-green-500 !border-green-500'
+                  "
+                >
+                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
+                    <path
+                      d="M3.5 6L5.5 8L8.5 4"
+                      stroke="currentColor"
+                      stroke-width="1.75"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="flex-1 text-gray-700 dark:text-gray-200">{{
+                  t('sceneryManager.showOnlyEnabled')
+                }}</span>
+              </div>
+              <!-- Disabled only -->
+              <div
+                class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+                @click="
+                  applyFilterWithTransition(
+                    () => (enabledFilter = enabledFilter === 'disabled' ? 'all' : 'disabled'),
+                  )
+                "
+              >
+                <span
+                  class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-red-400 dark:group-hover:border-red-500"
+                  :class="
+                    enabledFilter === 'disabled' && 'filter-check-active bg-red-500 !border-red-500'
+                  "
+                >
+                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
+                    <path
+                      d="M3.5 6L5.5 8L8.5 4"
+                      stroke="currentColor"
+                      stroke-width="1.75"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="flex-1 text-gray-700 dark:text-gray-200">{{
+                  t('sceneryManager.showOnlyDisabled')
+                }}</span>
+              </div>
+              <!-- Separator -->
+              <div
+                v-if="uniqueContinents.length > 0"
+                class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"
+              ></div>
+              <!-- Group by continent -->
+              <div
+                v-if="uniqueContinents.length > 0"
+                class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+                @click="toggleViewMode"
+              >
+                <span
+                  class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-blue-400 dark:group-hover:border-blue-500"
+                  :class="
+                    viewMode === 'continent' && 'filter-check-active bg-blue-500 !border-blue-500'
+                  "
+                >
+                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
+                    <path
+                      d="M3.5 6L5.5 8L8.5 4"
+                      stroke="currentColor"
+                      stroke-width="1.75"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <svg
+                  class="w-3.5 h-3.5 text-blue-500 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"
+                  />
+                </svg>
+                <span class="flex-1 text-gray-700 dark:text-gray-200">{{
+                  t('sceneryManager.groupByContinent')
+                }}</span>
+              </div>
+              <!-- Smart groups -->
+              <div
+                class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
+                @click="toggleSmartGroupView"
+              >
+                <span
+                  class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-blue-400 dark:group-hover:border-blue-500"
+                  :class="
+                    viewMode === 'smart' && 'filter-check-active bg-blue-500 !border-blue-500'
+                  "
+                >
+                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
+                    <path
+                      d="M3.5 6L5.5 8L8.5 4"
+                      stroke="currentColor"
+                      stroke-width="1.75"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <svg
+                  class="w-3.5 h-3.5 text-blue-500 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M6 6.75h12M6 12h12M6 17.25h12M9 3.75v15m6-15v15"
+                  />
+                </svg>
+                <span class="flex-1 text-gray-700 dark:text-gray-200">{{
+                  t('sceneryManager.groupBySmart')
+                }}</span>
+              </div>
+            </div>
+          </Transition>
+        </div>
+        <!-- Updating index indicator -->
+        <div
+          v-if="isUpdatingIndex"
+          class="flex items-center gap-2 text-gray-500 dark:text-gray-400"
+        >
+          <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          <span class="text-xs">{{ t('sceneryManager.updatingIndex') }}</span>
+        </div>
+        <div
+          v-if="sceneryStore.hasChanges"
+          class="ml-auto flex items-center gap-2 text-blue-600 dark:text-blue-400"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
             />
           </svg>
           <Transition name="text-fade" mode="out-in">
-            <span :key="locale">{{ t('sceneryManager.filters') }}</span>
+            <span :key="locale" class="text-xs font-medium">{{
+              t('sceneryManager.unsavedChanges')
+            }}</span>
           </Transition>
-          <svg
-            class="w-3 h-3 transition-transform duration-200"
-            :class="showFilterDropdown ? 'rotate-180' : ''"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            viewBox="0 0 24 24"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-          </svg>
-        </button>
-        <!-- Dropdown panel -->
-        <Transition name="dropdown">
-          <div
-            v-if="showFilterDropdown"
-            class="absolute right-0 top-full mt-1.5 w-60 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-black/8 dark:shadow-black/25 z-50 py-1.5 ring-1 ring-black/5 dark:ring-white/5"
-          >
-            <!-- Issues section -->
-            <template v-if="sceneryStore.missingDepsCount > 0 || sceneryStore.duplicatesCount > 0">
-              <!-- Missing deps -->
-              <div
-                v-if="sceneryStore.missingDepsCount > 0"
-                class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-                @click="
-                  applyFilterWithTransition(() => (showOnlyMissingLibs = !showOnlyMissingLibs))
-                "
-              >
-                <span
-                  class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-amber-400 dark:group-hover:border-amber-500"
-                  :class="
-                    showOnlyMissingLibs && 'filter-check-active bg-amber-500 !border-amber-500'
-                  "
-                >
-                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
-                    <path
-                      d="M3.5 6L5.5 8L8.5 4"
-                      stroke="currentColor"
-                      stroke-width="1.75"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                </span>
-                <span class="flex-1 text-gray-700 dark:text-gray-200">{{
-                  t('sceneryManager.missingDeps')
-                }}</span>
-                <span
-                  class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium"
-                  >{{ sceneryStore.missingDepsCount }}</span
-                >
-              </div>
-              <!-- Duplicates -->
-              <div
-                v-if="sceneryStore.duplicatesCount > 0"
-                class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-                @click="applyFilterWithTransition(() => (showOnlyDuplicates = !showOnlyDuplicates))"
-              >
-                <span
-                  class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-orange-400 dark:group-hover:border-orange-500"
-                  :class="
-                    showOnlyDuplicates && 'filter-check-active bg-orange-500 !border-orange-500'
-                  "
-                >
-                  <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
-                    <path
-                      d="M3.5 6L5.5 8L8.5 4"
-                      stroke="currentColor"
-                      stroke-width="1.75"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                </span>
-                <span class="flex-1 text-gray-700 dark:text-gray-200">{{
-                  t('sceneryManager.duplicates')
-                }}</span>
-                <span
-                  class="tabular-nums text-[11px] text-gray-400 dark:text-gray-500 font-medium"
-                  >{{ sceneryStore.duplicatesCount }}</span
-                >
-              </div>
-              <!-- Separator -->
-              <div class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"></div>
-            </template>
-            <!-- Enabled only -->
-            <div
-              class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-              @click="
-                applyFilterWithTransition(
-                  () => (enabledFilter = enabledFilter === 'enabled' ? 'all' : 'enabled'),
-                )
-              "
-            >
-              <span
-                class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-green-400 dark:group-hover:border-green-500"
-                :class="
-                  enabledFilter === 'enabled' &&
-                  'filter-check-active bg-green-500 !border-green-500'
-                "
-              >
-                <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
-                  <path
-                    d="M3.5 6L5.5 8L8.5 4"
-                    stroke="currentColor"
-                    stroke-width="1.75"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </span>
-              <span class="flex-1 text-gray-700 dark:text-gray-200">{{
-                t('sceneryManager.showOnlyEnabled')
-              }}</span>
-            </div>
-            <!-- Disabled only -->
-            <div
-              class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-              @click="
-                applyFilterWithTransition(
-                  () => (enabledFilter = enabledFilter === 'disabled' ? 'all' : 'disabled'),
-                )
-              "
-            >
-              <span
-                class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-red-400 dark:group-hover:border-red-500"
-                :class="
-                  enabledFilter === 'disabled' && 'filter-check-active bg-red-500 !border-red-500'
-                "
-              >
-                <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
-                  <path
-                    d="M3.5 6L5.5 8L8.5 4"
-                    stroke="currentColor"
-                    stroke-width="1.75"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </span>
-              <span class="flex-1 text-gray-700 dark:text-gray-200">{{
-                t('sceneryManager.showOnlyDisabled')
-              }}</span>
-            </div>
-            <!-- Separator -->
-            <div
-              v-if="uniqueContinents.length > 0"
-              class="border-t border-gray-100 dark:border-gray-700 my-1.5 mx-3"
-            ></div>
-            <!-- Group by continent -->
-            <div
-              v-if="uniqueContinents.length > 0"
-              class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-              @click="toggleViewMode"
-            >
-              <span
-                class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-blue-400 dark:group-hover:border-blue-500"
-                :class="
-                  viewMode === 'continent' && 'filter-check-active bg-blue-500 !border-blue-500'
-                "
-              >
-                <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
-                  <path
-                    d="M3.5 6L5.5 8L8.5 4"
-                    stroke="currentColor"
-                    stroke-width="1.75"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </span>
-              <svg
-                class="w-3.5 h-3.5 text-blue-500 flex-shrink-0"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"
-                />
-              </svg>
-              <span class="flex-1 text-gray-700 dark:text-gray-200">{{
-                t('sceneryManager.groupByContinent')
-              }}</span>
-            </div>
-            <!-- Smart groups -->
-            <div
-              class="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer text-xs transition-colors mx-1 rounded-lg group"
-              @click="toggleSmartGroupView"
-            >
-              <span
-                class="filter-check border-gray-300 dark:border-gray-500 group-hover:border-blue-400 dark:group-hover:border-blue-500"
-                :class="viewMode === 'smart' && 'filter-check-active bg-blue-500 !border-blue-500'"
-              >
-                <svg class="filter-check-icon" viewBox="0 0 12 12" fill="none">
-                  <path
-                    d="M3.5 6L5.5 8L8.5 4"
-                    stroke="currentColor"
-                    stroke-width="1.75"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </span>
-              <svg
-                class="w-3.5 h-3.5 text-blue-500 flex-shrink-0"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M6 6.75h12M6 12h12M6 17.25h12M9 3.75v15m6-15v15"
-                />
-              </svg>
-              <span class="flex-1 text-gray-700 dark:text-gray-200">{{
-                t('sceneryManager.groupBySmart')
-              }}</span>
-            </div>
-          </div>
-        </Transition>
+        </div>
       </div>
-      <!-- Updating index indicator -->
-      <div v-if="isUpdatingIndex" class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-        <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-          <circle
-            class="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            stroke-width="4"
-          ></circle>
-          <path
-            class="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          ></path>
-        </svg>
-        <span class="text-xs">{{ t('sceneryManager.updatingIndex') }}</span>
-      </div>
-      <div
-        v-if="sceneryStore.hasChanges"
-        class="ml-auto flex items-center gap-2 text-blue-600 dark:text-blue-400"
-      >
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-          />
-        </svg>
-        <Transition name="text-fade" mode="out-in">
-          <span :key="locale" class="text-xs font-medium">{{
-            t('sceneryManager.unsavedChanges')
-          }}</span>
-        </Transition>
-      </div>
-    </div>
+    </Transition>
 
     <!-- No X-Plane path set -->
     <div v-if="!appStore.xplanePath" class="flex-1 flex items-center justify-center">
@@ -2660,6 +3039,8 @@ onBeforeUnmount(() => {
                     element.duplicateTiles?.length ?? 0,
                     element.duplicateAirports?.length ?? 0,
                     searchQueryLower,
+                    scenerySelectionMode,
+                    selectedScenery.has(element.folderName),
                     highlightedIndex === getGlobalIndex(element.folderName),
                   ]"
                   :data-scenery-index="getGlobalIndex(element.folderName)"
@@ -2683,7 +3064,10 @@ onBeforeUnmount(() => {
                       :total-count="sceneryStore.totalCount"
                       :disable-reorder="true"
                       :flatten-busy="flattenBusyFolders.has(element.folderName)"
+                      :selected="selectedScenery.has(element.folderName)"
+                      :show-checkbox="scenerySelectionMode"
                       @toggle-enabled="handleSceneryToggleEnabled"
+                      @toggle-select="toggleScenerySelect"
                       @toggle-flatten="handleToggleFlatten"
                       @open-flatten-page="handleOpenFlattenPage"
                       @move-up="handleMoveUp"
@@ -2881,6 +3265,8 @@ onBeforeUnmount(() => {
                             element.duplicateTiles?.length ?? 0,
                             element.duplicateAirports?.length ?? 0,
                             searchQueryLower,
+                            scenerySelectionMode,
+                            selectedScenery.has(element.folderName),
                             highlightedIndex === getGlobalIndex(element.folderName),
                           ]"
                           :data-scenery-index="getGlobalIndex(element.folderName)"
@@ -2904,7 +3290,10 @@ onBeforeUnmount(() => {
                               :total-count="sceneryStore.totalCount"
                               :disable-reorder="true"
                               :flatten-busy="flattenBusyFolders.has(element.folderName)"
+                              :selected="selectedScenery.has(element.folderName)"
+                              :show-checkbox="scenerySelectionMode"
                               @toggle-enabled="handleSceneryToggleEnabled"
+                              @toggle-select="toggleScenerySelect"
                               @toggle-flatten="handleToggleFlatten"
                               @open-flatten-page="handleOpenFlattenPage"
                               @move-up="handleMoveUp"
@@ -2990,6 +3379,8 @@ onBeforeUnmount(() => {
                     element.missingLibraries?.length ?? 0,
                     element.duplicateTiles?.length ?? 0,
                     searchQueryLower,
+                    scenerySelectionMode,
+                    selectedScenery.has(element.folderName),
                     highlightedIndex === getGlobalIndex(element.folderName),
                   ]"
                   :data-scenery-index="getGlobalIndex(element.folderName)"
@@ -3013,7 +3404,10 @@ onBeforeUnmount(() => {
                       :total-count="sceneryStore.totalCount"
                       :disable-reorder="true"
                       :flatten-busy="flattenBusyFolders.has(element.folderName)"
+                      :selected="selectedScenery.has(element.folderName)"
+                      :show-checkbox="scenerySelectionMode"
                       @toggle-enabled="handleSceneryToggleEnabled"
+                      @toggle-select="toggleScenerySelect"
                       @toggle-flatten="handleToggleFlatten"
                       @open-flatten-page="handleOpenFlattenPage"
                       @move-up="handleMoveUp"
@@ -3095,13 +3489,15 @@ onBeforeUnmount(() => {
                   "
                   item-key="folderName"
                   handle=".drag-handle"
-                  :disabled="!sceneryStore.indexExists || category === 'Unrecognized'"
                   :animation="180"
                   :easing="'cubic-bezier(0.25, 0.8, 0.25, 1)'"
                   :force-fallback="true"
                   :fallback-on-body="true"
                   :fallback-tolerance="5"
                   :direction="'vertical'"
+                  :disabled="
+                    scenerySelectionMode || !sceneryStore.indexExists || category === 'Unrecognized'
+                  "
                   ghost-class="drag-ghost"
                   drag-class="sortable-drag"
                   class="space-y-1.5"
@@ -3135,11 +3531,16 @@ onBeforeUnmount(() => {
                           :index="getGlobalIndex(element.folderName)"
                           :total-count="sceneryStore.totalCount"
                           :disable-reorder="
-                            !sceneryStore.indexExists || category === 'Unrecognized'
+                            scenerySelectionMode ||
+                            !sceneryStore.indexExists ||
+                            category === 'Unrecognized'
                           "
                           :disable-move-down="element.folderName === lastEntryBeforeUnrecognized"
                           :flatten-busy="flattenBusyFolders.has(element.folderName)"
+                          :selected="selectedScenery.has(element.folderName)"
+                          :show-checkbox="scenerySelectionMode"
                           @toggle-enabled="handleSceneryToggleEnabled"
+                          @toggle-select="toggleScenerySelect"
                           @toggle-flatten="handleToggleFlatten"
                           @open-flatten-page="handleOpenFlattenPage"
                           @move-up="handleMoveUp"
@@ -3699,6 +4100,276 @@ onBeforeUnmount(() => {
                 ></path>
               </svg>
               {{ t('sceneryManager.indexChangesSyncToIni') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Assign selected scenery to a custom group -->
+    <Teleport to="body">
+      <div
+        v-if="showAssignGroupModal"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        @click="showAssignGroupModal = false"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full mx-4 flex flex-col"
+          style="max-width: 520px; max-height: 80vh"
+          @click.stop
+        >
+          <div class="flex items-center justify-between px-5 pt-4 pb-3 flex-shrink-0">
+            <div>
+              <h3 class="text-base font-semibold text-gray-900 dark:text-white leading-tight">
+                {{ t('sceneryManager.assignToGroup') }}
+              </h3>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {{ t('sceneryManager.assignGroupSelectedHint', { count: selectedSceneryCount }) }}
+              </p>
+            </div>
+            <button
+              class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-md"
+              @click="showAssignGroupModal = false"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto px-5 pb-3 min-h-0 space-y-4">
+            <div
+              v-if="sceneryStore.customGroups.length > 0"
+              class="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden"
+            >
+              <button
+                v-for="(group, index) in sceneryStore.customGroups"
+                :key="group.id"
+                class="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                :class="{ 'border-t border-gray-200 dark:border-gray-700': index > 0 }"
+                @click="assignSelectedToCustomGroup(group.id)"
+              >
+                <span class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                  {{ group.name }}
+                </span>
+                <span class="text-[11px] text-gray-500 dark:text-gray-400 flex-shrink-0">
+                  {{ t('sceneryManager.customGroupRuleCount', { count: group.rules.length }) }}
+                </span>
+              </button>
+            </div>
+            <div
+              v-else
+              class="rounded-lg border border-dashed border-gray-300 dark:border-gray-600 px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400"
+            >
+              {{ t('sceneryManager.noCustomGroups') }}
+            </div>
+
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-gray-600 dark:text-gray-300">
+                {{ t('sceneryManager.quickCreateGroup') }}
+              </label>
+              <div class="flex gap-2">
+                <input
+                  v-model="assignNewGroupName"
+                  class="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  :placeholder="t('sceneryManager.customGroupNamePlaceholder')"
+                  @keyup.enter="quickCreateGroupAndAssign"
+                />
+                <button
+                  :disabled="!assignNewGroupName.trim()"
+                  class="px-3 py-1.5 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                  @click="quickCreateGroupAndAssign"
+                >
+                  {{ t('sceneryManager.createAndAssign') }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="flex justify-end gap-2 px-5 py-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700"
+          >
+            <button
+              class="px-4 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm rounded-lg transition-colors"
+              @click="showAssignGroupModal = false"
+            >
+              {{ t('common.cancel') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Custom group and rule editor -->
+    <Teleport to="body">
+      <div
+        v-if="showCustomGroupsModal"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        @click="closeCustomGroupsModal"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full mx-4 flex flex-col"
+          style="max-width: 760px; max-height: 86vh"
+          @click.stop
+        >
+          <div class="flex items-center justify-between px-5 pt-4 pb-3 flex-shrink-0">
+            <div>
+              <h3 class="text-base font-semibold text-gray-900 dark:text-white leading-tight">
+                {{ t('sceneryManager.manageCustomGroups') }}
+              </h3>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {{ t('sceneryManager.customGroupsPathScoped') }}
+              </p>
+            </div>
+            <button
+              class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-md"
+              @click="closeCustomGroupsModal"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto px-5 pb-3 min-h-0 space-y-3">
+            <div class="flex gap-2">
+              <input
+                v-model="newCustomGroupName"
+                class="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                :placeholder="t('sceneryManager.customGroupNamePlaceholder')"
+                @keyup.enter="createCustomGroupFromEditor"
+              />
+              <button
+                :disabled="!newCustomGroupName.trim()"
+                class="px-3 py-1.5 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                @click="createCustomGroupFromEditor"
+              >
+                {{ t('sceneryManager.createGroup') }}
+              </button>
+            </div>
+
+            <div
+              v-if="editableCustomGroups.length === 0"
+              class="rounded-lg border border-dashed border-gray-300 dark:border-gray-600 px-3 py-8 text-center text-sm text-gray-500 dark:text-gray-400"
+            >
+              {{ t('sceneryManager.noCustomGroups') }}
+            </div>
+
+            <div
+              v-for="group in editableCustomGroups"
+              :key="group.id"
+              class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 p-3 space-y-3"
+            >
+              <div class="flex items-center gap-2">
+                <input
+                  v-model="group.name"
+                  class="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  @change="commitCustomGroupEditor"
+                />
+                <span
+                  class="text-[11px] text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-2 py-0.5"
+                >
+                  {{
+                    t('sceneryManager.customGroupManualCount', {
+                      count: group.manualFolderNames.length,
+                    })
+                  }}
+                </span>
+                <button
+                  class="px-2 py-1 rounded text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
+                  @click="deleteCustomGroupFromEditor(group.id)"
+                >
+                  {{ t('common.delete') }}
+                </button>
+              </div>
+
+              <div class="space-y-2">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('sceneryManager.customGroupRules') }}
+                  </span>
+                  <button
+                    class="px-2 py-1 rounded text-xs font-medium bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                    @click="addRuleToCustomGroup(group)"
+                  >
+                    {{ t('sceneryManager.addRule') }}
+                  </button>
+                </div>
+
+                <div
+                  v-if="group.rules.length === 0"
+                  class="rounded border border-dashed border-gray-300 dark:border-gray-600 px-3 py-3 text-xs text-gray-500 dark:text-gray-400"
+                >
+                  {{ t('sceneryManager.noCustomRules') }}
+                </div>
+
+                <div
+                  v-for="rule in group.rules"
+                  :key="rule.id"
+                  class="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2 items-center"
+                >
+                  <div
+                    class="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden"
+                  >
+                    <button
+                      class="px-2 py-1 text-xs transition-colors"
+                      :class="
+                        rule.mode === 'prefix'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      "
+                      @click="setRuleMode(rule, 'prefix')"
+                    >
+                      {{ t('sceneryManager.ruleModePrefix') }}
+                    </button>
+                    <button
+                      class="px-2 py-1 text-xs border-l border-gray-300 dark:border-gray-600 transition-colors"
+                      :class="
+                        rule.mode === 'contains'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      "
+                      @click="setRuleMode(rule, 'contains')"
+                    >
+                      {{ t('sceneryManager.ruleModeContains') }}
+                    </button>
+                  </div>
+                  <input
+                    v-model="rule.pattern"
+                    class="min-w-0 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    :placeholder="t('sceneryManager.rulePatternPlaceholder')"
+                    @input="commitCustomGroupEditor"
+                    @change="commitCustomGroupEditor"
+                  />
+                  <button
+                    class="px-2 py-1 rounded text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                    @click="deleteRuleFromCustomGroup(group, rule.id)"
+                  >
+                    {{ t('common.delete') }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="flex justify-end gap-2 px-5 py-3 flex-shrink-0 border-t border-gray-200 dark:border-gray-700"
+          >
+            <button
+              class="px-4 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors"
+              @click="closeCustomGroupsModal"
+            >
+              {{ t('common.close') }}
             </button>
           </div>
         </div>

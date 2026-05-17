@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Batch Delete in Management** - Aircraft and plugin lists can now delete selected items at once, with failed items left in place and reported clearly.
 - **Scenery Smart Groups** - The Scenery manager can group related SimHeaven, Ortho tile, airport, and product packages with one-click enable and disable controls, while unmatched scenery stays in a collapsed Ungrouped section.
+- **Scenery Batch Grouping** - Scenery packages can now be selected in batches and assigned to custom groups without changing their enabled state or load order.
+- **Custom Scenery Group Rules** - Custom Scenery groups can now match packages by folder-name prefix or contained text, with separate group settings for each X-Plane path.
 
 ### Changed
 
@@ -29,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Aircraft Variant Toggles** - Per-variant aircraft enable/disable controls now stay in sync after each click and no longer fail when the file state changes while the ACF manager is open.
 - **Airport Flatten Selection** - Airport search results now keep the selected airport open, refresh stale flatten indexes when needed, and show a clear retry action when sources cannot be loaded.
 - **Gateway and Addon Update Errors** - Temporary upstream failures now retry briefly and show a clear service-unavailable message instead of raw server errors.
+- **Scenery Smart Group Display** - Unmatched scenery now stays inside the collapsed Ungrouped section instead of appearing as repeated top-level rows.
 
 ## [1.2.3] - 2026-04-26
 

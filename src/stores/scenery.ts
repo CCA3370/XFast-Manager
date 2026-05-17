@@ -15,6 +15,91 @@ import { logError } from '@/services/logger'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
 import { validateXPlanePath } from '@/utils/validation'
 import { i18n } from '@/i18n'
+import type { SceneryCustomGroup, SceneryCustomGroupConfig } from '@/utils/scenerySmartGroups'
+
+const SCENERY_CUSTOM_GROUP_CONFIG_VERSION = 1
+
+type SceneryCustomGroupConfigsByPath = Record<string, SceneryCustomGroupConfig>
+
+function createEmptyCustomGroupConfig(): SceneryCustomGroupConfig {
+  return {
+    version: SCENERY_CUSTOM_GROUP_CONFIG_VERSION,
+    groups: [],
+  }
+}
+
+function normalizeCustomGroupConfig(value: unknown): SceneryCustomGroupConfig {
+  if (!value || typeof value !== 'object') {
+    return createEmptyCustomGroupConfig()
+  }
+
+  const candidate = value as Partial<SceneryCustomGroupConfig>
+  if (
+    candidate.version !== SCENERY_CUSTOM_GROUP_CONFIG_VERSION ||
+    !Array.isArray(candidate.groups)
+  ) {
+    return createEmptyCustomGroupConfig()
+  }
+
+  const groups: SceneryCustomGroup[] = []
+  const seenGroupIds = new Set<string>()
+  const seenManualNames = new Set<string>()
+  for (const group of candidate.groups) {
+    if (!group || typeof group !== 'object') continue
+
+    const rawGroup = group as Partial<SceneryCustomGroup>
+    const id = typeof rawGroup.id === 'string' ? rawGroup.id.trim() : ''
+    const name = typeof rawGroup.name === 'string' ? rawGroup.name.trim() : ''
+    if (!id || !name || seenGroupIds.has(id)) continue
+
+    seenGroupIds.add(id)
+    const manualFolderNames = (
+      Array.isArray(rawGroup.manualFolderNames) ? rawGroup.manualFolderNames : []
+    )
+      .filter((folderName): folderName is string => typeof folderName === 'string')
+      .map((folderName) => folderName.trim())
+      .filter((folderName) => {
+        if (!folderName || seenManualNames.has(folderName)) return false
+        seenManualNames.add(folderName)
+        return true
+      })
+
+    const seenRuleKeys = new Set<string>()
+    const rules = (Array.isArray(rawGroup.rules) ? rawGroup.rules : [])
+      .filter((rule): rule is NonNullable<SceneryCustomGroup['rules'][number]> => {
+        if (!rule || typeof rule !== 'object') return false
+        const rawRule = rule as Partial<SceneryCustomGroup['rules'][number]>
+        return (
+          typeof rawRule.id === 'string' &&
+          (rawRule.mode === 'prefix' || rawRule.mode === 'contains') &&
+          typeof rawRule.pattern === 'string'
+        )
+      })
+      .map((rule) => ({
+        id: rule.id.trim(),
+        mode: rule.mode,
+        pattern: rule.pattern.trim(),
+      }))
+      .filter((rule) => {
+        if (!rule.id || !rule.pattern) return false
+        const key = `${rule.mode}:${rule.pattern.toLowerCase()}`
+        if (seenRuleKeys.has(key)) return false
+        seenRuleKeys.add(key)
+        return true
+      })
+
+    groups.push({ id, name, manualFolderNames, rules })
+  }
+
+  return {
+    version: SCENERY_CUSTOM_GROUP_CONFIG_VERSION,
+    groups,
+  }
+}
+
+function getCustomGroupConfigPathKey(xplanePath: string): string {
+  return xplanePath.trim().replaceAll('\\', '/')
+}
 
 export const useSceneryStore = defineStore('scenery', () => {
   const appStore = useAppStore()
@@ -28,6 +113,7 @@ export const useSceneryStore = defineStore('scenery', () => {
   const error = ref<string | null>(null)
   const indexExists = ref(false)
   const needsDatabaseReset = ref(false)
+  const customGroupConfigsByPath = ref<SceneryCustomGroupConfigsByPath>({})
 
   // Track original state for change detection
   const originalEntries = ref<SceneryManagerEntry[]>([])
@@ -46,6 +132,17 @@ export const useSceneryStore = defineStore('scenery', () => {
     if (saved && typeof saved === 'object') {
       collapsedGroups.value = saved
     }
+
+    const savedCustomGroups = await getItem<SceneryCustomGroupConfigsByPath>(
+      STORAGE_KEYS.SCENERY_CUSTOM_GROUPS_BY_PATH,
+    )
+    if (savedCustomGroups && typeof savedCustomGroups === 'object') {
+      const normalized: SceneryCustomGroupConfigsByPath = {}
+      for (const [pathKey, config] of Object.entries(savedCustomGroups)) {
+        normalized[pathKey] = normalizeCustomGroupConfig(config)
+      }
+      customGroupConfigsByPath.value = normalized
+    }
   }
 
   // Watch for changes and persist to Tauri Store
@@ -53,6 +150,14 @@ export const useSceneryStore = defineStore('scenery', () => {
     collapsedGroups,
     (newVal) => {
       setItem(STORAGE_KEYS.SCENERY_GROUPS_COLLAPSED, newVal)
+    },
+    { deep: true },
+  )
+
+  watch(
+    customGroupConfigsByPath,
+    (newVal) => {
+      setItem(STORAGE_KEYS.SCENERY_CUSTOM_GROUPS_BY_PATH, newVal)
     },
     { deep: true },
   )
@@ -76,6 +181,15 @@ export const useSceneryStore = defineStore('scenery', () => {
   const sortedEntries = computed(() => {
     return [...entries.value].sort((a, b) => a.sortOrder - b.sortOrder)
   })
+
+  const currentCustomGroupConfig = computed<SceneryCustomGroupConfig>(() => {
+    if (!appStore.xplanePath) return createEmptyCustomGroupConfig()
+
+    const pathKey = getCustomGroupConfigPathKey(appStore.xplanePath)
+    return customGroupConfigsByPath.value[pathKey] ?? createEmptyCustomGroupConfig()
+  })
+
+  const customGroups = computed(() => currentCustomGroupConfig.value.groups)
 
   // Group entries by category
   const groupedEntries = computed(() => {
@@ -534,6 +648,23 @@ export const useSceneryStore = defineStore('scenery', () => {
     entry.flattenAvailable = flattenAvailable
   }
 
+  function setCurrentCustomGroupConfig(config: SceneryCustomGroupConfig) {
+    if (!appStore.xplanePath) return
+
+    const pathKey = getCustomGroupConfigPathKey(appStore.xplanePath)
+    customGroupConfigsByPath.value = {
+      ...customGroupConfigsByPath.value,
+      [pathKey]: normalizeCustomGroupConfig(config),
+    }
+  }
+
+  function upsertCustomGroups(groups: SceneryCustomGroup[]) {
+    setCurrentCustomGroupConfig({
+      version: SCENERY_CUSTOM_GROUP_CONFIG_VERSION,
+      groups,
+    })
+  }
+
   // Clear store state
   function clear() {
     data.value = null
@@ -550,6 +681,8 @@ export const useSceneryStore = defineStore('scenery', () => {
     isCheckingUpdates,
     error,
     collapsedGroups,
+    customGroups,
+    currentCustomGroupConfig,
     needsDatabaseReset,
 
     // Computed
@@ -581,6 +714,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     resetChanges,
     deleteEntry,
     updateFlattenState,
+    upsertCustomGroups,
     clear,
   }
 })
