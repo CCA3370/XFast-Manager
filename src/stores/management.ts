@@ -570,11 +570,11 @@ export const useManagementStore = defineStore('management', () => {
   // Get items that need update check (no valid cache, and not locked)
   function getItemsNeedingUpdateCheck<
     T extends { updateUrl?: string; updateProvider?: string; folderName: string },
-  >(items: T[], itemType: CheckableItemType): T[] {
+  >(items: T[], itemType: CheckableItemType, forceRefresh = false): T[] {
     const lockStore = useLockStore()
     return items.filter((item) => {
       if (!usesRemoteUpdateCheck(item)) return false
-      if (isCacheValid(item, itemType)) return false
+      if (!forceRefresh && isCacheValid(item, itemType)) return false
       // Skip locked items - they shouldn't be checked for updates
       if (lockStore.isLocked(itemType, item.folderName)) return false
       return true
@@ -642,30 +642,38 @@ export const useManagementStore = defineStore('management', () => {
     logName: string
     itemType: CheckableItemType
     extraArgs?: Record<string, unknown>
+    forceRefresh?: boolean
   }
 
   interface UpdateCheckResult {
     checked: boolean
     updateCount: number
+    failed: boolean
   }
 
   async function checkItemUpdates<T extends UpdatableItem>(
     config: UpdateCheckConfig<T>,
   ): Promise<UpdateCheckResult> {
     if (config.itemsRef.value.length === 0) {
-      return { checked: false, updateCount: 0 }
+      return { checked: false, updateCount: 0, failed: false }
     }
 
     await loadAddonUpdateOptions()
 
-    config.itemsRef.value = applyCachedUpdates(config.itemsRef.value, config.itemType)
+    if (!config.forceRefresh) {
+      config.itemsRef.value = applyCachedUpdates(config.itemsRef.value, config.itemType)
+    }
 
     // Only check items that have update URLs, no valid cache, and are not locked
-    const itemsToCheck = getItemsNeedingUpdateCheck(config.itemsRef.value, config.itemType)
+    const itemsToCheck = getItemsNeedingUpdateCheck(
+      config.itemsRef.value,
+      config.itemType,
+      config.forceRefresh,
+    )
     if (itemsToCheck.length === 0) {
       // All items have valid cache, count current updates
       const updateCount = config.itemsRef.value.filter((item) => item.hasUpdate).length
-      return { checked: false, updateCount }
+      return { checked: false, updateCount, failed: false }
     }
 
     isCheckingUpdates.value = true
@@ -712,11 +720,11 @@ export const useManagementStore = defineStore('management', () => {
 
       // Count items with updates after merge
       const updateCount = config.itemsRef.value.filter((item) => item.hasUpdate).length
-      return { checked: true, updateCount }
+      return { checked: true, updateCount, failed: false }
     } catch (e) {
       logError(`Failed to check ${config.logName} updates: ${e}`, 'management')
       // Don't set error.value here as this is a background operation
-      return { checked: false, updateCount: 0 }
+      return { checked: false, updateCount: 0, failed: true }
     } finally {
       isCheckingUpdates.value = false
     }
@@ -787,9 +795,12 @@ export const useManagementStore = defineStore('management', () => {
       logName: 'aircraft',
       itemType: 'aircraft',
       extraArgs: { xplanePath: appStore.xplanePath },
+      forceRefresh,
     })
     // Show toast when check was actually performed and no updates found
-    if (showUpToDateToast && result.checked && result.updateCount === 0) {
+    if (showUpToDateToast && result.failed) {
+      toast.error(t('management.checkFailed'))
+    } else if (showUpToDateToast && result.checked && result.updateCount === 0) {
       toast.info(t('management.allUpToDate'))
     }
   }
@@ -850,9 +861,12 @@ export const useManagementStore = defineStore('management', () => {
       logName: 'plugins',
       itemType: 'plugin',
       extraArgs: { xplanePath: appStore.xplanePath },
+      forceRefresh,
     })
     // Show toast when check was actually performed and no updates found
-    if (showUpToDateToast && result.checked && result.updateCount === 0) {
+    if (showUpToDateToast && result.failed) {
+      toast.error(t('management.checkFailed'))
+    } else if (showUpToDateToast && result.checked && result.updateCount === 0) {
       toast.info(t('management.allUpToDate'))
     }
   }

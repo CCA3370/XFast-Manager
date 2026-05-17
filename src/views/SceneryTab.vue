@@ -2222,8 +2222,6 @@ onBeforeUnmount(() => {
             d="M4 5.75A1.75 1.75 0 015.75 4h4.1l1.55 1.75h6.85A1.75 1.75 0 0120 7.5V9"
           />
           <rect x="4" y="8.25" width="16" height="10.75" rx="2" stroke-width="2" />
-          <path stroke-width="1.8" d="M8 12h2.25v3H13" />
-          <path stroke-width="1.8" d="M8 15h2.25" />
           <circle cx="15.25" cy="12" r="1.25" stroke-width="1.8" />
           <circle cx="15.25" cy="15" r="1.25" stroke-width="1.8" />
         </svg>
