@@ -881,6 +881,13 @@ function assignSelectedToCustomGroup(groupId: string) {
   toastStore.success(t('sceneryManager.customGroupAssigned', { count: folderNames.length }))
 }
 
+function assignSceneryToCustomGroup(folderName: string, groupId: string) {
+  const groups = applyManualAssignmentToGroups(cloneCustomGroups(), groupId, [folderName])
+  saveCustomGroups(groups)
+  viewMode.value = 'smart'
+  toastStore.success(t('sceneryManager.customGroupAssigned', { count: 1 }))
+}
+
 function quickCreateGroupAndAssign() {
   const name = assignNewGroupName.value.trim()
   const folderNames = [...selectedScenery.value]
@@ -3088,6 +3095,9 @@ onBeforeUnmount(() => {
                       @show-missing-libs="handleShowMissingLibs"
                       @show-duplicate-tiles="handleShowDuplicateTiles"
                       @show-delete-confirm="handleShowDeleteConfirm"
+                      @assign-custom-group="
+                        ({ folderName, groupId }) => assignSceneryToCustomGroup(folderName, groupId)
+                      "
                       @update="handleOpenSceneryUpdate"
                     />
                   </div>
@@ -3314,6 +3324,10 @@ onBeforeUnmount(() => {
                               @show-missing-libs="handleShowMissingLibs"
                               @show-duplicate-tiles="handleShowDuplicateTiles"
                               @show-delete-confirm="handleShowDeleteConfirm"
+                              @assign-custom-group="
+                                ({ folderName, groupId }) =>
+                                  assignSceneryToCustomGroup(folderName, groupId)
+                              "
                               @update="handleOpenSceneryUpdate"
                             />
                           </div>
@@ -3428,6 +3442,9 @@ onBeforeUnmount(() => {
                       @show-missing-libs="handleShowMissingLibs"
                       @show-duplicate-tiles="handleShowDuplicateTiles"
                       @show-delete-confirm="handleShowDeleteConfirm"
+                      @assign-custom-group="
+                        ({ folderName, groupId }) => assignSceneryToCustomGroup(folderName, groupId)
+                      "
                       @update="handleOpenSceneryUpdate"
                     />
                   </div>
@@ -3561,6 +3578,10 @@ onBeforeUnmount(() => {
                           @show-missing-libs="handleShowMissingLibs"
                           @show-duplicate-tiles="handleShowDuplicateTiles"
                           @show-delete-confirm="handleShowDeleteConfirm"
+                          @assign-custom-group="
+                            ({ folderName, groupId }) =>
+                              assignSceneryToCustomGroup(folderName, groupId)
+                          "
                           @update="handleOpenSceneryUpdate"
                         />
                       </div>
@@ -4227,7 +4248,7 @@ onBeforeUnmount(() => {
       >
         <div
           class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full mx-4 flex flex-col"
-          style="max-width: 760px; max-height: 86vh"
+          style="max-width: 640px; max-height: 86vh"
           @click.stop
         >
           <div class="flex items-center justify-between px-5 pt-4 pb-3 flex-shrink-0">

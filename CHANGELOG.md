@@ -18,11 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Log Analysis Navigation** - Removed the first-time Log Analysis tip bubble from the top navigation.
 - **Scenery Toolbar** - Scenery batch and custom group controls now use compact icon buttons for a cleaner toolbar.
+- **Scenery Custom Groups** - The custom group editor dialog is now narrower and better balanced.
 - **Addon Update Queue** - Update tasks in the addon drawer can now be started independently, so one running update no longer blocks another update or fresh install.
 
 ### Fixed
 
 - **Scenery Update Check** - The Scenery page's Check Updates action now reliably refreshes update status after switching away and back, and shows a clear message when a check fails.
+- **Scenery Right-Click Grouping** - Scenery entries can now be assigned to an existing custom group directly from the right-click menu.
 - **Scenery Custom Group Icon** - The custom group button icon is now cleaner and no longer includes the internal connector lines.
 - **Log Analysis Crash Detection** - Logs that stop before X-Plane writes a normal shutdown line are now reported as crashes.
 - **Lua Script ZIP Installs** - Lua script packages now keep nearby resource folders/files with the script during install.

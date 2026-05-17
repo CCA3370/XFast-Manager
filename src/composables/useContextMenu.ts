@@ -5,6 +5,7 @@ export interface ContextMenuItem {
   label: string
   icon?: string
   iconFill?: string
+  children?: ContextMenuItem[]
   disabled?: boolean
   hidden?: boolean
   danger?: boolean
@@ -16,6 +17,7 @@ const visible = ref(false)
 const x = ref(0)
 const y = ref(0)
 const items = ref<ContextMenuItem[]>([])
+const submenuDirection = ref<'left' | 'right'>('right')
 let actionCallback: ((id: string) => void) | null = null
 
 export function useContextMenu() {
@@ -24,7 +26,12 @@ export function useContextMenu() {
     event.stopPropagation()
     x.value = event.clientX
     y.value = event.clientY
-    items.value = menuItems.filter((item) => !item.hidden)
+    items.value = menuItems
+      .filter((item) => !item.hidden)
+      .map((item) => ({
+        ...item,
+        children: item.children?.filter((child) => !child.hidden),
+      }))
     actionCallback = onAction
     visible.value = true
   }
@@ -46,6 +53,7 @@ export function useContextMenu() {
     x,
     y,
     items,
+    submenuDirection,
     show,
     hide,
     handleAction,
