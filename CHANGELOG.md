@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Log Analysis Navigation** - Removed the first-time Log Analysis tip bubble from the top navigation.
 - **Scenery Toolbar** - Scenery batch and custom group controls now use compact icon buttons for a cleaner toolbar.
+- **Addon Update Queue** - Update tasks in the addon drawer can now be started independently, so one running update no longer blocks another update or fresh install.
 
 ### Fixed
 

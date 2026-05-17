@@ -199,9 +199,7 @@ function onResizeStart(event: PointerEvent) {
 }
 
 function hasInstallingTasks(): boolean {
-  return (
-    taskCards.value.some((task) => stateFor(task).installing) || managementStore.isExecutingUpdate
-  )
+  return taskCards.value.some((task) => stateFor(task).installing)
 }
 
 async function requestCancelAndClose() {
@@ -436,7 +434,6 @@ function taskUpdateOptionsDisabled(
   return (
     state.loadingPlan ||
     state.installing ||
-    managementStore.isExecutingUpdate ||
     (includePreferenceState && (preferenceSaving.value || preferenceRefreshPending.value))
   )
 }
@@ -491,7 +488,7 @@ function toggleTaskDetails(task: AddonUpdateDrawerTask) {
 async function startUpdate(task: AddonUpdateDrawerTask) {
   const key = taskKeyOf(task)
   const state = ensureTaskState(key)
-  if (state.loadingPlan || state.installing || managementStore.isExecutingUpdate) return
+  if (state.loadingPlan || state.installing) return
 
   if (!state.plan) {
     await loadPlanForTask(task, false)
@@ -585,7 +582,7 @@ async function confirmFreshInstall() {
 
   const key = taskKeyOf(task)
   const state = ensureTaskState(key)
-  if (state.installing || managementStore.isExecutingUpdate) return
+  if (state.installing) return
 
   state.installing = true
   state.status = 'installing'
@@ -845,7 +842,6 @@ watch(
                           :disabled="
                             stateFor(task).loadingPlan ||
                             stateFor(task).installing ||
-                            managementStore.isExecutingUpdate ||
                             preferenceSaving ||
                             preferenceRefreshPending
                           "
@@ -873,7 +869,6 @@ watch(
                           :disabled="
                             stateFor(task).loadingPlan ||
                             stateFor(task).installing ||
-                            managementStore.isExecutingUpdate ||
                             preferenceSaving ||
                             preferenceRefreshPending
                           "

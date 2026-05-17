@@ -18,8 +18,19 @@ import { i18n } from '@/i18n'
 import type { SceneryCustomGroup, SceneryCustomGroupConfig } from '@/utils/scenerySmartGroups'
 
 const SCENERY_CUSTOM_GROUP_CONFIG_VERSION = 1
+const UPDATE_STATE_BY_PATH_LIMIT = 500
 
 type SceneryCustomGroupConfigsByPath = Record<string, SceneryCustomGroupConfig>
+type SceneryUpdateStateByPath = Record<
+  string,
+  Record<
+    string,
+    {
+      latestVersion?: string
+      hasUpdate: boolean
+    }
+  >
+>
 
 function createEmptyCustomGroupConfig(): SceneryCustomGroupConfig {
   return {
@@ -114,6 +125,8 @@ export const useSceneryStore = defineStore('scenery', () => {
   const indexExists = ref(false)
   const needsDatabaseReset = ref(false)
   const customGroupConfigsByPath = ref<SceneryCustomGroupConfigsByPath>({})
+  const updateStateByPath = ref<SceneryUpdateStateByPath>({})
+  const updateStateRevision = ref(0)
 
   // Track original state for change detection
   const originalEntries = ref<SceneryManagerEntry[]>([])
@@ -191,6 +204,82 @@ export const useSceneryStore = defineStore('scenery', () => {
 
   const customGroups = computed(() => currentCustomGroupConfig.value.groups)
 
+  function currentPathKey(): string | null {
+    if (!appStore.xplanePath) return null
+    return getCustomGroupConfigPathKey(appStore.xplanePath)
+  }
+
+  function rememberSceneryUpdateState(entriesToRemember: SceneryManagerEntry[]) {
+    const pathKey = currentPathKey()
+    if (!pathKey) return
+
+    const current = { ...(updateStateByPath.value[pathKey] ?? {}) }
+    for (const entry of entriesToRemember) {
+      if (!entry.updateUrl && !entry.latestVersion && !entry.hasUpdate) continue
+      current[entry.folderName] = {
+        latestVersion: entry.latestVersion,
+        hasUpdate: entry.hasUpdate,
+      }
+    }
+
+    const orderedEntries = Object.entries(current)
+    const limitedEntries =
+      orderedEntries.length > UPDATE_STATE_BY_PATH_LIMIT
+        ? orderedEntries.slice(orderedEntries.length - UPDATE_STATE_BY_PATH_LIMIT)
+        : orderedEntries
+
+    updateStateByPath.value = {
+      ...updateStateByPath.value,
+      [pathKey]: Object.fromEntries(limitedEntries),
+    }
+    syncOriginalUpdateState(entriesToRemember)
+    updateStateRevision.value += 1
+  }
+
+  function syncOriginalUpdateState(entriesToRemember: SceneryManagerEntry[]) {
+    if (!originalEntries.value.length) return
+
+    const updateStateByFolder = new Map(
+      entriesToRemember.map((entry) => [
+        entry.folderName,
+        {
+          latestVersion: entry.latestVersion,
+          hasUpdate: entry.hasUpdate,
+        },
+      ]),
+    )
+
+    originalEntries.value = originalEntries.value.map((entry) => {
+      const updateState = updateStateByFolder.get(entry.folderName)
+      if (!updateState) return entry
+      return {
+        ...entry,
+        latestVersion: updateState.latestVersion,
+        hasUpdate: updateState.hasUpdate,
+      }
+    })
+  }
+
+  function applyRememberedSceneryUpdateState(
+    entriesToHydrate: SceneryManagerEntry[],
+  ): SceneryManagerEntry[] {
+    const pathKey = currentPathKey()
+    if (!pathKey) return entriesToHydrate
+
+    const remembered = updateStateByPath.value[pathKey]
+    if (!remembered) return entriesToHydrate
+
+    return entriesToHydrate.map((entry) => {
+      const state = remembered[entry.folderName]
+      if (!state) return entry
+      return {
+        ...entry,
+        latestVersion: state.latestVersion,
+        hasUpdate: state.hasUpdate,
+      }
+    })
+  }
+
   // Group entries by category
   const groupedEntries = computed(() => {
     const groups: Record<SceneryCategory, SceneryManagerEntry[]> = {
@@ -260,9 +349,12 @@ export const useSceneryStore = defineStore('scenery', () => {
       const result = await invoke<SceneryManagerData>('get_scenery_manager_data', {
         xplanePath: appStore.xplanePath,
       })
-      data.value = result
+      data.value = {
+        ...result,
+        entries: applyRememberedSceneryUpdateState(result.entries),
+      }
       // Store original state for change detection
-      originalEntries.value = JSON.parse(JSON.stringify(result.entries))
+      originalEntries.value = JSON.parse(JSON.stringify(data.value.entries))
       // Clear any previous database reset flag on successful load
       needsDatabaseReset.value = false
       // Kick off a background SkunkCrafts update check — non-blocking so the UI
@@ -326,8 +418,11 @@ export const useSceneryStore = defineStore('scenery', () => {
         const result = await invoke<SceneryManagerData>('get_scenery_manager_data', {
           xplanePath: appStore.xplanePath,
         })
-        data.value = result
-        originalEntries.value = JSON.parse(JSON.stringify(result.entries))
+        data.value = {
+          ...result,
+          entries: applyRememberedSceneryUpdateState(result.entries),
+        }
+        originalEntries.value = JSON.parse(JSON.stringify(data.value.entries))
       } catch (e) {
         logError(`Failed to rescan scenery: ${e}`, 'scenery')
       }
@@ -354,6 +449,7 @@ export const useSceneryStore = defineStore('scenery', () => {
       if (showUpToDateToast && result.checked && result.updateCount === 0) {
         toastStore.info(t('management.allUpToDate'))
       }
+      rememberSceneryUpdateState(data.value?.entries ?? [])
     } finally {
       isCheckingUpdates.value = false
     }
@@ -684,6 +780,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     customGroups,
     currentCustomGroupConfig,
     needsDatabaseReset,
+    updateStateRevision,
 
     // Computed
     entries,
