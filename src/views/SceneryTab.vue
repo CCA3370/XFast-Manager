@@ -965,7 +965,7 @@ function isSmartGroupExpanded(group: SmartSceneryGroup): boolean {
   if (collapsedSmartGroups.value[group.id] !== undefined) {
     return collapsedSmartGroups.value[group.id] === false
   }
-  return group.kind !== 'ungrouped'
+  return false
 }
 
 function toggleSmartGroupCollapse(group: SmartSceneryGroup) {
@@ -1278,8 +1278,8 @@ async function handleCheckSceneryUpdates() {
   await sceneryStore.checkSceneryUpdates(true, true)
 }
 
-const sceneryUpdatableCount = computed(() => {
-  return sceneryStore.entries.filter((entry) => isDrawerUpdatable(entry) && entry.hasUpdate).length
+const sceneryDrawerUpdatableCount = computed(() => {
+  return sceneryStore.entries.filter((entry) => isDrawerUpdatable(entry)).length
 })
 
 function buildSceneryUpdateAllTargets(): AddonUpdateDrawerTask[] {
@@ -2174,16 +2174,17 @@ onBeforeUnmount(() => {
 
       <button
         v-if="sceneryStore.indexExists"
-        class="px-3 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1.5 text-sm"
+        class="px-3 py-2 rounded-lg transition-colors flex items-center justify-center"
         :class="
           scenerySelectionMode
             ? 'bg-blue-500 text-white hover:bg-blue-600'
             : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
         "
         :title="t('management.batchMode')"
+        :aria-label="t('management.batchMode')"
         @click="toggleScenerySelectionMode"
       >
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -2191,27 +2192,28 @@ onBeforeUnmount(() => {
             d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
           />
         </svg>
-        <Transition name="text-fade" mode="out-in">
-          <span :key="locale">{{ t('management.batchMode') }}</span>
-        </Transition>
       </button>
 
       <button
         v-if="sceneryStore.indexExists"
-        class="px-3 py-1.5 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
+        class="px-3 py-2 rounded-lg transition-colors flex items-center justify-center"
+        :class="
+          showCustomGroupsModal
+            ? 'bg-indigo-500 text-white hover:bg-indigo-600'
+            : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+        "
+        :title="t('sceneryManager.manageCustomGroups')"
+        :aria-label="t('sceneryManager.manageCustomGroups')"
         @click="openCustomGroupsModal"
       >
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
             stroke-width="2"
-            d="M6 6.75h12M6 12h12M6 17.25h12M9 3.75v15m6-15v15"
+            d="M4.5 7.5V6A2.5 2.5 0 017 3.5h3l2 2H17A2.5 2.5 0 0119.5 8v6A2.5 2.5 0 0117 16.5H7A2.5 2.5 0 014.5 14v-1.5m0 0H3m1.5 0H8m-3.5 0v-5m0 0H3m1.5 0H8m-3.5 5v5m0 0H3m1.5 0H8"
           />
         </svg>
-        <Transition name="text-fade" mode="out-in">
-          <span :key="locale">{{ t('sceneryManager.manageCustomGroups') }}</span>
-        </Transition>
       </button>
 
       <button
@@ -2458,8 +2460,9 @@ onBeforeUnmount(() => {
               }}</span>
             </Transition>
           </button>
+        </div>
+        <div v-if="sceneryDrawerUpdatableCount > 0" class="flex items-center gap-2">
           <button
-            v-if="sceneryUpdatableCount > 0"
             :disabled="sceneryStore.isCheckingUpdates"
             class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
             @click="handleSceneryUpdateAll"
