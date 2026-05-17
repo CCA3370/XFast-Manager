@@ -131,6 +131,9 @@ export function shouldHideBugReportForMessage(message: string): boolean {
 
   return (
     lower.includes('invalid or incomplete zip archive') ||
+    lower.includes('this archive appears to be incomplete') ||
+    lower.includes('this rar archive could not be extracted') ||
+    lower.includes('this 7z archive could not be extracted') ||
     lower.includes('invalid zip archive') ||
     lower.includes('could not find eocd') ||
     lower.includes('exec format error') ||

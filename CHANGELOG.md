@@ -14,7 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Log Analysis Crash Detection** - Logs that stop before X-Plane writes a normal shutdown line are now reported as crashes.
+- **Lua Script ZIP Installs** - Lua script packages now keep nearby resource folders/files with the script during install.
 - **Split Archive Installation** - Multi-part ZIP, 7z, and RAR downloads are now recognized as one addon source, with clearer messages when a required volume is missing or a download is incomplete.
+- **Archive Install Guidance** - 7z and RAR extraction failures now explain missing volumes, incomplete downloads, and 7-Zip requirements instead of showing raw extractor output.
 - **Atomic Install Staging** - Atomic installs can now fall back to another staging location when the X-Plane root cannot create the temporary install folder.
 - **Aircraft Variant Toggles** - Per-variant aircraft enable/disable controls now stay in sync after each click and no longer fail when the file state changes while the ACF manager is open.
 - **Airport Flatten Selection** - Airport search results now keep the selected airport open, refresh stale flatten indexes when needed, and show a clear retry action when sources cannot be loaded.
