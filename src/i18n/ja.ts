@@ -700,8 +700,17 @@ export default {
     updateSelected: '選択したものを更新します',
     enableSelected: '選択したものを有効にする',
     disableSelected: '選択したものを無効にする',
+    deleteSelected: 'Delete Selected',
     selectedCount: '{count}が選択されました',
     batchMode: 'バッチモード',
+    batchDeleteTitle: 'Delete Selected Items',
+    batchDeleteMessage: 'Delete {count} selected item(s)? This action cannot be undone.',
+    batchDeleteWarning:
+      'Each item is deleted independently. Items that fail to delete will remain in the list.',
+    batchDeleteSuccess: 'Deleted {count} selected item(s)',
+    batchDeletePartialFailed:
+      'Deleted {deleted}/{total} selected item(s). {failed} item(s) could not be deleted.',
+    batchDeleteFailed: 'Could not delete {failed}/{total} selected item(s).',
     protectedAircraft: 'これはデフォルトの X-Plane 航空機であり、無効にすることはできません',
     manageAcfFilesTitle: 'ACF ファイルを管理 · {name}',
     manageAcfFilesHint: 'このフォルダー内の個別の機体モデルファイルを切り替えます。',

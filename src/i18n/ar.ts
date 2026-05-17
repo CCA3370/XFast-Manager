@@ -700,8 +700,17 @@ export default {
     updateSelected: 'تحديث المحدد',
     enableSelected: 'تمكين المحدد',
     disableSelected: 'تعطيل المحدد',
+    deleteSelected: 'Delete Selected',
     selectedCount: '{count} محدد',
     batchMode: 'الوضع الدفعي',
+    batchDeleteTitle: 'Delete Selected Items',
+    batchDeleteMessage: 'Delete {count} selected item(s)? This action cannot be undone.',
+    batchDeleteWarning:
+      'Each item is deleted independently. Items that fail to delete will remain in the list.',
+    batchDeleteSuccess: 'Deleted {count} selected item(s)',
+    batchDeletePartialFailed:
+      'Deleted {deleted}/{total} selected item(s). {failed} item(s) could not be deleted.',
+    batchDeleteFailed: 'Could not delete {failed}/{total} selected item(s).',
     protectedAircraft: 'هذه طائرة افتراضية في X-Plane ولا يمكن تعطيلها',
     manageAcfFilesTitle: 'إدارة ملفات ACF · {name}',
     manageAcfFilesHint: 'يمكنك تبديل ملفات نماذج الطائرات الفردية داخل هذا المجلد.',
