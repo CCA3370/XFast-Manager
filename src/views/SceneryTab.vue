@@ -888,6 +888,20 @@ function assignSceneryToCustomGroup(folderName: string, groupId: string) {
   toastStore.success(t('sceneryManager.customGroupAssigned', { count: 1 }))
 }
 
+function removeSceneryFromCustomGroup(folderName: string, groupId: string) {
+  const groups = cloneCustomGroups().map((group) => {
+    if (group.id !== groupId) return group
+
+    return {
+      ...group,
+      manualFolderNames: group.manualFolderNames.filter((name) => name !== folderName),
+    }
+  })
+  saveCustomGroups(groups)
+  viewMode.value = 'smart'
+  toastStore.success(t('sceneryManager.customGroupRemoved', { count: 1 }))
+}
+
 function quickCreateGroupAndAssign() {
   const name = assignNewGroupName.value.trim()
   const folderNames = [...selectedScenery.value]
@@ -3098,6 +3112,10 @@ onBeforeUnmount(() => {
                       @assign-custom-group="
                         ({ folderName, groupId }) => assignSceneryToCustomGroup(folderName, groupId)
                       "
+                      @remove-custom-group="
+                        ({ folderName, groupId }) =>
+                          removeSceneryFromCustomGroup(folderName, groupId)
+                      "
                       @update="handleOpenSceneryUpdate"
                     />
                   </div>
@@ -3328,6 +3346,10 @@ onBeforeUnmount(() => {
                                 ({ folderName, groupId }) =>
                                   assignSceneryToCustomGroup(folderName, groupId)
                               "
+                              @remove-custom-group="
+                                ({ folderName, groupId }) =>
+                                  removeSceneryFromCustomGroup(folderName, groupId)
+                              "
                               @update="handleOpenSceneryUpdate"
                             />
                           </div>
@@ -3444,6 +3466,10 @@ onBeforeUnmount(() => {
                       @show-delete-confirm="handleShowDeleteConfirm"
                       @assign-custom-group="
                         ({ folderName, groupId }) => assignSceneryToCustomGroup(folderName, groupId)
+                      "
+                      @remove-custom-group="
+                        ({ folderName, groupId }) =>
+                          removeSceneryFromCustomGroup(folderName, groupId)
                       "
                       @update="handleOpenSceneryUpdate"
                     />
@@ -3581,6 +3607,10 @@ onBeforeUnmount(() => {
                           @assign-custom-group="
                             ({ folderName, groupId }) =>
                               assignSceneryToCustomGroup(folderName, groupId)
+                          "
+                          @remove-custom-group="
+                            ({ folderName, groupId }) =>
+                              removeSceneryFromCustomGroup(folderName, groupId)
                           "
                           @update="handleOpenSceneryUpdate"
                         />

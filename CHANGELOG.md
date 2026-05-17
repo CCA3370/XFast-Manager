@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Scenery Update Check** - The Scenery page's Check Updates action now reliably refreshes update status after switching away and back, and shows a clear message when a check fails.
 - **Scenery Right-Click Grouping** - Scenery entries can now be assigned to an existing custom group directly from the right-click menu.
+- **Scenery Custom Group Actions** - Scenery entries already assigned to a custom group now show a direct remove-from-group action instead of another assign action.
 - **Scenery Custom Group Icon** - The custom group button icon is now cleaner and no longer includes the internal connector lines.
 - **Log Analysis Crash Detection** - Logs that stop before X-Plane writes a normal shutdown line are now reported as crashes.
 - **Lua Script ZIP Installs** - Lua script packages now keep nearby resource folders/files with the script during install.

@@ -46,6 +46,7 @@ const emit = defineEmits<{
   (e: 'open-flatten-page', entry: SceneryManagerEntry): void
   (e: 'toggle-select', folderName: string): void
   (e: 'assign-custom-group', payload: { folderName: string; groupId: string }): void
+  (e: 'remove-custom-group', payload: { folderName: string; groupId: string }): void
 }>()
 
 const { t } = useI18n()
@@ -159,6 +160,11 @@ const canToggleFlatten = computed(
 const canOpenFlattenPage = computed(
   () => !!props.entry.airportId && !isGlobalAirportsEntry.value && !canToggleFlatten.value,
 )
+const assignedCustomGroup = computed(() =>
+  sceneryStore.customGroups.find((group) =>
+    group.manualFolderNames.includes(props.entry.folderName),
+  ),
+)
 
 // Lock state
 const isItemLocked = computed(() => lockStore.isLocked('scenery', props.entry.folderName))
@@ -250,7 +256,14 @@ function handleContextMenu(event: MouseEvent) {
     })
   }
 
-  if (!isGlobalAirportsEntry.value && sceneryStore.customGroups.length > 0) {
+  if (!isGlobalAirportsEntry.value && assignedCustomGroup.value) {
+    menuItems.push({
+      id: `remove-custom-group:${assignedCustomGroup.value.id}`,
+      label: t('sceneryManager.removeFromGroup'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path stroke-width="2" d="M4 5.75A1.75 1.75 0 015.75 4h4.1l1.55 1.75h6.85A1.75 1.75 0 0120 7.5V9"/><rect x="4" y="8.25" width="16" height="10.75" rx="2" stroke-width="2"/><path stroke-width="2" d="M14 13.5h4"/></svg>',
+      dividerAfter: true,
+    })
+  } else if (!isGlobalAirportsEntry.value && sceneryStore.customGroups.length > 0) {
     menuItems.push({
       id: 'assign-custom-group',
       label: t('sceneryManager.assignToGroup'),
@@ -258,7 +271,6 @@ function handleContextMenu(event: MouseEvent) {
       children: sceneryStore.customGroups.map((group) => ({
         id: `assign-custom-group:${group.id}`,
         label: group.name,
-        disabled: group.manualFolderNames.includes(props.entry.folderName),
       })),
     })
     menuItems[menuItems.length - 1].dividerAfter = true
@@ -347,6 +359,14 @@ function handleContextMenu(event: MouseEvent) {
       emit('assign-custom-group', {
         folderName: props.entry.folderName,
         groupId: id.slice('assign-custom-group:'.length),
+      })
+      return
+    }
+
+    if (id.startsWith('remove-custom-group:')) {
+      emit('remove-custom-group', {
+        folderName: props.entry.folderName,
+        groupId: id.slice('remove-custom-group:'.length),
       })
       return
     }
