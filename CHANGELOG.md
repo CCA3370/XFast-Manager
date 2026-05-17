@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Scenery Smart Group Display** - Unmatched scenery now stays inside the collapsed Ungrouped section instead of appearing as repeated top-level rows.
 - **Scenery Update All** - Scenery `Update All` now stays available after returning to the Scenery page and while update checks are still settling.
 - **Scenery Group Defaults** - Smart, custom, and ungrouped Scenery groups now start collapsed while search results still expand matching groups automatically.
+- **Scenery Update Status** - Scenery update badges now keep their detected update state when leaving and returning to the Scenery page.
 
 ## [1.2.3] - 2026-04-26
 
