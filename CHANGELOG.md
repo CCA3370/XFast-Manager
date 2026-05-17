@@ -7,40 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.4] - 2026-05-17
+
 ### Added
 
 - **Batch Delete in Management** - Aircraft and plugin lists can now delete selected items at once, with failed items left in place and reported clearly.
-- **Scenery Smart Groups** - The Scenery manager can group related SimHeaven, Ortho tile, airport, and product packages with one-click enable and disable controls, while unmatched scenery stays in a collapsed Ungrouped section.
-- **Scenery Batch Grouping** - Scenery packages can now be selected in batches and assigned to custom groups without changing their enabled state or load order.
-- **Custom Scenery Group Rules** - Custom Scenery groups can now match packages by folder-name prefix or contained text, with separate group settings for each X-Plane path.
+- **Scenery Smart Groups** - The Scenery manager can group related SimHeaven, Ortho tile, airport, and product packages with one-click enable and disable controls.
+- **Scenery Custom Groups** - Scenery packages can now be grouped manually in batches or from the right-click menu, removed from a group, and matched automatically by folder-name prefix or text per X-Plane path.
 
 ### Changed
 
 - **Log Analysis Navigation** - Removed the first-time Log Analysis tip bubble from the top navigation.
-- **Scenery Toolbar** - Scenery batch and custom group controls now use compact icon buttons for a cleaner toolbar.
+- **Scenery Toolbar** - Scenery batch and custom group controls now use compact icon buttons, with a cleaner custom group icon.
 - **Scenery Custom Groups** - The custom group editor dialog is now narrower and better balanced.
 - **Addon Update Queue** - Update tasks in the addon drawer can now be started independently, so one running update no longer blocks another update or fresh install.
 
 ### Fixed
 
-- **Scenery Update Check** - The Scenery page's Check Updates action now reliably refreshes update status after switching away and back, and shows a clear message when a check fails.
-- **Scenery Right-Click Grouping** - Scenery entries can now be assigned to an existing custom group directly from the right-click menu.
-- **Scenery Custom Group Actions** - Scenery entries already assigned to a custom group now show a direct remove-from-group action instead of another assign action.
-- **Scenery Custom Group Icon** - The custom group button icon is now cleaner and no longer includes the internal connector lines.
+- **Scenery Update Status** - Scenery update checks, update badges, and `Update All` availability now stay reliable after switching away and back, with clearer feedback when a check fails.
 - **Log Analysis Crash Detection** - Logs that stop before X-Plane writes a normal shutdown line are now reported as crashes.
 - **Lua Script ZIP Installs** - Lua script packages now keep nearby resource folders/files with the script during install.
-- **Split Archive Installation** - Multi-part ZIP, 7z, and RAR downloads are now recognized as one addon source, with clearer messages when a required volume is missing or a download is incomplete.
-- **Archive Install Guidance** - 7z and RAR extraction failures now explain missing volumes, incomplete downloads, and 7-Zip requirements instead of showing raw extractor output.
+- **Archive Install Guidance** - Multi-part ZIP, 7z, and RAR downloads are now recognized as one addon source, and archive failures now explain missing volumes, incomplete downloads, and 7-Zip requirements more clearly.
 - **Atomic Install Staging** - Atomic installs can now fall back to another staging location when the X-Plane root cannot create the temporary install folder.
 - **Locked Folder Deletion** - Delete failures now explain likely causes such as X-Plane, file managers, antivirus, or folder permissions, and retry after clearing read-only permissions.
 - **Moved or Deleted Items** - Opening an item whose folder no longer exists now refreshes the list and explains that the item may have moved or been deleted.
 - **Aircraft Variant Toggles** - Per-variant aircraft enable/disable controls now stay in sync after each click and no longer fail when the file state changes while the ACF manager is open.
 - **Airport Flatten Selection** - Airport search results now keep the selected airport open, refresh stale flatten indexes when needed, and show a clear retry action when sources cannot be loaded.
 - **Gateway and Addon Update Errors** - Temporary upstream failures now retry briefly and show a clear service-unavailable message instead of raw server errors.
-- **Scenery Smart Group Display** - Unmatched scenery now stays inside the collapsed Ungrouped section instead of appearing as repeated top-level rows.
-- **Scenery Update All** - Scenery `Update All` now stays available after returning to the Scenery page and while update checks are still settling.
-- **Scenery Group Defaults** - Smart, custom, and ungrouped Scenery groups now start collapsed while search results still expand matching groups automatically.
-- **Scenery Update Status** - Scenery update badges now keep their detected update state when leaving and returning to the Scenery page.
+- **Scenery Group Display** - Smart, custom, and ungrouped Scenery groups now start collapsed while search still expands matches, and unmatched scenery stays inside Ungrouped.
 
 ## [1.2.3] - 2026-04-26
 
