@@ -20,6 +20,7 @@ import type {
   AddonUpdatableItemType,
   AddonUpdateDrawerTask,
 } from '@/types'
+import { getErrorMessage, parseApiError } from '@/types'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -451,7 +452,13 @@ async function handleOpenFolder(itemType: ManagementItemType, folderName: string
   try {
     await managementStore.openFolder(itemType, folderName)
   } catch (e) {
-    modalStore.showError(t('management.openFolderFailed') + ': ' + String(e))
+    const apiError = parseApiError(e)
+    if (apiError?.code === 'not_found') {
+      await loadTabData(itemType)
+      modalStore.showError(t('management.stalePathMessage'))
+      return
+    }
+    modalStore.showError(t('management.openFolderFailed') + ': ' + getErrorMessage(e))
   }
 }
 

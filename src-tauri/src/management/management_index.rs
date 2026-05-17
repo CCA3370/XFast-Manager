@@ -94,14 +94,20 @@ fn relax_permissions_recursive(path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn delete_permission_message(display_name: &str, error: &std::io::Error) -> String {
+    format!(
+        "Could not delete {}. The folder may still be in use by X-Plane, a file manager, antivirus, or another process, or your account may not have permission to modify it. Close anything using the folder, check folder permissions, then try again. Last error: {}",
+        display_name, error
+    )
+}
+
 fn remove_dir_all_with_permission_fix(path: &Path, display_name: &str) -> Result<()> {
     match fs::remove_dir_all(path) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == ErrorKind::PermissionDenied => {
             let _ = relax_permissions_recursive(path);
-            fs::remove_dir_all(path).map_err(|e2| {
-                anyhow!("Permission denied when deleting {}: {}", display_name, e2)
-            })?;
+            fs::remove_dir_all(path)
+                .map_err(|e2| anyhow!(delete_permission_message(display_name, &e2)))?;
             Ok(())
         }
         Err(e) => Err(e.into()),
@@ -113,8 +119,9 @@ fn remove_file_with_permission_fix(path: &Path, display_name: &str) -> Result<()
         Ok(()) => Ok(()),
         Err(e) if e.kind() == ErrorKind::PermissionDenied => {
             let _ = clear_readonly_attribute(path);
+            let _ = add_write_permission(path);
             fs::remove_file(path)
-                .map_err(|e2| anyhow!("Permission denied when deleting {}: {}", display_name, e2))
+                .map_err(|e2| anyhow!(delete_permission_message(display_name, &e2)))
         }
         Err(e) => Err(e.into()),
     }
@@ -1754,8 +1761,14 @@ pub async fn check_scenery_updates(
                     None
                 } else {
                     let use_beta = beta_folders.contains(&entry.folder_name);
-                    resolve_update_check_url(xplane_path, "scenery", &entry.folder_name, url, use_beta)
-                        .map(|resolved_url| (idx, resolved_url))
+                    resolve_update_check_url(
+                        xplane_path,
+                        "scenery",
+                        &entry.folder_name,
+                        url,
+                        use_beta,
+                    )
+                    .map(|resolved_url| (idx, resolved_url))
                 }
             })
         })
@@ -2544,8 +2557,8 @@ pub fn delete_lua_script(xplane_path: &Path, file_name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        delete_management_item, resolve_management_path, scan_aircraft, scan_navdata,
-        toggle_aircraft_acf_file, toggle_management_item,
+        delete_management_item, remove_dir_all_with_permission_fix, resolve_management_path,
+        scan_aircraft, scan_navdata, toggle_aircraft_acf_file, toggle_management_item,
     };
     use std::fs;
     use tempfile::tempdir;
@@ -2699,6 +2712,33 @@ mod tests {
         assert!(aircraft_dir.join("DemoPlane_cargo.acf").exists());
         assert!(entry.enabled);
         assert!(!entry.has_mixed_acf_states);
+    }
+
+    #[test]
+    fn remove_dir_all_with_permission_fix_removes_readonly_tree() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let target = temp.path().join("LockedAddon");
+        let nested = target.join("Resources");
+        let file_path = nested.join("data.txt");
+        fs::create_dir_all(&nested).expect("failed to create nested dir");
+        fs::write(&file_path, "locked").expect("failed to write file");
+
+        let mut file_permissions = fs::metadata(&file_path)
+            .expect("failed to stat file")
+            .permissions();
+        file_permissions.set_readonly(true);
+        fs::set_permissions(&file_path, file_permissions).expect("failed to set readonly file");
+
+        let mut dir_permissions = fs::metadata(&nested)
+            .expect("failed to stat dir")
+            .permissions();
+        dir_permissions.set_readonly(true);
+        fs::set_permissions(&nested, dir_permissions).expect("failed to set readonly dir");
+
+        remove_dir_all_with_permission_fix(&target, "LockedAddon")
+            .expect("readonly tree should be removable");
+
+        assert!(!target.exists());
     }
 
     #[test]

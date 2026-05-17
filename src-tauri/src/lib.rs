@@ -100,7 +100,8 @@ mod disk_usage;
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::PathBuf;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
@@ -121,6 +122,7 @@ use task_control::TaskControl;
 
 use sea_orm::DatabaseConnection;
 use tauri::{Emitter, Manager, State};
+use walkdir::WalkDir;
 
 use database::DatabaseState;
 
@@ -1499,6 +1501,130 @@ fn resolve_scenery_entry_path(
     ))
 }
 
+#[cfg(target_os = "windows")]
+#[allow(clippy::permissions_set_readonly_false)]
+fn clear_scenery_readonly_attribute(path: &Path) -> std::io::Result<()> {
+    let metadata = fs::metadata(path)?;
+    let mut permissions = metadata.permissions();
+    if permissions.readonly() {
+        permissions.set_readonly(false);
+        fs::set_permissions(path, permissions)?;
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn clear_scenery_readonly_attribute(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn add_scenery_write_permission(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let metadata = fs::metadata(path)?;
+    let mut permissions = metadata.permissions();
+    let mut mode = permissions.mode();
+    mode |= 0o200;
+    if metadata.is_dir() {
+        mode |= 0o100;
+    }
+    permissions.set_mode(mode);
+    fs::set_permissions(path, permissions)?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn add_scenery_write_permission(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+fn relax_scenery_delete_permissions_recursive(path: &Path) {
+    for entry in WalkDir::new(path).follow_links(false).into_iter().flatten() {
+        if entry.file_type().is_symlink() {
+            continue;
+        }
+
+        let entry_path = entry.path();
+        let _ = clear_scenery_readonly_attribute(entry_path);
+        let _ = add_scenery_write_permission(entry_path);
+    }
+}
+
+fn scenery_delete_permission_message(folder_name: &str, error: &std::io::Error) -> String {
+    format!(
+        "Could not delete {}. The folder may still be in use by X-Plane, a file manager, antivirus, or another process, or your account may not have permission to modify it. Close anything using the folder, check folder permissions, then try again. Last error: {}",
+        folder_name, error
+    )
+}
+
+fn remove_scenery_file_with_permission_fix(path: &Path, folder_name: &str) -> error::ApiResult<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::PermissionDenied => {
+            let _ = clear_scenery_readonly_attribute(path);
+            let _ = add_scenery_write_permission(path);
+            fs::remove_file(path).map_err(|e2| {
+                error::ApiError::permission_denied(scenery_delete_permission_message(
+                    folder_name,
+                    &e2,
+                ))
+            })
+        }
+        Err(e) => Err(error::ApiError::internal(format!(
+            "Failed to delete scenery file: {}",
+            e
+        ))),
+    }
+}
+
+fn remove_scenery_dir_all_with_permission_fix(
+    path: &Path,
+    folder_name: &str,
+) -> error::ApiResult<()> {
+    match fs::remove_dir_all(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::PermissionDenied => {
+            relax_scenery_delete_permissions_recursive(path);
+            fs::remove_dir_all(path).map_err(|e2| {
+                error::ApiError::permission_denied(scenery_delete_permission_message(
+                    folder_name,
+                    &e2,
+                ))
+            })
+        }
+        Err(e) => Err(error::ApiError::internal(format!(
+            "Failed to delete scenery folder: {}",
+            e
+        ))),
+    }
+}
+
+fn remove_scenery_symlink_with_permission_hint(
+    path: &Path,
+    folder_name: &str,
+) -> error::ApiResult<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(file_error) => match fs::remove_dir(path) {
+            Ok(()) => Ok(()),
+            Err(dir_error) => {
+                if file_error.kind() == ErrorKind::PermissionDenied
+                    || dir_error.kind() == ErrorKind::PermissionDenied
+                {
+                    return Err(error::ApiError::permission_denied(
+                        scenery_delete_permission_message(folder_name, &dir_error),
+                    ));
+                }
+                Err(error::ApiError::internal(format!(
+                    "Failed to delete scenery link: {} ({}; {})",
+                    folder_name, file_error, dir_error
+                )))
+            }
+        },
+    }
+}
+
 #[tauri::command]
 fn open_scenery_folder(xplane_path: String, folder_name: String) -> error::ApiResult<()> {
     let (entry_path, base_path) = resolve_scenery_entry_path(&xplane_path, &folder_name)?;
@@ -1529,51 +1655,17 @@ async fn delete_scenery_folder(
 
     if metadata.file_type().is_symlink() {
         // Remove the symlink itself without following it
-        if let Err(e) = fs::remove_file(&entry_path) {
-            // Some platforms treat directory symlinks differently
-            if let Err(e2) = fs::remove_dir(&entry_path) {
-                if e.kind() == std::io::ErrorKind::PermissionDenied
-                    || e2.kind() == std::io::ErrorKind::PermissionDenied
-                {
-                    return Err(error::ApiError::permission_denied(format!(
-                        "Permission denied when deleting: {}",
-                        folder_name
-                    )));
-                }
-                return Err(error::ApiError::internal(format!(
-                    "Failed to delete scenery link: {} ({}; {})",
-                    folder_name, e, e2
-                )));
-            }
-        }
+        remove_scenery_symlink_with_permission_hint(&entry_path, &folder_name)?;
     } else if metadata.is_file() {
         // Handle Windows .lnk shortcuts or other file entries
-        fs::remove_file(&entry_path).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::PermissionDenied {
-                error::ApiError::permission_denied(format!(
-                    "Permission denied when deleting: {}",
-                    folder_name
-                ))
-            } else {
-                error::ApiError::internal(format!("Failed to delete scenery file: {}", e))
-            }
-        })?;
+        remove_scenery_file_with_permission_fix(&entry_path, &folder_name)?;
     } else {
         // Security: Use validate_child_path for strict path validation to prevent path traversal attacks
         let canonical_path = path_utils::validate_child_path(&base_path, &entry_path)
             .map_err(|e| error::ApiError::validation(format!("Invalid path: {}", e)))?;
 
         // Delete the folder using the canonical path for safety
-        fs::remove_dir_all(&canonical_path).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::PermissionDenied {
-                error::ApiError::permission_denied(format!(
-                    "Permission denied when deleting: {}",
-                    folder_name
-                ))
-            } else {
-                error::ApiError::internal(format!("Failed to delete scenery folder: {}", e))
-            }
-        })?;
+        remove_scenery_dir_all_with_permission_fix(&canonical_path, &folder_name)?;
     }
 
     // Remove from scenery index if it exists

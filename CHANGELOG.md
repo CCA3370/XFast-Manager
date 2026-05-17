@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Split Archive Installation** - Multi-part ZIP, 7z, and RAR downloads are now recognized as one addon source, with clearer messages when a required volume is missing or a download is incomplete.
 - **Archive Install Guidance** - 7z and RAR extraction failures now explain missing volumes, incomplete downloads, and 7-Zip requirements instead of showing raw extractor output.
 - **Atomic Install Staging** - Atomic installs can now fall back to another staging location when the X-Plane root cannot create the temporary install folder.
+- **Locked Folder Deletion** - Delete failures now explain likely causes such as X-Plane, file managers, antivirus, or folder permissions, and retry after clearing read-only permissions.
+- **Moved or Deleted Items** - Opening an item whose folder no longer exists now refreshes the list and explains that the item may have moved or been deleted.
 - **Aircraft Variant Toggles** - Per-variant aircraft enable/disable controls now stay in sync after each click and no longer fail when the file state changes while the ACF manager is open.
 - **Airport Flatten Selection** - Airport search results now keep the selected airport open, refresh stale flatten indexes when needed, and show a clear retry action when sources cannot be loaded.
 - **Gateway and Addon Update Errors** - Temporary upstream failures now retry briefly and show a clear service-unavailable message instead of raw server errors.

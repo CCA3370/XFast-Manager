@@ -5,9 +5,10 @@ import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useLockStore } from '@/stores/lock'
+import { useSceneryStore } from '@/stores/scenery'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import type { SceneryManagerEntry } from '@/types'
-import { SceneryCategory, getErrorMessage } from '@/types'
+import { SceneryCategory, getErrorMessage, parseApiError } from '@/types'
 import { useContextMenu } from '@/composables/useContextMenu'
 import type { ContextMenuItem } from '@/composables/useContextMenu'
 
@@ -45,6 +46,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const modalStore = useModalStore()
 const lockStore = useLockStore()
+const sceneryStore = useSceneryStore()
 const contextMenu = useContextMenu()
 
 // Category display config
@@ -173,6 +175,12 @@ async function handleDoubleClick() {
       folderName: props.entry.folderName,
     })
   } catch (error) {
+    const apiError = parseApiError(error)
+    if (apiError?.code === 'not_found') {
+      await sceneryStore.loadData()
+      modalStore.showError(t('sceneryManager.stalePathMessage'))
+      return
+    }
     modalStore.showError(t('sceneryManager.openFolderFailed') + ': ' + getErrorMessage(error))
   }
 }
