@@ -1711,10 +1711,7 @@ fn uninstall_package_internal(package_name: &str, paths: &[String]) -> Result<()
     ))
 }
 
-fn collect_scan_paths(
-    xplane_path: &str,
-    custom_paths: &[String],
-) -> (Vec<CslPath>, Vec<String>) {
+fn collect_scan_paths(xplane_path: &str, custom_paths: &[String]) -> (Vec<CslPath>, Vec<String>) {
     let xplane = Path::new(xplane_path);
     let mut paths = detect_csl_paths(xplane);
     for cp in custom_paths {

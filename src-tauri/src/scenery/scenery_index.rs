@@ -1632,9 +1632,7 @@ impl SceneryIndexManager {
                 crate::airport_flatten::inspect_scenery_flatten_target(&self.xplane_path, info);
             let (version, update_url) =
                 read_scenery_update_info(&custom_scenery_path.join(&info.folder_name));
-            let update_provider = update_url
-                .as_ref()
-                .map(|_| "skunkcrafts".to_string());
+            let update_provider = update_url.as_ref().map(|_| "skunkcrafts".to_string());
             entries_with_sort.push((
                 info.sort_order,
                 false,
