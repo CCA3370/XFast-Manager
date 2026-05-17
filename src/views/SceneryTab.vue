@@ -4255,7 +4255,7 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="flex-1 overflow-y-auto px-5 pb-3 min-h-0 space-y-3">
-            <div class="flex gap-2">
+            <div class="mt-1.5 flex gap-2">
               <input
                 v-model="newCustomGroupName"
                 class="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
