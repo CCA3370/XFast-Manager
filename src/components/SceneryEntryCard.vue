@@ -45,6 +45,7 @@ const emit = defineEmits<{
   (e: 'toggle-flatten', entry: SceneryManagerEntry): void
   (e: 'open-flatten-page', entry: SceneryManagerEntry): void
   (e: 'toggle-select', folderName: string): void
+  (e: 'assign-custom-group', payload: { folderName: string; groupId: string }): void
 }>()
 
 const { t } = useI18n()
@@ -249,6 +250,20 @@ function handleContextMenu(event: MouseEvent) {
     })
   }
 
+  if (!isGlobalAirportsEntry.value && sceneryStore.customGroups.length > 0) {
+    menuItems.push({
+      id: 'assign-custom-group',
+      label: t('sceneryManager.assignToGroup'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path stroke-width="2" d="M4 5.75A1.75 1.75 0 015.75 4h4.1l1.55 1.75h6.85A1.75 1.75 0 0120 7.5V9"/><rect x="4" y="8.25" width="16" height="10.75" rx="2" stroke-width="2"/><circle cx="15.25" cy="12" r="1.25" stroke-width="1.8"/><circle cx="15.25" cy="15" r="1.25" stroke-width="1.8"/></svg>',
+      children: sceneryStore.customGroups.map((group) => ({
+        id: `assign-custom-group:${group.id}`,
+        label: group.name,
+        disabled: group.manualFolderNames.includes(props.entry.folderName),
+      })),
+    })
+    menuItems[menuItems.length - 1].dividerAfter = true
+  }
+
   if (canOpenUpdater.value && !isGlobalAirportsEntry.value) {
     menuItems.push({
       id: 'update',
@@ -328,6 +343,14 @@ function handleContextMenu(event: MouseEvent) {
   }
 
   contextMenu.show(event, menuItems, (id: string) => {
+    if (id.startsWith('assign-custom-group:')) {
+      emit('assign-custom-group', {
+        folderName: props.entry.folderName,
+        groupId: id.slice('assign-custom-group:'.length),
+      })
+      return
+    }
+
     switch (id) {
       case 'toggle-enabled':
         emit('toggle-enabled', props.entry.folderName)
