@@ -409,35 +409,36 @@ export const useSceneryStore = defineStore('scenery', () => {
 
     const managementStore = useManagementStore()
     const toastStore = useToastStore()
-    await managementStore.loadAddonUpdateOptions()
-
-    // forceRefresh: rescan local data first so any cfg version edits on disk are
-    // picked up before re-checking remote.
-    if (forceRefresh) {
-      try {
-        const result = await invoke<SceneryManagerData>('get_scenery_manager_data', {
-          xplanePath: appStore.xplanePath,
-        })
-        data.value = {
-          ...result,
-          entries: applyRememberedSceneryUpdateState(result.entries),
-        }
-        originalEntries.value = JSON.parse(JSON.stringify(data.value.entries))
-      } catch (e) {
-        logError(`Failed to rescan scenery: ${e}`, 'scenery')
-      }
-    }
-
-    // Use a Ref view of data.value.entries so the generic helper can mutate in place.
-    const entriesRef = computed({
-      get: () => data.value?.entries ?? [],
-      set: (next: SceneryManagerEntry[]) => {
-        if (data.value) data.value.entries = next
-      },
-    })
 
     isCheckingUpdates.value = true
     try {
+      await managementStore.loadAddonUpdateOptions()
+
+      // forceRefresh: rescan local data first so any cfg version edits on disk are
+      // picked up before re-checking remote.
+      if (forceRefresh) {
+        try {
+          const result = await invoke<SceneryManagerData>('get_scenery_manager_data', {
+            xplanePath: appStore.xplanePath,
+          })
+          data.value = {
+            ...result,
+            entries: applyRememberedSceneryUpdateState(result.entries),
+          }
+          originalEntries.value = JSON.parse(JSON.stringify(data.value.entries))
+        } catch (e) {
+          logError(`Failed to rescan scenery: ${e}`, 'scenery')
+        }
+      }
+
+      // Use a Ref view of data.value.entries so the generic helper can mutate in place.
+      const entriesRef = computed({
+        get: () => data.value?.entries ?? [],
+        set: (next: SceneryManagerEntry[]) => {
+          if (data.value) data.value.entries = next
+        },
+      })
+
       const result = await managementStore.checkItemUpdates<SceneryManagerEntry>({
         itemsRef: entriesRef,
         checkCommand: 'check_scenery_updates',
@@ -445,8 +446,11 @@ export const useSceneryStore = defineStore('scenery', () => {
         logName: 'scenery',
         itemType: 'scenery',
         extraArgs: { xplanePath: appStore.xplanePath },
+        forceRefresh,
       })
-      if (showUpToDateToast && result.checked && result.updateCount === 0) {
+      if (showUpToDateToast && result.failed) {
+        toastStore.error(t('management.checkFailed'))
+      } else if (showUpToDateToast && result.checked && result.updateCount === 0) {
         toastStore.info(t('management.allUpToDate'))
       }
       rememberSceneryUpdateState(data.value?.entries ?? [])
