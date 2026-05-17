@@ -1,6 +1,12 @@
 import { SceneryCategory, type SceneryManagerEntry } from '@/types'
 
-export type SmartSceneryGroupKind = 'simheaven' | 'ortho' | 'airport' | 'product'
+export type SmartSceneryGroupKind =
+  | 'custom'
+  | 'simheaven'
+  | 'ortho'
+  | 'airport'
+  | 'product'
+  | 'ungrouped'
 
 export interface SmartSceneryGroup {
   id: string
@@ -11,9 +17,11 @@ export interface SmartSceneryGroup {
   totalCount: number
 }
 
-export type SmartSceneryRow =
-  | { rowType: 'group'; group: SmartSceneryGroup }
-  | { rowType: 'entry'; entry: SceneryManagerEntry }
+export interface SmartSceneryRowsOptions {
+  ungroupedTitle?: string
+}
+
+export type SmartSceneryRow = { rowType: 'group'; group: SmartSceneryGroup }
 
 interface GroupCandidate {
   key: string
@@ -171,7 +179,10 @@ function buildGroupsForDetector(
   return groups
 }
 
-export function buildSmartSceneryRows(entries: SceneryManagerEntry[]): SmartSceneryRow[] {
+export function buildSmartSceneryRows(
+  entries: SceneryManagerEntry[],
+  options: SmartSceneryRowsOptions = {},
+): SmartSceneryRow[] {
   const assigned = new Set<string>()
   const groups = [
     ...buildGroupsForDetector(entries, assigned, detectSimHeavenGroup),
@@ -192,15 +203,27 @@ export function buildSmartSceneryRows(entries: SceneryManagerEntry[]): SmartScen
 
   for (const entry of entries) {
     const group = groupByEntry.get(entry.folderName)
-    if (!group) {
-      rows.push({ rowType: 'entry', entry })
-      continue
-    }
+    if (!group) continue
 
     if (emittedGroups.has(group.id)) continue
 
     emittedGroups.add(group.id)
     rows.push({ rowType: 'group', group })
+  }
+
+  const ungroupedEntries = entries.filter((entry) => !assigned.has(entry.folderName))
+  if (ungroupedEntries.length > 0) {
+    rows.push({
+      rowType: 'group',
+      group: {
+        id: 'ungrouped',
+        kind: 'ungrouped',
+        title: options.ungroupedTitle ?? 'Ungrouped',
+        entries: ungroupedEntries,
+        enabledCount: ungroupedEntries.filter((entry) => entry.enabled).length,
+        totalCount: ungroupedEntries.length,
+      },
+    })
   }
 
   return rows

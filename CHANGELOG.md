@@ -10,11 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Batch Delete in Management** - Aircraft and plugin lists can now delete selected items at once, with failed items left in place and reported clearly.
-- **Scenery Smart Groups** - The Scenery manager can group related SimHeaven, Ortho tile, airport, and product packages with one-click enable and disable controls.
+- **Scenery Smart Groups** - The Scenery manager can group related SimHeaven, Ortho tile, airport, and product packages with one-click enable and disable controls, while unmatched scenery stays in a collapsed Ungrouped section.
 
 ### Changed
 
 - **Log Analysis Navigation** - Removed the first-time Log Analysis tip bubble from the top navigation.
+- **Scenery Update All** - Moved Scenery `Update All` into the update count area so it matches the aircraft and plugin update workflow.
 
 ### Fixed
 
