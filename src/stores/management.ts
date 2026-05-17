@@ -657,6 +657,8 @@ export const useManagementStore = defineStore('management', () => {
 
     await loadAddonUpdateOptions()
 
+    config.itemsRef.value = applyCachedUpdates(config.itemsRef.value, config.itemType)
+
     // Only check items that have update URLs, no valid cache, and are not locked
     const itemsToCheck = getItemsNeedingUpdateCheck(config.itemsRef.value, config.itemType)
     if (itemsToCheck.length === 0) {

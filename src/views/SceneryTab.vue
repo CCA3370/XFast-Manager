@@ -2211,8 +2211,18 @@ onBeforeUnmount(() => {
             stroke-linecap="round"
             stroke-linejoin="round"
             stroke-width="2"
-            d="M4.5 7.5V6A2.5 2.5 0 017 3.5h3l2 2H17A2.5 2.5 0 0119.5 8v6A2.5 2.5 0 0117 16.5H7A2.5 2.5 0 014.5 14v-1.5m0 0H3m1.5 0H8m-3.5 0v-5m0 0H3m1.5 0H8m-3.5 5v5m0 0H3m1.5 0H8"
+            d="M3.75 7A2.25 2.25 0 016 4.75h3.4l1.8 1.75H18A2.25 2.25 0 0120.25 8.75V17A2.25 2.25 0 0118 19.25H6A2.25 2.25 0 013.75 17V7z"
           />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.8"
+            d="M8 11h3.25m2.5 0H16m-4.75 0v4M8 15h3.25m2.5 0H16"
+          />
+          <circle cx="7" cy="11" r="1" stroke-width="1.8" />
+          <circle cx="12.5" cy="11" r="1" stroke-width="1.8" />
+          <circle cx="7" cy="15" r="1" stroke-width="1.8" />
+          <circle cx="12.5" cy="15" r="1" stroke-width="1.8" />
         </svg>
       </button>
 
