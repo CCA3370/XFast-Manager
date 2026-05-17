@@ -19,9 +19,30 @@ export interface SmartSceneryGroup {
 
 export interface SmartSceneryRowsOptions {
   ungroupedTitle?: string
+  customGroups?: SceneryCustomGroup[]
 }
 
 export type SmartSceneryRow = { rowType: 'group'; group: SmartSceneryGroup }
+
+export type SceneryCustomGroupRuleMode = 'prefix' | 'contains'
+
+export interface SceneryCustomGroupRule {
+  id: string
+  mode: SceneryCustomGroupRuleMode
+  pattern: string
+}
+
+export interface SceneryCustomGroup {
+  id: string
+  name: string
+  manualFolderNames: string[]
+  rules: SceneryCustomGroupRule[]
+}
+
+export interface SceneryCustomGroupConfig {
+  version: 1
+  groups: SceneryCustomGroup[]
+}
 
 interface GroupCandidate {
   key: string
@@ -179,12 +200,81 @@ function buildGroupsForDetector(
   return groups
 }
 
+function matchesCustomRule(entry: SceneryManagerEntry, rule: SceneryCustomGroupRule): boolean {
+  const pattern = rule.pattern.trim().toLowerCase()
+  if (!pattern) return false
+
+  const folderName = entry.folderName.toLowerCase()
+  if (rule.mode === 'prefix') {
+    return folderName.startsWith(pattern)
+  }
+
+  return folderName.includes(pattern)
+}
+
+function buildCustomGroups(
+  entries: SceneryManagerEntry[],
+  assigned: Set<string>,
+  customGroups: SceneryCustomGroup[],
+): SmartSceneryGroup[] {
+  const buckets = new Map<string, { config: SceneryCustomGroup; entries: SceneryManagerEntry[] }>()
+  const getBucket = (group: SceneryCustomGroup) => {
+    const existing = buckets.get(group.id)
+    if (existing) return existing
+
+    const created = { config: group, entries: [] }
+    buckets.set(group.id, created)
+    return created
+  }
+
+  for (const group of customGroups) {
+    const manualFolderNames = new Set(group.manualFolderNames)
+    if (manualFolderNames.size === 0) continue
+
+    const bucket = getBucket(group)
+    for (const entry of entries) {
+      if (assigned.has(entry.folderName)) continue
+      if (!manualFolderNames.has(entry.folderName)) continue
+
+      bucket.entries.push(entry)
+      assigned.add(entry.folderName)
+    }
+  }
+
+  for (const entry of entries) {
+    if (assigned.has(entry.folderName)) continue
+
+    const matchedGroup = customGroups.find((group) =>
+      group.rules.some((rule) => matchesCustomRule(entry, rule)),
+    )
+    if (!matchedGroup) continue
+
+    getBucket(matchedGroup).entries.push(entry)
+    assigned.add(entry.folderName)
+  }
+
+  return customGroups
+    .map((group) => buckets.get(group.id))
+    .filter((bucket): bucket is { config: SceneryCustomGroup; entries: SceneryManagerEntry[] } =>
+      Boolean(bucket && bucket.entries.length > 0),
+    )
+    .map((bucket) => ({
+      id: `custom:${bucket.config.id}`,
+      kind: 'custom',
+      title: bucket.config.name,
+      entries: bucket.entries,
+      enabledCount: bucket.entries.filter((entry) => entry.enabled).length,
+      totalCount: bucket.entries.length,
+    }))
+}
+
 export function buildSmartSceneryRows(
   entries: SceneryManagerEntry[],
   options: SmartSceneryRowsOptions = {},
 ): SmartSceneryRow[] {
   const assigned = new Set<string>()
   const groups = [
+    ...buildCustomGroups(entries, assigned, options.customGroups ?? []),
     ...buildGroupsForDetector(entries, assigned, detectSimHeavenGroup),
     ...buildGroupsForDetector(entries, assigned, detectOrthoGroup),
     ...buildGroupsForDetector(entries, assigned, detectAirportGroup),

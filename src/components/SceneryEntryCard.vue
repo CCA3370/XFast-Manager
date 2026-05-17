@@ -22,11 +22,15 @@ const props = withDefaults(
     disableReorder?: boolean
     disableMoveDown?: boolean
     flattenBusy?: boolean
+    selected?: boolean
+    showCheckbox?: boolean
   }>(),
   {
     disableReorder: false,
     disableMoveDown: false,
     flattenBusy: false,
+    selected: false,
+    showCheckbox: false,
   },
 )
 
@@ -40,6 +44,7 @@ const emit = defineEmits<{
   (e: 'update', folderName: string): void
   (e: 'toggle-flatten', entry: SceneryManagerEntry): void
   (e: 'open-flatten-page', entry: SceneryManagerEntry): void
+  (e: 'toggle-select', folderName: string): void
 }>()
 
 const { t } = useI18n()
@@ -162,6 +167,7 @@ function handleToggleLock() {
 }
 
 async function handleDoubleClick() {
+  if (props.showCheckbox) return
   if (isGlobalAirportsEntry.value) return
 
   if (!appStore.xplanePath) {
@@ -190,9 +196,26 @@ function handleClick(event: Event) {
     return
   }
 
-  // Don't trigger if clicking on interactive elements
   const target = event.target as HTMLElement
-  if (target.closest('button') || target.closest('.drag-handle')) {
+  const isInteractiveClick = Boolean(
+    target.closest('button') ||
+    target.closest('input') ||
+    target.closest('select') ||
+    target.closest('textarea') ||
+    target.closest('a') ||
+    target.closest('.drag-handle'),
+  )
+
+  if (props.showCheckbox) {
+    if (!isInteractiveClick) {
+      event.stopPropagation()
+      emit('toggle-select', props.entry.folderName)
+    }
+    return
+  }
+
+  // Don't trigger if clicking on interactive elements
+  if (isInteractiveClick) {
     return
   }
 
@@ -355,15 +378,42 @@ function handleContextMenu(event: MouseEvent) {
         : entry.enabled
           ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
           : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200/50 dark:border-gray-700/50 opacity-60',
+      selected
+        ? 'ring-2 ring-blue-400 dark:ring-blue-500 border-blue-300 dark:border-blue-600'
+        : '',
       hasMissingDeps || hasDuplicates ? 'cursor-pointer' : '',
+      showCheckbox ? 'cursor-pointer' : '',
     ]"
     @click="handleClick"
     @dblclick="handleDoubleClick"
     @contextmenu.prevent="handleContextMenu"
   >
+    <!-- Selection checkbox -->
+    <button
+      v-if="showCheckbox"
+      class="flex-shrink-0 w-4 h-4 rounded border-2 transition-all duration-150 flex items-center justify-center"
+      :class="
+        selected
+          ? 'bg-blue-500 border-blue-500'
+          : 'border-gray-300 dark:border-gray-500 hover:border-blue-400 dark:hover:border-blue-400'
+      "
+      :title="selected ? t('management.selectedCount', { count: 1 }) : t('management.selectAll')"
+      @click.stop="emit('toggle-select', entry.folderName)"
+    >
+      <svg
+        v-if="selected"
+        class="w-3 h-3 text-white"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+      </svg>
+    </button>
+
     <!-- Drag handle -->
     <div
-      v-if="!props.disableReorder"
+      v-if="!props.disableReorder && !props.showCheckbox"
       class="cursor-grab active:cursor-grabbing text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 drag-handle select-none"
     >
       <svg

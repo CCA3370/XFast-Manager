@@ -111,6 +111,7 @@ export const STORAGE_KEYS = {
   THEME: 'theme',
   LOCKED_ITEMS: 'lockedItems',
   SCENERY_GROUPS_COLLAPSED: 'sceneryGroupsCollapsed',
+  SCENERY_CUSTOM_GROUPS_BY_PATH: 'sceneryCustomGroupsByPath',
   ONBOARDING_COMPLETED: 'onboardingCompleted',
   SCENERY_AUTO_SORT_HINT_SHOWN: 'sceneryAutoSortHintShown',
   AUTO_CHECK_ENABLED: 'autoCheckEnabled',
