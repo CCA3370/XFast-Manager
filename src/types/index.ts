@@ -15,6 +15,8 @@ export type ApiErrorCode =
   | 'insufficient_space'
   | 'security_violation'
   | 'timeout'
+  | 'database_error'
+  | 'migration_failed'
   | 'internal'
 
 /** Structured API error from backend */
@@ -69,6 +71,15 @@ export function parseApiError(error: unknown): ApiError | null {
       }
     } catch {
       // Not JSON, it's a plain string error
+    }
+
+    const displayMatch = error.match(/^\[([a-z_]+)]\s+(.+?)(?:\s+\((.*)\))?$/)
+    if (displayMatch) {
+      return {
+        code: displayMatch[1] as ApiErrorCode,
+        message: displayMatch[2],
+        details: displayMatch[3],
+      }
     }
 
     return null
