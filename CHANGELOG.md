@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Log Analysis Navigation** - Removed the first-time Log Analysis tip bubble from the top navigation.
-- **Scenery Update All** - Moved Scenery `Update All` into the update count area so it matches the aircraft and plugin update workflow.
+- **Scenery Toolbar** - Scenery batch and custom group controls now use compact icon buttons for a cleaner toolbar.
 
 ### Fixed
 
@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Airport Flatten Selection** - Airport search results now keep the selected airport open, refresh stale flatten indexes when needed, and show a clear retry action when sources cannot be loaded.
 - **Gateway and Addon Update Errors** - Temporary upstream failures now retry briefly and show a clear service-unavailable message instead of raw server errors.
 - **Scenery Smart Group Display** - Unmatched scenery now stays inside the collapsed Ungrouped section instead of appearing as repeated top-level rows.
+- **Scenery Update All** - Scenery `Update All` now stays available after returning to the Scenery page and while update checks are still settling.
+- **Scenery Group Defaults** - Smart, custom, and ungrouped Scenery groups now start collapsed while search results still expand matching groups automatically.
 
 ## [1.2.3] - 2026-04-26
 
