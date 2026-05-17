@@ -62,6 +62,8 @@ const currentMatchIndex = ref(0)
 const searchExpandedGroups = ref<Record<string, boolean>>({})
 const searchExpandedContinents = ref<Record<string, boolean>>({})
 const searchExpandedContinentCategories = ref<Record<string, boolean>>({})
+const collapsedSmartGroups = ref<Record<string, boolean>>({})
+const searchExpandedSmartGroups = ref<Record<string, boolean>>({})
 const showOnlyMissingLibs = ref(false)
 const showOnlyDuplicates = ref(false)
 const showOnlyUpdates = ref(false)
@@ -667,15 +669,21 @@ const filteredContinentGroupedEntries = computed(() => {
 })
 
 const smartSceneryRows = computed(() => {
-  const sourceEntries = hasDataFilters.value ? filteredSceneryEntries.value : allSceneryEntries.value
-  return buildSmartSceneryRows(sourceEntries)
+  const sourceEntries = hasDataFilters.value
+    ? filteredSceneryEntries.value
+    : allSceneryEntries.value
+  return buildSmartSceneryRows(sourceEntries, {
+    ungroupedTitle: t('sceneryManager.smartGroupUngrouped'),
+  })
 })
 
 const smartGroupKindTranslationKeys: Record<SmartSceneryGroupKind, string> = {
+  custom: 'sceneryManager.smartGroupKindCustom',
   simheaven: 'sceneryManager.smartGroupKindSimHeaven',
   ortho: 'sceneryManager.smartGroupKindOrtho',
   airport: 'sceneryManager.smartGroupKindAirport',
   product: 'sceneryManager.smartGroupKindProduct',
+  ungrouped: 'sceneryManager.smartGroupKindUngrouped',
 }
 
 function getSmartGroupKindTranslationKey(kind: SmartSceneryGroupKind): string {
@@ -693,6 +701,23 @@ function setSmartGroupEnabled(group: SmartSceneryGroup, enabled: boolean) {
     }
   }
   syncLocalEntries()
+}
+
+function isSmartGroupExpanded(group: SmartSceneryGroup): boolean {
+  if (searchMatchedSmartGroups.value.has(group.id)) return true
+  if (searchExpandedSmartGroups.value[group.id]) return true
+  if (collapsedSmartGroups.value[group.id] !== undefined) {
+    return collapsedSmartGroups.value[group.id] === false
+  }
+  return group.kind !== 'ungrouped'
+}
+
+function toggleSmartGroupCollapse(group: SmartSceneryGroup) {
+  const expanded = isSmartGroupExpanded(group)
+  collapsedSmartGroups.value[group.id] = expanded
+  if (searchExpandedSmartGroups.value[group.id]) {
+    delete searchExpandedSmartGroups.value[group.id]
+  }
 }
 
 // Sorted continent order based on filtered entries
@@ -765,6 +790,18 @@ const searchMatchedContinentCategories = computed(() => {
       const continent = entry.continent || 'Other'
       const targetContinent = knownContinents.includes(continent) ? continent : 'Other'
       set.add(`${targetContinent}:${entry.category}`)
+    }
+  }
+  return set
+})
+
+const searchMatchedSmartGroups = computed(() => {
+  const set = new Set<string>()
+  if (!searchQueryLower.value) return set
+  const query = searchQueryLower.value
+  for (const row of smartSceneryRows.value) {
+    if (row.group.entries.some((entry) => entry.folderName.toLowerCase().includes(query))) {
+      set.add(row.group.id)
     }
   }
   return set
@@ -1444,6 +1481,8 @@ function collapseSearchExpandedGroups() {
       }
     }
     searchExpandedContinentCategories.value = {}
+  } else if (viewMode.value === 'smart') {
+    searchExpandedSmartGroups.value = {}
   } else {
     // Collapse category groups that were expanded for search
     searchExpandedGroups.value = {}
@@ -1471,6 +1510,14 @@ function ensureGroupExpandedForIndex(index: number) {
     if (!isContinentCategoryExpanded(targetContinent, entry.category)) {
       collapsedContinentCategories.value[categoryKey] = false
       searchExpandedContinentCategories.value[categoryKey] = true
+    }
+  } else if (viewMode.value === 'smart') {
+    const row = smartSceneryRows.value.find((candidate) =>
+      candidate.group.entries.some((groupEntry) => groupEntry.folderName === entry.folderName),
+    )
+    if (row && !isSmartGroupExpanded(row.group)) {
+      collapsedSmartGroups.value[row.group.id] = false
+      searchExpandedSmartGroups.value[row.group.id] = true
     }
   } else {
     if (!isGroupExpanded(entry.category)) {
@@ -1869,18 +1916,6 @@ onBeforeUnmount(() => {
         </Transition>
       </button>
 
-      <!-- Update all SkunkCrafts addons in scenery -->
-      <button
-        v-if="sceneryStore.indexExists && sceneryUpdatableCount > 0"
-        :disabled="sceneryStore.isCheckingUpdates"
-        class="px-3 py-1.5 rounded-lg bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 text-sm"
-        @click="handleSceneryUpdateAll"
-      >
-        <Transition name="text-fade" mode="out-in">
-          <span :key="locale">{{ t('management.updateAll') }} ({{ sceneryUpdatableCount }})</span>
-        </Transition>
-      </button>
-
       <button
         v-if="sceneryStore.hasLocalChanges && sceneryStore.indexExists"
         class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
@@ -2056,6 +2091,16 @@ onBeforeUnmount(() => {
             <span :key="locale">{{
               showOnlyUpdates ? t('management.showAll') : t('management.filterUpdatesOnly')
             }}</span>
+          </Transition>
+        </button>
+        <button
+          v-if="sceneryUpdatableCount > 0"
+          :disabled="sceneryStore.isCheckingUpdates"
+          class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+          @click="handleSceneryUpdateAll"
+        >
+          <Transition name="text-fade" mode="out-in">
+            <span :key="locale">{{ t('management.updateAll') }}</span>
           </Transition>
         </button>
       </div>
@@ -2324,7 +2369,7 @@ onBeforeUnmount(() => {
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
-                  d="M7.5 3.75h9m-9 5.25h9m-9 5.25h9M4.5 3.75h.008v.008H4.5V3.75zm0 5.25h.008v.008H4.5V9zm0 5.25h.008v.008H4.5v-.008z"
+                  d="M6 6.75h12M6 12h12M6 17.25h12M9 3.75v15m6-15v15"
                 />
               </svg>
               <span class="flex-1 text-gray-700 dark:text-gray-200">{{
@@ -2540,13 +2585,29 @@ onBeforeUnmount(() => {
 
       <!-- Smart grouped view (no drag-and-drop, filter-aware) -->
       <div v-else-if="viewMode === 'smart'" class="space-y-3 pb-2" style="overflow: visible">
-        <template v-for="row in smartSceneryRows" :key="row.rowType === 'group' ? row.group.id : row.entry.folderName">
+        <template v-for="row in smartSceneryRows" :key="row.group.id">
           <div
-            v-if="row.rowType === 'group'"
             class="smart-scenery-group rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/70 dark:bg-blue-950/20 px-2.5 py-2 space-y-2"
             style="overflow: visible"
           >
-            <div class="flex flex-wrap items-center gap-2">
+            <div
+              class="flex flex-wrap items-center gap-2 cursor-pointer"
+              @click="toggleSmartGroupCollapse(row.group)"
+            >
+              <svg
+                class="w-4 h-4 text-blue-700 dark:text-blue-300 transition-transform duration-200 flex-shrink-0"
+                :class="{ 'rotate-90': isSmartGroupExpanded(row.group) }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2.5"
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
               <div class="flex-1 min-w-48">
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="font-semibold text-sm text-blue-950 dark:text-blue-100">
@@ -2587,98 +2648,55 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <div class="space-y-1.5">
-              <div
-                v-for="element in row.group.entries"
-                :key="element.folderName"
-                v-memo="[
-                  element.enabled,
-                  element.category,
-                  element.missingLibraries?.length ?? 0,
-                  element.duplicateTiles?.length ?? 0,
-                  element.duplicateAirports?.length ?? 0,
-                  searchQueryLower,
-                  highlightedIndex === getGlobalIndex(element.folderName),
-                ]"
-                :data-scenery-index="getGlobalIndex(element.folderName)"
-                class="relative scenery-entry-item"
-                style="scroll-margin-top: 100px"
-              >
+            <Transition name="collapse">
+              <div v-if="isSmartGroupExpanded(row.group)" class="space-y-1.5">
                 <div
-                  v-if="highlightedIndex === getGlobalIndex(element.folderName)"
-                  class="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none z-10"
-                ></div>
-                <div
-                  :class="{
-                    'opacity-30 transition-opacity':
-                      searchQueryLower &&
-                      !element.folderName.toLowerCase().includes(searchQueryLower),
-                  }"
+                  v-for="element in row.group.entries"
+                  :key="element.folderName"
+                  v-memo="[
+                    element.enabled,
+                    element.category,
+                    element.missingLibraries?.length ?? 0,
+                    element.duplicateTiles?.length ?? 0,
+                    element.duplicateAirports?.length ?? 0,
+                    searchQueryLower,
+                    highlightedIndex === getGlobalIndex(element.folderName),
+                  ]"
+                  :data-scenery-index="getGlobalIndex(element.folderName)"
+                  class="relative scenery-entry-item"
+                  style="scroll-margin-top: 100px"
                 >
-                  <SceneryEntryCard
-                    :entry="element"
-                    :index="getGlobalIndex(element.folderName)"
-                    :total-count="sceneryStore.totalCount"
-                    :disable-reorder="true"
-                    :flatten-busy="flattenBusyFolders.has(element.folderName)"
-                    @toggle-enabled="handleSceneryToggleEnabled"
-                    @toggle-flatten="handleToggleFlatten"
-                    @open-flatten-page="handleOpenFlattenPage"
-                    @move-up="handleMoveUp"
-                    @move-down="handleMoveDown"
-                    @show-missing-libs="handleShowMissingLibs"
-                    @show-duplicate-tiles="handleShowDuplicateTiles"
-                    @show-delete-confirm="handleShowDeleteConfirm"
-                    @update="handleOpenSceneryUpdate"
-                  />
+                  <div
+                    v-if="highlightedIndex === getGlobalIndex(element.folderName)"
+                    class="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none z-10"
+                  ></div>
+                  <div
+                    :class="{
+                      'opacity-30 transition-opacity':
+                        searchQueryLower &&
+                        !element.folderName.toLowerCase().includes(searchQueryLower),
+                    }"
+                  >
+                    <SceneryEntryCard
+                      :entry="element"
+                      :index="getGlobalIndex(element.folderName)"
+                      :total-count="sceneryStore.totalCount"
+                      :disable-reorder="true"
+                      :flatten-busy="flattenBusyFolders.has(element.folderName)"
+                      @toggle-enabled="handleSceneryToggleEnabled"
+                      @toggle-flatten="handleToggleFlatten"
+                      @open-flatten-page="handleOpenFlattenPage"
+                      @move-up="handleMoveUp"
+                      @move-down="handleMoveDown"
+                      @show-missing-libs="handleShowMissingLibs"
+                      @show-duplicate-tiles="handleShowDuplicateTiles"
+                      @show-delete-confirm="handleShowDeleteConfirm"
+                      @update="handleOpenSceneryUpdate"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <div
-            v-else
-            v-memo="[
-              row.entry.enabled,
-              row.entry.category,
-              row.entry.missingLibraries?.length ?? 0,
-              row.entry.duplicateTiles?.length ?? 0,
-              row.entry.duplicateAirports?.length ?? 0,
-              searchQueryLower,
-              highlightedIndex === getGlobalIndex(row.entry.folderName),
-            ]"
-            :data-scenery-index="getGlobalIndex(row.entry.folderName)"
-            class="relative scenery-entry-item"
-            style="scroll-margin-top: 100px"
-          >
-            <div
-              v-if="highlightedIndex === getGlobalIndex(row.entry.folderName)"
-              class="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none z-10"
-            ></div>
-            <div
-              :class="{
-                'opacity-30 transition-opacity':
-                  searchQueryLower &&
-                  !row.entry.folderName.toLowerCase().includes(searchQueryLower),
-              }"
-            >
-              <SceneryEntryCard
-                :entry="row.entry"
-                :index="getGlobalIndex(row.entry.folderName)"
-                :total-count="sceneryStore.totalCount"
-                :disable-reorder="true"
-                :flatten-busy="flattenBusyFolders.has(row.entry.folderName)"
-                @toggle-enabled="handleSceneryToggleEnabled"
-                @toggle-flatten="handleToggleFlatten"
-                @open-flatten-page="handleOpenFlattenPage"
-                @move-up="handleMoveUp"
-                @move-down="handleMoveDown"
-                @show-missing-libs="handleShowMissingLibs"
-                @show-duplicate-tiles="handleShowDuplicateTiles"
-                @show-delete-confirm="handleShowDeleteConfirm"
-                @update="handleOpenSceneryUpdate"
-              />
-            </div>
+            </Transition>
           </div>
         </template>
         <div v-if="smartSceneryRows.length === 0" class="text-center py-12">
