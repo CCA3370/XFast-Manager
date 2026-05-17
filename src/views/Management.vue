@@ -340,7 +340,7 @@ const canBatchDeleteSelected = computed(() => {
 })
 
 function handleBatchUpdateSelected() {
-  if (!canBatchUpdateSelected.value || managementStore.isExecutingUpdate) return
+  if (!canBatchUpdateSelected.value) return
 
   const firstTask = selectedSkunkUpdateTasks.value[0]
   addonUpdateDrawerStore.openTasks(
@@ -465,7 +465,6 @@ function runUpdateAll(tab: 'aircraft' | 'plugin') {
 }
 
 function handleUpdateAll() {
-  if (managementStore.isExecutingUpdate) return
   if (activeTab.value !== 'aircraft' && activeTab.value !== 'plugin') return
   if (currentSkunkUpdatableCount.value === 0) return
 
@@ -904,11 +903,7 @@ const isLoading = computed(() => {
           <!-- Batch buttons (only when items selected) -->
           <template v-if="selectedCount > 0">
             <button
-              :disabled="
-                !canBatchUpdateSelected ||
-                managementStore.isExecutingUpdate ||
-                managementStore.isCheckingUpdates
-              "
+              :disabled="!canBatchUpdateSelected || managementStore.isCheckingUpdates"
               class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50"
               @click.stop="handleBatchUpdateSelected"
             >
@@ -1020,7 +1015,7 @@ const isLoading = computed(() => {
           >
             <button
               class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-              :disabled="managementStore.isCheckingUpdates || managementStore.isExecutingUpdate"
+              :disabled="managementStore.isCheckingUpdates"
               @click="handleUpdateAll"
             >
               <Transition name="text-fade" mode="out-in">

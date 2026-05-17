@@ -263,6 +263,7 @@ const sceneryDataTrigger = computed(() => ({
   hasData: !!sceneryStore.data,
   entriesCount: sceneryStore.entries.length,
   needsSync: sceneryStore.data?.needsSync ?? false,
+  updateStateRevision: sceneryStore.updateStateRevision,
 }))
 
 watch(sceneryDataTrigger, () => {
@@ -1282,6 +1283,8 @@ const sceneryDrawerUpdatableCount = computed(() => {
   return sceneryStore.entries.filter((entry) => isDrawerUpdatable(entry)).length
 })
 
+const sceneryUpdateAllAvailable = computed(() => sceneryDrawerUpdatableCount.value > 0)
+
 function buildSceneryUpdateAllTargets(): AddonUpdateDrawerTask[] {
   return sceneryStore.entries
     .filter((entry) => isDrawerUpdatable(entry) && entry.hasUpdate)
@@ -1295,7 +1298,7 @@ function buildSceneryUpdateAllTargets(): AddonUpdateDrawerTask[] {
 }
 
 function handleSceneryUpdateAll() {
-  if (sceneryStore.isCheckingUpdates) return
+  if (!sceneryUpdateAllAvailable.value) return
   const targets = buildSceneryUpdateAllTargets()
   if (targets.length === 0) {
     toastStore.info(t('management.allUpToDate'))
@@ -2206,23 +2209,23 @@ onBeforeUnmount(() => {
         :aria-label="t('sceneryManager.manageCustomGroups')"
         @click="openCustomGroupsModal"
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg
+          class="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          viewBox="0 0 24 24"
+        >
           <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
             stroke-width="2"
-            d="M3.75 7A2.25 2.25 0 016 4.75h3.4l1.8 1.75H18A2.25 2.25 0 0120.25 8.75V17A2.25 2.25 0 0118 19.25H6A2.25 2.25 0 013.75 17V7z"
+            d="M4 5.75A1.75 1.75 0 015.75 4h4.1l1.55 1.75h6.85A1.75 1.75 0 0120 7.5V9"
           />
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="1.8"
-            d="M8 11h3.25m2.5 0H16m-4.75 0v4M8 15h3.25m2.5 0H16"
-          />
-          <circle cx="7" cy="11" r="1" stroke-width="1.8" />
-          <circle cx="12.5" cy="11" r="1" stroke-width="1.8" />
-          <circle cx="7" cy="15" r="1" stroke-width="1.8" />
-          <circle cx="12.5" cy="15" r="1" stroke-width="1.8" />
+          <rect x="4" y="8.25" width="16" height="10.75" rx="2" stroke-width="2" />
+          <path stroke-width="1.8" d="M8 12h2.25v3H13" />
+          <path stroke-width="1.8" d="M8 15h2.25" />
+          <circle cx="15.25" cy="12" r="1.25" stroke-width="1.8" />
+          <circle cx="15.25" cy="15" r="1.25" stroke-width="1.8" />
         </svg>
       </button>
 
@@ -2471,9 +2474,8 @@ onBeforeUnmount(() => {
             </Transition>
           </button>
         </div>
-        <div v-if="sceneryDrawerUpdatableCount > 0" class="flex items-center gap-2">
+        <div v-if="sceneryUpdateAllAvailable" class="flex items-center gap-2">
           <button
-            :disabled="sceneryStore.isCheckingUpdates"
             class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
             @click="handleSceneryUpdateAll"
           >

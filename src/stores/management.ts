@@ -213,7 +213,7 @@ export const useManagementStore = defineStore('management', () => {
   const isCheckingUpdates = ref(false)
   const isRestoringBackup = ref(false)
   const isBuildingUpdatePlan = ref(false)
-  const isExecutingUpdate = ref(false)
+  const executingUpdateCount = ref(0)
   const error = ref<string | null>(null)
   const addonUpdateOptions = ref<AddonUpdateOptions>({ ...DEFAULT_ADDON_UPDATE_OPTIONS })
   const addonUpdateItemBetaPreferences = ref<AddonUpdateItemBetaPreferences>({})
@@ -228,6 +228,7 @@ export const useManagementStore = defineStore('management', () => {
   const navdataEnabledCount = ref(0)
 
   // Computed properties
+  const isExecutingUpdate = computed(() => executingUpdateCount.value > 0)
   const sortedAircraft = computed(() => {
     return [...aircraft.value].sort((a, b) =>
       a.displayName.toLowerCase().localeCompare(b.displayName.toLowerCase()),
@@ -899,7 +900,7 @@ export const useManagementStore = defineStore('management', () => {
     await loadAddonUpdateOptions()
     const options = buildAddonUpdateOptionsForItem(itemType, folderName, optionsOverride)
 
-    isExecutingUpdate.value = true
+    executingUpdateCount.value += 1
     try {
       const result = await invoke<AddonUpdateResult>('execute_addon_update', {
         xplanePath: appStore.xplanePath,
@@ -919,7 +920,7 @@ export const useManagementStore = defineStore('management', () => {
       logError(`Failed to execute addon update for ${itemType}:${folderName}: ${e}`, 'management')
       throw e
     } finally {
-      isExecutingUpdate.value = false
+      executingUpdateCount.value = Math.max(0, executingUpdateCount.value - 1)
     }
   }
 

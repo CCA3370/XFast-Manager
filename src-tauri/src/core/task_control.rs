@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 /// Task control state for managing installation cancellation and skipping
 #[derive(Clone)]
@@ -11,25 +11,91 @@ pub struct TaskControl {
     skip_current: Arc<AtomicBool>,
     /// List of files/directories created during installation (for cleanup)
     processed_paths: Arc<Mutex<Vec<PathBuf>>>,
+    /// Child controls that should receive global cancel/skip requests.
+    child_controls: Arc<Mutex<Vec<Weak<TaskControlState>>>>,
+    /// Keeps this control session alive for parent propagation.
+    _session_state: Arc<TaskControlState>,
+}
+
+struct TaskControlState {
+    cancel_all: Arc<AtomicBool>,
+    skip_current: Arc<AtomicBool>,
 }
 
 impl TaskControl {
     pub fn new() -> Self {
-        Self {
+        let state = Arc::new(TaskControlState {
             cancel_all: Arc::new(AtomicBool::new(false)),
             skip_current: Arc::new(AtomicBool::new(false)),
+        });
+
+        Self {
+            cancel_all: Arc::clone(&state.cancel_all),
+            skip_current: Arc::clone(&state.skip_current),
             processed_paths: Arc::new(Mutex::new(Vec::new())),
+            child_controls: Arc::new(Mutex::new(Vec::new())),
+            _session_state: state,
+        }
+    }
+
+    fn for_state(state: &Arc<TaskControlState>) -> Self {
+        Self {
+            cancel_all: Arc::clone(&state.cancel_all),
+            skip_current: Arc::clone(&state.skip_current),
+            processed_paths: Arc::new(Mutex::new(Vec::new())),
+            child_controls: Arc::new(Mutex::new(Vec::new())),
+            _session_state: Arc::clone(state),
+        }
+    }
+
+    /// Create an isolated child control for one task session.
+    ///
+    /// A child starts with clean flags and an independent processed path list, but global
+    /// cancel/skip requests on this parent are propagated to all active children.
+    pub fn child_session(&self) -> Self {
+        let state = Arc::new(TaskControlState {
+            cancel_all: Arc::new(AtomicBool::new(false)),
+            skip_current: Arc::new(AtomicBool::new(false)),
+        });
+
+        if let Ok(mut children) = self.child_controls.lock() {
+            children.retain(|child| child.strong_count() > 0);
+            children.push(Arc::downgrade(&state));
+        }
+
+        Self::for_state(&state)
+    }
+
+    fn propagate_to_children<F>(&self, apply: F)
+    where
+        F: Fn(&TaskControlState),
+    {
+        if let Ok(mut children) = self.child_controls.lock() {
+            children.retain(|child| {
+                if let Some(state) = child.upgrade() {
+                    apply(&state);
+                    true
+                } else {
+                    false
+                }
+            });
         }
     }
 
     /// Request cancellation of all tasks
     pub fn request_cancel_all(&self) {
         self.cancel_all.store(true, Ordering::SeqCst);
+        self.propagate_to_children(|state| {
+            state.cancel_all.store(true, Ordering::SeqCst);
+        });
     }
 
     /// Request skipping the current task
     pub fn request_skip_current(&self) {
         self.skip_current.store(true, Ordering::SeqCst);
+        self.propagate_to_children(|state| {
+            state.skip_current.store(true, Ordering::SeqCst);
+        });
     }
 
     /// Check if cancellation was requested
@@ -219,5 +285,49 @@ mod tests {
         control.reset_skip();
         assert!(control.is_cancelled());
         assert!(!control.is_skip_requested());
+    }
+
+    #[test]
+    fn test_child_session_is_independent_from_reset() {
+        let parent = TaskControl::new();
+        let child = parent.child_session();
+
+        child.request_cancel_all();
+        child.add_processed_path(PathBuf::from("/child/path"));
+
+        parent.reset();
+
+        assert!(!parent.is_cancelled());
+        assert!(!parent.is_skip_requested());
+        assert!(child.is_cancelled());
+        assert!(!child.is_skip_requested());
+        assert_eq!(
+            child.get_processed_paths(),
+            vec![PathBuf::from("/child/path")]
+        );
+    }
+
+    #[test]
+    fn test_global_cancel_propagates_to_child_sessions() {
+        let parent = TaskControl::new();
+        let child1 = parent.child_session();
+        let child2 = parent.child_session();
+
+        parent.request_cancel_all();
+
+        assert!(parent.is_cancelled());
+        assert!(child1.is_cancelled());
+        assert!(child2.is_cancelled());
+    }
+
+    #[test]
+    fn test_global_skip_propagates_to_child_sessions() {
+        let parent = TaskControl::new();
+        let child = parent.child_session();
+
+        parent.request_skip_current();
+
+        assert!(parent.is_skip_requested());
+        assert!(child.is_skip_requested());
     }
 }

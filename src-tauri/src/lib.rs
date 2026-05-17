@@ -2561,7 +2561,7 @@ async fn build_addon_update_plan(
     folder_name: String,
     options: addon_updater::AddonUpdateOptions,
 ) -> Result<addon_updater::AddonUpdatePlan, String> {
-    task_control.reset();
+    let task_control = task_control.child_session();
     if is_xupdater_disabled_target(&xplane_path, &item_type, &folder_name) {
         let message = blocked_addon_update_error(&item_type, &folder_name);
         emit_addon_update_status(
@@ -2584,7 +2584,7 @@ async fn build_addon_update_plan(
         &item_type,
         &folder_name,
         options,
-        Some(task_control.inner().clone()),
+        Some(task_control),
         Some(progress_callback),
     )
     .await
@@ -2616,7 +2616,7 @@ async fn fetch_addon_update_preview(
     login: Option<String>,
     license_key: Option<String>,
 ) -> Result<addon_updater::AddonUpdatePreview, String> {
-    task_control.reset();
+    let task_control = task_control.child_session();
     if is_xupdater_disabled_target(&xplane_path, &item_type, &folder_name) {
         let message = blocked_addon_update_error(&item_type, &folder_name);
         emit_addon_update_status(
@@ -2641,7 +2641,7 @@ async fn fetch_addon_update_preview(
         options,
         login,
         license_key,
-        Some(task_control.inner().clone()),
+        Some(task_control),
         Some(progress_callback),
     )
     .await
@@ -2672,7 +2672,7 @@ async fn execute_addon_update(
     folder_name: String,
     options: addon_updater::AddonUpdateOptions,
 ) -> Result<addon_updater::AddonUpdateResult, String> {
-    task_control.reset();
+    let task_control = task_control.child_session();
     if is_xupdater_disabled_target(&xplane_path, &item_type, &folder_name) {
         let message = blocked_addon_update_error(&item_type, &folder_name);
         emit_addon_update_status(
@@ -2695,7 +2695,7 @@ async fn execute_addon_update(
         &item_type,
         &folder_name,
         options,
-        Some(task_control.inner().clone()),
+        Some(task_control),
         Some(progress_callback),
     )
     .await
