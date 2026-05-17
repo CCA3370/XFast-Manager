@@ -724,8 +724,17 @@ export default {
     updateSelected: 'Обновить выбранные',
     enableSelected: 'Включить выбранные',
     disableSelected: 'Отключить выбранные',
+    deleteSelected: 'Delete Selected',
     selectedCount: '{count} выбрано',
     batchMode: 'Пакетный режим',
+    batchDeleteTitle: 'Delete Selected Items',
+    batchDeleteMessage: 'Delete {count} selected item(s)? This action cannot be undone.',
+    batchDeleteWarning:
+      'Each item is deleted independently. Items that fail to delete will remain in the list.',
+    batchDeleteSuccess: 'Deleted {count} selected item(s)',
+    batchDeletePartialFailed:
+      'Deleted {deleted}/{total} selected item(s). {failed} item(s) could not be deleted.',
+    batchDeleteFailed: 'Could not delete {failed}/{total} selected item(s).',
     protectedAircraft: 'Это самолёт X-Plane по умолчанию, его нельзя отключить',
     manageAcfFilesTitle: 'Управление файлами ACF · {name}',
     manageAcfFilesHint: 'Переключайте отдельные файлы моделей самолёта в этой папке.',

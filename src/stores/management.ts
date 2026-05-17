@@ -2,21 +2,22 @@ import { defineStore } from 'pinia'
 import { ref, computed, type Ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
-import type {
-  AircraftInfo,
-  PluginInfo,
-  NavdataManagerInfo,
-  NavdataBackupInfo,
-  ManagementData,
-  ManagementTab,
-  ManagementItemType,
-  AddonUpdateOptions,
-  AddonUpdatePreview,
-  AddonUpdatePlan,
-  AddonUpdateResult,
-  AddonUpdaterCredentials,
-  AddonDiskSpaceInfo,
-  AddonUpdatableItemType,
+import {
+  getErrorMessage,
+  type AircraftInfo,
+  type PluginInfo,
+  type NavdataManagerInfo,
+  type NavdataBackupInfo,
+  type ManagementData,
+  type ManagementTab,
+  type ManagementItemType,
+  type AddonUpdateOptions,
+  type AddonUpdatePreview,
+  type AddonUpdatePlan,
+  type AddonUpdateResult,
+  type AddonUpdaterCredentials,
+  type AddonDiskSpaceInfo,
+  type AddonUpdatableItemType,
 } from '@/types'
 import { useAppStore } from './app'
 import { useToastStore } from './toast'
@@ -62,6 +63,16 @@ export function isProtectedAircraft(displayName: string): boolean {
 interface UpdateCacheEntry {
   latestVersion: string | null
   timestamp: number
+}
+
+interface BatchDeleteFailure {
+  folderName: string
+  error: string
+}
+
+interface BatchDeleteResult {
+  deleted: string[]
+  failed: BatchDeleteFailure[]
 }
 
 type AddonUpdateItemBetaPreferences = Record<string, boolean>
@@ -1233,6 +1244,34 @@ export const useManagementStore = defineStore('management', () => {
     }
   }
 
+  async function batchDeleteItems(
+    itemType: ManagementItemType,
+    folderNames: string[],
+  ): Promise<BatchDeleteResult> {
+    if (!validateXPlanePath(error)) {
+      throw new Error(error.value!)
+    }
+
+    const result: BatchDeleteResult = {
+      deleted: [],
+      failed: [],
+    }
+
+    const uniqueFolderNames = [...new Set(folderNames)]
+    for (const folderName of uniqueFolderNames) {
+      try {
+        await deleteItem(itemType, folderName)
+        result.deleted.push(folderName)
+      } catch (e) {
+        const message = getErrorMessage(e)
+        result.failed.push({ folderName, error: message })
+        logError(`Failed to batch delete ${itemType} ${folderName}: ${message}`, 'management')
+      }
+    }
+
+    return result
+  }
+
   // Open folder
   async function openFolder(itemType: ManagementItemType, folderName: string) {
     if (!validateXPlanePath(error)) {
@@ -1383,6 +1422,7 @@ export const useManagementStore = defineStore('management', () => {
     toggleAircraftAcfFile,
     batchSetEnabled,
     deleteItem,
+    batchDeleteItems,
     openFolder,
     setActiveTab,
     clear,

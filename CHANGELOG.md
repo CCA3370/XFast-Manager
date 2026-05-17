@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Batch Delete in Management** - Aircraft and plugin lists can now delete selected items at once, with failed items left in place and reported clearly.
+
 ### Changed
 
 - **Log Analysis Navigation** - Removed the first-time Log Analysis tip bubble from the top navigation.

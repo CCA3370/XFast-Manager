@@ -710,8 +710,17 @@ export default {
     updateSelected: 'Update Selected',
     enableSelected: 'Enable Selected',
     disableSelected: 'Disable Selected',
+    deleteSelected: 'Delete Selected',
     selectedCount: '{count} selected',
     batchMode: 'Batch Mode',
+    batchDeleteTitle: 'Delete Selected Items',
+    batchDeleteMessage: 'Delete {count} selected item(s)? This action cannot be undone.',
+    batchDeleteWarning:
+      'Each item is deleted independently. Items that fail to delete will remain in the list.',
+    batchDeleteSuccess: 'Deleted {count} selected item(s)',
+    batchDeletePartialFailed:
+      'Deleted {deleted}/{total} selected item(s). {failed} item(s) could not be deleted.',
+    batchDeleteFailed: 'Could not delete {failed}/{total} selected item(s).',
     protectedAircraft: 'This is a default X-Plane aircraft and cannot be disabled',
     manageAcfFilesTitle: 'Manage ACF Files · {name}',
     manageAcfFilesHint: 'Toggle individual aircraft model files in this folder.',

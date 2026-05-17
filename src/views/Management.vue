@@ -12,15 +12,16 @@ import { isDrawerUpdatable } from '@/utils/addonUpdate'
 import AircraftAcfManagerModal from '@/components/AircraftAcfManagerModal.vue'
 import ManagementEntryCard from '@/components/ManagementEntryCard.vue'
 import SceneryTab from '@/views/SceneryTab.vue'
-import type {
-  AircraftInfo,
-  ManagementTab,
-  ManagementItemType,
-  NavdataBackupInfo,
-  AddonUpdatableItemType,
-  AddonUpdateDrawerTask,
+import {
+  getErrorMessage,
+  parseApiError,
+  type AircraftInfo,
+  type ManagementTab,
+  type ManagementItemType,
+  type NavdataBackupInfo,
+  type AddonUpdatableItemType,
+  type AddonUpdateDrawerTask,
 } from '@/types'
-import { getErrorMessage, parseApiError } from '@/types'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -330,6 +331,13 @@ const selectedSkunkUpdateTasks = computed<AddonUpdateDrawerTask[]>(() => {
 })
 
 const canBatchUpdateSelected = computed(() => selectedSkunkUpdateTasks.value.length > 0)
+const canBatchDeleteSelected = computed(() => {
+  return (
+    selectedCount.value > 0 &&
+    (activeTab.value === 'aircraft' || activeTab.value === 'plugin') &&
+    !isBatchProcessing.value
+  )
+})
 
 function handleBatchUpdateSelected() {
   if (!canBatchUpdateSelected.value || managementStore.isExecutingUpdate) return
@@ -339,6 +347,64 @@ function handleBatchUpdateSelected() {
     selectedSkunkUpdateTasks.value,
     `${firstTask.itemType}:${firstTask.folderName}`,
   )
+}
+
+async function runBatchDeleteSelected() {
+  if (!canBatchDeleteSelected.value) return
+
+  const itemType = activeTab.value as ManagementItemType
+  const folderNames = [...currentSelected.value]
+  const total = folderNames.length
+
+  isBatchProcessing.value = true
+  try {
+    const result = await managementStore.batchDeleteItems(itemType, folderNames)
+    const failedNames = new Set(result.failed.map((failure) => failure.folderName))
+
+    if (itemType === 'aircraft') {
+      selectedAircraft.value = failedNames
+    } else {
+      selectedPlugins.value = failedNames
+    }
+
+    if (result.failed.length === 0) {
+      toastStore.success(t('management.batchDeleteSuccess', { count: result.deleted.length }))
+      return
+    }
+
+    const summaryKey =
+      result.deleted.length > 0 ? 'management.batchDeletePartialFailed' : 'management.batchDeleteFailed'
+    const failureLines = result.failed
+      .map((failure) => `${failure.folderName}: ${failure.error}`)
+      .join('\n')
+
+    modalStore.showError(
+      `${t(summaryKey, {
+        deleted: result.deleted.length,
+        failed: result.failed.length,
+        total,
+      })}\n\n${failureLines}`,
+    )
+  } finally {
+    isBatchProcessing.value = false
+  }
+}
+
+function handleBatchDeleteSelected() {
+  if (!canBatchDeleteSelected.value) return
+
+  modalStore.showConfirm({
+    title: t('management.batchDeleteTitle'),
+    message: t('management.batchDeleteMessage', { count: selectedCount.value }),
+    warning: t('management.batchDeleteWarning'),
+    confirmText: t('management.deleteSelected'),
+    cancelText: t('common.cancel'),
+    type: 'danger',
+    onConfirm: () => {
+      void runBatchDeleteSelected()
+    },
+    onCancel: () => {},
+  })
 }
 
 async function batchSetEnabled(enabled: boolean) {
@@ -783,7 +849,7 @@ const isLoading = computed(() => {
         <div
           v-if="selectionMode"
           key="batch-bar"
-          class="flex items-center gap-3 min-h-11 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 mb-3 text-sm cursor-pointer"
+          class="flex flex-wrap items-center gap-3 min-h-11 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 mb-3 text-sm cursor-pointer"
           :title="t('management.selectAll')"
           @click="toggleSelectAll"
         >
@@ -833,7 +899,7 @@ const isLoading = computed(() => {
             }}
           </span>
 
-          <div class="flex-1"></div>
+          <div class="flex-1 min-w-2"></div>
 
           <!-- Batch buttons (only when items selected) -->
           <template v-if="selectedCount > 0">
@@ -866,6 +932,15 @@ const isLoading = computed(() => {
             >
               <Transition name="text-fade" mode="out-in">
                 <span :key="locale">{{ t('management.disableSelected') }}</span>
+              </Transition>
+            </button>
+            <button
+              :disabled="!canBatchDeleteSelected"
+              class="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-red-500 text-white hover:bg-red-600 disabled:opacity-50"
+              @click.stop="handleBatchDeleteSelected"
+            >
+              <Transition name="text-fade" mode="out-in">
+                <span :key="locale">{{ t('management.deleteSelected') }}</span>
               </Transition>
             </button>
           </template>

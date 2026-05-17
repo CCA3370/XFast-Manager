@@ -704,8 +704,17 @@ export default {
     updateSelected: '선택 항목 업데이트',
     enableSelected: '선택 항목 활성화',
     disableSelected: '선택 항목 비활성화',
+    deleteSelected: 'Delete Selected',
     selectedCount: '{count}개 선택됨',
     batchMode: '일괄 모드',
+    batchDeleteTitle: 'Delete Selected Items',
+    batchDeleteMessage: 'Delete {count} selected item(s)? This action cannot be undone.',
+    batchDeleteWarning:
+      'Each item is deleted independently. Items that fail to delete will remain in the list.',
+    batchDeleteSuccess: 'Deleted {count} selected item(s)',
+    batchDeletePartialFailed:
+      'Deleted {deleted}/{total} selected item(s). {failed} item(s) could not be deleted.',
+    batchDeleteFailed: 'Could not delete {failed}/{total} selected item(s).',
     protectedAircraft: '이 항공기는 X-Plane 기본 기체이므로 비활성화할 수 없습니다',
     manageAcfFilesTitle: 'ACF 파일 관리 · {name}',
     manageAcfFilesHint: '이 폴더의 개별 항공기 모델 파일을 켜거나 끕니다.',
