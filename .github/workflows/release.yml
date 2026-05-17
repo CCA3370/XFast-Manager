@@ -514,6 +514,61 @@ jobs:
           echo "✅ Generated latest.json:"
           cat release-files/latest.json
 
+      - name: Generate release notes with download guide
+        shell: bash
+        env:
+          CHANGELOG_NOTES: ${{ needs.prepare-release.outputs.changelog }}
+        run: |
+          version="${{ needs.prepare-release.outputs.version }}"
+          tag="${{ needs.prepare-release.outputs.tag }}"
+          repo="${{ github.repository }}"
+          base_url="https://github.com/${repo}/releases/download/${tag}"
+
+          cat > release-files/download-guide.md <<'EOF'
+          ## Download
+
+          Choose the package for your system directly below. You do not need to search through the asset list at the bottom of
+          this page.
+
+          ### Windows
+
+          - **Recommended:**   [Windows Installer (.msi)](__BASE_URL__/XFast-Manager-__VERSION__-windows-setup.msi)
+          - **Portable:**  [Windows Portable (.zip)](__BASE_URL__/XFast-Manager-__VERSION__-windows-portable.zip)
+          - **If your browser blocks `.msi`:**  [Windows Installer ZIP](__BASE_URL__/XFast-Manager-__VERSION__-windows-setup.zip)
+
+          ### macOS
+
+          - **Apple Silicon + Intel Mac:**  [macOS Universal (.zip)](__BASE_URL__/XFast-Manager-__VERSION__-macos-universal.zip)
+
+          ### Linux
+
+          - **Most Linux distributions:**  [AppImage](__BASE_URL__/XFast-Manager-__VERSION__-linux-x64.AppImage)
+          - **Debian / Ubuntu:**  [DEB package (.zip)](__BASE_URL__/XFast-Manager-__VERSION__-linux-x64-deb.zip)
+          - **Fedora / openSUSE / RHEL:**  [RPM package (.zip)](__BASE_URL__/XFast-Manager-__VERSION__-linux-x64-rpm.zip)
+          - **Arch Linux:**  [Arch package (.tar.gz)](__BASE_URL__/XFast-Manager-__VERSION__-linux-arch-x64.tar.gz)
+
+          ### Notes
+
+          - Most users should download only one file for their operating system.
+          - `Source code`, `.sig`, `checksums.txt`, and `latest.json` are for developers, verification, or auto-update services. Normal users do not need them.
+
+          ---
+          EOF
+
+          sed -i \
+            -e "s#__BASE_URL__#${base_url}#g" \
+            -e "s#__VERSION__#${version}#g" \
+            release-files/download-guide.md
+
+          {
+            cat release-files/download-guide.md
+            printf '\n'
+            printf '%s\n' "$CHANGELOG_NOTES"
+          } > release-files/release-notes.md
+
+          echo "✅ Release notes preview:"
+          head -80 release-files/release-notes.md
+
       - name: Create Git Tag
         shell: bash
         run: |
@@ -528,7 +583,7 @@ jobs:
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag }}
           name: XFast-Manager ${{ needs.prepare-release.outputs.tag }}
-          body: ${{ needs.prepare-release.outputs.changelog }}
+          body_path: release-files/release-notes.md
           draft: false
           prerelease: ${{ needs.prepare-release.outputs.is_prerelease == 'true' }}
           files: |
