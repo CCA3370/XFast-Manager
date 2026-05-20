@@ -532,6 +532,8 @@ fn sort_packages_with_special_rules(
     let airport_mesh_matches = detect_airport_mesh_matches_with_path(xplane_path, packages);
     let category_changed = apply_airport_mesh_matches(packages, &airport_mesh_matches);
 
+    crate::scenery_sort_strategy::assign_sub_priorities(packages);
+
     let mut fixed_packages = Vec::new();
     let mut other_packages = Vec::new();
 
@@ -550,6 +552,7 @@ fn sort_packages_with_special_rules(
 
     fixed_packages.extend(other_packages);
     apply_darkblue_airport_package_anchors(&mut fixed_packages, &airport_mesh_matches);
+    crate::scenery_sort_strategy::resequence_orthos_above_overlays(&mut fixed_packages);
     *packages = fixed_packages;
 
     category_changed
