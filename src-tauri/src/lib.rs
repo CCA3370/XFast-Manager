@@ -1968,6 +1968,7 @@ fn validate_xplane_root_path(path: &std::path::Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod launch_tests {
+    #[cfg(target_os = "windows")]
     use super::*;
 
     #[cfg(target_os = "windows")]
