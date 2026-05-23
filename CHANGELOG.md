@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Release Downloads** - Release pages now start with direct download links for each operating system so users do not need to search through the asset list.
 
+### Fixed
+
+- **X-CSL and ALTITUDE Refresh** - Model package refreshes now keep working from a saved index when the server is temporarily unavailable, with clearer messages about network or server problems.
+
 ## [1.2.4] - 2026-05-17
 
 ### Added

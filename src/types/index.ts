@@ -705,6 +705,7 @@ export interface CslScanResult {
   packages: CslPackageInfo[]
   paths: CslPath[]
   server_version: string
+  index_warning?: string | null
 }
 
 export interface CslProgress {
