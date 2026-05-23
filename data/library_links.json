@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"updated": "2026-05-02",
+	"updated": "2026-05-23",
 	"libraries": {
 		"3d_people": "https://forums.x-plane.org/index.php?/files/file/26611-3d-people-library/",
 		"3d_people_library": "https://forums.x-plane.org/files/file/26611-3d-people-library/",
@@ -43,6 +43,7 @@
 		"sam3_library": "https://d1o9n9onlv91pa.cloudfront.net/sam3/base_plugin/3.1.10/SAM.zip",
 		"spc_lib": "https://forums.x-plane.org/files/file/73800-spc_lib/",
 		"the_handy_objects_library": "https://forums.x-plane.org/index.php?/files/file/24261-the-handy-objects-library/",
+		"ticosim_library": "https://x-plane.to/file/1466/tico-sim-library",
 		"world-models": "https://forums.x-plane.org/index.php?/files/file/32135-world-models-library/",
 		"wrecked_vehicles": "https://forums.x-plane.org/files/file/30807-wrecked-vehicles/",
 		"zdp_library": "https://forum.thresholdx.net/files/file/1987-zero-dollar-payware-library/"
