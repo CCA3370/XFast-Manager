@@ -147,6 +147,9 @@ export function shouldHideBugReportForMessage(message: string): boolean {
     lower.includes('this 7z archive could not be extracted') ||
     lower.includes('invalid zip archive') ||
     lower.includes('could not find eocd') ||
+    lower.includes('not a rar archive') ||
+    lower.includes('badarchive@open') ||
+    lower.includes('ewrite@process') ||
     lower.includes('exec format error') ||
     lower.includes('not runnable on this system') ||
     lower.includes('not a valid windows executable') ||
@@ -156,7 +159,18 @@ export function shouldHideBugReportForMessage(message: string): boolean {
     lower.includes('apt.dat not found:') ||
     lower.includes('source file is no longer available:') ||
     lower.includes('source path is not a regular file or directory:') ||
-    lower.includes('source path is neither file nor directory')
+    lower.includes('source path is neither file nor directory') ||
+    lower.includes('[permission_denied]') ||
+    lower.includes('(os error 5)') ||
+    lower.includes('(os error 225)') ||
+    lower.includes('access is denied') ||
+    lower.includes('contains a virus or potentially unwanted') ||
+    lower.includes('custom scenery folder not found') ||
+    lower.includes('plugins folder not found') ||
+    lower.includes('custom data folder not found') ||
+    lower.includes('aircraft folder not found') ||
+    lower.includes('target directory does not exist') ||
+    lower.includes('failed to create target directory')
   )
 }
 
