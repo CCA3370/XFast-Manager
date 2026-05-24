@@ -489,12 +489,24 @@ mod tests {
         assert_eq!(aircraft_type, "ROTATE_MD11-F");
         assert_eq!(root, "MyLivery");
 
-        // Test Rotate MD-11 Freighter exterior texture detection
-        let result = check_livery_pattern("MyLivery/objects/MD-11-exterior-01.png");
-        assert!(result.is_some());
-        let (aircraft_type, root) = result.unwrap();
-        assert_eq!(aircraft_type, "ROTATE_MD11-F");
-        assert_eq!(root, "MyLivery");
+        // Test Rotate MD-11 Freighter exterior texture detection.
+        for texture_id in 1..=8 {
+            for suffix in ["", "_NRM"] {
+                let path = format!(
+                    "MyLivery/objects/MD-11-exterior-{texture_id:02}{suffix}.png"
+                );
+                let result = check_livery_pattern(&path);
+                assert!(result.is_some(), "expected {path} to match");
+                let (aircraft_type, root) = result.unwrap();
+                assert_eq!(aircraft_type, "ROTATE_MD11-F");
+                assert_eq!(root, "MyLivery");
+            }
+        }
+
+        assert_eq!(
+            check_livery_pattern("MyLivery/objects/MD-11-exterior-09.png"),
+            None
+        );
     }
 
     #[test]
