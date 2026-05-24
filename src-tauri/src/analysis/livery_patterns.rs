@@ -481,6 +481,23 @@ mod tests {
     }
 
     #[test]
+    fn test_check_livery_pattern_rotate_md11_freighter() {
+        // Test Rotate MD-11 Freighter icon detection
+        let result = check_livery_pattern("MyLivery/Rotate-MD-11_icon11.png");
+        assert!(result.is_some());
+        let (aircraft_type, root) = result.unwrap();
+        assert_eq!(aircraft_type, "ROTATE_MD11-F");
+        assert_eq!(root, "MyLivery");
+
+        // Test Rotate MD-11 Freighter exterior texture detection
+        let result = check_livery_pattern("MyLivery/objects/MD-11-exterior-01.png");
+        assert!(result.is_some());
+        let (aircraft_type, root) = result.unwrap();
+        assert_eq!(aircraft_type, "ROTATE_MD11-F");
+        assert_eq!(root, "MyLivery");
+    }
+
+    #[test]
     fn test_check_acf_identifier() {
         // FF_B777
         assert_eq!(
@@ -511,6 +528,10 @@ mod tests {
         assert_eq!(
             check_acf_identifier("A330-900.acf"),
             Some("TOLISS_A339".to_string())
+        );
+        assert_eq!(
+            check_acf_identifier("Rotate-MD-11.acf"),
+            Some("ROTATE_MD11-F".to_string())
         );
         // Unknown
         assert_eq!(check_acf_identifier("unknown.acf"), None);
