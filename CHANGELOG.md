@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## 2026-5-19
-
 ### Changed
 
 - **Scenery Sort Order** - Custom airports now rank above Aerosoft airports within the Airport group, and orthophoto packages now sit above the Overlay block in `scenery_packs.ini`.
