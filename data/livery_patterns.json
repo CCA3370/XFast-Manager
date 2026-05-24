@@ -337,67 +337,7 @@
         },
         {
           "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-01.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-01_NRM.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-02.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-02_NRM.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-03.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-03_NRM.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-04.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-04_NRM.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-05.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-05_NRM.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-06.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-06_NRM.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-07.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-07_NRM.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-08.png"
-        },
-        {
-          "pattern_type": "file",
-          "pattern": "objects/MD-11-exterior-08_NRM.png"
+          "pattern": "objects/MD-11-exterior-*.png"
         }
       ],
       "acf_identifiers": [
