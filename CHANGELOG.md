@@ -7,13 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Rotate MD-11 Freighter Liveries** - Rotate MD-11 Freighter livery packs are now recognized correctly during scanning.
+
 ### Changed
 
 - **Release Downloads** - Release pages now start with direct download links for each operating system so users do not need to search through the asset list.
-
-### Fixed
-
-- **Rotate MD-11 Freighter Liveries** - Rotate MD-11 Freighter livery packs are now recognized correctly during scanning.
 
 ## [1.2.4] - 2026-05-17
 
