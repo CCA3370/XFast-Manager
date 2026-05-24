@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Rotate MD-11 Freighter Liveries** - Rotate MD-11 Freighter livery packs are now recognized correctly during scanning.
+- **Remember Window Size and Position** - The application now remembers the window size, position, and maximized state from the previous session and restores them on next launch.
 
 ### Changed
 
