@@ -934,6 +934,10 @@ export const useCslStore = defineStore('csl', () => {
       await pruneDetectedCustomPaths(autoDetectedPaths)
       serverVersion.value = result.server_version
       lastScannedXplanePath.value = appStore.xplanePath
+      if (result.index_warning) {
+        logError(`[${requestId}] ${result.index_warning}`, 'csl')
+        toast.warning(result.index_warning)
+      }
       resetDescriptionLoadState(
         result.packages.filter((pkg) => !pkg.description).map((pkg) => pkg.name),
       )
@@ -945,7 +949,7 @@ export const useCslStore = defineStore('csl', () => {
       resetDescriptionLoadState([])
       error.value = getErrorMessage(e)
       logError(`[${requestId}] CSL scan failed: ${getErrorMessage(e)}`, 'csl')
-      toast.error(t('csl.fetchError'))
+      toast.error(error.value || t('csl.fetchError'))
     } finally {
       isLoading.value = false
     }
@@ -1140,9 +1144,13 @@ export const useCslStore = defineStore('csl', () => {
 
       altitudePackages.value = result.packages
       lastAltitudeScannedXplanePath.value = appStore.xplanePath
+      if (result.index_warning) {
+        logError(`[${requestId}] ${result.index_warning}`, 'altitude')
+        toast.warning(result.index_warning)
+      }
     } catch (e) {
       logError(`[${requestId}] ALTITUDE scan failed: ${getErrorMessage(e)}`, 'altitude')
-      toast.error(t('altitude.fetchError'))
+      toast.error(getErrorMessage(e) || t('altitude.fetchError'))
     } finally {
       altitudeLoading.value = false
     }
