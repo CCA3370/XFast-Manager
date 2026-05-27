@@ -39,6 +39,11 @@ fn is_sam_folder_name(folder_name: &str) -> bool {
     }) || has_sam_word
 }
 
+pub(crate) fn is_ortho_folder_name(folder_name: &str) -> bool {
+    let name = folder_name.to_lowercase();
+    name.contains("ortho") || name.starts_with("zphoto") || name.starts_with("z_photo")
+}
+
 fn classify_library_folder_name(folder_name: &str) -> SceneryCategory {
     if is_lines3d_folder_name(folder_name) || is_sam_folder_name(folder_name) {
         SceneryCategory::FixedHighPriority

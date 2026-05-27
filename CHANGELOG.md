@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Scenery Sort Order** - Custom airports now rank above Aerosoft airports within the Airport group, and orthophoto packages now sit above the Overlay block in `scenery_packs.ini`.
 
+### Fixed
+
+- **Scenery Sort Order** - Orthophoto resequencing no longer conflicts with DarkBlue airport package anchoring, which could misplace ortho packages between a DarkBlue airport and its anchored overlay.
+- **Scenery Sort Order** - Aerosoft folder detection no longer false-positives on community packages that mention the brand in their folder name.
+
 ## [1.2.4] - 2026-05-17
 
 ### Added

@@ -551,8 +551,8 @@ fn sort_packages_with_special_rules(
         .sort_by(|a, b| compare_packages_for_sorting(&a.folder_name, a, &b.folder_name, b));
 
     fixed_packages.extend(other_packages);
-    apply_darkblue_airport_package_anchors(&mut fixed_packages, &airport_mesh_matches);
     crate::scenery_sort_strategy::resequence_orthos_above_overlays(&mut fixed_packages);
+    apply_darkblue_airport_package_anchors(&mut fixed_packages, &airport_mesh_matches);
     *packages = fixed_packages;
 
     category_changed
@@ -2598,6 +2598,40 @@ mod tests {
         assert_eq!(
             ordered_names,
             vec!["KSEA Demo", "DarkBlue-KSEA Mesh", "MisterX Library"]
+        );
+    }
+
+    #[test]
+    fn test_resequence_orthos_does_not_break_darkblue_anchors() {
+        let mut packages = vec![
+            make_package("DarkBlue-KSEA", SceneryCategory::Airport, 0),
+            make_package("MisterX Library", SceneryCategory::Library, 1),
+            make_package("z_ortho_SEA", SceneryCategory::Mesh, 2),
+            make_package("DarkBlue-KSEA_Overlays", SceneryCategory::Overlay, 3),
+            make_package("Some Overlay", SceneryCategory::Overlay, 4),
+        ];
+        let airport_mesh_matches = HashMap::new();
+
+        // Same order as production: resequence orthos first, then anchor darkblue
+        crate::scenery_sort_strategy::resequence_orthos_above_overlays(&mut packages);
+        apply_darkblue_airport_package_anchors(&mut packages, &airport_mesh_matches);
+
+        let ordered_names: Vec<&str> = packages
+            .iter()
+            .map(|pkg| pkg.folder_name.as_str())
+            .collect();
+
+        // DarkBlue airport must be immediately followed by its anchored overlay,
+        // ortho must sit above the regular overlay block but not between the anchor pair.
+        assert_eq!(
+            ordered_names,
+            vec![
+                "DarkBlue-KSEA",
+                "DarkBlue-KSEA_Overlays",
+                "MisterX Library",
+                "z_ortho_SEA",
+                "Some Overlay",
+            ]
         );
     }
 }

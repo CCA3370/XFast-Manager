@@ -63,18 +63,14 @@ pub(crate) fn resequence_orthos_above_overlays(packages: &mut Vec<SceneryPackage
 }
 
 fn is_aerosoft_folder(folder_name: &str) -> bool {
-    folder_name.to_lowercase().contains("aerosoft")
+    folder_name.to_lowercase().starts_with("aerosoft")
 }
 
 fn is_ortho_folder(info: &SceneryPackageInfo) -> bool {
-    // Orthos are classified as Mesh by the base classifier (they ship terrain
-    // via Earth nav data). Only consider Mesh entries to avoid relocating
-    // user-renamed libraries or airports that happen to contain "ortho".
-    if info.category != SceneryCategory::Mesh {
-        return false;
-    }
-    let name = info.folder_name.to_lowercase();
-    name.contains("ortho") || name.starts_with("zphoto") || name.starts_with("z_photo")
+    // Only consider Mesh entries to avoid relocating user-renamed libraries or
+    // airports that happen to contain "ortho".
+    info.category == SceneryCategory::Mesh
+        && crate::scenery_classifier::is_ortho_folder_name(&info.folder_name)
 }
 
 #[cfg(test)]
