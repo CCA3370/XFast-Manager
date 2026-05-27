@@ -83,6 +83,8 @@ mod scenery_classifier;
 mod scenery_index;
 #[path = "scenery/scenery_packs_manager.rs"]
 mod scenery_packs_manager;
+#[path = "scenery/scenery_sort_strategy.rs"]
+mod scenery_sort_strategy;
 
 // Services (remote/data)
 #[path = "services/library_links.rs"]
@@ -1966,6 +1968,7 @@ fn validate_xplane_root_path(path: &std::path::Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod launch_tests {
+    #[cfg(target_os = "windows")]
     use super::*;
 
     #[cfg(target_os = "windows")]
