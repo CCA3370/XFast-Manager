@@ -1,8 +1,6 @@
 name: Build Tauri (All Platforms)
 
 on:
-  push:
-    branches: [dev]
   workflow_dispatch:
 
 env:
