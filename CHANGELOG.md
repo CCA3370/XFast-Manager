@@ -7,14 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.5] - 2026-05-31
+
 ### Added
 
 - **Rotate MD-11 Freighter Liveries** - Rotate MD-11 Freighter livery packs are now recognized correctly during scanning.
 - **Remember Window Size and Position** - The application now remembers the window size, position, and maximized state from the previous session and restores them on next launch.
+- **X-CSL and ALTITUDE Offline Fallback** - When the X-CSL or ALTITUDE model index server is temporarily unreachable, scans now keep working from the most recently saved index instead of failing, with a notice that the listed package status may be out of date.
 
 ### Changed
 
-- **Release Downloads** - Release pages now start with direct download links for each operating system so users do not need to search through the asset list.
+- **Bundled Library Links** - Added a download link for the Tico Sim Library so the app can point you to it when a scenery package needs that library.
+- **Clearer Model Index Errors** - When an X-CSL or ALTITUDE scan cannot reach the server and no saved copy is available, the error now explains the specific network or server problem instead of showing a generic failure message.
+- **Fewer Unnecessary Bug Report Prompts** - Failures caused by blocked or denied file access, antivirus quarantine, corrupted or unreadable archives, or missing X-Plane folders no longer prompt you to submit a bug report, since these are environment issues rather than problems with the app.
 
 ## [1.2.4] - 2026-05-17
 
