@@ -60,6 +60,13 @@ static INDEX_CACHE: std::sync::LazyLock<Mutex<HashMap<String, (std::time::Instan
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 const INDEX_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(300); // 5 minutes
+const INDEX_DISK_CACHE_DIR: &str = "csl-index-cache";
+
+#[derive(Debug, Clone)]
+struct RemoteIndex {
+    content: String,
+    warning: Option<String>,
+}
 
 /// Cached package descriptions, keyed by "{server}::{package_name}".
 static DESC_CACHE: std::sync::LazyLock<Mutex<HashMap<String, String>>> =
@@ -312,6 +319,7 @@ pub struct CslScanResult {
     pub packages: Vec<CslPackageInfo>,
     pub paths: Vec<CslPath>,
     pub server_version: String,
+    pub index_warning: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -844,6 +852,26 @@ async fn fetch_remote_index(
     index_path: &str,
     request_ctx: &RequestContext,
 ) -> Result<String, ApiError> {
+    fetch_remote_index_internal(server, index_path, request_ctx, None)
+        .await
+        .map(|index| index.content)
+}
+
+async fn fetch_remote_index_for_scan(
+    server: &str,
+    index_path: &str,
+    request_ctx: &RequestContext,
+    service_name: &str,
+) -> Result<RemoteIndex, ApiError> {
+    fetch_remote_index_internal(server, index_path, request_ctx, Some(service_name)).await
+}
+
+async fn fetch_remote_index_internal(
+    server: &str,
+    index_path: &str,
+    request_ctx: &RequestContext,
+    stale_fallback_service: Option<&str>,
+) -> Result<RemoteIndex, ApiError> {
     let url = format!("{}/{}", server, index_path);
 
     // Check cache first (keyed by full URL)
@@ -858,7 +886,10 @@ async fn fetch_remote_index(
                     fetched_at.elapsed().as_secs(),
                     content.len()
                 );
-                return Ok(content.clone());
+                return Ok(RemoteIndex {
+                    content: content.clone(),
+                    warning: None,
+                });
             }
         }
     }
@@ -892,9 +923,26 @@ async fn fetch_remote_index(
             );
             ApiError::new(
                 ApiErrorCode::NetworkError,
-                format!("Failed to fetch index: {}", e),
+                format!(
+                    "Unable to reach index server at {}. Check your network connection or server settings, then refresh again. Details: {}",
+                    url, e
+                ),
             )
-        })?;
+        });
+
+    let resp = match resp {
+        Ok(resp) => resp,
+        Err(err) => {
+            return try_stale_index_fallback(
+                &url,
+                stale_fallback_service,
+                request_ctx,
+                "index_fetch",
+                err,
+            )
+            .await;
+        }
+    };
 
     let status = resp.status();
     if !status.is_success() {
@@ -905,25 +953,48 @@ async fn fetch_remote_index(
             url,
             status
         );
-        return Err(ApiError::new(
-            ApiErrorCode::NetworkError,
-            format!("Server returned status {}", status),
-        ));
+        return try_stale_index_fallback(
+            &url,
+            stale_fallback_service,
+            request_ctx,
+            "index_fetch",
+            ApiError::new(
+                ApiErrorCode::NetworkError,
+                format!(
+                    "Index server at {} returned {}. Check the server setting, then refresh again.",
+                    url, status
+                ),
+            ),
+        )
+        .await;
     }
 
-    let bytes = resp.bytes().await.map_err(|e| {
-        csl_debug!(
-            "[{}] HTTP GET read failed request_id={} url={} purpose=index_fetch error={}",
-            request_ctx.operation_id(),
-            request_id,
-            url,
-            e
-        );
-        ApiError::new(
-            ApiErrorCode::NetworkError,
-            format!("Failed to read response: {}", e),
-        )
-    })?;
+    let bytes = match resp.bytes().await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            csl_debug!(
+                "[{}] HTTP GET read failed request_id={} url={} purpose=index_fetch error={}",
+                request_ctx.operation_id(),
+                request_id,
+                url,
+                e
+            );
+            return try_stale_index_fallback(
+                &url,
+                stale_fallback_service,
+                request_ctx,
+                "index_fetch",
+                ApiError::new(
+                    ApiErrorCode::NetworkError,
+                    format!(
+                        "Index server at {} sent an unreadable response. Refresh again later. Details: {}",
+                        url, e
+                    ),
+                ),
+            )
+            .await;
+        }
+    };
 
     csl_debug!(
         "[{}] HTTP GET success request_id={} url={} purpose=index_fetch status={} bytes={}",
@@ -941,6 +1012,7 @@ async fn fetch_remote_index(
         let mut cache = INDEX_CACHE.lock().await;
         cache.insert(url.clone(), (std::time::Instant::now(), content.clone()));
     }
+    save_index_to_disk(&url, &content, request_ctx);
 
     csl_debug!(
         "[{}] Index cache updated url={} bytes={}",
@@ -949,7 +1021,163 @@ async fn fetch_remote_index(
         content.len()
     );
 
-    Ok(content)
+    Ok(RemoteIndex {
+        content,
+        warning: None,
+    })
+}
+
+async fn try_stale_index_fallback(
+    url: &str,
+    stale_fallback_service: Option<&str>,
+    request_ctx: &RequestContext,
+    purpose: &str,
+    error: ApiError,
+) -> Result<RemoteIndex, ApiError> {
+    if let Some(service_name) = stale_fallback_service {
+        {
+            let cache = INDEX_CACHE.lock().await;
+            if let Some((fetched_at, content)) = cache.get(url) {
+                let age = fetched_at.elapsed();
+                csl_debug!(
+                    "[{}] HTTP GET failed but stale memory cache is available url={} purpose={} age_secs={} bytes={}",
+                    request_ctx.operation_id(),
+                    url,
+                    purpose,
+                    age.as_secs(),
+                    content.len()
+                );
+                return Ok(RemoteIndex {
+                    content: content.clone(),
+                    warning: Some(format!(
+                        "{} index server is unavailable. Using a saved index from {}; package status may be outdated.",
+                        service_name,
+                        format_cache_age(age)
+                    )),
+                });
+            }
+        }
+
+        if let Some((content, age)) = load_index_from_disk(url, request_ctx) {
+            csl_debug!(
+                "[{}] HTTP GET failed but disk cache is available url={} purpose={} age={} bytes={}",
+                request_ctx.operation_id(),
+                url,
+                purpose,
+                age.map(|value| value.as_secs().to_string())
+                    .unwrap_or_else(|| "unknown".to_string()),
+                content.len()
+            );
+            return Ok(RemoteIndex {
+                content,
+                warning: Some(format!(
+                    "{} index server is unavailable. Using a saved index from {}; package status may be outdated.",
+                    service_name,
+                    format_optional_cache_age(age)
+                )),
+            });
+        }
+    }
+
+    Err(error)
+}
+
+fn index_disk_cache_path(url: &str) -> PathBuf {
+    let digest = md5::compute(url.as_bytes());
+    crate::app_dirs::get_app_data_dir()
+        .join(INDEX_DISK_CACHE_DIR)
+        .join(format!("{:x}.idx", digest))
+}
+
+fn save_index_to_disk(url: &str, content: &str, request_ctx: &RequestContext) {
+    let path = index_disk_cache_path(url);
+    let Some(parent) = path.parent() else {
+        return;
+    };
+
+    if let Err(err) = std::fs::create_dir_all(parent) {
+        csl_debug!(
+            "[{}] Failed to create index disk cache dir path={} error={}",
+            request_ctx.operation_id(),
+            parent.display(),
+            err
+        );
+        return;
+    }
+
+    let tmp_path = path.with_extension("idx.tmp");
+    if let Err(err) = std::fs::write(&tmp_path, content) {
+        csl_debug!(
+            "[{}] Failed to write index disk cache path={} error={}",
+            request_ctx.operation_id(),
+            tmp_path.display(),
+            err
+        );
+        return;
+    }
+
+    if path.exists() {
+        let _ = std::fs::remove_file(&path);
+    }
+
+    if let Err(err) = std::fs::rename(&tmp_path, &path) {
+        csl_debug!(
+            "[{}] Failed to replace index disk cache path={} error={}",
+            request_ctx.operation_id(),
+            path.display(),
+            err
+        );
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+}
+
+fn load_index_from_disk(
+    url: &str,
+    request_ctx: &RequestContext,
+) -> Option<(String, Option<std::time::Duration>)> {
+    let path = index_disk_cache_path(url);
+    let content = match std::fs::read_to_string(&path) {
+        Ok(content) if !content.trim().is_empty() => content,
+        Ok(_) => return None,
+        Err(err) => {
+            csl_debug!(
+                "[{}] Index disk cache unavailable path={} error={}",
+                request_ctx.operation_id(),
+                path.display(),
+                err
+            );
+            return None;
+        }
+    };
+
+    let age = std::fs::metadata(&path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|modified| modified.elapsed().ok());
+
+    Some((content, age))
+}
+
+fn format_optional_cache_age(age: Option<std::time::Duration>) -> String {
+    age.map(format_cache_age)
+        .unwrap_or_else(|| "an earlier refresh".to_string())
+}
+
+fn format_cache_age(age: std::time::Duration) -> String {
+    let age_secs = age.as_secs();
+    if age_secs < 60 {
+        "less than a minute ago".to_string()
+    } else if age_secs < 3_600 {
+        let minutes = age_secs / 60;
+        format!(
+            "{} minute{} ago",
+            minutes,
+            if minutes == 1 { "" } else { "s" }
+        )
+    } else {
+        let hours = age_secs / 3_600;
+        format!("{} hour{} ago", hours, if hours == 1 { "" } else { "s" })
+    }
 }
 
 /// Download a single file with exponential backoff retry (max 5 attempts).
@@ -1383,9 +1611,10 @@ async fn scan_packages_internal(
     );
 
     // Fetch remote index (single HTTP request)
-    let index_content = fetch_remote_index(server, "x-csl-indexes.idx", request_ctx)
+    let index = fetch_remote_index_for_scan(server, "x-csl-indexes.idx", request_ctx, "X-CSL")
         .await
         .map_err(|e| e.to_string())?;
+    let index_content = index.content;
 
     let server_version = index_content.lines().next().unwrap_or("").to_string();
 
@@ -1457,6 +1686,7 @@ async fn scan_packages_internal(
         packages,
         paths,
         server_version,
+        index_warning: index.warning,
     })
 }
 
@@ -3255,9 +3485,15 @@ pub async fn csl_rescan_packages(
     );
 
     // Fetch index (hits cache if recent scan happened)
-    let index_content = fetch_remote_index(&server_base_url, CSL_INDEX_PATH, &request_ctx)
+    let index_content = fetch_remote_index_for_scan(
+        &server_base_url,
+        CSL_INDEX_PATH,
+        &request_ctx,
+        "X-CSL",
+    )
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .content;
 
     let entries = parse_index(&index_content);
     let pkg_data_list = group_into_packages(&entries);
@@ -3723,9 +3959,15 @@ pub async fn altitude_scan_packages(
         server_base_url
     );
 
-    let index_content = fetch_remote_index(&server_base_url, ALTITUDE_INDEX_PATH, &request_ctx)
+    let index = fetch_remote_index_for_scan(
+        &server_base_url,
+        ALTITUDE_INDEX_PATH,
+        &request_ctx,
+        "ALTITUDE",
+    )
         .await
         .map_err(|e| e.to_string())?;
+    let index_content = index.content;
 
     let server_version = index_content.lines().next().unwrap_or("").to_string();
     let entries = parse_index(&index_content);
@@ -3769,6 +4011,7 @@ pub async fn altitude_scan_packages(
         packages,
         paths: vec![],
         server_version,
+        index_warning: index.warning,
     };
 
     csl_debug!(

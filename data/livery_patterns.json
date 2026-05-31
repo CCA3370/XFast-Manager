@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-02-19",
+  "updated": "2026-05-24",
   "patterns": [
     {
       "aircraft_type_id": "FF_B777",
@@ -325,6 +325,23 @@
       ],
       "acf_identifiers": [
         "B742_GE_Felis"
+      ]
+    },
+    {
+      "aircraft_type_id": "ROTATE_MD11-F",
+      "aircraft_name": "Rotate MD-11 Freighter",
+      "detection_rules": [
+        {
+          "pattern_type": "file",
+          "pattern": "Rotate-MD-11_icon11*.png"
+        },
+        {
+          "pattern_type": "file",
+          "pattern": "objects/MD-11-exterior-*.png"
+        }
+      ],
+      "acf_identifiers": [
+        "Rotate-MD-11"
       ]
     }
   ]
