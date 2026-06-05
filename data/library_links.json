@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"updated": "2026-05-23",
+	"updated": "2026-06-05",
 	"libraries": {
 		"3d_people": "https://forums.x-plane.org/index.php?/files/file/26611-3d-people-library/",
 		"3d_people_library": "https://forums.x-plane.org/files/file/26611-3d-people-library/",
@@ -12,6 +12,7 @@
 		"cemetery": "https://forums.x-plane.org/files/file/24521-cemetery-library/",
 		"devinci_library": "https://forums.x-plane.org/files/file/63107-devinci-library/",
 		"dinkisstyle_lib_grass": "https://forums.x-plane.org/files/file/85592-29d-grass-for-xp12-incl-demo-scenery/",
+		"dt_library": "https://forums.x-plane.org/files/file/49646-dt-library/",
 		"european_vehicles_static": "https://forums.x-plane.org/files/file/24708-library-european-vehicles-static/",
 		"faib_aircraft": "https://forums.x-plane.org/files/file/29079-the-faib-aircraft-library/",
 		"fjs_scenery_library": "https://forums.x-plane.org/files/file/28594-fjs_scenery_library/",
