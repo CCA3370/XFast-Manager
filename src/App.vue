@@ -499,7 +499,7 @@ type NavId =
   | 'home'
   | 'management'
   | 'screenshots'
-  | 'log-analysis'
+  | 'doctor'
   | 'activity'
   | 'disk-usage'
   | 'presets'
@@ -524,7 +524,7 @@ const DEFAULT_NAV_ORDER: NavId[] = [
   'home',
   'management',
   'screenshots',
-  'log-analysis',
+  'doctor',
   'activity',
   'disk-usage',
   'presets',
@@ -553,8 +553,10 @@ const NAV_ICON_PATHS: Record<NavId, string[]> = {
     'M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z',
     'M15 13a3 3 0 11-6 0 3 3 0 016 0z',
   ],
-  'log-analysis': [
-    'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+  doctor: [
+    // Heart with pulse line (health/diagnostics)
+    'M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z',
+    'M7 11h2l2-3 2 6 2-3h2',
   ],
   activity: ['M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'],
   'disk-usage': [
@@ -612,12 +614,12 @@ const navItemsById = computed<Record<NavId, NavItem>>(() => ({
     active: route.path === '/screenshots',
     iconPaths: NAV_ICON_PATHS.screenshots,
   },
-  'log-analysis': {
-    id: 'log-analysis',
-    to: '/log-analysis',
-    label: t('logAnalysis.navTitle'),
-    active: route.path === '/log-analysis',
-    iconPaths: NAV_ICON_PATHS['log-analysis'],
+  doctor: {
+    id: 'doctor',
+    to: '/doctor',
+    label: t('doctor.navTitle'),
+    active: route.path === '/doctor',
+    iconPaths: NAV_ICON_PATHS.doctor,
   },
   activity: {
     id: 'activity',
@@ -907,7 +909,7 @@ function getRouteOrder(path: string): number {
   if (path === '/' || path === '') return navOrderIndex.value.home
   if (path.startsWith('/management')) return navOrderIndex.value.management
   if (path === '/screenshots') return navOrderIndex.value.screenshots
-  if (path === '/log-analysis') return navOrderIndex.value['log-analysis']
+  if (path === '/doctor') return navOrderIndex.value.doctor
   if (path === '/activity') return navOrderIndex.value.activity
   if (path === '/disk-usage') return navOrderIndex.value['disk-usage']
   if (path === '/disk-usage/output-cleanup') return navOrderIndex.value['disk-usage'] + 0.1
@@ -1084,11 +1086,11 @@ onMounted(async () => {
     action: () => router.push('/screenshots'),
   })
   registerShortcut({
-    id: 'nav-log-analysis',
+    id: 'nav-doctor',
     keys: 'ctrl+4',
-    label: t('logAnalysis.navTitle'),
+    label: t('doctor.navTitle'),
     category: t('commandPalette.categoryNav'),
-    action: () => router.push('/log-analysis'),
+    action: () => router.push('/doctor'),
   })
   registerShortcut({
     id: 'nav-gateway',
