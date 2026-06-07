@@ -140,38 +140,74 @@ export function getErrorMessage(error: unknown): string {
 export function shouldHideBugReportForMessage(message: string): boolean {
   const lower = message.toLowerCase()
 
-  return (
-    lower.includes('invalid or incomplete zip archive') ||
-    lower.includes('this archive appears to be incomplete') ||
-    lower.includes('this rar archive could not be extracted') ||
-    lower.includes('this 7z archive could not be extracted') ||
-    lower.includes('invalid zip archive') ||
-    lower.includes('could not find eocd') ||
-    lower.includes('not a rar archive') ||
-    lower.includes('badarchive@open') ||
-    lower.includes('ewrite@process') ||
-    lower.includes('exec format error') ||
-    lower.includes('not runnable on this system') ||
-    lower.includes('not a valid windows executable') ||
-    lower.includes('invalid airport source path') ||
-    lower.includes('airport flatten source is no longer available') ||
-    lower.includes('airport flatten source was not found') ||
-    lower.includes('apt.dat not found:') ||
-    lower.includes('source file is no longer available:') ||
-    lower.includes('source path is not a regular file or directory:') ||
-    lower.includes('source path is neither file nor directory') ||
-    lower.includes('[permission_denied]') ||
-    lower.includes('(os error 5)') ||
-    lower.includes('(os error 225)') ||
-    lower.includes('access is denied') ||
-    lower.includes('contains a virus or potentially unwanted') ||
-    lower.includes('custom scenery folder not found') ||
-    lower.includes('plugins folder not found') ||
-    lower.includes('custom data folder not found') ||
-    lower.includes('aircraft folder not found') ||
-    lower.includes('target directory does not exist') ||
-    lower.includes('failed to create target directory')
-  )
+  const knownUserOrEnvironmentErrors = [
+    'invalid or incomplete zip archive',
+    'this archive appears to be incomplete',
+    'this rar archive could not be extracted',
+    'this 7z archive could not be extracted',
+    'invalid zip archive',
+    'could not find eocd',
+    'not a rar archive',
+    'badarchive@open',
+    'ewrite@process',
+    'exec format error',
+    'not runnable on this system',
+    'not a valid windows executable',
+    'invalid airport source path',
+    'airport flatten source is no longer available',
+    'airport flatten source was not found',
+    'apt.dat not found:',
+    'source file is no longer available:',
+    'source path is not a regular file or directory:',
+    'source path is neither file nor directory',
+    '[permission_denied]',
+    '(os error 5)',
+    '(os error 225)',
+    '(os error 483)',
+    'access is denied',
+    'contains a virus or potentially unwanted',
+    'fatal device hardware error',
+    'i/o device error',
+    'the device is not ready',
+    'custom scenery folder not found',
+    'plugins folder not found',
+    'custom data folder not found',
+    'aircraft folder not found',
+    'target directory does not exist',
+    'failed to create target directory',
+  ]
+
+  if (knownUserOrEnvironmentErrors.some((pattern) => lower.includes(pattern))) {
+    return true
+  }
+
+  if (
+    lower.includes('[cancelled]') ||
+    lower.includes('[canceled]') ||
+    lower.includes('cancelled by user') ||
+    lower.includes('canceled by user') ||
+    lower.includes('operation cancelled') ||
+    lower.includes('operation canceled')
+  ) {
+    return true
+  }
+
+  const isExternalMissingResource =
+    lower.includes('[not_found]') &&
+    [
+      'folder not found',
+      'livery folder not found',
+      'file not found',
+      'path not found',
+      'directory not found',
+      'source file',
+      'source path',
+      'target directory',
+      'screenshot not found',
+      'media file',
+    ].some((pattern) => lower.includes(pattern))
+
+  return isExternalMissingResource
 }
 
 // ========== Addon Types ==========

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Fewer Misleading Bug Report Prompts** - Error dialogs for cancelled actions, missing local files or folders, and storage or hardware I/O failures no longer suggest submitting a bug report when the problem is outside the app.
+
 ## [1.2.5] - 2026-05-31
 
 ### Added
