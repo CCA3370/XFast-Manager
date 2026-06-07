@@ -1527,6 +1527,8 @@ export default {
     copyPath: 'Copier le chemin',
     saveAs: 'Enregistrer sous',
     shareReddit: 'Partager',
+    previousMedia: 'Média précédent',
+    nextMedia: 'Média suivant',
     autoEnhance: 'Amélioration automatique',
     autoEnhanceBusy: 'Améliorer...',
     autoEnhanceApplied: "Amélioration automatique appliquée à l'aperçu",

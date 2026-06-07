@@ -1524,6 +1524,8 @@ export default {
     copyPath: 'Pfad kopieren',
     saveAs: 'Speichern unter',
     shareReddit: 'Teilen',
+    previousMedia: 'Vorheriges Medium',
+    nextMedia: 'Nächstes Medium',
     autoEnhance: 'Automatische Verbesserung',
     autoEnhanceBusy: 'Verbessern...',
     autoEnhanceApplied: 'Automatische Verbesserung auf Vorschau angewendet',

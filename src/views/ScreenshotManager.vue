@@ -353,6 +353,58 @@ const selectedSrc = computed(() => {
   }
   return toSrc(selected.value.path)
 })
+
+const previewItems = computed(() => {
+  if (activeAircraftGroup.value) return groupedItems.value
+  return filtered.value
+})
+
+const selectedIndex = computed(() => {
+  if (!selected.value) return -1
+  return previewItems.value.findIndex((item) => item.fileName === selected.value?.fileName)
+})
+
+const hasPreviewNavigation = computed(
+  () => selectedIndex.value >= 0 && previewItems.value.length > 1,
+)
+const canSelectPrevious = computed(() => selectedIndex.value > 0)
+const canSelectNext = computed(
+  () => selectedIndex.value >= 0 && selectedIndex.value < previewItems.value.length - 1,
+)
+
+function selectPreviewItem(index: number) {
+  const item = previewItems.value[index]
+  if (!item) return
+  shareMenuOpen.value = false
+  selected.value = item
+}
+
+function selectPreviousMedia() {
+  if (!canSelectPrevious.value) return
+  selectPreviewItem(selectedIndex.value - 1)
+}
+
+function selectNextMedia() {
+  if (!canSelectNext.value) return
+  selectPreviewItem(selectedIndex.value + 1)
+}
+
+function isPreviewKeyboardTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return Boolean(target.closest('button, input, textarea, select, video, [contenteditable="true"]'))
+}
+
+function onPreviewKeydown(event: KeyboardEvent) {
+  if (!selected.value || editorOpen.value || isPreviewKeyboardTarget(event.target)) return
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault()
+    selectPreviousMedia()
+  } else if (event.key === 'ArrowRight') {
+    event.preventDefault()
+    selectNextMedia()
+  }
+}
+
 const editorSrc = computed(() => {
   if (editorPreviewUrl.value) return editorPreviewUrl.value
   return editorInputUrl.value
@@ -1688,10 +1740,12 @@ watch(selected, (value) => {
 })
 
 onMounted(() => {
+  window.addEventListener('keydown', onPreviewKeydown)
   void load()
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onPreviewKeydown)
   if (previewTimer !== null) {
     window.clearTimeout(previewTimer)
     previewTimer = null
@@ -2049,8 +2103,26 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <div
-            class="flex-1 min-h-0 rounded-xl bg-black/40 border border-white/10 overflow-hidden flex items-center justify-center"
+            class="relative flex-1 min-h-0 rounded-xl bg-black/40 border border-white/10 overflow-hidden flex items-center justify-center"
           >
+            <button
+              v-if="hasPreviewNavigation"
+              class="preview-nav-btn preview-nav-prev"
+              :disabled="!canSelectPrevious"
+              :aria-label="$t('screenshot.previousMedia')"
+              :title="$t('screenshot.previousMedia')"
+              @click.stop="selectPreviousMedia"
+            >
+              <svg
+                class="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.4"
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
             <img
               v-if="selected.mediaType === 'image'"
               :src="selectedSrc"
@@ -2078,6 +2150,27 @@ onBeforeUnmount(() => {
               </button>
             </div>
             <p v-else class="text-sm text-white/70">{{ $t('screenshot.unsupportedPreview') }}</p>
+            <button
+              v-if="hasPreviewNavigation"
+              class="preview-nav-btn preview-nav-next"
+              :disabled="!canSelectNext"
+              :aria-label="$t('screenshot.nextMedia')"
+              :title="$t('screenshot.nextMedia')"
+              @click.stop="selectNextMedia"
+            >
+              <svg
+                class="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.4"
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+            <div v-if="hasPreviewNavigation" class="preview-position-badge">
+              {{ selectedIndex + 1 }} / {{ previewItems.length }}
+            </div>
           </div>
           <div
             class="mt-3 rounded-xl bg-gray-900/70 border border-white/10 p-2.5 flex flex-wrap items-center gap-2"
@@ -2513,6 +2606,81 @@ onBeforeUnmount(() => {
 
 .round-icon-btn:hover {
   background: rgba(255, 255, 255, 0.35);
+}
+
+.preview-nav-btn {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  background: rgba(15, 23, 42, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+  transform: translateY(-50%);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.preview-nav-btn:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.78);
+  border-color: rgba(147, 197, 253, 0.65);
+  transform: translateY(-50%) scale(1.04);
+}
+
+.preview-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.preview-nav-prev {
+  left: 0.9rem;
+}
+
+.preview-nav-next {
+  right: 0.9rem;
+}
+
+.preview-position-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 0.85rem;
+  z-index: 3;
+  min-width: 3.8rem;
+  height: 1.75rem;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(15, 23, 42, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .preview-nav-btn {
+    width: 2.6rem;
+    height: 2.6rem;
+  }
+
+  .preview-nav-prev {
+    left: 0.5rem;
+  }
+
+  .preview-nav-next {
+    right: 0.5rem;
+  }
 }
 
 .share-menu-item {

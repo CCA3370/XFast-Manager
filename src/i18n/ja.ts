@@ -1479,6 +1479,8 @@ export default {
     copyPath: 'パスのコピー',
     saveAs: '名前を付けて保存',
     shareReddit: 'シェアする',
+    previousMedia: '前のメディア',
+    nextMedia: '次のメディア',
     autoEnhance: '自動強化',
     autoEnhanceBusy: '強化中...',
     autoEnhanceApplied: 'プレビューに自動補正が適用されました',

@@ -1523,6 +1523,8 @@ export default {
     copyPath: 'Copiar ruta',
     saveAs: 'Guardar como',
     shareReddit: 'Compartir',
+    previousMedia: 'Medio anterior',
+    nextMedia: 'Medio siguiente',
     autoEnhance: 'Mejora automática',
     autoEnhanceBusy: 'Mejorando...',
     autoEnhanceApplied: 'Mejora automática aplicada a la vista previa',

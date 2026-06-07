@@ -1509,6 +1509,8 @@ export default {
     copyPath: 'Copiar caminho',
     saveAs: 'Salvar como',
     shareReddit: 'Compartilhar',
+    previousMedia: 'Mídia anterior',
+    nextMedia: 'Próxima mídia',
     autoEnhance: 'Aprimoramento automático',
     autoEnhanceBusy: 'Aprimorando...',
     autoEnhanceApplied: 'Aprimoramento automático aplicado à visualização',

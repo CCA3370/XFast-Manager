@@ -1403,6 +1403,8 @@ export default {
     copyPath: '复制路径',
     saveAs: '另存为',
     shareReddit: '分享到 Reddit',
+    previousMedia: '上一个媒体',
+    nextMedia: '下一个媒体',
     autoEnhance: '自动增强',
     autoEnhanceBusy: '增强中...',
     autoEnhanceApplied: '自动增强已应用到预览',

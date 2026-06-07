@@ -1475,6 +1475,8 @@ export default {
     copyPath: 'Copy Path',
     saveAs: 'Save As',
     shareReddit: 'Share',
+    previousMedia: 'Previous media',
+    nextMedia: 'Next media',
     autoEnhance: 'Auto Enhance',
     autoEnhanceBusy: 'Enhancing...',
     autoEnhanceApplied: 'Auto enhance applied to preview',

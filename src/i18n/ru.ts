@@ -1501,6 +1501,8 @@ export default {
     copyPath: 'Копировать путь',
     saveAs: 'Сохранить как',
     shareReddit: 'Поделиться',
+    previousMedia: 'Предыдущий файл',
+    nextMedia: 'Следующий файл',
     autoEnhance: 'Автоулучшение',
     autoEnhanceBusy: 'Улучшение...',
     autoEnhanceApplied: 'Автоулучшение применено к предпросмотру',

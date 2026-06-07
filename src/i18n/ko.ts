@@ -1464,6 +1464,8 @@ export default {
     copyPath: '경로 복사',
     saveAs: '다른 이름으로 저장',
     shareReddit: '공유',
+    previousMedia: '이전 미디어',
+    nextMedia: '다음 미디어',
     autoEnhance: '자동 보정',
     autoEnhanceBusy: '보정 중...',
     autoEnhanceApplied: '미리보기에 자동 보정이 적용되었습니다',

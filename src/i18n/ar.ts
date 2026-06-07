@@ -1453,6 +1453,8 @@ export default {
     copyPath: 'نسخ المسار',
     saveAs: 'حفظ باسم',
     shareReddit: 'مشاركة',
+    previousMedia: 'الوسائط السابقة',
+    nextMedia: 'الوسائط التالية',
     autoEnhance: 'تحسين تلقائي',
     autoEnhanceBusy: 'جارٍ التحسين...',
     autoEnhanceApplied: 'تم تطبيق التحسين التلقائي على المعاينة',

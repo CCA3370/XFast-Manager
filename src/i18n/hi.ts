@@ -1482,6 +1482,8 @@ export default {
     copyPath: 'पथ कॉपी करें',
     saveAs: 'इस रूप में सहेजें',
     shareReddit: 'साझा करें',
+    previousMedia: 'पिछला मीडिया',
+    nextMedia: 'अगला मीडिया',
     autoEnhance: 'स्वतः बेहतर करें',
     autoEnhanceBusy: 'बेहतर किया जा रहा है...',
     autoEnhanceApplied: 'पूर्वावलोकन पर स्वतः बेहतरी लागू की गई',
