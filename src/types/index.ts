@@ -860,3 +860,50 @@ export interface GatewayReleaseContext {
   matchedReleaseDate: string | null
   comparisonAvailable: boolean
 }
+
+// ============================================================================
+// Doctor — diagnostic reports (mirrors src-tauri/src/analysis/doctor.rs)
+// ============================================================================
+
+export interface DetectedInjector {
+  id: string
+  evidence: string
+}
+
+export interface CompetingOrganizer {
+  id: string
+  evidence: string
+}
+
+export interface DoctorEnvironmentReport {
+  freeBytes: number
+  totalBytes: number
+  inProgramFiles: boolean
+  isSteamInstall: boolean
+  missingCoreDirs: string[]
+  readonlyCount: number
+  readonlyScanCapped: boolean
+  injectors: DetectedInjector[]
+  competingOrganizers: CompetingOrganizer[]
+}
+
+export type NavdataStatus = 'expired' | 'expiring_soon' | 'ok' | 'unknown'
+
+export interface NavdataCycleReport {
+  folderName: string
+  providerName: string
+  cycle: string | null
+  airac: string | null
+  effectiveDate: string | null
+  expiryDate: string | null
+  daysRemaining: number | null
+  status: NavdataStatus
+  source: string
+}
+
+export interface DoctorNavdataReport {
+  cycles: NavdataCycleReport[]
+  customDataExists: boolean
+  cifpPresent: boolean
+  earthDatMissing: string[]
+}

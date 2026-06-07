@@ -98,6 +98,10 @@ mod activity;
 #[path = "analysis/disk_usage.rs"]
 mod disk_usage;
 
+// Doctor — aggregated health diagnostics
+#[path = "analysis/doctor.rs"]
+mod doctor;
+
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::ErrorKind;
@@ -4063,6 +4067,9 @@ pub fn run() {
             reset_output_cleanup_items_to_embedded,
             clean_output_items,
             submit_unknown_output_cleanup_item,
+            // Doctor diagnostics
+            doctor::doctor_scan_environment,
+            doctor::doctor_navdata_status,
             // CSL management commands
             csl_index::csl_fetch_package_descriptions,
             csl_index::csl_scan_packages,
