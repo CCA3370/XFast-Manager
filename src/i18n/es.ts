@@ -2050,240 +2050,258 @@ export default {
     },
     xplaneRunning: 'X-Plane está en ejecución. Ciérralo antes de aplicar soluciones.',
     checks: {
-      'integrity.path_invalid': {
-        title: 'Ruta de X-Plane no válida',
-        description: 'La ruta de instalación de X-Plane no es válida.',
-        suggestion: 'Ve a Ajustes y configura una ruta de X-Plane válida.',
+      integrity: {
+        path_invalid: {
+          title: 'Ruta de X-Plane no válida',
+          description: 'La ruta de instalación de X-Plane no es válida.',
+          suggestion: 'Ve a Ajustes y configura una ruta de X-Plane válida.',
+        },
+        xplane_running: {
+          title: 'X-Plane en ejecución',
+          description: 'X-Plane está en ejecución actualmente. Algunas soluciones están deshabilitadas.',
+          suggestion: 'Cierra X-Plane para desbloquear todas las funciones.',
+        },
+        missing_core_dirs: {
+          title: 'Faltan directorios esenciales',
+          description: 'Faltan directorios críticos de X-Plane.',
+          suggestion: 'Tu instalación parece dañada. Reinstala X-Plane o verifica los archivos del juego.',
+        },
+        program_files: {
+          title: 'Instalado en Program Files',
+          description: 'X-Plane está en Program Files (se aplican restricciones de UAC).',
+          suggestion: 'El UAC puede bloquear instalaciones. Considera mover X-Plane fuera de Program Files.',
+        },
+        readonly_files: {
+          title: 'Archivos de solo lectura detectados',
+          description: '{count} archivos de addons son de solo lectura y bloquean las actualizaciones.',
+          suggestion: 'Quita el atributo de solo lectura o revisa los bloqueos del antivirus.',
+        },
+        recent_failures: {
+          title: 'Fallos de instalación recientes',
+          description: '{count} instalaciones o actualizaciones recientes han fallado.',
+          suggestion: 'Revisa el registro de actividad para identificar qué salió mal.',
+        },
       },
-      'integrity.xplane_running': {
-        title: 'X-Plane en ejecución',
-        description: 'X-Plane está en ejecución actualmente. Algunas soluciones están deshabilitadas.',
-        suggestion: 'Cierra X-Plane para desbloquear todas las funciones.',
+      crashes: {
+        last_session_crashed: {
+          title: 'La última sesión se cerró inesperadamente',
+          description: 'X-Plane se cerró de forma inesperada. Detalles del cierre desde Log.txt:',
+          suggestion: 'Causas comunes: controladores de GPU, plugins, memoria o escenarios dañados.',
+        },
       },
-      'integrity.missing_core_dirs': {
-        title: 'Faltan directorios esenciales',
-        description: 'Faltan directorios críticos de X-Plane.',
-        suggestion: 'Tu instalación parece dañada. Reinstala X-Plane o verifica los archivos del juego.',
+      crash_cause: {
+        plugin_crash: {
+          title: 'Cierre por plugin',
+          description: 'Un plugin provocó el cierre ({score}% de confianza). Módulo: {module}',
+          suggestion: 'Actualiza o desactiva el plugin señalado. Las versiones beta de X-Plane suelen romper plugins.',
+        },
+        gpu_driver_crash: {
+          title: 'Cierre por controlador de GPU',
+          description: 'El controlador de la GPU provocó el cierre ({score}% de confianza).',
+          suggestion: 'Actualiza el controlador de tu GPU. Quita overclocks e inyectores gráficos.',
+        },
+        memory_exhaustion: {
+          title: 'Cierre por falta de memoria',
+          description: 'El agotamiento de memoria provocó el cierre ({score}% de confianza).',
+          suggestion: 'Baja la calidad de texturas, reduce los reflejos o desactiva ortofotos pesadas.',
+        },
       },
-      'integrity.program_files': {
-        title: 'Instalado en Program Files',
-        description: 'X-Plane está en Program Files (se aplican restricciones de UAC).',
-        suggestion: 'El UAC puede bloquear instalaciones. Considera mover X-Plane fuera de Program Files.',
+      log: {
+        vulkan_device_error: {
+          title: 'Error de dispositivo Vulkan',
+          description: 'Error de pérdida de dispositivo Vulkan en la línea {line}.',
+          suggestion: 'Suele deberse a overclocks de GPU, controladores desactualizados o ReShade.',
+        },
+        out_of_memory: {
+          title: 'Sin memoria',
+          description: 'Condición de falta de memoria en la línea {line}.',
+          suggestion: 'Baja la calidad de texturas, reduce el detalle o recorta los escenarios ortofoto.',
+        },
+        heavy_memory_pressure: {
+          title: 'Presión de memoria elevada',
+          description: 'Presión de memoria grave en la línea {line}.',
+          suggestion: 'La presión de memoria precede a los cierres. Baja la calidad de texturas.',
+        },
+        severe_texture_downscale: {
+          title: 'Reducción severa de texturas',
+          description: 'Reducción agresiva de texturas por límites de VRAM (línea {line}).',
+          suggestion: 'Baja un nivel la calidad de texturas para evitar reducciones de emergencia.',
+        },
+        runloop_backlog: {
+          title: 'Atasco en el bucle de ejecución',
+          description: 'Detectados bloqueos largos de fotograma en la línea {line} (causan tirones).',
+          suggestion: 'Revisa los plugins pesados o baja los ajustes gráficos.',
+        },
+        plugin_error: {
+          title: 'Errores de plugin',
+          description: 'Los plugins informaron errores en la línea {line}.',
+          suggestion: 'Actualiza el plugin o repórtalo a su desarrollador.',
+        },
+        plugin_assert: {
+          title: 'Fallo de aserción en un plugin',
+          description: 'Un plugin alcanzó una aserción fatal en la línea {line}.',
+          suggestion: 'Error grave del plugin. Desactívalo y repórtalo al desarrollador.',
+        },
+        plugin_manager_error: {
+          title: 'Error del gestor de plugins',
+          description: 'Error interno del gestor de plugins en la línea {line}.',
+          suggestion: 'Plugin o instalación de X-Plane dañados. Elimina los plugins recientes.',
+        },
+        duplicate_plugin: {
+          title: 'Plugin duplicado cargado',
+          description: 'Mismo plugin cargado desde varias ubicaciones (línea {line}).',
+          suggestion: 'Conserva la versión más reciente (Resources/plugins) y elimina los duplicados.',
+        },
+        missing_plugin_support: {
+          title: 'Falta archivo de soporte del plugin',
+          description: 'Al plugin le falta un archivo de soporte necesario (línea {line}).',
+          suggestion: 'Reinstala el plugin.',
+        },
+        deprecated_dataref: {
+          title: 'Uso de datarefs obsoletos',
+          description: 'El plugin usa datarefs obsoletos (línea {line}).',
+          suggestion: 'Informativo. Aún funciona, pero podría dejar de hacerlo en versiones futuras.',
+        },
+        dsf_error: {
+          title: 'Errores DSF de escenario',
+          description: 'Errores en archivos de terreno (DSF) en la línea {line}.',
+          suggestion: 'El paquete de escenario tiene archivos DSF dañados. Desactívalo o reinstálalo.',
+        },
+        scenery_error: {
+          title: 'Errores de carga de escenario',
+          description: 'Errores de carga de escenario en la línea {line}.',
+          suggestion: 'El escenario afectado puede estar dañado o faltarle dependencias.',
+        },
+        third_party_blocked: {
+          title: 'Inyector de terceros bloqueado',
+          description: 'X-Plane bloqueó un inyector gráfico (línea {line}).',
+          suggestion: 'Elimina las DLL de ReShade (dxgi.dll, d3d11.dll, vulkan-1.dll) y ReShade.ini.',
+        },
+        other_high: {
+          title: 'Otros errores de alta gravedad',
+          description: '{count} problemas adicionales: {categories}',
+          suggestion: 'Revisa Log.txt para más detalles.',
+        },
       },
-      'integrity.readonly_files': {
-        title: 'Archivos de solo lectura detectados',
-        description: '{count} archivos de addons son de solo lectura y bloquean las actualizaciones.',
-        suggestion: 'Quita el atributo de solo lectura o revisa los bloqueos del antivirus.',
+      environment: {
+        beta_build: {
+          title: 'Ejecutando X-Plane beta',
+          description: 'X-Plane {version} es una compilación beta o de desarrollo.',
+          suggestion: 'Las compilaciones beta pueden romper plugins. Cambia a la estable si tienes cierres.',
+        },
+        intel_gpu: {
+          title: 'GPU Intel no compatible',
+          description: 'Tu GPU ({gpu}) no es compatible con X-Plane 12.',
+          suggestion: 'X-Plane 12 requiere NVIDIA/AMD o Intel Arc. Las Intel integradas no son compatibles.',
+        },
+        injectors: {
+          title: 'Inyectores gráficos detectados',
+          description: 'Hay presentes inyectores como ReShade o similares.',
+          suggestion: 'X-Plane los bloquea. Elimina manualmente los archivos detectados.',
+        },
       },
-      'integrity.recent_failures': {
-        title: 'Fallos de instalación recientes',
-        description: '{count} instalaciones o actualizaciones recientes han fallado.',
-        suggestion: 'Revisa el registro de actividad para identificar qué salió mal.',
+      scenery: {
+        competing_organizer: {
+          title: 'Gestor de escenarios en conflicto',
+          description: 'Hay instalado xOrganizer u otro gestor.',
+          suggestion: 'Varios gestores pueden entrar en conflicto. Elige uno y desactiva el otro.',
+        },
+        needs_sort: {
+          title: 'El orden de carga de escenarios necesita sincronización',
+          description: 'scenery_packs.ini está desincronizado.',
+          suggestion: 'Haz clic en Aplicar solución para reordenar los paquetes de escenario.',
+          fix: 'Ordenar escenarios',
+        },
+        global_airports_disabled: {
+          title: 'Global Airports desactivado',
+          description: 'Global Airports por defecto desactivado. El mundo aparecerá vacío.',
+          suggestion: 'Vuelve a activar Global Airports de inmediato.',
+          fix: 'Activar Global Airports',
+        },
+        missing_libraries: {
+          title: 'Faltan bibliotecas de escenario',
+          description: 'A {count} paquetes les faltan bibliotecas necesarias.',
+          suggestion: 'Los objetos no se renderizarán. Instala las bibliotecas que faltan.',
+        },
+        duplicate_tiles: {
+          title: 'Mosaicos de escenario superpuestos',
+          description: '{count} mosaicos cubiertos por varios paquetes.',
+          suggestion: 'Los escenarios superpuestos desperdician VRAM. Desactiva los paquetes redundantes.',
+        },
+        duplicate_airports: {
+          title: 'Definiciones de aeropuerto duplicadas',
+          description: '{count} aeropuertos definidos en varios paquetes.',
+          suggestion: 'Suele ser intencionado (personalizado frente al por defecto).',
+        },
+        flatten_drift: {
+          title: 'Desfase de aplanado de aeropuertos',
+          description: '{count} ajustes de aplanado necesitan volver a aplicarse.',
+          suggestion: 'Vuelve a aplicarlos para regenerar los archivos apt.dat.',
+          fix: 'Aplicar todos los desfasados',
+        },
       },
-      'crashes.last_session_crashed': {
-        title: 'La última sesión se cerró inesperadamente',
-        description: 'X-Plane se cerró de forma inesperada. Detalles del cierre desde Log.txt:',
-        suggestion: 'Causas comunes: controladores de GPU, plugins, memoria o escenarios dañados.',
+      navdata: {
+        no_custom_data: {
+          title: 'Sin navdata de terceros',
+          description: 'No hay navdata de terceros instalado (falta Custom Data).',
+          suggestion: 'X-Plane usa el por defecto (a menudo desactualizado). Instala el AIRAC de Navigraph.',
+        },
+        expired: {
+          title: 'Ciclo de navdata caducado',
+          description: 'El ciclo {cycle} de {provider} caducó el {expiry} (hace {days} días).',
+          suggestion: 'Un ciclo caducado tiene waypoints desactualizados. Actualiza la suscripción.',
+        },
+        expiring_soon: {
+          title: 'Navdata a punto de caducar',
+          description: 'El ciclo {cycle} de {provider} caduca el {expiry} (en {days} días).',
+          suggestion: 'Renueva la suscripción antes de que caduque.',
+        },
+        cifp_missing: {
+          title: 'Falta la carpeta CIFP',
+          description: 'La carpeta CIFP (procedimientos) falta o está vacía.',
+          suggestion: 'Sin CIFP, las SID/STAR no estarán disponibles. Reinstala el navdata.',
+        },
+        earth_dat_missing: {
+          title: 'Archivos earth_*.dat incompletos',
+          description: 'Faltan algunos archivos esenciales de navdata en Custom Data.',
+          suggestion: 'La instalación de navdata está incompleta. Reinstala el paquete completo.',
+        },
+        cycle_mismatch: {
+          title: 'Ciclos AIRAC no coincidentes',
+          description: 'Varias carpetas tienen ciclos distintos: {cycles}',
+          suggestion: 'Suele ser inofensivo, pero verifica que todos estén actualizados si surgen problemas.',
+        },
       },
-      'crash_cause.plugin_crash': {
-        title: 'Cierre por plugin',
-        description: 'Un plugin provocó el cierre ({score}% de confianza). Módulo: {module}',
-        suggestion: 'Actualiza o desactiva el plugin señalado. Las versiones beta de X-Plane suelen romper plugins.',
+      disk: {
+        low_space: {
+          title: 'Poco espacio en disco',
+          description: 'Solo quedan {free} libres en el volumen de X-Plane.',
+          suggestion: 'Puede causar fallos de instalación. Libera espacio o mueve X-Plane.',
+        },
+        cleanable_caches: {
+          title: 'Cachés de salida limpiables',
+          description: 'Se pueden limpiar {size} de cachés de shaders y archivos temporales.',
+          suggestion: 'Abre la página de Limpieza de salida para revisarlos.',
+          fix: 'Abrir limpieza',
+        },
       },
-      'crash_cause.gpu_driver_crash': {
-        title: 'Cierre por controlador de GPU',
-        description: 'El controlador de la GPU provocó el cierre ({score}% de confianza).',
-        suggestion: 'Actualiza el controlador de tu GPU. Quita overclocks e inyectores gráficos.',
-      },
-      'crash_cause.memory_exhaustion': {
-        title: 'Cierre por falta de memoria',
-        description: 'El agotamiento de memoria provocó el cierre ({score}% de confianza).',
-        suggestion: 'Baja la calidad de texturas, reduce los reflejos o desactiva ortofotos pesadas.',
-      },
-      'log.vulkan_device_error': {
-        title: 'Error de dispositivo Vulkan',
-        description: 'Error de pérdida de dispositivo Vulkan en la línea {line}.',
-        suggestion: 'Suele deberse a overclocks de GPU, controladores desactualizados o ReShade.',
-      },
-      'log.out_of_memory': {
-        title: 'Sin memoria',
-        description: 'Condición de falta de memoria en la línea {line}.',
-        suggestion: 'Baja la calidad de texturas, reduce el detalle o recorta los escenarios ortofoto.',
-      },
-      'log.heavy_memory_pressure': {
-        title: 'Presión de memoria elevada',
-        description: 'Presión de memoria grave en la línea {line}.',
-        suggestion: 'La presión de memoria precede a los cierres. Baja la calidad de texturas.',
-      },
-      'log.severe_texture_downscale': {
-        title: 'Reducción severa de texturas',
-        description: 'Reducción agresiva de texturas por límites de VRAM (línea {line}).',
-        suggestion: 'Baja un nivel la calidad de texturas para evitar reducciones de emergencia.',
-      },
-      'log.runloop_backlog': {
-        title: 'Atasco en el bucle de ejecución',
-        description: 'Detectados bloqueos largos de fotograma en la línea {line} (causan tirones).',
-        suggestion: 'Revisa los plugins pesados o baja los ajustes gráficos.',
-      },
-      'log.plugin_error': {
-        title: 'Errores de plugin',
-        description: 'Los plugins informaron errores en la línea {line}.',
-        suggestion: 'Actualiza el plugin o repórtalo a su desarrollador.',
-      },
-      'log.plugin_assert': {
-        title: 'Fallo de aserción en un plugin',
-        description: 'Un plugin alcanzó una aserción fatal en la línea {line}.',
-        suggestion: 'Error grave del plugin. Desactívalo y repórtalo al desarrollador.',
-      },
-      'log.plugin_manager_error': {
-        title: 'Error del gestor de plugins',
-        description: 'Error interno del gestor de plugins en la línea {line}.',
-        suggestion: 'Plugin o instalación de X-Plane dañados. Elimina los plugins recientes.',
-      },
-      'log.duplicate_plugin': {
-        title: 'Plugin duplicado cargado',
-        description: 'Mismo plugin cargado desde varias ubicaciones (línea {line}).',
-        suggestion: 'Conserva la versión más reciente (Resources/plugins) y elimina los duplicados.',
-      },
-      'log.missing_plugin_support': {
-        title: 'Falta archivo de soporte del plugin',
-        description: 'Al plugin le falta un archivo de soporte necesario (línea {line}).',
-        suggestion: 'Reinstala el plugin.',
-      },
-      'log.deprecated_dataref': {
-        title: 'Uso de datarefs obsoletos',
-        description: 'El plugin usa datarefs obsoletos (línea {line}).',
-        suggestion: 'Informativo. Aún funciona, pero podría dejar de hacerlo en versiones futuras.',
-      },
-      'log.dsf_error': {
-        title: 'Errores DSF de escenario',
-        description: 'Errores en archivos de terreno (DSF) en la línea {line}.',
-        suggestion: 'El paquete de escenario tiene archivos DSF dañados. Desactívalo o reinstálalo.',
-      },
-      'log.scenery_error': {
-        title: 'Errores de carga de escenario',
-        description: 'Errores de carga de escenario en la línea {line}.',
-        suggestion: 'El escenario afectado puede estar dañado o faltarle dependencias.',
-      },
-      'log.third_party_blocked': {
-        title: 'Inyector de terceros bloqueado',
-        description: 'X-Plane bloqueó un inyector gráfico (línea {line}).',
-        suggestion: 'Elimina las DLL de ReShade (dxgi.dll, d3d11.dll, vulkan-1.dll) y ReShade.ini.',
-      },
-      'log.other_high': {
-        title: 'Otros errores de alta gravedad',
-        description: '{count} problemas adicionales: {categories}',
-        suggestion: 'Revisa Log.txt para más detalles.',
-      },
-      'environment.beta_build': {
-        title: 'Ejecutando X-Plane beta',
-        description: 'X-Plane {version} es una compilación beta o de desarrollo.',
-        suggestion: 'Las compilaciones beta pueden romper plugins. Cambia a la estable si tienes cierres.',
-      },
-      'environment.intel_gpu': {
-        title: 'GPU Intel no compatible',
-        description: 'Tu GPU ({gpu}) no es compatible con X-Plane 12.',
-        suggestion: 'X-Plane 12 requiere NVIDIA/AMD o Intel Arc. Las Intel integradas no son compatibles.',
-      },
-      'environment.injectors': {
-        title: 'Inyectores gráficos detectados',
-        description: 'Hay presentes inyectores como ReShade o similares.',
-        suggestion: 'X-Plane los bloquea. Elimina manualmente los archivos detectados.',
-      },
-      'scenery.competing_organizer': {
-        title: 'Gestor de escenarios en conflicto',
-        description: 'Hay instalado xOrganizer u otro gestor.',
-        suggestion: 'Varios gestores pueden entrar en conflicto. Elige uno y desactiva el otro.',
-      },
-      'scenery.needs_sort': {
-        title: 'El orden de carga de escenarios necesita sincronización',
-        description: 'scenery_packs.ini está desincronizado.',
-        suggestion: 'Haz clic en Aplicar solución para reordenar los paquetes de escenario.',
-        fix: 'Ordenar escenarios',
-      },
-      'scenery.global_airports_disabled': {
-        title: 'Global Airports desactivado',
-        description: 'Global Airports por defecto desactivado. El mundo aparecerá vacío.',
-        suggestion: 'Vuelve a activar Global Airports de inmediato.',
-        fix: 'Activar Global Airports',
-      },
-      'scenery.missing_libraries': {
-        title: 'Faltan bibliotecas de escenario',
-        description: 'A {count} paquetes les faltan bibliotecas necesarias.',
-        suggestion: 'Los objetos no se renderizarán. Instala las bibliotecas que faltan.',
-      },
-      'scenery.duplicate_tiles': {
-        title: 'Mosaicos de escenario superpuestos',
-        description: '{count} mosaicos cubiertos por varios paquetes.',
-        suggestion: 'Los escenarios superpuestos desperdician VRAM. Desactiva los paquetes redundantes.',
-      },
-      'scenery.duplicate_airports': {
-        title: 'Definiciones de aeropuerto duplicadas',
-        description: '{count} aeropuertos definidos en varios paquetes.',
-        suggestion: 'Suele ser intencionado (personalizado frente al por defecto).',
-      },
-      'scenery.flatten_drift': {
-        title: 'Desfase de aplanado de aeropuertos',
-        description: '{count} ajustes de aplanado necesitan volver a aplicarse.',
-        suggestion: 'Vuelve a aplicarlos para regenerar los archivos apt.dat.',
-        fix: 'Aplicar todos los desfasados',
-      },
-      'navdata.no_custom_data': {
-        title: 'Sin navdata de terceros',
-        description: 'No hay navdata de terceros instalado (falta Custom Data).',
-        suggestion: 'X-Plane usa el por defecto (a menudo desactualizado). Instala el AIRAC de Navigraph.',
-      },
-      'navdata.expired': {
-        title: 'Ciclo de navdata caducado',
-        description: 'El ciclo {cycle} de {provider} caducó el {expiry} (hace {days} días).',
-        suggestion: 'Un ciclo caducado tiene waypoints desactualizados. Actualiza la suscripción.',
-      },
-      'navdata.expiring_soon': {
-        title: 'Navdata a punto de caducar',
-        description: 'El ciclo {cycle} de {provider} caduca el {expiry} (en {days} días).',
-        suggestion: 'Renueva la suscripción antes de que caduque.',
-      },
-      'navdata.cifp_missing': {
-        title: 'Falta la carpeta CIFP',
-        description: 'La carpeta CIFP (procedimientos) falta o está vacía.',
-        suggestion: 'Sin CIFP, las SID/STAR no estarán disponibles. Reinstala el navdata.',
-      },
-      'navdata.earth_dat_missing': {
-        title: 'Archivos earth_*.dat incompletos',
-        description: 'Faltan algunos archivos esenciales de navdata en Custom Data.',
-        suggestion: 'La instalación de navdata está incompleta. Reinstala el paquete completo.',
-      },
-      'navdata.cycle_mismatch': {
-        title: 'Ciclos AIRAC no coincidentes',
-        description: 'Varias carpetas tienen ciclos distintos: {cycles}',
-        suggestion: 'Suele ser inofensivo, pero verifica que todos estén actualizados si surgen problemas.',
-      },
-      'disk.low_space': {
-        title: 'Poco espacio en disco',
-        description: 'Solo quedan {free} libres en el volumen de X-Plane.',
-        suggestion: 'Puede causar fallos de instalación. Libera espacio o mueve X-Plane.',
-      },
-      'disk.cleanable_caches': {
-        title: 'Cachés de salida limpiables',
-        description: 'Se pueden limpiar {size} de cachés de shaders y archivos temporales.',
-        suggestion: 'Abre la página de Limpieza de salida para revisarlos.',
-        fix: 'Abrir limpieza',
-      },
-      'updates.addons': {
-        title: 'Actualizaciones de addons disponibles',
-        description: '{count} aviones/plugins/escenarios tienen actualizaciones.',
-        suggestion: 'Ve a la pestaña de Gestión para revisarlas e instalarlas.',
-      },
-      'updates.gateway': {
-        title: 'Actualizaciones de aeropuertos Gateway',
-        description: '{count} aeropuertos de Gateway tienen escenario más reciente.',
-        suggestion: 'Visita la pestaña Gateway para actualizar.',
-      },
-      'updates.app': {
-        title: 'Actualización de XFast Manager disponible',
-        description: 'La versión {version} está disponible.',
-        suggestion: 'Actualiza XFast Manager para obtener las últimas funciones y correcciones.',
-        fix: 'Actualizar ahora',
+      updates: {
+        addons: {
+          title: 'Actualizaciones de addons disponibles',
+          description: '{count} aviones/plugins/escenarios tienen actualizaciones.',
+          suggestion: 'Ve a la pestaña de Gestión para revisarlas e instalarlas.',
+        },
+        gateway: {
+          title: 'Actualizaciones de aeropuertos Gateway',
+          description: '{count} aeropuertos de Gateway tienen escenario más reciente.',
+          suggestion: 'Visita la pestaña Gateway para actualizar.',
+        },
+        app: {
+          title: 'Actualización de XFast Manager disponible',
+          description: 'La versión {version} está disponible.',
+          suggestion: 'Actualiza XFast Manager para obtener las últimas funciones y correcciones.',
+          fix: 'Actualizar ahora',
+        },
       },
     },
   },

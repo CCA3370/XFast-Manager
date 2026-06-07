@@ -1971,240 +1971,258 @@ export default {
     },
     xplaneRunning: 'برنامج X-Plane قيد التشغيل. أغلقه قبل تطبيق الإصلاحات.',
     checks: {
-      'integrity.path_invalid': {
-        title: 'مسار X-Plane غير صالح',
-        description: 'مسار تثبيت X-Plane غير صالح.',
-        suggestion: 'انتقل إلى الإعدادات واضبط مسار X-Plane صالحًا.',
+      integrity: {
+        path_invalid: {
+          title: 'مسار X-Plane غير صالح',
+          description: 'مسار تثبيت X-Plane غير صالح.',
+          suggestion: 'انتقل إلى الإعدادات واضبط مسار X-Plane صالحًا.',
+        },
+        xplane_running: {
+          title: 'برنامج X-Plane قيد التشغيل',
+          description: 'برنامج X-Plane قيد التشغيل حاليًا. بعض الإصلاحات معطّلة.',
+          suggestion: 'أغلق X-Plane لإتاحة جميع الإمكانيات.',
+        },
+        missing_core_dirs: {
+          title: 'مجلدات أساسية مفقودة',
+          description: 'مجلدات X-Plane الأساسية مفقودة.',
+          suggestion: 'يبدو أن تثبيتك تالف. أعد تثبيت X-Plane أو تحقق من ملفات اللعبة.',
+        },
+        program_files: {
+          title: 'مثبَّت في Program Files',
+          description: 'برنامج X-Plane موجود ضمن Program Files (تنطبق قيود UAC).',
+          suggestion: 'قد يحظر UAC عمليات التثبيت. فكّر في نقل X-Plane خارج Program Files.',
+        },
+        readonly_files: {
+          title: 'تم اكتشاف ملفات للقراءة فقط',
+          description: '{count} من ملفات الإضافات للقراءة فقط، مما يمنع التحديثات.',
+          suggestion: 'أزل سمة القراءة فقط أو تحقق من قيود مكافح الفيروسات.',
+        },
+        recent_failures: {
+          title: 'حالات فشل تثبيت أخيرة',
+          description: 'فشلت {count} من عمليات التثبيت أو التحديث الأخيرة.',
+          suggestion: 'راجع سجل النشاط لتحديد سبب الخلل.',
+        },
       },
-      'integrity.xplane_running': {
-        title: 'برنامج X-Plane قيد التشغيل',
-        description: 'برنامج X-Plane قيد التشغيل حاليًا. بعض الإصلاحات معطّلة.',
-        suggestion: 'أغلق X-Plane لإتاحة جميع الإمكانيات.',
+      crashes: {
+        last_session_crashed: {
+          title: 'تعطّلت الجلسة الأخيرة',
+          description: 'أُغلق X-Plane بشكل غير متوقع. تفاصيل العطل من Log.txt:',
+          suggestion: 'الأسباب الشائعة: تعريفات GPU أو الإضافات أو الذاكرة أو مناظر تالفة.',
+        },
       },
-      'integrity.missing_core_dirs': {
-        title: 'مجلدات أساسية مفقودة',
-        description: 'مجلدات X-Plane الأساسية مفقودة.',
-        suggestion: 'يبدو أن تثبيتك تالف. أعد تثبيت X-Plane أو تحقق من ملفات اللعبة.',
+      crash_cause: {
+        plugin_crash: {
+          title: 'عطل بسبب إضافة',
+          description: 'تسببت إضافة في العطل (بنسبة ثقة {score}٪). الوحدة: {module}',
+          suggestion: 'حدّث الإضافة المتهمة أو عطّلها. غالبًا ما تكسر نسخ X-Plane التجريبية الإضافات.',
+        },
+        gpu_driver_crash: {
+          title: 'عطل بسبب تعريف GPU',
+          description: 'تسبب تعريف GPU في العطل (بنسبة ثقة {score}٪).',
+          suggestion: 'حدّث تعريف GPU. أزل كسر السرعة وحاقنات الرسوميات.',
+        },
+        memory_exhaustion: {
+          title: 'عطل بسبب نفاد الذاكرة',
+          description: 'تسبب نفاد الذاكرة في العطل (بنسبة ثقة {score}٪).',
+          suggestion: 'اخفض جودة القوام، أو قلّل الانعكاسات، أو عطّل المناظر الجوية الثقيلة.',
+        },
       },
-      'integrity.program_files': {
-        title: 'مثبَّت في Program Files',
-        description: 'برنامج X-Plane موجود ضمن Program Files (تنطبق قيود UAC).',
-        suggestion: 'قد يحظر UAC عمليات التثبيت. فكّر في نقل X-Plane خارج Program Files.',
+      log: {
+        vulkan_device_error: {
+          title: 'خطأ في جهاز Vulkan',
+          description: 'خطأ فقدان جهاز Vulkan عند السطر {line}.',
+          suggestion: 'غالبًا ما يحدث بسبب كسر سرعة GPU أو تعريفات قديمة أو ReShade.',
+        },
+        out_of_memory: {
+          title: 'نفاد الذاكرة',
+          description: 'حالة نفاد الذاكرة عند السطر {line}.',
+          suggestion: 'اخفض جودة القوام، أو قلّل التفاصيل، أو قلّص المناظر الجوية.',
+        },
+        heavy_memory_pressure: {
+          title: 'ضغط كبير على الذاكرة',
+          description: 'ضغط شديد على الذاكرة عند السطر {line}.',
+          suggestion: 'ضغط الذاكرة يسبق الأعطال. اخفض جودة القوام.',
+        },
+        severe_texture_downscale: {
+          title: 'تقليل حاد لدقة القوام',
+          description: 'تقليل قوي لدقة القوام بسبب حدود VRAM (السطر {line}).',
+          suggestion: 'اخفض جودة القوام درجة واحدة لمنع التقليل الطارئ.',
+        },
+        runloop_backlog: {
+          title: 'تراكم في حلقة التشغيل',
+          description: 'اكتُشفت حالات تعليق طويلة للإطارات عند السطر {line} (تسبب التقطيع).',
+          suggestion: 'تحقق من الإضافات الثقيلة أو اخفض إعدادات الرسوميات.',
+        },
+        plugin_error: {
+          title: 'أخطاء في الإضافات',
+          description: 'أبلغت الإضافات عن أخطاء عند السطر {line}.',
+          suggestion: 'حدّث الإضافة أو أبلغ مطوّرها.',
+        },
+        plugin_assert: {
+          title: 'فشل تأكيد الإضافة',
+          description: 'واجهت إحدى الإضافات تأكيدًا قاتلاً عند السطر {line}.',
+          suggestion: 'خلل خطير في الإضافة. عطّلها وأبلغ المطوّر.',
+        },
+        plugin_manager_error: {
+          title: 'خطأ في مدير الإضافات',
+          description: 'خطأ داخلي في مدير الإضافات عند السطر {line}.',
+          suggestion: 'إضافة تالفة أو تثبيت X-Plane تالف. أزل الإضافات المضافة مؤخرًا.',
+        },
+        duplicate_plugin: {
+          title: 'تحميل إضافة مكررة',
+          description: 'تم تحميل الإضافة نفسها من مواقع متعددة (السطر {line}).',
+          suggestion: 'احتفظ بأحدث إصدار (Resources/plugins) واحذف المكررات.',
+        },
+        missing_plugin_support: {
+          title: 'ملف دعم الإضافة مفقود',
+          description: 'الإضافة تفتقر إلى ملف دعم مطلوب (السطر {line}).',
+          suggestion: 'أعد تثبيت الإضافة.',
+        },
+        deprecated_dataref: {
+          title: 'استخدام dataref مهمل',
+          description: 'إضافة تستخدم datarefs مهملة (السطر {line}).',
+          suggestion: 'للعلم فقط. لا تزال تعمل لكنها قد تتعطل في الإصدارات المستقبلية.',
+        },
+        dsf_error: {
+          title: 'أخطاء DSF في المناظر',
+          description: 'أخطاء في ملف التضاريس (DSF) عند السطر {line}.',
+          suggestion: 'حزمة المناظر تحتوي على ملفات DSF تالفة. عطّلها أو أعد تثبيتها.',
+        },
+        scenery_error: {
+          title: 'أخطاء تحميل المناظر',
+          description: 'أخطاء في تحميل المناظر عند السطر {line}.',
+          suggestion: 'قد تكون المناظر المتأثرة تالفة أو تنقصها متطلبات.',
+        },
+        third_party_blocked: {
+          title: 'تم حظر حاقن خارجي',
+          description: 'حظر X-Plane أحد حاقنات الرسوميات (السطر {line}).',
+          suggestion: 'أزل ملفات ReShade (dxgi.dll و d3d11.dll و vulkan-1.dll) وملف ReShade.ini.',
+        },
+        other_high: {
+          title: 'أخطاء أخرى عالية الخطورة',
+          description: '{count} مشكلات إضافية: {categories}',
+          suggestion: 'راجع Log.txt للاطلاع على التفاصيل.',
+        },
       },
-      'integrity.readonly_files': {
-        title: 'تم اكتشاف ملفات للقراءة فقط',
-        description: '{count} من ملفات الإضافات للقراءة فقط، مما يمنع التحديثات.',
-        suggestion: 'أزل سمة القراءة فقط أو تحقق من قيود مكافح الفيروسات.',
+      environment: {
+        beta_build: {
+          title: 'تشغيل نسخة تجريبية من X-Plane',
+          description: 'النسخة X-Plane {version} هي بنية تجريبية/تطويرية.',
+          suggestion: 'قد تكسر النسخ التجريبية الإضافات. انتقل إلى النسخة المستقرة إذا واجهت أعطالًا.',
+        },
+        intel_gpu: {
+          title: 'بطاقة Intel GPU غير مدعومة',
+          description: 'بطاقتك ({gpu}) غير مدعومة في X-Plane 12.',
+          suggestion: 'يتطلب X-Plane 12 بطاقة NVIDIA/AMD أو Intel Arc. بطاقات Intel المدمجة غير مدعومة.',
+        },
+        injectors: {
+          title: 'تم اكتشاف حاقنات رسوميات',
+          description: 'يوجد ReShade أو حاقنات مماثلة.',
+          suggestion: 'يحظرها X-Plane. احذف الملفات المكتشفة يدويًا.',
+        },
       },
-      'integrity.recent_failures': {
-        title: 'حالات فشل تثبيت أخيرة',
-        description: 'فشلت {count} من عمليات التثبيت أو التحديث الأخيرة.',
-        suggestion: 'راجع سجل النشاط لتحديد سبب الخلل.',
+      scenery: {
+        competing_organizer: {
+          title: 'مدير مناظر منافس',
+          description: 'تم تثبيت xOrganizer أو مدير آخر.',
+          suggestion: 'قد تتعارض المديرون المتعددون. اختر واحدًا وعطّل الآخر.',
+        },
+        needs_sort: {
+          title: 'ترتيب تحميل المناظر بحاجة إلى مزامنة',
+          description: 'الملف scenery_packs.ini غير متزامن.',
+          suggestion: 'انقر تطبيق الإصلاح لإعادة ترتيب حزم المناظر.',
+          fix: 'ترتيب المناظر',
+        },
+        global_airports_disabled: {
+          title: 'تم تعطيل Global Airports',
+          description: 'تم تعطيل Global Airports الافتراضية. سيكون العالم فارغًا.',
+          suggestion: 'أعد تفعيل Global Airports فورًا.',
+          fix: 'تفعيل Global Airports',
+        },
+        missing_libraries: {
+          title: 'مكتبات مناظر مفقودة',
+          description: '{count} حزم تفتقر إلى المكتبات المطلوبة.',
+          suggestion: 'لن تُعرض الكائنات. ثبّت المكتبات المفقودة.',
+        },
+        duplicate_tiles: {
+          title: 'بلاطات مناظر متداخلة',
+          description: '{count} بلاطات تغطيها حزم متعددة.',
+          suggestion: 'المناظر المتداخلة تهدر VRAM. عطّل الحزم الزائدة.',
+        },
+        duplicate_airports: {
+          title: 'تعريفات مطارات مكررة',
+          description: '{count} مطارات معرّفة في حزم متعددة.',
+          suggestion: 'عادةً ما يكون ذلك مقصودًا (مخصص مقابل افتراضي).',
+        },
+        flatten_drift: {
+          title: 'انحراف تسوية المطار',
+          description: '{count} من تجاوزات التسوية بحاجة إلى إعادة تطبيق.',
+          suggestion: 'أعد تطبيقها لإعادة توليد ملفات apt.dat.',
+          fix: 'تطبيق كل المنحرفة',
+        },
       },
-      'crashes.last_session_crashed': {
-        title: 'تعطّلت الجلسة الأخيرة',
-        description: 'أُغلق X-Plane بشكل غير متوقع. تفاصيل العطل من Log.txt:',
-        suggestion: 'الأسباب الشائعة: تعريفات GPU أو الإضافات أو الذاكرة أو مناظر تالفة.',
+      navdata: {
+        no_custom_data: {
+          title: 'لا توجد بيانات ملاحة خارجية',
+          description: 'لم تُثبَّت بيانات ملاحة خارجية (مجلد Custom Data مفقود).',
+          suggestion: 'يستخدم X-Plane البيانات الافتراضية (غالبًا قديمة). ثبّت AIRAC من Navigraph.',
+        },
+        expired: {
+          title: 'انتهت دورة بيانات الملاحة',
+          description: 'انتهت دورة {provider} رقم {cycle} في {expiry} (منذ {days} يومًا).',
+          suggestion: 'الدورة المنتهية تحتوي على نقاط طريق قديمة. حدّث اشتراكك.',
+        },
+        expiring_soon: {
+          title: 'بيانات الملاحة على وشك الانتهاء',
+          description: 'تنتهي دورة {provider} رقم {cycle} في {expiry} (خلال {days} يومًا).',
+          suggestion: 'جدّد اشتراكك قبل انتهاء الصلاحية.',
+        },
+        cifp_missing: {
+          title: 'مجلد CIFP مفقود',
+          description: 'مجلد CIFP (الإجراءات) مفقود أو فارغ.',
+          suggestion: 'بدون CIFP لن تتوفر إجراءات SID/STAR. أعد تثبيت بيانات الملاحة.',
+        },
+        earth_dat_missing: {
+          title: 'ملفات earth_*.dat غير مكتملة',
+          description: 'بعض ملفات بيانات الملاحة الأساسية مفقودة من Custom Data.',
+          suggestion: 'تثبيت بيانات الملاحة غير مكتمل. أعد تثبيت الحزمة كاملة.',
+        },
+        cycle_mismatch: {
+          title: 'دورات AIRAC غير متطابقة',
+          description: 'مجلدات متعددة تحتوي على دورات مختلفة: {cycles}',
+          suggestion: 'عادةً غير ضار، لكن تحقق من تحديث الجميع إذا ظهرت مشكلات.',
+        },
       },
-      'crash_cause.plugin_crash': {
-        title: 'عطل بسبب إضافة',
-        description: 'تسببت إضافة في العطل (بنسبة ثقة {score}٪). الوحدة: {module}',
-        suggestion: 'حدّث الإضافة المتهمة أو عطّلها. غالبًا ما تكسر نسخ X-Plane التجريبية الإضافات.',
+      disk: {
+        low_space: {
+          title: 'مساحة قرص منخفضة',
+          description: 'لا يتوفر سوى {free} على قرص X-Plane.',
+          suggestion: 'قد يسبب فشل التثبيت. حرّر مساحة أو انقل X-Plane.',
+        },
+        cleanable_caches: {
+          title: 'ذواكر إخراج قابلة للتنظيف',
+          description: 'يمكن تنظيف {size} من ذواكر التظليل والملفات المؤقتة.',
+          suggestion: 'افتح صفحة تنظيف الإخراج للمراجعة.',
+          fix: 'فتح التنظيف',
+        },
       },
-      'crash_cause.gpu_driver_crash': {
-        title: 'عطل بسبب تعريف GPU',
-        description: 'تسبب تعريف GPU في العطل (بنسبة ثقة {score}٪).',
-        suggestion: 'حدّث تعريف GPU. أزل كسر السرعة وحاقنات الرسوميات.',
-      },
-      'crash_cause.memory_exhaustion': {
-        title: 'عطل بسبب نفاد الذاكرة',
-        description: 'تسبب نفاد الذاكرة في العطل (بنسبة ثقة {score}٪).',
-        suggestion: 'اخفض جودة القوام، أو قلّل الانعكاسات، أو عطّل المناظر الجوية الثقيلة.',
-      },
-      'log.vulkan_device_error': {
-        title: 'خطأ في جهاز Vulkan',
-        description: 'خطأ فقدان جهاز Vulkan عند السطر {line}.',
-        suggestion: 'غالبًا ما يحدث بسبب كسر سرعة GPU أو تعريفات قديمة أو ReShade.',
-      },
-      'log.out_of_memory': {
-        title: 'نفاد الذاكرة',
-        description: 'حالة نفاد الذاكرة عند السطر {line}.',
-        suggestion: 'اخفض جودة القوام، أو قلّل التفاصيل، أو قلّص المناظر الجوية.',
-      },
-      'log.heavy_memory_pressure': {
-        title: 'ضغط كبير على الذاكرة',
-        description: 'ضغط شديد على الذاكرة عند السطر {line}.',
-        suggestion: 'ضغط الذاكرة يسبق الأعطال. اخفض جودة القوام.',
-      },
-      'log.severe_texture_downscale': {
-        title: 'تقليل حاد لدقة القوام',
-        description: 'تقليل قوي لدقة القوام بسبب حدود VRAM (السطر {line}).',
-        suggestion: 'اخفض جودة القوام درجة واحدة لمنع التقليل الطارئ.',
-      },
-      'log.runloop_backlog': {
-        title: 'تراكم في حلقة التشغيل',
-        description: 'اكتُشفت حالات تعليق طويلة للإطارات عند السطر {line} (تسبب التقطيع).',
-        suggestion: 'تحقق من الإضافات الثقيلة أو اخفض إعدادات الرسوميات.',
-      },
-      'log.plugin_error': {
-        title: 'أخطاء في الإضافات',
-        description: 'أبلغت الإضافات عن أخطاء عند السطر {line}.',
-        suggestion: 'حدّث الإضافة أو أبلغ مطوّرها.',
-      },
-      'log.plugin_assert': {
-        title: 'فشل تأكيد الإضافة',
-        description: 'واجهت إحدى الإضافات تأكيدًا قاتلاً عند السطر {line}.',
-        suggestion: 'خلل خطير في الإضافة. عطّلها وأبلغ المطوّر.',
-      },
-      'log.plugin_manager_error': {
-        title: 'خطأ في مدير الإضافات',
-        description: 'خطأ داخلي في مدير الإضافات عند السطر {line}.',
-        suggestion: 'إضافة تالفة أو تثبيت X-Plane تالف. أزل الإضافات المضافة مؤخرًا.',
-      },
-      'log.duplicate_plugin': {
-        title: 'تحميل إضافة مكررة',
-        description: 'تم تحميل الإضافة نفسها من مواقع متعددة (السطر {line}).',
-        suggestion: 'احتفظ بأحدث إصدار (Resources/plugins) واحذف المكررات.',
-      },
-      'log.missing_plugin_support': {
-        title: 'ملف دعم الإضافة مفقود',
-        description: 'الإضافة تفتقر إلى ملف دعم مطلوب (السطر {line}).',
-        suggestion: 'أعد تثبيت الإضافة.',
-      },
-      'log.deprecated_dataref': {
-        title: 'استخدام dataref مهمل',
-        description: 'إضافة تستخدم datarefs مهملة (السطر {line}).',
-        suggestion: 'للعلم فقط. لا تزال تعمل لكنها قد تتعطل في الإصدارات المستقبلية.',
-      },
-      'log.dsf_error': {
-        title: 'أخطاء DSF في المناظر',
-        description: 'أخطاء في ملف التضاريس (DSF) عند السطر {line}.',
-        suggestion: 'حزمة المناظر تحتوي على ملفات DSF تالفة. عطّلها أو أعد تثبيتها.',
-      },
-      'log.scenery_error': {
-        title: 'أخطاء تحميل المناظر',
-        description: 'أخطاء في تحميل المناظر عند السطر {line}.',
-        suggestion: 'قد تكون المناظر المتأثرة تالفة أو تنقصها متطلبات.',
-      },
-      'log.third_party_blocked': {
-        title: 'تم حظر حاقن خارجي',
-        description: 'حظر X-Plane أحد حاقنات الرسوميات (السطر {line}).',
-        suggestion: 'أزل ملفات ReShade (dxgi.dll و d3d11.dll و vulkan-1.dll) وملف ReShade.ini.',
-      },
-      'log.other_high': {
-        title: 'أخطاء أخرى عالية الخطورة',
-        description: '{count} مشكلات إضافية: {categories}',
-        suggestion: 'راجع Log.txt للاطلاع على التفاصيل.',
-      },
-      'environment.beta_build': {
-        title: 'تشغيل نسخة تجريبية من X-Plane',
-        description: 'النسخة X-Plane {version} هي بنية تجريبية/تطويرية.',
-        suggestion: 'قد تكسر النسخ التجريبية الإضافات. انتقل إلى النسخة المستقرة إذا واجهت أعطالًا.',
-      },
-      'environment.intel_gpu': {
-        title: 'بطاقة Intel GPU غير مدعومة',
-        description: 'بطاقتك ({gpu}) غير مدعومة في X-Plane 12.',
-        suggestion: 'يتطلب X-Plane 12 بطاقة NVIDIA/AMD أو Intel Arc. بطاقات Intel المدمجة غير مدعومة.',
-      },
-      'environment.injectors': {
-        title: 'تم اكتشاف حاقنات رسوميات',
-        description: 'يوجد ReShade أو حاقنات مماثلة.',
-        suggestion: 'يحظرها X-Plane. احذف الملفات المكتشفة يدويًا.',
-      },
-      'scenery.competing_organizer': {
-        title: 'مدير مناظر منافس',
-        description: 'تم تثبيت xOrganizer أو مدير آخر.',
-        suggestion: 'قد تتعارض المديرون المتعددون. اختر واحدًا وعطّل الآخر.',
-      },
-      'scenery.needs_sort': {
-        title: 'ترتيب تحميل المناظر بحاجة إلى مزامنة',
-        description: 'الملف scenery_packs.ini غير متزامن.',
-        suggestion: 'انقر تطبيق الإصلاح لإعادة ترتيب حزم المناظر.',
-        fix: 'ترتيب المناظر',
-      },
-      'scenery.global_airports_disabled': {
-        title: 'تم تعطيل Global Airports',
-        description: 'تم تعطيل Global Airports الافتراضية. سيكون العالم فارغًا.',
-        suggestion: 'أعد تفعيل Global Airports فورًا.',
-        fix: 'تفعيل Global Airports',
-      },
-      'scenery.missing_libraries': {
-        title: 'مكتبات مناظر مفقودة',
-        description: '{count} حزم تفتقر إلى المكتبات المطلوبة.',
-        suggestion: 'لن تُعرض الكائنات. ثبّت المكتبات المفقودة.',
-      },
-      'scenery.duplicate_tiles': {
-        title: 'بلاطات مناظر متداخلة',
-        description: '{count} بلاطات تغطيها حزم متعددة.',
-        suggestion: 'المناظر المتداخلة تهدر VRAM. عطّل الحزم الزائدة.',
-      },
-      'scenery.duplicate_airports': {
-        title: 'تعريفات مطارات مكررة',
-        description: '{count} مطارات معرّفة في حزم متعددة.',
-        suggestion: 'عادةً ما يكون ذلك مقصودًا (مخصص مقابل افتراضي).',
-      },
-      'scenery.flatten_drift': {
-        title: 'انحراف تسوية المطار',
-        description: '{count} من تجاوزات التسوية بحاجة إلى إعادة تطبيق.',
-        suggestion: 'أعد تطبيقها لإعادة توليد ملفات apt.dat.',
-        fix: 'تطبيق كل المنحرفة',
-      },
-      'navdata.no_custom_data': {
-        title: 'لا توجد بيانات ملاحة خارجية',
-        description: 'لم تُثبَّت بيانات ملاحة خارجية (مجلد Custom Data مفقود).',
-        suggestion: 'يستخدم X-Plane البيانات الافتراضية (غالبًا قديمة). ثبّت AIRAC من Navigraph.',
-      },
-      'navdata.expired': {
-        title: 'انتهت دورة بيانات الملاحة',
-        description: 'انتهت دورة {provider} رقم {cycle} في {expiry} (منذ {days} يومًا).',
-        suggestion: 'الدورة المنتهية تحتوي على نقاط طريق قديمة. حدّث اشتراكك.',
-      },
-      'navdata.expiring_soon': {
-        title: 'بيانات الملاحة على وشك الانتهاء',
-        description: 'تنتهي دورة {provider} رقم {cycle} في {expiry} (خلال {days} يومًا).',
-        suggestion: 'جدّد اشتراكك قبل انتهاء الصلاحية.',
-      },
-      'navdata.cifp_missing': {
-        title: 'مجلد CIFP مفقود',
-        description: 'مجلد CIFP (الإجراءات) مفقود أو فارغ.',
-        suggestion: 'بدون CIFP لن تتوفر إجراءات SID/STAR. أعد تثبيت بيانات الملاحة.',
-      },
-      'navdata.earth_dat_missing': {
-        title: 'ملفات earth_*.dat غير مكتملة',
-        description: 'بعض ملفات بيانات الملاحة الأساسية مفقودة من Custom Data.',
-        suggestion: 'تثبيت بيانات الملاحة غير مكتمل. أعد تثبيت الحزمة كاملة.',
-      },
-      'navdata.cycle_mismatch': {
-        title: 'دورات AIRAC غير متطابقة',
-        description: 'مجلدات متعددة تحتوي على دورات مختلفة: {cycles}',
-        suggestion: 'عادةً غير ضار، لكن تحقق من تحديث الجميع إذا ظهرت مشكلات.',
-      },
-      'disk.low_space': {
-        title: 'مساحة قرص منخفضة',
-        description: 'لا يتوفر سوى {free} على قرص X-Plane.',
-        suggestion: 'قد يسبب فشل التثبيت. حرّر مساحة أو انقل X-Plane.',
-      },
-      'disk.cleanable_caches': {
-        title: 'ذواكر إخراج قابلة للتنظيف',
-        description: 'يمكن تنظيف {size} من ذواكر التظليل والملفات المؤقتة.',
-        suggestion: 'افتح صفحة تنظيف الإخراج للمراجعة.',
-        fix: 'فتح التنظيف',
-      },
-      'updates.addons': {
-        title: 'تتوفر تحديثات للإضافات',
-        description: '{count} من الطائرات/الإضافات/المناظر لها تحديثات.',
-        suggestion: 'انتقل إلى تبويب الإدارة للمراجعة والتثبيت.',
-      },
-      'updates.gateway': {
-        title: 'تحديثات مطارات Gateway',
-        description: '{count} من مطارات Gateway لها مناظر أحدث.',
-        suggestion: 'زر تبويب Gateway للتحديث.',
-      },
-      'updates.app': {
-        title: 'يتوفر تحديث لـ XFast Manager',
-        description: 'الإصدار {version} متاح الآن.',
-        suggestion: 'حدّث XFast Manager للحصول على أحدث الميزات والإصلاحات.',
-        fix: 'تحديث الآن',
+      updates: {
+        addons: {
+          title: 'تتوفر تحديثات للإضافات',
+          description: '{count} من الطائرات/الإضافات/المناظر لها تحديثات.',
+          suggestion: 'انتقل إلى تبويب الإدارة للمراجعة والتثبيت.',
+        },
+        gateway: {
+          title: 'تحديثات مطارات Gateway',
+          description: '{count} من مطارات Gateway لها مناظر أحدث.',
+          suggestion: 'زر تبويب Gateway للتحديث.',
+        },
+        app: {
+          title: 'يتوفر تحديث لـ XFast Manager',
+          description: 'الإصدار {version} متاح الآن.',
+          suggestion: 'حدّث XFast Manager للحصول على أحدث الميزات والإصلاحات.',
+          fix: 'تحديث الآن',
+        },
       },
     },
   },

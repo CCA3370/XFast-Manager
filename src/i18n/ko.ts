@@ -1979,240 +1979,258 @@ export default {
     },
     xplaneRunning: 'X-Plane이 실행 중입니다. 수정을 적용하기 전에 종료하세요.',
     checks: {
-      'integrity.path_invalid': {
-        title: 'X-Plane 경로가 유효하지 않음',
-        description: 'X-Plane 설치 경로가 유효하지 않습니다.',
-        suggestion: '설정으로 이동하여 유효한 X-Plane 경로를 지정하세요.',
+      integrity: {
+        path_invalid: {
+          title: 'X-Plane 경로가 유효하지 않음',
+          description: 'X-Plane 설치 경로가 유효하지 않습니다.',
+          suggestion: '설정으로 이동하여 유효한 X-Plane 경로를 지정하세요.',
+        },
+        xplane_running: {
+          title: 'X-Plane 실행 중',
+          description: 'X-Plane이 현재 실행 중입니다. 일부 수정 기능이 비활성화됩니다.',
+          suggestion: '모든 기능을 사용하려면 X-Plane을 종료하세요.',
+        },
+        missing_core_dirs: {
+          title: '핵심 디렉터리 누락',
+          description: '필수 X-Plane 디렉터리가 누락되었습니다.',
+          suggestion: '설치가 손상된 것으로 보입니다. X-Plane을 재설치하거나 게임 파일을 검증하세요.',
+        },
+        program_files: {
+          title: 'Program Files에 설치됨',
+          description: 'X-Plane이 Program Files 아래에 있습니다 (UAC 제한이 적용됨).',
+          suggestion: 'UAC가 설치를 차단할 수 있습니다. X-Plane을 Program Files 외부로 옮기는 것을 고려하세요.',
+        },
+        readonly_files: {
+          title: '읽기 전용 파일 감지됨',
+          description: '애드온 파일 {count}개가 읽기 전용이어서 업데이트가 차단됩니다.',
+          suggestion: '읽기 전용 속성을 해제하거나 백신 프로그램의 잠금을 확인하세요.',
+        },
+        recent_failures: {
+          title: '최근 설치 실패',
+          description: '최근 설치 또는 업데이트 {count}건이 실패했습니다.',
+          suggestion: '활동 로그를 검토하여 무엇이 잘못되었는지 확인하세요.',
+        },
       },
-      'integrity.xplane_running': {
-        title: 'X-Plane 실행 중',
-        description: 'X-Plane이 현재 실행 중입니다. 일부 수정 기능이 비활성화됩니다.',
-        suggestion: '모든 기능을 사용하려면 X-Plane을 종료하세요.',
+      crashes: {
+        last_session_crashed: {
+          title: '마지막 세션 충돌',
+          description: 'X-Plane이 예기치 않게 종료되었습니다. Log.txt의 충돌 세부 정보:',
+          suggestion: '일반적인 원인: GPU 드라이버, 플러그인, 메모리 또는 손상된 시너리.',
+        },
       },
-      'integrity.missing_core_dirs': {
-        title: '핵심 디렉터리 누락',
-        description: '필수 X-Plane 디렉터리가 누락되었습니다.',
-        suggestion: '설치가 손상된 것으로 보입니다. X-Plane을 재설치하거나 게임 파일을 검증하세요.',
+      crash_cause: {
+        plugin_crash: {
+          title: '플러그인 충돌',
+          description: '플러그인이 충돌을 일으켰습니다 (신뢰도 {score}%). 모듈: {module}',
+          suggestion: '문제의 플러그인을 업데이트하거나 비활성화하세요. 베타 X-Plane은 플러그인을 자주 손상시킵니다.',
+        },
+        gpu_driver_crash: {
+          title: 'GPU 드라이버 충돌',
+          description: 'GPU 드라이버가 충돌을 일으켰습니다 (신뢰도 {score}%).',
+          suggestion: 'GPU 드라이버를 업데이트하세요. 오버클럭과 그래픽 인젝터를 제거하세요.',
+        },
+        memory_exhaustion: {
+          title: '메모리 부족 충돌',
+          description: '메모리 고갈이 충돌을 일으켰습니다 (신뢰도 {score}%).',
+          suggestion: '텍스처 품질을 낮추거나 반사 효과를 줄이거나 무거운 오쏘를 비활성화하세요.',
+        },
       },
-      'integrity.program_files': {
-        title: 'Program Files에 설치됨',
-        description: 'X-Plane이 Program Files 아래에 있습니다 (UAC 제한이 적용됨).',
-        suggestion: 'UAC가 설치를 차단할 수 있습니다. X-Plane을 Program Files 외부로 옮기는 것을 고려하세요.',
+      log: {
+        vulkan_device_error: {
+          title: 'Vulkan 장치 오류',
+          description: '{line} 줄에서 Vulkan 장치 손실 오류가 발생했습니다.',
+          suggestion: '주로 GPU 오버클럭, 오래된 드라이버 또는 ReShade가 원인입니다.',
+        },
+        out_of_memory: {
+          title: '메모리 부족',
+          description: '{line} 줄에서 메모리 부족 상태가 발생했습니다.',
+          suggestion: '텍스처 품질을 낮추거나 디테일을 줄이거나 오쏘 시너리를 정리하세요.',
+        },
+        heavy_memory_pressure: {
+          title: '심한 메모리 부담',
+          description: '{line} 줄에서 심각한 메모리 부담이 발생했습니다.',
+          suggestion: '메모리 부담은 충돌의 전조입니다. 텍스처 품질을 낮추세요.',
+        },
+        severe_texture_downscale: {
+          title: '심각한 텍스처 다운스케일링',
+          description: 'VRAM 한계로 인해 공격적인 텍스처 다운스케일링이 발생했습니다 ({line} 줄).',
+          suggestion: '긴급 다운스케일링을 방지하려면 텍스처 품질을 한 단계 낮추세요.',
+        },
+        runloop_backlog: {
+          title: '런 루프 적체',
+          description: '{line} 줄에서 긴 프레임 멈춤이 감지되었습니다 (끊김 유발).',
+          suggestion: '무거운 플러그인을 확인하거나 그래픽 설정을 낮추세요.',
+        },
+        plugin_error: {
+          title: '플러그인 오류',
+          description: '{line} 줄에서 플러그인이 오류를 보고했습니다.',
+          suggestion: '플러그인을 업데이트하거나 개발자에게 보고하세요.',
+        },
+        plugin_assert: {
+          title: '플러그인 어서션 실패',
+          description: '{line} 줄에서 플러그인이 치명적인 어서션에 도달했습니다.',
+          suggestion: '심각한 플러그인 버그입니다. 비활성화하고 개발자에게 보고하세요.',
+        },
+        plugin_manager_error: {
+          title: '플러그인 관리자 오류',
+          description: '{line} 줄에서 플러그인 관리자 내부 오류가 발생했습니다.',
+          suggestion: '플러그인 또는 X-Plane 설치가 손상되었습니다. 최근 설치한 플러그인을 제거하세요.',
+        },
+        duplicate_plugin: {
+          title: '중복 플러그인 로드됨',
+          description: '동일한 플러그인이 여러 위치에서 로드되었습니다 ({line} 줄).',
+          suggestion: '최신 버전(Resources/plugins)을 유지하고 중복 항목을 삭제하세요.',
+        },
+        missing_plugin_support: {
+          title: '플러그인 지원 파일 누락',
+          description: '플러그인에 필요한 지원 파일이 없습니다 ({line} 줄).',
+          suggestion: '플러그인을 재설치하세요.',
+        },
+        deprecated_dataref: {
+          title: '더 이상 사용되지 않는 Dataref 사용',
+          description: '플러그인이 더 이상 사용되지 않는 dataref를 사용하고 있습니다 ({line} 줄).',
+          suggestion: '참고 사항입니다. 현재는 작동하지만 향후 버전에서 중단될 수 있습니다.',
+        },
+        dsf_error: {
+          title: '시너리 DSF 오류',
+          description: '{line} 줄에서 지형 파일(DSF) 오류가 발생했습니다.',
+          suggestion: '시너리 팩에 손상된 DSF 파일이 있습니다. 비활성화하거나 재설치하세요.',
+        },
+        scenery_error: {
+          title: '시너리 로드 오류',
+          description: '{line} 줄에서 시너리 로딩 오류가 발생했습니다.',
+          suggestion: '해당 시너리가 손상되었거나 종속성이 누락되었을 수 있습니다.',
+        },
+        third_party_blocked: {
+          title: '서드파티 인젝터 차단됨',
+          description: 'X-Plane이 그래픽 인젝터를 차단했습니다 ({line} 줄).',
+          suggestion: 'ReShade DLL(dxgi.dll, d3d11.dll, vulkan-1.dll)과 ReShade.ini를 제거하세요.',
+        },
+        other_high: {
+          title: '기타 높은 심각도 오류',
+          description: '추가 문제 {count}건: {categories}',
+          suggestion: '자세한 내용은 Log.txt를 검토하세요.',
+        },
       },
-      'integrity.readonly_files': {
-        title: '읽기 전용 파일 감지됨',
-        description: '애드온 파일 {count}개가 읽기 전용이어서 업데이트가 차단됩니다.',
-        suggestion: '읽기 전용 속성을 해제하거나 백신 프로그램의 잠금을 확인하세요.',
+      environment: {
+        beta_build: {
+          title: '베타 X-Plane 실행 중',
+          description: 'X-Plane {version}은(는) 베타/개발 빌드입니다.',
+          suggestion: '베타 빌드는 플러그인을 손상시킬 수 있습니다. 충돌이 발생하면 안정 버전으로 전환하세요.',
+        },
+        intel_gpu: {
+          title: '지원되지 않는 Intel GPU',
+          description: '사용 중인 GPU({gpu})는 X-Plane 12에서 지원되지 않습니다.',
+          suggestion: 'X-Plane 12는 NVIDIA/AMD 또는 Intel Arc가 필요합니다. 내장 Intel은 지원되지 않습니다.',
+        },
+        injectors: {
+          title: '그래픽 인젝터 감지됨',
+          description: 'ReShade 또는 유사한 인젝터가 존재합니다.',
+          suggestion: 'X-Plane은 이를 차단합니다. 감지된 파일을 수동으로 삭제하세요.',
+        },
       },
-      'integrity.recent_failures': {
-        title: '최근 설치 실패',
-        description: '최근 설치 또는 업데이트 {count}건이 실패했습니다.',
-        suggestion: '활동 로그를 검토하여 무엇이 잘못되었는지 확인하세요.',
+      scenery: {
+        competing_organizer: {
+          title: '경합하는 시너리 관리자',
+          description: 'xOrganizer 또는 다른 관리자가 설치되어 있습니다.',
+          suggestion: '여러 관리자는 충돌할 수 있습니다. 하나를 선택하고 다른 하나는 비활성화하세요.',
+        },
+        needs_sort: {
+          title: '시너리 로드 순서 동기화 필요',
+          description: 'scenery_packs.ini가 동기화되지 않았습니다.',
+          suggestion: '시너리 팩을 다시 정렬하려면 수정 적용을 클릭하세요.',
+          fix: '시너리 정렬',
+        },
+        global_airports_disabled: {
+          title: 'Global Airports 비활성화됨',
+          description: '기본 Global Airports가 비활성화되었습니다. 월드가 비어 있게 됩니다.',
+          suggestion: 'Global Airports를 즉시 다시 활성화하세요.',
+          fix: 'Global Airports 활성화',
+        },
+        missing_libraries: {
+          title: '시너리 라이브러리 누락',
+          description: '팩 {count}개에 필요한 라이브러리가 누락되었습니다.',
+          suggestion: '오브젝트가 렌더링되지 않습니다. 누락된 라이브러리를 설치하세요.',
+        },
+        duplicate_tiles: {
+          title: '겹치는 시너리 타일',
+          description: '타일 {count}개가 여러 팩에 의해 덮여 있습니다.',
+          suggestion: '겹치는 시너리는 VRAM을 낭비합니다. 중복 팩을 비활성화하세요.',
+        },
+        duplicate_airports: {
+          title: '중복 공항 정의',
+          description: '공항 {count}개가 여러 팩에 정의되어 있습니다.',
+          suggestion: '보통 의도된 것입니다 (커스텀 대 기본).',
+        },
+        flatten_drift: {
+          title: '공항 평탄화 드리프트',
+          description: '평탄화 재정의 {count}개를 다시 적용해야 합니다.',
+          suggestion: 'apt.dat 파일을 재생성하려면 다시 적용하세요.',
+          fix: '드리프트된 항목 모두 적용',
+        },
       },
-      'crashes.last_session_crashed': {
-        title: '마지막 세션 충돌',
-        description: 'X-Plane이 예기치 않게 종료되었습니다. Log.txt의 충돌 세부 정보:',
-        suggestion: '일반적인 원인: GPU 드라이버, 플러그인, 메모리 또는 손상된 시너리.',
+      navdata: {
+        no_custom_data: {
+          title: '서드파티 항법 데이터 없음',
+          description: '서드파티 항법 데이터가 설치되지 않았습니다 (Custom Data 없음).',
+          suggestion: 'X-Plane이 기본값(종종 오래됨)을 사용 중입니다. Navigraph에서 AIRAC을 설치하세요.',
+        },
+        expired: {
+          title: '항법 데이터 주기 만료됨',
+          description: '{provider} {cycle} 주기가 {expiry}에 만료되었습니다 ({days}일 전).',
+          suggestion: '만료된 주기는 오래된 웨이포인트를 포함합니다. 구독을 업데이트하세요.',
+        },
+        expiring_soon: {
+          title: '항법 데이터 곧 만료',
+          description: '{provider} {cycle} 주기가 {expiry}에 만료됩니다 ({days}일 후).',
+          suggestion: '만료 전에 구독을 갱신하세요.',
+        },
+        cifp_missing: {
+          title: 'CIFP 폴더 누락',
+          description: 'CIFP(절차) 폴더가 없거나 비어 있습니다.',
+          suggestion: 'CIFP가 없으면 SID/STAR를 사용할 수 없습니다. 항법 데이터를 재설치하세요.',
+        },
+        earth_dat_missing: {
+          title: '불완전한 earth_*.dat 파일',
+          description: '일부 핵심 항법 데이터 파일이 Custom Data에서 누락되었습니다.',
+          suggestion: '항법 데이터 설치가 불완전합니다. 전체 패키지를 재설치하세요.',
+        },
+        cycle_mismatch: {
+          title: 'AIRAC 주기 불일치',
+          description: '여러 폴더의 주기가 서로 다릅니다: {cycles}',
+          suggestion: '보통 무해하지만 문제가 발생하면 모두 최신인지 확인하세요.',
+        },
       },
-      'crash_cause.plugin_crash': {
-        title: '플러그인 충돌',
-        description: '플러그인이 충돌을 일으켰습니다 (신뢰도 {score}%). 모듈: {module}',
-        suggestion: '문제의 플러그인을 업데이트하거나 비활성화하세요. 베타 X-Plane은 플러그인을 자주 손상시킵니다.',
+      disk: {
+        low_space: {
+          title: '디스크 공간 부족',
+          description: 'X-Plane 볼륨에 여유 공간이 {free}뿐입니다.',
+          suggestion: '설치 실패를 일으킬 수 있습니다. 공간을 확보하거나 X-Plane을 옮기세요.',
+        },
+        cleanable_caches: {
+          title: '정리 가능한 출력 캐시',
+          description: '셰이더 캐시와 임시 파일 {size}을(를) 정리할 수 있습니다.',
+          suggestion: '검토하려면 출력 정리 페이지를 여세요.',
+          fix: '정리 열기',
+        },
       },
-      'crash_cause.gpu_driver_crash': {
-        title: 'GPU 드라이버 충돌',
-        description: 'GPU 드라이버가 충돌을 일으켰습니다 (신뢰도 {score}%).',
-        suggestion: 'GPU 드라이버를 업데이트하세요. 오버클럭과 그래픽 인젝터를 제거하세요.',
-      },
-      'crash_cause.memory_exhaustion': {
-        title: '메모리 부족 충돌',
-        description: '메모리 고갈이 충돌을 일으켰습니다 (신뢰도 {score}%).',
-        suggestion: '텍스처 품질을 낮추거나 반사 효과를 줄이거나 무거운 오쏘를 비활성화하세요.',
-      },
-      'log.vulkan_device_error': {
-        title: 'Vulkan 장치 오류',
-        description: '{line} 줄에서 Vulkan 장치 손실 오류가 발생했습니다.',
-        suggestion: '주로 GPU 오버클럭, 오래된 드라이버 또는 ReShade가 원인입니다.',
-      },
-      'log.out_of_memory': {
-        title: '메모리 부족',
-        description: '{line} 줄에서 메모리 부족 상태가 발생했습니다.',
-        suggestion: '텍스처 품질을 낮추거나 디테일을 줄이거나 오쏘 시너리를 정리하세요.',
-      },
-      'log.heavy_memory_pressure': {
-        title: '심한 메모리 부담',
-        description: '{line} 줄에서 심각한 메모리 부담이 발생했습니다.',
-        suggestion: '메모리 부담은 충돌의 전조입니다. 텍스처 품질을 낮추세요.',
-      },
-      'log.severe_texture_downscale': {
-        title: '심각한 텍스처 다운스케일링',
-        description: 'VRAM 한계로 인해 공격적인 텍스처 다운스케일링이 발생했습니다 ({line} 줄).',
-        suggestion: '긴급 다운스케일링을 방지하려면 텍스처 품질을 한 단계 낮추세요.',
-      },
-      'log.runloop_backlog': {
-        title: '런 루프 적체',
-        description: '{line} 줄에서 긴 프레임 멈춤이 감지되었습니다 (끊김 유발).',
-        suggestion: '무거운 플러그인을 확인하거나 그래픽 설정을 낮추세요.',
-      },
-      'log.plugin_error': {
-        title: '플러그인 오류',
-        description: '{line} 줄에서 플러그인이 오류를 보고했습니다.',
-        suggestion: '플러그인을 업데이트하거나 개발자에게 보고하세요.',
-      },
-      'log.plugin_assert': {
-        title: '플러그인 어서션 실패',
-        description: '{line} 줄에서 플러그인이 치명적인 어서션에 도달했습니다.',
-        suggestion: '심각한 플러그인 버그입니다. 비활성화하고 개발자에게 보고하세요.',
-      },
-      'log.plugin_manager_error': {
-        title: '플러그인 관리자 오류',
-        description: '{line} 줄에서 플러그인 관리자 내부 오류가 발생했습니다.',
-        suggestion: '플러그인 또는 X-Plane 설치가 손상되었습니다. 최근 설치한 플러그인을 제거하세요.',
-      },
-      'log.duplicate_plugin': {
-        title: '중복 플러그인 로드됨',
-        description: '동일한 플러그인이 여러 위치에서 로드되었습니다 ({line} 줄).',
-        suggestion: '최신 버전(Resources/plugins)을 유지하고 중복 항목을 삭제하세요.',
-      },
-      'log.missing_plugin_support': {
-        title: '플러그인 지원 파일 누락',
-        description: '플러그인에 필요한 지원 파일이 없습니다 ({line} 줄).',
-        suggestion: '플러그인을 재설치하세요.',
-      },
-      'log.deprecated_dataref': {
-        title: '더 이상 사용되지 않는 Dataref 사용',
-        description: '플러그인이 더 이상 사용되지 않는 dataref를 사용하고 있습니다 ({line} 줄).',
-        suggestion: '참고 사항입니다. 현재는 작동하지만 향후 버전에서 중단될 수 있습니다.',
-      },
-      'log.dsf_error': {
-        title: '시너리 DSF 오류',
-        description: '{line} 줄에서 지형 파일(DSF) 오류가 발생했습니다.',
-        suggestion: '시너리 팩에 손상된 DSF 파일이 있습니다. 비활성화하거나 재설치하세요.',
-      },
-      'log.scenery_error': {
-        title: '시너리 로드 오류',
-        description: '{line} 줄에서 시너리 로딩 오류가 발생했습니다.',
-        suggestion: '해당 시너리가 손상되었거나 종속성이 누락되었을 수 있습니다.',
-      },
-      'log.third_party_blocked': {
-        title: '서드파티 인젝터 차단됨',
-        description: 'X-Plane이 그래픽 인젝터를 차단했습니다 ({line} 줄).',
-        suggestion: 'ReShade DLL(dxgi.dll, d3d11.dll, vulkan-1.dll)과 ReShade.ini를 제거하세요.',
-      },
-      'log.other_high': {
-        title: '기타 높은 심각도 오류',
-        description: '추가 문제 {count}건: {categories}',
-        suggestion: '자세한 내용은 Log.txt를 검토하세요.',
-      },
-      'environment.beta_build': {
-        title: '베타 X-Plane 실행 중',
-        description: 'X-Plane {version}은(는) 베타/개발 빌드입니다.',
-        suggestion: '베타 빌드는 플러그인을 손상시킬 수 있습니다. 충돌이 발생하면 안정 버전으로 전환하세요.',
-      },
-      'environment.intel_gpu': {
-        title: '지원되지 않는 Intel GPU',
-        description: '사용 중인 GPU({gpu})는 X-Plane 12에서 지원되지 않습니다.',
-        suggestion: 'X-Plane 12는 NVIDIA/AMD 또는 Intel Arc가 필요합니다. 내장 Intel은 지원되지 않습니다.',
-      },
-      'environment.injectors': {
-        title: '그래픽 인젝터 감지됨',
-        description: 'ReShade 또는 유사한 인젝터가 존재합니다.',
-        suggestion: 'X-Plane은 이를 차단합니다. 감지된 파일을 수동으로 삭제하세요.',
-      },
-      'scenery.competing_organizer': {
-        title: '경합하는 시너리 관리자',
-        description: 'xOrganizer 또는 다른 관리자가 설치되어 있습니다.',
-        suggestion: '여러 관리자는 충돌할 수 있습니다. 하나를 선택하고 다른 하나는 비활성화하세요.',
-      },
-      'scenery.needs_sort': {
-        title: '시너리 로드 순서 동기화 필요',
-        description: 'scenery_packs.ini가 동기화되지 않았습니다.',
-        suggestion: '시너리 팩을 다시 정렬하려면 수정 적용을 클릭하세요.',
-        fix: '시너리 정렬',
-      },
-      'scenery.global_airports_disabled': {
-        title: 'Global Airports 비활성화됨',
-        description: '기본 Global Airports가 비활성화되었습니다. 월드가 비어 있게 됩니다.',
-        suggestion: 'Global Airports를 즉시 다시 활성화하세요.',
-        fix: 'Global Airports 활성화',
-      },
-      'scenery.missing_libraries': {
-        title: '시너리 라이브러리 누락',
-        description: '팩 {count}개에 필요한 라이브러리가 누락되었습니다.',
-        suggestion: '오브젝트가 렌더링되지 않습니다. 누락된 라이브러리를 설치하세요.',
-      },
-      'scenery.duplicate_tiles': {
-        title: '겹치는 시너리 타일',
-        description: '타일 {count}개가 여러 팩에 의해 덮여 있습니다.',
-        suggestion: '겹치는 시너리는 VRAM을 낭비합니다. 중복 팩을 비활성화하세요.',
-      },
-      'scenery.duplicate_airports': {
-        title: '중복 공항 정의',
-        description: '공항 {count}개가 여러 팩에 정의되어 있습니다.',
-        suggestion: '보통 의도된 것입니다 (커스텀 대 기본).',
-      },
-      'scenery.flatten_drift': {
-        title: '공항 평탄화 드리프트',
-        description: '평탄화 재정의 {count}개를 다시 적용해야 합니다.',
-        suggestion: 'apt.dat 파일을 재생성하려면 다시 적용하세요.',
-        fix: '드리프트된 항목 모두 적용',
-      },
-      'navdata.no_custom_data': {
-        title: '서드파티 항법 데이터 없음',
-        description: '서드파티 항법 데이터가 설치되지 않았습니다 (Custom Data 없음).',
-        suggestion: 'X-Plane이 기본값(종종 오래됨)을 사용 중입니다. Navigraph에서 AIRAC을 설치하세요.',
-      },
-      'navdata.expired': {
-        title: '항법 데이터 주기 만료됨',
-        description: '{provider} {cycle} 주기가 {expiry}에 만료되었습니다 ({days}일 전).',
-        suggestion: '만료된 주기는 오래된 웨이포인트를 포함합니다. 구독을 업데이트하세요.',
-      },
-      'navdata.expiring_soon': {
-        title: '항법 데이터 곧 만료',
-        description: '{provider} {cycle} 주기가 {expiry}에 만료됩니다 ({days}일 후).',
-        suggestion: '만료 전에 구독을 갱신하세요.',
-      },
-      'navdata.cifp_missing': {
-        title: 'CIFP 폴더 누락',
-        description: 'CIFP(절차) 폴더가 없거나 비어 있습니다.',
-        suggestion: 'CIFP가 없으면 SID/STAR를 사용할 수 없습니다. 항법 데이터를 재설치하세요.',
-      },
-      'navdata.earth_dat_missing': {
-        title: '불완전한 earth_*.dat 파일',
-        description: '일부 핵심 항법 데이터 파일이 Custom Data에서 누락되었습니다.',
-        suggestion: '항법 데이터 설치가 불완전합니다. 전체 패키지를 재설치하세요.',
-      },
-      'navdata.cycle_mismatch': {
-        title: 'AIRAC 주기 불일치',
-        description: '여러 폴더의 주기가 서로 다릅니다: {cycles}',
-        suggestion: '보통 무해하지만 문제가 발생하면 모두 최신인지 확인하세요.',
-      },
-      'disk.low_space': {
-        title: '디스크 공간 부족',
-        description: 'X-Plane 볼륨에 여유 공간이 {free}뿐입니다.',
-        suggestion: '설치 실패를 일으킬 수 있습니다. 공간을 확보하거나 X-Plane을 옮기세요.',
-      },
-      'disk.cleanable_caches': {
-        title: '정리 가능한 출력 캐시',
-        description: '셰이더 캐시와 임시 파일 {size}을(를) 정리할 수 있습니다.',
-        suggestion: '검토하려면 출력 정리 페이지를 여세요.',
-        fix: '정리 열기',
-      },
-      'updates.addons': {
-        title: '애드온 업데이트 사용 가능',
-        description: '항공기/플러그인/시너리 {count}개에 업데이트가 있습니다.',
-        suggestion: '검토하고 설치하려면 관리 탭으로 이동하세요.',
-      },
-      'updates.gateway': {
-        title: 'Gateway 공항 업데이트',
-        description: 'Gateway 공항 {count}개에 새로운 시너리가 있습니다.',
-        suggestion: '업데이트하려면 Gateway 탭을 방문하세요.',
-      },
-      'updates.app': {
-        title: 'XFast Manager 업데이트 사용 가능',
-        description: '버전 {version}을(를) 사용할 수 있습니다.',
-        suggestion: '최신 기능과 수정 사항을 위해 XFast Manager를 업데이트하세요.',
-        fix: '지금 업데이트',
+      updates: {
+        addons: {
+          title: '애드온 업데이트 사용 가능',
+          description: '항공기/플러그인/시너리 {count}개에 업데이트가 있습니다.',
+          suggestion: '검토하고 설치하려면 관리 탭으로 이동하세요.',
+        },
+        gateway: {
+          title: 'Gateway 공항 업데이트',
+          description: 'Gateway 공항 {count}개에 새로운 시너리가 있습니다.',
+          suggestion: '업데이트하려면 Gateway 탭을 방문하세요.',
+        },
+        app: {
+          title: 'XFast Manager 업데이트 사용 가능',
+          description: '버전 {version}을(를) 사용할 수 있습니다.',
+          suggestion: '최신 기능과 수정 사항을 위해 XFast Manager를 업데이트하세요.',
+          fix: '지금 업데이트',
+        },
       },
     },
   },
