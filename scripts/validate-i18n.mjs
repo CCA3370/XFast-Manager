@@ -114,7 +114,7 @@ function detectPartialTranslation(locale, key, baseValue, localeValue) {
     .replace(/VOR|NDB|DME|RNAV|RNP|ILS|SID|STAR/g, '')
     .replace(/CSL|OBJ8|SDK|API|CPU|GPU|DMP|ZIP|RAR/g, '')
     .replace(/Beta|RC|GND|TWR|APP|CTR|DSF|FMOD|SSL/g, '')
-    .replace(/Program Files/g, '')
+    .replace(/Program Files|Custom Data|Custom Scenery|Global Airports|ReShade|Vulkan|AIRAC|CIFP|Gateway|UAC/g, '')
     .replace(/https?:\/\/[^\s]*/g, '')
     .replace(/\.\w{1,4}\b/g, '') // file extensions like .cfg, .dmp
 
