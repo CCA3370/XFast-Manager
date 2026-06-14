@@ -45,6 +45,8 @@ mod scanner;
 mod atomic_installer;
 #[path = "install/installer/mod.rs"]
 mod installer;
+#[path = "install/patch.rs"]
+mod patch;
 #[path = "install/verifier.rs"]
 mod verifier;
 
@@ -762,6 +764,44 @@ async fn install_addons(
     }
 
     result
+}
+
+// ============================================================================
+// Patch Install Commands
+// ============================================================================
+
+/// Level 1 — align a patch archive against every installed aircraft and
+/// recommend the best-matching one as the install target.
+#[tauri::command]
+async fn detect_patch_target_aircraft(
+    archive_path: String,
+    xplane_path: String,
+) -> Result<patch::TargetDetection, String> {
+    tokio::task::spawn_blocking(move || {
+        patch::detect_target_aircraft(std::path::Path::new(&archive_path), &xplane_path)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Patch target detection failed: {}", e))
+}
+
+/// Level 2 — for a chosen aircraft, infer the archive → aircraft subpath mappings.
+#[tauri::command]
+async fn infer_patch_mappings(
+    archive_path: String,
+    xplane_path: String,
+    aircraft_folder: String,
+) -> Result<patch::PatchPlan, String> {
+    tokio::task::spawn_blocking(move || {
+        patch::infer_mappings(
+            std::path::Path::new(&archive_path),
+            &xplane_path,
+            &aircraft_folder,
+        )
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Patch mapping inference failed: {}", e))
 }
 
 // ============================================================================
@@ -3925,6 +3965,8 @@ pub fn run() {
             get_issue_detail,
             analyze_addons,
             install_addons,
+            detect_patch_target_aircraft,
+            infer_patch_mappings,
             cancel_installation,
             skip_current_task,
             register_context_menu,

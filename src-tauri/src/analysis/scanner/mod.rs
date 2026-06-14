@@ -1846,7 +1846,7 @@ impl Scanner {
     }
 
     /// List all entries in an archive
-    fn list_archive_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
+    pub(crate) fn list_archive_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
         match detect_archive_format(archive_path) {
             Some(ArchiveFormat::Zip) => self.list_zip_entries(archive_path),
             Some(ArchiveFormat::SevenZ) => self.list_7z_entries(archive_path),
