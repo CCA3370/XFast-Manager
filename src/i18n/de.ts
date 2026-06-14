@@ -128,6 +128,44 @@ export default {
     Navdata: 'Navigationsdaten',
     Livery: 'Lackierung',
     LuaScript: 'Lua-Skript',
+    Patch: 'Patch',
+  },
+  patch: {
+    title: 'Flugzeug-Patch installieren',
+    targetAircraft: 'Zielflugzeug',
+    detecting: 'Passendes Flugzeug wird erkannt…',
+    autoRecommended: 'Automatisch zugeordnet (meiste übereinstimmende Dateien)',
+    noAircraft: 'Kein installiertes Flugzeug gefunden.',
+    mappings: 'Dateizuordnungen',
+    addMapping: 'Zuordnung hinzufügen',
+    inferring: 'Patch-Inhalt wird analysiert…',
+    archiveRootPlaceholder: '(Archiv-Stammverzeichnis)',
+    destRootPlaceholder: '(Flugzeug-Stammverzeichnis)',
+    archiveRoot: 'Archiv-Stammverzeichnis',
+    aircraftRoot: 'Flugzeug-Stammverzeichnis',
+    unmappedHint: 'Nicht zugeordnete Ordner – zum Hinzufügen einer Zuordnung anklicken:',
+    backupLabel: 'Überschriebene Dateien sichern',
+    backupHint:
+      'Sichert die von diesem Patch überschriebenen Dateien, damit er rückgängig gemacht werden kann.',
+    preparing: 'Wird vorbereitet…',
+    install: 'Patch installieren',
+    installAsPatch: 'Als Patch installieren',
+    installPatch: 'Patch installieren…',
+    thisIsPatch: 'Dies ist ein Flugzeug-Patch',
+    thisIsPatchHint: 'Dieses Archiv stattdessen über ein installiertes Flugzeug legen.',
+    maybePatchTitle: 'Keine Erweiterung erkannt',
+    maybePatchMessage:
+      'Dieses Archiv ist keine erkannte Erweiterung. Als Patch für ein vorhandenes Flugzeug installieren?',
+    noArchive: 'Kein Patch-Archiv verfügbar.',
+    reasonMatched: 'stimmt mit {count} vorhandenen Dateien überein',
+    reasonLivery: 'Lackierungsordner',
+    reasonNoAnchor: 'kein Anker – Flugzeug-Stammverzeichnis als Standard',
+    reasonNoListing: 'Archiv konnte nicht gelesen werden',
+    confidence: {
+      high: 'Hoch',
+      medium: 'Mittel',
+      low: 'Niedrig',
+    },
   },
   luaCompanion: {
     companions: 'Begleitdateien',
@@ -2016,7 +2054,7 @@ export default {
     fetchError: 'Der ALTITUDE-Index konnte nicht abgerufen werden',
     noPackages: 'Keine ALTITUDE-Pakete gefunden. Klicken Sie zum Scannen auf „Aktualisieren“.',
   },
-    doctor: {
+  doctor: {
     navTitle: 'Zustand',
     title: 'X-Plane Zustandsprüfung',
     subtitle: 'Umfassende Diagnose für deine X-Plane-Installation',
@@ -2068,17 +2106,20 @@ export default {
         missing_core_dirs: {
           title: 'Fehlende Kernverzeichnisse',
           description: 'Wichtige X-Plane-Verzeichnisse fehlen.',
-          suggestion: 'Deine Installation scheint beschädigt zu sein. Installiere X-Plane neu oder überprüfe die Spieldateien.',
+          suggestion:
+            'Deine Installation scheint beschädigt zu sein. Installiere X-Plane neu oder überprüfe die Spieldateien.',
         },
         program_files: {
           title: 'In Program Files installiert',
           description: 'X-Plane liegt unter Program Files (UAC-Einschränkungen gelten).',
-          suggestion: 'UAC kann Installationen blockieren. Verschiebe X-Plane am besten außerhalb von Program Files.',
+          suggestion:
+            'UAC kann Installationen blockieren. Verschiebe X-Plane am besten außerhalb von Program Files.',
         },
         readonly_files: {
           title: 'Schreibgeschützte Dateien erkannt',
           description: '{count} Addon-Dateien sind schreibgeschützt und blockieren Updates.',
-          suggestion: 'Entferne das Schreibschutz-Attribut oder prüfe Sperren durch Antivirensoftware.',
+          suggestion:
+            'Entferne das Schreibschutz-Attribut oder prüfe Sperren durch Antivirensoftware.',
         },
         recent_failures: {
           title: 'Kürzliche Installationsfehler',
@@ -2090,30 +2131,35 @@ export default {
         last_session_crashed: {
           title: 'Letzte Sitzung abgestürzt',
           description: 'X-Plane wurde unerwartet beendet. Absturzdetails aus Log.txt:',
-          suggestion: 'Häufige Ursachen: GPU-Treiber, Plugins, Arbeitsspeicher oder beschädigte Szenerie.',
+          suggestion:
+            'Häufige Ursachen: GPU-Treiber, Plugins, Arbeitsspeicher oder beschädigte Szenerie.',
         },
       },
       crash_cause: {
         plugin_crash: {
           title: 'Plugin-Absturz',
-          description: 'Ein Plugin hat den Absturz verursacht ({score}% Sicherheit). Modul: {module}',
-          suggestion: 'Aktualisiere oder deaktiviere das verdächtige Plugin. Beta-Versionen von X-Plane beschädigen oft Plugins.',
+          description:
+            'Ein Plugin hat den Absturz verursacht ({score}% Sicherheit). Modul: {module}',
+          suggestion:
+            'Aktualisiere oder deaktiviere das verdächtige Plugin. Beta-Versionen von X-Plane beschädigen oft Plugins.',
         },
         gpu_driver_crash: {
           title: 'GPU-Treiber-Absturz',
           description: 'Der GPU-Treiber hat den Absturz verursacht ({score}% Sicherheit).',
-          suggestion: 'Aktualisiere deinen GPU-Treiber. Entferne Übertaktungen und Grafik-Injektoren.',
+          suggestion:
+            'Aktualisiere deinen GPU-Treiber. Entferne Übertaktungen und Grafik-Injektoren.',
         },
         memory_exhaustion: {
           title: 'Absturz durch Speichermangel',
           description: 'Speichererschöpfung hat den Absturz verursacht ({score}% Sicherheit).',
-          suggestion: 'Senke die Texturqualität, reduziere Spiegelungen oder deaktiviere umfangreiche Ortho-Szenerie.',
+          suggestion:
+            'Senke die Texturqualität, reduziere Spiegelungen oder deaktiviere umfangreiche Ortho-Szenerie.',
         },
       },
       log: {
         vulkan_device_error: {
           title: 'Vulkan-Gerätefehler',
-          description: 'Vulkan-Fehler \'device-lost\' in Zeile {line}.',
+          description: "Vulkan-Fehler 'device-lost' in Zeile {line}.",
           suggestion: 'Oft verursacht durch GPU-Übertaktungen, veraltete Treiber oder ReShade.',
         },
         out_of_memory: {
@@ -2129,7 +2175,8 @@ export default {
         severe_texture_downscale: {
           title: 'Starke Texturherabskalierung',
           description: 'Aggressive Texturherabskalierung aufgrund von VRAM-Grenzen (Zeile {line}).',
-          suggestion: 'Senke die Texturqualität um eine Stufe, um Notfall-Herabskalierung zu vermeiden.',
+          suggestion:
+            'Senke die Texturqualität um eine Stufe, um Notfall-Herabskalierung zu vermeiden.',
         },
         runloop_backlog: {
           title: 'Run-Loop-Rückstand',
@@ -2149,7 +2196,8 @@ export default {
         plugin_manager_error: {
           title: 'Plugin-Manager-Fehler',
           description: 'Interner Fehler des Plugin-Managers in Zeile {line}.',
-          suggestion: 'Beschädigtes Plugin oder X-Plane-Installation. Entferne kürzlich hinzugefügte Plugins.',
+          suggestion:
+            'Beschädigtes Plugin oder X-Plane-Installation. Entferne kürzlich hinzugefügte Plugins.',
         },
         duplicate_plugin: {
           title: 'Doppeltes Plugin geladen',
@@ -2164,17 +2212,20 @@ export default {
         deprecated_dataref: {
           title: 'Verwendung veralteter Datarefs',
           description: 'Plugin verwendet veraltete Datarefs (Zeile {line}).',
-          suggestion: 'Nur zur Information. Funktioniert noch, kann aber in künftigen Versionen brechen.',
+          suggestion:
+            'Nur zur Information. Funktioniert noch, kann aber in künftigen Versionen brechen.',
         },
         dsf_error: {
           title: 'Szenerie-DSF-Fehler',
           description: 'Fehler in Geländedateien (DSF) in Zeile {line}.',
-          suggestion: 'Das Szenerie-Paket hat beschädigte DSF-Dateien. Deaktiviere oder installiere es neu.',
+          suggestion:
+            'Das Szenerie-Paket hat beschädigte DSF-Dateien. Deaktiviere oder installiere es neu.',
         },
         scenery_error: {
           title: 'Szenerie-Ladefehler',
           description: 'Szenerie-Ladefehler in Zeile {line}.',
-          suggestion: 'Die betroffene Szenerie ist möglicherweise beschädigt oder hat fehlende Abhängigkeiten.',
+          suggestion:
+            'Die betroffene Szenerie ist möglicherweise beschädigt oder hat fehlende Abhängigkeiten.',
         },
         third_party_blocked: {
           title: 'Drittanbieter-Injektor blockiert',
@@ -2191,12 +2242,14 @@ export default {
         beta_build: {
           title: 'Beta-Version von X-Plane',
           description: 'X-Plane {version} ist eine Beta-/Entwicklungsversion.',
-          suggestion: 'Beta-Versionen können Plugins beschädigen. Wechsle bei Abstürzen zur stabilen Version.',
+          suggestion:
+            'Beta-Versionen können Plugins beschädigen. Wechsle bei Abstürzen zur stabilen Version.',
         },
         intel_gpu: {
           title: 'Nicht unterstützte Intel-GPU',
           description: 'Deine GPU ({gpu}) wird von X-Plane 12 nicht unterstützt.',
-          suggestion: 'X-Plane 12 erfordert NVIDIA/AMD oder Intel Arc. Integrierte Intel-Grafik wird nicht unterstützt.',
+          suggestion:
+            'X-Plane 12 erfordert NVIDIA/AMD oder Intel Arc. Integrierte Intel-Grafik wird nicht unterstützt.',
         },
         injectors: {
           title: 'Grafik-Injektoren erkannt',
@@ -2208,7 +2261,8 @@ export default {
         competing_organizer: {
           title: 'Konkurrierender Szenerie-Manager',
           description: 'xOrganizer oder ein anderer Manager ist installiert.',
-          suggestion: 'Mehrere Manager können in Konflikt geraten. Wähle einen aus und deaktiviere den anderen.',
+          suggestion:
+            'Mehrere Manager können in Konflikt geraten. Wähle einen aus und deaktiviere den anderen.',
         },
         needs_sort: {
           title: 'Szenerie-Ladereihenfolge muss synchronisiert werden',
@@ -2248,12 +2302,14 @@ export default {
         no_custom_data: {
           title: 'Keine Drittanbieter-Navdaten',
           description: 'Keine Drittanbieter-Navdaten installiert (Custom Data fehlt).',
-          suggestion: 'X-Plane verwendet die Standarddaten (oft veraltet). Installiere AIRAC von Navigraph.',
+          suggestion:
+            'X-Plane verwendet die Standarddaten (oft veraltet). Installiere AIRAC von Navigraph.',
         },
         expired: {
           title: 'Navdaten-Zyklus abgelaufen',
           description: '{provider}-Zyklus {cycle} ist am {expiry} abgelaufen (vor {days} Tagen).',
-          suggestion: 'Ein abgelaufener Zyklus hat veraltete Wegpunkte. Aktualisiere dein Abonnement.',
+          suggestion:
+            'Ein abgelaufener Zyklus hat veraltete Wegpunkte. Aktualisiere dein Abonnement.',
         },
         expiring_soon: {
           title: 'Navdaten laufen bald ab',
@@ -2268,7 +2324,8 @@ export default {
         earth_dat_missing: {
           title: 'Unvollständige earth_*.dat-Dateien',
           description: 'Einige Kern-Navdatendateien fehlen in Custom Data.',
-          suggestion: 'Die Navdaten-Installation ist unvollständig. Installiere das vollständige Paket neu.',
+          suggestion:
+            'Die Navdaten-Installation ist unvollständig. Installiere das vollständige Paket neu.',
         },
         cycle_mismatch: {
           title: 'Nicht übereinstimmende AIRAC-Zyklen',
@@ -2280,7 +2337,8 @@ export default {
         low_space: {
           title: 'Wenig Speicherplatz',
           description: 'Nur noch {free} frei auf dem X-Plane-Datenträger.',
-          suggestion: 'Kann Installationsfehler verursachen. Schaffe Platz oder verschiebe X-Plane.',
+          suggestion:
+            'Kann Installationsfehler verursachen. Schaffe Platz oder verschiebe X-Plane.',
         },
         cleanable_caches: {
           title: 'Bereinigbare Ausgabe-Caches',

@@ -1,10 +1,5 @@
 import { invokeCommand } from './api'
-import type {
-  InstallTask,
-  PatchMappingInput,
-  PatchPlan,
-  PatchTargetDetection,
-} from '@/types'
+import type { InstallTask, PatchMappingInput, PatchPlan, PatchTargetDetection } from '@/types'
 
 /**
  * Typed wrappers around the backend patch-install commands.

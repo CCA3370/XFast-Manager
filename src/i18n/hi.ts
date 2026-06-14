@@ -126,6 +126,44 @@ export default {
     Navdata: 'नेवडेटा',
     Livery: 'लिवरी',
     LuaScript: 'Lua स्क्रिप्ट',
+    Patch: 'पैच',
+  },
+  patch: {
+    title: 'विमान पैच इंस्टॉल करें',
+    targetAircraft: 'लक्ष्य विमान',
+    detecting: 'मिलान करने वाला विमान खोजा जा रहा है…',
+    autoRecommended: 'स्वतः मिलान (सबसे अधिक मेल खाती फ़ाइलें)',
+    noAircraft: 'कोई इंस्टॉल किया गया विमान नहीं मिला।',
+    mappings: 'फ़ाइल मैपिंग',
+    addMapping: 'मैपिंग जोड़ें',
+    inferring: 'पैच सामग्री का विश्लेषण किया जा रहा है…',
+    archiveRootPlaceholder: '(संग्रह की मूल)',
+    destRootPlaceholder: '(विमान की मूल)',
+    archiveRoot: 'संग्रह की मूल',
+    aircraftRoot: 'विमान की मूल',
+    unmappedHint: 'बिना मैप किए फ़ोल्डर — मैपिंग जोड़ने के लिए क्लिक करें:',
+    backupLabel: 'अधिलेखित होने वाली फ़ाइलों का बैकअप लें',
+    backupHint:
+      'यह पैच जिन फ़ाइलों को अधिलेखित करता है उन्हें सहेजता है ताकि इसे वापस लाया जा सके।',
+    preparing: 'तैयार किया जा रहा है…',
+    install: 'पैच इंस्टॉल करें',
+    installAsPatch: 'पैच के रूप में इंस्टॉल करें',
+    installPatch: 'पैच इंस्टॉल करें…',
+    thisIsPatch: 'यह एक विमान पैच है',
+    thisIsPatchHint: 'इसके बजाय इस संग्रह को इंस्टॉल किए गए विमान पर अध्यारोपित करें।',
+    maybePatchTitle: 'कोई ऐड-ऑन नहीं मिला',
+    maybePatchMessage:
+      'यह संग्रह कोई पहचाना गया ऐड-ऑन नहीं है। इसे किसी मौजूदा विमान के पैच के रूप में इंस्टॉल करें?',
+    noArchive: 'कोई पैच संग्रह उपलब्ध नहीं है।',
+    reasonMatched: '{count} मौजूदा फ़ाइलों से मेल खाता है',
+    reasonLivery: 'लिवरी फ़ोल्डर',
+    reasonNoAnchor: 'कोई एंकर नहीं — डिफ़ॉल्ट रूप से विमान की मूल',
+    reasonNoListing: 'संग्रह की जाँच नहीं हो सकी',
+    confidence: {
+      high: 'उच्च',
+      medium: 'मध्यम',
+      low: 'निम्न',
+    },
   },
   luaCompanion: {
     companions: 'सहायक फ़ाइलें',
@@ -1962,7 +2000,7 @@ export default {
     fetchError: 'ALTITUDE अनुक्रमणिका प्राप्त करने में विफल',
     noPackages: 'कोई ALTITUDE पैकेज नहीं मिला। स्कैन करने के लिए ताज़ा करें पर क्लिक करें।',
   },
-    doctor: {
+  doctor: {
     navTitle: 'स्वास्थ्य',
     title: 'X-Plane स्वास्थ्य जाँच',
     subtitle: 'आपके X-Plane इंस्टॉलेशन के लिए व्यापक डायग्नोस्टिक्स',
@@ -2014,12 +2052,14 @@ export default {
         missing_core_dirs: {
           title: 'मुख्य डायरेक्टरी गायब',
           description: 'महत्वपूर्ण X-Plane डायरेक्टरी गायब हैं।',
-          suggestion: 'आपका इंस्टॉल क्षतिग्रस्त लगता है। X-Plane फिर से इंस्टॉल करें या गेम फ़ाइलें सत्यापित करें।',
+          suggestion:
+            'आपका इंस्टॉल क्षतिग्रस्त लगता है। X-Plane फिर से इंस्टॉल करें या गेम फ़ाइलें सत्यापित करें।',
         },
         program_files: {
           title: 'Program Files में इंस्टॉल किया गया',
           description: 'X-Plane, Program Files के अंतर्गत है (UAC प्रतिबंध लागू होते हैं)।',
-          suggestion: 'UAC इंस्टॉल रोक सकता है। X-Plane को Program Files के बाहर ले जाने पर विचार करें।',
+          suggestion:
+            'UAC इंस्टॉल रोक सकता है। X-Plane को Program Files के बाहर ले जाने पर विचार करें।',
         },
         readonly_files: {
           title: 'केवल-पढ़ने योग्य फ़ाइलें मिलीं',
@@ -2115,7 +2155,8 @@ export default {
         dsf_error: {
           title: 'सीनरी DSF त्रुटियाँ',
           description: 'लाइन {line} पर टेरेन फ़ाइल (DSF) त्रुटियाँ।',
-          suggestion: 'सीनरी पैक में क्षतिग्रस्त DSF फ़ाइलें हैं। अक्षम करें या फिर से इंस्टॉल करें।',
+          suggestion:
+            'सीनरी पैक में क्षतिग्रस्त DSF फ़ाइलें हैं। अक्षम करें या फिर से इंस्टॉल करें।',
         },
         scenery_error: {
           title: 'सीनरी लोड त्रुटियाँ',
@@ -2194,7 +2235,8 @@ export default {
         no_custom_data: {
           title: 'कोई थर्ड-पार्टी नेविडेटा नहीं',
           description: 'कोई थर्ड-पार्टी नेविडेटा इंस्टॉल नहीं है (Custom Data गायब)।',
-          suggestion: 'X-Plane डिफ़ॉल्ट (अक्सर पुराना) उपयोग कर रहा है। Navigraph से AIRAC इंस्टॉल करें।',
+          suggestion:
+            'X-Plane डिफ़ॉल्ट (अक्सर पुराना) उपयोग कर रहा है। Navigraph से AIRAC इंस्टॉल करें।',
         },
         expired: {
           title: 'नेविडेटा चक्र समाप्त',
@@ -2226,7 +2268,8 @@ export default {
         low_space: {
           title: 'कम डिस्क स्थान',
           description: 'X-Plane वॉल्यूम पर केवल {free} खाली है।',
-          suggestion: 'इंस्टॉल विफलताओं का कारण बन सकता है। स्थान खाली करें या X-Plane स्थानांतरित करें।',
+          suggestion:
+            'इंस्टॉल विफलताओं का कारण बन सकता है। स्थान खाली करें या X-Plane स्थानांतरित करें।',
         },
         cleanable_caches: {
           title: 'साफ़ करने योग्य आउटपुट कैश',

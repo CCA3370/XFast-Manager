@@ -128,6 +128,43 @@ export default {
     Navdata: 'ナビデータ',
     Livery: 'カラーリング',
     LuaScript: 'Lua スクリプト',
+    Patch: 'パッチ',
+  },
+  patch: {
+    title: '機体パッチをインストール',
+    targetAircraft: '対象の機体',
+    detecting: '一致する機体を検出しています…',
+    autoRecommended: '自動一致（最も多くのファイルが一致）',
+    noAircraft: 'インストール済みの機体が見つかりません。',
+    mappings: 'ファイルのマッピング',
+    addMapping: 'マッピングを追加',
+    inferring: 'パッチの内容を解析しています…',
+    archiveRootPlaceholder: '（アーカイブのルート）',
+    destRootPlaceholder: '（機体のルート）',
+    archiveRoot: 'アーカイブのルート',
+    aircraftRoot: '機体のルート',
+    unmappedHint: '未マッピングのフォルダ — クリックしてマッピングを追加：',
+    backupLabel: '上書きされるファイルをバックアップ',
+    backupHint: 'このパッチが上書きするファイルを保存し、元に戻せるようにします。',
+    preparing: '準備しています…',
+    install: 'パッチをインストール',
+    installAsPatch: 'パッチとしてインストール',
+    installPatch: 'パッチをインストール…',
+    thisIsPatch: 'これは機体パッチです',
+    thisIsPatchHint: 'このアーカイブをインストール済みの機体に上書きします。',
+    maybePatchTitle: 'アドオンが検出されませんでした',
+    maybePatchMessage:
+      'このアーカイブは認識されたアドオンではありません。既存の機体のパッチとしてインストールしますか？',
+    noArchive: '利用可能なパッチアーカイブがありません。',
+    reasonMatched: '既存の {count} 個のファイルに一致',
+    reasonLivery: 'カラーリングフォルダ',
+    reasonNoAnchor: 'アンカーなし — 既定で機体のルート',
+    reasonNoListing: 'アーカイブを読み取れませんでした',
+    confidence: {
+      high: '高',
+      medium: '中',
+      low: '低',
+    },
   },
   luaCompanion: {
     companions: 'コンパニオンファイル',
@@ -1965,7 +2002,7 @@ export default {
     fetchError: 'ALTITUDE インデックスの取得に失敗しました',
     noPackages: 'ALTITUDE パッケージが見つかりません。 「更新」をクリックしてスキャンします。',
   },
-    doctor: {
+  doctor: {
     navTitle: 'ヘルス',
     title: 'X-Plane ヘルスチェック',
     subtitle: 'X-Plane インストール環境を総合的に診断します',
@@ -2017,17 +2054,21 @@ export default {
         missing_core_dirs: {
           title: 'コアディレクトリが見つかりません',
           description: 'X-Plane の重要なディレクトリが見つかりません。',
-          suggestion: 'インストールが破損している可能性があります。X-Plane を再インストールするか、ゲームファイルを検証してください。',
+          suggestion:
+            'インストールが破損している可能性があります。X-Plane を再インストールするか、ゲームファイルを検証してください。',
         },
         program_files: {
           title: 'Program Files にインストール済み',
           description: 'X-Plane が Program Files 配下にあります（UAC の制限が適用されます）。',
-          suggestion: 'UAC によりインストールがブロックされることがあります。X-Plane を Program Files の外へ移動することを検討してください。',
+          suggestion:
+            'UAC によりインストールがブロックされることがあります。X-Plane を Program Files の外へ移動することを検討してください。',
         },
         readonly_files: {
           title: '読み取り専用ファイルを検出',
-          description: '{count} 個のアドオンファイルが読み取り専用のため、更新がブロックされています。',
-          suggestion: '読み取り専用属性を解除するか、ウイルス対策ソフトによるロックを確認してください。',
+          description:
+            '{count} 個のアドオンファイルが読み取り専用のため、更新がブロックされています。',
+          suggestion:
+            '読み取り専用属性を解除するか、ウイルス対策ソフトによるロックを確認してください。',
         },
         recent_failures: {
           title: '最近のインストール失敗',
@@ -2039,24 +2080,28 @@ export default {
         last_session_crashed: {
           title: '前回のセッションがクラッシュ',
           description: 'X-Plane が予期せず終了しました。Log.txt のクラッシュ詳細:',
-          suggestion: 'よくある原因: GPU ドライバー、プラグイン、メモリ、または破損したシーナリー。',
+          suggestion:
+            'よくある原因: GPU ドライバー、プラグイン、メモリ、または破損したシーナリー。',
         },
       },
       crash_cause: {
         plugin_crash: {
           title: 'プラグインのクラッシュ',
           description: 'プラグインがクラッシュの原因です（確信度 {score}%）。モジュール: {module}',
-          suggestion: '問題のプラグインを更新または無効化してください。ベータ版 X-Plane はプラグインを破損させがちです。',
+          suggestion:
+            '問題のプラグインを更新または無効化してください。ベータ版 X-Plane はプラグインを破損させがちです。',
         },
         gpu_driver_crash: {
           title: 'GPU ドライバーのクラッシュ',
           description: 'GPU ドライバーがクラッシュの原因です（確信度 {score}%）。',
-          suggestion: 'GPU ドライバーを更新してください。オーバークロックやグラフィックインジェクターを削除してください。',
+          suggestion:
+            'GPU ドライバーを更新してください。オーバークロックやグラフィックインジェクターを削除してください。',
         },
         memory_exhaustion: {
           title: 'メモリ不足によるクラッシュ',
           description: 'メモリ枯渇がクラッシュの原因です（確信度 {score}%）。',
-          suggestion: 'テクスチャ品質を下げる、反射を減らす、または重いオルソシーナリーを無効化してください。',
+          suggestion:
+            'テクスチャ品質を下げる、反射を減らす、または重いオルソシーナリーを無効化してください。',
         },
       },
       log: {
@@ -2068,7 +2113,8 @@ export default {
         out_of_memory: {
           title: 'メモリ不足',
           description: '{line} 行目でメモリ不足の状態が発生しました。',
-          suggestion: 'テクスチャ品質を下げる、ディテールを減らす、またはオルソシーナリーを整理してください。',
+          suggestion:
+            'テクスチャ品質を下げる、ディテールを減らす、またはオルソシーナリーを整理してください。',
         },
         heavy_memory_pressure: {
           title: '深刻なメモリ逼迫',
@@ -2077,7 +2123,8 @@ export default {
         },
         severe_texture_downscale: {
           title: '深刻なテクスチャダウンスケール',
-          description: 'VRAM 制限により積極的なテクスチャダウンスケールが発生しました（{line} 行目）。',
+          description:
+            'VRAM 制限により積極的なテクスチャダウンスケールが発生しました（{line} 行目）。',
           suggestion: '緊急のダウンスケールを防ぐため、テクスチャ品質を 1 段階下げてください。',
         },
         runloop_backlog: {
@@ -2098,7 +2145,8 @@ export default {
         plugin_manager_error: {
           title: 'プラグインマネージャーのエラー',
           description: '{line} 行目でプラグインマネージャーの内部エラーが発生しました。',
-          suggestion: 'プラグインまたは X-Plane インストールが破損しています。最近追加したプラグインを削除してください。',
+          suggestion:
+            'プラグインまたは X-Plane インストールが破損しています。最近追加したプラグインを削除してください。',
         },
         duplicate_plugin: {
           title: 'プラグインの重複読み込み',
@@ -2113,12 +2161,14 @@ export default {
         deprecated_dataref: {
           title: '非推奨 Dataref の使用',
           description: 'プラグインが非推奨の dataref を使用しています（{line} 行目）。',
-          suggestion: '情報のみ。現状は動作しますが、将来のバージョンで動かなくなる可能性があります。',
+          suggestion:
+            '情報のみ。現状は動作しますが、将来のバージョンで動かなくなる可能性があります。',
         },
         dsf_error: {
           title: 'シーナリー DSF エラー',
           description: '{line} 行目で地形ファイル（DSF）のエラーが発生しました。',
-          suggestion: 'シーナリーパックに破損した DSF ファイルがあります。無効化または再インストールしてください。',
+          suggestion:
+            'シーナリーパックに破損した DSF ファイルがあります。無効化または再インストールしてください。',
         },
         scenery_error: {
           title: 'シーナリー読み込みエラー',
@@ -2128,7 +2178,8 @@ export default {
         third_party_blocked: {
           title: 'サードパーティインジェクターをブロック',
           description: 'X-Plane がグラフィックインジェクターをブロックしました（{line} 行目）。',
-          suggestion: 'ReShade の DLL（dxgi.dll、d3d11.dll、vulkan-1.dll）と ReShade.ini を削除してください。',
+          suggestion:
+            'ReShade の DLL（dxgi.dll、d3d11.dll、vulkan-1.dll）と ReShade.ini を削除してください。',
         },
         other_high: {
           title: 'その他の重大度の高いエラー',
@@ -2140,24 +2191,28 @@ export default {
         beta_build: {
           title: 'ベータ版 X-Plane を実行中',
           description: 'X-Plane {version} はベータ/開発版です。',
-          suggestion: 'ベータ版はプラグインを破損させることがあります。クラッシュする場合は安定版に切り替えてください。',
+          suggestion:
+            'ベータ版はプラグインを破損させることがあります。クラッシュする場合は安定版に切り替えてください。',
         },
         intel_gpu: {
           title: '非対応の Intel GPU',
           description: 'お使いの GPU（{gpu}）は X-Plane 12 でサポートされていません。',
-          suggestion: 'X-Plane 12 は NVIDIA/AMD または Intel Arc が必要です。統合型 Intel は非対応です。',
+          suggestion:
+            'X-Plane 12 は NVIDIA/AMD または Intel Arc が必要です。統合型 Intel は非対応です。',
         },
         injectors: {
           title: 'グラフィックインジェクターを検出',
           description: 'ReShade または同様のインジェクターが存在します。',
-          suggestion: 'X-Plane はこれらをブロックします。検出されたファイルを手動で削除してください。',
+          suggestion:
+            'X-Plane はこれらをブロックします。検出されたファイルを手動で削除してください。',
         },
       },
       scenery: {
         competing_organizer: {
           title: '競合するシーナリーマネージャー',
           description: 'xOrganizer または別のマネージャーがインストールされています。',
-          suggestion: '複数のマネージャーは競合する可能性があります。1 つを選び、もう一方を無効にしてください。',
+          suggestion:
+            '複数のマネージャーは競合する可能性があります。1 つを選び、もう一方を無効にしてください。',
         },
         needs_sort: {
           title: 'シーナリー読み込み順の同期が必要',
@@ -2174,12 +2229,14 @@ export default {
         missing_libraries: {
           title: 'シーナリーライブラリの不足',
           description: '{count} 個のパックで必要なライブラリが不足しています。',
-          suggestion: 'オブジェクトが表示されません。不足しているライブラリをインストールしてください。',
+          suggestion:
+            'オブジェクトが表示されません。不足しているライブラリをインストールしてください。',
         },
         duplicate_tiles: {
           title: 'シーナリータイルの重複',
           description: '{count} 個のタイルが複数のパックでカバーされています。',
-          suggestion: '重複したシーナリーは VRAM を無駄にします。冗長なパックを無効にしてください。',
+          suggestion:
+            '重複したシーナリーは VRAM を無駄にします。冗長なパックを無効にしてください。',
         },
         duplicate_airports: {
           title: '空港定義の重複',
@@ -2196,28 +2253,34 @@ export default {
       navdata: {
         no_custom_data: {
           title: 'サードパーティナビデータなし',
-          description: 'サードパーティのナビデータがインストールされていません（Custom Data が見つかりません）。',
-          suggestion: 'X-Plane はデフォルト（多くは古い）を使用中です。Navigraph から AIRAC をインストールしてください。',
+          description:
+            'サードパーティのナビデータがインストールされていません（Custom Data が見つかりません）。',
+          suggestion:
+            'X-Plane はデフォルト（多くは古い）を使用中です。Navigraph から AIRAC をインストールしてください。',
         },
         expired: {
           title: 'ナビデータのサイクルが期限切れ',
           description: '{provider} のサイクル {cycle} は {expiry} に期限切れです（{days} 日前）。',
-          suggestion: '期限切れのサイクルはウェイポイントが古いです。サブスクリプションを更新してください。',
+          suggestion:
+            '期限切れのサイクルはウェイポイントが古いです。サブスクリプションを更新してください。',
         },
         expiring_soon: {
           title: 'ナビデータの期限が近い',
-          description: '{provider} のサイクル {cycle} は {expiry} に期限切れになります（あと {days} 日）。',
+          description:
+            '{provider} のサイクル {cycle} は {expiry} に期限切れになります（あと {days} 日）。',
           suggestion: '期限切れになる前にサブスクリプションを更新してください。',
         },
         cifp_missing: {
           title: 'CIFP フォルダーが見つかりません',
           description: 'CIFP（プロシージャ）フォルダーが見つからないか空です。',
-          suggestion: 'CIFP がないと SID/STAR が使用できません。ナビデータを再インストールしてください。',
+          suggestion:
+            'CIFP がないと SID/STAR が使用できません。ナビデータを再インストールしてください。',
         },
         earth_dat_missing: {
           title: 'earth_*.dat ファイルが不完全',
           description: 'Custom Data から一部のコアナビデータファイルが不足しています。',
-          suggestion: 'ナビデータのインストールが不完全です。完全なパッケージを再インストールしてください。',
+          suggestion:
+            'ナビデータのインストールが不完全です。完全なパッケージを再インストールしてください。',
         },
         cycle_mismatch: {
           title: 'AIRAC サイクルの不一致',
@@ -2229,7 +2292,8 @@ export default {
         low_space: {
           title: 'ディスク空き容量が少ない',
           description: 'X-Plane のボリュームに残り {free} しか空きがありません。',
-          suggestion: 'インストール失敗の原因になります。空き容量を確保するか X-Plane を移動してください。',
+          suggestion:
+            'インストール失敗の原因になります。空き容量を確保するか X-Plane を移動してください。',
         },
         cleanable_caches: {
           title: 'クリーンアップ可能な出力キャッシュ',

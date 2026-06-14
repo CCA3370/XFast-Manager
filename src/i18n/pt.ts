@@ -128,6 +128,43 @@ export default {
     Navdata: 'Dados de navegação',
     Livery: 'Pintura',
     LuaScript: 'Script Lua',
+    Patch: 'Correção',
+  },
+  patch: {
+    title: 'Instalar correção de aeronave',
+    targetAircraft: 'Aeronave de destino',
+    detecting: 'Detectando aeronave correspondente…',
+    autoRecommended: 'Correspondência automática (mais arquivos alinhados)',
+    noAircraft: 'Nenhuma aeronave instalada encontrada.',
+    mappings: 'Mapeamentos de arquivos',
+    addMapping: 'Adicionar mapeamento',
+    inferring: 'Analisando o conteúdo da correção…',
+    archiveRootPlaceholder: '(raiz do arquivo)',
+    destRootPlaceholder: '(raiz da aeronave)',
+    archiveRoot: 'raiz do arquivo',
+    aircraftRoot: 'raiz da aeronave',
+    unmappedHint: 'Pastas não mapeadas — clique para adicionar um mapeamento:',
+    backupLabel: 'Fazer backup dos arquivos sobrescritos',
+    backupHint: 'Salva os arquivos que esta correção sobrescreve para que possa ser revertida.',
+    preparing: 'Preparando…',
+    install: 'Instalar correção',
+    installAsPatch: 'Instalar como correção',
+    installPatch: 'Instalar correção…',
+    thisIsPatch: 'Isto é uma correção de aeronave',
+    thisIsPatchHint: 'Sobrepor este arquivo a uma aeronave instalada.',
+    maybePatchTitle: 'Nenhum complemento detectado',
+    maybePatchMessage:
+      'Este arquivo não é um complemento reconhecido. Instalá-lo como correção para uma aeronave existente?',
+    noArchive: 'Nenhum arquivo de correção disponível.',
+    reasonMatched: 'corresponde a {count} arquivos existentes',
+    reasonLivery: 'pasta de pinturas',
+    reasonNoAnchor: 'sem âncora — raiz da aeronave por padrão',
+    reasonNoListing: 'não foi possível inspecionar o arquivo',
+    confidence: {
+      high: 'Alta',
+      medium: 'Média',
+      low: 'Baixa',
+    },
   },
   luaCompanion: {
     companions: 'Arquivos complementares',
@@ -1998,7 +2035,7 @@ export default {
     fetchError: 'Falha ao obter o índice do ALTITUDE',
     noPackages: 'Nenhum pacote ALTITUDE encontrado. Clique em Atualizar para verificar.',
   },
-    doctor: {
+  doctor: {
     navTitle: 'Saúde',
     title: 'Verificação de Saúde do X-Plane',
     subtitle: 'Diagnóstico completo da sua instalação do X-Plane',
@@ -2044,18 +2081,21 @@ export default {
         },
         xplane_running: {
           title: 'X-Plane em Execução',
-          description: 'O X-Plane está em execução no momento. Algumas correções estão desativadas.',
+          description:
+            'O X-Plane está em execução no momento. Algumas correções estão desativadas.',
           suggestion: 'Feche o X-Plane para liberar todos os recursos.',
         },
         missing_core_dirs: {
           title: 'Diretórios Essenciais Ausentes',
           description: 'Diretórios críticos do X-Plane estão ausentes.',
-          suggestion: 'Sua instalação parece corrompida. Reinstale o X-Plane ou verifique os arquivos do jogo.',
+          suggestion:
+            'Sua instalação parece corrompida. Reinstale o X-Plane ou verifique os arquivos do jogo.',
         },
         program_files: {
           title: 'Instalado em Program Files',
           description: 'O X-Plane está em Program Files (restrições do UAC se aplicam).',
-          suggestion: 'O UAC pode bloquear instalações. Considere mover o X-Plane para fora de Program Files.',
+          suggestion:
+            'O UAC pode bloquear instalações. Considere mover o X-Plane para fora de Program Files.',
         },
         readonly_files: {
           title: 'Arquivos Somente Leitura Detectados',
@@ -2079,7 +2119,8 @@ export default {
         plugin_crash: {
           title: 'Travamento por Plugin',
           description: 'Um plugin causou o travamento ({score}% de confiança). Módulo: {module}',
-          suggestion: 'Atualize ou desative o plugin apontado. Versões beta do X-Plane costumam quebrar plugins.',
+          suggestion:
+            'Atualize ou desative o plugin apontado. Versões beta do X-Plane costumam quebrar plugins.',
         },
         gpu_driver_crash: {
           title: 'Travamento do Driver de GPU',
@@ -2089,7 +2130,8 @@ export default {
         memory_exhaustion: {
           title: 'Travamento por Falta de Memória',
           description: 'O esgotamento de memória causou o travamento ({score}% de confiança).',
-          suggestion: 'Reduza a Qualidade de Textura, diminua os reflexos ou desative ortofotos pesadas.',
+          suggestion:
+            'Reduza a Qualidade de Textura, diminua os reflexos ou desative ortofotos pesadas.',
         },
       },
       log: {
@@ -2101,7 +2143,8 @@ export default {
         out_of_memory: {
           title: 'Falta de Memória',
           description: 'Condição de falta de memória na linha {line}.',
-          suggestion: 'Reduza a Qualidade de Textura, diminua os detalhes ou enxugue o cenário ortofoto.',
+          suggestion:
+            'Reduza a Qualidade de Textura, diminua os detalhes ou enxugue o cenário ortofoto.',
         },
         heavy_memory_pressure: {
           title: 'Alta Pressão de Memória',
@@ -2161,7 +2204,8 @@ export default {
         third_party_blocked: {
           title: 'Injetor de Terceiros Bloqueado',
           description: 'O X-Plane bloqueou um injetor gráfico (linha {line}).',
-          suggestion: 'Remova as DLLs do ReShade (dxgi.dll, d3d11.dll, vulkan-1.dll) e o ReShade.ini.',
+          suggestion:
+            'Remova as DLLs do ReShade (dxgi.dll, d3d11.dll, vulkan-1.dll) e o ReShade.ini.',
         },
         other_high: {
           title: 'Outros Erros de Alta Gravidade',
@@ -2173,12 +2217,14 @@ export default {
         beta_build: {
           title: 'Executando X-Plane Beta',
           description: 'O X-Plane {version} é uma versão beta/dev.',
-          suggestion: 'Versões beta podem quebrar plugins. Mude para a estável se tiver travamentos.',
+          suggestion:
+            'Versões beta podem quebrar plugins. Mude para a estável se tiver travamentos.',
         },
         intel_gpu: {
           title: 'GPU Intel Não Suportada',
           description: 'Sua GPU ({gpu}) não é suportada pelo X-Plane 12.',
-          suggestion: 'O X-Plane 12 requer NVIDIA/AMD ou Intel Arc. Intel integrada não é suportada.',
+          suggestion:
+            'O X-Plane 12 requer NVIDIA/AMD ou Intel Arc. Intel integrada não é suportada.',
         },
         injectors: {
           title: 'Injetores Gráficos Detectados',
@@ -2190,7 +2236,8 @@ export default {
         competing_organizer: {
           title: 'Gerenciador de Cenário Concorrente',
           description: 'O xOrganizer ou outro gerenciador está instalado.',
-          suggestion: 'Vários gerenciadores podem entrar em conflito. Escolha um e desative o outro.',
+          suggestion:
+            'Vários gerenciadores podem entrar em conflito. Escolha um e desative o outro.',
         },
         needs_sort: {
           title: 'Ordem de Carregamento de Cenário Precisa Sincronizar',
@@ -2230,7 +2277,8 @@ export default {
         no_custom_data: {
           title: 'Sem Navdata de Terceiros',
           description: 'Nenhum navdata de terceiros instalado (Custom Data ausente).',
-          suggestion: 'O X-Plane usa o padrão (frequentemente desatualizado). Instale o AIRAC da Navigraph.',
+          suggestion:
+            'O X-Plane usa o padrão (frequentemente desatualizado). Instale o AIRAC da Navigraph.',
         },
         expired: {
           title: 'Ciclo de Navdata Expirado',
@@ -2255,7 +2303,8 @@ export default {
         cycle_mismatch: {
           title: 'Ciclos AIRAC Divergentes',
           description: 'Várias pastas têm ciclos diferentes: {cycles}',
-          suggestion: 'Geralmente inofensivo, mas verifique se todos estão atuais caso surjam problemas.',
+          suggestion:
+            'Geralmente inofensivo, mas verifique se todos estão atuais caso surjam problemas.',
         },
       },
       disk: {

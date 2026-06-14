@@ -376,7 +376,9 @@ async function runBatchDeleteSelected() {
     }
 
     const summaryKey =
-      result.deleted.length > 0 ? 'management.batchDeletePartialFailed' : 'management.batchDeleteFailed'
+      result.deleted.length > 0
+        ? 'management.batchDeletePartialFailed'
+        : 'management.batchDeleteFailed'
     const failureLines = result.failed
       .map((failure) => `${failure.folderName}: ${failure.error}`)
       .join('\n')

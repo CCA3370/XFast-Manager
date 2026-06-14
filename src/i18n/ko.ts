@@ -128,6 +128,43 @@ export default {
     Navdata: '항법 데이터',
     Livery: '도색',
     LuaScript: 'Lua 스크립트',
+    Patch: '패치',
+  },
+  patch: {
+    title: '항공기 패치 설치',
+    targetAircraft: '대상 항공기',
+    detecting: '일치하는 항공기를 감지하는 중…',
+    autoRecommended: '자동 일치(가장 많이 일치하는 파일)',
+    noAircraft: '설치된 항공기를 찾을 수 없습니다.',
+    mappings: '파일 매핑',
+    addMapping: '매핑 추가',
+    inferring: '패치 내용을 분석하는 중…',
+    archiveRootPlaceholder: '(압축 파일 루트)',
+    destRootPlaceholder: '(항공기 루트)',
+    archiveRoot: '압축 파일 루트',
+    aircraftRoot: '항공기 루트',
+    unmappedHint: '매핑되지 않은 폴더 — 클릭하여 매핑을 추가하세요:',
+    backupLabel: '덮어쓸 파일 백업',
+    backupHint: '이 패치가 덮어쓰는 파일을 저장하여 되돌릴 수 있도록 합니다.',
+    preparing: '준비 중…',
+    install: '패치 설치',
+    installAsPatch: '패치로 설치',
+    installPatch: '패치 설치…',
+    thisIsPatch: '이것은 항공기 패치입니다',
+    thisIsPatchHint: '대신 이 압축 파일을 설치된 항공기에 덮어씁니다.',
+    maybePatchTitle: '애드온이 감지되지 않음',
+    maybePatchMessage:
+      '이 압축 파일은 인식된 애드온이 아닙니다. 기존 항공기의 패치로 설치하시겠습니까?',
+    noArchive: '사용 가능한 패치 압축 파일이 없습니다.',
+    reasonMatched: '기존 {count}개 파일과 일치',
+    reasonLivery: '도색 폴더',
+    reasonNoAnchor: '앵커 없음 — 기본값은 항공기 루트',
+    reasonNoListing: '압축 파일을 검사할 수 없습니다',
+    confidence: {
+      high: '높음',
+      medium: '보통',
+      low: '낮음',
+    },
   },
   luaCompanion: {
     companions: '보조 파일',
@@ -1941,7 +1978,7 @@ export default {
     fetchError: 'ALTITUDE 인덱스를 가져오지 못했습니다',
     noPackages: 'ALTITUDE 패키지를 찾지 못했습니다. 새로 고침을 클릭하여 다시 스캔하세요.',
   },
-    doctor: {
+  doctor: {
     navTitle: '상태',
     title: 'X-Plane 상태 점검',
     subtitle: 'X-Plane 설치에 대한 종합 진단',
@@ -1993,12 +2030,14 @@ export default {
         missing_core_dirs: {
           title: '핵심 디렉터리 누락',
           description: '필수 X-Plane 디렉터리가 누락되었습니다.',
-          suggestion: '설치가 손상된 것으로 보입니다. X-Plane을 재설치하거나 게임 파일을 검증하세요.',
+          suggestion:
+            '설치가 손상된 것으로 보입니다. X-Plane을 재설치하거나 게임 파일을 검증하세요.',
         },
         program_files: {
           title: 'Program Files에 설치됨',
           description: 'X-Plane이 Program Files 아래에 있습니다 (UAC 제한이 적용됨).',
-          suggestion: 'UAC가 설치를 차단할 수 있습니다. X-Plane을 Program Files 외부로 옮기는 것을 고려하세요.',
+          suggestion:
+            'UAC가 설치를 차단할 수 있습니다. X-Plane을 Program Files 외부로 옮기는 것을 고려하세요.',
         },
         readonly_files: {
           title: '읽기 전용 파일 감지됨',
@@ -2022,7 +2061,8 @@ export default {
         plugin_crash: {
           title: '플러그인 충돌',
           description: '플러그인이 충돌을 일으켰습니다 (신뢰도 {score}%). 모듈: {module}',
-          suggestion: '문제의 플러그인을 업데이트하거나 비활성화하세요. 베타 X-Plane은 플러그인을 자주 손상시킵니다.',
+          suggestion:
+            '문제의 플러그인을 업데이트하거나 비활성화하세요. 베타 X-Plane은 플러그인을 자주 손상시킵니다.',
         },
         gpu_driver_crash: {
           title: 'GPU 드라이버 충돌',
@@ -2074,7 +2114,8 @@ export default {
         plugin_manager_error: {
           title: '플러그인 관리자 오류',
           description: '{line} 줄에서 플러그인 관리자 내부 오류가 발생했습니다.',
-          suggestion: '플러그인 또는 X-Plane 설치가 손상되었습니다. 최근 설치한 플러그인을 제거하세요.',
+          suggestion:
+            '플러그인 또는 X-Plane 설치가 손상되었습니다. 최근 설치한 플러그인을 제거하세요.',
         },
         duplicate_plugin: {
           title: '중복 플러그인 로드됨',
@@ -2116,12 +2157,14 @@ export default {
         beta_build: {
           title: '베타 X-Plane 실행 중',
           description: 'X-Plane {version}은(는) 베타/개발 빌드입니다.',
-          suggestion: '베타 빌드는 플러그인을 손상시킬 수 있습니다. 충돌이 발생하면 안정 버전으로 전환하세요.',
+          suggestion:
+            '베타 빌드는 플러그인을 손상시킬 수 있습니다. 충돌이 발생하면 안정 버전으로 전환하세요.',
         },
         intel_gpu: {
           title: '지원되지 않는 Intel GPU',
           description: '사용 중인 GPU({gpu})는 X-Plane 12에서 지원되지 않습니다.',
-          suggestion: 'X-Plane 12는 NVIDIA/AMD 또는 Intel Arc가 필요합니다. 내장 Intel은 지원되지 않습니다.',
+          suggestion:
+            'X-Plane 12는 NVIDIA/AMD 또는 Intel Arc가 필요합니다. 내장 Intel은 지원되지 않습니다.',
         },
         injectors: {
           title: '그래픽 인젝터 감지됨',
@@ -2133,7 +2176,8 @@ export default {
         competing_organizer: {
           title: '경합하는 시너리 관리자',
           description: 'xOrganizer 또는 다른 관리자가 설치되어 있습니다.',
-          suggestion: '여러 관리자는 충돌할 수 있습니다. 하나를 선택하고 다른 하나는 비활성화하세요.',
+          suggestion:
+            '여러 관리자는 충돌할 수 있습니다. 하나를 선택하고 다른 하나는 비활성화하세요.',
         },
         needs_sort: {
           title: '시너리 로드 순서 동기화 필요',
@@ -2173,7 +2217,8 @@ export default {
         no_custom_data: {
           title: '서드파티 항법 데이터 없음',
           description: '서드파티 항법 데이터가 설치되지 않았습니다 (Custom Data 없음).',
-          suggestion: 'X-Plane이 기본값(종종 오래됨)을 사용 중입니다. Navigraph에서 AIRAC을 설치하세요.',
+          suggestion:
+            'X-Plane이 기본값(종종 오래됨)을 사용 중입니다. Navigraph에서 AIRAC을 설치하세요.',
         },
         expired: {
           title: '항법 데이터 주기 만료됨',

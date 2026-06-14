@@ -129,6 +129,43 @@ export default {
     Navdata: 'Datos de navegación',
     Livery: 'librea',
     LuaScript: 'Script de Lua',
+    Patch: 'Parche',
+  },
+  patch: {
+    title: 'Instalar parche de avión',
+    targetAircraft: 'Avión de destino',
+    detecting: 'Detectando avión coincidente…',
+    autoRecommended: 'Coincidencia automática (más archivos alineados)',
+    noAircraft: 'No se encontró ningún avión instalado.',
+    mappings: 'Asignaciones de archivos',
+    addMapping: 'Añadir asignación',
+    inferring: 'Analizando el contenido del parche…',
+    archiveRootPlaceholder: '(raíz del comprimido)',
+    destRootPlaceholder: '(raíz del avión)',
+    archiveRoot: 'raíz del comprimido',
+    aircraftRoot: 'raíz del avión',
+    unmappedHint: 'Carpetas sin asignar: haz clic para añadir una asignación:',
+    backupLabel: 'Hacer copia de los archivos sobrescritos',
+    backupHint: 'Guarda los archivos que sobrescribe este parche para poder revertirlo.',
+    preparing: 'Preparando…',
+    install: 'Instalar parche',
+    installAsPatch: 'Instalar como parche',
+    installPatch: 'Instalar parche…',
+    thisIsPatch: 'Esto es un parche de avión',
+    thisIsPatchHint: 'Superponer este comprimido sobre un avión instalado.',
+    maybePatchTitle: 'No se detectó ningún complemento',
+    maybePatchMessage:
+      'Este comprimido no es un complemento reconocido. ¿Instalarlo como parche para un avión existente?',
+    noArchive: 'No hay ningún comprimido de parche disponible.',
+    reasonMatched: 'coincide con {count} archivos existentes',
+    reasonLivery: 'carpeta de libreas',
+    reasonNoAnchor: 'sin ancla: se usa la raíz del avión',
+    reasonNoListing: 'no se pudo inspeccionar el comprimido',
+    confidence: {
+      high: 'Alta',
+      medium: 'Media',
+      low: 'Baja',
+    },
   },
   luaCompanion: {
     companions: 'Archivos complementarios',
@@ -2012,7 +2049,7 @@ export default {
     fetchError: 'No se pudo obtener el índice de ALTITUDE',
     noPackages: 'No se encontraron paquetes de ALTITUDE. Haga clic en Actualizar para escanear.',
   },
-    doctor: {
+  doctor: {
     navTitle: 'Estado',
     title: 'Diagnóstico de X-Plane',
     subtitle: 'Diagnóstico completo de tu instalación de X-Plane',
@@ -2058,22 +2095,26 @@ export default {
         },
         xplane_running: {
           title: 'X-Plane en ejecución',
-          description: 'X-Plane está en ejecución actualmente. Algunas soluciones están deshabilitadas.',
+          description:
+            'X-Plane está en ejecución actualmente. Algunas soluciones están deshabilitadas.',
           suggestion: 'Cierra X-Plane para desbloquear todas las funciones.',
         },
         missing_core_dirs: {
           title: 'Faltan directorios esenciales',
           description: 'Faltan directorios críticos de X-Plane.',
-          suggestion: 'Tu instalación parece dañada. Reinstala X-Plane o verifica los archivos del juego.',
+          suggestion:
+            'Tu instalación parece dañada. Reinstala X-Plane o verifica los archivos del juego.',
         },
         program_files: {
           title: 'Instalado en Program Files',
           description: 'X-Plane está en Program Files (se aplican restricciones de UAC).',
-          suggestion: 'El UAC puede bloquear instalaciones. Considera mover X-Plane fuera de Program Files.',
+          suggestion:
+            'El UAC puede bloquear instalaciones. Considera mover X-Plane fuera de Program Files.',
         },
         readonly_files: {
           title: 'Archivos de solo lectura detectados',
-          description: '{count} archivos de addons son de solo lectura y bloquean las actualizaciones.',
+          description:
+            '{count} archivos de addons son de solo lectura y bloquean las actualizaciones.',
           suggestion: 'Quita el atributo de solo lectura o revisa los bloqueos del antivirus.',
         },
         recent_failures: {
@@ -2086,14 +2127,16 @@ export default {
         last_session_crashed: {
           title: 'La última sesión se cerró inesperadamente',
           description: 'X-Plane se cerró de forma inesperada. Detalles del cierre desde Log.txt:',
-          suggestion: 'Causas comunes: controladores de GPU, plugins, memoria o escenarios dañados.',
+          suggestion:
+            'Causas comunes: controladores de GPU, plugins, memoria o escenarios dañados.',
         },
       },
       crash_cause: {
         plugin_crash: {
           title: 'Cierre por plugin',
           description: 'Un plugin provocó el cierre ({score}% de confianza). Módulo: {module}',
-          suggestion: 'Actualiza o desactiva el plugin señalado. Las versiones beta de X-Plane suelen romper plugins.',
+          suggestion:
+            'Actualiza o desactiva el plugin señalado. Las versiones beta de X-Plane suelen romper plugins.',
         },
         gpu_driver_crash: {
           title: 'Cierre por controlador de GPU',
@@ -2103,7 +2146,8 @@ export default {
         memory_exhaustion: {
           title: 'Cierre por falta de memoria',
           description: 'El agotamiento de memoria provocó el cierre ({score}% de confianza).',
-          suggestion: 'Baja la calidad de texturas, reduce los reflejos o desactiva ortofotos pesadas.',
+          suggestion:
+            'Baja la calidad de texturas, reduce los reflejos o desactiva ortofotos pesadas.',
         },
       },
       log: {
@@ -2115,7 +2159,8 @@ export default {
         out_of_memory: {
           title: 'Sin memoria',
           description: 'Condición de falta de memoria en la línea {line}.',
-          suggestion: 'Baja la calidad de texturas, reduce el detalle o recorta los escenarios ortofoto.',
+          suggestion:
+            'Baja la calidad de texturas, reduce el detalle o recorta los escenarios ortofoto.',
         },
         heavy_memory_pressure: {
           title: 'Presión de memoria elevada',
@@ -2129,7 +2174,8 @@ export default {
         },
         runloop_backlog: {
           title: 'Atasco en el bucle de ejecución',
-          description: 'Detectados bloqueos largos de fotograma en la línea {line} (causan tirones).',
+          description:
+            'Detectados bloqueos largos de fotograma en la línea {line} (causan tirones).',
           suggestion: 'Revisa los plugins pesados o baja los ajustes gráficos.',
         },
         plugin_error: {
@@ -2150,7 +2196,8 @@ export default {
         duplicate_plugin: {
           title: 'Plugin duplicado cargado',
           description: 'Mismo plugin cargado desde varias ubicaciones (línea {line}).',
-          suggestion: 'Conserva la versión más reciente (Resources/plugins) y elimina los duplicados.',
+          suggestion:
+            'Conserva la versión más reciente (Resources/plugins) y elimina los duplicados.',
         },
         missing_plugin_support: {
           title: 'Falta archivo de soporte del plugin',
@@ -2160,12 +2207,14 @@ export default {
         deprecated_dataref: {
           title: 'Uso de datarefs obsoletos',
           description: 'El plugin usa datarefs obsoletos (línea {line}).',
-          suggestion: 'Informativo. Aún funciona, pero podría dejar de hacerlo en versiones futuras.',
+          suggestion:
+            'Informativo. Aún funciona, pero podría dejar de hacerlo en versiones futuras.',
         },
         dsf_error: {
           title: 'Errores DSF de escenario',
           description: 'Errores en archivos de terreno (DSF) en la línea {line}.',
-          suggestion: 'El paquete de escenario tiene archivos DSF dañados. Desactívalo o reinstálalo.',
+          suggestion:
+            'El paquete de escenario tiene archivos DSF dañados. Desactívalo o reinstálalo.',
         },
         scenery_error: {
           title: 'Errores de carga de escenario',
@@ -2175,7 +2224,8 @@ export default {
         third_party_blocked: {
           title: 'Inyector de terceros bloqueado',
           description: 'X-Plane bloqueó un inyector gráfico (línea {line}).',
-          suggestion: 'Elimina las DLL de ReShade (dxgi.dll, d3d11.dll, vulkan-1.dll) y ReShade.ini.',
+          suggestion:
+            'Elimina las DLL de ReShade (dxgi.dll, d3d11.dll, vulkan-1.dll) y ReShade.ini.',
         },
         other_high: {
           title: 'Otros errores de alta gravedad',
@@ -2187,12 +2237,14 @@ export default {
         beta_build: {
           title: 'Ejecutando X-Plane beta',
           description: 'X-Plane {version} es una compilación beta o de desarrollo.',
-          suggestion: 'Las compilaciones beta pueden romper plugins. Cambia a la estable si tienes cierres.',
+          suggestion:
+            'Las compilaciones beta pueden romper plugins. Cambia a la estable si tienes cierres.',
         },
         intel_gpu: {
           title: 'GPU Intel no compatible',
           description: 'Tu GPU ({gpu}) no es compatible con X-Plane 12.',
-          suggestion: 'X-Plane 12 requiere NVIDIA/AMD o Intel Arc. Las Intel integradas no son compatibles.',
+          suggestion:
+            'X-Plane 12 requiere NVIDIA/AMD o Intel Arc. Las Intel integradas no son compatibles.',
         },
         injectors: {
           title: 'Inyectores gráficos detectados',
@@ -2226,7 +2278,8 @@ export default {
         duplicate_tiles: {
           title: 'Mosaicos de escenario superpuestos',
           description: '{count} mosaicos cubiertos por varios paquetes.',
-          suggestion: 'Los escenarios superpuestos desperdician VRAM. Desactiva los paquetes redundantes.',
+          suggestion:
+            'Los escenarios superpuestos desperdician VRAM. Desactiva los paquetes redundantes.',
         },
         duplicate_airports: {
           title: 'Definiciones de aeropuerto duplicadas',
@@ -2244,12 +2297,14 @@ export default {
         no_custom_data: {
           title: 'Sin navdata de terceros',
           description: 'No hay navdata de terceros instalado (falta Custom Data).',
-          suggestion: 'X-Plane usa el por defecto (a menudo desactualizado). Instala el AIRAC de Navigraph.',
+          suggestion:
+            'X-Plane usa el por defecto (a menudo desactualizado). Instala el AIRAC de Navigraph.',
         },
         expired: {
           title: 'Ciclo de navdata caducado',
           description: 'El ciclo {cycle} de {provider} caducó el {expiry} (hace {days} días).',
-          suggestion: 'Un ciclo caducado tiene waypoints desactualizados. Actualiza la suscripción.',
+          suggestion:
+            'Un ciclo caducado tiene waypoints desactualizados. Actualiza la suscripción.',
         },
         expiring_soon: {
           title: 'Navdata a punto de caducar',
@@ -2269,7 +2324,8 @@ export default {
         cycle_mismatch: {
           title: 'Ciclos AIRAC no coincidentes',
           description: 'Varias carpetas tienen ciclos distintos: {cycles}',
-          suggestion: 'Suele ser inofensivo, pero verifica que todos estén actualizados si surgen problemas.',
+          suggestion:
+            'Suele ser inofensivo, pero verifica que todos estén actualizados si surgen problemas.',
         },
       },
       disk: {

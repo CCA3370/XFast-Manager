@@ -130,6 +130,43 @@ export default {
     Navdata: 'Données de navigation',
     Livery: 'Livrée',
     LuaScript: 'Script Lua',
+    Patch: 'Correctif',
+  },
+  patch: {
+    title: 'Installer un correctif d’avion',
+    targetAircraft: 'Avion cible',
+    detecting: 'Détection de l’avion correspondant…',
+    autoRecommended: 'Correspondance automatique (le plus de fichiers alignés)',
+    noAircraft: 'Aucun avion installé trouvé.',
+    mappings: 'Affectations de fichiers',
+    addMapping: 'Ajouter une affectation',
+    inferring: 'Analyse du contenu du correctif…',
+    archiveRootPlaceholder: '(racine de l’archive)',
+    destRootPlaceholder: '(racine de l’avion)',
+    archiveRoot: 'racine de l’archive',
+    aircraftRoot: 'racine de l’avion',
+    unmappedHint: 'Dossiers non affectés — cliquez pour ajouter une affectation :',
+    backupLabel: 'Sauvegarder les fichiers écrasés',
+    backupHint: 'Conserve les fichiers que ce correctif écrase afin de pouvoir l’annuler.',
+    preparing: 'Préparation…',
+    install: 'Installer le correctif',
+    installAsPatch: 'Installer comme correctif',
+    installPatch: 'Installer un correctif…',
+    thisIsPatch: 'Ceci est un correctif d’avion',
+    thisIsPatchHint: 'Superposer plutôt cette archive sur un avion installé.',
+    maybePatchTitle: 'Aucun module détecté',
+    maybePatchMessage:
+      'Cette archive n’est pas un module reconnu. L’installer comme correctif pour un avion existant ?',
+    noArchive: 'Aucune archive de correctif disponible.',
+    reasonMatched: 'correspond à {count} fichiers existants',
+    reasonLivery: 'dossier de livrées',
+    reasonNoAnchor: 'aucun point d’ancrage — racine de l’avion par défaut',
+    reasonNoListing: 'impossible d’inspecter l’archive',
+    confidence: {
+      high: 'Élevée',
+      medium: 'Moyenne',
+      low: 'Faible',
+    },
   },
   luaCompanion: {
     companions: 'Fichiers compagnon',
@@ -2019,7 +2056,7 @@ export default {
     fetchError: "Échec de la récupération de l'index ALTITUDE",
     noPackages: 'Aucun package ALTITUDE trouvé. Cliquez sur Actualiser pour numériser.',
   },
-    doctor: {
+  doctor: {
     navTitle: 'Santé',
     title: 'Bilan de santé X-Plane',
     subtitle: 'Diagnostic complet de votre installation X-Plane',
@@ -2033,7 +2070,7 @@ export default {
     healthWarning: 'Avertissements détectés',
     healthCritical: 'Problèmes critiques',
     sections: {
-      integrity: 'Intégrité de l\'installation',
+      integrity: "Intégrité de l'installation",
       crashes: 'Plantages et stabilité',
       navdata: 'Données de navigation',
       scenery: 'Décors',
@@ -2055,44 +2092,49 @@ export default {
       guide: 'Afficher le guide',
       viewDetails: 'Voir les détails',
     },
-    xplaneRunning: 'X-Plane est en cours d\'exécution. Fermez-le avant d\'appliquer les correctifs.',
+    xplaneRunning: "X-Plane est en cours d'exécution. Fermez-le avant d'appliquer les correctifs.",
     checks: {
       integrity: {
         path_invalid: {
           title: 'Chemin X-Plane invalide',
-          description: 'Le chemin d\'installation de X-Plane n\'est pas valide.',
+          description: "Le chemin d'installation de X-Plane n'est pas valide.",
           suggestion: 'Allez dans les Paramètres et configurez un chemin X-Plane valide.',
         },
         xplane_running: {
-          title: 'X-Plane est en cours d\'exécution',
-          description: 'X-Plane est actuellement en cours d\'exécution. Certains correctifs sont désactivés.',
+          title: "X-Plane est en cours d'exécution",
+          description:
+            "X-Plane est actuellement en cours d'exécution. Certains correctifs sont désactivés.",
           suggestion: 'Fermez X-Plane pour débloquer toutes les fonctionnalités.',
         },
         missing_core_dirs: {
           title: 'Répertoires essentiels manquants',
           description: 'Des répertoires X-Plane critiques sont manquants.',
-          suggestion: 'Votre installation semble corrompue. Réinstallez X-Plane ou vérifiez les fichiers du jeu.',
+          suggestion:
+            'Votre installation semble corrompue. Réinstallez X-Plane ou vérifiez les fichiers du jeu.',
         },
         program_files: {
           title: 'Installé dans Program Files',
           description: 'X-Plane se trouve sous Program Files (restrictions UAC actives).',
-          suggestion: 'L\'UAC peut bloquer les installations. Envisagez de déplacer X-Plane hors de Program Files.',
+          suggestion:
+            "L'UAC peut bloquer les installations. Envisagez de déplacer X-Plane hors de Program Files.",
         },
         readonly_files: {
           title: 'Fichiers en lecture seule détectés',
-          description: '{count} fichiers d\'addon sont en lecture seule, ce qui bloque les mises à jour.',
-          suggestion: 'Retirez l\'attribut lecture seule ou vérifiez les verrous de l\'antivirus.',
+          description:
+            "{count} fichiers d'addon sont en lecture seule, ce qui bloque les mises à jour.",
+          suggestion: "Retirez l'attribut lecture seule ou vérifiez les verrous de l'antivirus.",
         },
         recent_failures: {
-          title: 'Échecs d\'installation récents',
+          title: "Échecs d'installation récents",
           description: '{count} installations ou mises à jour récentes ont échoué.',
-          suggestion: 'Consultez le journal d\'activité pour identifier le problème.',
+          suggestion: "Consultez le journal d'activité pour identifier le problème.",
         },
       },
       crashes: {
         last_session_crashed: {
           title: 'La dernière session a planté',
-          description: 'X-Plane s\'est fermé de façon inattendue. Détails du plantage depuis Log.txt :',
+          description:
+            "X-Plane s'est fermé de façon inattendue. Détails du plantage depuis Log.txt :",
           suggestion: 'Causes fréquentes : pilotes GPU, plugins, mémoire ou décors corrompus.',
         },
       },
@@ -2100,17 +2142,20 @@ export default {
         plugin_crash: {
           title: 'Plantage dû à un plugin',
           description: 'Un plugin a provoqué le plantage (fiabilité {score} %). Module : {module}',
-          suggestion: 'Mettez à jour ou désactivez le plugin incriminé. Les versions bêta de X-Plane cassent souvent les plugins.',
+          suggestion:
+            'Mettez à jour ou désactivez le plugin incriminé. Les versions bêta de X-Plane cassent souvent les plugins.',
         },
         gpu_driver_crash: {
           title: 'Plantage du pilote GPU',
           description: 'Le pilote GPU a provoqué le plantage (fiabilité {score} %).',
-          suggestion: 'Mettez à jour votre pilote GPU. Supprimez les overclockings et les injecteurs graphiques.',
+          suggestion:
+            'Mettez à jour votre pilote GPU. Supprimez les overclockings et les injecteurs graphiques.',
         },
         memory_exhaustion: {
           title: 'Plantage par manque de mémoire',
-          description: 'L\'épuisement de la mémoire a provoqué le plantage (fiabilité {score} %).',
-          suggestion: 'Réduisez la qualité des textures, les reflets ou désactivez les orthophotos lourdes.',
+          description: "L'épuisement de la mémoire a provoqué le plantage (fiabilité {score} %).",
+          suggestion:
+            'Réduisez la qualité des textures, les reflets ou désactivez les orthophotos lourdes.',
         },
       },
       log: {
@@ -2122,21 +2167,25 @@ export default {
         out_of_memory: {
           title: 'Mémoire insuffisante',
           description: 'Condition de mémoire insuffisante à la ligne {line}.',
-          suggestion: 'Réduisez la qualité des textures, le niveau de détail ou allégez les décors orthophoto.',
+          suggestion:
+            'Réduisez la qualité des textures, le niveau de détail ou allégez les décors orthophoto.',
         },
         heavy_memory_pressure: {
           title: 'Forte pression mémoire',
           description: 'Pression mémoire sévère à la ligne {line}.',
-          suggestion: 'La pression mémoire précède les plantages. Réduisez la qualité des textures.',
+          suggestion:
+            'La pression mémoire précède les plantages. Réduisez la qualité des textures.',
         },
         severe_texture_downscale: {
           title: 'Réduction sévère des textures',
           description: 'Réduction agressive des textures due aux limites de VRAM (ligne {line}).',
-          suggestion: 'Baissez la qualité des textures d\'un cran pour éviter la réduction d\'urgence.',
+          suggestion:
+            "Baissez la qualité des textures d'un cran pour éviter la réduction d'urgence.",
         },
         runloop_backlog: {
-          title: 'Accumulation dans la boucle d\'exécution',
-          description: 'Longs blocages d\'images détectés à la ligne {line} (provoquent des saccades).',
+          title: "Accumulation dans la boucle d'exécution",
+          description:
+            "Longs blocages d'images détectés à la ligne {line} (provoquent des saccades).",
           suggestion: 'Vérifiez les plugins lourds ou baissez les réglages graphiques.',
         },
         plugin_error: {
@@ -2145,7 +2194,7 @@ export default {
           suggestion: 'Mettez à jour le plugin ou signalez-le à son développeur.',
         },
         plugin_assert: {
-          title: 'Échec d\'assertion de plugin',
+          title: "Échec d'assertion de plugin",
           description: 'Un plugin a rencontré une assertion fatale à la ligne {line}.',
           suggestion: 'Bug grave du plugin. Désactivez-le et signalez-le au développeur.',
         },
@@ -2157,22 +2206,25 @@ export default {
         duplicate_plugin: {
           title: 'Plugin en double chargé',
           description: 'Même plugin chargé depuis plusieurs emplacements (ligne {line}).',
-          suggestion: 'Conservez la version la plus récente (Resources/plugins), supprimez les doublons.',
+          suggestion:
+            'Conservez la version la plus récente (Resources/plugins), supprimez les doublons.',
         },
         missing_plugin_support: {
           title: 'Fichier de support de plugin manquant',
-          description: 'Un plugin manque d\'un fichier de support requis (ligne {line}).',
+          description: "Un plugin manque d'un fichier de support requis (ligne {line}).",
           suggestion: 'Réinstallez le plugin.',
         },
         deprecated_dataref: {
           title: 'Utilisation de dataref obsolète',
           description: 'Un plugin utilise des datarefs obsolètes (ligne {line}).',
-          suggestion: 'À titre informatif. Fonctionne encore mais pourrait cesser dans de futures versions.',
+          suggestion:
+            'À titre informatif. Fonctionne encore mais pourrait cesser dans de futures versions.',
         },
         dsf_error: {
           title: 'Erreurs DSF de décor',
           description: 'Erreurs de fichier de terrain (DSF) à la ligne {line}.',
-          suggestion: 'Le pack de décor a des fichiers DSF corrompus. Désactivez-le ou réinstallez-le.',
+          suggestion:
+            'Le pack de décor a des fichiers DSF corrompus. Désactivez-le ou réinstallez-le.',
         },
         scenery_error: {
           title: 'Erreurs de chargement de décor',
@@ -2182,7 +2234,8 @@ export default {
         third_party_blocked: {
           title: 'Injecteur tiers bloqué',
           description: 'X-Plane a bloqué un injecteur graphique (ligne {line}).',
-          suggestion: 'Supprimez les DLL ReShade (dxgi.dll, d3d11.dll, vulkan-1.dll) et ReShade.ini.',
+          suggestion:
+            'Supprimez les DLL ReShade (dxgi.dll, d3d11.dll, vulkan-1.dll) et ReShade.ini.',
         },
         other_high: {
           title: 'Autres erreurs de gravité élevée',
@@ -2194,12 +2247,14 @@ export default {
         beta_build: {
           title: 'Version bêta de X-Plane en cours',
           description: 'X-Plane {version} est une version bêta/de développement.',
-          suggestion: 'Les versions bêta peuvent casser les plugins. Passez à la version stable en cas de plantages.',
+          suggestion:
+            'Les versions bêta peuvent casser les plugins. Passez à la version stable en cas de plantages.',
         },
         intel_gpu: {
           title: 'GPU Intel non pris en charge',
-          description: 'Votre GPU ({gpu}) n\'est pas pris en charge par X-Plane 12.',
-          suggestion: 'X-Plane 12 nécessite NVIDIA/AMD ou Intel Arc. Les Intel intégrés ne sont pas pris en charge.',
+          description: "Votre GPU ({gpu}) n'est pas pris en charge par X-Plane 12.",
+          suggestion:
+            'X-Plane 12 nécessite NVIDIA/AMD ou Intel Arc. Les Intel intégrés ne sont pas pris en charge.',
         },
         injectors: {
           title: 'Injecteurs graphiques détectés',
@@ -2211,10 +2266,11 @@ export default {
         competing_organizer: {
           title: 'Gestionnaire de décors concurrent',
           description: 'xOrganizer ou un autre gestionnaire est installé.',
-          suggestion: 'Plusieurs gestionnaires peuvent entrer en conflit. Choisissez-en un et désactivez l\'autre.',
+          suggestion:
+            "Plusieurs gestionnaires peuvent entrer en conflit. Choisissez-en un et désactivez l'autre.",
         },
         needs_sort: {
-          title: 'L\'ordre de chargement des décors doit être synchronisé',
+          title: "L'ordre de chargement des décors doit être synchronisé",
           description: 'scenery_packs.ini est désynchronisé.',
           suggestion: 'Cliquez sur Appliquer le correctif pour retrier les packs de décor.',
           fix: 'Trier les décors',
@@ -2228,7 +2284,7 @@ export default {
         missing_libraries: {
           title: 'Bibliothèques de décor manquantes',
           description: '{count} packs manquent de bibliothèques requises.',
-          suggestion: 'Les objets ne s\'afficheront pas. Installez les bibliothèques manquantes.',
+          suggestion: "Les objets ne s'afficheront pas. Installez les bibliothèques manquantes.",
         },
         duplicate_tiles: {
           title: 'Tuiles de décor superposées',
@@ -2236,13 +2292,13 @@ export default {
           suggestion: 'Les décors superposés gaspillent la VRAM. Désactivez les packs redondants.',
         },
         duplicate_airports: {
-          title: 'Définitions d\'aéroport en double',
+          title: "Définitions d'aéroport en double",
           description: '{count} aéroports sont définis dans plusieurs packs.',
           suggestion: 'Généralement intentionnel (personnalisé vs. par défaut).',
         },
         flatten_drift: {
-          title: 'Dérive d\'aplanissement d\'aéroport',
-          description: '{count} surcharges d\'aplanissement doivent être réappliquées.',
+          title: "Dérive d'aplanissement d'aéroport",
+          description: "{count} surcharges d'aplanissement doivent être réappliquées.",
           suggestion: 'Réappliquez-les pour régénérer les fichiers apt.dat.',
           fix: 'Appliquer toutes les dérives',
         },
@@ -2251,17 +2307,19 @@ export default {
         no_custom_data: {
           title: 'Aucune navdata tierce',
           description: 'Aucune navdata tierce installée (Custom Data manquant).',
-          suggestion: 'X-Plane utilise les données par défaut (souvent obsolètes). Installez un AIRAC depuis Navigraph.',
+          suggestion:
+            'X-Plane utilise les données par défaut (souvent obsolètes). Installez un AIRAC depuis Navigraph.',
         },
         expired: {
           title: 'Cycle de navdata expiré',
           description: 'Le cycle {cycle} de {provider} a expiré le {expiry} (il y a {days} jours).',
-          suggestion: 'Un cycle expiré contient des points de cheminement obsolètes. Mettez à jour l\'abonnement.',
+          suggestion:
+            "Un cycle expiré contient des points de cheminement obsolètes. Mettez à jour l'abonnement.",
         },
         expiring_soon: {
           title: 'Navdata bientôt expirée',
           description: 'Le cycle {cycle} de {provider} expire le {expiry} (dans {days} jours).',
-          suggestion: 'Renouvelez l\'abonnement avant l\'expiration.',
+          suggestion: "Renouvelez l'abonnement avant l'expiration.",
         },
         cifp_missing: {
           title: 'Dossier CIFP manquant',
@@ -2271,42 +2329,46 @@ export default {
         earth_dat_missing: {
           title: 'Fichiers earth_*.dat incomplets',
           description: 'Certains fichiers de navdata essentiels manquent dans Custom Data.',
-          suggestion: 'L\'installation de la navdata est incomplète. Réinstallez le paquet complet.',
+          suggestion: "L'installation de la navdata est incomplète. Réinstallez le paquet complet.",
         },
         cycle_mismatch: {
           title: 'Cycles AIRAC incohérents',
           description: 'Plusieurs dossiers ont des cycles différents : {cycles}',
-          suggestion: 'Généralement sans conséquence, mais vérifiez qu\'ils sont tous à jour en cas de problème.',
+          suggestion:
+            "Généralement sans conséquence, mais vérifiez qu'ils sont tous à jour en cas de problème.",
         },
       },
       disk: {
         low_space: {
           title: 'Espace disque faible',
           description: 'Seulement {free} de libre sur le volume X-Plane.',
-          suggestion: 'Peut provoquer des échecs d\'installation. Libérez de l\'espace ou déplacez X-Plane.',
+          suggestion:
+            "Peut provoquer des échecs d'installation. Libérez de l'espace ou déplacez X-Plane.",
         },
         cleanable_caches: {
           title: 'Caches de sortie nettoyables',
-          description: '{size} de caches de shaders et de fichiers temporaires peuvent être nettoyés.',
+          description:
+            '{size} de caches de shaders et de fichiers temporaires peuvent être nettoyés.',
           suggestion: 'Ouvrez la page de nettoyage des sorties pour vérifier.',
           fix: 'Ouvrir le nettoyage',
         },
       },
       updates: {
         addons: {
-          title: 'Mises à jour d\'addons disponibles',
+          title: "Mises à jour d'addons disponibles",
           description: '{count} avions/plugins/décors ont des mises à jour.',
-          suggestion: 'Allez dans l\'onglet Gestion pour les vérifier et les installer.',
+          suggestion: "Allez dans l'onglet Gestion pour les vérifier et les installer.",
         },
         gateway: {
-          title: 'Mises à jour d\'aéroports Gateway',
+          title: "Mises à jour d'aéroports Gateway",
           description: '{count} aéroports Gateway ont un décor plus récent.',
-          suggestion: 'Visitez l\'onglet Gateway pour mettre à jour.',
+          suggestion: "Visitez l'onglet Gateway pour mettre à jour.",
         },
         app: {
           title: 'Mise à jour de XFast Manager disponible',
           description: 'La version {version} est disponible.',
-          suggestion: 'Mettez à jour XFast Manager pour les dernières fonctionnalités et corrections.',
+          suggestion:
+            'Mettez à jour XFast Manager pour les dernières fonctionnalités et corrections.',
           fix: 'Mettre à jour maintenant',
         },
       },

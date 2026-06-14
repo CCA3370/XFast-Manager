@@ -19,7 +19,10 @@
               <h3 class="text-base font-bold text-gray-900 dark:text-white">
                 {{ $t('patch.title') }}
               </h3>
-              <p class="text-orange-600 dark:text-orange-300/80 text-xs mt-0.5 truncate" :title="archiveName">
+              <p
+                class="text-orange-600 dark:text-orange-300/80 text-xs mt-0.5 truncate"
+                :title="archiveName"
+              >
                 {{ archiveName }}
               </p>
             </div>
@@ -57,7 +60,12 @@
                   class="text-xs text-emerald-600 dark:text-emerald-400 mt-1.5 flex items-center gap-1"
                 >
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M5 13l4 4L19 7"
+                    />
                   </svg>
                   {{ $t('patch.autoRecommended') }}
                 </p>
@@ -99,8 +107,18 @@
                       :placeholder="$t('patch.archiveRootPlaceholder')"
                       class="flex-1 min-w-0 px-2 py-1.5 bg-white dark:bg-gray-900/70 border border-gray-200 dark:border-gray-700/50 rounded text-gray-900 dark:text-white text-xs"
                     />
-                    <svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    <svg
+                      class="w-4 h-4 text-gray-400 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M14 5l7 7m0 0l-7 7m7-7H3"
+                      />
                     </svg>
                     <input
                       v-model="m.destSubpath"
@@ -115,7 +133,12 @@
                       @click="removeMapping(i)"
                     >
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M6 18L18 6M6 6l12 12"
+                        />
                       </svg>
                     </button>
                   </div>
@@ -198,7 +221,12 @@
               @click="confirmInstall"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"
+                />
               </svg>
               {{ building ? $t('patch.preparing') : $t('patch.install') }}
             </button>

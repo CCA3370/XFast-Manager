@@ -125,6 +125,42 @@ export default {
     Navdata: 'بيانات الملاحة',
     Livery: 'الطلاء',
     LuaScript: 'سكريبت Lua',
+    Patch: 'تصحيح',
+  },
+  patch: {
+    title: 'تثبيت تصحيح الطائرة',
+    targetAircraft: 'الطائرة المستهدفة',
+    detecting: 'جارٍ اكتشاف الطائرة المطابقة…',
+    autoRecommended: 'مطابقة تلقائية (أكثر الملفات تطابقًا)',
+    noAircraft: 'لم يتم العثور على أي طائرة مثبتة.',
+    mappings: 'تعيينات الملفات',
+    addMapping: 'إضافة تعيين',
+    inferring: 'جارٍ تحليل محتوى التصحيح…',
+    archiveRootPlaceholder: '(جذر الأرشيف)',
+    destRootPlaceholder: '(جذر الطائرة)',
+    archiveRoot: 'جذر الأرشيف',
+    aircraftRoot: 'جذر الطائرة',
+    unmappedHint: 'مجلدات غير معيَّنة — انقر لإضافة تعيين:',
+    backupLabel: 'نسخ الملفات التي ستُستبدل احتياطيًا',
+    backupHint: 'يحفظ الملفات التي يستبدلها هذا التصحيح حتى يمكن التراجع عنه.',
+    preparing: 'جارٍ التحضير…',
+    install: 'تثبيت التصحيح',
+    installAsPatch: 'تثبيت كتصحيح',
+    installPatch: 'تثبيت التصحيح…',
+    thisIsPatch: 'هذا تصحيح طائرة',
+    thisIsPatchHint: 'بدلاً من ذلك، ضع هذا الأرشيف فوق طائرة مثبتة.',
+    maybePatchTitle: 'لم يتم اكتشاف أي إضافة',
+    maybePatchMessage: 'هذا الأرشيف ليس إضافة معروفة. هل تريد تثبيته كتصحيح لطائرة موجودة؟',
+    noArchive: 'لا يوجد أرشيف تصحيح متاح.',
+    reasonMatched: 'يطابق {count} من الملفات الموجودة',
+    reasonLivery: 'مجلد الطلاء',
+    reasonNoAnchor: 'لا توجد نقطة ربط — جذر الطائرة افتراضيًا',
+    reasonNoListing: 'تعذّر فحص الأرشيف',
+    confidence: {
+      high: 'عالية',
+      medium: 'متوسطة',
+      low: 'منخفضة',
+    },
   },
   luaCompanion: {
     companions: 'الملفات المرافقة',
@@ -1933,7 +1969,7 @@ export default {
     fetchError: 'فشل جلب فهرس ALTITUDE',
     noPackages: 'لم يتم العثور على حزم ALTITUDE. انقر على تحديث لإعادة الفحص.',
   },
-    doctor: {
+  doctor: {
     navTitle: 'الصحة',
     title: 'فحص صحة X-Plane',
     subtitle: 'تشخيص شامل لتثبيت X-Plane لديك',
@@ -2014,7 +2050,8 @@ export default {
         plugin_crash: {
           title: 'عطل بسبب إضافة',
           description: 'تسببت إضافة في العطل (بنسبة ثقة {score}٪). الوحدة: {module}',
-          suggestion: 'حدّث الإضافة المتهمة أو عطّلها. غالبًا ما تكسر نسخ X-Plane التجريبية الإضافات.',
+          suggestion:
+            'حدّث الإضافة المتهمة أو عطّلها. غالبًا ما تكسر نسخ X-Plane التجريبية الإضافات.',
         },
         gpu_driver_crash: {
           title: 'عطل بسبب تعريف GPU',
@@ -2108,12 +2145,14 @@ export default {
         beta_build: {
           title: 'تشغيل نسخة تجريبية من X-Plane',
           description: 'النسخة X-Plane {version} هي بنية تجريبية/تطويرية.',
-          suggestion: 'قد تكسر النسخ التجريبية الإضافات. انتقل إلى النسخة المستقرة إذا واجهت أعطالًا.',
+          suggestion:
+            'قد تكسر النسخ التجريبية الإضافات. انتقل إلى النسخة المستقرة إذا واجهت أعطالًا.',
         },
         intel_gpu: {
           title: 'بطاقة Intel GPU غير مدعومة',
           description: 'بطاقتك ({gpu}) غير مدعومة في X-Plane 12.',
-          suggestion: 'يتطلب X-Plane 12 بطاقة NVIDIA/AMD أو Intel Arc. بطاقات Intel المدمجة غير مدعومة.',
+          suggestion:
+            'يتطلب X-Plane 12 بطاقة NVIDIA/AMD أو Intel Arc. بطاقات Intel المدمجة غير مدعومة.',
         },
         injectors: {
           title: 'تم اكتشاف حاقنات رسوميات',
