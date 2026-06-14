@@ -122,11 +122,25 @@ pub fn detect_target_aircraft(
     archive_path: &Path,
     xplane_path: &str,
 ) -> Result<TargetDetection> {
+    let aircraft = crate::management_index::scan_aircraft(Path::new(xplane_path))?.entries;
+
     let files = list_archive_files(archive_path).unwrap_or_default();
     if files.is_empty() {
-        // Could not list (e.g. encrypted headers): no automatic recommendation.
+        // Could not inspect the archive (e.g. encrypted headers): still offer
+        // every installed aircraft so the user can pick a target manually.
+        let candidates = aircraft
+            .into_iter()
+            .map(|ac| AircraftCandidate {
+                folder_name: ac.folder_name,
+                display_name: ac.display_name,
+                matched_count: 0,
+                sample_size: 0,
+                best_offset: String::new(),
+                confidence: Confidence::Low,
+            })
+            .collect();
         return Ok(TargetDetection {
-            candidates: Vec::new(),
+            candidates,
             recommended_folder: None,
         });
     }
@@ -139,8 +153,6 @@ pub fn detect_target_aircraft(
         .map(|off| (off.clone(), build_sample(&files, off)))
         .filter(|(_, sample)| !sample.is_empty())
         .collect();
-
-    let aircraft = crate::management_index::scan_aircraft(Path::new(xplane_path))?.entries;
 
     let mut candidates: Vec<AircraftCandidate> = aircraft
         .par_iter()

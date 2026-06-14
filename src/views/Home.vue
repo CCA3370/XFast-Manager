@@ -272,6 +272,7 @@
         v-if="showConfirmation"
         @close="showConfirmation = false"
         @confirm="handleInstall"
+        @install-as-patch="openPatchFromConfirmation"
       />
       <PasswordModal
         v-if="showPasswordModal"
@@ -279,6 +280,13 @@
         :error-message="passwordErrorMessage"
         @confirm="handlePasswordSubmit"
         @cancel="handlePasswordCancel"
+      />
+      <PatchInstallModal
+        v-if="patchStore.isModalOpen"
+        :archive-path="patchStore.archivePath"
+        :preset-aircraft-folder="patchStore.presetAircraftFolder"
+        @close="patchStore.close()"
+        @install="handlePatchInstall"
       />
 
       <!-- Launch X-Plane Confirmation Dialog -->
@@ -404,6 +412,7 @@ import { useProgressStore } from '@/stores/progress'
 import { useUpdateStore } from '@/stores/update'
 import { useSceneryStore } from '@/stores/scenery'
 import { useLockStore } from '@/stores/lock'
+import { usePatchStore } from '@/stores/patch'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -412,11 +421,12 @@ import type { UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import ConfirmationModal from '@/components/ConfirmationModal.vue'
 import PasswordModal from '@/components/PasswordModal.vue'
+import PatchInstallModal from '@/components/PatchInstallModal.vue'
 import AnimatedText from '@/components/AnimatedText.vue'
 import UpdateBanner from '@/components/UpdateBanner.vue'
 import InstallProgressOverlay from '@/components/InstallProgressOverlay.vue'
 import AnalyzingOverlay from '@/components/AnalyzingOverlay.vue'
-import type { AnalysisResult, InstallProgress, InstallResult } from '@/types'
+import type { AnalysisResult, InstallProgress, InstallResult, InstallTask } from '@/types'
 import { AddonType } from '@/types'
 import { getErrorMessage } from '@/types'
 import { logOperation, logError, logDebug, logBasic } from '@/services/logger'
@@ -431,6 +441,7 @@ const updateStore = useUpdateStore()
 const progressStore = useProgressStore()
 const sceneryStore = useSceneryStore()
 const lockStore = useLockStore()
+const patchStore = usePatchStore()
 const isDragging = ref(false)
 const showConfirmation = ref(false)
 const showLaunchConfirmDialog = ref(false)
@@ -887,7 +898,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
       }
     } else {
       logDebug('No valid addons detected in analysis', 'analysis')
-      toast.warning(t('home.noValidAddons'))
+      await offerPatchInstall(paths)
     }
   } catch (error) {
     // Non-blocking log call (also prints to console.error internally)
@@ -986,15 +997,81 @@ async function handleInstall() {
     return
   }
 
+  // Prepare enabled tasks with overwrite, size confirmation and backup settings.
+  const allTasksWithSettings = store.getTasksWithOverwrite()
+  const tasksWithOverwrite = allTasksWithSettings.filter((task) => store.getTaskEnabled(task.id))
+
+  await executeInstall(tasksWithOverwrite, {
+    deleteSource: store.deleteSourceAfterInstall,
+    parallel: store.parallelInstallEnabled,
+  })
+}
+
+// Install a patch: the modal already produced final overlay tasks. Patches are
+// never source-deleted and run serially (mappings write into one aircraft tree).
+async function handlePatchInstall(tasks: InstallTask[]) {
+  patchStore.close()
+  await executeInstall(tasks, { deleteSource: false, parallel: false })
+}
+
+// When nothing is detected, an archive may still be an aircraft patch — offer it.
+async function offerPatchInstall(paths: string[]) {
+  const archive = firstArchivePath(paths)
+  if (archive) {
+    const usePatch = await showConfirmDialog({
+      title: t('patch.maybePatchTitle'),
+      message: t('patch.maybePatchMessage'),
+      confirmText: t('patch.installAsPatch'),
+      cancelText: t('common.cancel'),
+      type: 'warning',
+    })
+    if (usePatch) {
+      patchStore.open(archive)
+      return
+    }
+  }
+  toast.warning(t('home.noValidAddons'))
+}
+
+// First archive among dropped paths (patches must come from an archive).
+function firstArchivePath(paths: string[]): string | undefined {
+  return paths.find((p) => /\.(zip|7z|rar)$/i.test(p))
+}
+
+// Escape hatch from the confirmation modal: the user says the (possibly
+// mis-detected) archive is actually an aircraft patch. Discard the detected
+// tasks and route the original archive into the patch flow.
+function openPatchFromConfirmation() {
+  const task = store.currentTasks[0]
+  const archive = task?.originalInputPath || task?.sourcePath
+  if (!archive) {
+    toast.warning(t('patch.noArchive'))
+    return
+  }
+  showConfirmation.value = false
+  store.clearTasks()
+  patchStore.open(archive)
+}
+
+// Shared install runner used by both the normal confirm flow and patch installs.
+async function executeInstall(
+  finalTasks: InstallTask[],
+  opts?: { deleteSource?: boolean; parallel?: boolean },
+) {
+  if (finalTasks.length === 0) {
+    toast.warning(t('home.noTasksEnabled'))
+    return
+  }
+
   // Store the tasks being installed for the progress overlay
-  store.setInstallingTasks(enabledTasks)
+  store.setInstallingTasks(finalTasks)
 
   store.isInstalling = true
   // Non-blocking log call
   logBasic('Installation started', 'installation')
-  logOperation('Installation started', `${enabledTasks.length} task(s) ready`)
+  logOperation('Installation started', `${finalTasks.length} task(s) ready`)
   logDebug(
-    `Installing ${enabledTasks.length} tasks: ${enabledTasks.map((t) => t.displayName).join(', ')}`,
+    `Installing ${finalTasks.length} tasks: ${finalTasks.map((t) => t.displayName).join(', ')}`,
     'installation',
   )
 
@@ -1003,23 +1080,19 @@ async function handleInstall() {
       await lockStore.initStore()
     }
 
-    // Prepare enabled tasks with overwrite and backup settings
-    const allTasksWithSettings = store.getTasksWithOverwrite()
-    const tasksWithOverwrite = allTasksWithSettings.filter((task) => store.getTaskEnabled(task.id))
-
-    const overwriteCount = tasksWithOverwrite.filter((t) => t.shouldOverwrite).length
+    const overwriteCount = finalTasks.filter((t) => t.shouldOverwrite).length
     if (overwriteCount > 0) {
       logDebug(`${overwriteCount} tasks will overwrite existing files`, 'installation')
     }
 
     const result = await invoke<InstallResult>('install_addons', {
-      tasks: tasksWithOverwrite,
+      tasks: finalTasks,
       atomicInstallEnabled: store.atomicInstallEnabled,
       xplanePath: store.xplanePath,
-      deleteSourceAfterInstall: store.deleteSourceAfterInstall,
+      deleteSourceAfterInstall: opts?.deleteSource ?? store.deleteSourceAfterInstall,
       autoSortScenery: store.autoSortScenery,
       lockedSceneryFolderNames: lockStore.getLockedItems('scenery'),
-      parallelEnabled: store.parallelInstallEnabled,
+      parallelEnabled: opts?.parallel ?? store.parallelInstallEnabled,
       maxParallel: store.maxParallelTasks,
     })
 

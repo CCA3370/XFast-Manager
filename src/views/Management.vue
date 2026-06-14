@@ -7,6 +7,8 @@ import { useToastStore } from '@/stores/toast'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
+import { usePatchStore } from '@/stores/patch'
+import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import { isDrawerUpdatable } from '@/utils/addonUpdate'
 import AircraftAcfManagerModal from '@/components/AircraftAcfManagerModal.vue'
@@ -30,6 +32,7 @@ const managementStore = useManagementStore()
 const toastStore = useToastStore()
 const appStore = useAppStore()
 const modalStore = useModalStore()
+const patchStore = usePatchStore()
 const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
 
 // Tab state
@@ -530,6 +533,20 @@ async function handleOpenFolder(itemType: ManagementItemType, folderName: string
 // Handle view liveries for aircraft
 function handleViewLiveries(folderName: string) {
   router.push('/management/liveries?aircraft=' + encodeURIComponent(folderName))
+}
+
+// Pick a patch archive for this aircraft, then open the patch flow on Home
+// (which hosts the install progress overlay) pre-targeted to this aircraft.
+async function handleInstallPatch(folderName: string) {
+  const selected = await openFileDialog({
+    multiple: false,
+    directory: false,
+    filters: [{ name: 'Archives', extensions: ['zip', '7z', 'rar'] }],
+  })
+  const archive = Array.isArray(selected) ? selected[0] : selected
+  if (!archive) return
+  patchStore.open(archive, folderName)
+  router.push('/')
 }
 
 function cloneAircraftInfo(aircraft: AircraftInfo): AircraftInfo {
@@ -1192,6 +1209,7 @@ const isLoading = computed(() => {
                   @manage-acf-files="handleManageAcfFiles"
                   @view-liveries="handleViewLiveries"
                   @toggle-select="toggleSelect"
+                  @install-patch="handleInstallPatch"
                   @update="
                     (fn) =>
                       handleOpenUpdate(

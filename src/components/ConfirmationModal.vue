@@ -122,45 +122,64 @@
           <TaskListSection />
 
           <!-- Actions -->
-          <div class="flex justify-end gap-1.5 flex-shrink-0 pt-1.5">
+          <div class="flex items-center justify-between gap-1.5 flex-shrink-0 pt-1.5">
             <button
-              class="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-white rounded-lg transition-all duration-200 hover:scale-105 text-xs font-medium flex items-center space-x-1"
-              @click="$emit('close')"
+              class="px-2.5 py-1.5 text-xs font-medium text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-500/10 rounded-lg transition-all duration-200 flex items-center space-x-1"
+              :title="$t('patch.thisIsPatchHint')"
+              @click="$emit('install-as-patch')"
             >
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   stroke-width="2"
-                  d="M6 18L18 6M6 6l12 12"
+                  d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"
                 ></path>
               </svg>
               <span
-                ><AnimatedText>{{ $t('common.cancel') }}</AnimatedText></span
+                ><AnimatedText>{{ $t('patch.thisIsPatch') }}</AnimatedText></span
               >
             </button>
-            <button
-              :disabled="installDisabled"
-              :class="[
-                'px-3 py-1.5 rounded-lg transition-all duration-200 text-xs font-medium flex items-center space-x-1',
-                installDisabled
-                  ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50 text-gray-500 dark:text-gray-400'
-                  : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 hover:scale-105 text-white',
-              ]"
-              @click="$emit('confirm')"
-            >
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M5 13l4 4L19 7"
-                ></path>
-              </svg>
-              <span
-                ><AnimatedText>{{ $t('modal.startInstallation') }}</AnimatedText></span
+            <div class="flex gap-1.5">
+              <button
+                class="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-white rounded-lg transition-all duration-200 hover:scale-105 text-xs font-medium flex items-center space-x-1"
+                @click="$emit('close')"
               >
-            </button>
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  ></path>
+                </svg>
+                <span
+                  ><AnimatedText>{{ $t('common.cancel') }}</AnimatedText></span
+                >
+              </button>
+              <button
+                :disabled="installDisabled"
+                :class="[
+                  'px-3 py-1.5 rounded-lg transition-all duration-200 text-xs font-medium flex items-center space-x-1',
+                  installDisabled
+                    ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50 text-gray-500 dark:text-gray-400'
+                    : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 hover:scale-105 text-white',
+                ]"
+                @click="$emit('confirm')"
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 13l4 4L19 7"
+                  ></path>
+                </svg>
+                <span
+                  ><AnimatedText>{{ $t('modal.startInstallation') }}</AnimatedText></span
+                >
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -176,7 +195,7 @@ import TaskListSection from '@/components/confirmation/TaskListSection.vue'
 
 const store = useAppStore()
 
-defineEmits(['close', 'confirm'])
+defineEmits(['close', 'confirm', 'install-as-patch'])
 
 // Check if install button should be disabled
 const installDisabled = computed(() => {

@@ -324,6 +324,51 @@ export interface ConflictInfo {
   newVersion?: string
 }
 
+// --- Aircraft model patch (overlay install) ---
+
+export type PatchConfidence = 'high' | 'medium' | 'low'
+
+/** A candidate target aircraft, ranked by how many patch files align with it. */
+export interface PatchAircraftCandidate {
+  folderName: string
+  displayName: string
+  matchedCount: number
+  sampleSize: number
+  bestOffset: string
+  confidence: PatchConfidence
+}
+
+export interface PatchTargetDetection {
+  candidates: PatchAircraftCandidate[]
+  recommendedFolder?: string | null
+}
+
+/** A suggested archive-subfolder -> aircraft-subpath mapping. */
+export interface PatchMapping {
+  archiveSubpath: string
+  destSubpath: string
+  fileCount: number
+  confidence: PatchConfidence
+  /** Machine-readable reason token (e.g. "matchedExisting:142", "liveryFolder"). */
+  reason: string
+}
+
+export interface PatchPlan {
+  /** Directory paths inside the archive, for manual mapping edits. */
+  archiveTree: string[]
+  suggestedMappings: PatchMapping[]
+  /** Archive top-level entries not covered by any suggested mapping. */
+  unmapped: string[]
+  /** Immediate sub-directories of the target aircraft (for the dest dropdown). */
+  aircraftSubdirs: string[]
+}
+
+/** A user-confirmed mapping sent back to the backend to build install tasks. */
+export interface PatchMappingInput {
+  archiveSubpath: string
+  destSubpath: string
+}
+
 export type InstallPhase = 'calculating' | 'installing' | 'verifying' | 'finalizing'
 
 export interface InstallProgress {
