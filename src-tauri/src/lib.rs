@@ -804,6 +804,41 @@ async fn infer_patch_mappings(
     .map_err(|e| format!("Patch mapping inference failed: {}", e))
 }
 
+/// Build overlay install tasks from user-confirmed patch mappings. The returned
+/// tasks are fed to `install_addons` like any other install.
+#[tauri::command]
+async fn build_patch_install_tasks(
+    archive_path: String,
+    password: Option<String>,
+    xplane_path: String,
+    aircraft_folder: String,
+    mappings: Vec<patch::PatchMappingInput>,
+    backup_overwritten: bool,
+) -> Result<Vec<InstallTask>, String> {
+    tokio::task::spawn_blocking(move || {
+        patch::build_install_tasks(
+            &archive_path,
+            password,
+            &xplane_path,
+            &aircraft_folder,
+            mappings,
+            backup_overwritten,
+        )
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Failed to build patch tasks: {}", e))
+}
+
+/// Restore a patch backup session, undoing the overwritten files.
+#[tauri::command]
+async fn revert_patch(backup_session_dir: String) -> Result<usize, String> {
+    tokio::task::spawn_blocking(move || patch::revert_patch(&backup_session_dir))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
+        .map_err(|e| format!("Failed to revert patch: {}", e))
+}
+
 // ============================================================================
 // Task Control Commands
 // ============================================================================
@@ -3967,6 +4002,8 @@ pub fn run() {
             install_addons,
             detect_patch_target_aircraft,
             infer_patch_mappings,
+            build_patch_install_tasks,
+            revert_patch,
             cancel_installation,
             skip_current_task,
             register_context_menu,

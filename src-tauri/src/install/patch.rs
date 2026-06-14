@@ -20,13 +20,16 @@
 //! aircraft's (potentially huge) file tree.
 
 use std::collections::BTreeSet;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+use walkdir::WalkDir;
 
-use crate::models::AircraftInfo;
+use crate::models::{AddonType, AircraftInfo, InstallTask};
 use crate::scanner::Scanner;
 
 /// Directory names that, when found directly inside a folder, mark that folder
@@ -318,6 +321,264 @@ fn plan_mappings(
     }
 
     (mappings, unmapped)
+}
+
+// --------------------------------------------------------------------------
+// Task building, overwrite-backup and revert
+// --------------------------------------------------------------------------
+
+/// A single user-confirmed mapping (archive subfolder -> aircraft subpath).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchMappingInput {
+    /// Subfolder inside the archive ("" = archive root).
+    #[serde(default)]
+    pub archive_subpath: String,
+    /// Destination subpath inside the aircraft folder ("" = aircraft root).
+    #[serde(default)]
+    pub dest_subpath: String,
+}
+
+/// Turn user-confirmed mappings into overlay `InstallTask`s targeting the
+/// chosen aircraft. Each task merges (`should_overwrite = true`) its archive
+/// subtree into `<aircraft>/<dest_subpath>`; the existing install engine then
+/// handles extraction, progress, atomicity and activity logging.
+pub fn build_install_tasks(
+    archive_path: &str,
+    password: Option<String>,
+    xplane_path: &str,
+    aircraft_folder: &str,
+    mappings: Vec<PatchMappingInput>,
+    backup_overwritten: bool,
+) -> Result<Vec<InstallTask>> {
+    let aircraft_dir = resolve_aircraft_dir_by_name(xplane_path, aircraft_folder)
+        .ok_or_else(|| anyhow!("Aircraft folder not found: {}", aircraft_folder))?;
+
+    if mappings.is_empty() {
+        return Err(anyhow!("No patch mappings provided"));
+    }
+
+    let patch_name = Path::new(archive_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Patch")
+        .to_string();
+
+    // One shared backup session directory for every task of this patch install,
+    // so a single revert restores all overwritten files at once. Created lazily
+    // by the installer only if files are actually overwritten.
+    let backup_dir = if backup_overwritten {
+        let session = format!("{}_{}", sanitize_component(&patch_name), &Uuid::new_v4().to_string()[..8]);
+        Some(
+            aircraft_dir
+                .join("_xfast_patch_backups")
+                .join(session)
+                .to_string_lossy()
+                .to_string(),
+        )
+    } else {
+        None
+    };
+
+    let tasks = mappings
+        .into_iter()
+        .map(|m| {
+            let dest = m.dest_subpath.trim_matches('/').to_string();
+            let target = if dest.is_empty() {
+                aircraft_dir.clone()
+            } else {
+                aircraft_dir.join(&dest)
+            };
+            let dest_label = if dest.is_empty() {
+                aircraft_folder.to_string()
+            } else {
+                format!("{}/{}", aircraft_folder, dest)
+            };
+            let archive_internal_root = {
+                let trimmed = m.archive_subpath.trim_matches('/');
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            };
+
+            InstallTask {
+                id: Uuid::new_v4().to_string(),
+                addon_type: AddonType::Patch,
+                source_path: archive_path.to_string(),
+                resolved_source_path: None,
+                original_input_path: Some(archive_path.to_string()),
+                target_path: target.to_string_lossy().to_string(),
+                display_name: format!("{} → {}", patch_name, dest_label),
+                conflict_exists: Some(true),
+                archive_internal_root,
+                extraction_chain: None,
+                should_overwrite: true, // overlay/merge into the existing aircraft
+                password: password.clone(),
+                estimated_size: None,
+                size_warning: None,
+                size_confirmed: true,
+                existing_navdata_info: None,
+                new_navdata_info: None,
+                existing_version_info: None,
+                new_version_info: None,
+                backup_liveries: false,
+                backup_config_files: false,
+                config_file_patterns: Vec::new(),
+                backup_navdata: false,
+                file_hashes: None,
+                enable_verification: false,
+                livery_aircraft_type: None,
+                livery_aircraft_found: true,
+                flywithlua_installed: true,
+                companion_paths: Vec::new(),
+                patch_backup: backup_overwritten,
+                patch_backup_dir: backup_dir.clone(),
+            }
+        })
+        .collect();
+
+    Ok(tasks)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BackupEntry {
+    /// Absolute path of the backed-up copy.
+    backup: String,
+    /// Absolute path the file was overwritten at (restore destination).
+    original: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct PatchBackupManifest {
+    #[serde(default)]
+    patch: String,
+    #[serde(default)]
+    entries: Vec<BackupEntry>,
+}
+
+/// Before a patch task merges its staged content into `target`, copy every
+/// existing target file that is about to be overwritten into the shared backup
+/// session directory and record it in a per-task manifest. Returns how many
+/// files were backed up.
+pub(crate) fn backup_overwritten_files(
+    staged: &Path,
+    target: &Path,
+    backup_dir: &Path,
+    task_id: &str,
+) -> Result<usize> {
+    // Mirror backups under the aircraft-relative path when possible so that
+    // root- and liveries-mappings of the same patch never collide.
+    let aircraft_root = backup_dir.parent().and_then(|p| p.parent());
+    let files_root = backup_dir.join("files");
+
+    let mut entries: Vec<BackupEntry> = Vec::new();
+    for entry in WalkDir::new(staged).into_iter().filter_map(|e| e.ok()) {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let staged_rel = match entry.path().strip_prefix(staged) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let original = target.join(staged_rel);
+        if !original.is_file() {
+            continue; // nothing to overwrite -> nothing to back up
+        }
+
+        let mirror_rel = aircraft_root
+            .and_then(|ar| original.strip_prefix(ar).ok())
+            .map(|r| r.to_path_buf())
+            .unwrap_or_else(|| staged_rel.to_path_buf());
+        let backup_file = files_root.join(&mirror_rel);
+        if let Some(parent) = backup_file.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(&original, &backup_file)?;
+        entries.push(BackupEntry {
+            backup: backup_file.to_string_lossy().to_string(),
+            original: original.to_string_lossy().to_string(),
+        });
+    }
+
+    if entries.is_empty() {
+        return Ok(0);
+    }
+
+    let count = entries.len();
+    let manifest = PatchBackupManifest {
+        patch: backup_dir
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string(),
+        entries,
+    };
+    // One manifest per task avoids races when a patch installs in parallel.
+    let manifest_path = backup_dir.join(format!("manifest_{}.json", task_id));
+    fs::create_dir_all(backup_dir)?;
+    fs::write(&manifest_path, serde_json::to_string_pretty(&manifest)?)?;
+
+    crate::logger::log_info(
+        &format!("Patch backup: saved {} overwritten file(s) to {:?}", count, backup_dir),
+        Some("patch"),
+    );
+    Ok(count)
+}
+
+/// Restore a patch backup session: copy every backed-up file back to its
+/// original location. Reads all per-task manifests in the session directory.
+pub fn revert_patch(backup_session_dir: &str) -> Result<usize> {
+    let dir = Path::new(backup_session_dir);
+    if !dir.is_dir() {
+        return Err(anyhow!("Backup session not found: {}", backup_session_dir));
+    }
+
+    let mut restored = 0usize;
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !(name.starts_with("manifest_") && name.ends_with(".json")) {
+            continue;
+        }
+        let content = fs::read_to_string(entry.path())?;
+        let manifest: PatchBackupManifest = serde_json::from_str(&content)
+            .map_err(|e| anyhow!("Invalid patch backup manifest {}: {}", name, e))?;
+        for be in manifest.entries {
+            let backup = Path::new(&be.backup);
+            let original = Path::new(&be.original);
+            if !backup.is_file() {
+                continue;
+            }
+            if let Some(parent) = original.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(backup, original)?;
+            restored += 1;
+        }
+    }
+
+    crate::logger::log_info(
+        &format!("Patch revert: restored {} file(s) from {}", restored, backup_session_dir),
+        Some("patch"),
+    );
+    Ok(restored)
+}
+
+/// Sanitize a string for use as a single path component.
+fn sanitize_component(s: &str) -> String {
+    let cleaned: String = s
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
+        .collect();
+    let trimmed = cleaned.trim_matches('_');
+    if trimmed.is_empty() {
+        "patch".to_string()
+    } else {
+        trimmed.chars().take(60).collect()
+    }
 }
 
 // --------------------------------------------------------------------------

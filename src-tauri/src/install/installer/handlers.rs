@@ -681,10 +681,12 @@ impl Installer {
                 );
                 self.install_content_with_extraction_chain(source, target, chain, ctx, password)?;
             }
-        } else if atomic_install_enabled
+        } else if (atomic_install_enabled || task.addon_type == AddonType::Patch)
             && (source.is_dir() || Self::is_supported_archive_file(source))
         {
-            // Atomic installation mode
+            // Atomic installation mode.
+            // Patches are always forced through this path so their pre-merge
+            // backup (snapshot of files about to be overwritten) can run.
             crate::log_debug!(
                 "[TIMING] Using atomic installation mode",
                 "installer_timing"
@@ -2343,6 +2345,19 @@ impl Installer {
             ctx,
             password,
         )?;
+
+        // Patch backup: snapshot the existing files that the upcoming merge is
+        // about to overwrite, so the patch can be reverted later.
+        if matches!(task.addon_type, AddonType::Patch) && task.patch_backup && target.exists() {
+            if let Some(ref backup_dir) = task.patch_backup_dir {
+                crate::patch::backup_overwritten_files(
+                    atomic.temp_dir(),
+                    target,
+                    Path::new(backup_dir),
+                    &task.id,
+                )?;
+            }
+        }
 
         // Step 2: Perform atomic installation based on scenario
         if !target.exists() {
