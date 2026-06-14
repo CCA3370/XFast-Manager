@@ -224,6 +224,8 @@ export enum AddonType {
   Livery = 'Livery',
   /** FlyWithLua Lua script */
   LuaScript = 'LuaScript',
+  /** Aircraft model patch — overlaid into an existing aircraft folder (user-directed) */
+  Patch = 'Patch',
 }
 
 /** Represents a nested archive within another archive */
@@ -301,6 +303,10 @@ export interface InstallTask {
   flyWithLuaInstalled?: boolean
   /** For LuaScript: companion files/folders referenced by SCRIPT_DIRECTORY */
   companionPaths?: string[]
+  /** For Patch: back up files that will be overwritten before merging (revertable) */
+  patchBackup?: boolean
+  /** For Patch: shared backup session dir for all tasks of one patch install */
+  patchBackupDir?: string
 }
 
 export interface AnalysisResult {

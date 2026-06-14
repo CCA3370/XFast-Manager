@@ -69,6 +69,7 @@ export const useAppStore = defineStore('app', () => {
     [AddonType.Navdata]: true,
     [AddonType.Livery]: true,
     [AddonType.LuaScript]: true,
+    [AddonType.Patch]: true,
   })
 
   // Verification preferences by source type (default: all enabled except RAR)

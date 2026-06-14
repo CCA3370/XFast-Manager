@@ -280,6 +280,8 @@ mod tests {
             livery_aircraft_found: false,
             flywithlua_installed: false,
             companion_paths: vec![],
+            patch_backup: false,
+            patch_backup_dir: None,
         }
     }
 

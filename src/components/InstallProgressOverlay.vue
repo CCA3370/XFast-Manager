@@ -793,6 +793,7 @@ function getIconBgClass(type: AddonType): string {
     [AddonType.Navdata]: 'bg-gradient-to-br from-amber-500 to-amber-600',
     [AddonType.Livery]: 'bg-gradient-to-br from-pink-500 to-pink-600',
     [AddonType.LuaScript]: 'bg-gradient-to-br from-cyan-500 to-cyan-600',
+    [AddonType.Patch]: 'bg-gradient-to-br from-orange-500 to-orange-600',
   }
   return classes[type] || 'bg-gradient-to-br from-gray-500 to-gray-600'
 }
@@ -830,6 +831,7 @@ function getTaskTypeLabel(type: AddonType): string {
     [AddonType.Navdata]: t('addonType.Navdata'),
     [AddonType.Livery]: t('addonType.Livery'),
     [AddonType.LuaScript]: t('addonType.LuaScript'),
+    [AddonType.Patch]: t('addonType.Patch'),
   }
   return labels[type] || type
 }

@@ -975,6 +975,7 @@ impl Analyzer {
                             .unwrap_or(custom_data)
                     }
                     AddonType::Livery | AddonType::LuaScript => unreachable!(), // Already handled above
+                    AddonType::Patch => unreachable!(), // Patches never go through signature detection
                 };
 
                 // For Navdata, install directly into target_base (don't create subfolder)
@@ -1098,6 +1099,8 @@ impl Analyzer {
             livery_aircraft_found,
             flywithlua_installed,
             companion_paths: item.companion_paths,
+            patch_backup: false,
+            patch_backup_dir: None,
         }
     }
 
@@ -1488,6 +1491,8 @@ mod tests {
             livery_aircraft_found: false,
             flywithlua_installed: true,
             companion_paths: Vec::new(),
+            patch_backup: false,
+            patch_backup_dir: None,
         }
     }
 

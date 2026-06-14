@@ -16,6 +16,10 @@ pub enum AddonType {
     Livery,
     /// FlyWithLua Lua script
     LuaScript,
+    /// Aircraft model patch — overlaid (merged) into an existing aircraft folder.
+    /// User-directed (never auto-detected); placement is decided by the patch
+    /// mapping inference engine rather than signature detection.
+    Patch,
 }
 
 /// Represents a nested archive within another archive
@@ -184,6 +188,13 @@ pub struct InstallTask {
     /// For LuaScript: companion files/folders referenced by SCRIPT_DIRECTORY
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub companion_paths: Vec<String>,
+    /// For Patch: back up files that will be overwritten before merging (revertable).
+    #[serde(default)]
+    pub patch_backup: bool,
+    /// For Patch: shared backup session directory used by every task of one patch
+    /// install, so a single revert restores all overwritten files at once.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patch_backup_dir: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

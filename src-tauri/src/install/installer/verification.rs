@@ -348,6 +348,16 @@ impl Installer {
                     ));
                 }
             }
+            crate::models::AddonType::Patch => {
+                // Patches overlay arbitrary content into an existing aircraft folder;
+                // there is no universal marker file. Just confirm the target exists.
+                if !target.exists() || !target.is_dir() {
+                    return Err(anyhow::anyhow!(
+                        "Installation verification failed: Patch target directory not found: {:?}",
+                        target
+                    ));
+                }
+            }
         }
 
         Ok(())
