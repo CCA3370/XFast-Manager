@@ -49,6 +49,10 @@ function isSuspiciousUntranslated(locale, key, baseValue, localeValue) {
     'geo.continents.Europe',
     'commandPalette.categoryNav',
     'map.procedures.tabs.sid',
+    // Brand/product names and loanwords that are legitimately identical across
+    // languages: "SimHeaven / X-World" is a scenery brand; German uses "Patch".
+    'sceneryManager.smartGroupKindSimHeaven',
+    'addonType.Patch',
   ])
 
   if (ignoredKeys.has(key)) {
