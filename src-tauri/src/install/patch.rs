@@ -50,9 +50,14 @@ const STRONG_LANDMARK_DIRS: &[&str] = &[
 const MAX_SAMPLE: usize = 200;
 const MAX_OFFSET_DEPTH: usize = 3;
 const MAX_TREE: usize = 400;
-/// Minimum aligned files (and ratio) before we *recommend* an aircraft outright.
+/// Minimum aligned files (and ratio) before a single overlay *mapping* is shown
+/// as a confident match (used by [`confidence_for`] in Level 2).
 const MIN_RECOMMEND_MATCH: usize = 3;
 const MIN_RECOMMEND_RATIO: f64 = 0.25;
+/// The top aircraft must out-score the runner-up by at least this factor before
+/// we auto-recommend it; otherwise the field is too close to call and we let the
+/// user choose. Keeps near-ties from silently picking the wrong aircraft.
+const RECOMMEND_LEAD: f64 = 1.5;
 
 // --------------------------------------------------------------------------
 // Serializable results (camelCase for the frontend)
@@ -115,91 +120,194 @@ pub struct PatchPlan {
 // Level 1 — detect the target aircraft
 // --------------------------------------------------------------------------
 
-/// Align the patch against every installed aircraft and rank them by how many
-/// of the patch's files already exist in each. Cheap: per-aircraft existence
-/// probes of a bounded sample, run in parallel.
+/// Align the patch against every installed aircraft and rank them by how well
+/// their *discriminative* files overlap (see [`rank_candidates`]). Cheap:
+/// per-aircraft existence probes of a bounded sample, run in parallel.
 pub fn detect_target_aircraft(
     archive_path: &Path,
     xplane_path: &str,
 ) -> Result<TargetDetection> {
     let aircraft = crate::management_index::scan_aircraft(Path::new(xplane_path))?.entries;
-
     let files = list_archive_files(archive_path).unwrap_or_default();
-    if files.is_empty() {
-        // Could not inspect the archive (e.g. encrypted headers): still offer
-        // every installed aircraft so the user can pick a target manually.
-        let candidates = aircraft
-            .into_iter()
-            .map(|ac| AircraftCandidate {
+
+    // Resolve each scanned aircraft to its real folder up front. Unresolvable
+    // ones are kept (dir = None) so the user can still pick them manually; they
+    // simply score zero.
+    let targets: Vec<ProbeTarget> = aircraft
+        .into_iter()
+        .map(|ac| {
+            let dir = resolve_aircraft_dir(xplane_path, &ac);
+            ProbeTarget {
                 folder_name: ac.folder_name,
                 display_name: ac.display_name,
+                dir,
+            }
+        })
+        .collect();
+
+    Ok(rank_candidates(&files, &targets))
+}
+
+/// A candidate aircraft to align the patch against: its identity plus the real
+/// on-disk folder (`None` if it could not be resolved).
+struct ProbeTarget {
+    folder_name: String,
+    display_name: String,
+    dir: Option<PathBuf>,
+}
+
+/// Pure target-ranking core (filesystem probes only, no archive I/O beyond the
+/// pre-listed `files`): align the patch against each candidate aircraft and rank
+/// by a *discriminative*, rarity-weighted overlap score. Split out so it can be
+/// unit-tested directly against temp aircraft folders.
+///
+/// Two facts make a naive "count files that already exist" score pick the wrong
+/// aircraft, so we correct for both:
+///
+/// * **Shared runtimes carry no identity.** The `plugins/` tree (xlua, SASL, …)
+///   ships byte-identical with most aircraft, so a sound/model patch overlapping
+///   it says nothing about which aircraft it targets. [`build_sample`] therefore
+///   drops that subtree from the score entirely.
+/// * **Common files are weak; rare files are strong.** A path present in *every*
+///   installed aircraft (`Master Bank.bank`, `GUIDs.txt`) is worthless for
+///   disambiguation, while a path unique to one aircraft (`a321.snd`) is decisive.
+///   We weight each match by inverse document frequency across the library, so
+///   universal files contribute ~zero and model-specific files dominate.
+fn rank_candidates(files: &[String], targets: &[ProbeTarget]) -> TargetDetection {
+    // Helper: every aircraft offered with no score (manual pick still possible).
+    let zero_candidates = || -> Vec<AircraftCandidate> {
+        targets
+            .iter()
+            .map(|t| AircraftCandidate {
+                folder_name: t.folder_name.clone(),
+                display_name: t.display_name.clone(),
                 matched_count: 0,
                 sample_size: 0,
                 best_offset: String::new(),
                 confidence: Confidence::Low,
             })
-            .collect();
-        return Ok(TargetDetection {
-            candidates,
+            .collect()
+    };
+
+    if files.is_empty() || targets.is_empty() {
+        return TargetDetection {
+            candidates: zero_candidates(),
             recommended_folder: None,
-        });
+        };
     }
 
-    let dirs = derive_dirs(&files);
-    let offsets = candidate_offsets(&files, &dirs);
-    // One sample per offset, identical across all aircraft so scores compare fairly.
+    let dirs = derive_dirs(files);
+    let offsets = candidate_offsets(files, &dirs);
+    // One identical (discriminative-only) sample per offset so scores compare
+    // fairly across aircraft. Offsets whose entire sample is shared-runtime noise
+    // drop out here.
     let samples: Vec<(String, Vec<String>)> = offsets
         .iter()
-        .map(|off| (off.clone(), build_sample(&files, off)))
+        .map(|off| (off.clone(), build_sample(files, off)))
         .filter(|(_, sample)| !sample.is_empty())
         .collect();
 
-    let mut candidates: Vec<AircraftCandidate> = aircraft
+    if samples.is_empty() {
+        // Nothing discriminative to score on (e.g. a plugins-only archive).
+        return TargetDetection {
+            candidates: zero_candidates(),
+            recommended_folder: None,
+        };
+    }
+
+    let n = targets.len();
+
+    // Probe matrix: for each aircraft, for each offset, which sample indices
+    // exist on disk. Same number of stat() probes as a plain count would do.
+    let matched: Vec<Vec<Vec<usize>>> = targets
         .par_iter()
-        .filter_map(|ac| {
-            let dir = resolve_aircraft_dir(xplane_path, ac)?;
-            let mut best_offset = String::new();
-            let mut best_matched = 0usize;
-            let mut best_sample = samples.first().map(|(_, s)| s.len()).unwrap_or(0);
-            for (off, sample) in &samples {
-                let matched = sample.iter().filter(|rel| dir.join(rel).exists()).count();
-                if matched > best_matched {
-                    best_matched = matched;
-                    best_offset = off.clone();
-                    best_sample = sample.len();
-                }
-            }
-            Some(AircraftCandidate {
-                folder_name: ac.folder_name.clone(),
-                display_name: ac.display_name.clone(),
-                matched_count: best_matched,
-                sample_size: best_sample,
-                best_offset,
-                confidence: confidence_for(best_matched, best_sample),
-            })
+        .map(|t| {
+            samples
+                .iter()
+                .map(|(_, sample)| match &t.dir {
+                    Some(dir) => sample
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, rel)| dir.join(rel).exists())
+                        .map(|(i, _)| i)
+                        .collect(),
+                    None => Vec::new(),
+                })
+                .collect()
         })
         .collect();
 
-    // Most-aligned first; stable tie-break by name.
-    candidates.sort_by(|a, b| {
-        b.matched_count
-            .cmp(&a.matched_count)
-            .then_with(|| a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase()))
+    // Document frequency per (offset, path): how many aircraft contain it.
+    let mut df: Vec<Vec<usize>> = samples.iter().map(|(_, s)| vec![0usize; s.len()]).collect();
+    for per_ac in &matched {
+        for (oi, idxs) in per_ac.iter().enumerate() {
+            for &i in idxs {
+                df[oi][i] += 1;
+            }
+        }
+    }
+
+    // Score each aircraft at its best-aligning offset = Σ idf(matched paths).
+    let mut scored: Vec<(f64, AircraftCandidate)> = targets
+        .iter()
+        .enumerate()
+        .map(|(ai, t)| {
+            let mut best_score = 0.0f64;
+            let mut best_offset = String::new();
+            let mut best_matched = 0usize;
+            let mut best_sample = samples.first().map(|(_, s)| s.len()).unwrap_or(0);
+            let mut chosen = false;
+            for (oi, (off, sample)) in samples.iter().enumerate() {
+                let idxs = &matched[ai][oi];
+                let score: f64 = idxs.iter().map(|&i| idf(n, df[oi][i])).sum();
+                // Prefer the higher-scoring offset; break score ties by raw
+                // match count so an aligned subtree still wins over the root.
+                if !chosen || score > best_score || (score == best_score && idxs.len() > best_matched)
+                {
+                    chosen = true;
+                    best_score = score;
+                    best_offset = off.clone();
+                    best_matched = idxs.len();
+                    best_sample = sample.len();
+                }
+            }
+            (
+                best_score,
+                AircraftCandidate {
+                    folder_name: t.folder_name.clone(),
+                    display_name: t.display_name.clone(),
+                    matched_count: best_matched,
+                    sample_size: best_sample,
+                    best_offset,
+                    confidence: confidence_for_score(best_score, n),
+                },
+            )
+        })
+        .collect();
+
+    // Rank by weighted score (desc); stable tie-break by display name.
+    scored.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.1.display_name.to_lowercase().cmp(&b.1.display_name.to_lowercase()))
     });
 
-    let recommended_folder = candidates.first().and_then(|c| {
-        let ratio = c.matched_count as f64 / c.sample_size.max(1) as f64;
-        if c.matched_count >= MIN_RECOMMEND_MATCH && ratio >= MIN_RECOMMEND_RATIO {
-            Some(c.folder_name.clone())
+    // Recommend the top aircraft only when it has real discriminative overlap
+    // (score > 0) AND a clear lead over the runner-up. A runner-up score of zero
+    // means the top matched files no other aircraft has — recommend it.
+    let recommended_folder = scored.first().and_then(|(top_score, top)| {
+        let runner = scored.get(1).map(|(s, _)| *s).unwrap_or(0.0);
+        if *top_score > 0.0 && (runner <= 0.0 || *top_score >= runner * RECOMMEND_LEAD) {
+            Some(top.folder_name.clone())
         } else {
             None
         }
     });
 
-    Ok(TargetDetection {
-        candidates,
+    TargetDetection {
+        candidates: scored.into_iter().map(|(_, c)| c).collect(),
         recommended_folder,
-    })
+    }
 }
 
 // --------------------------------------------------------------------------
@@ -689,12 +797,16 @@ fn is_content_root(files: &[String], dirs: &BTreeSet<String>, dir: &str) -> bool
     false
 }
 
-/// Build a bounded, distinctive, deterministic sample of paths under `offset`
-/// (prefix stripped). Distinctive paths (`.acf`, landmark subtrees) sort first.
+/// Build a bounded, distinctive, deterministic sample of *discriminative* paths
+/// under `offset` (prefix stripped). Shared-runtime files ([`is_identity_noise`])
+/// are dropped — they ship with most aircraft and only mislead alignment scoring.
+/// Distinctive paths (`.acf`, landmark subtrees) sort first so truncation keeps
+/// the informative ones.
 fn build_sample(files: &[String], offset: &str) -> Vec<String> {
     let mut rels: Vec<String> = files
         .iter()
         .filter_map(|f| strip_offset(f, offset))
+        .filter(|s| !is_identity_noise(s))
         .map(|s| s.to_string())
         .collect();
     rels.sort_by(|a, b| {
@@ -763,6 +875,45 @@ fn confidence_for(matched: usize, sample: usize) -> Confidence {
     if matched >= 5 && ratio >= 0.6 {
         Confidence::High
     } else if matched >= MIN_RECOMMEND_MATCH && ratio >= MIN_RECOMMEND_RATIO {
+        Confidence::Medium
+    } else {
+        Confidence::Low
+    }
+}
+
+/// Relative paths (within an overlay offset) that never identify *which*
+/// aircraft a patch targets. The `plugins/` tree holds shared runtimes — xlua,
+/// SASL and friends ship byte-identical with most aircraft, and a stale aircraft
+/// may even keep a legacy copy no one else has (so rarity alone can be fooled by
+/// them). Excluding the whole subtree from the *identity score* is the robust
+/// fix. The files are still installed; this only affects scoring.
+fn is_identity_noise(rel: &str) -> bool {
+    let l = rel.to_ascii_lowercase();
+    l == "plugins" || l.starts_with("plugins/")
+}
+
+/// Inverse document frequency of a matched path across the `n` installed
+/// aircraft: a path present in *every* aircraft (`df == n`) carries no signal
+/// (weight 0); a path unique to one aircraft (`df == 1`) carries the most
+/// (`ln n`). Clamped at 0 so universal files can never tip a recommendation.
+fn idf(n: usize, df: usize) -> f64 {
+    if n == 0 || df == 0 {
+        return 0.0;
+    }
+    (n as f64 / df as f64).ln().max(0.0)
+}
+
+/// Confidence for a target candidate from its weighted overlap `score`, scaled
+/// by `ln n` (the worth of a single aircraft-unique match) so thresholds adapt
+/// to library size rather than being absolute.
+fn confidence_for_score(score: f64, n: usize) -> Confidence {
+    if score <= 0.0 {
+        return Confidence::Low;
+    }
+    let unit = (n as f64).ln().max(1.0);
+    if score >= unit * 1.5 {
+        Confidence::High
+    } else if score >= unit * 0.5 {
         Confidence::Medium
     } else {
         Confidence::Low
@@ -959,5 +1110,94 @@ mod tests {
         assert_eq!(mappings[0].archive_subpath, "");
         assert_eq!(mappings[0].dest_subpath, "");
         assert!(unmapped.is_empty());
+    }
+
+    /// Regression: an FMOD sound patch must align to the aircraft that owns its
+    /// *model-specific* sound files, not to one that merely shares the universal
+    /// `plugins/xlua` runtime and generic FMOD boilerplate. (Real case: the
+    /// SBStudio A321 pack was matched to a LevelUp 737 because the 737 had 7
+    /// xlua hits vs the A321's 5 real fmod hits.)
+    #[test]
+    fn rank_prefers_model_match_over_shared_runtime() {
+        // Correct target: ToLiss A321 — owns the model-specific sound files.
+        let a321 = make_aircraft(&[
+            "fmod/a321.snd",
+            "fmod/a321_StdDef.snd",
+            "fmod/GUIDs.txt",
+            "fmod/Master Bank.bank",
+            "fmod/Master Bank.strings.bank",
+        ]);
+        // Wrong target: LevelUp 737 — only the universal xlua runtime + generic
+        // FMOD names overlap (including a legacy xlua/64 copy unique to it).
+        let b737 = make_aircraft(&[
+            "fmod/GUIDs.txt",
+            "fmod/Master Bank.bank",
+            "plugins/xlua/64/win.xpl",
+            "plugins/xlua/64/lin.xpl",
+            "plugins/xlua/64/mac.xpl",
+            "plugins/xlua/init.lua",
+            "plugins/xlua/win_x64/xlua.xpl",
+        ]);
+        // A couple more aircraft so the universal FMOD names have realistic df.
+        let g1 = make_aircraft(&["fmod/GUIDs.txt", "fmod/Master Bank.bank", "plugins/xlua/init.lua"]);
+        let g2 = make_aircraft(&["fmod/GUIDs.txt", "fmod/Master Bank.bank"]);
+
+        // The SBStudio A321 FMOD patch, wrapped in a versioned top folder.
+        let files = to_owned(&[
+            "A321_FMOD_SBStudio_v1.4.1/fmod/a321.snd",
+            "A321_FMOD_SBStudio_v1.4.1/fmod/a321_StdDef.snd",
+            "A321_FMOD_SBStudio_v1.4.1/fmod/CFM.bank",
+            "A321_FMOD_SBStudio_v1.4.1/fmod/GUIDs.txt",
+            "A321_FMOD_SBStudio_v1.4.1/fmod/Master Bank.bank",
+            "A321_FMOD_SBStudio_v1.4.1/fmod/Master Bank.strings.bank",
+            "A321_FMOD_SBStudio_v1.4.1/plugins/xlua/64/win.xpl",
+            "A321_FMOD_SBStudio_v1.4.1/plugins/xlua/64/lin.xpl",
+            "A321_FMOD_SBStudio_v1.4.1/plugins/xlua/64/mac.xpl",
+            "A321_FMOD_SBStudio_v1.4.1/plugins/xlua/init.lua",
+            "A321_FMOD_SBStudio_v1.4.1/plugins/xlua/win_x64/xlua.xpl",
+            "A321_FMOD_SBStudio_v1.4.1/README!!!.txt",
+        ]);
+
+        let mk = |folder: &str, dir: &Path| ProbeTarget {
+            folder_name: folder.to_string(),
+            display_name: folder.to_string(),
+            dir: Some(dir.to_path_buf()),
+        };
+        let targets = vec![
+            // 737 listed first so an unstable sort can't accidentally favour the A321.
+            mk("737NG_Series_V2", b737.path()),
+            mk("ToLissA321_V1p8", a321.path()),
+            mk("GenericA", g1.path()),
+            mk("GenericB", g2.path()),
+        ];
+
+        let det = rank_candidates(&files, &targets);
+
+        // The A321 — fewer raw matches (5) but the only *discriminative* ones —
+        // must win and be recommended; the 737 (9 raw matches, all noise) must not.
+        assert_eq!(
+            det.candidates.first().map(|c| c.folder_name.as_str()),
+            Some("ToLissA321_V1p8"),
+            "expected the A321 to rank first, got: {:?}",
+            det.candidates.iter().map(|c| &c.folder_name).collect::<Vec<_>>()
+        );
+        assert_eq!(det.recommended_folder.as_deref(), Some("ToLissA321_V1p8"));
+    }
+
+    #[test]
+    fn rank_no_recommendation_when_only_universal_files_match() {
+        // Two aircraft, both with the same universal FMOD boilerplate only.
+        let a = make_aircraft(&["fmod/GUIDs.txt", "fmod/Master Bank.bank"]);
+        let b = make_aircraft(&["fmod/GUIDs.txt", "fmod/Master Bank.bank"]);
+        // Patch whose only on-disk overlap is those universal names.
+        let files = to_owned(&["pack/fmod/GUIDs.txt", "pack/fmod/Master Bank.bank"]);
+        let mk = |folder: &str, dir: &Path| ProbeTarget {
+            folder_name: folder.to_string(),
+            display_name: folder.to_string(),
+            dir: Some(dir.to_path_buf()),
+        };
+        let det = rank_candidates(&files, &vec![mk("A", a.path()), mk("B", b.path())]);
+        // Universal files (df == n) score zero, so we must decline to guess.
+        assert_eq!(det.recommended_folder, None);
     }
 }
