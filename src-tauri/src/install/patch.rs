@@ -116,6 +116,17 @@ pub struct PatchPlan {
     pub aircraft_subdirs: Vec<String>,
 }
 
+/// Plain-language preview of what an install will do, for the confirmation UI.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchInstallSummary {
+    /// Distinct files that will be written across all mappings.
+    pub total_files: usize,
+    /// How many of those already exist at their destination (and so are
+    /// overwritten — the rest are newly added).
+    pub overwrite_count: usize,
+}
+
 // --------------------------------------------------------------------------
 // Level 1 — detect the target aircraft
 // --------------------------------------------------------------------------
@@ -441,6 +452,54 @@ fn plan_mappings(
     }
 
     (mappings, unmapped)
+}
+
+/// Count, for a set of (suggested or user-edited) mappings, how many distinct
+/// files will be written and how many already exist at their destination.
+/// Read-only — powers the install summary so the user sees what will change
+/// before confirming. Destinations are de-duplicated so a file covered by two
+/// overlapping mappings is counted once.
+pub fn summarize_install(
+    archive_path: &Path,
+    xplane_path: &str,
+    aircraft_folder: &str,
+    mappings: &[PatchMappingInput],
+) -> Result<PatchInstallSummary> {
+    let aircraft_dir = resolve_aircraft_dir_by_name(xplane_path, aircraft_folder)
+        .ok_or_else(|| anyhow!("Aircraft folder not found: {}", aircraft_folder))?;
+    let files = list_archive_files(archive_path).unwrap_or_default();
+    Ok(count_install_dests(&files, &aircraft_dir, mappings))
+}
+
+/// Pure core of [`summarize_install`]: resolve every mapping to its on-disk
+/// destinations and count distinct writes vs. existing files. Split out so it
+/// can be unit-tested against temp aircraft folders without an archive.
+fn count_install_dests(
+    files: &[String],
+    aircraft_dir: &Path,
+    mappings: &[PatchMappingInput],
+) -> PatchInstallSummary {
+    let mut dests: BTreeSet<PathBuf> = BTreeSet::new();
+    for m in mappings {
+        let archive_sub = m.archive_subpath.trim_matches('/');
+        let dest_sub = m.dest_subpath.trim_matches('/');
+        let base = if dest_sub.is_empty() {
+            aircraft_dir.to_path_buf()
+        } else {
+            aircraft_dir.join(dest_sub)
+        };
+        for f in files {
+            if let Some(rel) = strip_offset(f, archive_sub) {
+                dests.insert(base.join(rel));
+            }
+        }
+    }
+
+    let overwrite_count = dests.iter().filter(|p| p.is_file()).count();
+    PatchInstallSummary {
+        total_files: dests.len(),
+        overwrite_count,
+    }
 }
 
 // --------------------------------------------------------------------------
@@ -1199,5 +1258,24 @@ mod tests {
         let det = rank_candidates(&files, &vec![mk("A", a.path()), mk("B", b.path())]);
         // Universal files (df == n) score zero, so we must decline to guess.
         assert_eq!(det.recommended_folder, None);
+    }
+
+    #[test]
+    fn summarize_counts_total_and_overwrites() {
+        // Aircraft already has two of the patch's files.
+        let ac = make_aircraft(&["fmod/a321.snd", "fmod/Master Bank.bank"]);
+        let files = to_owned(&[
+            "pack/fmod/a321.snd",         // exists -> overwrite
+            "pack/fmod/Master Bank.bank", // exists -> overwrite
+            "pack/fmod/CFM.bank",         // new
+            "pack/README.txt",            // new
+        ]);
+        let mappings = vec![PatchMappingInput {
+            archive_subpath: "pack".to_string(),
+            dest_subpath: String::new(),
+        }];
+        let s = count_install_dests(&files, ac.path(), &mappings);
+        assert_eq!(s.total_files, 4);
+        assert_eq!(s.overwrite_count, 2);
     }
 }

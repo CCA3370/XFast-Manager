@@ -369,6 +369,14 @@ export interface PatchMappingInput {
   destSubpath: string
 }
 
+/** Plain-language preview of what a patch install will do. */
+export interface PatchInstallSummary {
+  /** Distinct files that will be written across all mappings. */
+  totalFiles: number
+  /** How many of those already exist at their destination (overwritten). */
+  overwriteCount: number
+}
+
 export type InstallPhase = 'calculating' | 'installing' | 'verifying' | 'finalizing'
 
 export interface InstallProgress {

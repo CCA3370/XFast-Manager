@@ -37,10 +37,10 @@
           </div>
 
           <div class="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
-            <!-- Target aircraft -->
+            <!-- Apply to -->
             <section>
               <label class="block text-xs font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
-                {{ $t('patch.targetAircraft') }}
+                {{ $t('patch.applyTo') }}
               </label>
               <div v-if="detecting" class="text-xs text-gray-500 dark:text-gray-400 py-2">
                 {{ $t('patch.detecting') }}
@@ -52,7 +52,7 @@
                   @change="onAircraftChange"
                 >
                   <option v-for="c in candidates" :key="c.folderName" :value="c.folderName">
-                    {{ candidateLabel(c) }}
+                    {{ c.displayName }}
                   </option>
                 </select>
                 <p
@@ -75,121 +75,206 @@
               </div>
             </section>
 
-            <!-- Mappings -->
+            <!-- What will happen -->
             <section v-if="selectedFolder">
-              <div class="flex items-center justify-between mb-1.5">
-                <label class="block text-xs font-semibold text-gray-700 dark:text-gray-200">
-                  {{ $t('patch.mappings') }}
-                </label>
-                <button
-                  type="button"
-                  class="text-xs text-orange-600 dark:text-orange-400 hover:underline"
-                  @click="addMapping()"
-                >
-                  + {{ $t('patch.addMapping') }}
-                </button>
-              </div>
-
-              <div v-if="inferring" class="text-xs text-gray-500 dark:text-gray-400 py-2">
+              <label class="block text-xs font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
+                {{ $t('patch.summaryTitle') }}
+              </label>
+              <div
+                v-if="inferring || summarizing"
+                class="text-xs text-gray-500 dark:text-gray-400 py-2"
+              >
                 {{ $t('patch.inferring') }}
               </div>
-
-              <div v-else class="space-y-2">
+              <div
+                v-else
+                class="bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/50 rounded-lg p-3 space-y-2"
+              >
+                <div class="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-200">
+                  <svg
+                    class="w-4 h-4 flex-shrink-0 text-orange-500 mt-px"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  <span>{{
+                    $t('patch.filesApplied', { count: totalFiles, aircraft: selectedDisplayName })
+                  }}</span>
+                </div>
                 <div
-                  v-for="(m, i) in mappings"
-                  :key="i"
-                  class="bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/50 rounded-lg p-2.5"
+                  v-if="overwriteCount > 0"
+                  class="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300"
                 >
-                  <div class="flex items-center gap-2">
-                    <input
-                      v-model="m.archiveSubpath"
-                      list="patch-archive-dirs"
-                      :placeholder="$t('patch.archiveRootPlaceholder')"
-                      class="flex-1 min-w-0 px-2 py-1.5 bg-white dark:bg-gray-900/70 border border-gray-200 dark:border-gray-700/50 rounded text-gray-900 dark:text-white text-xs"
+                  <svg
+                    class="w-4 h-4 flex-shrink-0 mt-px"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.75L13.74 4a2 2 0 00-3.48 0L3.16 16.25A2 2 0 005 19z"
                     />
-                    <svg
-                      class="w-4 h-4 text-gray-400 flex-shrink-0"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M14 5l7 7m0 0l-7 7m7-7H3"
+                  </svg>
+                  <span>{{ $t('patch.filesOverwritten', { count: overwriteCount }) }}</span>
+                </div>
+                <label
+                  v-if="overwriteCount > 0"
+                  class="flex items-center gap-2 cursor-pointer pt-1"
+                >
+                  <input
+                    v-model="backupEnabled"
+                    type="checkbox"
+                    class="w-4 h-4 accent-orange-600"
+                  />
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-200">
+                    {{ $t('patch.backupLabel') }}
+                  </span>
+                </label>
+                <p
+                  v-if="overwriteCount > 0 && backupEnabled"
+                  class="text-[11px] text-gray-500 dark:text-gray-400 ml-6"
+                >
+                  {{ $t('patch.backupHint') }}
+                </p>
+              </div>
+            </section>
+
+            <!-- Advanced: file mappings -->
+            <section v-if="selectedFolder">
+              <button
+                type="button"
+                class="flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:text-orange-600 dark:hover:text-orange-400"
+                @click="advancedOpen = !advancedOpen"
+              >
+                <svg
+                  class="w-3.5 h-3.5 transition-transform"
+                  :class="advancedOpen ? 'rotate-90' : ''"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+                {{ $t('patch.advancedMappings') }}
+                <span v-if="mappings.length" class="text-gray-400 dark:text-gray-500 font-normal">
+                  ({{ mappings.length }})
+                </span>
+              </button>
+
+              <div v-show="advancedOpen" class="mt-2">
+                <div class="flex items-center justify-end mb-1.5">
+                  <button
+                    type="button"
+                    class="text-xs text-orange-600 dark:text-orange-400 hover:underline"
+                    @click="addMapping()"
+                  >
+                    + {{ $t('patch.addMapping') }}
+                  </button>
+                </div>
+
+                <div v-if="inferring" class="text-xs text-gray-500 dark:text-gray-400 py-2">
+                  {{ $t('patch.inferring') }}
+                </div>
+
+                <div v-else class="space-y-2">
+                  <div
+                    v-for="(m, i) in mappings"
+                    :key="i"
+                    class="bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/50 rounded-lg p-2.5"
+                  >
+                    <div class="flex items-center gap-2">
+                      <input
+                        v-model="m.archiveSubpath"
+                        list="patch-archive-dirs"
+                        :placeholder="$t('patch.archiveRootPlaceholder')"
+                        class="flex-1 min-w-0 px-2 py-1.5 bg-white dark:bg-gray-900/70 border border-gray-200 dark:border-gray-700/50 rounded text-gray-900 dark:text-white text-xs"
                       />
-                    </svg>
-                    <input
-                      v-model="m.destSubpath"
-                      list="patch-dest-dirs"
-                      :placeholder="$t('patch.destRootPlaceholder')"
-                      class="flex-1 min-w-0 px-2 py-1.5 bg-white dark:bg-gray-900/70 border border-gray-200 dark:border-gray-700/50 rounded text-gray-900 dark:text-white text-xs"
-                    />
-                    <button
-                      type="button"
-                      class="text-gray-400 hover:text-red-500 flex-shrink-0"
-                      :title="$t('common.delete')"
-                      @click="removeMapping(i)"
-                    >
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg
+                        class="w-4 h-4 text-gray-400 flex-shrink-0"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
                         <path
                           stroke-linecap="round"
                           stroke-linejoin="round"
                           stroke-width="2"
-                          d="M6 18L18 6M6 6l12 12"
+                          d="M14 5l7 7m0 0l-7 7m7-7H3"
                         />
                       </svg>
+                      <input
+                        v-model="m.destSubpath"
+                        list="patch-dest-dirs"
+                        :placeholder="$t('patch.destRootPlaceholder')"
+                        class="flex-1 min-w-0 px-2 py-1.5 bg-white dark:bg-gray-900/70 border border-gray-200 dark:border-gray-700/50 rounded text-gray-900 dark:text-white text-xs"
+                      />
+                      <button
+                        type="button"
+                        class="text-gray-400 hover:text-red-500 flex-shrink-0"
+                        :title="$t('common.delete')"
+                        @click="removeMapping(i)"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="flex items-center gap-2 mt-1.5 pl-0.5">
+                      <span
+                        v-if="m.confidence"
+                        class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                        :class="confidenceClass(m.confidence)"
+                      >
+                        {{ $t('patch.confidence.' + m.confidence) }}
+                      </span>
+                      <span class="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                        {{ describeMapping(m) }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Unmapped -->
+                <div
+                  v-if="!inferring && unmapped.length"
+                  class="mt-2 p-2 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg"
+                >
+                  <p class="text-[11px] font-medium text-amber-700 dark:text-amber-300 mb-1">
+                    {{ $t('patch.unmappedHint') }}
+                  </p>
+                  <div class="flex flex-wrap gap-1.5">
+                    <button
+                      v-for="u in unmapped"
+                      :key="u"
+                      type="button"
+                      class="text-[11px] px-2 py-0.5 bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-500/40 rounded hover:border-orange-400 text-gray-700 dark:text-gray-200"
+                      @click="addMapping(u)"
+                    >
+                      + {{ u }}
                     </button>
                   </div>
-                  <div class="flex items-center gap-2 mt-1.5 pl-0.5">
-                    <span
-                      v-if="m.confidence"
-                      class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                      :class="confidenceClass(m.confidence)"
-                    >
-                      {{ $t('patch.confidence.' + m.confidence) }}
-                    </span>
-                    <span class="text-[11px] text-gray-500 dark:text-gray-400 truncate">
-                      {{ describeMapping(m) }}
-                    </span>
-                  </div>
                 </div>
               </div>
-
-              <!-- Unmapped -->
-              <div
-                v-if="!inferring && unmapped.length"
-                class="mt-2 p-2 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg"
-              >
-                <p class="text-[11px] font-medium text-amber-700 dark:text-amber-300 mb-1">
-                  {{ $t('patch.unmappedHint') }}
-                </p>
-                <div class="flex flex-wrap gap-1.5">
-                  <button
-                    v-for="u in unmapped"
-                    :key="u"
-                    type="button"
-                    class="text-[11px] px-2 py-0.5 bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-500/40 rounded hover:border-orange-400 text-gray-700 dark:text-gray-200"
-                    @click="addMapping(u)"
-                  >
-                    + {{ u }}
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            <!-- Backup toggle -->
-            <section v-if="selectedFolder">
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input v-model="backupEnabled" type="checkbox" class="w-4 h-4 accent-orange-600" />
-                <span class="text-xs font-medium text-gray-700 dark:text-gray-200">
-                  {{ $t('patch.backupLabel') }}
-                </span>
-              </label>
-              <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1 ml-6">
-                {{ $t('patch.backupHint') }}
-              </p>
             </section>
           </div>
 
@@ -238,16 +323,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import {
   buildPatchInstallTasks,
   detectPatchTargetAircraft,
   inferPatchMappings,
+  summarizePatchInstall,
 } from '@/services/patch-api'
 import { getErrorMessage } from '@/types'
-import type { InstallTask, PatchAircraftCandidate, PatchConfidence } from '@/types'
+import type {
+  InstallTask,
+  PatchAircraftCandidate,
+  PatchConfidence,
+  PatchMappingInput,
+} from '@/types'
 
 const props = defineProps<{
   archivePath: string
@@ -272,6 +363,7 @@ interface EditableMapping {
 
 const detecting = ref(true)
 const inferring = ref(false)
+const summarizing = ref(false)
 const building = ref(false)
 const errorMsg = ref('')
 
@@ -284,15 +376,32 @@ const aircraftSubdirs = ref<string[]>([])
 const unmapped = ref<string[]>([])
 const mappings = ref<EditableMapping[]>([])
 
+// Install summary (what will happen) — kept current via summarizePatchInstall.
+const totalFiles = ref(0)
+const overwriteCount = ref(0)
+
 const backupEnabled = ref(true)
+// The raw mapping editor is power-user surface area, hidden unless it's needed.
+const advancedOpen = ref(false)
 
 const archiveName = computed(() => props.archivePath.split(/[/\\]/).pop() || props.archivePath)
+
+const selectedDisplayName = computed(
+  () =>
+    candidates.value.find((c) => c.folderName === selectedFolder.value)?.displayName ||
+    selectedFolder.value,
+)
 
 const canInstall = computed(
   () => !!selectedFolder.value && mappings.value.length > 0 && !building.value && !inferring.value,
 )
 
+let summarizeTimer: ReturnType<typeof setTimeout> | null = null
+
 onMounted(runDetect)
+
+// Any change to the mappings (re-inference or manual edit) re-previews the summary.
+watch(mappings, scheduleSummarize, { deep: true })
 
 async function runDetect() {
   detecting.value = true
@@ -337,6 +446,10 @@ async function runInfer(folder: string) {
       reason: m.reason,
       fileCount: m.fileCount,
     }))
+    // Surface the editor automatically when the plan needs a human decision.
+    advancedOpen.value =
+      unmapped.value.length > 0 ||
+      mappings.value.some((m) => m.reason === 'noAnchorDefaultRoot' || m.confidence === 'low')
   } catch (e) {
     errorMsg.value = getErrorMessage(e)
   } finally {
@@ -346,6 +459,57 @@ async function runInfer(folder: string) {
 
 function onAircraftChange() {
   if (selectedFolder.value) runInfer(selectedFolder.value)
+}
+
+/** De-duplicated mapping inputs for the backend (shared by summary + install). */
+function mappingInputs(): PatchMappingInput[] {
+  const seen = new Set<string>()
+  return mappings.value
+    .map((m) => ({ archiveSubpath: m.archiveSubpath.trim(), destSubpath: m.destSubpath.trim() }))
+    .filter((m) => {
+      const key = `${m.archiveSubpath}|${m.destSubpath}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
+function scheduleSummarize() {
+  if (!selectedFolder.value || !mappings.value.length) {
+    totalFiles.value = 0
+    overwriteCount.value = 0
+    summarizing.value = false
+    return
+  }
+  // Show the spinner immediately, then settle after edits stop.
+  summarizing.value = true
+  if (summarizeTimer) clearTimeout(summarizeTimer)
+  summarizeTimer = setTimeout(runSummarize, 350)
+}
+
+async function runSummarize() {
+  const folder = selectedFolder.value
+  const inputs = mappingInputs()
+  if (!folder || !inputs.length) {
+    totalFiles.value = 0
+    overwriteCount.value = 0
+    summarizing.value = false
+    return
+  }
+  try {
+    const summary = await summarizePatchInstall({
+      archivePath: props.archivePath,
+      xplanePath: store.xplanePath,
+      aircraftFolder: folder,
+      mappings: inputs,
+    })
+    totalFiles.value = summary.totalFiles
+    overwriteCount.value = summary.overwriteCount
+  } catch {
+    // The summary is informational; leave the last known counts on failure.
+  } finally {
+    summarizing.value = false
+  }
 }
 
 function addMapping(archiveSubpath = '') {
@@ -358,13 +522,6 @@ function addMapping(archiveSubpath = '') {
 
 function removeMapping(i: number) {
   mappings.value.splice(i, 1)
-}
-
-function candidateLabel(c: PatchAircraftCandidate): string {
-  if (c.sampleSize > 0 && c.matchedCount > 0) {
-    return `${c.displayName} (${c.matchedCount}/${c.sampleSize})`
-  }
-  return c.displayName
 }
 
 function confidenceClass(c: PatchConfidence): string {
@@ -399,26 +556,13 @@ async function confirmInstall() {
   building.value = true
   errorMsg.value = ''
   try {
-    // Deduplicate identical rows; allow root→root.
-    const seen = new Set<string>()
-    const inputs = mappings.value
-      .map((m) => ({
-        archiveSubpath: m.archiveSubpath.trim(),
-        destSubpath: m.destSubpath.trim(),
-      }))
-      .filter((m) => {
-        const key = `${m.archiveSubpath}|${m.destSubpath}`
-        if (seen.has(key)) return false
-        seen.add(key)
-        return true
-      })
-
     const tasks = await buildPatchInstallTasks({
       archivePath: props.archivePath,
       xplanePath: store.xplanePath,
       aircraftFolder: selectedFolder.value,
-      mappings: inputs,
-      backupOverwritten: backupEnabled.value,
+      mappings: mappingInputs(),
+      // Nothing to back up (and no session dir) when no files are overwritten.
+      backupOverwritten: overwriteCount.value > 0 && backupEnabled.value,
     })
     emit('install', tasks)
   } catch (e) {

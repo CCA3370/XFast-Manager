@@ -1,5 +1,11 @@
 import { invokeCommand } from './api'
-import type { InstallTask, PatchMappingInput, PatchPlan, PatchTargetDetection } from '@/types'
+import type {
+  InstallTask,
+  PatchInstallSummary,
+  PatchMappingInput,
+  PatchPlan,
+  PatchTargetDetection,
+} from '@/types'
 
 /**
  * Typed wrappers around the backend patch-install commands.
@@ -31,6 +37,22 @@ export function inferPatchMappings(
     archivePath,
     xplanePath,
     aircraftFolder,
+  })
+}
+
+/** Preview how many files a patch install will write/overwrite for the chosen
+ * aircraft and mappings. Read-only; used to show the confirmation summary. */
+export function summarizePatchInstall(params: {
+  archivePath: string
+  xplanePath: string
+  aircraftFolder: string
+  mappings: PatchMappingInput[]
+}): Promise<PatchInstallSummary> {
+  return invokeCommand<PatchInstallSummary>('summarize_patch_install', {
+    archivePath: params.archivePath,
+    xplanePath: params.xplanePath,
+    aircraftFolder: params.aircraftFolder,
+    mappings: params.mappings,
   })
 }
 

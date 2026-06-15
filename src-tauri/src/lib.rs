@@ -804,6 +804,28 @@ async fn infer_patch_mappings(
     .map_err(|e| format!("Patch mapping inference failed: {}", e))
 }
 
+/// Read-only preview of what a patch install will do (total files written and
+/// how many existing files get overwritten) for the chosen aircraft + mappings.
+#[tauri::command]
+async fn summarize_patch_install(
+    archive_path: String,
+    xplane_path: String,
+    aircraft_folder: String,
+    mappings: Vec<patch::PatchMappingInput>,
+) -> Result<patch::PatchInstallSummary, String> {
+    tokio::task::spawn_blocking(move || {
+        patch::summarize_install(
+            std::path::Path::new(&archive_path),
+            &xplane_path,
+            &aircraft_folder,
+            &mappings,
+        )
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Patch summary failed: {}", e))
+}
+
 /// Build overlay install tasks from user-confirmed patch mappings. The returned
 /// tasks are fed to `install_addons` like any other install.
 #[tauri::command]
@@ -4002,6 +4024,7 @@ pub fn run() {
             install_addons,
             detect_patch_target_aircraft,
             infer_patch_mappings,
+            summarize_patch_install,
             build_patch_install_tasks,
             revert_patch,
             cancel_installation,
