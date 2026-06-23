@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"updated": "2026-06-22",
+	"updated": "2026-06-23",
 	"libraries": {
 		"3d_people": "https://forums.x-plane.org/index.php?/files/file/26611-3d-people-library/",
 		"3d_people_library": "https://forums.x-plane.org/files/file/26611-3d-people-library/",
@@ -23,6 +23,7 @@
 		"handyobjects": "https://forums.x-plane.org/index.php?/files/file/24261-the-handy-objects-library/",
 		"hungaryvfr-library": "https://forums.x-plane.org/files/file/43436-hungaryvfr/",
 		"jb_library": "https://forums.x-plane.org/files/file/26531-jb_libraryzip/",
+		"jetsetdesigns_library": "https://forum.thresholdx.net/files/file/4037-jetset-designs-library/",
 		"madagascar_lib": "https://drive.google.com/file/d/1QB9eenzLagfkdFGKtfpIYvbMCk9VDJ2D/view?usp=drive_link",
 		"misterx_library": "https://forums.x-plane.org/index.php?/files/file/28167-misterx-library-and-static-aircraft-extension/",
 		"my_jetways": "https://github.com/hotbso/openSam.git",
