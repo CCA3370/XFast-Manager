@@ -71,13 +71,21 @@
         <div class="flex-1">
           <div class="text-lg font-semibold" :class="healthTextClass">{{ healthLabel }}</div>
           <div class="mt-1 flex gap-4 text-sm text-neutral-600 dark:text-neutral-400">
-            <span v-if="store.counts.critical > 0" class="font-medium text-red-600 dark:text-red-400">
+            <span
+              v-if="store.counts.critical > 0"
+              class="font-medium text-red-600 dark:text-red-400"
+            >
               {{ store.counts.critical }} {{ t('doctor.severity.critical') }}
             </span>
-            <span v-if="store.counts.warning > 0" class="font-medium text-amber-600 dark:text-amber-400">
+            <span
+              v-if="store.counts.warning > 0"
+              class="font-medium text-amber-600 dark:text-amber-400"
+            >
               {{ store.counts.warning }} {{ t('doctor.severity.warning') }}
             </span>
-            <span v-if="store.counts.info > 0">{{ store.counts.info }} {{ t('doctor.severity.info') }}</span>
+            <span v-if="store.counts.info > 0"
+              >{{ store.counts.info }} {{ t('doctor.severity.info') }}</span
+            >
             <span v-if="store.counts.total === 0">{{ t('doctor.healthOk') }}</span>
           </div>
         </div>
@@ -105,10 +113,22 @@
     <!-- Findings by section -->
     <div v-if="store.lastRun && !store.isRunning" class="flex-1 overflow-y-auto px-6 py-6">
       <div v-if="store.findingsBySection.length === 0" class="py-12 text-center">
-        <svg class="mx-auto h-12 w-12 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <svg
+          class="mx-auto h-12 w-12 text-green-500"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
         </svg>
-        <p class="mt-4 text-lg font-medium text-neutral-900 dark:text-white">{{ t('doctor.healthOk') }}</p>
+        <p class="mt-4 text-lg font-medium text-neutral-900 dark:text-white">
+          {{ t('doctor.healthOk') }}
+        </p>
       </div>
 
       <div v-else class="space-y-6">
@@ -120,7 +140,9 @@
           <div class="border-b border-neutral-200 px-4 py-3 dark:border-neutral-700">
             <h2 class="text-base font-semibold text-neutral-900 dark:text-white">
               {{ t(`doctor.sections.${group.section}`) }}
-              <span class="ml-2 text-sm font-normal text-neutral-500">({{ group.findings.length }})</span>
+              <span class="ml-2 text-sm font-normal text-neutral-500"
+                >({{ group.findings.length }})</span
+              >
             </h2>
           </div>
 
@@ -145,24 +167,37 @@
                       <p class="mt-1 text-sm text-neutral-700 dark:text-neutral-300">
                         {{ tc(finding, 'description') }}
                       </p>
-                      <div class="mt-2 flex items-start gap-1.5 text-sm text-blue-700 dark:text-blue-300">
-                        <svg class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      <div
+                        class="mt-2 flex items-start gap-1.5 text-sm text-blue-700 dark:text-blue-300"
+                      >
+                        <svg
+                          class="mt-0.5 h-3.5 w-3.5 flex-shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
                         </svg>
                         <span>{{ tc(finding, 'suggestion') }}</span>
                       </div>
 
-                      <details
-                        v-if="finding.detail && finding.detail.length > 0"
-                        class="mt-3"
-                      >
-                        <summary class="cursor-pointer select-none text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300">
+                      <details v-if="finding.detail && finding.detail.length > 0" class="mt-3">
+                        <summary
+                          class="cursor-pointer select-none text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+                        >
                           {{ t('doctor.fixes.viewDetails') }} ({{ finding.detail.length }})
                         </summary>
                         <div
                           class="mt-2 max-h-48 overflow-y-auto rounded border border-neutral-200 bg-neutral-50 p-3 font-mono text-xs text-neutral-700 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-300"
                         >
-                          <div v-for="(line, i) in finding.detail" :key="i" class="break-all">{{ line }}</div>
+                          <div v-for="(line, i) in finding.detail" :key="i" class="break-all">
+                            {{ line }}
+                          </div>
                         </div>
                       </details>
                     </div>
@@ -170,12 +205,18 @@
                     <div v-if="hasAction(finding)" class="flex flex-shrink-0 flex-col gap-2">
                       <button
                         v-if="finding.fix && finding.fix.tier !== 'none'"
-                        :disabled="store.fixingId === finding.id || (store.xplaneRunning && isFsFix(finding))"
+                        :disabled="
+                          store.fixingId === finding.id || (store.xplaneRunning && isFsFix(finding))
+                        "
                         class="whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                         :class="fixButtonClass(finding.fix.tier)"
                         @click="applyFix(finding)"
                       >
-                        {{ store.fixingId === finding.id ? t('doctor.fixes.applying') : fixLabel(finding) }}
+                        {{
+                          store.fixingId === finding.id
+                            ? t('doctor.fixes.applying')
+                            : fixLabel(finding)
+                        }}
                       </button>
                       <button
                         v-if="finding.route"
@@ -197,8 +238,12 @@
     <!-- Loading state -->
     <div v-if="store.isRunning" class="flex flex-1 items-center justify-center">
       <div class="text-center">
-        <div class="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-neutral-200 border-t-blue-600 dark:border-neutral-700" />
-        <p class="mt-4 text-sm font-medium text-neutral-700 dark:text-neutral-300">{{ t('doctor.running') }}</p>
+        <div
+          class="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-neutral-200 border-t-blue-600 dark:border-neutral-700"
+        />
+        <p class="mt-4 text-sm font-medium text-neutral-700 dark:text-neutral-300">
+          {{ t('doctor.running') }}
+        </p>
         <p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{{ phaseLabel }}</p>
       </div>
     </div>
@@ -206,11 +251,25 @@
     <!-- Empty state -->
     <div v-if="!store.lastRun && !store.isRunning" class="flex flex-1 items-center justify-center">
       <div class="max-w-md text-center">
-        <svg class="mx-auto h-16 w-16 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l8.84 8.84 8.84-8.84a5.5 5.5 0 000-7.78z" />
+        <svg
+          class="mx-auto h-16 w-16 text-neutral-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.5"
+            d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l8.84 8.84 8.84-8.84a5.5 5.5 0 000-7.78z"
+          />
         </svg>
-        <p class="mt-4 text-lg font-medium text-neutral-900 dark:text-white">{{ t('doctor.title') }}</p>
-        <p class="mt-2 text-sm text-neutral-600 dark:text-neutral-400">{{ t('doctor.subtitle') }}</p>
+        <p class="mt-4 text-lg font-medium text-neutral-900 dark:text-white">
+          {{ t('doctor.title') }}
+        </p>
+        <p class="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+          {{ t('doctor.subtitle') }}
+        </p>
         <button
           v-if="appStore.xplanePath"
           class="mt-6 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"

@@ -426,14 +426,7 @@
 </template>
 
 <script setup lang="ts">
-import {
-  computed,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  watch,
-  type ComponentPublicInstance,
-} from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -769,10 +762,7 @@ function navLinkBackgroundClass(item: NavItem) {
     : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
 }
 
-function setNavMeasureRef(
-  id: NavMeasureId,
-  target: Element | ComponentPublicInstance | null,
-) {
+function setNavMeasureRef(id: NavMeasureId, target: Element | ComponentPublicInstance | null) {
   navMeasureRefs[id] = target instanceof HTMLElement ? target : null
 }
 

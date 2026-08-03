@@ -1195,7 +1195,10 @@ export const useManagementStore = defineStore('management', () => {
     }
   }
 
-  async function toggleAircraftAcfFile(folderName: string, fileName: string): Promise<AircraftInfo> {
+  async function toggleAircraftAcfFile(
+    folderName: string,
+    fileName: string,
+  ): Promise<AircraftInfo> {
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }

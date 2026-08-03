@@ -134,10 +134,7 @@ pub struct PatchInstallSummary {
 /// Align the patch against every installed aircraft and rank them by how well
 /// their *discriminative* files overlap (see [`rank_candidates`]). Cheap:
 /// per-aircraft existence probes of a bounded sample, run in parallel.
-pub fn detect_target_aircraft(
-    archive_path: &Path,
-    xplane_path: &str,
-) -> Result<TargetDetection> {
+pub fn detect_target_aircraft(archive_path: &Path, xplane_path: &str) -> Result<TargetDetection> {
     let aircraft = crate::management_index::scan_aircraft(Path::new(xplane_path))?.entries;
     let files = list_archive_files(archive_path).unwrap_or_default();
 
@@ -273,7 +270,9 @@ fn rank_candidates(files: &[String], targets: &[ProbeTarget]) -> TargetDetection
                 let score: f64 = idxs.iter().map(|&i| idf(n, df[oi][i])).sum();
                 // Prefer the higher-scoring offset; break score ties by raw
                 // match count so an aligned subtree still wins over the root.
-                if !chosen || score > best_score || (score == best_score && idxs.len() > best_matched)
+                if !chosen
+                    || score > best_score
+                    || (score == best_score && idxs.len() > best_matched)
                 {
                     chosen = true;
                     best_score = score;
@@ -300,7 +299,11 @@ fn rank_candidates(files: &[String], targets: &[ProbeTarget]) -> TargetDetection
     scored.sort_by(|a, b| {
         b.0.partial_cmp(&a.0)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.1.display_name.to_lowercase().cmp(&b.1.display_name.to_lowercase()))
+            .then_with(|| {
+                a.1.display_name
+                    .to_lowercase()
+                    .cmp(&b.1.display_name.to_lowercase())
+            })
     });
 
     // Recommend the top aircraft only when it has real discriminative overlap
@@ -385,7 +388,10 @@ fn plan_mappings(
         if sample.is_empty() {
             continue;
         }
-        let matched = sample.iter().filter(|rel| aircraft_dir.join(rel).exists()).count();
+        let matched = sample
+            .iter()
+            .filter(|rel| aircraft_dir.join(rel).exists())
+            .count();
         if matched > root_matched {
             root_matched = matched;
             root_offset = off.clone();
@@ -547,7 +553,11 @@ pub fn build_install_tasks(
     // so a single revert restores all overwritten files at once. Created lazily
     // by the installer only if files are actually overwritten.
     let backup_dir = if backup_overwritten {
-        let session = format!("{}_{}", sanitize_component(&patch_name), &Uuid::new_v4().to_string()[..8]);
+        let session = format!(
+            "{}_{}",
+            sanitize_component(&patch_name),
+            &Uuid::new_v4().to_string()[..8]
+        );
         Some(
             aircraft_dir
                 .join("_xfast_patch_backups")
@@ -700,7 +710,10 @@ pub(crate) fn backup_overwritten_files(
     fs::write(&manifest_path, serde_json::to_string_pretty(&manifest)?)?;
 
     crate::logger::log_info(
-        &format!("Patch backup: saved {} overwritten file(s) to {:?}", count, backup_dir),
+        &format!(
+            "Patch backup: saved {} overwritten file(s) to {:?}",
+            count, backup_dir
+        ),
         Some("patch"),
     );
     Ok(count)
@@ -740,7 +753,10 @@ pub fn revert_patch(backup_session_dir: &str) -> Result<usize> {
     }
 
     crate::logger::log_info(
-        &format!("Patch revert: restored {} file(s) from {}", restored, backup_session_dir),
+        &format!(
+            "Patch revert: restored {} file(s) from {}",
+            restored, backup_session_dir
+        ),
         Some("patch"),
     );
     Ok(restored)
@@ -750,7 +766,13 @@ pub fn revert_patch(backup_session_dir: &str) -> Result<usize> {
 fn sanitize_component(s: &str) -> String {
     let cleaned: String = s
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let trimmed = cleaned.trim_matches('_');
     if trimmed.is_empty() {
@@ -1074,7 +1096,11 @@ mod tests {
             "Liveries/Cool Livery/objects/x.obj",
         ]);
         // The base folder is a content root (has .acf); the wrapper and root are not.
-        assert!(is_content_root(&files, &dirs, "Toliss321 Base Folder/Base Folder"));
+        assert!(is_content_root(
+            &files,
+            &dirs,
+            "Toliss321 Base Folder/Base Folder"
+        ));
         assert!(!is_content_root(&files, &dirs, "Toliss321 Base Folder"));
         assert!(!is_content_root(&files, &dirs, ""));
         // Offsets include the base folder so scoring can align it.
@@ -1106,7 +1132,10 @@ mod tests {
         let sample = build_sample(&files, "");
         // .acf / objects sort ahead of readme.txt
         assert_eq!(sample[0], "A321.acf");
-        assert!(sample.iter().position(|s| s == "objects/a.obj").unwrap() < sample.iter().position(|s| s == "readme.txt").unwrap());
+        assert!(
+            sample.iter().position(|s| s == "objects/a.obj").unwrap()
+                < sample.iter().position(|s| s == "readme.txt").unwrap()
+        );
     }
 
     /// Build a minimal on-disk aircraft folder with the given relative files.
@@ -1129,11 +1158,7 @@ mod tests {
     #[test]
     fn plan_pw_mod_yields_base_and_liveries() {
         // Installed aircraft already has these files.
-        let ac = make_aircraft(&[
-            "A321.acf",
-            "objects/fuselage.obj",
-            "systems/hydraulics.txt",
-        ]);
+        let ac = make_aircraft(&["A321.acf", "objects/fuselage.obj", "systems/hydraulics.txt"]);
         // PW-MOD archive: base content under a two-level wrapper + separate liveries.
         let files = to_owned(&[
             "Toliss321 Base Folder/Base Folder/A321.acf",
@@ -1149,7 +1174,10 @@ mod tests {
         let root = mappings.iter().find(|m| m.dest_subpath.is_empty()).unwrap();
         assert_eq!(root.archive_subpath, "Toliss321 Base Folder/Base Folder");
         // Liveries map into <aircraft>/liveries.
-        let liveries = mappings.iter().find(|m| m.dest_subpath == "liveries").unwrap();
+        let liveries = mappings
+            .iter()
+            .find(|m| m.dest_subpath == "liveries")
+            .unwrap();
         assert_eq!(liveries.archive_subpath, "Liveries");
         // The wrapper folder is fully covered by the root overlay, not "unmapped".
         assert!(unmapped.is_empty(), "unexpected unmapped: {:?}", unmapped);
@@ -1198,7 +1226,11 @@ mod tests {
             "plugins/xlua/win_x64/xlua.xpl",
         ]);
         // A couple more aircraft so the universal FMOD names have realistic df.
-        let g1 = make_aircraft(&["fmod/GUIDs.txt", "fmod/Master Bank.bank", "plugins/xlua/init.lua"]);
+        let g1 = make_aircraft(&[
+            "fmod/GUIDs.txt",
+            "fmod/Master Bank.bank",
+            "plugins/xlua/init.lua",
+        ]);
         let g2 = make_aircraft(&["fmod/GUIDs.txt", "fmod/Master Bank.bank"]);
 
         // The SBStudio A321 FMOD patch, wrapped in a versioned top folder.
@@ -1238,7 +1270,10 @@ mod tests {
             det.candidates.first().map(|c| c.folder_name.as_str()),
             Some("ToLissA321_V1p8"),
             "expected the A321 to rank first, got: {:?}",
-            det.candidates.iter().map(|c| &c.folder_name).collect::<Vec<_>>()
+            det.candidates
+                .iter()
+                .map(|c| &c.folder_name)
+                .collect::<Vec<_>>()
         );
         assert_eq!(det.recommended_folder.as_deref(), Some("ToLissA321_V1p8"));
     }

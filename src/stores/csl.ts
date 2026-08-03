@@ -578,12 +578,7 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   async function syncLinks(options: SyncLinksOptions = {}) {
-    const {
-      packageNames,
-      cleanupPaths,
-      interactive = false,
-      targetPaths,
-    } = options
+    const { packageNames, cleanupPaths, interactive = false, targetPaths } = options
     const hasExplicitTargetPaths = targetPaths !== undefined
 
     if (!appStore.xplanePath) {

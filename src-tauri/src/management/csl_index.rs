@@ -3485,15 +3485,11 @@ pub async fn csl_rescan_packages(
     );
 
     // Fetch index (hits cache if recent scan happened)
-    let index_content = fetch_remote_index_for_scan(
-        &server_base_url,
-        CSL_INDEX_PATH,
-        &request_ctx,
-        "X-CSL",
-    )
-        .await
-        .map_err(|e| e.to_string())?
-        .content;
+    let index_content =
+        fetch_remote_index_for_scan(&server_base_url, CSL_INDEX_PATH, &request_ctx, "X-CSL")
+            .await
+            .map_err(|e| e.to_string())?
+            .content;
 
     let entries = parse_index(&index_content);
     let pkg_data_list = group_into_packages(&entries);
@@ -3965,8 +3961,8 @@ pub async fn altitude_scan_packages(
         &request_ctx,
         "ALTITUDE",
     )
-        .await
-        .map_err(|e| e.to_string())?;
+    .await
+    .map_err(|e| e.to_string())?;
     let index_content = index.content;
 
     let server_version = index_content.lines().next().unwrap_or("").to_string();

@@ -520,7 +520,9 @@ pub fn navdata_status(xplane_path: &str) -> DoctorNavdataReport {
 // ========== Tauri Commands ==========
 
 #[tauri::command]
-pub async fn doctor_scan_environment(xplane_path: String) -> Result<DoctorEnvironmentReport, String> {
+pub async fn doctor_scan_environment(
+    xplane_path: String,
+) -> Result<DoctorEnvironmentReport, String> {
     tokio::task::spawn_blocking(move || scan_environment(&xplane_path))
         .await
         .map_err(|e| format!("Task join error: {}", e))
@@ -541,7 +543,10 @@ mod tests {
     fn ymd_roundtrip() {
         for (y, m, d) in [(2026, 5, 14), (2026, 6, 11), (2000, 1, 1), (1970, 1, 1)] {
             let ed = ymd_to_epoch_day(y, m, d);
-            assert_eq!(epoch_day_to_ymd_string(ed), format!("{:04}-{:02}-{:02}", y, m, d));
+            assert_eq!(
+                epoch_day_to_ymd_string(ed),
+                format!("{:04}-{:02}-{:02}", y, m, d)
+            );
         }
     }
 
@@ -552,8 +557,14 @@ mod tests {
 
     #[test]
     fn parse_dmy_basic() {
-        assert_eq!(parse_dmy("14/MAY/2026"), Some(ymd_to_epoch_day(2026, 5, 14)));
-        assert_eq!(parse_dmy(" 11/JUN/2026 "), Some(ymd_to_epoch_day(2026, 6, 11)));
+        assert_eq!(
+            parse_dmy("14/MAY/2026"),
+            Some(ymd_to_epoch_day(2026, 5, 14))
+        );
+        assert_eq!(
+            parse_dmy(" 11/JUN/2026 "),
+            Some(ymd_to_epoch_day(2026, 6, 11))
+        );
         assert_eq!(parse_dmy("bad"), None);
         assert_eq!(parse_dmy("40/MAY/2026"), None);
     }
