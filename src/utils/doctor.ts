@@ -2,11 +2,16 @@ import type {
   DoctorCheckOutcome,
   DoctorCheckResult,
   DoctorCompleteness,
+  DoctorHistoryFile,
+  DoctorRun,
   DoctorRunState,
   DoctorRunSummary,
   DoctorSection,
   DoctorSeverity,
 } from '@/types/doctor'
+
+export const DOCTOR_HISTORY_LIMIT = 20
+export const DOCTOR_RESULT_STALE_MS = 24 * 60 * 60 * 1000
 
 export const DOCTOR_SECTION_ORDER: DoctorSection[] = [
   'installation',
@@ -85,4 +90,44 @@ export function sortDoctorChecks(checks: DoctorCheckResult[]): DoctorCheckResult
     const outcomeDelta = OUTCOME_ORDER[a.outcome] - OUTCOME_ORDER[b.outcome]
     return outcomeDelta || a.id.localeCompare(b.id)
   })
+}
+
+export function normalizeDoctorHistoryPath(path: string): string {
+  return path.trim().replace(/\\/g, '/').replace(/\/+$/, '')
+}
+
+export function emptyDoctorHistory(): DoctorHistoryFile {
+  return { schemaVersion: 1, installationByPath: {}, runsByInstallation: {} }
+}
+
+export function addDoctorHistoryRun(
+  history: DoctorHistoryFile,
+  xplanePath: string,
+  run: DoctorRun,
+  limit = DOCTOR_HISTORY_LIMIT,
+): DoctorHistoryFile {
+  const pathKey = normalizeDoctorHistoryPath(xplanePath)
+  const current = history.runsByInstallation[run.installationId] ?? []
+  const runs = [run, ...current.filter((item) => item.id !== run.id)]
+    .sort((a, b) => b.startedAt - a.startedAt)
+    .slice(0, limit)
+
+  return {
+    schemaVersion: 1,
+    installationByPath: { ...history.installationByPath, [pathKey]: run.installationId },
+    runsByInstallation: { ...history.runsByInstallation, [run.installationId]: runs },
+  }
+}
+
+export function getDoctorHistoryForPath(
+  history: DoctorHistoryFile,
+  xplanePath: string,
+): DoctorRun[] {
+  const installationId = history.installationByPath[normalizeDoctorHistoryPath(xplanePath)]
+  return installationId ? (history.runsByInstallation[installationId] ?? []) : []
+}
+
+export function isDoctorRunStale(run: DoctorRun | null, now = Date.now()): boolean {
+  if (!run?.completedAt) return true
+  return now - run.completedAt >= DOCTOR_RESULT_STALE_MS
 }

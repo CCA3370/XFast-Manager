@@ -1,23 +1,26 @@
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { computed, ref } from 'vue'
+import { defineStore } from 'pinia'
 import { useAppStore } from './app'
+import { useLockStore } from './lock'
 import { logError } from '@/services/logger'
+import {
+  createDoctorCheckDefinitions,
+  type DoctorCheckContext,
+  type DoctorCheckDefinition,
+} from '@/services/doctorChecks'
+import { loadDoctorRunsForPath, saveDoctorRun } from '@/services/doctorHistory'
+import { buildDoctorReport, type DoctorReportFormat } from '@/utils/doctorReport'
+import { isDoctorRunStale, sortDoctorChecks, summarizeDoctorRun } from '@/utils/doctor'
 import type {
-  DoctorEnvironmentReport,
-  DoctorNavdataReport,
-  NavdataCycleReport,
-  SceneryManagerData,
-  AircraftInfo,
-  PluginInfo,
-  SceneryManagerEntry,
-  ActivityLogPage,
-  GatewayInstalledAirport,
-} from '@/types'
-
-// ---------------------------------------------------------------------------
-// Finding model
-// ---------------------------------------------------------------------------
+  DoctorCheckResult,
+  DoctorCheckRuntime,
+  DoctorRemediation,
+  DoctorRun,
+  DoctorRunMode,
+  DoctorSection as HealthSection,
+  DoctorSeverity as HealthSeverity,
+} from '@/types/doctor'
 
 export type DoctorSeverity = 'critical' | 'warning' | 'info' | 'ok'
 
@@ -32,32 +35,47 @@ export type DoctorSection =
   | 'disk'
   | 'updates'
 
-/** Auto-fix safety tier. 'none' = no auto-fix, guidance only. */
 export type DoctorFixTier = 'safe' | 'confirm' | 'destructive' | 'none'
 
+/** Compatibility shape for the existing Health page while the richer UI is mounted. */
 export interface DoctorFinding {
-  /** Stable check id, e.g. "scenery.needs_sort". Maps to i18n doctor.checks.<id>.* */
   id: string
   section: DoctorSection
   severity: DoctorSeverity
-  /** Interpolation params for the i18n title/description strings. */
   params?: Record<string, string | number>
-  /** Extra free-form detail lines (already-localized or raw, shown verbatim, monospace). */
   detail?: string[]
-  /** Auto-fix descriptor; absent when this finding is guidance-only. */
   fix?: {
     id: string
     tier: DoctorFixTier
-    /** params for the fix button label / confirm dialog text. */
     params?: Record<string, string | number>
   }
-  /** A route the user can jump to in order to resolve this manually. */
   route?: string
 }
 
 export type DoctorPhase = 'idle' | 'local' | 'network' | 'done'
 
-const SECTION_ORDER: DoctorSection[] = [
+export interface DoctorBatchFixResult {
+  applied: number
+  failed: number
+}
+
+const LOCAL_CONCURRENCY = 4
+const NETWORK_CONCURRENCY = 3
+
+const LEGACY_SECTION: Record<HealthSection, DoctorSection> = {
+  installation: 'integrity',
+  stability: 'crashes',
+  scenery: 'scenery',
+  addons: 'plugins',
+  navdata: 'navdata',
+  performance: 'performance',
+  storage: 'disk',
+  system: 'environment',
+  xfast: 'integrity',
+  updates: 'updates',
+}
+
+const LEGACY_SECTION_ORDER: DoctorSection[] = [
   'integrity',
   'crashes',
   'navdata',
@@ -69,926 +87,720 @@ const SECTION_ORDER: DoctorSection[] = [
   'updates',
 ]
 
-const SEVERITY_RANK: Record<DoctorSeverity, number> = {
+const LEGACY_SEVERITY_ORDER: Record<DoctorSeverity, number> = {
   critical: 0,
   warning: 1,
   info: 2,
   ok: 3,
 }
 
-// Thresholds
-const LOW_DISK_WARN_BYTES = 10 * 1024 * 1024 * 1024 // 10 GB
-const LOW_DISK_CRIT_BYTES = 1 * 1024 * 1024 * 1024 // 1 GB
-const CLEANABLE_CACHE_WARN_BYTES = 100 * 1024 * 1024 // 100 MB
-const READONLY_WARN_COUNT = 10
+const FILESYSTEM_REMEDIATIONS = new Set([
+  'sort_scenery',
+  'enable_global_airports',
+  'apply_flatten',
+  'refresh_scenery_index',
+  'rebuild_scenery_index',
+])
 
-// Log categories that the Doctor surfaces individually (beyond the crash banner).
-// Maps a backend log category -> { section, severity }. Anything not listed is
-// folded into a generic "other high-severity log errors" finding.
-const LOG_CATEGORY_MAP: Record<string, { section: DoctorSection; severity: DoctorSeverity }> = {
-  // Crashes / GPU
-  vulkan_device_error: { section: 'crashes', severity: 'critical' },
-  vulkan_gfx_error: { section: 'crashes', severity: 'critical' },
-  gfx_error: { section: 'crashes', severity: 'warning' },
-  nvidia_permission: { section: 'environment', severity: 'warning' },
-  // Memory / performance
-  out_of_memory: { section: 'performance', severity: 'critical' },
-  heavy_memory_pressure: { section: 'performance', severity: 'critical' },
-  memory_status_critical: { section: 'performance', severity: 'warning' },
-  severe_texture_downscale: { section: 'performance', severity: 'warning' },
-  runloop_backlog: { section: 'performance', severity: 'warning' },
-  // Plugins
-  plugin_error: { section: 'plugins', severity: 'warning' },
-  plugin_assert: { section: 'plugins', severity: 'critical' },
-  plugin_manager_error: { section: 'plugins', severity: 'critical' },
-  duplicate_plugin: { section: 'plugins', severity: 'warning' },
-  missing_plugin_support: { section: 'plugins', severity: 'warning' },
-  deprecated_dataref: { section: 'plugins', severity: 'info' },
-  // Scenery
-  dsf_error: { section: 'scenery', severity: 'warning' },
-  scenery_error: { section: 'scenery', severity: 'warning' },
-  scenery_load_failed: { section: 'scenery', severity: 'warning' },
-  // Environment
-  third_party_blocked: { section: 'environment', severity: 'warning' },
-  ssl_failed: { section: 'environment', severity: 'info' },
+const DEFINITION_RESULT_IDS: Record<string, string[]> = {
+  scenery: [
+    'scenery.global_airports',
+    'scenery.load_order',
+    'scenery.dependencies',
+    'scenery.overlaps',
+    'scenery.duplicate_airports',
+    'scenery.flatten',
+  ],
+  xfast: ['storage.app_data_space', 'xfast.app_data', 'xfast.database', 'xfast.scenery_index'],
 }
 
-interface LogIssue {
-  category: string
-  severity: string
-  line_numbers: number[]
-  sample_line: string
-}
-interface XPlaneLogAnalysis {
-  log_path: string
-  is_xplane_log: boolean
-  crash_detected: boolean
-  crash_info: string | null
-  issues: LogIssue[]
-  system_info: {
-    xplane_version: string | null
-    gpu_model: string | null
-    gpu_driver: string | null
+class DoctorTimeoutError extends Error {
+  constructor(checkId: string, timeoutMs: number) {
+    super(`${checkId} timed out after ${timeoutMs} ms`)
+    this.name = 'DoctorTimeoutError'
   }
-  total_high: number
-  total_medium: number
-  total_low: number
-}
-interface CrashCause {
-  cause_key: string
-  score: number
-  evidence: string[]
-  blamed_module: string | null
-}
-interface DeepCrashAnalysis {
-  report_info: { file_name: string; file_size: number; timestamp: number }
-  crash_causes: CrashCause[]
-  loaded_plugins: string[]
-  parse_success: boolean
 }
 
-export interface DoctorSystemInfo {
-  xplaneVersion: string | null
-  xplaneVersionRaw: string | null
-  isBeta: boolean
-  gpuModel: string | null
-  gpuDriver: string | null
+class DoctorCancelledError extends Error {
+  constructor() {
+    super('Health run cancelled')
+    this.name = 'DoctorCancelledError'
+  }
 }
 
-/** Detect a beta/dev X-Plane build from the raw version token. */
-function detectBeta(raw: string | null): boolean {
-  if (!raw) return false
-  const v = raw.toLowerCase()
-  // Stable releases use "-r" (release) or a bare x.y.z; betas use -b / beta / -d (dev).
-  return /(-b\d|beta|-d\d|\bdev\b|alpha|-rc)/i.test(v)
+function createRunId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID()
+  return `health-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function runWithTimeout<T>(
+  promise: Promise<T>,
+  checkId: string,
+  timeoutMs: number,
+  cancellation: Promise<void>,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    const finish = (callback: () => void) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      callback()
+    }
+    const timer = setTimeout(
+      () => finish(() => reject(new DoctorTimeoutError(checkId, timeoutMs))),
+      timeoutMs,
+    )
+    promise.then(
+      (value) => finish(() => resolve(value)),
+      (reason: unknown) => finish(() => reject(reason)),
+    )
+    cancellation.then(() => finish(() => reject(new DoctorCancelledError())))
+  })
+}
+
+async function runBounded<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0
+  const workerCount = Math.min(Math.max(concurrency, 1), items.length)
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const item = items[nextIndex]
+        nextIndex += 1
+        await worker(item)
+      }
+    }),
+  )
+}
+
+function cancelledResult(definition: DoctorCheckDefinition): DoctorCheckResult {
+  return {
+    id: `diagnostic.${definition.id}`,
+    section: definition.section,
+    outcome: 'cancelled',
+    durationMs: 0,
+  }
+}
+
+function unavailableResult(
+  definition: DoctorCheckDefinition,
+  error: unknown,
+  durationMs: number,
+): DoctorCheckResult {
+  return {
+    id: `diagnostic.${definition.id}`,
+    section: definition.section,
+    outcome: 'unavailable',
+    durationMs,
+    evidence: [{ kind: 'text', value: String(error) }],
+  }
+}
+
+function outcomeSeverity(check: DoctorCheckResult): DoctorSeverity | null {
+  if (check.outcome === 'critical' || check.outcome === 'warning' || check.outcome === 'info') {
+    return check.outcome
+  }
+  if (check.outcome === 'unavailable') return 'info'
+  return null
+}
+
+function legacyFinding(check: DoctorCheckResult): DoctorFinding | null {
+  const severity = outcomeSeverity(check)
+  if (!severity) return null
+  const remediation = check.remediation
+  return {
+    id: check.id,
+    section: LEGACY_SECTION[check.section],
+    severity,
+    params: check.params,
+    detail: check.evidence?.map((item) => item.value),
+    fix:
+      remediation?.kind === 'automatic'
+        ? {
+            id: remediation.id,
+            tier: remediation.risk,
+            params: remediation.params,
+          }
+        : undefined,
+    route: remediation?.route,
+  }
 }
 
 export const useDoctorStore = defineStore('doctor', () => {
   const appStore = useAppStore()
+  const lockStore = useLockStore()
 
   const phase = ref<DoctorPhase>('idle')
-  const findings = ref<DoctorFinding[]>([])
-  const systemInfo = ref<DoctorSystemInfo | null>(null)
+  const currentRun = ref<DoctorRun | null>(null)
+  const history = ref<DoctorRun[]>([])
+  const selectedRunId = ref<string | null>(null)
+  const checkRuntime = ref<DoctorCheckRuntime[]>([])
   const error = ref<string | null>(null)
-  const lastRun = ref<number | null>(null)
   const xplaneRunning = ref(false)
   const fixingId = ref<string | null>(null)
+  const repairingAll = ref(false)
+  const hasAutoRunThisSession = ref(false)
+  const appDataPath = ref<string | null>(null)
 
-  // Per-check progress so the UI can show what's still loading.
-  const runningChecks = ref<Set<string>>(new Set())
+  let activeRunToken = 0
+  let cancelRequested = false
+  let lastContext: DoctorCheckContext | null = null
+  let cancelActiveWork: (() => void) | null = null
+  let activeCancellation: Promise<void> = new Promise(() => {})
 
-  const isRunning = computed(() => phase.value === 'local' || phase.value === 'network')
+  function createCancellationSignal() {
+    activeCancellation = new Promise<void>((resolve) => {
+      cancelActiveWork = resolve
+    })
+  }
 
-  const sortedFindings = computed(() => {
-    return [...findings.value].sort((a, b) => {
-      const sa = SECTION_ORDER.indexOf(a.section)
-      const sb = SECTION_ORDER.indexOf(b.section)
-      if (sa !== sb) return sa - sb
-      return SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]
+  const displayedRun = computed(() => {
+    if (selectedRunId.value) {
+      const selected = history.value.find((run) => run.id === selectedRunId.value)
+      if (selected) return selected
+    }
+    return currentRun.value
+  })
+
+  const isRunning = computed(() => currentRun.value?.state === 'running')
+  const isDisplayingCurrentRun = computed(() =>
+    Boolean(currentRun.value && displayedRun.value?.id === currentRun.value.id),
+  )
+  const isStale = computed(() => isDoctorRunStale(history.value[0] ?? currentRun.value))
+  const lastCompletedRun = computed(
+    () => history.value[0] ?? (currentRun.value?.state === 'completed' ? currentRun.value : null),
+  )
+
+  // Compatibility projections for the pre-redesign view.
+  const findings = computed(() =>
+    (displayedRun.value?.checks ?? [])
+      .map(legacyFinding)
+      .filter((finding): finding is DoctorFinding => finding !== null),
+  )
+  const sortedFindings = computed(() =>
+    [...findings.value].sort((a, b) => {
+      const section =
+        LEGACY_SECTION_ORDER.indexOf(a.section) - LEGACY_SECTION_ORDER.indexOf(b.section)
+      return section || LEGACY_SEVERITY_ORDER[a.severity] - LEGACY_SEVERITY_ORDER[b.severity]
+    }),
+  )
+  const findingsBySection = computed(() => {
+    const groups = new Map<DoctorSection, DoctorFinding[]>()
+    for (const finding of sortedFindings.value) {
+      const list = groups.get(finding.section) ?? []
+      list.push(finding)
+      groups.set(finding.section, list)
+    }
+    return LEGACY_SECTION_ORDER.flatMap((section) => {
+      const sectionFindings = groups.get(section)
+      return sectionFindings?.length ? [{ section, findings: sectionFindings }] : []
     })
   })
-
-  const findingsBySection = computed(() => {
-    const map = new Map<DoctorSection, DoctorFinding[]>()
-    for (const section of SECTION_ORDER) map.set(section, [])
-    for (const f of sortedFindings.value) {
-      map.get(f.section)?.push(f)
+  const counts = computed(() => ({
+    critical: displayedRun.value?.summary.critical ?? 0,
+    warning: displayedRun.value?.summary.warning ?? 0,
+    info: displayedRun.value?.summary.info ?? 0,
+    total: findings.value.length,
+  }))
+  const overallSeverity = computed<HealthSeverity>(
+    () => displayedRun.value?.summary.severity ?? 'ok',
+  )
+  const systemInfo = computed(() => {
+    const system = displayedRun.value?.system
+    if (!system) return null
+    return {
+      xplaneVersion: system.xplaneVersion,
+      xplaneVersionRaw: system.xplaneVersionRaw,
+      isBeta: system.isBeta,
+      gpuModel: system.gpuModel,
+      gpuDriver: system.gpuDriver,
     }
-    // Drop empty sections
-    const out: { section: DoctorSection; findings: DoctorFinding[] }[] = []
-    for (const section of SECTION_ORDER) {
-      const list = map.get(section) ?? []
-      if (list.length > 0) out.push({ section, findings: list })
-    }
-    return out
   })
-
-  const counts = computed(() => {
-    let critical = 0
-    let warning = 0
-    let info = 0
-    for (const f of findings.value) {
-      if (f.severity === 'critical') critical++
-      else if (f.severity === 'warning') warning++
-      else if (f.severity === 'info') info++
-    }
-    return { critical, warning, info, total: findings.value.length }
-  })
-
-  const overallSeverity = computed<DoctorSeverity>(() => {
-    if (counts.value.critical > 0) return 'critical'
-    if (counts.value.warning > 0) return 'warning'
-    if (counts.value.info > 0) return 'info'
-    return 'ok'
-  })
-
-  function add(finding: DoctorFinding) {
-    findings.value.push(finding)
-  }
-
-  function removeById(id: string) {
-    findings.value = findings.value.filter((f) => f.id !== id)
-  }
+  const lastRun = computed(() => displayedRun.value?.completedAt ?? null)
+  const runningChecks = computed(
+    () =>
+      new Set(
+        checkRuntime.value
+          .filter((runtime) => runtime.state === 'running')
+          .map((runtime) => runtime.id),
+      ),
+  )
 
   function reset() {
-    findings.value = []
-    systemInfo.value = null
-    error.value = null
+    activeRunToken += 1
+    cancelRequested = false
+    cancelActiveWork?.()
+    cancelActiveWork = null
     phase.value = 'idle'
-    runningChecks.value = new Set()
+    currentRun.value = null
+    selectedRunId.value = null
+    checkRuntime.value = []
+    error.value = null
+    xplaneRunning.value = false
+    fixingId.value = null
+    repairingAll.value = false
+    appDataPath.value = null
+    lastContext = null
   }
 
-  // -------------------------------------------------------------------------
-  // Main entry point
-  // -------------------------------------------------------------------------
+  async function loadHistory(): Promise<void> {
+    const xplanePath = appStore.xplanePath
+    selectedRunId.value = null
+    if (!xplanePath) {
+      history.value = []
+      if (!isRunning.value) currentRun.value = null
+      return
+    }
+    try {
+      history.value = await loadDoctorRunsForPath(xplanePath)
+      if (!currentRun.value && history.value[0]) currentRun.value = history.value[0]
+    } catch (reason) {
+      logError(`Health: history load failed: ${reason}`, 'doctor')
+      history.value = []
+    }
+  }
 
-  async function runDiagnostics() {
+  function selectHistoryRun(runId: string | null) {
+    selectedRunId.value = runId
+  }
+
+  function updateRunChecks(runToken: number, results: DoctorCheckResult[]) {
+    if (activeRunToken !== runToken || !currentRun.value) return
+    const checks = sortDoctorChecks([...currentRun.value.checks, ...results])
+    currentRun.value = {
+      ...currentRun.value,
+      checks,
+      summary: summarizeDoctorRun(checks, currentRun.value.state),
+      system: lastContext?.system ?? currentRun.value.system,
+    }
+    xplaneRunning.value = lastContext?.xplaneRunning ?? xplaneRunning.value
+    appDataPath.value = lastContext?.xfast?.appDataDir ?? appDataPath.value
+  }
+
+  function setRuntimeState(definition: DoctorCheckDefinition, state: DoctorCheckRuntime['state']) {
+    const index = checkRuntime.value.findIndex((runtime) => runtime.id === definition.id)
+    const previous = index >= 0 ? checkRuntime.value[index] : null
+    const now = Date.now()
+    const runtime: DoctorCheckRuntime = {
+      id: definition.id,
+      section: definition.section,
+      state,
+      startedAt: state === 'running' ? now : previous?.startedAt,
+      completedAt: state === 'completed' || state === 'cancelled' ? now : undefined,
+    }
+    if (index >= 0) checkRuntime.value.splice(index, 1, runtime)
+    else checkRuntime.value.push(runtime)
+  }
+
+  async function executeDefinition(
+    definition: DoctorCheckDefinition,
+    runToken: number,
+  ): Promise<DoctorCheckResult[]> {
+    if (cancelRequested || activeRunToken !== runToken) {
+      setRuntimeState(definition, 'cancelled')
+      return [cancelledResult(definition)]
+    }
+
+    setRuntimeState(definition, 'running')
+    const startedAt = performance.now()
+    try {
+      const results = await runWithTimeout(
+        definition.run(),
+        definition.id,
+        definition.timeoutMs,
+        activeCancellation,
+      )
+      const durationMs = Math.round(performance.now() - startedAt)
+      if (cancelRequested || activeRunToken !== runToken) {
+        setRuntimeState(definition, 'cancelled')
+        return [{ ...cancelledResult(definition), durationMs }]
+      }
+      setRuntimeState(definition, 'completed')
+      return results.map((result) => ({ ...result, durationMs }))
+    } catch (reason) {
+      const durationMs = Math.round(performance.now() - startedAt)
+      if (
+        reason instanceof DoctorCancelledError ||
+        cancelRequested ||
+        activeRunToken !== runToken
+      ) {
+        setRuntimeState(definition, 'cancelled')
+        return [{ ...cancelledResult(definition), durationMs }]
+      }
+      setRuntimeState(definition, 'completed')
+      logError(`Health check ${definition.id} failed: ${reason}`, 'doctor')
+      return [unavailableResult(definition, reason, durationMs)]
+    }
+  }
+
+  async function finishRun(runToken: number, state: 'completed' | 'cancelled') {
+    if (activeRunToken !== runToken || !currentRun.value) return
+    const completedAt = Date.now()
+    const checks = sortDoctorChecks(currentRun.value.checks)
+    const finished: DoctorRun = {
+      ...currentRun.value,
+      state,
+      completedAt,
+      durationMs: completedAt - currentRun.value.startedAt,
+      checks,
+      summary: summarizeDoctorRun(checks, state),
+      installationId: lastContext?.installationId || currentRun.value.installationId,
+      system: lastContext?.system ?? currentRun.value.system,
+    }
+    currentRun.value = finished
+    phase.value = 'done'
+    cancelActiveWork = null
+    xplaneRunning.value = lastContext?.xplaneRunning ?? false
+    appDataPath.value = lastContext?.xfast?.appDataDir ?? null
+
+    if (state === 'completed' && finished.installationId) {
+      try {
+        history.value = await saveDoctorRun(appStore.xplanePath, finished)
+      } catch (reason) {
+        logError(`Health: history save failed: ${reason}`, 'doctor')
+      }
+    }
+  }
+
+  async function runDiagnostics(mode: DoctorRunMode = 'quick'): Promise<void> {
     if (isRunning.value) return
     const xplanePath = appStore.xplanePath
     if (!xplanePath) {
       reset()
+      error.value = 'xplane_path_missing'
       return
     }
 
-    findings.value = []
+    activeRunToken += 1
+    const runToken = activeRunToken
+    cancelRequested = false
+    createCancellationSignal()
+    selectedRunId.value = null
     error.value = null
     phase.value = 'local'
-    runningChecks.value = new Set()
 
-    // Gating: validate path + detect running sim first.
+    let appVersion = 'unknown'
+    try {
+      appVersion = await invoke<string>('get_app_version')
+    } catch (reason) {
+      logError(`Health: app version unavailable: ${reason}`, 'doctor')
+    }
+
+    const startedAt = Date.now()
+    currentRun.value = {
+      schemaVersion: 1,
+      id: createRunId(),
+      installationId: '',
+      mode,
+      state: 'running',
+      startedAt,
+      completedAt: null,
+      durationMs: 0,
+      appVersion,
+      checks: [],
+      summary: summarizeDoctorRun([], 'running'),
+      system: null,
+    }
+
     try {
       const valid = await invoke<boolean>('validate_xplane_path', { path: xplanePath })
       if (!valid) {
-        add({
-          id: 'integrity.path_invalid',
-          section: 'integrity',
-          severity: 'critical',
-          route: '/settings',
-        })
-        phase.value = 'done'
-        lastRun.value = Date.now()
+        updateRunChecks(runToken, [
+          {
+            id: 'installation.structure',
+            section: 'installation',
+            outcome: 'critical',
+            durationMs: 0,
+            remediation: {
+              id: 'configure_xplane_path',
+              kind: 'navigate',
+              risk: 'safe',
+              route: '/settings',
+            },
+          },
+        ])
+        await finishRun(runToken, 'completed')
         return
       }
-    } catch (e) {
-      logError(`Doctor: path validation failed: ${e}`, 'doctor')
+    } catch (reason) {
+      logError(`Health: path validation unavailable: ${reason}`, 'doctor')
     }
 
+    const context: DoctorCheckContext = {
+      xplanePath,
+      mode,
+      crashAnalysisDmpEnabled: appStore.crashAnalysisDmpEnabled,
+      crashAnalysisIgnoreDateCheck: appStore.crashAnalysisIgnoreDateCheck,
+      installationId: '',
+      xplaneRunning: false,
+      environment: null,
+      xfast: null,
+      log: null,
+      system: null,
+    }
+    lastContext = context
+
+    const definitions = createDoctorCheckDefinitions(context).filter((definition) =>
+      definition.modes.includes(mode),
+    )
+    checkRuntime.value = definitions.map((definition) => ({
+      id: definition.id,
+      section: definition.section,
+      state: 'pending',
+    }))
+
+    const environment = definitions.find((definition) => definition.id === 'environment')
+    if (environment) {
+      updateRunChecks(runToken, await executeDefinition(environment, runToken))
+    }
+
+    const localDefinitions = definitions.filter(
+      (definition) => definition.phase === 'local' && definition.id !== 'environment',
+    )
+    await runBounded(localDefinitions, LOCAL_CONCURRENCY, async (definition) => {
+      updateRunChecks(runToken, await executeDefinition(definition, runToken))
+    })
+
+    const networkDefinitions = definitions.filter((definition) => definition.phase === 'network')
+    if (networkDefinitions.length) phase.value = 'network'
+    await runBounded(networkDefinitions, NETWORK_CONCURRENCY, async (definition) => {
+      updateRunChecks(runToken, await executeDefinition(definition, runToken))
+    })
+
+    await finishRun(runToken, cancelRequested ? 'cancelled' : 'completed')
+  }
+
+  async function runAutomaticQuickCheck(): Promise<void> {
+    if (hasAutoRunThisSession.value) return
+    hasAutoRunThisSession.value = true
+    await runDiagnostics('quick')
+  }
+
+  function cancelRun() {
+    if (!isRunning.value) return
+    cancelRequested = true
+    cancelActiveWork?.()
+  }
+
+  async function lockedSceneryFolders(): Promise<string[]> {
+    if (!lockStore.isInitialized) await lockStore.initStore()
+    return lockStore.getLockedItems('scenery')
+  }
+
+  async function ensureFilesystemFixIsSafe(remediation: DoctorRemediation): Promise<boolean> {
+    if (!FILESYSTEM_REMEDIATIONS.has(remediation.id)) return true
     try {
       xplaneRunning.value = await invoke<boolean>('is_xplane_running')
-    } catch {
-      xplaneRunning.value = false
+    } catch (reason) {
+      error.value = String(reason)
+      return false
     }
     if (xplaneRunning.value) {
-      add({ id: 'integrity.xplane_running', section: 'integrity', severity: 'info' })
+      error.value = 'xplane_running'
+      return false
     }
-
-    // Run all local checks concurrently; each contributes findings independently.
-    const localChecks: Promise<void>[] = [
-      checkLog(xplanePath),
-      checkScenery(xplanePath),
-      checkNavdata(xplanePath),
-      checkEnvironment(xplanePath),
-      checkFlatten(xplanePath),
-      checkCleanup(xplanePath),
-      checkActivity(),
-    ]
-    await Promise.allSettled(localChecks)
-
-    phase.value = 'network'
-    const networkChecks: Promise<void>[] = [
-      checkAddonUpdates(xplanePath),
-      checkGatewayUpdates(xplanePath),
-      checkAppUpdate(),
-    ]
-    await Promise.allSettled(networkChecks)
-
-    phase.value = 'done'
-    lastRun.value = Date.now()
+    return true
   }
 
-  function markRunning(id: string, on: boolean) {
-    const next = new Set(runningChecks.value)
-    if (on) next.add(id)
-    else next.delete(id)
-    runningChecks.value = next
-  }
-
-  // -------------------------------------------------------------------------
-  // LOCAL: Log + crash analysis
-  // -------------------------------------------------------------------------
-
-  async function checkLog(xplanePath: string) {
-    markRunning('log', true)
-    try {
-      const result = await invoke<XPlaneLogAnalysis>('analyze_xplane_log', { xplanePath })
-
-      const raw = result.system_info.xplane_version
-      systemInfo.value = {
-        xplaneVersion: raw ? raw.split('-')[0] : null,
-        xplaneVersionRaw: raw,
-        isBeta: detectBeta(raw),
-        gpuModel: result.system_info.gpu_model,
-        gpuDriver: result.system_info.gpu_driver,
-      }
-
-      if (!result.is_xplane_log) {
-        // Nothing actionable; skip log-derived findings.
-        markRunning('log', false)
-        return
-      }
-
-      // Beta build (frontend-derived from raw version)
-      if (systemInfo.value.isBeta) {
-        add({
-          id: 'environment.beta_build',
-          section: 'environment',
-          severity: 'info',
-          params: { version: systemInfo.value.xplaneVersionRaw ?? '' },
-        })
-      }
-
-      // Intel iGPU (unsupported) — from gpu_model string
-      const gpu = (result.system_info.gpu_model ?? '').toLowerCase()
-      if (gpu.includes('intel') && !gpu.includes('arc')) {
-        add({
-          id: 'environment.intel_gpu',
-          section: 'environment',
-          severity: 'critical',
-          params: { gpu: result.system_info.gpu_model ?? '' },
-        })
-      }
-
-      // Crash banner
-      if (result.crash_detected) {
-        add({
-          id: 'crashes.last_session_crashed',
-          section: 'crashes',
-          severity: 'critical',
-          detail: result.crash_info ? result.crash_info.split('\n').slice(0, 12) : undefined,
-        })
-        // Deep crash analysis (newest .dmp), only when dmp analysis is enabled.
-        if (appStore.crashAnalysisDmpEnabled) {
-          await checkCrashReport(xplanePath, result.issues)
-        }
-      }
-
-      // Map individual log categories to findings (dedup per category).
-      const seen = new Set<string>()
-      const otherHigh: string[] = []
-      for (const issue of result.issues) {
-        if (issue.category === 'crash') continue // covered by banner
-        if (seen.has(issue.category)) continue
-        seen.add(issue.category)
-
-        const mapping = LOG_CATEGORY_MAP[issue.category]
-        if (mapping) {
-          const sample = issue.sample_line ? issue.sample_line.split('\n').slice(0, 4) : undefined
-          add({
-            id: `log.${issue.category}`,
-            section: mapping.section,
-            severity: mapping.severity,
-            params: { line: issue.line_numbers[0] ?? 0 },
-            detail: sample,
-          })
-        } else if (issue.severity === 'high') {
-          otherHigh.push(issue.category)
-        }
-      }
-      if (otherHigh.length > 0) {
-        add({
-          id: 'log.other_high',
-          section: 'crashes',
-          severity: 'warning',
-          params: { count: otherHigh.length, categories: otherHigh.join(', ') },
-        })
-      }
-    } catch (e) {
-      // Log.txt missing is not fatal — many fresh installs lack it.
-      logError(`Doctor: log analysis failed: ${e}`, 'doctor')
-    } finally {
-      markRunning('log', false)
-    }
-  }
-
-  async function checkCrashReport(xplanePath: string, logIssues: LogIssue[]) {
-    try {
-      const crash = await invoke<DeepCrashAnalysis | null>('analyze_crash_report', {
-        xplanePath,
-        logIssues,
-        skipDateCheck: appStore.crashAnalysisIgnoreDateCheck,
-      })
-      if (!crash) return
-      const top = crash.crash_causes[0]
-      if (top) {
-        // Map cause -> section/severity
-        const causeSection: DoctorSection =
-          top.cause_key === 'plugin_crash'
-            ? 'plugins'
-            : top.cause_key === 'gpu_driver_crash'
-              ? 'environment'
-              : 'crashes'
-        add({
-          id: `crash_cause.${top.cause_key}`,
-          section: causeSection,
-          severity: 'critical',
-          params: {
-            score: top.score.toFixed(0),
-            module: top.blamed_module ?? '',
-          },
-          detail: crash.loaded_plugins.slice(0, 8),
-        })
-      }
-    } catch (e) {
-      logError(`Doctor: crash report analysis failed: ${e}`, 'doctor')
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // LOCAL: Scenery
-  // -------------------------------------------------------------------------
-
-  async function checkScenery(xplanePath: string) {
-    markRunning('scenery', true)
-    try {
-      const data = await invoke<SceneryManagerData>('get_scenery_manager_data', { xplanePath })
-
-      // Global Airports disabled
-      const ga = data.entries.find((e) => e.folderName === '*GLOBAL_AIRPORTS*')
-      if (ga && !ga.enabled) {
-        add({
-          id: 'scenery.global_airports_disabled',
-          section: 'scenery',
-          severity: 'critical',
-          fix: { id: 'enable_global_airports', tier: 'safe' },
-        })
-      }
-
-      // Out-of-sync / wrong load order
-      if (data.needsSync) {
-        add({
-          id: 'scenery.needs_sort',
-          section: 'scenery',
-          severity: 'warning',
-          fix: { id: 'sort_scenery', tier: 'safe' },
-          route: '/management?tab=scenery',
-        })
-      }
-
-      // Missing libraries
-      if (data.missingDepsCount > 0) {
-        const affected = data.entries
-          .filter((e) => e.missingLibraries && e.missingLibraries.length > 0)
-          .slice(0, 8)
-        const libs = new Set<string>()
-        for (const e of affected) for (const l of e.missingLibraries) libs.add(l)
-        add({
-          id: 'scenery.missing_libraries',
-          section: 'scenery',
-          severity: 'warning',
-          params: { count: data.missingDepsCount },
-          detail: [...libs].slice(0, 10),
-          route: '/management?tab=scenery',
-        })
-      }
-
-      // Overlapping tiles
-      if (data.duplicateTilesCount > 0) {
-        add({
-          id: 'scenery.duplicate_tiles',
-          section: 'scenery',
-          severity: 'warning',
-          params: { count: data.duplicateTilesCount },
-          route: '/management?tab=scenery',
-        })
-      }
-
-      // Duplicate airports
-      if (data.duplicateAirportsCount > 0) {
-        add({
-          id: 'scenery.duplicate_airports',
-          section: 'scenery',
-          severity: 'info',
-          params: { count: data.duplicateAirportsCount },
-          route: '/management?tab=scenery',
-        })
-      }
-    } catch (e) {
-      logError(`Doctor: scenery check failed: ${e}`, 'doctor')
-    } finally {
-      markRunning('scenery', false)
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // LOCAL: Navdata
-  // -------------------------------------------------------------------------
-
-  async function checkNavdata(xplanePath: string) {
-    markRunning('navdata', true)
-    try {
-      const report = await invoke<DoctorNavdataReport>('doctor_navdata_status', { xplanePath })
-
-      if (!report.customDataExists) {
-        add({ id: 'navdata.no_custom_data', section: 'navdata', severity: 'info' })
-        markRunning('navdata', false)
-        return
-      }
-
-      // CIFP missing (procedures unavailable)
-      if (!report.cifpPresent && report.cycles.length > 0) {
-        add({ id: 'navdata.cifp_missing', section: 'navdata', severity: 'warning' })
-      }
-
-      // earth_*.dat partial set
-      if (report.earthDatMissing.length > 0) {
-        add({
-          id: 'navdata.earth_dat_missing',
-          section: 'navdata',
-          severity: 'warning',
-          detail: report.earthDatMissing,
-        })
-      }
-
-      // Per-cycle expiry
-      let flaggedExpiry = false
-      for (const cycle of report.cycles) {
-        if (cycle.status === 'expired') {
-          flaggedExpiry = true
-          add({
-            id: 'navdata.expired',
-            section: 'navdata',
-            severity: 'warning',
-            params: cycleParams(cycle),
-          })
-        } else if (cycle.status === 'expiringSoon') {
-          flaggedExpiry = true
-          add({
-            id: 'navdata.expiring_soon',
-            section: 'navdata',
-            severity: 'info',
-            params: cycleParams(cycle),
-          })
-        }
-      }
-
-      // Mismatched cycles across folders (distinct cycle values > 1)
-      const distinctCycles = new Set(report.cycles.map((c) => c.cycle).filter(Boolean))
-      if (distinctCycles.size > 1) {
-        add({
-          id: 'navdata.cycle_mismatch',
-          section: 'navdata',
-          severity: 'info',
-          params: { cycles: [...distinctCycles].join(', ') },
-        })
-      }
-
-      void flaggedExpiry
-    } catch (e) {
-      logError(`Doctor: navdata check failed: ${e}`, 'doctor')
-    } finally {
-      markRunning('navdata', false)
-    }
-  }
-
-  function cycleParams(cycle: NavdataCycleReport): Record<string, string | number> {
-    return {
-      provider: cycle.providerName,
-      cycle: cycle.cycle ?? '?',
-      expiry: cycle.expiryDate ?? '?',
-      days: cycle.daysRemaining ?? 0,
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // LOCAL: Environment (disk, injectors, organizers, install integrity)
-  // -------------------------------------------------------------------------
-
-  async function checkEnvironment(xplanePath: string) {
-    markRunning('environment', true)
-    try {
-      const env = await invoke<DoctorEnvironmentReport>('doctor_scan_environment', { xplanePath })
-
-      // Missing core dirs => broken install (critical)
-      if (env.missingCoreDirs.length > 0) {
-        add({
-          id: 'integrity.missing_core_dirs',
-          section: 'integrity',
-          severity: 'critical',
-          detail: env.missingCoreDirs,
-        })
-      }
-
-      // Disk space
-      if (env.freeBytes < LOW_DISK_CRIT_BYTES) {
-        add({
-          id: 'disk.low_space',
-          section: 'disk',
-          severity: 'critical',
-          params: { free: formatBytes(env.freeBytes) },
-        })
-      } else if (env.freeBytes < LOW_DISK_WARN_BYTES) {
-        add({
-          id: 'disk.low_space',
-          section: 'disk',
-          severity: 'warning',
-          params: { free: formatBytes(env.freeBytes) },
-        })
-      }
-
-      // Program Files (UAC trap)
-      if (env.inProgramFiles) {
-        add({ id: 'integrity.program_files', section: 'integrity', severity: 'warning' })
-      }
-
-      // Read-only files blocking updates
-      if (env.readonlyCount >= READONLY_WARN_COUNT) {
-        add({
-          id: 'integrity.readonly_files',
-          section: 'integrity',
-          severity: 'warning',
-          params: {
-            count: env.readonlyScanCapped ? `${env.readonlyCount}+` : env.readonlyCount,
-          },
-        })
-      }
-
-      // Injectors (ReShade etc.) — destructive guidance only
-      if (env.injectors.length > 0) {
-        add({
-          id: 'environment.injectors',
-          section: 'environment',
-          severity: 'warning',
-          fix: { id: 'guide_injectors', tier: 'destructive' },
-          detail: env.injectors.map((i) => i.evidence),
-        })
-      }
-
-      // Competing scenery organizers
-      if (env.competingOrganizers.length > 0) {
-        add({
-          id: 'scenery.competing_organizer',
-          section: 'scenery',
-          severity: 'info',
-          detail: env.competingOrganizers.map((o) => o.evidence),
-        })
-      }
-    } catch (e) {
-      logError(`Doctor: environment scan failed: ${e}`, 'doctor')
-    } finally {
-      markRunning('environment', false)
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // LOCAL: Airport flatten drift
-  // -------------------------------------------------------------------------
-
-  async function checkFlatten(xplanePath: string) {
-    markRunning('flatten', true)
-    try {
-      const overrides = await invoke<{ status: string }[]>('airport_flatten_list_overrides', {
-        xplanePath,
-      })
-      const drifted = overrides.filter((o) => o.status === 'drifted')
-      if (drifted.length > 0) {
-        add({
-          id: 'scenery.flatten_drift',
-          section: 'scenery',
-          severity: 'warning',
-          params: { count: drifted.length },
-          fix: { id: 'apply_flatten', tier: 'safe' },
-          route: '/airport-flatten',
-        })
-      }
-    } catch (e) {
-      logError(`Doctor: flatten check failed: ${e}`, 'doctor')
-    } finally {
-      markRunning('flatten', false)
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // LOCAL: Output cleanup (cleanable caches)
-  // -------------------------------------------------------------------------
-
-  async function checkCleanup(xplanePath: string) {
-    markRunning('cleanup', true)
-    try {
-      const report = await invoke<{ totalBytes: number; totalFiles: number }>(
-        'scan_output_cleanup_items',
-        { xplanePath },
-      )
-      if (report.totalBytes >= CLEANABLE_CACHE_WARN_BYTES) {
-        add({
-          id: 'disk.cleanable_caches',
-          section: 'disk',
-          severity: 'info',
-          params: { size: formatBytes(report.totalBytes) },
-          fix: { id: 'open_cleanup', tier: 'none' },
-          route: '/disk-usage/output-cleanup',
-        })
-      }
-    } catch (e) {
-      logError(`Doctor: cleanup scan failed: ${e}`, 'doctor')
-    } finally {
-      markRunning('cleanup', false)
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // LOCAL: Activity log (recent install/update failures)
-  // -------------------------------------------------------------------------
-
-  async function checkActivity() {
-    markRunning('activity', true)
-    try {
-      const page = await invoke<ActivityLogPage>('get_activity_log', { limit: 25, offset: 0 })
-      const recentFailures = page.entries.filter(
-        (e) => !e.success && (e.operation === 'install' || e.operation === 'update'),
-      )
-      if (recentFailures.length > 0) {
-        add({
-          id: 'integrity.recent_failures',
-          section: 'integrity',
-          severity: 'info',
-          params: { count: recentFailures.length },
-          detail: recentFailures.slice(0, 5).map((f) => `${f.operation} · ${f.itemName}`),
-          route: '/activity',
-        })
-      }
-    } catch (e) {
-      logError(`Doctor: activity check failed: ${e}`, 'doctor')
-    } finally {
-      markRunning('activity', false)
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // NETWORK: Addon updates (aircraft + plugins + scenery)
-  // -------------------------------------------------------------------------
-
-  async function checkAddonUpdates(xplanePath: string) {
-    markRunning('updates', true)
-    try {
-      let total = 0
-      const breakdown: string[] = []
-
-      // Aircraft
-      try {
-        const ac = await invoke<{ entries: AircraftInfo[] }>('scan_aircraft', { xplanePath })
-        const candidates = ac.entries.filter((a) => a.updateUrl)
-        if (candidates.length > 0) {
-          const checked = await invoke<AircraftInfo[]>('check_aircraft_updates', {
-            xplanePath,
-            aircraft: candidates,
-            betaFolders: [],
-          })
-          const n = checked.filter((a) => a.hasUpdate).length
-          if (n > 0) {
-            total += n
-            breakdown.push(`aircraft:${n}`)
-          }
-        }
-      } catch (e) {
-        logError(`Doctor: aircraft update check failed: ${e}`, 'doctor')
-      }
-
-      // Plugins
-      try {
-        const pl = await invoke<{ entries: PluginInfo[] }>('scan_plugins', { xplanePath })
-        const candidates = pl.entries.filter((p) => p.updateUrl)
-        if (candidates.length > 0) {
-          const checked = await invoke<PluginInfo[]>('check_plugins_updates', {
-            xplanePath,
-            plugins: candidates,
-            betaFolders: [],
-          })
-          const n = checked.filter((p) => p.hasUpdate).length
-          if (n > 0) {
-            total += n
-            breakdown.push(`plugins:${n}`)
-          }
-        }
-      } catch (e) {
-        logError(`Doctor: plugin update check failed: ${e}`, 'doctor')
-      }
-
-      // Scenery
-      try {
-        const sc = await invoke<SceneryManagerData>('get_scenery_manager_data', { xplanePath })
-        const candidates = sc.entries.filter((s) => s.updateUrl)
-        if (candidates.length > 0) {
-          const checked = await invoke<SceneryManagerEntry[]>('check_scenery_updates', {
-            xplanePath,
-            scenery: candidates,
-            betaFolders: [],
-          })
-          const n = checked.filter((s) => s.hasUpdate).length
-          if (n > 0) {
-            total += n
-            breakdown.push(`scenery:${n}`)
-          }
-        }
-      } catch (e) {
-        logError(`Doctor: scenery update check failed: ${e}`, 'doctor')
-      }
-
-      if (total > 0) {
-        add({
-          id: 'updates.addons',
-          section: 'updates',
-          severity: 'info',
-          params: { count: total },
-          route: '/management',
-        })
-      }
-    } finally {
-      markRunning('updates', false)
-    }
-  }
-
-  async function checkGatewayUpdates(xplanePath: string) {
-    markRunning('gateway', true)
-    try {
-      const installed = await invoke<GatewayInstalledAirport[]>('gateway_list_installed', {
-        xplanePath,
-      })
-      if (installed.length === 0) return
-      const checked = await invoke<GatewayInstalledAirport[]>('gateway_check_updates', {
-        xplanePath,
-      })
-      const n = checked.filter((a) => a.updateAvailable === true).length
-      if (n > 0) {
-        add({
-          id: 'updates.gateway',
-          section: 'updates',
-          severity: 'info',
-          params: { count: n },
-          route: '/gateway',
-        })
-      }
-    } catch (e) {
-      logError(`Doctor: gateway update check failed: ${e}`, 'doctor')
-    } finally {
-      markRunning('gateway', false)
-    }
-  }
-
-  async function checkAppUpdate() {
-    markRunning('app', true)
-    try {
-      const result = await invoke<{ isUpdateAvailable: boolean; latestVersion: string }>(
-        'check_for_updates',
-        { manual: false, includePreRelease: false },
-      )
-      if (result.isUpdateAvailable) {
-        add({
-          id: 'updates.app',
-          section: 'updates',
-          severity: 'info',
-          params: { version: result.latestVersion },
-          fix: { id: 'open_app_update', tier: 'safe' },
-        })
-      }
-    } catch {
-      // Update check is best-effort (rate limits, offline).
-    } finally {
-      markRunning('app', false)
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // FIX handlers
-  // -------------------------------------------------------------------------
-
-  /** Run a fix. Returns true on success. The page handles confirm dialogs for
-   *  'confirm'/'destructive' tiers BEFORE calling this. */
-  async function applyFix(finding: DoctorFinding): Promise<boolean> {
-    if (!finding.fix) return false
+  async function executeAutomaticRemediation(remediation: DoctorRemediation): Promise<void> {
     const xplanePath = appStore.xplanePath
-    if (!xplanePath) return false
-
-    // Re-check running state for filesystem-mutating fixes.
-    if (finding.fix.id !== 'open_cleanup' && finding.fix.id !== 'open_app_update') {
-      try {
-        xplaneRunning.value = await invoke<boolean>('is_xplane_running')
-      } catch {
-        /* ignore */
-      }
-      if (xplaneRunning.value && isFsMutatingFix(finding.fix.id)) {
-        error.value = 'xplane_running'
-        return false
-      }
+    switch (remediation.id) {
+      case 'sort_scenery':
+        await invoke('sort_scenery_packs', {
+          xplanePath,
+          lockedFolderNames: await lockedSceneryFolders(),
+        })
+        return
+      case 'enable_global_airports':
+        await invoke('update_scenery_entry', {
+          xplanePath,
+          folderName: '*GLOBAL_AIRPORTS*',
+          enabled: true,
+          sortOrder: null,
+          category: null,
+        })
+        return
+      case 'apply_flatten':
+        await invoke('airport_flatten_apply_all_drifted', { xplanePath })
+        return
+      case 'refresh_scenery_index':
+        await invoke('quick_scan_scenery_index', {
+          xplanePath,
+          lockedFolderNames: await lockedSceneryFolders(),
+        })
+        return
+      case 'rebuild_scenery_index':
+        await invoke('rebuild_scenery_index', { xplanePath })
+        return
+      default:
+        throw new Error(`Unsupported automatic remediation: ${remediation.id}`)
     }
+  }
 
-    fixingId.value = finding.id
+  function remediationDefinitionId(remediationId: string): string | null {
+    if (['sort_scenery', 'enable_global_airports', 'apply_flatten'].includes(remediationId)) {
+      return 'scenery'
+    }
+    if (['refresh_scenery_index', 'rebuild_scenery_index'].includes(remediationId)) return 'xfast'
+    return null
+  }
+
+  async function recheckDefinitions(definitionIds: Set<string>): Promise<void> {
+    if (!lastContext || !currentRun.value || definitionIds.size === 0) return
+    const definitions = createDoctorCheckDefinitions(lastContext).filter((definition) =>
+      definitionIds.has(definition.id),
+    )
+    if (!definitions.length) return
+
+    activeRunToken += 1
+    const runToken = activeRunToken
+    cancelRequested = false
+    createCancellationSignal()
+    phase.value = 'local'
+    currentRun.value = { ...currentRun.value, state: 'running', completedAt: null }
+    checkRuntime.value = definitions.map((definition) => ({
+      id: definition.id,
+      section: definition.section,
+      state: 'pending',
+    }))
+
+    const replacementIds = new Set(
+      definitions.flatMap((definition) => DEFINITION_RESULT_IDS[definition.id] ?? []),
+    )
+    currentRun.value = {
+      ...currentRun.value,
+      checks: currentRun.value.checks.filter((check) => !replacementIds.has(check.id)),
+    }
+    await runBounded(definitions, LOCAL_CONCURRENCY, async (definition) => {
+      updateRunChecks(runToken, await executeDefinition(definition, runToken))
+    })
+    await finishRun(runToken, 'completed')
+  }
+
+  async function applyRemediation(check: DoctorCheckResult, recheck = true): Promise<boolean> {
+    const remediation = check.remediation
+    if (!remediation || remediation.kind !== 'automatic' || !appStore.xplanePath) return false
+    if (!(await ensureFilesystemFixIsSafe(remediation))) return false
+
+    fixingId.value = check.id
+    error.value = null
     try {
-      switch (finding.fix.id) {
-        case 'sort_scenery':
-          await invoke('sort_scenery_packs', { xplanePath, lockedFolderNames: null })
-          removeById(finding.id)
-          return true
-        case 'enable_global_airports':
-          await invoke('update_scenery_entry', {
-            xplanePath,
-            folderName: '*GLOBAL_AIRPORTS*',
-            enabled: true,
-            sortOrder: null,
-            category: null,
-          })
-          removeById(finding.id)
-          return true
-        case 'apply_flatten':
-          await invoke('airport_flatten_apply_all_drifted', { xplanePath })
-          removeById(finding.id)
-          return true
-        default:
-          // Guidance-only / route-based fixes are handled by the page (navigation).
-          return false
-      }
-    } catch (e) {
-      logError(`Doctor: fix ${finding.fix.id} failed: ${e}`, 'doctor')
-      error.value = String(e)
+      await executeAutomaticRemediation(remediation)
+      const definitionId = remediationDefinitionId(remediation.id)
+      if (recheck && definitionId) await recheckDefinitions(new Set([definitionId]))
+      return true
+    } catch (reason) {
+      logError(`Health: remediation ${remediation.id} failed: ${reason}`, 'doctor')
+      error.value = String(reason)
       return false
     } finally {
       fixingId.value = null
     }
   }
 
-  function isFsMutatingFix(fixId: string): boolean {
-    return ['sort_scenery', 'enable_global_airports', 'apply_flatten'].includes(fixId)
+  async function applyAllSafeFixes(): Promise<DoctorBatchFixResult> {
+    if (repairingAll.value || !isDisplayingCurrentRun.value) return { applied: 0, failed: 0 }
+    const checks = (currentRun.value?.checks ?? []).filter(
+      (check) => check.remediation?.kind === 'automatic' && check.remediation.risk === 'safe',
+    )
+    if (!checks.length) return { applied: 0, failed: 0 }
+
+    const firstRemediation = checks[0]?.remediation
+    if (firstRemediation && !(await ensureFilesystemFixIsSafe(firstRemediation))) {
+      return { applied: 0, failed: checks.length }
+    }
+
+    repairingAll.value = true
+    error.value = null
+    let applied = 0
+    let failed = 0
+    const definitionsToRecheck = new Set<string>()
+    try {
+      for (const check of checks) {
+        if (!check.remediation) continue
+        fixingId.value = check.id
+        try {
+          await executeAutomaticRemediation(check.remediation)
+          applied += 1
+          const definitionId = remediationDefinitionId(check.remediation.id)
+          if (definitionId) definitionsToRecheck.add(definitionId)
+        } catch (reason) {
+          failed += 1
+          logError(`Health: remediation ${check.remediation.id} failed: ${reason}`, 'doctor')
+        }
+      }
+      await recheckDefinitions(definitionsToRecheck)
+      return { applied, failed }
+    } finally {
+      fixingId.value = null
+      repairingAll.value = false
+    }
+  }
+
+  // Compatibility adapter for the old page.
+  async function applyFix(finding: DoctorFinding): Promise<boolean> {
+    const check = currentRun.value?.checks.find((item) => item.id === finding.id)
+    return check ? applyRemediation(check) : false
+  }
+
+  async function exportReport(
+    exportPath: string,
+    format: DoctorReportFormat,
+    includeSensitive = false,
+    labels?: {
+      checkLabel?: (check: DoctorCheckResult) => string
+      sectionLabel?: (check: DoctorCheckResult) => string
+    },
+  ): Promise<void> {
+    const run = displayedRun.value
+    if (!run) throw new Error('No health report is available')
+    const content = buildDoctorReport(run, format, {
+      xplanePath: appStore.xplanePath,
+      appDataPath: appDataPath.value,
+      includeSensitive,
+      ...labels,
+    })
+    await invoke('doctor_export_report', { exportPath, content })
   }
 
   return {
-    // state
     phase,
-    findings,
-    systemInfo,
+    currentRun,
+    displayedRun,
+    history,
+    selectedRunId,
+    checkRuntime,
     error,
-    lastRun,
     xplaneRunning,
     fixingId,
-    runningChecks,
-    // computed
+    repairingAll,
+    hasAutoRunThisSession,
+    appDataPath,
     isRunning,
+    isDisplayingCurrentRun,
+    isStale,
+    lastCompletedRun,
+    findings,
     sortedFindings,
     findingsBySection,
     counts,
     overallSeverity,
-    // actions
+    systemInfo,
+    lastRun,
+    runningChecks,
+    loadHistory,
+    selectHistoryRun,
     runDiagnostics,
+    runAutomaticQuickCheck,
+    cancelRun,
+    applyRemediation,
+    applyAllSafeFixes,
     applyFix,
+    exportReport,
     reset,
   }
 })
-
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-}

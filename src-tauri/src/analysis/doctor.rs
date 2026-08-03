@@ -739,6 +739,39 @@ pub async fn doctor_scan_xfast_health(
     Ok(scan_xfast_health(&xplane_path, &db.get()).await)
 }
 
+fn export_report(path: &Path, content: &str) -> Result<(), String> {
+    const MAX_REPORT_BYTES: usize = 2 * 1024 * 1024;
+    if content.len() > MAX_REPORT_BYTES {
+        return Err("Health report is too large to export".to_string());
+    }
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    if !extension.eq_ignore_ascii_case("md") && !extension.eq_ignore_ascii_case("json") {
+        return Err("Health reports must use a .md or .json extension".to_string());
+    }
+    let parent = path
+        .parent()
+        .filter(|parent| parent.is_dir())
+        .ok_or_else(|| "Health report destination folder does not exist".to_string())?;
+    let mut temp = tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
+    use std::io::Write;
+    temp.write_all(content.as_bytes())
+        .map_err(|error| error.to_string())?;
+    temp.flush().map_err(|error| error.to_string())?;
+    temp.persist(path)
+        .map(|_| ())
+        .map_err(|error| error.error.to_string())
+}
+
+#[tauri::command]
+pub async fn doctor_export_report(export_path: String, content: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || export_report(Path::new(&export_path), &content))
+        .await
+        .map_err(|error| format!("Task join error: {}", error))?
+}
+
 #[tauri::command]
 pub async fn doctor_navdata_status(xplane_path: String) -> Result<DoctorNavdataReport, String> {
     tokio::task::spawn_blocking(move || navdata_status(&xplane_path))
@@ -845,5 +878,16 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         probe_app_data_writable(temp.path()).unwrap();
         assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn report_export_accepts_only_supported_extensions() {
+        let temp = tempfile::tempdir().unwrap();
+        let report = temp.path().join("health.md");
+        export_report(&report, "# Health").unwrap();
+        assert_eq!(fs::read_to_string(report).unwrap(), "# Health");
+
+        let error = export_report(&temp.path().join("health.txt"), "bad").unwrap_err();
+        assert!(error.contains(".md or .json"));
     }
 }

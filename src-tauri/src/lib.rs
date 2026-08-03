@@ -4204,6 +4204,7 @@ pub fn run() {
             clean_output_items,
             submit_unknown_output_cleanup_item,
             // Doctor diagnostics
+            doctor::doctor_export_report,
             doctor::doctor_scan_environment,
             doctor::doctor_scan_xfast_health,
             doctor::doctor_navdata_status,

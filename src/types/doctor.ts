@@ -118,5 +118,6 @@ export interface DoctorRun {
 
 export interface DoctorHistoryFile {
   schemaVersion: 1
+  installationByPath: Record<string, string>
   runsByInstallation: Record<string, DoctorRun[]>
 }

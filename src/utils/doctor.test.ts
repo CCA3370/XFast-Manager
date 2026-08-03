@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import type { DoctorCheckResult } from '@/types/doctor'
-import { sortDoctorChecks, summarizeDoctorRun } from './doctor'
+import type { DoctorCheckResult, DoctorRun } from '@/types/doctor'
+import {
+  addDoctorHistoryRun,
+  emptyDoctorHistory,
+  getDoctorHistoryForPath,
+  isDoctorRunStale,
+  sortDoctorChecks,
+  summarizeDoctorRun,
+} from './doctor'
 
 function check(id: string, outcome: DoctorCheckResult['outcome']): DoctorCheckResult {
   return { id, section: 'installation', outcome, durationMs: 1 }
@@ -50,5 +57,44 @@ describe('doctor check ordering', () => {
     ])
 
     expect(sorted.map((item) => item.id)).toEqual(['warning', 'unavailable', 'pass'])
+  })
+})
+
+function run(id: string, installationId = 'install'): DoctorRun {
+  const checks = [check('path', 'pass')]
+  return {
+    schemaVersion: 1,
+    id,
+    installationId,
+    mode: 'quick',
+    state: 'completed',
+    startedAt: Number(id.replace(/\D/g, '')) || 1,
+    completedAt: 1_000,
+    durationMs: 10,
+    appVersion: '1.0.0',
+    checks,
+    summary: summarizeDoctorRun(checks, 'completed'),
+    system: null,
+  }
+}
+
+describe('doctor history', () => {
+  it('keeps histories isolated by installation and trims old runs', () => {
+    let history = emptyDoctorHistory()
+    for (let index = 1; index <= 22; index++) {
+      history = addDoctorHistoryRun(history, '/xplane', run(`run-${index}`))
+    }
+    history = addDoctorHistoryRun(history, '/other', run('other-1', 'other'))
+
+    expect(getDoctorHistoryForPath(history, '/xplane')).toHaveLength(20)
+    expect(getDoctorHistoryForPath(history, '/xplane')[0]?.id).toBe('run-22')
+    expect(getDoctorHistoryForPath(history, '/other').map((item) => item.id)).toEqual(['other-1'])
+  })
+
+  it('marks a result stale at 24 hours', () => {
+    const item = run('run-1')
+    item.completedAt = 1_000
+    expect(isDoctorRunStale(item, 1_000 + 24 * 60 * 60 * 1000 - 1)).toBe(false)
+    expect(isDoctorRunStale(item, 1_000 + 24 * 60 * 60 * 1000)).toBe(true)
   })
 })
