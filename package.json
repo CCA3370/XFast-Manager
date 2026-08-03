@@ -58,5 +58,8 @@
     "vue-i18n": "^11.2.2",
     "vue-router": "^4.6.4",
     "vuedraggable": "^4.1.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
   }
 }
