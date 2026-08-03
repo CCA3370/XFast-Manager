@@ -15,7 +15,6 @@ import AircraftAcfManagerModal from '@/components/AircraftAcfManagerModal.vue'
 import ManagementEntryCard from '@/components/ManagementEntryCard.vue'
 import SceneryTab from '@/views/SceneryTab.vue'
 import {
-  getErrorMessage,
   parseApiError,
   type AircraftInfo,
   type ManagementTab,
@@ -487,6 +486,16 @@ function handleUpdateAll() {
   })
 }
 
+function showStaleManagementItemMessage() {
+  modalStore.showError({
+    code: 'not_found',
+    message: t('management.stalePathMessage'),
+    origin: 'environment',
+    operation: 'refresh_management_item',
+    reportable: false,
+  })
+}
+
 // Handle toggle for non-scenery items
 async function handleToggleEnabled(itemType: ManagementItemType, folderName: string) {
   // Prevent rapid clicks
@@ -500,8 +509,12 @@ async function handleToggleEnabled(itemType: ManagementItemType, folderName: str
     await managementStore.toggleEnabled(itemType, folderName)
   } catch (e) {
     // Reload to get the actual state
-    await loadTabData(activeTab.value)
-    modalStore.showError(t('management.toggleFailed') + ': ' + String(e))
+    await loadTabData(itemType)
+    if (parseApiError(e)?.code === 'not_found') {
+      showStaleManagementItemMessage()
+      return
+    }
+    modalStore.showError(e, t('management.toggleFailed'))
   } finally {
     togglingItems.value.delete(key)
   }
@@ -525,10 +538,10 @@ async function handleOpenFolder(itemType: ManagementItemType, folderName: string
     const apiError = parseApiError(e)
     if (apiError?.code === 'not_found') {
       await loadTabData(itemType)
-      modalStore.showError(t('management.stalePathMessage'))
+      showStaleManagementItemMessage()
       return
     }
-    modalStore.showError(t('management.openFolderFailed') + ': ' + getErrorMessage(e))
+    modalStore.showError(e, t('management.openFolderFailed'))
   }
 }
 
@@ -583,7 +596,13 @@ async function handleManageAcfFiles(folderName: string) {
       setAcfManagerAircraftState(refreshed)
     }
   } catch (e) {
-    modalStore.showError(t('management.scanFailed') + ': ' + String(e))
+    if (parseApiError(e)?.code === 'not_found') {
+      await loadTabData('aircraft')
+      clearAcfManagerState()
+      showStaleManagementItemMessage()
+      return
+    }
+    modalStore.showError(e, t('management.scanFailed'))
   }
 }
 
@@ -629,7 +648,13 @@ async function handleToggleAircraftAcfFile(fileName: string) {
       setAcfManagerAircraftState(updated)
     }
   } catch (e) {
-    modalStore.showError(t('management.acfToggleFailed') + ': ' + String(e))
+    if (parseApiError(e)?.code === 'not_found') {
+      await loadTabData('aircraft')
+      clearAcfManagerState()
+      showStaleManagementItemMessage()
+      return
+    }
+    modalStore.showError(e, t('management.acfToggleFailed'))
   } finally {
     togglingAcfItems.value.delete(key)
 
