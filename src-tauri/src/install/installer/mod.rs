@@ -1106,6 +1106,91 @@ pub struct Installer {
     db: DatabaseConnection,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct InstallWriteScope(Vec<String>);
+
+impl InstallWriteScope {
+    fn for_task(task: &InstallTask) -> Self {
+        let normalized = task.target_path.replace('\\', "/");
+        let mut components = Vec::new();
+
+        for component in normalized.split('/') {
+            match component {
+                "" | "." => {}
+                ".." => {
+                    let _ = components.pop();
+                }
+                value => components.push(value.to_lowercase()),
+            }
+        }
+
+        // A Lua task can discover companion folders only after extraction, so
+        // reserve the entire Scripts directory rather than only the script file.
+        if task.addon_type == AddonType::LuaScript && components.len() > 1 {
+            let _ = components.pop();
+        }
+
+        Self(components)
+    }
+
+    fn overlaps(&self, other: &Self) -> bool {
+        if self.0.is_empty() || other.0.is_empty() {
+            return false;
+        }
+
+        let shared_length = self.0.len().min(other.0.len());
+        self.0[..shared_length] == other.0[..shared_length]
+    }
+}
+
+fn build_install_dependencies(tasks: &[InstallTask]) -> Vec<Vec<usize>> {
+    let scopes: Vec<_> = tasks.iter().map(InstallWriteScope::for_task).collect();
+
+    (0..tasks.len())
+        .map(|task_index| {
+            (0..task_index)
+                .filter(|previous_index| scopes[task_index].overlaps(&scopes[*previous_index]))
+                .collect()
+        })
+        .collect()
+}
+
+struct TaskCompletion {
+    sender: tokio::sync::watch::Sender<bool>,
+}
+
+impl TaskCompletion {
+    fn new() -> Self {
+        let (sender, _) = tokio::sync::watch::channel(false);
+        Self { sender }
+    }
+
+    async fn wait(&self) {
+        let mut receiver = self.sender.subscribe();
+        if *receiver.borrow() {
+            return;
+        }
+
+        while receiver.changed().await.is_ok() {
+            if *receiver.borrow() {
+                return;
+            }
+        }
+    }
+
+    fn mark_complete(&self) {
+        self.sender.send_replace(true);
+    }
+}
+
+struct TaskCompletionGuard(Arc<TaskCompletion>);
+
+impl Drop for TaskCompletionGuard {
+    fn drop(&mut self) {
+        self.0.mark_complete();
+    }
+}
+
 impl Installer {
     pub fn new(app_handle: AppHandle) -> Self {
         // Get TaskControl from app state
@@ -1746,6 +1831,10 @@ impl Installer {
             })
             .collect();
         let source_cleanup_candidates = Self::collect_source_cleanup_candidates(&tasks);
+        let install_dependencies = build_install_dependencies(&tasks);
+        let task_completions: Vec<_> = (0..tasks.len())
+            .map(|_| Arc::new(TaskCompletion::new()))
+            .collect();
 
         for (index, task) in tasks.into_iter().enumerate() {
             let sem = semaphore.clone();
@@ -1754,8 +1843,29 @@ impl Installer {
             let ah = app_handle.clone();
             let xp = xplane_path.clone();
             let atomic = atomic_install_enabled;
+            let dependencies: Vec<_> = install_dependencies[index]
+                .iter()
+                .map(|dependency| task_completions[*dependency].clone())
+                .collect();
+            let completion = task_completions[index].clone();
 
             let handle = tokio::spawn(async move {
+                let _completion_guard = TaskCompletionGuard(completion);
+
+                if !dependencies.is_empty() {
+                    crate::log_debug!(
+                        &format!(
+                            "[PARALLEL] Task {} waiting for {} overlapping task(s)",
+                            index,
+                            dependencies.len()
+                        ),
+                        "parallel_progress"
+                    );
+                    for dependency in dependencies {
+                        dependency.wait().await;
+                    }
+                }
+
                 // Acquire semaphore permit asynchronously
                 let _permit = match sem.acquire().await {
                     Ok(permit) => permit,
@@ -2425,6 +2535,106 @@ impl Installer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn install_task(addon_type: AddonType, target_path: &str) -> InstallTask {
+        InstallTask {
+            id: target_path.to_string(),
+            addon_type,
+            source_path: "source.zip".to_string(),
+            resolved_source_path: None,
+            original_input_path: None,
+            target_path: target_path.to_string(),
+            display_name: Path::new(target_path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("Task")
+                .to_string(),
+            conflict_exists: None,
+            archive_internal_root: None,
+            extraction_chain: None,
+            should_overwrite: false,
+            password: None,
+            estimated_size: None,
+            size_warning: None,
+            size_confirmed: false,
+            existing_navdata_info: None,
+            new_navdata_info: None,
+            existing_version_info: None,
+            new_version_info: None,
+            backup_liveries: true,
+            backup_config_files: true,
+            config_file_patterns: Vec::new(),
+            backup_navdata: true,
+            file_hashes: None,
+            enable_verification: true,
+            livery_aircraft_type: None,
+            livery_aircraft_found: true,
+            flywithlua_installed: true,
+            companion_paths: Vec::new(),
+            patch_backup: false,
+            patch_backup_dir: None,
+        }
+    }
+
+    #[test]
+    fn parallel_dependencies_serialize_lua_scripts_in_the_same_scripts_directory() {
+        let tasks = vec![
+            install_task(
+                AddonType::LuaScript,
+                "/X-Plane/Resources/plugins/FlyWithLua/Scripts/first.lua",
+            ),
+            install_task(
+                AddonType::Aircraft,
+                "/X-Plane/Aircraft/Independent Aircraft",
+            ),
+            install_task(
+                AddonType::LuaScript,
+                "/X-Plane/Resources/plugins/FlyWithLua/Scripts/second.lua",
+            ),
+        ];
+
+        assert_eq!(
+            build_install_dependencies(&tasks),
+            vec![vec![], vec![], vec![0]]
+        );
+    }
+
+    #[test]
+    fn parallel_dependencies_serialize_parent_and_child_targets() {
+        let tasks = vec![
+            install_task(AddonType::Plugin, "/X-Plane/Resources/plugins/FlyWithLua"),
+            install_task(
+                AddonType::LuaScript,
+                "/x-plane/resources/plugins/flywithlua/scripts/script.lua",
+            ),
+        ];
+
+        assert_eq!(build_install_dependencies(&tasks), vec![vec![], vec![0]]);
+    }
+
+    #[test]
+    fn parallel_dependencies_keep_unrelated_targets_concurrent() {
+        let tasks = vec![
+            install_task(AddonType::Aircraft, "/X-Plane/Aircraft/A"),
+            install_task(AddonType::Aircraft, "/X-Plane/Aircraft/B"),
+            install_task(AddonType::Plugin, "/X-Plane/Resources/plugins/C"),
+        ];
+
+        assert_eq!(
+            build_install_dependencies(&tasks),
+            vec![Vec::<usize>::new(); 3]
+        );
+    }
+
+    #[tokio::test]
+    async fn task_completion_releases_waiters_without_missing_early_completion() {
+        let completion = Arc::new(TaskCompletion::new());
+        completion.mark_complete();
+
+        tokio::time::timeout(std::time::Duration::from_millis(100), completion.wait())
+            .await
+            .expect("completed dependency should release immediately");
+    }
 
     #[test]
     fn test_sanitize_path_normal() {

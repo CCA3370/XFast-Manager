@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Reliable Installation Verification** - Harmless macOS and Windows metadata no longer causes installation checks to fail, and genuine failures now identify the affected file and the reason it could not be verified.
+- **Batch FlyWithLua Installs** - Multiple scripts from the same package now install reliably together without deleting one another's files.
 
 ## [1.2.5] - 2026-05-31
 
