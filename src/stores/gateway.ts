@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { CommandError } from '@/services/api'
 import {
   gatewayCheckUpdates,
   gatewayCheckInstallWarning,
@@ -18,6 +19,15 @@ import type {
   GatewayReleaseContext,
   GatewaySceneryDetail,
 } from '@/types'
+
+export interface GatewayInstallSelection {
+  airportIcao: string
+  sceneryId: number
+}
+
+function normalizeIcaoKey(value: string): string {
+  return value.trim().toUpperCase()
+}
 
 export const useGatewayStore = defineStore('gateway', () => {
   const searchQuery = ref('')
@@ -41,18 +51,34 @@ export const useGatewayStore = defineStore('gateway', () => {
   let searchSeq = 0
   let airportSeq = 0
   let scenerySeq = 0
+  let installedRequestSeq = 0
+  let loadInstalledSeq = 0
+  let checkUpdatesSeq = 0
 
   const installedByIcao = computed(() => {
     const map = new Map<string, GatewayInstalledAirport>()
     for (const item of installed.value) {
-      map.set(item.airportIcao, item)
+      map.set(normalizeIcaoKey(item.airportIcao), item)
     }
     return map
   })
 
   const selectedInstalledRecord = computed(() =>
-    airportDetail.value ? (installedByIcao.value.get(airportDetail.value.icao) ?? null) : null,
+    airportDetail.value
+      ? (installedByIcao.value.get(normalizeIcaoKey(airportDetail.value.icao)) ?? null)
+      : null,
   )
+
+  const selectedInstallSelection = computed<GatewayInstallSelection | null>(() => {
+    const airportIcao = airportDetail.value?.icao
+    const sceneryId = selectedSceneryId.value
+    if (!airportIcao || sceneryId === null) return null
+
+    return {
+      airportIcao: normalizeIcaoKey(airportIcao),
+      sceneryId,
+    }
+  })
 
   const selectedScenerySummary = computed(
     () =>
@@ -116,27 +142,43 @@ export const useGatewayStore = defineStore('gateway', () => {
   }
 
   async function loadInstalled(xplanePath: string | null | undefined) {
+    const requestSeq = ++installedRequestSeq
+    const loadingSeq = ++loadInstalledSeq
+
     if (!xplanePath) {
       installed.value = []
       isLoadingInstalled.value = false
-      return
+      return installed.value
     }
 
     isLoadingInstalled.value = true
     try {
-      installed.value = await gatewayListInstalled(xplanePath, releaseVersion.value)
+      const nextInstalled = await gatewayListInstalled(xplanePath, releaseVersion.value)
+      if (requestSeq === installedRequestSeq) {
+        installed.value = nextInstalled
+      }
+      return installed.value
     } finally {
-      isLoadingInstalled.value = false
+      if (loadingSeq === loadInstalledSeq) {
+        isLoadingInstalled.value = false
+      }
     }
   }
 
   async function checkUpdates(xplanePath: string) {
+    const requestSeq = ++installedRequestSeq
+    const checkingSeq = ++checkUpdatesSeq
     isCheckingUpdates.value = true
     try {
-      installed.value = await gatewayCheckUpdates(xplanePath, releaseVersion.value)
+      const nextInstalled = await gatewayCheckUpdates(xplanePath, releaseVersion.value)
+      if (requestSeq === installedRequestSeq) {
+        installed.value = nextInstalled
+      }
       return installed.value
     } finally {
-      isCheckingUpdates.value = false
+      if (checkingSeq === checkUpdatesSeq) {
+        isCheckingUpdates.value = false
+      }
     }
   }
 
@@ -203,26 +245,60 @@ export const useGatewayStore = defineStore('gateway', () => {
     }
   }
 
-  async function installSelected(
+  function gatewaySelectionError(message: string, code: 'validation_failed' | 'conflict_exists') {
+    return new CommandError(message, {
+      code,
+      message,
+      reportable: false,
+    })
+  }
+
+  function upsertInstalledRecord(record: GatewayInstalledAirport) {
+    const key = normalizeIcaoKey(record.airportIcao)
+    const existing = installed.value.find((item) => normalizeIcaoKey(item.airportIcao) === key)
+    const merged = existing ? { ...existing, ...record } : record
+    installed.value = [
+      ...installed.value.filter((item) => normalizeIcaoKey(item.airportIcao) !== key),
+      merged,
+    ].sort((left, right) => left.airportIcao.localeCompare(right.airportIcao))
+  }
+
+  async function refreshInstalledAfterMutation(xplanePath: string) {
+    try {
+      await loadInstalled(xplanePath)
+    } catch (error) {
+      console.warn('Failed to refresh installed Gateway airports after a completed action:', error)
+    }
+  }
+
+  async function installSelection(
     xplanePath: string,
+    selection: GatewayInstallSelection,
     autoSortScenery = false,
     ignoreExternalConflict = false,
   ) {
-    if (!airportDetail.value || selectedSceneryId.value === null) {
-      throw new Error('No Gateway scenery selected')
+    const airportIcao = normalizeIcaoKey(selection.airportIcao)
+    if (!airportIcao || !Number.isSafeInteger(selection.sceneryId) || selection.sceneryId <= 0) {
+      throw gatewaySelectionError('No Gateway scenery selected', 'validation_failed')
+    }
+    if (installingIcao.value !== null) {
+      throw gatewaySelectionError(
+        'Another Gateway installation is already in progress',
+        'conflict_exists',
+      )
     }
 
-    installingIcao.value = airportDetail.value.icao
+    installingIcao.value = airportIcao
     try {
       const installedRecord = await gatewayInstallScenery({
         xplanePath,
-        icao: airportDetail.value.icao,
-        sceneryId: selectedSceneryId.value,
+        icao: airportIcao,
+        sceneryId: selection.sceneryId,
         autoSortScenery,
         ignoreExternalConflict,
       })
-      await loadInstalled(xplanePath)
-      await openAirport(installedRecord.airportIcao, installedRecord.sceneryId)
+      upsertInstalledRecord(installedRecord)
+      await refreshInstalledAfterMutation(xplanePath)
       return installedRecord
     } finally {
       installingIcao.value = null
@@ -239,13 +315,14 @@ export const useGatewayStore = defineStore('gateway', () => {
   }
 
   async function uninstallAirportByIcao(xplanePath: string, airportIcao: string) {
-    uninstallingIcao.value = airportIcao
+    const normalizedIcao = normalizeIcaoKey(airportIcao)
+    uninstallingIcao.value = normalizedIcao
     try {
-      await gatewayUninstallAirport(xplanePath, airportIcao)
-      await loadInstalled(xplanePath)
-      if (airportDetail.value?.icao === airportIcao) {
-        await openAirport(airportIcao)
-      }
+      await gatewayUninstallAirport(xplanePath, normalizedIcao)
+      installed.value = installed.value.filter(
+        (item) => normalizeIcaoKey(item.airportIcao) !== normalizedIcao,
+      )
+      await refreshInstalledAfterMutation(xplanePath)
     } finally {
       uninstallingIcao.value = null
     }
@@ -270,6 +347,7 @@ export const useGatewayStore = defineStore('gateway', () => {
     releaseContext,
     installedByIcao,
     selectedInstalledRecord,
+    selectedInstallSelection,
     selectedScenerySummary,
     updatesCount,
     releaseVersion,
@@ -280,7 +358,7 @@ export const useGatewayStore = defineStore('gateway', () => {
     checkUpdates,
     openAirport,
     selectScenery,
-    installSelected,
+    installSelection,
     checkInstallWarning,
     uninstallAirportByIcao,
     resetAirportSelection,

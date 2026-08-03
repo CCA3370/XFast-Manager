@@ -470,14 +470,10 @@
                             @click="handleInstall()"
                           >
                             <div
-                              v-if="store.installingIcao === store.airportDetail.icao"
+                              v-if="isGatewayInstallBusy"
                               class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"
                             ></div>
-                            {{
-                              store.installingIcao === store.airportDetail.icao
-                                ? $t('common.loading')
-                                : installButtonText
-                            }}
+                            {{ isGatewayInstallBusy ? $t('common.loading') : installButtonText }}
                           </button>
                         </div>
                         <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[13px]">
@@ -711,7 +707,7 @@
 <script setup lang="ts">
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import { CommandError, invokeVoidCommand } from '@/services/api'
-import { useGatewayStore } from '@/stores/gateway'
+import { useGatewayStore, type GatewayInstallSelection } from '@/stores/gateway'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
@@ -732,7 +728,15 @@ const searchText = ref('')
 const showAirportModal = ref(false)
 const showInstallWarning = ref(false)
 const installWarningMessage = ref('')
+const isPreparingInstall = ref(false)
+const pendingInstallIntent = ref<GatewayInstallIntent | null>(null)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+interface GatewayInstallIntent {
+  xplanePath: string
+  autoSortScenery: boolean
+  selection: GatewayInstallSelection
+}
 
 const filteredInstalled = computed(() => {
   if (!searchText.value) return store.installed
@@ -745,9 +749,13 @@ const filteredInstalled = computed(() => {
 const installDisabled = computed(() => {
   if (!appStore.xplanePath) return true
   if (!store.airportDetail || store.selectedSceneryId === null) return true
-  if (store.installingIcao === store.airportDetail.icao) return true
+  if (isGatewayInstallBusy.value) return true
   return store.selectedInstalledRecord?.sceneryId === store.selectedSceneryId
 })
+
+const isGatewayInstallBusy = computed(
+  () => isPreparingInstall.value || store.installingIcao !== null,
+)
 
 const installButtonText = computed(() => {
   if (!store.airportDetail) return t('common.install')
@@ -805,6 +813,8 @@ const selectedSceneryIsLatestUpdate = computed(
 watch(
   () => appStore.xplanePath,
   async (path) => {
+    showInstallWarning.value = false
+    pendingInstallIntent.value = null
     try {
       await store.loadReleaseContext(path)
       await store.loadInstalled(path)
@@ -981,12 +991,26 @@ async function handleCopyInstalledFolder() {
   }
 }
 
-async function installSelectedGateway(ignoreExternalConflict = false) {
-  if (!appStore.xplanePath) return
+function createInstallIntent(): GatewayInstallIntent | null {
+  const xplanePath = appStore.xplanePath
+  const selection = store.selectedInstallSelection
+  if (!xplanePath || !selection) return null
 
-  const installedRecord = await store.installSelected(
-    appStore.xplanePath,
-    appStore.autoSortScenery,
+  return {
+    xplanePath,
+    autoSortScenery: appStore.autoSortScenery,
+    selection: { ...selection },
+  }
+}
+
+async function installSelectedGateway(
+  intent: GatewayInstallIntent,
+  ignoreExternalConflict = false,
+) {
+  const installedRecord = await store.installSelection(
+    intent.xplanePath,
+    intent.selection,
+    intent.autoSortScenery,
     ignoreExternalConflict,
   )
   toast.success(
@@ -996,18 +1020,24 @@ async function installSelectedGateway(ignoreExternalConflict = false) {
   )
 }
 
-function showInstallBlockedWarning(message: string) {
+function showInstallBlockedWarning(message: string, intent: GatewayInstallIntent) {
   installWarningMessage.value = message
+  pendingInstallIntent.value = intent
   showInstallWarning.value = true
 }
 
 function cancelInstallWarning() {
   showInstallWarning.value = false
+  pendingInstallIntent.value = null
 }
 
 function confirmInstallWarning() {
+  const intent = pendingInstallIntent.value
   showInstallWarning.value = false
-  void handleInstall(true)
+  pendingInstallIntent.value = null
+  if (intent) {
+    void handleInstall(true, intent)
+  }
 }
 
 function getGatewayExternalConflictMessage(error: unknown): string | null {
@@ -1023,32 +1053,42 @@ function getGatewayExternalConflictMessage(error: unknown): string | null {
   return message
 }
 
-async function handleInstall(ignoreExternalConflict = false) {
-  if (!appStore.xplanePath) {
+async function handleInstall(
+  ignoreExternalConflict = false,
+  preparedIntent: GatewayInstallIntent | null = null,
+) {
+  if (isGatewayInstallBusy.value) return
+
+  const intent = preparedIntent ?? createInstallIntent()
+  if (!intent) {
     modal.showError(t('gatewayManager.pathRequiredHint'), t('gatewayManager.pathRequired'), {
       hideReport: true,
     })
     return
   }
 
-  if (!ignoreExternalConflict) {
-    try {
-      const warning = await store.checkInstallWarning(appStore.xplanePath)
-      if (warning?.kind === GATEWAY_EXTERNAL_CONFLICT_KIND) {
-        showInstallBlockedWarning(warning.message)
-        return
-      }
-    } catch {
-      // Fall back to install-time conflict handling if warning precheck is unavailable.
-    }
-  }
-
+  isPreparingInstall.value = true
   try {
-    await installSelectedGateway(ignoreExternalConflict)
+    if (!ignoreExternalConflict) {
+      try {
+        const warning = await store.checkInstallWarning(
+          intent.xplanePath,
+          intent.selection.airportIcao,
+        )
+        if (warning?.kind === GATEWAY_EXTERNAL_CONFLICT_KIND) {
+          showInstallBlockedWarning(warning.message, intent)
+          return
+        }
+      } catch {
+        // Fall back to install-time conflict handling if warning precheck is unavailable.
+      }
+    }
+
+    await installSelectedGateway(intent, ignoreExternalConflict)
   } catch (error) {
     const externalConflictMessage = getGatewayExternalConflictMessage(error)
     if (externalConflictMessage && !ignoreExternalConflict) {
-      showInstallBlockedWarning(externalConflictMessage)
+      showInstallBlockedWarning(externalConflictMessage, intent)
       return
     }
     if (
@@ -1056,14 +1096,16 @@ async function handleInstall(ignoreExternalConflict = false) {
       error.code === 'conflict_exists' &&
       !ignoreExternalConflict
     ) {
-      showInstallBlockedWarning(error.message)
+      showInstallBlockedWarning(error.message, intent)
       return
     }
     if (error instanceof CommandError && error.code === 'conflict_exists') {
       modal.showError(error.message, t('gatewayManager.installBlocked'), { hideReport: true })
       return
     }
-    modal.showError(`${t('gatewayManager.installFailed')}: ${getErrorMessage(error)}`)
+    modal.showError(error, t('gatewayManager.installFailed'))
+  } finally {
+    isPreparingInstall.value = false
   }
 }
 
