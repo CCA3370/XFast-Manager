@@ -298,37 +298,13 @@ impl Scanner {
 
     /// Check if a path should be ignored during scanning
     fn should_ignore_path(path: &Path) -> bool {
-        // Check each component of the path
-        for component in path.components() {
-            if let Some(name) = component.as_os_str().to_str() {
-                // Ignore __MACOSX folders (macOS metadata)
-                if name == "__MACOSX" {
-                    return true;
-                }
-                // Ignore .DS_Store files (macOS metadata)
-                if name == ".DS_Store" {
-                    return true;
-                }
-                // Ignore Thumbs.db (Windows thumbnail cache)
-                if name == "Thumbs.db" {
-                    return true;
-                }
-                // Ignore desktop.ini (Windows folder settings)
-                if name == "desktop.ini" {
-                    return true;
-                }
-            }
-        }
-        false
+        crate::package_artifacts::is_ignored_package_artifact_path(path)
     }
 
     /// Fast check for archive paths (string-based, avoids Path allocation)
     #[inline]
     fn should_ignore_archive_path(path: &str) -> bool {
-        path.contains("__MACOSX")
-            || path.contains(".DS_Store")
-            || path.ends_with("Thumbs.db")
-            || path.ends_with("desktop.ini")
+        crate::package_artifacts::is_ignored_package_artifact_archive_path(path)
     }
 
     /// Check if a path should be skipped based on skip_dirs

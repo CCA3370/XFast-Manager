@@ -9,6 +9,8 @@ mod cache;
 mod error;
 #[path = "core/logger.rs"]
 mod logger;
+#[path = "core/package_artifacts.rs"]
+mod package_artifacts;
 #[path = "core/path_utils.rs"]
 mod path_utils;
 #[path = "core/performance.rs"]

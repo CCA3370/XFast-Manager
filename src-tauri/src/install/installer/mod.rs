@@ -1505,7 +1505,7 @@ impl Installer {
                             );
 
                             failed += 1;
-                            let error_msg = format!("Verification failed: {}", verify_err);
+                            let error_msg = verify_err.to_string();
                             logger::log_error(
                                 &format!(
                                     "{} {}: {}",
@@ -1847,7 +1847,7 @@ impl Installer {
                                 }
                                 Err(e) => {
                                     ctx.mark_failed(index);
-                                    let error_msg = format!("Verification failed: {}", e);
+                                    let error_msg = e.to_string();
                                     logger::log_error(
                                         &format!(
                                             "{} {}: {}",

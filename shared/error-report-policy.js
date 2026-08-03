@@ -38,6 +38,7 @@ const OPERATIONAL_ERROR_PATTERNS = Object.freeze([
   'badarchive@open',
   'ewrite@process',
   'failed to fill whole buffer',
+  'file content does not match the downloaded package',
   'exec format error',
   'not runnable on this system',
   'not a valid windows executable',

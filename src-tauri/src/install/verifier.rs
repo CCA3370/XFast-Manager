@@ -45,36 +45,28 @@ impl FileVerifier {
     where
         F: Fn(usize, usize) + Send + Sync,
     {
-        use walkdir::WalkDir;
+        let mut files_to_verify: Vec<(Option<PathBuf>, String, FileHash)> = expected_hashes
+            .iter()
+            .filter(|(relative_path, _)| {
+                !crate::package_artifacts::is_ignored_package_artifact_archive_path(relative_path)
+            })
+            .map(|(relative_path, expected)| {
+                let file_path =
+                    crate::package_artifacts::normalize_safe_relative_path(relative_path)
+                        .map(|relative| target_dir.join(relative));
+                (file_path, relative_path.clone(), expected.clone())
+            })
+            .collect();
+        files_to_verify.sort_by(|left, right| left.1.cmp(&right.1));
 
         crate::logger::log_info(
             &format!(
                 "Verifying {} files in {:?}",
-                expected_hashes.len(),
+                files_to_verify.len(),
                 target_dir
             ),
             Some("verifier"),
         );
-
-        // Collect all files to verify
-        let files_to_verify: Vec<(PathBuf, String)> = WalkDir::new(target_dir)
-            .follow_links(false)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-            .filter_map(|entry| {
-                let path = entry.path();
-                let relative = path.strip_prefix(target_dir).ok()?;
-                let relative_str = relative.to_string_lossy().replace('\\', "/");
-
-                // Only verify files we have hashes for
-                if expected_hashes.contains_key(&relative_str) {
-                    Some((path.to_path_buf(), relative_str))
-                } else {
-                    None
-                }
-            })
-            .collect();
 
         let total = files_to_verify.len();
         let verified_count = Arc::new(AtomicUsize::new(0));
@@ -82,16 +74,24 @@ impl FileVerifier {
         // Parallel verification with progress tracking
         let results: Vec<FileVerificationResult> = files_to_verify
             .par_iter()
-            .filter_map(|(path, relative_path)| {
-                // Get expected hash (should always exist since we built files_to_verify from expected_hashes)
-                let expected = expected_hashes.get(relative_path)?;
-                let result = self.verify_single_file(path, relative_path, expected);
+            .map(|(path, relative_path, expected)| {
+                let result = match path {
+                    Some(path) => self.verify_single_file(path, relative_path, expected),
+                    None => FileVerificationResult {
+                        path: relative_path.clone(),
+                        expected_hash: expected.hash.clone(),
+                        actual_hash: None,
+                        success: false,
+                        retry_count: 0,
+                        error: Some("Unsafe relative path in verification metadata".to_string()),
+                    },
+                };
 
                 // Update progress
                 let count = verified_count.fetch_add(1, Ordering::SeqCst) + 1;
                 progress_callback(count, total);
 
-                Some(result)
+                result
             })
             .collect();
 
@@ -398,6 +398,67 @@ mod tests {
         assert!(!result.success);
         assert!(result.actual_hash.is_none());
         assert!(result.error.is_some());
+    }
+
+    #[test]
+    fn verify_files_ignores_metadata_hashes() {
+        let verifier = FileVerifier::new();
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("plane.acf");
+        fs::write(&file_path, b"aircraft").unwrap();
+        let plane_hash = verifier.compute_sha256(&file_path).unwrap();
+
+        let expected = HashMap::from([
+            (
+                "plane.acf".to_string(),
+                FileHash {
+                    path: "plane.acf".to_string(),
+                    hash: plane_hash,
+                    algorithm: HashAlgorithm::Sha256,
+                },
+            ),
+            (
+                ".DS_Store".to_string(),
+                FileHash {
+                    path: ".DS_Store".to_string(),
+                    hash: "ignored".to_string(),
+                    algorithm: HashAlgorithm::Sha256,
+                },
+            ),
+            (
+                "__MACOSX/._plane.acf".to_string(),
+                FileHash {
+                    path: "__MACOSX/._plane.acf".to_string(),
+                    hash: "ignored".to_string(),
+                    algorithm: HashAlgorithm::Sha256,
+                },
+            ),
+        ]);
+
+        assert!(verifier
+            .verify_files(temp_dir.path(), &expected)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn verify_files_reports_expected_files_missing_from_target() {
+        let verifier = FileVerifier::new();
+        let temp_dir = TempDir::new().unwrap();
+        let expected = HashMap::from([(
+            "missing.xpl".to_string(),
+            FileHash {
+                path: "missing.xpl".to_string(),
+                hash: "expected".to_string(),
+                algorithm: HashAlgorithm::Sha256,
+            },
+        )]);
+
+        let failed = verifier.verify_files(temp_dir.path(), &expected).unwrap();
+
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].path, "missing.xpl");
+        assert!(failed[0].error.is_some());
     }
 
     #[test]

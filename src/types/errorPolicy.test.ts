@@ -12,6 +12,7 @@ const operationalErrors = [
   'Cannot install an add-on from inside the X-Plane directory',
   'Operation did not complete successfully because the file contains a virus (os error 225)',
   'Invalid or incomplete 7z archive',
+  'File verification failed for 1 file(s): aircraft.acf: file content does not match the downloaded package',
 ]
 
 describe('error report policy', () => {

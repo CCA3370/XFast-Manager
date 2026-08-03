@@ -990,6 +990,12 @@ impl Installer {
                     file_path_str.clone()
                 };
 
+                if crate::package_artifacts::is_ignored_package_artifact_archive_path(
+                    &relative_path,
+                ) {
+                    return None;
+                }
+
                 Some((i, relative_path, file.is_dir(), file.encrypted()))
             })
             .collect();

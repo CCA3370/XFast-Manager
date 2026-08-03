@@ -125,6 +125,10 @@ impl HashCollector {
                 &name
             };
 
+            if crate::package_artifacts::is_ignored_package_artifact_archive_path(relative_path) {
+                continue;
+            }
+
             // Get CRC32 from ZIP central directory
             let crc32 = file.crc32();
 
@@ -175,6 +179,14 @@ impl HashCollector {
         let file_paths: Vec<(PathBuf, String)> = WalkDir::new(source_dir)
             .follow_links(false)
             .into_iter()
+            .filter_entry(|entry| {
+                entry
+                    .path()
+                    .strip_prefix(source_dir)
+                    .map_or(true, |relative| {
+                        !crate::package_artifacts::is_ignored_package_artifact_path(relative)
+                    })
+            })
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
             .filter_map(|entry| {
@@ -248,6 +260,8 @@ impl HashCollector {
 mod tests {
     use super::*;
     use crate::models::{AddonType, InstallTask};
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
 
     fn make_task(extraction_chain: Option<crate::models::ExtractionChain>) -> InstallTask {
         InstallTask {
@@ -306,5 +320,60 @@ mod tests {
         }));
 
         assert!(!collector.should_collect_hashes(&task));
+    }
+
+    #[test]
+    fn directory_hashes_exclude_operating_system_metadata() {
+        let source = tempfile::TempDir::new().unwrap();
+        fs::create_dir_all(source.path().join("Aircraft/__MACOSX")).unwrap();
+        fs::create_dir_all(source.path().join("Aircraft/objects")).unwrap();
+        fs::write(source.path().join(".DS_Store"), b"metadata").unwrap();
+        fs::write(
+            source.path().join("Aircraft/__MACOSX/._plane.acf"),
+            b"metadata",
+        )
+        .unwrap();
+        fs::write(
+            source.path().join("Aircraft/objects/Thumbs.db"),
+            b"metadata",
+        )
+        .unwrap();
+        fs::write(source.path().join("Aircraft/desktop.ini"), b"metadata").unwrap();
+        fs::write(source.path().join("Aircraft/plane.acf"), b"aircraft").unwrap();
+
+        let hashes = HashCollector::new()
+            .collect_directory_hashes(source.path())
+            .unwrap();
+
+        assert_eq!(hashes.len(), 1);
+        assert!(hashes.contains_key("Aircraft/plane.acf"));
+    }
+
+    #[test]
+    fn zip_hashes_exclude_operating_system_metadata() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let archive_path = temp.path().join("aircraft.zip");
+        let archive_file = fs::File::create(&archive_path).unwrap();
+        let mut writer = zip::ZipWriter::new(archive_file);
+        let options = SimpleFileOptions::default();
+
+        for (path, contents) in [
+            ("Aircraft/plane.acf", b"aircraft".as_slice()),
+            ("Aircraft/.DS_Store", b"metadata".as_slice()),
+            ("Aircraft/__MACOSX/._plane.acf", b"metadata".as_slice()),
+            ("Aircraft/Thumbs.db", b"metadata".as_slice()),
+            ("Aircraft/desktop.ini", b"metadata".as_slice()),
+        ] {
+            writer.start_file(path, options).unwrap();
+            writer.write_all(contents).unwrap();
+        }
+        writer.finish().unwrap();
+
+        let hashes = HashCollector::new()
+            .collect_zip_hashes(&archive_path, Some("Aircraft"), None, None)
+            .unwrap();
+
+        assert_eq!(hashes.len(), 1);
+        assert!(hashes.contains_key("plane.acf"));
     }
 }
