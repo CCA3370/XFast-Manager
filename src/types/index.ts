@@ -1,5 +1,11 @@
 // ========== API Error Types ==========
 
+import {
+  isOperationalErrorMessage,
+  isReportableError,
+  normalizeErrorFingerprintInput,
+} from '../../shared/error-report-policy.js'
+
 /** Structured error codes matching backend ApiErrorCode */
 export type ApiErrorCode =
   | 'validation_failed'
@@ -17,13 +23,36 @@ export type ApiErrorCode =
   | 'timeout'
   | 'database_error'
   | 'migration_failed'
+  | 'environment_error'
+  | 'external_software_blocked'
   | 'internal'
+
+export type ApiErrorOrigin =
+  | 'application'
+  | 'user_input'
+  | 'environment'
+  | 'external_data'
+  | 'external_service'
+  | 'cancelled'
 
 /** Structured API error from backend */
 export interface ApiError {
   code: ApiErrorCode
   message: string
   details?: string
+  origin?: ApiErrorOrigin
+  operation?: string
+  userAction?: string
+  reportable?: boolean
+}
+
+export interface ErrorReportPolicy {
+  code?: ApiErrorCode
+  origin?: ApiErrorOrigin
+  operation?: string
+  message: string
+  reportable: boolean
+  fingerprintInput: string
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -34,12 +63,20 @@ function parseApiErrorObject(value: Record<string, unknown>): ApiError | null {
   const code = value.code
   const message = value.message
   const details = value.details
+  const origin = value.origin
+  const operation = value.operation
+  const userAction = value.userAction
+  const reportable = value.reportable
 
   if (typeof code === 'string' && typeof message === 'string') {
     return {
       code: code as ApiErrorCode,
       message,
       details: typeof details === 'string' ? details : undefined,
+      origin: typeof origin === 'string' ? (origin as ApiErrorOrigin) : undefined,
+      operation: typeof operation === 'string' ? operation : undefined,
+      userAction: typeof userAction === 'string' ? userAction : undefined,
+      reportable: typeof reportable === 'boolean' ? reportable : undefined,
     }
   }
 
@@ -134,80 +171,37 @@ export function getErrorMessage(error: unknown): string {
   return String(error)
 }
 
+export function getErrorReportPolicy(error: unknown): ErrorReportPolicy {
+  const apiError = parseApiError(error)
+  const message = apiError?.message ?? getErrorMessage(error)
+  const reportable = isReportableError({
+    code: apiError?.code,
+    origin: apiError?.origin,
+    operation: apiError?.operation,
+    message,
+    reportable: apiError?.reportable,
+  })
+
+  return {
+    code: apiError?.code,
+    origin: apiError?.origin,
+    operation: apiError?.operation,
+    message,
+    reportable,
+    fingerprintInput: normalizeErrorFingerprintInput({
+      code: apiError?.code,
+      origin: apiError?.origin,
+      operation: apiError?.operation,
+      message,
+    }),
+  }
+}
+
 /**
  * Known user/environment/data errors that should not show the bug-report CTA.
  */
 export function shouldHideBugReportForMessage(message: string): boolean {
-  const lower = message.toLowerCase()
-
-  const knownUserOrEnvironmentErrors = [
-    'invalid or incomplete zip archive',
-    'this archive appears to be incomplete',
-    'this rar archive could not be extracted',
-    'this 7z archive could not be extracted',
-    'invalid zip archive',
-    'could not find eocd',
-    'not a rar archive',
-    'badarchive@open',
-    'ewrite@process',
-    'exec format error',
-    'not runnable on this system',
-    'not a valid windows executable',
-    'invalid airport source path',
-    'airport flatten source is no longer available',
-    'airport flatten source was not found',
-    'apt.dat not found:',
-    'source file is no longer available:',
-    'source path is not a regular file or directory:',
-    'source path is neither file nor directory',
-    '[permission_denied]',
-    '(os error 5)',
-    '(os error 225)',
-    '(os error 483)',
-    'access is denied',
-    'contains a virus or potentially unwanted',
-    'fatal device hardware error',
-    'i/o device error',
-    'the device is not ready',
-    'custom scenery folder not found',
-    'plugins folder not found',
-    'custom data folder not found',
-    'aircraft folder not found',
-    'target directory does not exist',
-    'failed to create target directory',
-  ]
-
-  if (knownUserOrEnvironmentErrors.some((pattern) => lower.includes(pattern))) {
-    return true
-  }
-
-  if (
-    lower.includes('[cancelled]') ||
-    lower.includes('[canceled]') ||
-    lower.includes('cancelled by user') ||
-    lower.includes('canceled by user') ||
-    lower.includes('operation cancelled') ||
-    lower.includes('operation canceled')
-  ) {
-    return true
-  }
-
-  const isExternalMissingResource =
-    lower.includes('[not_found]') &&
-    [
-      'folder not found',
-      'livery folder not found',
-      'file not found',
-      'path not found',
-      'directory not found',
-      'source file',
-      'source path',
-      'target directory',
-      'screenshot not found',
-      'media file',
-    ].some((pattern) => lower.includes(pattern))
-
-  return isExternalMissingResource
+  return isOperationalErrorMessage(message)
 }
 
 // ========== Addon Types ==========

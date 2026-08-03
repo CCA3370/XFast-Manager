@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Fewer Misleading Bug Report Prompts** - Error dialogs for cancelled actions, missing local files or folders, and storage or hardware I/O failures no longer suggest submitting a bug report when the problem is outside the app.
+- **More Accurate Bug Report Prompts** - Error dialogs now offer bug reporting only for unexpected app failures, while invalid paths, permissions, unreadable downloads, security software blocks, insufficient space, network failures, cancellations, and hardware problems show guidance without suggesting a report.
+- **Duplicate Bug Reports Reused** - Repeated automatic reports for the same app failure now open the existing issue instead of creating another one.
 
 ## [1.2.5] - 2026-05-31
 

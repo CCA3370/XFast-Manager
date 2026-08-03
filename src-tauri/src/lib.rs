@@ -275,6 +275,7 @@ async fn create_library_link_issue(
 struct BugReportResult {
     issue_url: String,
     issue_number: u64,
+    deduplicated: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -290,6 +291,10 @@ async fn create_bug_report_issue(
     error_message: String,
     logs: Option<String>,
     category: Option<String>,
+    error_code: Option<String>,
+    error_origin: Option<String>,
+    error_operation: Option<String>,
+    reportable: Option<bool>,
 ) -> Result<BugReportResult, String> {
     let app_version = env!("CARGO_PKG_VERSION").to_string();
     let os = std::env::consts::OS.to_string();
@@ -314,7 +319,11 @@ async fn create_bug_report_issue(
             "errorTitle": error_title.trim(),
             "errorMessage": error_message.trim(),
             "logs": logs.as_deref().unwrap_or(""),
-            "category": category.as_deref().unwrap_or("Other")
+            "category": category.as_deref().unwrap_or("Other"),
+            "errorCode": error_code,
+            "errorOrigin": error_origin,
+            "errorOperation": error_operation,
+            "reportable": reportable
         }))
         .send()
         .await
@@ -323,6 +332,12 @@ async fn create_bug_report_issue(
     if !response.status().is_success() {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
+        if error_text.contains("bug_report_not_allowed") {
+            return Err("BUG_REPORT_NOT_ALLOWED".to_string());
+        }
+        if error_text.contains("bug_report_dedup_check_failed") {
+            return Err("BUG_REPORT_DEDUP_CHECK_FAILED".to_string());
+        }
         return Err(format!("Bug report API error {}: {}", status, error_text));
     }
 
@@ -345,6 +360,10 @@ async fn create_bug_report_issue(
         .get("issueNumber")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
+    let deduplicated = response_json
+        .get("deduplicated")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     // Fallback: if the server didn't return issueNumber, extract it from URL query or tail.
     let issue_number = if issue_number == 0 {
@@ -368,6 +387,7 @@ async fn create_bug_report_issue(
     Ok(BugReportResult {
         issue_url,
         issue_number,
+        deduplicated,
     })
 }
 

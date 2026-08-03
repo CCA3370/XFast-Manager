@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{fmt, io};
 
 /// Structured error codes for API responses
 /// These allow the frontend to distinguish between different error types
@@ -39,6 +39,10 @@ pub enum ApiErrorCode {
     MigrationFailed,
     /// Internal error (unexpected condition)
     Internal,
+    /// Operating system, filesystem, or hardware state outside the application
+    EnvironmentError,
+    /// Antivirus or another external security product blocked an operation
+    ExternalSoftwareBlocked,
 }
 
 impl fmt::Display for ApiErrorCode {
@@ -60,12 +64,26 @@ impl fmt::Display for ApiErrorCode {
             ApiErrorCode::DatabaseError => write!(f, "database_error"),
             ApiErrorCode::MigrationFailed => write!(f, "migration_failed"),
             ApiErrorCode::Internal => write!(f, "internal"),
+            ApiErrorCode::EnvironmentError => write!(f, "environment_error"),
+            ApiErrorCode::ExternalSoftwareBlocked => write!(f, "external_software_blocked"),
         }
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiErrorOrigin {
+    Application,
+    UserInput,
+    Environment,
+    ExternalData,
+    ExternalService,
+    Cancelled,
+}
+
 /// Structured API error with code, message, and optional details
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiError {
     /// Error code for programmatic handling
     pub code: ApiErrorCode,
@@ -74,15 +92,55 @@ pub struct ApiError {
     /// Optional additional details (stack trace, field name, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<String>,
+    /// Stable high-level origin used to decide whether a bug report is appropriate.
+    pub origin: ApiErrorOrigin,
+    /// Optional operation name supplied by the command boundary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation: Option<String>,
+    /// Optional user-facing recovery guidance.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_action: Option<String>,
+    /// Whether this error represents an application defect worth auto-reporting.
+    pub reportable: bool,
 }
 
 impl ApiError {
+    fn policy_for_code(code: &ApiErrorCode) -> (ApiErrorOrigin, bool) {
+        match code {
+            ApiErrorCode::Internal
+            | ApiErrorCode::DatabaseError
+            | ApiErrorCode::MigrationFailed => (ApiErrorOrigin::Application, true),
+            ApiErrorCode::ValidationFailed | ApiErrorCode::SecurityViolation => {
+                (ApiErrorOrigin::UserInput, false)
+            }
+            ApiErrorCode::CorruptedData
+            | ApiErrorCode::ArchiveError
+            | ApiErrorCode::PasswordRequired
+            | ApiErrorCode::IncorrectPassword => (ApiErrorOrigin::ExternalData, false),
+            ApiErrorCode::NetworkError | ApiErrorCode::Timeout => {
+                (ApiErrorOrigin::ExternalService, false)
+            }
+            ApiErrorCode::Cancelled => (ApiErrorOrigin::Cancelled, false),
+            ApiErrorCode::PermissionDenied
+            | ApiErrorCode::NotFound
+            | ApiErrorCode::ConflictExists
+            | ApiErrorCode::InsufficientSpace
+            | ApiErrorCode::EnvironmentError
+            | ApiErrorCode::ExternalSoftwareBlocked => (ApiErrorOrigin::Environment, false),
+        }
+    }
+
     /// Create a new API error
     pub fn new(code: ApiErrorCode, message: impl Into<String>) -> Self {
+        let (origin, reportable) = Self::policy_for_code(&code);
         Self {
             code,
             message: message.into(),
             details: None,
+            origin,
+            operation: None,
+            user_action: None,
+            reportable,
         }
     }
 
@@ -95,11 +153,9 @@ impl ApiError {
         message: impl Into<String>,
         details: impl Into<String>,
     ) -> Self {
-        Self {
-            code,
-            message: message.into(),
-            details: Some(details.into()),
-        }
+        let mut error = Self::new(code, message);
+        error.details = Some(details.into());
+        error
     }
 
     /// Create a validation error
@@ -186,6 +242,16 @@ impl ApiError {
     pub fn migration_failed(message: impl Into<String>) -> Self {
         Self::new(ApiErrorCode::MigrationFailed, message)
     }
+
+    /// Create an environment error.
+    pub fn environment(message: impl Into<String>) -> Self {
+        Self::new(ApiErrorCode::EnvironmentError, message)
+    }
+
+    /// Create an error caused by antivirus or another external security product.
+    pub fn external_software_blocked(message: impl Into<String>) -> Self {
+        Self::new(ApiErrorCode::ExternalSoftwareBlocked, message)
+    }
 }
 
 impl fmt::Display for ApiError {
@@ -201,25 +267,70 @@ impl fmt::Display for ApiError {
 impl std::error::Error for ApiError {}
 
 /// Convert from std::io::Error to ApiError
-impl From<std::io::Error> for ApiError {
-    fn from(err: std::io::Error) -> Self {
+fn classify_windows_raw_os_error(code: i32) -> Option<ApiErrorCode> {
+    match code {
+        5 => Some(ApiErrorCode::PermissionDenied),
+        21 | 999 => Some(ApiErrorCode::EnvironmentError),
+        225 | 483 => Some(ApiErrorCode::ExternalSoftwareBlocked),
+        _ => None,
+    }
+}
+
+fn api_error_from_io(err: &io::Error) -> ApiError {
+    let windows_code = if cfg!(target_os = "windows") {
+        err.raw_os_error().and_then(classify_windows_raw_os_error)
+    } else {
+        None
+    };
+
+    let code = windows_code.unwrap_or_else(|| {
         let code = match err.kind() {
-            std::io::ErrorKind::NotFound => ApiErrorCode::NotFound,
-            std::io::ErrorKind::PermissionDenied => ApiErrorCode::PermissionDenied,
-            std::io::ErrorKind::AlreadyExists => ApiErrorCode::ConflictExists,
-            std::io::ErrorKind::TimedOut => ApiErrorCode::Timeout,
+            io::ErrorKind::NotFound => ApiErrorCode::NotFound,
+            io::ErrorKind::PermissionDenied => ApiErrorCode::PermissionDenied,
+            io::ErrorKind::AlreadyExists => ApiErrorCode::ConflictExists,
+            io::ErrorKind::TimedOut => ApiErrorCode::Timeout,
             _ => ApiErrorCode::Internal,
         };
-        ApiError::new(code, err.to_string())
+        code
+    });
+
+    ApiError::new(code, err.to_string())
+}
+
+impl From<io::Error> for ApiError {
+    fn from(err: io::Error) -> Self {
+        api_error_from_io(&err)
     }
 }
 
 /// Convert from anyhow::Error to ApiError
 impl From<anyhow::Error> for ApiError {
     fn from(err: anyhow::Error) -> Self {
-        // Try to extract more specific error information
         let message = err.to_string();
-        let message_lower = message.to_lowercase();
+        let chain: Vec<String> = err.chain().map(ToString::to_string).collect();
+        let details = (chain.len() > 1).then(|| chain.join(": "));
+
+        if let Some(api_error) = err
+            .chain()
+            .find_map(|source| source.downcast_ref::<ApiError>())
+        {
+            let mut converted = api_error.clone();
+            converted.message = message;
+            converted.details = details.or(converted.details);
+            return converted;
+        }
+
+        if let Some(io_error) = err
+            .chain()
+            .find_map(|source| source.downcast_ref::<io::Error>())
+        {
+            let mut converted = api_error_from_io(io_error);
+            converted.message = message;
+            converted.details = details.or_else(|| Some(io_error.to_string()));
+            return converted;
+        }
+
+        let message_lower = chain.join(" ").to_lowercase();
 
         // Check for common error patterns and use appropriate convenience methods
 
@@ -257,6 +368,24 @@ impl From<anyhow::Error> for ApiError {
             return ApiError::insufficient_space(message);
         }
 
+        if message_lower.contains("contains a virus")
+            || message_lower.contains("potentially unwanted")
+            || message_lower.contains("os error 225")
+            || message_lower.contains("os error 483")
+        {
+            return ApiError::external_software_blocked(message);
+        }
+
+        if message_lower.contains("device is not ready")
+            || message_lower.contains("inpage operation")
+            || message_lower.contains("fatal device hardware error")
+            || message_lower.contains("i/o device error")
+            || message_lower.contains("os error 999")
+            || message_lower.contains("os error 21")
+        {
+            return ApiError::environment(message);
+        }
+
         // Corruption errors
         if message_lower.contains("corrupt")
             || message_lower.contains("malformed")
@@ -275,12 +404,18 @@ impl From<anyhow::Error> for ApiError {
         }
 
         // Not found errors
-        if message_lower.contains("not found") || message_lower.contains("does not exist") {
+        if message_lower.contains("not found")
+            || message_lower.contains("does not exist")
+            || message_lower.contains("no such file or directory")
+        {
             return ApiError::not_found(message);
         }
 
         // Permission errors
-        if message_lower.contains("permission") || message_lower.contains("access denied") {
+        if message_lower.contains("permission")
+            || message_lower.contains("access denied")
+            || message_lower.contains("operation not permitted")
+        {
             return ApiError::permission_denied(message);
         }
 
@@ -321,7 +456,7 @@ pub trait ToTauriError<T> {
 
 impl<T> ToTauriError<T> for ApiResult<T> {
     fn to_tauri_error(self) -> std::result::Result<T, String> {
-        self.map_err(|e| e.to_string())
+        self.map_err(|error| serde_json::to_string(&error).unwrap_or_else(|_| error.to_string()))
     }
 }
 
@@ -459,5 +594,40 @@ mod tests {
         let anyhow_err = anyhow::anyhow!("Some unknown error occurred");
         let api_err: ApiError = anyhow_err.into();
         assert_eq!(api_err.code, ApiErrorCode::Internal);
+    }
+
+    #[test]
+    fn wrapped_io_error_uses_root_error_kind() {
+        let error = anyhow::Error::new(io::Error::new(
+            io::ErrorKind::NotFound,
+            "No such file or directory",
+        ))
+        .context("Failed to toggle managed item");
+
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.code, ApiErrorCode::NotFound);
+        assert_eq!(api_error.origin, ApiErrorOrigin::Environment);
+        assert!(!api_error.reportable);
+        assert!(api_error
+            .details
+            .unwrap()
+            .contains("No such file or directory"));
+    }
+
+    #[test]
+    fn windows_environment_codes_have_non_reportable_categories() {
+        assert_eq!(
+            classify_windows_raw_os_error(21),
+            Some(ApiErrorCode::EnvironmentError)
+        );
+        assert_eq!(
+            classify_windows_raw_os_error(225),
+            Some(ApiErrorCode::ExternalSoftwareBlocked)
+        );
+        assert_eq!(
+            classify_windows_raw_os_error(999),
+            Some(ApiErrorCode::EnvironmentError)
+        );
     }
 }

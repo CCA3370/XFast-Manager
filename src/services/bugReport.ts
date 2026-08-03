@@ -3,6 +3,7 @@ import { logError } from '@/services/logger'
 import { getItem, setItem, STORAGE_KEYS, type TrackedIssue } from '@/services/storage'
 import { buildVercelApiUrl } from '@/services/vercelApi'
 import { useIssueTrackerStore } from '@/stores/issueTracker'
+import { getErrorMessage, getErrorReportPolicy, type ErrorReportPolicy } from '@/types'
 
 export interface BugReportToast {
   success: (message: string) => void
@@ -13,6 +14,7 @@ export interface SubmitBugReportParams {
   errorTitle: string
   errorMessage: string
   category?: string
+  errorPolicy?: ErrorReportPolicy
   timeoutMs?: number
   t: (key: string, values?: Record<string, unknown>) => string
   toast: BugReportToast
@@ -91,7 +93,12 @@ async function trackReportedIssue(
 }
 
 export async function submitBugReport(params: SubmitBugReportParams): Promise<void> {
-  const { errorTitle, errorMessage, category = 'Other', timeoutMs, t, toast } = params
+  const { errorTitle, errorMessage, category = 'Other', errorPolicy, timeoutMs, t, toast } = params
+  const policy = errorPolicy ?? getErrorReportPolicy(errorMessage)
+
+  if (!policy.reportable) {
+    throw new Error('BUG_REPORT_NOT_ALLOWED')
+  }
 
   let logs: string
   try {
@@ -111,6 +118,10 @@ export async function submitBugReport(params: SubmitBugReportParams): Promise<vo
         errorMessage,
         logs,
         category,
+        errorCode: policy.code,
+        errorOrigin: policy.origin,
+        errorOperation: policy.operation,
+        reportable: policy.reportable,
       }),
       new Promise<{ issue_url: string; issue_number: number }>((_, reject) => {
         submitTimeoutId = setTimeout(() => {
@@ -122,7 +133,15 @@ export async function submitBugReport(params: SubmitBugReportParams): Promise<vo
     toast.success(t('modal.bugReportSubmitted'))
     await invoke('open_url', { url: result.issue_url })
     await trackReportedIssue(result.issue_number, fallbackTitle, result.issue_url, errorMessage)
-  } catch {
+  } catch (error) {
+    const errorMessageFromSubmit = getErrorMessage(error)
+    if (
+      errorMessageFromSubmit.includes('BUG_REPORT_NOT_ALLOWED') ||
+      errorMessageFromSubmit.includes('BUG_REPORT_DEDUP_CHECK_FAILED')
+    ) {
+      throw error
+    }
+
     try {
       await invoke('open_url', { url: fallbackUrl })
       toast.success(t('modal.bugReportOpened'))

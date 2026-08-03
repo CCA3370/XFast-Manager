@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { logger } from '@/services/logger'
-import { shouldHideBugReportForMessage } from '@/types'
+import { getErrorReportPolicy, type ErrorReportPolicy } from '@/types'
 
 /** Options for showing a confirmation modal */
 export interface ConfirmOptions {
@@ -22,6 +22,7 @@ export interface ErrorModalState {
   title: string
   message: string
   hideReport?: boolean
+  reportPolicy?: ErrorReportPolicy
 }
 
 /** State for the confirm modal */
@@ -34,18 +35,23 @@ export const useModalStore = defineStore('modal', () => {
   const errorModal = ref<ErrorModalState>({ visible: false, title: '', message: '' })
   const confirmModal = ref<ConfirmModalState>({ visible: false, options: null })
 
-  function showError(message: string, title = '', options?: { hideReport?: boolean }) {
+  function showError(error: unknown, title = '', options?: { hideReport?: boolean }) {
+    const reportPolicy = getErrorReportPolicy(error)
     // Deduplicate error messages by splitting on newlines and removing duplicates
-    const lines = message.split('\n').filter((line) => line.trim() !== '')
+    const lines = reportPolicy.message.split('\n').filter((line) => line.trim() !== '')
     const uniqueLines = Array.from(new Set(lines))
     const deduplicatedMessage = uniqueLines.join('\n')
-    const hideReport = options?.hideReport ?? shouldHideBugReportForMessage(deduplicatedMessage)
+    const hideReport = !reportPolicy.reportable || options?.hideReport === true
 
     errorModal.value = {
       visible: true,
       title,
       message: deduplicatedMessage,
       hideReport,
+      reportPolicy: {
+        ...reportPolicy,
+        message: deduplicatedMessage,
+      },
     }
     // Automatically log error modal messages
     logger.error(`[Modal] ${title ? title + ': ' : ''}${deduplicatedMessage}`, 'ui')
