@@ -39,6 +39,7 @@ fn category_to_string(category: &SceneryCategory) -> &'static str {
         SceneryCategory::FixedHighPriority => "FixedHighPriority",
         SceneryCategory::Airport => "Airport",
         SceneryCategory::DefaultAirport => "DefaultAirport",
+        SceneryCategory::RegionalOverlay => "RegionalOverlay",
         SceneryCategory::Library => "Library",
         SceneryCategory::Overlay => "Overlay",
         SceneryCategory::AirportMesh => "AirportMesh",
@@ -54,6 +55,7 @@ fn string_to_category(s: &str) -> SceneryCategory {
         "FixedHighPriority" => SceneryCategory::FixedHighPriority,
         "Airport" => SceneryCategory::Airport,
         "DefaultAirport" => SceneryCategory::DefaultAirport,
+        "RegionalOverlay" => SceneryCategory::RegionalOverlay,
         "Library" => SceneryCategory::Library,
         "Overlay" => SceneryCategory::Overlay,
         "AirportMesh" => SceneryCategory::AirportMesh,
@@ -653,7 +655,7 @@ impl SceneryQueries {
         Ok(result.rows_affected > 0)
     }
 
-    /// Batch update entries (enabled and sort_order only)
+    /// Batch update user-managed entry state.
     /// Uses transaction for optimal performance
     pub async fn batch_update_entries(
         conn: &DatabaseConnection,
@@ -663,7 +665,7 @@ impl SceneryQueries {
         let mut not_found: Vec<String> = Vec::new();
 
         for entry in entries {
-            let result = scenery_packages::Entity::update_many()
+            let mut update = scenery_packages::Entity::update_many()
                 .filter(scenery_packages::Column::FolderName.eq(&entry.folder_name))
                 .col_expr(
                     scenery_packages::Column::Enabled,
@@ -672,10 +674,15 @@ impl SceneryQueries {
                 .col_expr(
                     scenery_packages::Column::SortOrder,
                     Expr::value(entry.sort_order as i32),
-                )
-                .exec(&txn)
-                .await
-                .map_err(ApiError::from)?;
+                );
+            if let Some(category) = &entry.category {
+                update = update.col_expr(
+                    scenery_packages::Column::Category,
+                    Expr::value(category_to_string(category)),
+                );
+            }
+
+            let result = update.exec(&txn).await.map_err(ApiError::from)?;
 
             if result.rows_affected == 0 {
                 not_found.push(entry.folder_name.clone());
@@ -816,6 +823,27 @@ mod tests {
         assert_eq!(
             loaded_info.exported_library_names,
             info.exported_library_names
+        );
+
+        SceneryQueries::batch_update_entries(
+            &conn,
+            &[crate::models::SceneryEntryUpdate {
+                folder_name: "TestAirport".to_string(),
+                enabled: false,
+                sort_order: 2,
+                category: Some(SceneryCategory::RegionalOverlay),
+            }],
+        )
+        .await
+        .unwrap();
+        let updated = SceneryQueries::load_all(&conn).await.unwrap();
+        let updated_info = updated.packages.get("TestAirport").unwrap();
+        assert!(!updated_info.enabled);
+        assert_eq!(updated_info.sort_order, 2);
+        assert_eq!(updated_info.category, SceneryCategory::RegionalOverlay);
+        assert_eq!(
+            updated_info.original_category,
+            Some(SceneryCategory::Airport)
         );
     }
 }

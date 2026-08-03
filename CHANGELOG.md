@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Management State Changes** - Enabling or disabling aircraft and plugins now recovers cleanly when their files were moved, removed, or changed outside the app.
 - **Gateway Install Selection** - Gateway installations now keep the airport and submission selected at click time, prevent duplicate starts, and update the installed list immediately after success.
 - **2D Gateway Airports** - Gateway submissions containing only airport layout data can now be installed like other scenery packages.
+- **Scenery Load Order** - Auto Sort now keeps SimHeaven and X-WORLD layers below Global Airports, in numeric layer order, and above libraries, while unrecognized packages can be moved into the correct category manually.
 
 ## [1.2.5] - 2026-05-31
 

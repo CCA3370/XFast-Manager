@@ -634,6 +634,7 @@ export default {
     categoryFixedHighPriority: 'Высокий приоритет',
     categoryAirport: 'Аэропорт',
     categoryDefaultAirport: 'Аэропорт по умолчанию',
+    categoryRegionalOverlay: 'Региональный оверлей',
     categoryLibrary: 'Библиотека',
     categoryOverlay: 'Наложение',
     categoryAirportMesh: 'Меш аэропорта',

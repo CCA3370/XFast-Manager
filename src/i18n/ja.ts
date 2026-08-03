@@ -612,6 +612,7 @@ export default {
     categoryFixedHighPriority: '高優先度',
     categoryAirport: '空港',
     categoryDefaultAirport: 'デフォルトの空港',
+    categoryRegionalOverlay: 'リージョナルオーバーレイ',
     categoryLibrary: '図書館',
     categoryOverlay: 'オーバーレイ',
     categoryAirportMesh: '空港メッシュ',

@@ -621,6 +621,7 @@ export default {
     categoryFixedHighPriority: 'High Priority',
     categoryAirport: 'Airport',
     categoryDefaultAirport: 'Default Airport',
+    categoryRegionalOverlay: 'Regional Overlay',
     categoryLibrary: 'Library',
     categoryOverlay: 'Overlay',
     categoryAirportMesh: 'Airport Mesh',

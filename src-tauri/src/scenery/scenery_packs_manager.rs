@@ -21,7 +21,6 @@ const INI_HEADER: &str = "I\n1000 Version\nSCENERY\n\n";
 const GLOBAL_AIRPORTS_ENABLED_METADATA_KEY: &str = "global_airports_enabled";
 const GLOBAL_AIRPORTS_SORT_ORDER_METADATA_KEY: &str = "global_airports_sort_order";
 const GLOBAL_AIRPORTS_CATEGORY_METADATA_KEY: &str = "global_airports_category";
-const XPLANE_12_GLOBAL_AIRPORTS_PRIORITY: u8 = 5;
 
 /// Normalize a scenery path for scenery_packs.ini
 /// Converts backslashes to forward slashes and ensures trailing slash
@@ -281,7 +280,7 @@ fn entries_match_expected(
 
 fn global_airports_default_priority(is_xplane_12: bool) -> u8 {
     if is_xplane_12 {
-        XPLANE_12_GLOBAL_AIRPORTS_PRIORITY
+        SceneryCategory::RegionalOverlay.priority()
     } else {
         SceneryCategory::DefaultAirport.priority()
     }
@@ -417,6 +416,7 @@ impl SceneryPacksManager {
                     "FixedHighPriority" => SceneryCategory::FixedHighPriority,
                     "Airport" => SceneryCategory::Airport,
                     "DefaultAirport" => SceneryCategory::DefaultAirport,
+                    "RegionalOverlay" => SceneryCategory::RegionalOverlay,
                     "Library" => SceneryCategory::Library,
                     "Overlay" => SceneryCategory::Overlay,
                     "AirportMesh" => SceneryCategory::AirportMesh,
@@ -470,6 +470,7 @@ impl SceneryPacksManager {
             SceneryCategory::FixedHighPriority => "FixedHighPriority",
             SceneryCategory::Airport => "Airport",
             SceneryCategory::DefaultAirport => "DefaultAirport",
+            SceneryCategory::RegionalOverlay => "RegionalOverlay",
             SceneryCategory::Library => "Library",
             SceneryCategory::Overlay => "Overlay",
             SceneryCategory::AirportMesh => "AirportMesh",
@@ -909,9 +910,10 @@ mod tests {
             SceneryCategory::FixedHighPriority.priority() < SceneryCategory::Airport.priority()
         );
         assert!(SceneryCategory::Airport.priority() < SceneryCategory::DefaultAirport.priority());
-        assert!(SceneryCategory::DefaultAirport.priority() < SceneryCategory::Library.priority());
-        assert!(SceneryCategory::Library.priority() < SceneryCategory::Other.priority());
-        assert!(SceneryCategory::Other.priority() < SceneryCategory::Overlay.priority());
+        assert!(SceneryCategory::DefaultAirport.priority() < SceneryCategory::Other.priority());
+        assert!(SceneryCategory::Other.priority() < SceneryCategory::RegionalOverlay.priority());
+        assert!(SceneryCategory::RegionalOverlay.priority() < SceneryCategory::Library.priority());
+        assert!(SceneryCategory::Library.priority() < SceneryCategory::Overlay.priority());
         assert!(SceneryCategory::Overlay.priority() < SceneryCategory::AirportMesh.priority());
         assert!(SceneryCategory::AirportMesh.priority() < SceneryCategory::Mesh.priority());
         assert!(SceneryCategory::Mesh.priority() < SceneryCategory::Unrecognized.priority());
@@ -1007,7 +1009,7 @@ mod tests {
     }
 
     #[test]
-    fn places_global_airports_between_overlays_and_libraries_for_xplane_12() {
+    fn places_global_airports_before_regional_overlays_for_xplane_12() {
         let airport = make_package("Airport A", SceneryCategory::Airport, 0, true);
         let default_airport = make_package(
             "X-Plane Airports - EGPR Barra",
@@ -1015,14 +1017,27 @@ mod tests {
             1,
             true,
         );
-        let library = make_package("Library A", SceneryCategory::Library, 2, true);
-        let overlay = make_package("Overlay A", SceneryCategory::Overlay, 3, true);
-        let mesh = make_package("Mesh A", SceneryCategory::Mesh, 4, true);
-        let packages = vec![&airport, &default_airport, &library, &overlay, &mesh];
+        let regional_overlay = make_package(
+            "simHeaven_X-World_Europe-1-vfr",
+            SceneryCategory::RegionalOverlay,
+            2,
+            true,
+        );
+        let library = make_package("Library A", SceneryCategory::Library, 3, true);
+        let overlay = make_package("Overlay A", SceneryCategory::Overlay, 4, true);
+        let mesh = make_package("Mesh A", SceneryCategory::Mesh, 5, true);
+        let packages = vec![
+            &airport,
+            &default_airport,
+            &regional_overlay,
+            &library,
+            &overlay,
+            &mesh,
+        ];
 
         assert_eq!(
             SceneryPacksManager::default_global_airports_sort_order(&packages, true),
-            3
+            2
         );
     }
 

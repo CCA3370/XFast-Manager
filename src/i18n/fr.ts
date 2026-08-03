@@ -641,6 +641,7 @@ export default {
     categoryFixedHighPriority: 'Haute priorité',
     categoryAirport: 'Aéroport',
     categoryDefaultAirport: 'Aéroport par défaut',
+    categoryRegionalOverlay: 'Superposition régionale',
     categoryLibrary: 'Bibliothèque',
     categoryOverlay: 'Superposition',
     categoryAirportMesh: "Maille d'aéroport",

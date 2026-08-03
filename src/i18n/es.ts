@@ -633,6 +633,7 @@ export default {
     categoryFixedHighPriority: 'alta prioridad',
     categoryAirport: 'Aeropuerto',
     categoryDefaultAirport: 'Aeropuerto predeterminado',
+    categoryRegionalOverlay: 'Superposición regional',
     categoryLibrary: 'Biblioteca',
     categoryOverlay: 'Superposición',
     categoryAirportMesh: 'Malla de aeropuerto',

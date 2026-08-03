@@ -153,6 +153,7 @@ const localGroupedEntries = ref<Record<string, SceneryManagerEntry[]>>({
   FixedHighPriority: [],
   Airport: [],
   DefaultAirport: [],
+  RegionalOverlay: [],
   Library: [],
   Other: [],
   Overlay: [],
@@ -166,8 +167,9 @@ const categoryOrder = [
   'FixedHighPriority',
   'Airport',
   'DefaultAirport',
-  'Library',
   'Other',
+  'RegionalOverlay',
+  'Library',
   'Overlay',
   'AirportMesh',
   'Mesh',
@@ -1202,8 +1204,9 @@ async function handleMoveUp(folderName: string) {
     const currentEntry = entries[index]
     const targetEntry = entries[index - 1]
 
-    // Prevent moving into or out of Unrecognized
-    if (currentEntry.category === 'Unrecognized' || targetEntry.category === 'Unrecognized') return
+    // Recognized packages cannot be moved into Unrecognized, but an unrecognized
+    // package can be promoted into the category immediately above it.
+    if (currentEntry.category !== 'Unrecognized' && targetEntry.category === 'Unrecognized') return
 
     syncWarningDismissed.value = true
     if (currentEntry.category !== targetEntry.category) {
@@ -1222,8 +1225,7 @@ async function handleMoveDown(folderName: string) {
     const currentEntry = entries[index]
     const targetEntry = entries[index + 1]
 
-    // Prevent moving into or out of Unrecognized
-    if (currentEntry.category === 'Unrecognized' || targetEntry.category === 'Unrecognized') return
+    if (currentEntry.category !== 'Unrecognized' && targetEntry.category === 'Unrecognized') return
 
     syncWarningDismissed.value = true
     if (currentEntry.category !== targetEntry.category) {
@@ -3538,11 +3540,7 @@ onBeforeUnmount(() => {
               <div v-if="isGroupExpanded(category)" style="overflow: visible">
                 <draggable
                   v-model="localGroupedEntries[category]"
-                  :group="
-                    category === 'Unrecognized'
-                      ? { name: 'unrecognized', pull: false, put: false }
-                      : { name: 'scenery', pull: true, put: true }
-                  "
+                  :group="{ name: 'scenery', pull: true, put: category !== 'Unrecognized' }"
                   item-key="folderName"
                   handle=".drag-handle"
                   :animation="180"
@@ -3551,9 +3549,7 @@ onBeforeUnmount(() => {
                   :fallback-on-body="true"
                   :fallback-tolerance="5"
                   :direction="'vertical'"
-                  :disabled="
-                    scenerySelectionMode || !sceneryStore.indexExists || category === 'Unrecognized'
-                  "
+                  :disabled="scenerySelectionMode || !sceneryStore.indexExists"
                   ghost-class="drag-ghost"
                   drag-class="sortable-drag"
                   class="space-y-1.5"
@@ -3586,11 +3582,7 @@ onBeforeUnmount(() => {
                           :entry="element"
                           :index="getGlobalIndex(element.folderName)"
                           :total-count="sceneryStore.totalCount"
-                          :disable-reorder="
-                            scenerySelectionMode ||
-                            !sceneryStore.indexExists ||
-                            category === 'Unrecognized'
-                          "
+                          :disable-reorder="scenerySelectionMode || !sceneryStore.indexExists"
                           :disable-move-down="element.folderName === lastEntryBeforeUnrecognized"
                           :flatten-busy="flattenBusyFolders.has(element.folderName)"
                           :selected="selectedScenery.has(element.folderName)"

@@ -634,6 +634,7 @@ export default {
     categoryFixedHighPriority: 'Hohe Priorität',
     categoryAirport: 'Flughafen',
     categoryDefaultAirport: 'Standardflughafen',
+    categoryRegionalOverlay: 'Regionale Überlagerung',
     categoryLibrary: 'Bibliothek',
     categoryOverlay: 'Überlagerung',
     categoryAirportMesh: 'Flughafennetz',

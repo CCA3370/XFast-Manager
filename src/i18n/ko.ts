@@ -617,6 +617,7 @@ export default {
     categoryFixedHighPriority: '높은 우선순위',
     categoryAirport: '공항',
     categoryDefaultAirport: '기본 공항',
+    categoryRegionalOverlay: '지역 오버레이',
     categoryLibrary: '라이브러리',
     categoryOverlay: '오버레이',
     categoryAirportMesh: '공항 메시',

@@ -624,6 +624,7 @@ export default {
     categoryFixedHighPriority: 'उच्च प्राथमिकता',
     categoryAirport: 'हवाई अड्डा',
     categoryDefaultAirport: 'पूर्वनिर्धारित हवाई अड्डा',
+    categoryRegionalOverlay: 'क्षेत्रीय ओवरले',
     categoryLibrary: 'लाइब्रेरी',
     categoryOverlay: 'ओवरले',
     categoryAirportMesh: 'हवाई अड्डा मेश',

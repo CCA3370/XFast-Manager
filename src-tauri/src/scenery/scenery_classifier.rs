@@ -7,6 +7,7 @@ use crate::geo_regions;
 use crate::models::{
     is_global_airports_folder_name, DsfHeader, SceneryCategory, SceneryPackageInfo,
 };
+use crate::scenery_sorting::simheaven_layer_number;
 use anyhow::{anyhow, Result};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -348,6 +349,46 @@ pub fn classify_scenery(scenery_path: &Path, _xplane_path: &Path) -> Result<Scen
                 missing_libraries: Vec::new(), // missing_libraries will be filled later
                 exported_library_names,
                 airport_id: parse_airport_id(scenery_path),
+            },
+        );
+    }
+
+    if let Some(layer_number) = simheaven_layer_number(&folder_name) {
+        crate::log_debug!(
+            &format!(
+                "  ✓ Classified as RegionalOverlay (SimHeaven layer {})",
+                layer_number
+            ),
+            "scenery_classifier"
+        );
+
+        let required_libraries = dsf_header_opt
+            .as_ref()
+            .map(|header| extract_required_libraries(&header.object_references))
+            .unwrap_or_default();
+        let exported_library_names = if has_library_txt {
+            crate::scenery_index::parse_library_exports(&library_txt_path)
+                .into_iter()
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let tile_count = count_earth_nav_tile_folders(scenery_path)?;
+
+        return build_package_info(
+            folder_name,
+            SceneryCategory::RegionalOverlay,
+            scenery_path,
+            PackageInfoDetails {
+                has_apt_dat: false,
+                has_dsf: !dsf_files.is_empty(),
+                has_library_txt,
+                texture_count,
+                earth_nav_tile_count: tile_count,
+                required_libraries,
+                missing_libraries: Vec::new(),
+                exported_library_names,
+                ..Default::default()
             },
         );
     }
@@ -1515,6 +1556,7 @@ fn calculate_sub_priority(category: &SceneryCategory, folder_name: &str) -> u8 {
     let folder_name_lower = folder_name.to_lowercase();
 
     match category {
+        SceneryCategory::RegionalOverlay => simheaven_layer_number(folder_name).unwrap_or(0),
         SceneryCategory::Mesh => {
             // XPME mesh (starts with "xpme") should be at the bottom of Mesh category
             // They will be sorted alphabetically among themselves
@@ -1532,6 +1574,32 @@ fn calculate_sub_priority(category: &SceneryCategory, folder_name: &str) -> u8 {
 mod tests {
     use super::*;
     use std::fs;
+
+    fn write_minimal_dsf(path: &Path, properties: &[(&str, &str)]) {
+        let mut property_data = Vec::new();
+        for (key, value) in properties {
+            property_data.extend_from_slice(key.as_bytes());
+            property_data.push(0);
+            property_data.extend_from_slice(value.as_bytes());
+            property_data.push(0);
+        }
+
+        let mut prop_atom = Vec::new();
+        prop_atom.extend_from_slice(b"PORP");
+        prop_atom.extend_from_slice(&((property_data.len() + 8) as u32).to_le_bytes());
+        prop_atom.extend_from_slice(&property_data);
+
+        let mut head_atom = Vec::new();
+        head_atom.extend_from_slice(b"DAEH");
+        head_atom.extend_from_slice(&((prop_atom.len() + 8) as u32).to_le_bytes());
+        head_atom.extend_from_slice(&prop_atom);
+
+        let mut dsf = Vec::new();
+        dsf.extend_from_slice(b"XPLNEDSF");
+        dsf.extend_from_slice(&1u32.to_le_bytes());
+        dsf.extend_from_slice(&head_atom);
+        fs::write(path, dsf).unwrap();
+    }
 
     #[test]
     fn classify_library_with_nested_demo_airport_stays_library() {
@@ -1601,6 +1669,30 @@ mod tests {
         assert_eq!(info.category, SceneryCategory::Airport);
         assert!(info.has_apt_dat);
         assert!(info.has_library_txt);
+    }
+
+    #[test]
+    fn classify_simheaven_worldeditor_layer_as_regional_overlay() {
+        let temp = tempfile::tempdir().unwrap();
+        let scenery_path = temp.path().join("simHeaven_X-World_Europe-1-vfr");
+        let tile_path = scenery_path.join("Earth nav data").join("+40+010");
+        fs::create_dir_all(&tile_path).unwrap();
+        write_minimal_dsf(
+            &tile_path.join("+40+010.dsf"),
+            &[
+                ("sim/creation_agent", "WorldEditor 2.5"),
+                ("sim/overlay", "0"),
+            ],
+        );
+
+        let info = classify_scenery(&scenery_path, temp.path()).unwrap();
+
+        assert_eq!(info.category, SceneryCategory::RegionalOverlay);
+        assert_eq!(
+            info.original_category,
+            Some(SceneryCategory::RegionalOverlay)
+        );
+        assert_eq!(info.sub_priority, 1);
     }
 
     #[test]

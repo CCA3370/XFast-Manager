@@ -578,6 +578,7 @@ export default {
     categoryFixedHighPriority: '高优先级',
     categoryAirport: '机场',
     categoryDefaultAirport: '默认机场',
+    categoryRegionalOverlay: '区域叠加层',
     categoryLibrary: '库',
     categoryOverlay: '叠加层',
     categoryAirportMesh: '机场网格',

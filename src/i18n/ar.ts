@@ -610,6 +610,7 @@ export default {
     categoryFixedHighPriority: 'أولوية عالية',
     categoryAirport: 'مطار',
     categoryDefaultAirport: 'مطار افتراضي',
+    categoryRegionalOverlay: 'تراكب إقليمي',
     categoryLibrary: 'مكتبة',
     categoryOverlay: 'تراكب',
     categoryAirportMesh: 'شبكة تضاريس المطار',

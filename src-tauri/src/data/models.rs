@@ -392,6 +392,8 @@ pub enum SceneryCategory {
     Airport,
     /// Default X-Plane airports (*GLOBAL_AIRPORTS*)
     DefaultAirport,
+    /// Regional overlay packages with an author-defined layer order (e.g., SimHeaven X-WORLD)
+    RegionalOverlay,
     /// Library scenery (library.txt without Earth nav data)
     Library,
     /// Overlay scenery (modifies default terrain/objects)
@@ -413,12 +415,13 @@ impl SceneryCategory {
             SceneryCategory::FixedHighPriority => 0,
             SceneryCategory::Airport => 1,
             SceneryCategory::DefaultAirport => 2,
-            SceneryCategory::Library => 3,
-            SceneryCategory::Other => 4,
-            SceneryCategory::Overlay => 5,
-            SceneryCategory::AirportMesh => 6, // Between Overlay and regular Mesh
-            SceneryCategory::Mesh => 7,
-            SceneryCategory::Unrecognized => 8, // Lowest priority, always at bottom
+            SceneryCategory::Other => 3,
+            SceneryCategory::RegionalOverlay => 4,
+            SceneryCategory::Library => 5,
+            SceneryCategory::Overlay => 6,
+            SceneryCategory::AirportMesh => 7, // Between Overlay and regular Mesh
+            SceneryCategory::Mesh => 8,
+            SceneryCategory::Unrecognized => 9, // Lowest priority, always at bottom
         }
     }
 }
@@ -672,6 +675,8 @@ pub struct SceneryEntryUpdate {
     pub folder_name: String,
     pub enabled: bool,
     pub sort_order: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<SceneryCategory>,
 }
 
 /// Data for scenery manager UI
@@ -1016,9 +1021,10 @@ mod tests {
             SceneryCategory::FixedHighPriority.priority() < SceneryCategory::Airport.priority()
         );
         assert!(SceneryCategory::Airport.priority() < SceneryCategory::DefaultAirport.priority());
-        assert!(SceneryCategory::DefaultAirport.priority() < SceneryCategory::Library.priority());
-        assert!(SceneryCategory::Library.priority() < SceneryCategory::Other.priority());
-        assert!(SceneryCategory::Other.priority() < SceneryCategory::Overlay.priority());
+        assert!(SceneryCategory::DefaultAirport.priority() < SceneryCategory::Other.priority());
+        assert!(SceneryCategory::Other.priority() < SceneryCategory::RegionalOverlay.priority());
+        assert!(SceneryCategory::RegionalOverlay.priority() < SceneryCategory::Library.priority());
+        assert!(SceneryCategory::Library.priority() < SceneryCategory::Overlay.priority());
         assert!(SceneryCategory::Overlay.priority() < SceneryCategory::AirportMesh.priority());
         assert!(SceneryCategory::AirportMesh.priority() < SceneryCategory::Mesh.priority());
         assert!(SceneryCategory::Mesh.priority() < SceneryCategory::Unrecognized.priority());
@@ -1231,6 +1237,7 @@ mod tests {
             folder_name: "test_scenery".to_string(),
             enabled: false,
             sort_order: 42,
+            category: Some(SceneryCategory::RegionalOverlay),
         };
 
         let json = serde_json::to_string(&update).unwrap();
@@ -1239,5 +1246,6 @@ mod tests {
         assert_eq!(parsed.folder_name, "test_scenery");
         assert!(!parsed.enabled);
         assert_eq!(parsed.sort_order, 42);
+        assert_eq!(parsed.category, Some(SceneryCategory::RegionalOverlay));
     }
 }

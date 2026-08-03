@@ -12,6 +12,7 @@ use crate::models::{
     SceneryPackageInfo, GLOBAL_AIRPORTS_ENTRY_NAME,
 };
 use crate::scenery_classifier::classify_scenery;
+use crate::scenery_sorting::simheaven_layer_number;
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
 use sea_orm::DatabaseConnection;
@@ -267,6 +268,54 @@ fn should_promote_to_fixed_high_priority(folder_name: &str, info: &SceneryPackag
         && info.has_library_txt
         && !info.has_dsf
         && !info.has_apt_dat
+}
+
+fn has_manual_category_override(info: &SceneryPackageInfo) -> bool {
+    info.original_category.as_ref().is_some_and(|original| {
+        &info.category != original
+            && !(&info.category == &SceneryCategory::AirportMesh
+                && original == &SceneryCategory::Mesh)
+    })
+}
+
+fn preserve_user_managed_state(existing: &SceneryPackageInfo, classified: &mut SceneryPackageInfo) {
+    classified.enabled = existing.enabled;
+
+    if has_manual_category_override(existing) {
+        classified.category = existing.category.clone();
+        classified.sub_priority = existing.sub_priority;
+    }
+}
+
+fn apply_known_package_profiles(packages: &mut [SceneryPackageInfo]) -> bool {
+    let mut changed = false;
+
+    for package in packages {
+        let Some(layer_number) = simheaven_layer_number(&package.folder_name) else {
+            continue;
+        };
+
+        let has_manual_override = has_manual_category_override(package);
+        if package.original_category.as_ref() != Some(&SceneryCategory::RegionalOverlay) {
+            package.original_category = Some(SceneryCategory::RegionalOverlay);
+            changed = true;
+        }
+
+        if !has_manual_override {
+            if package.category != SceneryCategory::RegionalOverlay {
+                package.category = SceneryCategory::RegionalOverlay;
+                changed = true;
+            }
+        }
+        if package.category == SceneryCategory::RegionalOverlay
+            && package.sub_priority != layer_number
+        {
+            package.sub_priority = layer_number;
+            changed = true;
+        }
+    }
+
+    changed
 }
 
 fn read_scenery_update_info(folder_path: &Path) -> (Option<String>, Option<String>) {
@@ -529,6 +578,7 @@ fn sort_packages_with_special_rules(
     xplane_path: &Path,
     packages: &mut Vec<SceneryPackageInfo>,
 ) -> bool {
+    let known_profile_changed = apply_known_package_profiles(packages);
     let airport_mesh_matches = detect_airport_mesh_matches_with_path(xplane_path, packages);
     let category_changed = apply_airport_mesh_matches(packages, &airport_mesh_matches);
 
@@ -552,7 +602,7 @@ fn sort_packages_with_special_rules(
     apply_darkblue_airport_package_anchors(&mut fixed_packages, &airport_mesh_matches);
     *packages = fixed_packages;
 
-    category_changed
+    known_profile_changed || category_changed
 }
 
 /// Manager for scenery index operations
@@ -1055,6 +1105,9 @@ impl SceneryIndexManager {
                         // Use shortcut name and set actual_path
                         info.folder_name = shortcut_name.clone();
                         info.actual_path = Some(actual_path.clone());
+                    }
+                    if let Some(existing) = index.packages.get(&info.folder_name) {
+                        preserve_user_managed_state(existing, &mut info);
                     }
                     index.packages.insert(info.folder_name.clone(), info);
                 }
@@ -2544,6 +2597,81 @@ mod tests {
         assert_eq!(packages[1].category, SceneryCategory::Overlay);
         assert_eq!(packages[2].category, SceneryCategory::AirportMesh);
         assert_eq!(packages[4].category, SceneryCategory::AirportMesh);
+    }
+
+    #[test]
+    fn test_sort_packages_places_simheaven_layers_between_other_and_libraries() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut stale_layer = make_package(
+            "simHeaven_X-World_Europe-10-network",
+            SceneryCategory::Airport,
+            0,
+        );
+        stale_layer.original_category = Some(SceneryCategory::Airport);
+
+        let mut packages = vec![
+            make_package(
+                "simHeaven_X-World_Vegetation_Library",
+                SceneryCategory::Library,
+                0,
+            ),
+            stale_layer,
+            make_package(
+                "simHeaven_X-World_Europe-2-regions",
+                SceneryCategory::Overlay,
+                0,
+            ),
+            make_package("Library A", SceneryCategory::Library, 0),
+            make_package("Regional City Pack", SceneryCategory::Other, 0),
+            make_package("yOrtho4XP_Overlays", SceneryCategory::Overlay, 0),
+        ];
+
+        assert!(sort_packages_with_special_rules(
+            temp_dir.path(),
+            &mut packages
+        ));
+
+        let ordered_names: Vec<&str> = packages
+            .iter()
+            .map(|package| package.folder_name.as_str())
+            .collect();
+        assert_eq!(
+            ordered_names,
+            vec![
+                "Regional City Pack",
+                "simHeaven_X-World_Europe-2-regions",
+                "simHeaven_X-World_Europe-10-network",
+                "Library A",
+                "simHeaven_X-World_Vegetation_Library",
+                "yOrtho4XP_Overlays",
+            ]
+        );
+        assert_eq!(packages[1].category, SceneryCategory::RegionalOverlay);
+        assert_eq!(packages[1].sub_priority, 2);
+        assert_eq!(packages[2].category, SceneryCategory::RegionalOverlay);
+        assert_eq!(packages[2].sub_priority, 10);
+    }
+
+    #[test]
+    fn test_reclassification_preserves_manual_category_and_enabled_state() {
+        let mut existing = make_package("Unknown Pack", SceneryCategory::Library, 7);
+        existing.original_category = Some(SceneryCategory::Unrecognized);
+        existing.enabled = false;
+        existing.sub_priority = 3;
+
+        let mut classified = make_package("Unknown Pack", SceneryCategory::Unrecognized, 0);
+        classified.original_category = Some(SceneryCategory::Unrecognized);
+        classified.enabled = true;
+
+        preserve_user_managed_state(&existing, &mut classified);
+
+        assert_eq!(classified.category, SceneryCategory::Library);
+        assert_eq!(
+            classified.original_category,
+            Some(SceneryCategory::Unrecognized)
+        );
+        assert_eq!(classified.sub_priority, 3);
+        assert!(!classified.enabled);
     }
 
     #[test]

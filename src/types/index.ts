@@ -436,6 +436,7 @@ export enum SceneryCategory {
   FixedHighPriority = 'FixedHighPriority',
   Airport = 'Airport',
   DefaultAirport = 'DefaultAirport',
+  RegionalOverlay = 'RegionalOverlay',
   Library = 'Library',
   Overlay = 'Overlay',
   AirportMesh = 'AirportMesh',

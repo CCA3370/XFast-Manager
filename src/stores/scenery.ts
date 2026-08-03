@@ -286,6 +286,7 @@ export const useSceneryStore = defineStore('scenery', () => {
       FixedHighPriority: [],
       Airport: [],
       DefaultAirport: [],
+      RegionalOverlay: [],
       Library: [],
       Other: [],
       Overlay: [],
@@ -323,7 +324,11 @@ export const useSceneryStore = defineStore('scenery', () => {
     for (const curr of current) {
       const orig = originalMap.get(curr.folderName)
       if (!orig) return true
-      if (curr.enabled !== orig.enabled || curr.sortOrder !== orig.sortOrder) {
+      if (
+        curr.enabled !== orig.enabled ||
+        curr.sortOrder !== orig.sortOrder ||
+        curr.category !== orig.category
+      ) {
         return true
       }
     }
@@ -497,27 +502,7 @@ export const useSceneryStore = defineStore('scenery', () => {
     const entry = data.value.entries.find((e) => e.folderName === folderName)
     if (!entry) return
 
-    const oldCategory = entry.category
-
-    try {
-      // Update locally first for immediate UI feedback
-      entry.category = newCategory
-
-      // Update in backend
-      await invoke('update_scenery_entry', {
-        xplanePath: appStore.xplanePath,
-        folderName,
-        enabled: null,
-        sortOrder: null,
-        category: newCategory,
-      })
-    } catch (e) {
-      // Revert on error
-      entry.category = oldCategory
-      error.value = String(e)
-      logError(`Failed to update category: ${e}`, 'scenery')
-      throw e
-    }
+    entry.category = newCategory
   }
 
   // Recalculate duplicate tiles based on raw tile overlaps and current sort order.
@@ -649,6 +634,7 @@ export const useSceneryStore = defineStore('scenery', () => {
         folderName: entry.folderName,
         enabled: entry.enabled,
         sortOrder: entry.sortOrder,
+        category: entry.category,
       }))
 
       await invoke('apply_scenery_changes', {

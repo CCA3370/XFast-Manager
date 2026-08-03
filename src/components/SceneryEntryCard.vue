@@ -84,6 +84,12 @@ const categoryConfig = computed(() => {
         color: 'text-gray-600 dark:text-gray-400',
         bgColor: 'bg-gray-100 dark:bg-gray-800/50',
       }
+    case SceneryCategory.RegionalOverlay:
+      return {
+        label: t('sceneryManager.categoryRegionalOverlay'),
+        color: 'text-indigo-700 dark:text-indigo-300',
+        bgColor: 'bg-indigo-100 dark:bg-indigo-900/30',
+      }
     case SceneryCategory.Library:
       return {
         label: t('sceneryManager.categoryLibrary'),

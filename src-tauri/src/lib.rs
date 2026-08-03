@@ -87,6 +87,8 @@ mod scenery_classifier;
 mod scenery_index;
 #[path = "scenery/scenery_packs_manager.rs"]
 mod scenery_packs_manager;
+#[path = "scenery/scenery_sorting.rs"]
+mod scenery_sorting;
 
 // Services (remote/data)
 #[path = "services/library_links.rs"]
@@ -2462,12 +2464,14 @@ async fn apply_scenery_changes(
 
     let mut global_airports_enabled: Option<bool> = None;
     let mut global_airports_sort_order: Option<u32> = None;
+    let mut global_airports_category: Option<models::SceneryCategory> = None;
     let index_updates: Vec<models::SceneryEntryUpdate> = entries
         .into_iter()
         .filter_map(|entry| {
             if entry.folder_name == GLOBAL_AIRPORTS_ENTRY_NAME {
                 global_airports_enabled = Some(entry.enabled);
                 global_airports_sort_order = Some(entry.sort_order);
+                global_airports_category = entry.category;
                 None
             } else {
                 Some(entry)
@@ -2495,6 +2499,12 @@ async fn apply_scenery_changes(
             .set_global_airports_sort_order(sort_order)
             .await
             .map_err(|e| format!("Failed to update Global Airports position: {}", e))?;
+    }
+    if let Some(category) = global_airports_category {
+        packs_manager
+            .set_global_airports_category(&category)
+            .await
+            .map_err(|e| format!("Failed to update Global Airports category: {}", e))?;
     }
     packs_manager
         .apply_from_index()
@@ -3794,6 +3804,7 @@ async fn apply_preset(
                                 folder_name: entry.folder_name.clone(),
                                 enabled: desired,
                                 sort_order: entry.sort_order,
+                                category: None,
                             });
                         }
                     }
