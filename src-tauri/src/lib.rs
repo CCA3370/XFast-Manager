@@ -2091,6 +2091,7 @@ fn validate_xplane_root_path(path: &std::path::Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod launch_tests {
+    #[cfg(target_os = "windows")]
     use super::*;
 
     #[cfg(target_os = "windows")]
@@ -4204,6 +4205,7 @@ pub fn run() {
             submit_unknown_output_cleanup_item,
             // Doctor diagnostics
             doctor::doctor_scan_environment,
+            doctor::doctor_scan_xfast_health,
             doctor::doctor_navdata_status,
             // CSL management commands
             csl_index::csl_fetch_package_descriptions,

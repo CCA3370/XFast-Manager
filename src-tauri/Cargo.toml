@@ -53,6 +53,7 @@ trash = "5"
 image = { version = "0.25", default-features = true, features = ["jpeg", "png", "webp", "gif", "bmp", "tiff", "ico", "qoi", "pnm", "rayon"] }
 base64 = "0.22.1"
 plist = "1"
+sysinfo = "0.36"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

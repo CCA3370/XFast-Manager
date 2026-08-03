@@ -930,6 +930,10 @@ export interface CompetingOrganizer {
 }
 
 export interface DoctorEnvironmentReport {
+  installationId: string
+  rootExists: boolean
+  executablePresent: boolean
+  logPresent: boolean
   freeBytes: number
   totalBytes: number
   inProgramFiles: boolean
@@ -937,8 +941,40 @@ export interface DoctorEnvironmentReport {
   missingCoreDirs: string[]
   readonlyCount: number
   readonlyScanCapped: boolean
+  readonlyScanPerformed: boolean
   injectors: DetectedInjector[]
   competingOrganizers: CompetingOrganizer[]
+  system: DoctorHostSystemSnapshot
+}
+
+export interface DoctorHostSystemSnapshot {
+  os: string
+  osVersion: string | null
+  architecture: string
+  cpuModel: string | null
+  logicalCores: number
+  totalMemoryBytes: number
+  availableMemoryBytes: number
+}
+
+export interface DoctorSceneryIndexHealth {
+  indexExists: boolean
+  indexedCount: number
+  filesystemCount: number
+  missingFromIndex: string[]
+  missingFromDisk: string[]
+}
+
+export interface DoctorXfastHealthReport {
+  appDataDir: string
+  appDataWritable: boolean
+  appDataWriteError: string | null
+  appDataFreeBytes: number
+  appDataTotalBytes: number
+  databaseOk: boolean
+  databaseDetail: string | null
+  schemaCompatible: boolean
+  sceneryIndex: DoctorSceneryIndexHealth
 }
 
 export type NavdataStatus = 'expired' | 'expiring_soon' | 'ok' | 'unknown'
