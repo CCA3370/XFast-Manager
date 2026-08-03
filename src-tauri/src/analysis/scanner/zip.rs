@@ -242,6 +242,8 @@ impl Scanner {
                 marker_files.push((i, file_path, is_encrypted, "library"));
             } else if file_path.ends_with(".dsf") {
                 marker_files.push((i, file_path, is_encrypted, "dsf"));
+            } else if Self::is_apt_dat_archive_path(&file_path) {
+                marker_files.push((i, file_path, is_encrypted, "apt"));
             } else if file_path.ends_with("cycle.json") {
                 marker_files.push((i, file_path, is_encrypted, "navdata"));
             } else if file_path.ends_with(".lua") {
@@ -356,8 +358,8 @@ impl Scanner {
                 continue;
             }
 
-            // Check if .acf/.dsf is inside a plugin directory
-            if (marker_type == "acf" || marker_type == "dsf")
+            // Skip aircraft and scenery markers inside plugin directories
+            if (marker_type == "acf" || Self::is_scenery_marker_type(marker_type))
                 && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
             {
                 continue;
@@ -380,7 +382,7 @@ impl Scanner {
                     }
                 }
                 "library" => self.detect_scenery_library(&file_path, zip_path)?,
-                "dsf" => self.detect_scenery_dsf(&file_path, zip_path)?,
+                "dsf" | "apt" => self.detect_scenery_in_archive(&file_path, zip_path)?,
                 "xpl" => {
                     if read_archive_versions {
                         self.detect_plugin_in_archive(&file_path, zip_path)?
@@ -831,6 +833,8 @@ impl Scanner {
                 marker_files.push((i, file_path, "library"));
             } else if file_path.ends_with(".dsf") {
                 marker_files.push((i, file_path, "dsf"));
+            } else if Self::is_apt_dat_archive_path(&file_path) {
+                marker_files.push((i, file_path, "apt"));
             } else if file_path.ends_with("cycle.json") {
                 marker_files.push((i, file_path, "navdata"));
             } else if file_path.ends_with(".lua") {
@@ -879,8 +883,8 @@ impl Scanner {
                 continue;
             }
 
-            // Check if .acf/.dsf is inside a plugin directory
-            if (marker_type == "acf" || marker_type == "dsf")
+            // Skip aircraft and scenery markers inside plugin directories
+            if (marker_type == "acf" || Self::is_scenery_marker_type(marker_type))
                 && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
             {
                 continue;
@@ -903,7 +907,7 @@ impl Scanner {
                     }
                 }
                 "library" => self.detect_scenery_library(&file_path, parent_path)?,
-                "dsf" => self.detect_scenery_dsf(&file_path, parent_path)?,
+                "dsf" | "apt" => self.detect_scenery_in_archive(&file_path, parent_path)?,
                 "xpl" => {
                     if read_archive_versions {
                         self.detect_plugin_in_archive(&file_path, parent_path)?
@@ -1093,6 +1097,8 @@ impl Scanner {
                 marker_files.push((i, file_path, is_encrypted, "library"));
             } else if file_path.ends_with(".dsf") {
                 marker_files.push((i, file_path, is_encrypted, "dsf"));
+            } else if Self::is_apt_dat_archive_path(&file_path) {
+                marker_files.push((i, file_path, is_encrypted, "apt"));
             } else if file_path.ends_with("cycle.json") {
                 marker_files.push((i, file_path, is_encrypted, "navdata"));
             } else if file_path.ends_with(".lua") {
@@ -1189,8 +1195,8 @@ impl Scanner {
                 continue;
             }
 
-            // Check if .acf/.dsf is inside a plugin directory
-            if (marker_type == "acf" || marker_type == "dsf")
+            // Skip aircraft and scenery markers inside plugin directories
+            if (marker_type == "acf" || Self::is_scenery_marker_type(marker_type))
                 && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
             {
                 continue;
@@ -1207,7 +1213,7 @@ impl Scanner {
             let item = match marker_type {
                 "acf" => self.detect_aircraft_in_archive(&file_path, zip_path)?,
                 "library" => self.detect_scenery_library(&file_path, zip_path)?,
-                "dsf" => self.detect_scenery_dsf(&file_path, zip_path)?,
+                "dsf" | "apt" => self.detect_scenery_in_archive(&file_path, zip_path)?,
                 "xpl" => self.detect_plugin_in_archive(&file_path, zip_path)?,
                 "navdata" => {
                     // Need to read cycle.json content

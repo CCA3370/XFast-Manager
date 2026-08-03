@@ -445,6 +445,8 @@ impl Scanner {
                 marker_files.push((file_path.clone(), "library"));
             } else if file_path.ends_with(".dsf") {
                 marker_files.push((file_path.clone(), "dsf"));
+            } else if Self::is_apt_dat_archive_path(&file_path) {
+                marker_files.push((file_path.clone(), "apt"));
             } else if file_path.ends_with("cycle.json") {
                 marker_files.push((file_path.clone(), "navdata"));
             } else if file_path.ends_with(".lua") {
@@ -513,8 +515,8 @@ impl Scanner {
                 continue;
             }
 
-            // Check if .acf/.dsf is inside a plugin directory
-            if (marker_type == "acf" || marker_type == "dsf")
+            // Skip aircraft and scenery markers inside plugin directories
+            if (marker_type == "acf" || Self::is_scenery_marker_type(marker_type))
                 && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
             {
                 continue;
@@ -537,7 +539,7 @@ impl Scanner {
                     }
                 }
                 "library" => self.detect_scenery_library(&file_path, archive_path)?,
-                "dsf" => self.detect_scenery_dsf(&file_path, archive_path)?,
+                "dsf" | "apt" => self.detect_scenery_in_archive(&file_path, archive_path)?,
                 "xpl" => {
                     if read_archive_versions {
                         self.detect_plugin_in_archive(&file_path, archive_path)?

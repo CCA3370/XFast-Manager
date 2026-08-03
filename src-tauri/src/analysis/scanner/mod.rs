@@ -403,15 +403,37 @@ impl Scanner {
     #[inline]
     fn marker_type_priority(marker_type: &str) -> u8 {
         match marker_type {
-            "acf" => 0,     // Aircraft - highest priority
-            "library" => 1, // Scenery library
-            "dsf" => 2,     // Scenery DSF
-            "navdata" => 3, // Navigation data
-            "xpl" => 4,     // Plugin
-            "livery" => 5,  // Livery
-            "lua" => 6,     // Lua script - lowest priority
+            "acf" => 0,         // Aircraft - highest priority
+            "library" => 1,     // Scenery library
+            "dsf" | "apt" => 2, // Scenery content
+            "navdata" => 3,     // Navigation data
+            "xpl" => 4,         // Plugin
+            "livery" => 5,      // Livery
+            "lua" => 6,         // Lua script - lowest priority
             _ => 7,
         }
+    }
+
+    #[inline]
+    fn is_scenery_marker_type(marker_type: &str) -> bool {
+        matches!(marker_type, "dsf" | "apt")
+    }
+
+    fn is_apt_dat_archive_path(file_path: &str) -> bool {
+        let normalized = file_path.replace('\\', "/");
+        let path = Path::new(&normalized);
+        let is_apt_dat = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.eq_ignore_ascii_case("apt.dat"));
+
+        is_apt_dat
+            && path.ancestors().skip(1).any(|ancestor| {
+                ancestor
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.eq_ignore_ascii_case("Earth nav data"))
+            })
     }
 
     /// Scan a path (file or directory) and detect all addon types
@@ -628,9 +650,14 @@ impl Scanner {
                 }
 
                 let file_ext = file_path.extension().and_then(|s| s.to_str());
+                let is_scenery_marker = file_ext == Some("dsf")
+                    || file_path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.eq_ignore_ascii_case("apt.dat"));
 
-                // Skip .acf/.dsf files inside plugin directories
-                if (file_ext == Some("acf") || file_ext == Some("dsf")) && is_inside_plugin {
+                // Skip aircraft and scenery markers inside plugin directories
+                if (file_ext == Some("acf") || is_scenery_marker) && is_inside_plugin {
                     continue;
                 }
 
@@ -873,7 +900,11 @@ impl Scanner {
         }
 
         if file_path.extension().and_then(|s| s.to_str()) == Some("dsf") {
-            return self.detect_scenery_by_dsf(file_path);
+            return self.detect_scenery_by_earth_nav_data_marker(file_path);
+        }
+
+        if file_name.eq_ignore_ascii_case("apt.dat") {
+            return self.detect_scenery_by_earth_nav_data_marker(file_path);
         }
 
         Ok(None)
@@ -905,10 +936,12 @@ impl Scanner {
         }))
     }
 
-    fn detect_scenery_by_dsf(&self, file_path: &Path) -> Result<Option<DetectedItem>> {
-        // DSF structure: {Scenery}/Earth nav data/{...}/{file}.dsf
-        // Search upward for "Earth nav data" folder, then go one more level up
-        let install_dir = self.find_scenery_root_from_dsf(file_path);
+    fn detect_scenery_by_earth_nav_data_marker(
+        &self,
+        file_path: &Path,
+    ) -> Result<Option<DetectedItem>> {
+        // Scenery markers live under {Scenery}/Earth nav data/.
+        let install_dir = self.find_scenery_root_from_earth_nav_data_marker(file_path);
 
         if let Some(install_dir) = install_dir {
             let display_name = install_dir
@@ -935,13 +968,13 @@ impl Scanner {
     }
 
     /// Find scenery root by searching upward for "Earth nav data" folder
-    fn find_scenery_root_from_dsf(&self, dsf_path: &Path) -> Option<PathBuf> {
-        let mut current = dsf_path.parent()?;
+    fn find_scenery_root_from_earth_nav_data_marker(&self, marker_path: &Path) -> Option<PathBuf> {
+        let mut current = marker_path.parent()?;
 
         // Search upward for "Earth nav data" folder (max 20 levels for deeply nested structures)
         for level in 0..20 {
             if let Some(name) = current.file_name().and_then(|s| s.to_str()) {
-                if name == "Earth nav data" {
+                if name.eq_ignore_ascii_case("Earth nav data") {
                     // Found it! Go one level up to get scenery root
                     return current.parent().map(|p| p.to_path_buf());
                 }
@@ -950,7 +983,7 @@ impl Scanner {
             // Log warning if we're getting deep
             if level == 15 {
                 crate::logger::log_info(
-                    &format!("Deep directory nesting detected while searching for 'Earth nav data': {:?}", dsf_path),
+                    &format!("Deep directory nesting detected while searching for 'Earth nav data': {:?}", marker_path),
                     Some("scanner")
                 );
             }
@@ -1017,15 +1050,14 @@ impl Scanner {
         }))
     }
 
-    fn detect_scenery_dsf(
+    fn detect_scenery_in_archive(
         &self,
         file_path: &str,
         archive_path: &Path,
     ) -> Result<Option<DetectedItem>> {
         let path = PathBuf::from(file_path);
 
-        // DSF structure: {Scenery}/Earth nav data/{...}/{file}.dsf
-        // Search upward for "Earth nav data" folder, then go one more level up
+        // DSF and apt.dat markers both identify the parent scenery package.
         let scenery_root = self.find_scenery_root_from_archive_path(&path);
 
         let (display_name, internal_root) = if let Some(root) = scenery_root {
@@ -1069,13 +1101,13 @@ impl Scanner {
     }
 
     /// Find scenery root from archive path by searching for "Earth nav data"
-    fn find_scenery_root_from_archive_path(&self, dsf_path: &Path) -> Option<PathBuf> {
-        let mut current = dsf_path.parent()?;
+    fn find_scenery_root_from_archive_path(&self, marker_path: &Path) -> Option<PathBuf> {
+        let mut current = marker_path.parent()?;
 
         // Search upward for "Earth nav data" folder (max 20 levels for deeply nested structures)
         for level in 0..20 {
             if let Some(name) = current.file_name().and_then(|s| s.to_str()) {
-                if name == "Earth nav data" {
+                if name.eq_ignore_ascii_case("Earth nav data") {
                     // Found it! Go one level up to get scenery root
                     return current.parent().map(|p| p.to_path_buf());
                 }
@@ -1084,7 +1116,7 @@ impl Scanner {
             // Log warning if we're getting deep
             if level == 15 {
                 crate::logger::log_info(
-                    &format!("Deep directory nesting in archive while searching for 'Earth nav data': {:?}", dsf_path),
+                    &format!("Deep directory nesting in archive while searching for 'Earth nav data': {:?}", marker_path),
                     Some("scanner")
                 );
             }
@@ -2511,8 +2543,10 @@ mod tests {
         Scanner, VersionFileReadPlan,
     };
     use std::fs;
-    use std::io::Write;
+    use std::io::{Cursor, Write};
     use tempfile::tempdir;
+
+    const APT_DAT_FIXTURE: &[u8] = b"I\n1100 Generated by WorldEditor\n\n1 14 1 0 NTTH Huahine\n";
 
     #[test]
     fn nested_archive_display_name_preserves_detected_name() {
@@ -2659,5 +2693,88 @@ mod tests {
             .expect("lua script should be detected");
 
         assert_eq!(lua.companion_paths, vec!["SimLoadManager".to_string()]);
+    }
+
+    #[test]
+    fn directory_scan_detects_apt_only_scenery() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let scenery_root = temp.path().join("NTTH_Scenery_Pack");
+        let earth_nav_data = scenery_root.join("Earth nav data");
+        fs::create_dir_all(&earth_nav_data).expect("failed to create Earth nav data");
+        fs::write(earth_nav_data.join("apt.dat"), APT_DAT_FIXTURE)
+            .expect("failed to write apt.dat");
+
+        let scanner = Scanner::new();
+        let items = scanner
+            .scan_path(&scenery_root, None)
+            .expect("directory scan should succeed");
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].addon_type, AddonType::Scenery);
+        assert_eq!(items[0].display_name, "NTTH_Scenery_Pack");
+        assert_eq!(items[0].path, scenery_root.to_string_lossy());
+    }
+
+    #[test]
+    fn nested_zip_scan_detects_gateway_apt_only_scenery_pack() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let outer_zip_path = temp.path().join("gateway_ntth.zip");
+
+        let inner_bytes = {
+            let cursor = Cursor::new(Vec::new());
+            let mut writer = zip::ZipWriter::new(cursor);
+            let options = zip::write::FileOptions::<()>::default();
+            writer
+                .start_file("NTTH_Scenery_Pack/Earth nav data/apt.dat", options)
+                .expect("failed to add nested apt.dat");
+            writer
+                .write_all(APT_DAT_FIXTURE)
+                .expect("failed to write nested apt.dat");
+            writer
+                .finish()
+                .expect("failed to finish inner zip")
+                .into_inner()
+        };
+
+        {
+            let file = fs::File::create(&outer_zip_path).expect("failed to create outer zip");
+            let mut writer = zip::ZipWriter::new(file);
+            let options = zip::write::FileOptions::<()>::default();
+            writer
+                .start_file("NTTH.dat", options)
+                .expect("failed to add Gateway apt source");
+            writer
+                .write_all(APT_DAT_FIXTURE)
+                .expect("failed to write Gateway apt source");
+            writer
+                .start_file("NTTH_Scenery_Pack.zip", options)
+                .expect("failed to add nested scenery zip");
+            writer
+                .write_all(&inner_bytes)
+                .expect("failed to write nested scenery zip");
+            writer.finish().expect("failed to finish outer zip");
+        }
+
+        let scanner = Scanner::new();
+        let items = scanner
+            .scan_path(&outer_zip_path, None)
+            .expect("Gateway-style nested ZIP scan should succeed");
+        let scenery = items
+            .iter()
+            .find(|item| item.addon_type == AddonType::Scenery)
+            .expect("apt-only scenery should be detected");
+
+        assert_eq!(scenery.display_name, "NTTH_Scenery_Pack");
+        assert!(scenery.archive_internal_root.is_none());
+        let chain = scenery
+            .extraction_chain
+            .as_ref()
+            .expect("nested scenery should retain its extraction chain");
+        assert_eq!(chain.archives.len(), 1);
+        assert_eq!(chain.archives[0].internal_path, "NTTH_Scenery_Pack.zip");
+        assert_eq!(
+            chain.final_internal_root.as_deref(),
+            Some("NTTH_Scenery_Pack")
+        );
     }
 }
