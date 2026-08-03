@@ -93,7 +93,8 @@ export function sortDoctorChecks(checks: DoctorCheckResult[]): DoctorCheckResult
 }
 
 export function normalizeDoctorHistoryPath(path: string): string {
-  return path.trim().replace(/\\/g, '/').replace(/\/+$/, '')
+  const normalized = path.trim().replace(/\\/g, '/').replace(/\/+$/, '')
+  return /^[A-Za-z]:\//.test(normalized) ? normalized.toLocaleLowerCase('en-US') : normalized
 }
 
 export function emptyDoctorHistory(): DoctorHistoryFile {

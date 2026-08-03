@@ -1,4 +1,5 @@
 import type { LocaleSchema } from './schema'
+import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
   common: {
@@ -1984,6 +1985,7 @@ export default {
     noPackages: 'ALTITUDE 패키지를 찾지 못했습니다. 새로 고침을 클릭하여 다시 스캔하세요.',
   },
   doctor: {
+    center: doctorCenterMessages.ko,
     navTitle: '상태',
     title: 'X-Plane 상태 점검',
     subtitle: 'X-Plane 설치에 대한 종합 진단',

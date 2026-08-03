@@ -1,4 +1,5 @@
 import type { LocaleSchema } from './schema'
+import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
   common: {
@@ -2008,6 +2009,7 @@ export default {
     noPackages: 'कोई ALTITUDE पैकेज नहीं मिला। स्कैन करने के लिए ताज़ा करें पर क्लिक करें।',
   },
   doctor: {
+    center: doctorCenterMessages.hi,
     navTitle: 'स्वास्थ्य',
     title: 'X-Plane स्वास्थ्य जाँच',
     subtitle: 'आपके X-Plane इंस्टॉलेशन के लिए व्यापक डायग्नोस्टिक्स',

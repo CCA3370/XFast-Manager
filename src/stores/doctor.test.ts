@@ -20,6 +20,15 @@ const locks = vi.hoisted(() => ({
 vi.mock('@tauri-apps/api/core', () => ({ invoke: tauri.invoke }))
 vi.mock('@/services/doctorHistory', () => history)
 vi.mock('@/services/logger', () => ({ logError: vi.fn() }))
+vi.mock('@/services/storage', () => ({
+  getItem: vi.fn(async () => null),
+  setItem: vi.fn(async () => {}),
+  STORAGE_KEYS: {
+    CSL_CUSTOM_PATHS: 'cslCustomPaths',
+    CSL_INSTALL_LOCATION: 'cslInstallLocation',
+    CSL_ACTIVE_SERVER_BASE_URL: 'cslActiveServerBaseUrl',
+  },
+}))
 vi.mock('./lock', () => ({ useLockStore: () => locks }))
 
 import { useAppStore } from './app'
@@ -120,6 +129,20 @@ async function healthyResponse(command: string): Promise<unknown> {
       }
     case 'get_activity_log':
       return { entries: [], totalCount: 0 }
+    case 'scan_output_cleanup_items':
+      return { totalBytes: 0, totalFiles: 0 }
+    case 'get_platform':
+      return 'linux'
+    case 'scan_aircraft':
+    case 'scan_plugins':
+      return { entries: [] }
+    case 'gateway_list_installed':
+      return []
+    case 'check_for_updates':
+      return { isUpdateAvailable: false, latestVersion: '1.2.5' }
+    case 'csl_scan_packages':
+    case 'altitude_scan_packages':
+      return { packages: [], paths: [], server_version: '', index_warning: null }
     case 'quick_scan_scenery_index':
       return { indexExists: true, added: [], removed: [], updated: [] }
     default:
@@ -151,6 +174,11 @@ describe('Health diagnostic store', () => {
     expect(store.currentRun?.summary.coveragePercent).toBe(100)
     expect(store.currentRun?.summary.unavailable).toBe(0)
     expect(history.saveDoctorRun).toHaveBeenCalledOnce()
+
+    const runId = store.currentRun?.id
+    await store.loadHistory()
+    expect(store.currentRun?.id).toBe(runId)
+    expect(store.currentRunIsLive).toBe(true)
   })
 
   it('marks a failed probe unavailable instead of reporting an all-clear result', async () => {
@@ -169,6 +197,24 @@ describe('Health diagnostic store', () => {
     )
     expect(store.currentRun?.summary.completeness).toBe('partial')
     expect(store.currentRun?.summary.coveragePercent).toBeLessThan(100)
+  })
+
+  it('runs the full local and network inventory with complete coverage', async () => {
+    const store = useDoctorStore()
+
+    await store.runDiagnostics('full')
+
+    expect(store.currentRun?.mode).toBe('full')
+    expect(store.currentRun?.summary.completeness).toBe('complete')
+    expect(store.currentRun?.summary.unavailable).toBe(0)
+    expect(store.currentRun?.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'addons.inventory', outcome: 'pass' }),
+        expect.objectContaining({ id: 'storage.cleanable', outcome: 'pass' }),
+        expect.objectContaining({ id: 'updates.app', outcome: 'pass' }),
+        expect.objectContaining({ id: 'updates.csl', outcome: 'pass' }),
+      ]),
+    )
   })
 
   it('cancels pending work and does not save an incomplete run to history', async () => {

@@ -1,3 +1,5 @@
+import { doctorCenterMessages } from './doctorCenter.ts'
+
 export default {
   common: {
     home: 'Install',
@@ -2002,6 +2004,7 @@ export default {
     noPackages: 'No ALTITUDE packages found. Click Refresh to scan.',
   },
   doctor: {
+    center: doctorCenterMessages.en,
     navTitle: 'Health',
     title: 'X-Plane Health Check',
     subtitle: 'Comprehensive diagnostics for your X-Plane installation',

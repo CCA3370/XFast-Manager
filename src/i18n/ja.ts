@@ -1,4 +1,5 @@
 import type { LocaleSchema } from './schema'
+import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
   common: {
@@ -2008,6 +2009,7 @@ export default {
     noPackages: 'ALTITUDE パッケージが見つかりません。 「更新」をクリックしてスキャンします。',
   },
   doctor: {
+    center: doctorCenterMessages.ja,
     navTitle: 'ヘルス',
     title: 'X-Plane ヘルスチェック',
     subtitle: 'X-Plane インストール環境を総合的に診断します',

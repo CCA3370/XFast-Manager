@@ -97,4 +97,11 @@ describe('doctor history', () => {
     expect(isDoctorRunStale(item, 1_000 + 24 * 60 * 60 * 1000 - 1)).toBe(false)
     expect(isDoctorRunStale(item, 1_000 + 24 * 60 * 60 * 1000)).toBe(true)
   })
+
+  it('matches Windows installation paths regardless of slash style and case', () => {
+    let history = emptyDoctorHistory()
+    history = addDoctorHistoryRun(history, 'C:\\X-Plane 12\\', run('run-1'))
+
+    expect(getDoctorHistoryForPath(history, 'c:/x-plane 12')).toHaveLength(1)
+  })
 })

@@ -1,4 +1,5 @@
 import type { LocaleSchema } from './schema'
+import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
   common: {
@@ -1912,6 +1913,7 @@ export default {
     noPackages: '未找到 ALTITUDE 包。点击刷新进行扫描。',
   },
   doctor: {
+    center: doctorCenterMessages.zh,
     navTitle: '健康检查',
     title: 'X-Plane 健康检查',
     subtitle: '对您的 X-Plane 安装进行全面诊断',

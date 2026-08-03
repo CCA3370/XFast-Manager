@@ -1,4 +1,5 @@
 import type { LocaleSchema } from './schema'
+import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
   common: {
@@ -1973,6 +1974,7 @@ export default {
     noPackages: 'لم يتم العثور على حزم ALTITUDE. انقر على تحديث لإعادة الفحص.',
   },
   doctor: {
+    center: doctorCenterMessages.ar,
     navTitle: 'الصحة',
     title: 'فحص صحة X-Plane',
     subtitle: 'تشخيص شامل لتثبيت X-Plane لديك',

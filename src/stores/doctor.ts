@@ -245,6 +245,8 @@ export const useDoctorStore = defineStore('doctor', () => {
   const repairingAll = ref(false)
   const hasAutoRunThisSession = ref(false)
   const appDataPath = ref<string | null>(null)
+  const currentRunIsLive = ref(false)
+  const currentRunPath = ref<string | null>(null)
 
   let activeRunToken = 0
   let cancelRequested = false
@@ -270,10 +272,11 @@ export const useDoctorStore = defineStore('doctor', () => {
   const isDisplayingCurrentRun = computed(() =>
     Boolean(currentRun.value && displayedRun.value?.id === currentRun.value.id),
   )
-  const isStale = computed(() => isDoctorRunStale(history.value[0] ?? currentRun.value))
-  const lastCompletedRun = computed(
-    () => history.value[0] ?? (currentRun.value?.state === 'completed' ? currentRun.value : null),
-  )
+  const lastCompletedRun = computed(() => {
+    if (currentRunIsLive.value && currentRun.value?.state !== 'running') return currentRun.value
+    return history.value[0] ?? null
+  })
+  const isStale = computed(() => isDoctorRunStale(lastCompletedRun.value))
 
   // Compatibility projections for the pre-redesign view.
   const findings = computed(() =>
@@ -344,6 +347,8 @@ export const useDoctorStore = defineStore('doctor', () => {
     fixingId.value = null
     repairingAll.value = false
     appDataPath.value = null
+    currentRunIsLive.value = false
+    currentRunPath.value = null
     lastContext = null
   }
 
@@ -352,12 +357,23 @@ export const useDoctorStore = defineStore('doctor', () => {
     selectedRunId.value = null
     if (!xplanePath) {
       history.value = []
-      if (!isRunning.value) currentRun.value = null
+      if (!isRunning.value) {
+        currentRun.value = null
+        currentRunPath.value = null
+      }
       return
     }
     try {
       history.value = await loadDoctorRunsForPath(xplanePath)
-      if (!currentRun.value && history.value[0]) currentRun.value = history.value[0]
+      const preserveLiveResult =
+        currentRunIsLive.value && currentRunPath.value === xplanePath && Boolean(currentRun.value)
+      if (!isRunning.value && !preserveLiveResult) {
+        currentRun.value = history.value[0] ?? null
+        currentRunIsLive.value = false
+        currentRunPath.value = xplanePath
+        lastContext = null
+        appDataPath.value = null
+      }
     } catch (reason) {
       logError(`Health: history load failed: ${reason}`, 'doctor')
       history.value = []
@@ -505,6 +521,8 @@ export const useDoctorStore = defineStore('doctor', () => {
       summary: summarizeDoctorRun([], 'running'),
       system: null,
     }
+    currentRunIsLive.value = true
+    currentRunPath.value = xplanePath
 
     try {
       const valid = await invoke<boolean>('validate_xplane_path', { path: xplanePath })
@@ -683,7 +701,14 @@ export const useDoctorStore = defineStore('doctor', () => {
 
   async function applyRemediation(check: DoctorCheckResult, recheck = true): Promise<boolean> {
     const remediation = check.remediation
-    if (!remediation || remediation.kind !== 'automatic' || !appStore.xplanePath) return false
+    if (
+      !currentRunIsLive.value ||
+      !remediation ||
+      remediation.kind !== 'automatic' ||
+      !appStore.xplanePath
+    ) {
+      return false
+    }
     if (!(await ensureFilesystemFixIsSafe(remediation))) return false
 
     fixingId.value = check.id
@@ -703,14 +728,20 @@ export const useDoctorStore = defineStore('doctor', () => {
   }
 
   async function applyAllSafeFixes(): Promise<DoctorBatchFixResult> {
-    if (repairingAll.value || !isDisplayingCurrentRun.value) return { applied: 0, failed: 0 }
+    if (repairingAll.value || !isDisplayingCurrentRun.value || !currentRunIsLive.value) {
+      return { applied: 0, failed: 0 }
+    }
     const checks = (currentRun.value?.checks ?? []).filter(
       (check) => check.remediation?.kind === 'automatic' && check.remediation.risk === 'safe',
     )
     if (!checks.length) return { applied: 0, failed: 0 }
 
-    const firstRemediation = checks[0]?.remediation
-    if (firstRemediation && !(await ensureFilesystemFixIsSafe(firstRemediation))) {
+    const filesystemRemediation = checks
+      .map((check) => check.remediation)
+      .find((remediation): remediation is DoctorRemediation =>
+        Boolean(remediation && FILESYSTEM_REMEDIATIONS.has(remediation.id)),
+      )
+    if (filesystemRemediation && !(await ensureFilesystemFixIsSafe(filesystemRemediation))) {
       return { applied: 0, failed: checks.length }
     }
 
@@ -780,6 +811,7 @@ export const useDoctorStore = defineStore('doctor', () => {
     repairingAll,
     hasAutoRunThisSession,
     appDataPath,
+    currentRunIsLive,
     isRunning,
     isDisplayingCurrentRun,
     isStale,

@@ -1,4 +1,5 @@
 import type { LocaleSchema } from './schema'
+import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
   common: {
@@ -2031,6 +2032,7 @@ export default {
     noPackages: 'Пакеты ALTITUDE не найдены. Нажмите «Обновить», чтобы выполнить сканирование.',
   },
   doctor: {
+    center: doctorCenterMessages.ru,
     navTitle: 'Состояние',
     title: 'Проверка состояния X-Plane',
     subtitle: 'Комплексная диагностика вашей установки X-Plane',

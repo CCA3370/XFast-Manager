@@ -97,6 +97,14 @@
                         ></path>
                       </svg>
                       <AnimatedText>{{ item.label }}</AnimatedText>
+                      <span
+                        v-if="item.id === 'doctor' && doctorNavBadge"
+                        class="min-w-4 rounded-full px-1 py-0.5 text-center text-[9px] font-bold leading-none"
+                        :class="doctorNavBadge.className"
+                        :title="doctorNavBadge.label"
+                      >
+                        {{ doctorNavBadge.text }}
+                      </span>
                     </span>
                   </router-link>
                 </template>
@@ -331,6 +339,14 @@
                     ></path>
                   </svg>
                   <AnimatedText>{{ item.label }}</AnimatedText>
+                  <span
+                    v-if="item.id === 'doctor' && doctorNavBadge"
+                    class="min-w-4 rounded-full px-1 py-0.5 text-center text-[9px] font-bold leading-none"
+                    :class="doctorNavBadge.className"
+                    :title="doctorNavBadge.label"
+                  >
+                    {{ doctorNavBadge.text }}
+                  </span>
                 </span>
               </router-link>
             </template>
@@ -357,6 +373,13 @@
                     ></path>
                   </svg>
                   <span>{{ item.label }}</span>
+                  <span
+                    v-if="item.id === 'doctor' && doctorNavBadge"
+                    class="min-w-4 rounded-full px-1 py-0.5 text-center text-[9px] font-bold leading-none"
+                    :class="doctorNavBadge.className"
+                  >
+                    {{ doctorNavBadge.text }}
+                  </span>
                 </span>
               </div>
             </div>
@@ -438,6 +461,7 @@ import { useFeedbackStore } from '@/stores/feedback'
 import { useManagementStore } from '@/stores/management'
 import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import { useCslStore } from '@/stores/csl'
+import { useDoctorStore } from '@/stores/doctor'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -468,6 +492,7 @@ const feedbackStore = useFeedbackStore()
 const managementStore = useManagementStore()
 const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
 const cslStore = useCslStore()
+const doctorStore = useDoctorStore()
 const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
@@ -585,6 +610,53 @@ const moreNavLabel = computed(() =>
 const primaryVisibleNavIdSet = computed(() => new Set(primaryVisibleNavIds.value))
 const overflowNavIdSet = computed(() => new Set(overflowNavIds.value))
 const hasOverflowNav = computed(() => overflowNavIds.value.length > 0)
+const doctorNavBadge = computed(() => {
+  if (doctorStore.isRunning) {
+    return {
+      text: '…',
+      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200',
+      label: t('doctor.running'),
+    }
+  }
+  const run = doctorStore.lastCompletedRun
+  if (!run) return null
+  if (run.summary.critical > 0) {
+    return {
+      text: String(run.summary.critical),
+      className: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200',
+      label: t('doctor.center.status.critical'),
+    }
+  }
+  if (run.summary.warning > 0) {
+    return {
+      text: String(run.summary.warning),
+      className: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200',
+      label: t('doctor.center.status.attention'),
+    }
+  }
+  if (run.summary.completeness !== 'complete') {
+    return {
+      text: '!',
+      className: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-100',
+      label: t('doctor.center.status.incomplete'),
+    }
+  }
+  if (doctorStore.isStale) {
+    return {
+      text: '•',
+      className: 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-200',
+      label: t('doctor.center.status.stale'),
+    }
+  }
+  if (run.summary.info > 0) {
+    return {
+      text: String(run.summary.info),
+      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200',
+      label: t('doctor.center.status.informational'),
+    }
+  }
+  return null
+})
 const navItemsById = computed<Record<NavId, NavItem>>(() => ({
   home: {
     id: 'home',
@@ -937,7 +1009,20 @@ watch(
 )
 
 watch(
-  [() => route.fullPath, () => locale.value, () => navExpanded.value],
+  () => store.xplanePath,
+  () => {
+    void doctorStore.loadHistory()
+  },
+  { immediate: true },
+)
+
+watch(
+  [
+    () => route.fullPath,
+    () => locale.value,
+    () => navExpanded.value,
+    () => doctorNavBadge.value?.text,
+  ],
   () => {
     schedulePrimaryNavLayout()
     scheduleOverflowNavHeightUpdate()
