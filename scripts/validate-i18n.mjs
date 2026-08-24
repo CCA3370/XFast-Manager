@@ -76,9 +76,7 @@ function isSuspiciousUntranslated(locale, key, baseValue, localeValue) {
     /^ILS$/i,
     /^VATSIM$/i,
     /^Lua$/i,
-    /^SimBrief$/i,
     /^Navigraph$/i,
-    /^OpenStreetMap$/i,
   ]
 
   if (ignoredValues.some((pattern) => pattern.test(localeValue.trim()))) {
@@ -113,7 +111,7 @@ function detectPartialTranslation(locale, key, baseValue, localeValue) {
   // Strip placeholders and known brand names before checking
   const cleaned = localeValue
     .replace(/\{[^}]+\}/g, '')
-    .replace(/X-Plane|XFast Manager|SimBrief|Navigraph|OpenStreetMap|FlyWithLua|XPRealistic|FMOD/g, '')
+    .replace(/X-Plane|XFast Manager|Navigraph|FlyWithLua|XPRealistic|FMOD/g, '')
     .replace(/ICAO|IATA|VATSIM|IVAO|METAR|TAF|NOTAM/g, '')
     .replace(/VOR|NDB|DME|RNAV|RNP|ILS|SID|STAR/g, '')
     .replace(/CSL|OBJ8|SDK|API|CPU|GPU|DMP|ZIP|RAR/g, '')
