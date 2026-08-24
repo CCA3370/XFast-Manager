@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   AircraftInfo,
+  AddonUpdatableItemType,
   CslScanResult,
   DoctorEnvironmentReport,
   DoctorNavdataReport,
@@ -17,6 +18,11 @@ import type {
   DoctorSystemSnapshot,
 } from '@/types/doctor'
 import { getItem, STORAGE_KEYS } from '@/services/storage'
+import {
+  hasAddonUpdateBetaPreference,
+  normalizeAddonUpdateItemBetaPreferences,
+  type AddonUpdateItemBetaPreferences,
+} from '@/utils/addonUpdatePreferences'
 
 const LOW_DISK_WARNING_BYTES = 10 * 1024 * 1024 * 1024
 const LOW_DISK_CRITICAL_BYTES = 1024 * 1024 * 1024
@@ -118,6 +124,16 @@ function formatBytes(bytes: number): string {
 
 function detectBeta(raw: string | null): boolean {
   return Boolean(raw && /(-b\d|beta|-d\d|\bdev\b|alpha|-rc)/i.test(raw))
+}
+
+function betaFoldersFor(
+  preferences: AddonUpdateItemBetaPreferences,
+  itemType: AddonUpdatableItemType,
+  items: Array<{ folderName: string }>,
+): string[] {
+  return items
+    .filter((item) => hasAddonUpdateBetaPreference(preferences, itemType, item.folderName))
+    .map((item) => item.folderName)
 }
 
 function logSection(category: string): DoctorSection {
@@ -754,7 +770,7 @@ function createAddonCheck(context: DoctorCheckContext): DoctorCheckDefinition {
                 id: 'manage_plugins',
                 kind: 'navigate',
                 risk: 'safe',
-                route: '/management?tab=plugins',
+                route: '/management?tab=plugin',
               }
             : undefined,
         }),
@@ -773,6 +789,9 @@ function createAddonUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinit
     async run() {
       let total = 0
       const details: string[] = []
+      const betaPreferences = normalizeAddonUpdateItemBetaPreferences(
+        await getItem<unknown>(STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES),
+      )
 
       const aircraft = await invoke<{ entries: AircraftInfo[] }>('scan_aircraft', {
         xplanePath: context.xplanePath,
@@ -782,7 +801,7 @@ function createAddonUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinit
         const checked = await invoke<AircraftInfo[]>('check_aircraft_updates', {
           xplanePath: context.xplanePath,
           aircraft: aircraftCandidates,
-          betaFolders: [],
+          betaFolders: betaFoldersFor(betaPreferences, 'aircraft', aircraftCandidates),
         })
         const count = checked.filter((item) => item.hasUpdate).length
         total += count
@@ -797,7 +816,7 @@ function createAddonUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinit
         const checked = await invoke<PluginInfo[]>('check_plugins_updates', {
           xplanePath: context.xplanePath,
           plugins: pluginCandidates,
-          betaFolders: [],
+          betaFolders: betaFoldersFor(betaPreferences, 'plugin', pluginCandidates),
         })
         const count = checked.filter((item) => item.hasUpdate).length
         total += count
@@ -812,7 +831,7 @@ function createAddonUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinit
         const checked = await invoke<SceneryManagerEntry[]>('check_scenery_updates', {
           xplanePath: context.xplanePath,
           scenery: sceneryCandidates,
-          betaFolders: [],
+          betaFolders: betaFoldersFor(betaPreferences, 'scenery', sceneryCandidates),
         })
         const count = checked.filter((item) => item.hasUpdate).length
         total += count
@@ -868,15 +887,21 @@ function createAppUpdateCheck(): DoctorCheckDefinition {
     modes: ['full'],
     timeoutMs: 20_000,
     async run() {
+      const includePreRelease = (await getItem<boolean>(STORAGE_KEYS.INCLUDE_PRE_RELEASE)) === true
       const update = await invoke<{ isUpdateAvailable: boolean; latestVersion: string }>(
         'check_for_updates',
-        { manual: false, includePreRelease: false },
+        { manual: false, includePreRelease },
       )
       return [
         result('updates.app', 'updates', update.isUpdateAvailable ? 'info' : 'pass', {
           params: { version: update.latestVersion },
           remediation: update.isUpdateAvailable
-            ? { id: 'open_app_update', kind: 'guide', risk: 'safe' }
+            ? {
+                id: 'open_app_update',
+                kind: 'navigate',
+                risk: 'safe',
+                route: '/settings',
+              }
             : undefined,
         }),
       ]

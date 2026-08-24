@@ -26,6 +26,12 @@ import { getNavdataCycleStatus } from '@/utils/airac'
 import { logError } from '@/services/logger'
 import { validateXPlanePath } from '@/utils/validation'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
+import {
+  addonUpdateItemKey,
+  hasAddonUpdateBetaPreference,
+  normalizeAddonUpdateItemBetaPreferences,
+  type AddonUpdateItemBetaPreferences,
+} from '@/utils/addonUpdatePreferences'
 
 // Cache duration: 1 hour in milliseconds
 const UPDATE_CACHE_DURATION = 60 * 60 * 1000
@@ -75,8 +81,6 @@ interface BatchDeleteResult {
   failed: BatchDeleteFailure[]
 }
 
-type AddonUpdateItemBetaPreferences = Record<string, boolean>
-
 // Update cache: key is updateUrl, value is cache entry
 const updateCache = new Map<string, UpdateCacheEntry>()
 
@@ -116,22 +120,6 @@ function getUpdateCacheKey(
 
   const channel = provider === 'skunkcrafts' && useBeta ? 'beta' : 'stable'
   return `${provider}:${channel}:${updateUrl}`
-}
-
-function addonUpdateItemKey(itemType: AddonUpdatableItemType, folderName: string): string {
-  return `${itemType}:${folderName}`
-}
-
-function normalizeAddonUpdateItemBetaPreferences(value: unknown): AddonUpdateItemBetaPreferences {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {}
-  }
-
-  return Object.fromEntries(
-    Object.entries(value).filter(
-      ([key, enabled]) => typeof key === 'string' && typeof enabled === 'boolean' && enabled,
-    ),
-  )
 }
 
 // Evict expired entries and oldest entries if cache is too large
@@ -326,7 +314,7 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   function isAddonUpdateBetaEnabled(itemType: AddonUpdatableItemType, folderName: string): boolean {
-    return !!addonUpdateItemBetaPreferences.value[addonUpdateItemKey(itemType, folderName)]
+    return hasAddonUpdateBetaPreference(addonUpdateItemBetaPreferences.value, itemType, folderName)
   }
 
   async function setAddonUpdateItemBetaPreference(

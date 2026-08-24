@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DoctorEnvironmentReport, DoctorXfastHealthReport } from '@/types'
+import type { DoctorRun } from '@/types/doctor'
 
 const tauri = vi.hoisted(() => ({
   invoke: vi.fn<(command: string, args?: Record<string, unknown>) => Promise<unknown>>(),
@@ -17,13 +18,20 @@ const locks = vi.hoisted(() => ({
   getLockedItems: vi.fn(() => ['Locked Scenery']),
 }))
 
+const storage = vi.hoisted(() => ({
+  getItem: vi.fn<(key: string) => Promise<unknown>>(async () => null),
+  setItem: vi.fn(async () => {}),
+}))
+
 vi.mock('@tauri-apps/api/core', () => ({ invoke: tauri.invoke }))
 vi.mock('@/services/doctorHistory', () => history)
 vi.mock('@/services/logger', () => ({ logError: vi.fn() }))
 vi.mock('@/services/storage', () => ({
-  getItem: vi.fn(async () => null),
-  setItem: vi.fn(async () => {}),
+  getItem: storage.getItem,
+  setItem: storage.setItem,
   STORAGE_KEYS: {
+    INCLUDE_PRE_RELEASE: 'includePreRelease',
+    ADDON_UPDATE_ITEM_BETA_PREFERENCES: 'addonUpdateItemBetaPreferences',
     CSL_CUSTOM_PATHS: 'cslCustomPaths',
     CSL_INSTALL_LOCATION: 'cslInstallLocation',
     CSL_ACTIVE_SERVER_BASE_URL: 'cslActiveServerBaseUrl',
@@ -33,6 +41,47 @@ vi.mock('./lock', () => ({ useLockStore: () => locks }))
 
 import { useAppStore } from './app'
 import { useDoctorStore } from './doctor'
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+function historyRun(id: string, installationId: string): DoctorRun {
+  return {
+    schemaVersion: 1,
+    id,
+    installationId,
+    mode: 'quick',
+    state: 'completed',
+    startedAt: 1,
+    completedAt: 2,
+    durationMs: 1,
+    appVersion: '1.2.5',
+    checks: [],
+    summary: {
+      severity: 'ok',
+      completeness: 'complete',
+      total: 0,
+      eligible: 0,
+      covered: 0,
+      coveragePercent: 100,
+      pass: 0,
+      info: 0,
+      warning: 0,
+      critical: 0,
+      unavailable: 0,
+      notApplicable: 0,
+      cancelled: 0,
+    },
+    system: null,
+  }
+}
 
 function environment(): DoctorEnvironmentReport {
   return {
@@ -158,6 +207,9 @@ describe('Health diagnostic store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    history.loadDoctorRunsForPath.mockResolvedValue([])
+    history.saveDoctorRun.mockImplementation(async (_path: string, run: unknown) => [run])
+    storage.getItem.mockResolvedValue(null)
     installHealthyMocks()
     const appStore = useAppStore()
     appStore.xplanePath = '/xplane'
@@ -262,5 +314,226 @@ describe('Health diagnostic store', () => {
     expect(
       store.currentRun?.checks.find((item) => item.id === 'xfast.scenery_index')?.outcome,
     ).toBe('pass')
+  })
+
+  it('locks the scan synchronously so repeated clicks cannot start competing runs', async () => {
+    const version = deferred<string>()
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'get_app_version') return version.promise
+      return healthyResponse(command)
+    })
+    const store = useDoctorStore()
+
+    const firstRun = store.runDiagnostics('quick')
+    expect(store.isRunning).toBe(true)
+
+    await store.runDiagnostics('full')
+    version.resolve('1.2.5')
+    await firstRun
+
+    expect(
+      tauri.invoke.mock.calls.filter(([command]) => command === 'get_app_version'),
+    ).toHaveLength(1)
+    expect(store.currentRun?.mode).toBe('quick')
+    expect(store.currentRun?.state).toBe('completed')
+  })
+
+  it('invalidates an active scan when the configured installation changes', async () => {
+    const environmentResult = deferred<DoctorEnvironmentReport>()
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'doctor_scan_environment') return environmentResult.promise
+      return healthyResponse(command)
+    })
+    const appStore = useAppStore()
+    appStore.xplanePath = '/xplane-a'
+    const store = useDoctorStore()
+    const running = store.runDiagnostics('quick')
+    await vi.waitFor(() =>
+      expect(tauri.invoke).toHaveBeenCalledWith('doctor_scan_environment', {
+        xplanePath: '/xplane-a',
+        depth: 'quick',
+      }),
+    )
+
+    appStore.xplanePath = '/xplane-b'
+    await store.loadHistory()
+    environmentResult.resolve(environment())
+    await running
+
+    expect(store.currentRun).toBeNull()
+    expect(store.checkRuntime).toEqual([])
+    expect(store.currentRunIsLive).toBe(false)
+    expect(history.saveDoctorRun).not.toHaveBeenCalled()
+    expect(history.loadDoctorRunsForPath).toHaveBeenCalledWith('/xplane-b')
+  })
+
+  it('ignores a stale history response after switching installations', async () => {
+    const firstLoad = deferred<DoctorRun[]>()
+    const secondLoad = deferred<DoctorRun[]>()
+    history.loadDoctorRunsForPath.mockImplementation((path: string) =>
+      path === '/xplane-a' ? firstLoad.promise : secondLoad.promise,
+    )
+    const appStore = useAppStore()
+    const store = useDoctorStore()
+
+    appStore.xplanePath = '/xplane-a'
+    const loadingA = store.loadHistory()
+    appStore.xplanePath = '/xplane-b'
+    const loadingB = store.loadHistory()
+    secondLoad.resolve([historyRun('run-b', 'installation-b')])
+    await loadingB
+    firstLoad.resolve([historyRun('run-a', 'installation-a')])
+    await loadingA
+
+    expect(store.history.map((run) => run.id)).toEqual(['run-b'])
+    expect(store.currentRun?.id).toBe('run-b')
+    expect(store.isHistoryLoading).toBe(false)
+  })
+
+  it('refuses repairs for a selected history result or a different installation', async () => {
+    let xfastScanCount = 0
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'doctor_scan_xfast_health') {
+        xfastScanCount += 1
+        return xfast(xfastScanCount === 1)
+      }
+      return healthyResponse(command)
+    })
+    const appStore = useAppStore()
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+    const check = store.currentRun?.checks.find((item) => item.id === 'xfast.scenery_index')
+    expect(check?.remediation?.kind).toBe('automatic')
+
+    store.selectHistoryRun(store.currentRun?.id ?? null)
+    expect(check ? await store.applyRemediation(check) : true).toBe(false)
+
+    store.selectHistoryRun(null)
+    appStore.xplanePath = '/different-installation'
+    expect(check ? await store.applyRemediation(check) : true).toBe(false)
+    expect(
+      tauri.invoke.mock.calls.filter(([command]) => command === 'quick_scan_scenery_index'),
+    ).toHaveLength(0)
+  })
+
+  it('keeps a cancelled repair recheck out of completed history', async () => {
+    const recheck = deferred<DoctorXfastHealthReport>()
+    let xfastScanCount = 0
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'doctor_scan_xfast_health') {
+        xfastScanCount += 1
+        return xfastScanCount === 1 ? xfast(true) : recheck.promise
+      }
+      return healthyResponse(command)
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+    const check = store.currentRun?.checks.find((item) => item.id === 'xfast.scenery_index')
+
+    const repairing = check ? store.applyRemediation(check) : Promise.resolve(false)
+    await vi.waitFor(() => expect(xfastScanCount).toBe(2))
+    store.cancelRun()
+    await repairing
+
+    expect(store.currentRun?.state).toBe('cancelled')
+    expect(store.currentRun?.summary.completeness).toBe('cancelled')
+    expect(store.canRepairCurrentRun).toBe(false)
+    expect(history.saveDoctorRun).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses saved update channels and actionable remediation routes in a full diagnosis', async () => {
+    storage.getItem.mockImplementation(async (key: string) => {
+      if (key === 'includePreRelease') return true
+      if (key === 'addonUpdateItemBetaPreferences') {
+        return {
+          'aircraft:Beta Aircraft': true,
+          'plugin:Beta Plugin': true,
+          'scenery:Beta Scenery': true,
+        }
+      }
+      return null
+    })
+    tauri.invoke.mockImplementation(async (command, args) => {
+      if (command === 'scan_aircraft') {
+        return {
+          entries: [
+            {
+              folderName: 'Beta Aircraft',
+              displayName: 'Beta Aircraft',
+              updateUrl: 'https://example.com/aircraft',
+              hasUpdate: false,
+            },
+          ],
+        }
+      }
+      if (command === 'scan_plugins') {
+        return {
+          entries: [
+            {
+              folderName: 'Beta Plugin',
+              displayName: 'Beta Plugin',
+              enabled: true,
+              platform: 'win',
+              updateUrl: 'https://example.com/plugin',
+              hasUpdate: false,
+            },
+          ],
+        }
+      }
+      if (command === 'get_scenery_manager_data') {
+        return {
+          entries: [
+            {
+              folderName: 'Beta Scenery',
+              displayName: 'Beta Scenery',
+              enabled: true,
+              updateUrl: 'https://example.com/scenery',
+              missingLibraries: [],
+              hasUpdate: false,
+            },
+          ],
+          totalCount: 1,
+          enabledCount: 1,
+          missingDepsCount: 0,
+          duplicateTilesCount: 0,
+          duplicateAirportsCount: 0,
+          needsSync: false,
+          tileOverlaps: {},
+        }
+      }
+      if (command === 'check_aircraft_updates') return args?.aircraft ?? []
+      if (command === 'check_plugins_updates') return args?.plugins ?? []
+      if (command === 'check_scenery_updates') return args?.scenery ?? []
+      if (command === 'check_for_updates') {
+        return { isUpdateAvailable: true, latestVersion: '2.0.0' }
+      }
+      return healthyResponse(command)
+    })
+    const store = useDoctorStore()
+
+    await store.runDiagnostics('full')
+
+    expect(tauri.invoke).toHaveBeenCalledWith(
+      'check_aircraft_updates',
+      expect.objectContaining({ betaFolders: ['Beta Aircraft'] }),
+    )
+    expect(tauri.invoke).toHaveBeenCalledWith(
+      'check_plugins_updates',
+      expect.objectContaining({ betaFolders: ['Beta Plugin'] }),
+    )
+    expect(tauri.invoke).toHaveBeenCalledWith(
+      'check_scenery_updates',
+      expect.objectContaining({ betaFolders: ['Beta Scenery'] }),
+    )
+    expect(tauri.invoke).toHaveBeenCalledWith('check_for_updates', {
+      manual: false,
+      includePreRelease: true,
+    })
+    expect(
+      store.currentRun?.checks.find((item) => item.id === 'addons.platform')?.remediation?.route,
+    ).toBe('/management?tab=plugin')
+    expect(
+      store.currentRun?.checks.find((item) => item.id === 'updates.app')?.remediation?.route,
+    ).toBe('/settings')
   })
 })

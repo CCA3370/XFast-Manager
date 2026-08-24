@@ -18,39 +18,7 @@ import type {
   DoctorRemediation,
   DoctorRun,
   DoctorRunMode,
-  DoctorSection as HealthSection,
-  DoctorSeverity as HealthSeverity,
 } from '@/types/doctor'
-
-export type DoctorSeverity = 'critical' | 'warning' | 'info' | 'ok'
-
-export type DoctorSection =
-  | 'integrity'
-  | 'crashes'
-  | 'navdata'
-  | 'scenery'
-  | 'plugins'
-  | 'performance'
-  | 'environment'
-  | 'disk'
-  | 'updates'
-
-export type DoctorFixTier = 'safe' | 'confirm' | 'destructive' | 'none'
-
-/** Compatibility shape for the existing Health page while the richer UI is mounted. */
-export interface DoctorFinding {
-  id: string
-  section: DoctorSection
-  severity: DoctorSeverity
-  params?: Record<string, string | number>
-  detail?: string[]
-  fix?: {
-    id: string
-    tier: DoctorFixTier
-    params?: Record<string, string | number>
-  }
-  route?: string
-}
 
 export type DoctorPhase = 'idle' | 'local' | 'network' | 'done'
 
@@ -61,38 +29,8 @@ export interface DoctorBatchFixResult {
 
 const LOCAL_CONCURRENCY = 4
 const NETWORK_CONCURRENCY = 3
-
-const LEGACY_SECTION: Record<HealthSection, DoctorSection> = {
-  installation: 'integrity',
-  stability: 'crashes',
-  scenery: 'scenery',
-  addons: 'plugins',
-  navdata: 'navdata',
-  performance: 'performance',
-  storage: 'disk',
-  system: 'environment',
-  xfast: 'integrity',
-  updates: 'updates',
-}
-
-const LEGACY_SECTION_ORDER: DoctorSection[] = [
-  'integrity',
-  'crashes',
-  'navdata',
-  'scenery',
-  'plugins',
-  'performance',
-  'environment',
-  'disk',
-  'updates',
-]
-
-const LEGACY_SEVERITY_ORDER: Record<DoctorSeverity, number> = {
-  critical: 0,
-  warning: 1,
-  info: 2,
-  ok: 3,
-}
+const APP_VERSION_TIMEOUT_MS = 5_000
+const PATH_VALIDATION_TIMEOUT_MS = 10_000
 
 const FILESYSTEM_REMEDIATIONS = new Set([
   'sort_scenery',
@@ -200,36 +138,6 @@ function unavailableResult(
   }
 }
 
-function outcomeSeverity(check: DoctorCheckResult): DoctorSeverity | null {
-  if (check.outcome === 'critical' || check.outcome === 'warning' || check.outcome === 'info') {
-    return check.outcome
-  }
-  if (check.outcome === 'unavailable') return 'info'
-  return null
-}
-
-function legacyFinding(check: DoctorCheckResult): DoctorFinding | null {
-  const severity = outcomeSeverity(check)
-  if (!severity) return null
-  const remediation = check.remediation
-  return {
-    id: check.id,
-    section: LEGACY_SECTION[check.section],
-    severity,
-    params: check.params,
-    detail: check.evidence?.map((item) => item.value),
-    fix:
-      remediation?.kind === 'automatic'
-        ? {
-            id: remediation.id,
-            tier: remediation.risk,
-            params: remediation.params,
-          }
-        : undefined,
-    route: remediation?.route,
-  }
-}
-
 export const useDoctorStore = defineStore('doctor', () => {
   const appStore = useAppStore()
   const lockStore = useLockStore()
@@ -237,6 +145,7 @@ export const useDoctorStore = defineStore('doctor', () => {
   const phase = ref<DoctorPhase>('idle')
   const currentRun = ref<DoctorRun | null>(null)
   const history = ref<DoctorRun[]>([])
+  const isHistoryLoading = ref(false)
   const selectedRunId = ref<string | null>(null)
   const checkRuntime = ref<DoctorCheckRuntime[]>([])
   const error = ref<string | null>(null)
@@ -249,6 +158,7 @@ export const useDoctorStore = defineStore('doctor', () => {
   const currentRunPath = ref<string | null>(null)
 
   let activeRunToken = 0
+  let historyLoadToken = 0
   let cancelRequested = false
   let lastContext: DoctorCheckContext | null = null
   let cancelActiveWork: (() => void) | null = null
@@ -277,94 +187,66 @@ export const useDoctorStore = defineStore('doctor', () => {
     return history.value[0] ?? null
   })
   const isStale = computed(() => isDoctorRunStale(lastCompletedRun.value))
-
-  // Compatibility projections for the pre-redesign view.
-  const findings = computed(() =>
-    (displayedRun.value?.checks ?? [])
-      .map(legacyFinding)
-      .filter((finding): finding is DoctorFinding => finding !== null),
-  )
-  const sortedFindings = computed(() =>
-    [...findings.value].sort((a, b) => {
-      const section =
-        LEGACY_SECTION_ORDER.indexOf(a.section) - LEGACY_SECTION_ORDER.indexOf(b.section)
-      return section || LEGACY_SEVERITY_ORDER[a.severity] - LEGACY_SEVERITY_ORDER[b.severity]
-    }),
-  )
-  const findingsBySection = computed(() => {
-    const groups = new Map<DoctorSection, DoctorFinding[]>()
-    for (const finding of sortedFindings.value) {
-      const list = groups.get(finding.section) ?? []
-      list.push(finding)
-      groups.set(finding.section, list)
-    }
-    return LEGACY_SECTION_ORDER.flatMap((section) => {
-      const sectionFindings = groups.get(section)
-      return sectionFindings?.length ? [{ section, findings: sectionFindings }] : []
-    })
-  })
-  const counts = computed(() => ({
-    critical: displayedRun.value?.summary.critical ?? 0,
-    warning: displayedRun.value?.summary.warning ?? 0,
-    info: displayedRun.value?.summary.info ?? 0,
-    total: findings.value.length,
-  }))
-  const overallSeverity = computed<HealthSeverity>(
-    () => displayedRun.value?.summary.severity ?? 'ok',
-  )
-  const systemInfo = computed(() => {
-    const system = displayedRun.value?.system
-    if (!system) return null
-    return {
-      xplaneVersion: system.xplaneVersion,
-      xplaneVersionRaw: system.xplaneVersionRaw,
-      isBeta: system.isBeta,
-      gpuModel: system.gpuModel,
-      gpuDriver: system.gpuDriver,
-    }
-  })
-  const lastRun = computed(() => displayedRun.value?.completedAt ?? null)
-  const runningChecks = computed(
+  const canRepairCurrentRun = computed(
     () =>
-      new Set(
-        checkRuntime.value
-          .filter((runtime) => runtime.state === 'running')
-          .map((runtime) => runtime.id),
-      ),
+      Boolean(currentRun.value) &&
+      currentRun.value?.state === 'completed' &&
+      currentRunIsLive.value &&
+      !selectedRunId.value &&
+      currentRunPath.value === appStore.xplanePath &&
+      !fixingId.value &&
+      !repairingAll.value &&
+      !xplaneRunning.value,
   )
 
-  function reset() {
+  function discardCurrentRun() {
     activeRunToken += 1
-    cancelRequested = false
+    cancelRequested = true
     cancelActiveWork?.()
     cancelActiveWork = null
     phase.value = 'idle'
     currentRun.value = null
     selectedRunId.value = null
     checkRuntime.value = []
-    error.value = null
     xplaneRunning.value = false
-    fixingId.value = null
-    repairingAll.value = false
     appDataPath.value = null
     currentRunIsLive.value = false
     currentRunPath.value = null
     lastContext = null
   }
 
+  function reset() {
+    historyLoadToken += 1
+    discardCurrentRun()
+    history.value = []
+    isHistoryLoading.value = false
+    error.value = null
+    fixingId.value = null
+    repairingAll.value = false
+  }
+
   async function loadHistory(): Promise<void> {
     const xplanePath = appStore.xplanePath
+    const requestToken = ++historyLoadToken
     selectedRunId.value = null
+
+    if (currentRunPath.value && currentRunPath.value !== xplanePath) {
+      discardCurrentRun()
+    }
+
     if (!xplanePath) {
       history.value = []
-      if (!isRunning.value) {
-        currentRun.value = null
-        currentRunPath.value = null
-      }
+      if (currentRun.value) discardCurrentRun()
+      isHistoryLoading.value = false
       return
     }
+
+    isHistoryLoading.value = true
     try {
-      history.value = await loadDoctorRunsForPath(xplanePath)
+      const loadedHistory = await loadDoctorRunsForPath(xplanePath)
+      if (requestToken !== historyLoadToken || appStore.xplanePath !== xplanePath) return
+
+      history.value = loadedHistory
       const preserveLiveResult =
         currentRunIsLive.value && currentRunPath.value === xplanePath && Boolean(currentRun.value)
       if (!isRunning.value && !preserveLiveResult) {
@@ -376,12 +258,24 @@ export const useDoctorStore = defineStore('doctor', () => {
       }
     } catch (reason) {
       logError(`Health: history load failed: ${reason}`, 'doctor')
+      if (requestToken !== historyLoadToken || appStore.xplanePath !== xplanePath) return
       history.value = []
+      const preserveLiveResult =
+        currentRunIsLive.value && currentRunPath.value === xplanePath && Boolean(currentRun.value)
+      if (!preserveLiveResult) {
+        currentRun.value = null
+        currentRunIsLive.value = false
+        currentRunPath.value = xplanePath
+        lastContext = null
+        appDataPath.value = null
+      }
+    } finally {
+      if (requestToken === historyLoadToken) isHistoryLoading.value = false
     }
   }
 
   function selectHistoryRun(runId: string | null) {
-    selectedRunId.value = runId
+    selectedRunId.value = runId && history.value.some((run) => run.id === runId) ? runId : null
   }
 
   function updateRunChecks(runToken: number, results: DoctorCheckResult[]) {
@@ -397,7 +291,12 @@ export const useDoctorStore = defineStore('doctor', () => {
     appDataPath.value = lastContext?.xfast?.appDataDir ?? appDataPath.value
   }
 
-  function setRuntimeState(definition: DoctorCheckDefinition, state: DoctorCheckRuntime['state']) {
+  function setRuntimeState(
+    definition: DoctorCheckDefinition,
+    state: DoctorCheckRuntime['state'],
+    runToken: number,
+  ) {
+    if (activeRunToken !== runToken) return
     const index = checkRuntime.value.findIndex((runtime) => runtime.id === definition.id)
     const previous = index >= 0 ? checkRuntime.value[index] : null
     const now = Date.now()
@@ -417,11 +316,11 @@ export const useDoctorStore = defineStore('doctor', () => {
     runToken: number,
   ): Promise<DoctorCheckResult[]> {
     if (cancelRequested || activeRunToken !== runToken) {
-      setRuntimeState(definition, 'cancelled')
+      setRuntimeState(definition, 'cancelled', runToken)
       return [cancelledResult(definition)]
     }
 
-    setRuntimeState(definition, 'running')
+    setRuntimeState(definition, 'running', runToken)
     const startedAt = performance.now()
     try {
       const results = await runWithTimeout(
@@ -432,10 +331,10 @@ export const useDoctorStore = defineStore('doctor', () => {
       )
       const durationMs = Math.round(performance.now() - startedAt)
       if (cancelRequested || activeRunToken !== runToken) {
-        setRuntimeState(definition, 'cancelled')
+        setRuntimeState(definition, 'cancelled', runToken)
         return [{ ...cancelledResult(definition), durationMs }]
       }
-      setRuntimeState(definition, 'completed')
+      setRuntimeState(definition, 'completed', runToken)
       return results.map((result) => ({ ...result, durationMs }))
     } catch (reason) {
       const durationMs = Math.round(performance.now() - startedAt)
@@ -444,17 +343,19 @@ export const useDoctorStore = defineStore('doctor', () => {
         cancelRequested ||
         activeRunToken !== runToken
       ) {
-        setRuntimeState(definition, 'cancelled')
+        setRuntimeState(definition, 'cancelled', runToken)
         return [{ ...cancelledResult(definition), durationMs }]
       }
-      setRuntimeState(definition, 'completed')
+      setRuntimeState(definition, 'completed', runToken)
       logError(`Health check ${definition.id} failed: ${reason}`, 'doctor')
       return [unavailableResult(definition, reason, durationMs)]
     }
   }
 
-  async function finishRun(runToken: number, state: 'completed' | 'cancelled') {
-    if (activeRunToken !== runToken || !currentRun.value) return
+  async function finishRun(runToken: number, state: 'completed' | 'cancelled', runPath: string) {
+    if (activeRunToken !== runToken || !currentRun.value || currentRunPath.value !== runPath) {
+      return
+    }
     const completedAt = Date.now()
     const checks = sortDoctorChecks(currentRun.value.checks)
     const finished: DoctorRun = {
@@ -475,7 +376,14 @@ export const useDoctorStore = defineStore('doctor', () => {
 
     if (state === 'completed' && finished.installationId) {
       try {
-        history.value = await saveDoctorRun(appStore.xplanePath, finished)
+        const savedHistory = await saveDoctorRun(runPath, finished)
+        if (
+          activeRunToken === runToken &&
+          currentRunPath.value === runPath &&
+          appStore.xplanePath === runPath
+        ) {
+          history.value = savedHistory
+        }
       } catch (reason) {
         logError(`Health: history save failed: ${reason}`, 'doctor')
       }
@@ -499,13 +407,6 @@ export const useDoctorStore = defineStore('doctor', () => {
     error.value = null
     phase.value = 'local'
 
-    let appVersion = 'unknown'
-    try {
-      appVersion = await invoke<string>('get_app_version')
-    } catch (reason) {
-      logError(`Health: app version unavailable: ${reason}`, 'doctor')
-    }
-
     const startedAt = Date.now()
     currentRun.value = {
       schemaVersion: 1,
@@ -516,7 +417,7 @@ export const useDoctorStore = defineStore('doctor', () => {
       startedAt,
       completedAt: null,
       durationMs: 0,
-      appVersion,
+      appVersion: 'unknown',
       checks: [],
       summary: summarizeDoctorRun([], 'running'),
       system: null,
@@ -525,7 +426,35 @@ export const useDoctorStore = defineStore('doctor', () => {
     currentRunPath.value = xplanePath
 
     try {
-      const valid = await invoke<boolean>('validate_xplane_path', { path: xplanePath })
+      const appVersion = await runWithTimeout(
+        invoke<string>('get_app_version'),
+        'app_version',
+        APP_VERSION_TIMEOUT_MS,
+        activeCancellation,
+      )
+      if (activeRunToken !== runToken || currentRunPath.value !== xplanePath) return
+      currentRun.value = currentRun.value ? { ...currentRun.value, appVersion } : null
+    } catch (reason) {
+      if (
+        reason instanceof DoctorCancelledError ||
+        cancelRequested ||
+        activeRunToken !== runToken
+      ) {
+        await finishRun(runToken, 'cancelled', xplanePath)
+        return
+      }
+      logError(`Health: app version unavailable: ${reason}`, 'doctor')
+    }
+
+    if (activeRunToken !== runToken || currentRunPath.value !== xplanePath) return
+
+    try {
+      const valid = await runWithTimeout(
+        invoke<boolean>('validate_xplane_path', { path: xplanePath }),
+        'path_validation',
+        PATH_VALIDATION_TIMEOUT_MS,
+        activeCancellation,
+      )
       if (!valid) {
         updateRunChecks(runToken, [
           {
@@ -541,12 +470,22 @@ export const useDoctorStore = defineStore('doctor', () => {
             },
           },
         ])
-        await finishRun(runToken, 'completed')
+        await finishRun(runToken, 'completed', xplanePath)
         return
       }
     } catch (reason) {
+      if (
+        reason instanceof DoctorCancelledError ||
+        cancelRequested ||
+        activeRunToken !== runToken
+      ) {
+        await finishRun(runToken, 'cancelled', xplanePath)
+        return
+      }
       logError(`Health: path validation unavailable: ${reason}`, 'doctor')
     }
+
+    if (activeRunToken !== runToken || currentRunPath.value !== xplanePath) return
 
     const context: DoctorCheckContext = {
       xplanePath,
@@ -584,12 +523,12 @@ export const useDoctorStore = defineStore('doctor', () => {
     })
 
     const networkDefinitions = definitions.filter((definition) => definition.phase === 'network')
-    if (networkDefinitions.length) phase.value = 'network'
+    if (networkDefinitions.length && activeRunToken === runToken) phase.value = 'network'
     await runBounded(networkDefinitions, NETWORK_CONCURRENCY, async (definition) => {
       updateRunChecks(runToken, await executeDefinition(definition, runToken))
     })
 
-    await finishRun(runToken, cancelRequested ? 'cancelled' : 'completed')
+    await finishRun(runToken, cancelRequested ? 'cancelled' : 'completed', xplanePath)
   }
 
   async function runAutomaticQuickCheck(): Promise<void> {
@@ -624,8 +563,10 @@ export const useDoctorStore = defineStore('doctor', () => {
     return true
   }
 
-  async function executeAutomaticRemediation(remediation: DoctorRemediation): Promise<void> {
-    const xplanePath = appStore.xplanePath
+  async function executeAutomaticRemediation(
+    remediation: DoctorRemediation,
+    xplanePath: string,
+  ): Promise<void> {
     switch (remediation.id) {
       case 'sort_scenery':
         await invoke('sort_scenery_packs', {
@@ -667,8 +608,17 @@ export const useDoctorStore = defineStore('doctor', () => {
     return null
   }
 
-  async function recheckDefinitions(definitionIds: Set<string>): Promise<void> {
-    if (!lastContext || !currentRun.value || definitionIds.size === 0) return
+  async function recheckDefinitions(definitionIds: Set<string>, runPath: string): Promise<void> {
+    if (
+      !lastContext ||
+      lastContext.xplanePath !== runPath ||
+      !currentRun.value ||
+      currentRunPath.value !== runPath ||
+      appStore.xplanePath !== runPath ||
+      definitionIds.size === 0
+    ) {
+      return
+    }
     const definitions = createDoctorCheckDefinitions(lastContext).filter((definition) =>
       definitionIds.has(definition.id),
     )
@@ -696,27 +646,38 @@ export const useDoctorStore = defineStore('doctor', () => {
     await runBounded(definitions, LOCAL_CONCURRENCY, async (definition) => {
       updateRunChecks(runToken, await executeDefinition(definition, runToken))
     })
-    await finishRun(runToken, 'completed')
+    await finishRun(runToken, cancelRequested ? 'cancelled' : 'completed', runPath)
   }
 
   async function applyRemediation(check: DoctorCheckResult, recheck = true): Promise<boolean> {
-    const remediation = check.remediation
-    if (
-      !currentRunIsLive.value ||
-      !remediation ||
-      remediation.kind !== 'automatic' ||
-      !appStore.xplanePath
-    ) {
+    const currentCheck = currentRun.value?.checks.find((item) => item.id === check.id)
+    const remediation = currentCheck?.remediation
+    const repairPath = currentRunPath.value
+    if (!canRepairCurrentRun.value || !repairPath || remediation?.kind !== 'automatic') {
       return false
     }
     if (!(await ensureFilesystemFixIsSafe(remediation))) return false
+    if (
+      currentRunPath.value !== repairPath ||
+      appStore.xplanePath !== repairPath ||
+      currentRun.value?.state !== 'completed'
+    ) {
+      return false
+    }
 
     fixingId.value = check.id
     error.value = null
     try {
-      await executeAutomaticRemediation(remediation)
+      await executeAutomaticRemediation(remediation, repairPath)
       const definitionId = remediationDefinitionId(remediation.id)
-      if (recheck && definitionId) await recheckDefinitions(new Set([definitionId]))
+      if (
+        recheck &&
+        definitionId &&
+        currentRunPath.value === repairPath &&
+        appStore.xplanePath === repairPath
+      ) {
+        await recheckDefinitions(new Set([definitionId]), repairPath)
+      }
       return true
     } catch (reason) {
       logError(`Health: remediation ${remediation.id} failed: ${reason}`, 'doctor')
@@ -728,7 +689,8 @@ export const useDoctorStore = defineStore('doctor', () => {
   }
 
   async function applyAllSafeFixes(): Promise<DoctorBatchFixResult> {
-    if (repairingAll.value || !isDisplayingCurrentRun.value || !currentRunIsLive.value) {
+    const repairPath = currentRunPath.value
+    if (!canRepairCurrentRun.value || !isDisplayingCurrentRun.value || !repairPath) {
       return { applied: 0, failed: 0 }
     }
     const checks = (currentRun.value?.checks ?? []).filter(
@@ -744,6 +706,9 @@ export const useDoctorStore = defineStore('doctor', () => {
     if (filesystemRemediation && !(await ensureFilesystemFixIsSafe(filesystemRemediation))) {
       return { applied: 0, failed: checks.length }
     }
+    if (currentRunPath.value !== repairPath || appStore.xplanePath !== repairPath) {
+      return { applied: 0, failed: checks.length }
+    }
 
     repairingAll.value = true
     error.value = null
@@ -753,9 +718,13 @@ export const useDoctorStore = defineStore('doctor', () => {
     try {
       for (const check of checks) {
         if (!check.remediation) continue
+        if (currentRunPath.value !== repairPath || appStore.xplanePath !== repairPath) {
+          failed += checks.length - applied - failed
+          break
+        }
         fixingId.value = check.id
         try {
-          await executeAutomaticRemediation(check.remediation)
+          await executeAutomaticRemediation(check.remediation, repairPath)
           applied += 1
           const definitionId = remediationDefinitionId(check.remediation.id)
           if (definitionId) definitionsToRecheck.add(definitionId)
@@ -764,18 +733,14 @@ export const useDoctorStore = defineStore('doctor', () => {
           logError(`Health: remediation ${check.remediation.id} failed: ${reason}`, 'doctor')
         }
       }
-      await recheckDefinitions(definitionsToRecheck)
+      if (currentRunPath.value === repairPath && appStore.xplanePath === repairPath) {
+        await recheckDefinitions(definitionsToRecheck, repairPath)
+      }
       return { applied, failed }
     } finally {
       fixingId.value = null
       repairingAll.value = false
     }
-  }
-
-  // Compatibility adapter for the old page.
-  async function applyFix(finding: DoctorFinding): Promise<boolean> {
-    const check = currentRun.value?.checks.find((item) => item.id === finding.id)
-    return check ? applyRemediation(check) : false
   }
 
   async function exportReport(
@@ -790,7 +755,7 @@ export const useDoctorStore = defineStore('doctor', () => {
     const run = displayedRun.value
     if (!run) throw new Error('No health report is available')
     const content = buildDoctorReport(run, format, {
-      xplanePath: appStore.xplanePath,
+      xplanePath: currentRunPath.value ?? appStore.xplanePath,
       appDataPath: appDataPath.value,
       includeSensitive,
       ...labels,
@@ -803,6 +768,7 @@ export const useDoctorStore = defineStore('doctor', () => {
     currentRun,
     displayedRun,
     history,
+    isHistoryLoading,
     selectedRunId,
     checkRuntime,
     error,
@@ -814,16 +780,9 @@ export const useDoctorStore = defineStore('doctor', () => {
     currentRunIsLive,
     isRunning,
     isDisplayingCurrentRun,
+    canRepairCurrentRun,
     isStale,
     lastCompletedRun,
-    findings,
-    sortedFindings,
-    findingsBySection,
-    counts,
-    overallSeverity,
-    systemInfo,
-    lastRun,
-    runningChecks,
     loadHistory,
     selectHistoryRun,
     runDiagnostics,
@@ -831,7 +790,6 @@ export const useDoctorStore = defineStore('doctor', () => {
     cancelRun,
     applyRemediation,
     applyAllSafeFixes,
-    applyFix,
     exportReport,
     reset,
   }
