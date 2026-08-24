@@ -49,6 +49,25 @@ describe('bug report route', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('rejects X-Plane source guidance reported by an older client', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const response = makeResponse()
+
+    await handler(
+      makeRequest({
+        errorMessage:
+          'Failed to scan (C:\\X-Plane 12\\Custom Scenery\\AXP_Florida_2): Cannot install from X-Plane directory. Please drag files from outside X-Plane folder',
+        reportable: true,
+      }),
+      response,
+    )
+
+    expect(response.statusCode).toBe(422)
+    expect(response.payload.code).toBe('bug_report_not_allowed')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('returns an existing open issue with the same fingerprint', async () => {
     const body = {
       errorCode: 'internal',

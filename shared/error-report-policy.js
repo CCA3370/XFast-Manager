@@ -54,6 +54,7 @@ const OPERATIONAL_ERROR_PATTERNS = Object.freeze([
   'x-plane executable not found',
   'x-plane installation was not found',
   'cannot install an add-on from inside the x-plane directory',
+  'cannot install from x-plane directory',
   'cannot install from the x-plane directory',
   'no gateway scenery selected',
   '[permission_denied]',
