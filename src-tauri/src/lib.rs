@@ -17,6 +17,8 @@ mod path_utils;
 mod performance;
 #[path = "core/registry.rs"]
 mod registry;
+#[path = "core/startup_migrations.rs"]
+mod startup_migrations;
 #[path = "core/task_control.rs"]
 mod task_control;
 #[path = "core/vercel_api.rs"]
@@ -73,10 +75,6 @@ mod zibo_updater;
 // Screenshot
 #[path = "screenshot/mod.rs"]
 mod screenshot;
-
-// Map
-#[path = "map/mod.rs"]
-mod map;
 
 // Scenery
 #[path = "scenery/geo_regions.rs"]
@@ -4098,33 +4096,6 @@ pub fn run() {
             get_scenery_index_status,
             quick_scan_scenery_index,
             sync_scenery_packs_with_folder,
-            // Map commands
-            map::map_prepare_data_index,
-            map::map_get_data_status,
-            map::map_search_airports,
-            map::map_get_airports_in_bounds,
-            map::map_get_airport_detail,
-            map::map_get_airport_procedures,
-            map::map_get_nav_snapshot,
-            map::map_fetch_metar,
-            map::map_fetch_taf,
-            map::map_fetch_vatsim_data,
-            map::map_fetch_vatsim_events,
-            map::map_fetch_vatsim_metar,
-            map::map_fetch_rainviewer_manifest,
-            map::map_fetch_simbrief_latest,
-            map::map_fetch_gateway_airport,
-            map::map_fetch_gateway_scenery,
-            map::map_start_plane_stream,
-            map::map_stop_plane_stream,
-            map::map_get_plane_stream_status,
-            map::xplane_is_api_available,
-            map::xplane_get_dataref,
-            map::xplane_set_dataref,
-            map::xplane_activate_command,
-            map::map_scan_aircraft,
-            map::map_get_aircraft_image,
-            map::map_launch_flight,
             gateway::gateway_resolve_release_context,
             gateway::gateway_search_airports,
             gateway::gateway_get_airport,
@@ -4226,6 +4197,22 @@ pub fn run() {
             // Initialize TaskControl state
             app.manage(TaskControl::new());
             app.manage(csl_index::CslDownloadControl::new());
+
+            match startup_migrations::run(app) {
+                Ok(outcome) if outcome.applied => logger::log_debug(
+                    &format!(
+                        "Settings migration completed: removed {} retired setting(s), temporary flight file removed: {}",
+                        outcome.settings_removed, outcome.temp_file_removed
+                    ),
+                    Some("storage"),
+                    Some("startup_migrations.rs"),
+                ),
+                Ok(_) => {}
+                Err(error) => logger::log_error(
+                    &format!("Settings migration failed and will be retried: {error}"),
+                    Some("storage"),
+                ),
+            }
 
             // Initialize database connection and run migrations once on startup
             let db = tauri::async_runtime::block_on(async {
