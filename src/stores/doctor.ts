@@ -275,6 +275,7 @@ export const useDoctorStore = defineStore('doctor', () => {
   }
 
   function selectHistoryRun(runId: string | null) {
+    if (isRunning.value) return
     selectedRunId.value = runId && history.value.some((run) => run.id === runId) ? runId : null
   }
 

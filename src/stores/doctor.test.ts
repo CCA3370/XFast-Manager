@@ -390,6 +390,26 @@ describe('Health diagnostic store', () => {
     expect(store.isHistoryLoading).toBe(false)
   })
 
+  it('keeps the active run visible while a scan is in progress', async () => {
+    history.loadDoctorRunsForPath.mockResolvedValue([historyRun('saved-run', 'saved-installation')])
+    const environmentResult = deferred<DoctorEnvironmentReport>()
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'doctor_scan_environment') return environmentResult.promise
+      return healthyResponse(command)
+    })
+    const store = useDoctorStore()
+    await store.loadHistory()
+    const running = store.runDiagnostics('quick')
+    await vi.waitFor(() => expect(store.isRunning).toBe(true))
+
+    store.selectHistoryRun('saved-run')
+
+    expect(store.selectedRunId).toBeNull()
+    expect(store.displayedRun?.state).toBe('running')
+    store.cancelRun()
+    await running
+  })
+
   it('refuses repairs for a selected history result or a different installation', async () => {
     let xfastScanCount = 0
     tauri.invoke.mockImplementation(async (command) => {
