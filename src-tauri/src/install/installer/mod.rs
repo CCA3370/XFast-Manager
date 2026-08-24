@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use glob::Pattern;
 use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
-#[cfg(target_os = "windows")]
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -90,7 +89,6 @@ pub fn sanitize_folder_name(name: &str) -> String {
     hash.iter().take(8).map(|b| format!("{:02x}", b)).collect()
 }
 
-#[cfg(target_os = "windows")]
 fn is_windows_reserved_name(name: &str) -> bool {
     matches!(name, "CON" | "PRN" | "AUX" | "NUL")
         || matches!(
@@ -103,8 +101,7 @@ fn is_windows_reserved_name(name: &str) -> bool {
         )
 }
 
-#[cfg(target_os = "windows")]
-fn sanitize_windows_path_component(component: &OsStr) -> Option<OsString> {
+fn sanitize_windows_path_component(component: &OsStr) -> OsString {
     let mut sanitized: String = component
         .to_string_lossy()
         .chars()
@@ -133,7 +130,36 @@ fn sanitize_windows_path_component(component: &OsStr) -> Option<OsString> {
         };
     }
 
-    Some(OsString::from(sanitized))
+    OsString::from(sanitized)
+}
+
+fn sanitize_non_windows_install_target_component(component: &str) -> OsString {
+    let mut sanitized: String = component
+        .chars()
+        .map(|ch| match ch {
+            '/' | '\\' => '_',
+            ch if ch.is_control() => '_',
+            _ => ch,
+        })
+        .collect();
+
+    if sanitized.is_empty() || matches!(sanitized.as_str(), "." | "..") {
+        sanitized.clear();
+        sanitized.push('_');
+    }
+
+    OsString::from(sanitized)
+}
+
+pub(crate) fn sanitize_install_target_component_for_platform(
+    component: &str,
+    apply_windows_rules: bool,
+) -> OsString {
+    if apply_windows_rules {
+        sanitize_windows_path_component(OsStr::new(component))
+    } else {
+        sanitize_non_windows_install_target_component(component)
+    }
 }
 
 /// Sanitize a file path to prevent path traversal attacks
@@ -145,7 +171,7 @@ pub fn sanitize_path(path: &Path) -> Option<PathBuf> {
             Component::Normal(c) => {
                 #[cfg(target_os = "windows")]
                 {
-                    result.push(sanitize_windows_path_component(c)?);
+                    result.push(sanitize_windows_path_component(c));
                 }
                 #[cfg(not(target_os = "windows"))]
                 {
@@ -2722,6 +2748,49 @@ mod tests {
         let path = Path::new("folder/.../   ");
         let result = sanitize_path(path);
         assert_eq!(result, Some(PathBuf::from("folder/_/_")));
+    }
+
+    #[test]
+    fn install_target_component_replaces_windows_invalid_characters() {
+        let result = sanitize_install_target_component_for_platform(
+            "(80NGv2) GOL PRΓÇôGIT \"Smiles\"",
+            true,
+        );
+
+        assert_eq!(result, OsString::from("(80NGv2) GOL PRΓÇôGIT _Smiles_"));
+    }
+
+    #[test]
+    fn install_target_component_handles_windows_reserved_and_trailing_names() {
+        assert_eq!(
+            sanitize_install_target_component_for_platform("CON.txt", true),
+            OsString::from("CON_.txt")
+        );
+        assert_eq!(
+            sanitize_install_target_component_for_platform("Livery. ", true),
+            OsString::from("Livery")
+        );
+    }
+
+    #[test]
+    fn install_target_component_preserves_non_windows_names() {
+        let name = "Linux: Livery \"Special\"";
+        assert_eq!(
+            sanitize_install_target_component_for_platform(name, false),
+            OsString::from(name)
+        );
+    }
+
+    #[test]
+    fn install_target_component_blocks_non_windows_path_segments() {
+        assert_eq!(
+            sanitize_install_target_component_for_platform("../Outside", false),
+            OsString::from(".._Outside")
+        );
+        assert_eq!(
+            sanitize_install_target_component_for_platform("..", false),
+            OsString::from("_")
+        );
     }
 
     #[test]
