@@ -2467,6 +2467,9 @@ mod tests {
                 while !shutdown_for_thread.load(Ordering::SeqCst) {
                     match listener.accept() {
                         Ok((mut stream, _)) => {
+                            if shutdown_for_thread.load(Ordering::SeqCst) {
+                                break;
+                            }
                             let request = read_http_request(&mut stream);
                             if let Some(response) = handler(&request) {
                                 write_http_response(&mut stream, response);
