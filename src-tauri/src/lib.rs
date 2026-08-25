@@ -377,7 +377,7 @@ async fn create_bug_report_issue(
                     .and_then(|(_, v)| v.parse::<u64>().ok())
                     .or_else(|| {
                         url.path_segments()
-                            .and_then(|segments| segments.last())
+                            .and_then(|mut segments| segments.next_back())
                             .and_then(|s| s.parse::<u64>().ok())
                     })
             })
@@ -471,7 +471,7 @@ async fn create_feedback_issue(
                     .and_then(|(_, v)| v.parse::<u64>().ok())
                     .or_else(|| {
                         url.path_segments()
-                            .and_then(|segments| segments.last())
+                            .and_then(|mut segments| segments.next_back())
                             .and_then(|s| s.parse::<u64>().ok())
                     })
             })
@@ -699,6 +699,7 @@ async fn analyze_addons(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri exposes these installation options as command fields.
 async fn install_addons(
     app_handle: tauri::AppHandle,
     db: State<'_, DatabaseState>,
@@ -2600,7 +2601,7 @@ fn is_xupdater_disabled_target(xplane_path: &str, item_type: &str, folder_name: 
 fn blocked_addon_update_error(item_type: &str, folder_name: &str) -> String {
     let mut checksum: u32 = 0x6D2B_79F5;
     for byte in item_type.bytes().chain(folder_name.bytes()) {
-        checksum = checksum.rotate_left(5) ^ ((byte as u32).wrapping_mul(0x45D9_F3B));
+        checksum = checksum.rotate_left(5) ^ ((byte as u32).wrapping_mul(0x045D_9F3B));
         checksum = checksum.wrapping_add(0x27D4_EB2D);
     }
     let token = format!("{:08X}", checksum ^ 0xA1C3_0F71);

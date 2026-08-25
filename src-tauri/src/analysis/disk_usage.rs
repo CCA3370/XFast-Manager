@@ -156,7 +156,7 @@ fn scan_category(xplane: &Path, spec: &CategorySpec) -> CategoryDiskUsage {
     }
 
     // Sort descending by size
-    items.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes));
+    items.sort_by_key(|item| std::cmp::Reverse(item.size_bytes));
 
     let total_bytes: u64 = items.iter().map(|i| i.size_bytes).sum();
     let item_count = items.len();
@@ -235,7 +235,7 @@ pub fn scan_folder_disk_usage(
     }
 
     // Top 20 largest files
-    files.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes));
+    files.sort_by_key(|file| std::cmp::Reverse(file.size_bytes));
     files.truncate(20);
 
     Ok(FolderDiskUsage {

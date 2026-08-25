@@ -1557,15 +1557,12 @@ fn calculate_sub_priority(category: &SceneryCategory, folder_name: &str) -> u8 {
 
     match category {
         SceneryCategory::RegionalOverlay => simheaven_layer_number(folder_name).unwrap_or(0),
-        SceneryCategory::Mesh => {
+        SceneryCategory::Mesh
             // XPME mesh (starts with "xpme") should be at the bottom of Mesh category
             // They will be sorted alphabetically among themselves
-            if folder_name_lower.starts_with("xpme") {
+            if folder_name_lower.starts_with("xpme") => {
                 2
-            } else {
-                0
             }
-        }
         _ => 0, // Default sub-priority for all other categories
     }
 }

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::{Arc, LazyLock, Mutex as StdMutex};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -74,8 +74,9 @@ static DESC_CACHE: std::sync::LazyLock<Mutex<HashMap<String, String>>> =
 
 /// Cached local MD5 hashes: file_path → (size, mtime_secs, md5).
 /// If size+mtime still match, the cached hash is reused (avoids re-reading the file).
-static MD5_CACHE: std::sync::LazyLock<std::sync::Mutex<HashMap<PathBuf, (u64, i64, String)>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+type Md5CacheEntry = (u64, i64, String);
+type Md5CacheMap = HashMap<PathBuf, Md5CacheEntry>;
+static MD5_CACHE: LazyLock<StdMutex<Md5CacheMap>> = LazyLock::new(|| StdMutex::new(HashMap::new()));
 
 #[derive(Clone, Debug)]
 struct RequestContext {
@@ -3244,7 +3245,7 @@ fn sync_package_links_internal(
     );
     tracker.emit_preparing();
 
-    let sync_result: Result<Vec<String>, String> = (|| {
+    let sync_result: Result<Vec<String>, String> = {
         let mut warnings = Vec::new();
 
         for target in &cleanup_targets {
@@ -3324,7 +3325,7 @@ fn sync_package_links_internal(
         }
 
         Ok(warnings)
-    })();
+    };
 
     match &sync_result {
         Ok(_) => tracker.complete(),
@@ -3565,6 +3566,7 @@ pub async fn csl_rescan_packages(
 /// Downloads to the canonical path (Resources/plugins/IVAO_CSL/CSL) and then
 /// syncs the package to all other detected CSL directories.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri maps each command argument from the frontend payload.
 pub async fn csl_install_package(
     package_name: String,
     xplane_path: String,

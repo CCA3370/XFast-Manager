@@ -678,7 +678,7 @@ impl ProgressContext {
                     "[PROGRESS] Force emit: task {}/{}, phase: {:?}, percentage: {:.1}%",
                     self.current_task_index + 1,
                     self.total_tasks,
-                    &phase,
+                    phase,
                     percentage
                 ),
                 "installer_progress"

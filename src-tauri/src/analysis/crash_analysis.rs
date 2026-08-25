@@ -225,7 +225,7 @@ pub fn find_most_recent_crash_report(xplane_path: &str, skip_date_check: bool) -
                                 continue;
                             }
                         }
-                        if newest.as_ref().map_or(true, |(_, t)| modified > *t) {
+                        if newest.as_ref().is_none_or(|(_, t)| modified > *t) {
                             newest = Some((path, modified));
                         }
                     }

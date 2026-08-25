@@ -248,11 +248,9 @@ static LOGGER: LazyLock<Mutex<LoggerInner>> = LazyLock::new(|| Mutex::new(Logger
 
 // Public API
 
-pub fn set_locale(locale_str: &str) {
+pub fn set_locale(_locale_str: &str) {
     if let Ok(mut logger) = LOGGER.lock() {
-        let locale = match locale_str {
-            _ => Locale::En,
-        };
+        let locale = Locale::En;
         logger.set_locale(locale);
     }
 }

@@ -508,15 +508,17 @@ pub async fn execute_update(
     let downloaded = match download_files(
         &prepared.module_url,
         &download_targets,
-        &whitelist_crc,
-        parallel,
-        task_control.clone(),
-        chunk_progress_callback,
-        file_completed_callback,
-        &prepared.manifest.sizes,
-        chunked_enabled,
-        threads_per_task,
-        total_threads,
+        ContentDownloadBatchConfig {
+            expected_crc: &whitelist_crc,
+            parallel_downloads: parallel,
+            task_control: task_control.clone(),
+            chunk_progress_callback,
+            file_completed_callback,
+            file_sizes: &prepared.manifest.sizes,
+            chunked_enabled,
+            threads_per_task,
+            total_threads,
+        },
     )
     .await
     {
@@ -1741,22 +1743,38 @@ async fn download_file_chunked(
     Ok(result)
 }
 
-async fn download_files(
-    base_url: &str,
-    paths: &[String],
-    expected_crc: &HashMap<String, i64>,
+struct ContentDownloadBatchConfig<'a> {
+    expected_crc: &'a HashMap<String, i64>,
     parallel_downloads: usize,
     task_control: Option<TaskControl>,
     chunk_progress_callback: Option<Arc<dyn Fn(String, u64) + Send + Sync>>,
     file_completed_callback: Option<Arc<dyn Fn(String) + Send + Sync>>,
-    file_sizes: &HashMap<String, u64>,
+    file_sizes: &'a HashMap<String, u64>,
     chunked_enabled: bool,
     threads_per_task: usize,
     total_threads: usize,
+}
+
+async fn download_files(
+    base_url: &str,
+    paths: &[String],
+    config: ContentDownloadBatchConfig<'_>,
 ) -> Result<HashMap<String, Vec<u8>>> {
     if paths.is_empty() {
         return Ok(HashMap::new());
     }
+
+    let ContentDownloadBatchConfig {
+        expected_crc,
+        parallel_downloads,
+        task_control,
+        chunk_progress_callback,
+        file_completed_callback,
+        file_sizes,
+        chunked_enabled,
+        threads_per_task,
+        total_threads,
+    } = config;
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
@@ -1771,10 +1789,10 @@ async fn download_files(
     let range_supported = if chunked_enabled && threads_per_task > 1 {
         if let Some(first_path) = paths.first() {
             let probe_url = join_url(&base, first_path)?;
-            match probe_range_support(&client, probe_url.as_str()).await {
-                Ok(Some(_)) => true,
-                _ => false,
-            }
+            matches!(
+                probe_range_support(&client, probe_url.as_str()).await,
+                Ok(Some(_))
+            )
         } else {
             false
         }

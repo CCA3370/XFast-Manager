@@ -412,7 +412,7 @@ fn path_from_relative(xplane_path: &Path, relative_path: &str) -> PathBuf {
 fn folder_name_from_relative(relative_path: &str) -> String {
     relative_path
         .split('/')
-        .last()
+        .next_back()
         .unwrap_or(relative_path)
         .to_string()
 }

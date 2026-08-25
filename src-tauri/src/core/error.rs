@@ -283,15 +283,12 @@ fn api_error_from_io(err: &io::Error) -> ApiError {
         None
     };
 
-    let code = windows_code.unwrap_or_else(|| {
-        let code = match err.kind() {
-            io::ErrorKind::NotFound => ApiErrorCode::NotFound,
-            io::ErrorKind::PermissionDenied => ApiErrorCode::PermissionDenied,
-            io::ErrorKind::AlreadyExists => ApiErrorCode::ConflictExists,
-            io::ErrorKind::TimedOut => ApiErrorCode::Timeout,
-            _ => ApiErrorCode::Internal,
-        };
-        code
+    let code = windows_code.unwrap_or_else(|| match err.kind() {
+        io::ErrorKind::NotFound => ApiErrorCode::NotFound,
+        io::ErrorKind::PermissionDenied => ApiErrorCode::PermissionDenied,
+        io::ErrorKind::AlreadyExists => ApiErrorCode::ConflictExists,
+        io::ErrorKind::TimedOut => ApiErrorCode::Timeout,
+        _ => ApiErrorCode::Internal,
     });
 
     ApiError::new(code, err.to_string())

@@ -671,7 +671,7 @@ fn rewrite_airport_block_by_offsets(
     replace_file_atomically(&temp_path, apt_path)
         .map_err(|error| format!("Failed to replace {}: {}", apt_path.display(), error))?;
 
-    let delta = updated_block_text.as_bytes().len() as i64 - original_block.len() as i64;
+    let delta = updated_block_text.len() as i64 - original_block.len() as i64;
     Ok((airport_name, delta))
 }
 
@@ -1248,9 +1248,7 @@ fn update_cached_flatten_state(
             }
 
             if let Some(source_file) = entry.source_files.get_mut(source_path) {
-                source_file
-                    .airports
-                    .sort_by(|left, right| left.byte_start.cmp(&right.byte_start));
+                source_file.airports.sort_by_key(|left| left.byte_start);
             }
 
             if persisted_changed {

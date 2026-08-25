@@ -273,7 +273,7 @@ fn should_promote_to_fixed_high_priority(folder_name: &str, info: &SceneryPackag
 fn has_manual_category_override(info: &SceneryPackageInfo) -> bool {
     info.original_category.as_ref().is_some_and(|original| {
         &info.category != original
-            && !(&info.category == &SceneryCategory::AirportMesh
+            && !(info.category == SceneryCategory::AirportMesh
                 && original == &SceneryCategory::Mesh)
     })
 }
@@ -301,11 +301,9 @@ fn apply_known_package_profiles(packages: &mut [SceneryPackageInfo]) -> bool {
             changed = true;
         }
 
-        if !has_manual_override {
-            if package.category != SceneryCategory::RegionalOverlay {
-                package.category = SceneryCategory::RegionalOverlay;
-                changed = true;
-            }
+        if !has_manual_override && package.category != SceneryCategory::RegionalOverlay {
+            package.category = SceneryCategory::RegionalOverlay;
+            changed = true;
         }
         if package.category == SceneryCategory::RegionalOverlay
             && package.sub_priority != layer_number
@@ -1152,7 +1150,7 @@ impl SceneryIndexManager {
             // (in case they weren't updated but the shortcut info needs to be preserved)
             for (folder_name, info) in index.packages.iter_mut() {
                 // Look up by folder_name in shortcut_target_map values (shortcut names)
-                for (_, (shortcut_name, actual_path)) in shortcut_target_map.iter() {
+                for (shortcut_name, actual_path) in shortcut_target_map.values() {
                     if folder_name == shortcut_name {
                         if info.actual_path.is_none()
                             || info.actual_path.as_ref() != Some(actual_path)
@@ -1625,9 +1623,9 @@ impl SceneryIndexManager {
             .filter(|name| !locked_applied.contains(*name))
             .cloned();
 
-        for slot in 0..total {
-            if final_order[slot].is_none() {
-                final_order[slot] = unlocked_iter.next();
+        for slot in final_order.iter_mut().take(total) {
+            if slot.is_none() {
+                *slot = unlocked_iter.next();
             }
         }
 
@@ -2270,7 +2268,7 @@ fn detect_raw_tile_overlaps(
         }
 
         // For each coordinate with multiple packages, record all overlaps
-        for (_coord, folder_names) in coord_map.iter() {
+        for folder_names in coord_map.values() {
             if folder_names.len() > 1 {
                 for folder in folder_names {
                     let others: Vec<String> = folder_names

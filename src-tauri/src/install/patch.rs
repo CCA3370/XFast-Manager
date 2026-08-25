@@ -1290,7 +1290,7 @@ mod tests {
             display_name: folder.to_string(),
             dir: Some(dir.to_path_buf()),
         };
-        let det = rank_candidates(&files, &vec![mk("A", a.path()), mk("B", b.path())]);
+        let det = rank_candidates(&files, &[mk("A", a.path()), mk("B", b.path())]);
         // Universal files (df == n) score zero, so we must decline to guess.
         assert_eq!(det.recommended_folder, None);
     }

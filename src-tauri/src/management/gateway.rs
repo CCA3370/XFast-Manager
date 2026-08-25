@@ -327,7 +327,7 @@ pub async fn gateway_check_updates(
         return Ok(installed);
     }
 
-    let results: Vec<(GatewayInstalledAirport, bool)> = stream::iter(installed.into_iter())
+    let results: Vec<(GatewayInstalledAirport, bool)> = stream::iter(installed)
         .map(|installed| {
             let release_info = release_info.clone();
             let release_scenery = release_scenery.clone();
@@ -620,9 +620,7 @@ fn parse_xplane_version_for_compare(raw: &str) -> Option<Version> {
 }
 
 fn normalize_xplane_version_token(raw: &str) -> Option<String> {
-    let trimmed = raw
-        .trim()
-        .trim_start_matches(|ch: char| ch == 'v' || ch == 'V');
+    let trimmed = raw.trim().trim_start_matches(['v', 'V']);
     if trimmed.is_empty() {
         return None;
     }
@@ -1620,9 +1618,7 @@ fn parse_gateway_airport_detail(
     Some(GatewayAirportDetail {
         icao: summary.icao,
         airport_name: summary.airport_name,
-        scenery_count: summary
-            .scenery_count
-            .or_else(|| Some(sceneries.len() as i64)),
+        scenery_count: summary.scenery_count.or(Some(sceneries.len() as i64)),
         recommended_scenery_id: summary.recommended_scenery_id,
         recommended_artist: summary.recommended_artist,
         recommended_accepted_at: summary.recommended_accepted_at,
@@ -2126,7 +2122,7 @@ fn summary_to_search_result(summary: GatewayAirportSummaryData) -> GatewayAirpor
     }
 }
 
-fn pick_gateway_airport_object<'a>(root: &'a Map<String, Value>) -> &'a Map<String, Value> {
+fn pick_gateway_airport_object(root: &Map<String, Value>) -> &Map<String, Value> {
     pick_object(root, &["airport", "Airport", "data"]).unwrap_or(root)
 }
 

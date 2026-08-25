@@ -343,6 +343,7 @@ fn log_timed_step(step: &str, started_at: Instant, detail: impl Into<String>) {
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Parameters mirror the add-on progress event payload.
 fn emit_progress_event(
     callback: &Option<AddonUpdateProgressCallback>,
     item_type: &str,
@@ -917,7 +918,7 @@ fn require_drive_api_key() -> Result<String> {
 }
 
 fn drive_source_order_for_seed(seed: u128) -> [DriveSource; 2] {
-    if seed % 2 == 0 {
+    if seed.is_multiple_of(2) {
         [ZIBO_DRIVE_SOURCES[0], ZIBO_DRIVE_SOURCES[1]]
     } else {
         [ZIBO_DRIVE_SOURCES[1], ZIBO_DRIVE_SOURCES[0]]
@@ -1153,6 +1154,7 @@ async fn resolve_drive_files_with_order(
     ))
 }
 
+#[allow(clippy::too_many_arguments)] // The reporter owns one immutable snapshot of transfer state.
 async fn emit_chunked_drive_download_progress(
     progress_callback: Option<AddonUpdateProgressCallback>,
     item_type: String,
@@ -1463,6 +1465,7 @@ async fn download_drive_piece_with_retry(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)] // Download state is explicit to keep concurrent workers isolated.
 async fn download_drive_file_to_path_chunked(
     _client: &reqwest::Client,
     api_key: &str,
@@ -1729,6 +1732,7 @@ async fn download_drive_file_to_path_chunked(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)] // Parameters describe one complete archive transfer operation.
 async fn download_drive_file_to_path(
     client: &reqwest::Client,
     api_key: &str,
@@ -1892,6 +1896,7 @@ fn releases_for_plan(update: &PlannedZiboUpdate) -> Vec<ZiboRelease> {
     releases
 }
 
+#[allow(clippy::too_many_arguments)] // Parameters describe the selected release download transaction.
 async fn download_releases_from_drive_with_order(
     releases: &[ZiboRelease],
     source_order: [DriveSource; 2],
@@ -1963,7 +1968,7 @@ async fn download_releases_from_drive_with_order(
         let mut downloaded_before = 0u64;
         let mut failed_download = None;
 
-        for (idx, (release, file)) in releases.iter().cloned().zip(files.into_iter()).enumerate() {
+        for (idx, (release, file)) in releases.iter().cloned().zip(files).enumerate() {
             let zip_path = download_root.join(&file.file_name);
             if zip_path.exists() {
                 fs::remove_file(&zip_path)
@@ -2604,7 +2609,7 @@ async fn execute_patch_update(
 
     let download_started_at = Instant::now();
     let archives = download_releases_from_drive_with_order(
-        &[planned_update.primary_release.clone()],
+        std::slice::from_ref(&planned_update.primary_release),
         current_drive_source_order(),
         &downloads_dir,
         DriveDownloadMode::Single,
@@ -2666,6 +2671,7 @@ async fn execute_patch_update(
     Ok((updated_files, source_label, None))
 }
 
+#[allow(clippy::too_many_arguments)] // Parameters are the explicit major-update preservation contract.
 async fn execute_major_clean_update(
     planned_update: &PlannedZiboUpdate,
     target_path: &Path,
@@ -3048,6 +3054,7 @@ async fn execute_major_clean_update(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Progress and rollback state stay explicit during archive application.
 fn apply_downloaded_archive_to_target(
     archive: &DownloadedDriveArchive,
     unpack_root: &Path,
@@ -3542,6 +3549,7 @@ fn directory_info(dir: &Path) -> Result<DirectoryInfo> {
     })
 }
 
+#[allow(clippy::too_many_arguments)] // Copy accounting fields feed a single progress callback contract.
 fn copy_reader_to_file_with_progress<R, F>(
     reader: &mut R,
     destination: &Path,
@@ -3743,9 +3751,26 @@ where
 
 fn remove_readonly_attribute(path: &Path) -> Result<()> {
     let metadata = fs::metadata(path)?;
-    let mut permissions = metadata.permissions();
-    if permissions.readonly() {
-        permissions.set_readonly(false);
+    if metadata.permissions().readonly() {
+        #[cfg(target_os = "windows")]
+        #[allow(clippy::permissions_set_readonly_false)]
+        let permissions = {
+            let mut permissions = metadata.permissions();
+            permissions.set_readonly(false);
+            permissions
+        };
+
+        #[cfg(unix)]
+        let permissions = {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = metadata.permissions();
+            permissions.set_mode(permissions.mode() | 0o200);
+            permissions
+        };
+
+        #[cfg(not(any(target_os = "windows", unix)))]
+        let permissions = metadata.permissions();
+
         fs::set_permissions(path, permissions)
             .with_context(|| format!("Failed to update permissions for '{}'", path.display()))?;
     }
@@ -4011,6 +4036,30 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn remove_readonly_adds_only_owner_write_permission() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().expect("failed to create tempdir");
+        let file = temp.path().join("readonly.txt");
+        fs::write(&file, b"content").expect("write test file");
+        let mut permissions = fs::metadata(&file)
+            .expect("read test file metadata")
+            .permissions();
+        permissions.set_mode(0o444);
+        fs::set_permissions(&file, permissions).expect("make test file read-only");
+
+        remove_readonly_attribute(&file).expect("clear read-only permission");
+
+        let mode = fs::metadata(&file)
+            .expect("read updated test file metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o644);
+    }
 
     #[test]
     fn zibo_detection_excludes_default_folders() {

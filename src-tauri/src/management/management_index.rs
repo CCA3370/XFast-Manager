@@ -382,8 +382,7 @@ fn rename_files_transactionally(
         }
     }
 
-    let mut completed_count = 0usize;
-    for (source, target) in rename_pairs {
+    for (completed_count, (source, target)) in rename_pairs.iter().enumerate() {
         if let Err(error) = fs::rename(source, target) {
             let mut rollback_failures = Vec::new();
             for (rollback_source, rollback_target) in rename_pairs[..completed_count].iter().rev() {
@@ -410,7 +409,6 @@ fn rename_files_transactionally(
                 rollback_context
             )));
         }
-        completed_count += 1;
     }
 
     Ok(())
@@ -709,7 +707,7 @@ fn scan_single_aircraft_folder(
         return None;
     }
 
-    acf_files.sort_by(|a, b| a.file_name.to_lowercase().cmp(&b.file_name.to_lowercase()));
+    acf_files.sort_by_key(|a| a.file_name.to_lowercase());
 
     let enabled_count = acf_files.iter().filter(|file| file.enabled).count();
     let enabled = enabled_count > 0;

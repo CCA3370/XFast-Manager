@@ -445,7 +445,7 @@ impl Scanner {
                 marker_files.push((file_path.clone(), "library"));
             } else if file_path.ends_with(".dsf") {
                 marker_files.push((file_path.clone(), "dsf"));
-            } else if Self::is_apt_dat_archive_path(&file_path) {
+            } else if Self::is_apt_dat_archive_path(file_path) {
                 marker_files.push((file_path.clone(), "apt"));
             } else if file_path.ends_with("cycle.json") {
                 marker_files.push((file_path.clone(), "navdata"));
