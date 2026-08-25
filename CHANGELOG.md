@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Health Diagnostic Center** - Health now checks the X-Plane installation, recent stability, scenery, aircraft and plugins, navigation data, performance, storage, system environment, XFast Manager data, and available updates from one responsive center that matches the rest of the app.
-- **Health History and Shareable Reports** - The latest 20 completed checks are saved locally for each X-Plane installation, with Markdown and JSON reports that hide private paths unless explicitly included.
-- **Guided Health Repairs** - Health can apply verified safe repairs together, asks before higher-impact repairs, blocks file changes while X-Plane is running, and rechecks affected areas after a repair.
+- **Health History and Shareable Reports** - The latest 20 completed checks are saved locally for each X-Plane installation, with Markdown and JSON reports that hide private paths across evidence and diagnostic details unless explicitly included for the selected report.
+- **Guided Health Repairs** - Health can apply verified safe repairs together, prevents overlapping scans or repairs, asks before higher-impact repairs, blocks file changes while X-Plane is running, and rechecks affected areas after a repair.
 - **Screenshot Preview Navigation** - Screenshot previews now support moving to the previous or next item without closing the preview.
 
 ### Changed
