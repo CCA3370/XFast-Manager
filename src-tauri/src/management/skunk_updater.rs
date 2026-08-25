@@ -31,6 +31,12 @@ const REMOTE_BLACKLIST_FILE: &str = "skunkcrafts_updater_blacklist.txt";
 const LOCAL_CRC_CACHE_TTL: Duration = Duration::from_secs(300);
 const LOCAL_CRC_CACHE_MAX_SIZE: usize = 20_000;
 const CHUNKED_DOWNLOAD_MIN_SIZE: u64 = 512 * 1024;
+const CONTENT_DOWNLOAD_MAX_ATTEMPTS: usize = 5;
+const CONTENT_DOWNLOAD_RETRY_BASE_DELAY_MS: u64 = 350;
+const CONTENT_DOWNLOAD_RETRY_MAX_DELAY_MS: u64 = 2_000;
+const CONTENT_DOWNLOAD_CANCEL_POLL_MS: u64 = 100;
+const CONTENT_DOWNLOAD_PREALLOCATE_MAX_BYTES: u64 = 8 * 1024 * 1024;
+const CONTENT_DOWNLOAD_LOG_CONTEXT: &str = "addon_updater";
 
 #[derive(Debug, Clone)]
 struct LocalCrcCacheEntry {
@@ -1260,6 +1266,362 @@ async fn probe_range_support(client: &reqwest::Client, url: &str) -> Result<Opti
     }
 }
 
+fn content_download_status_is_retryable(status: reqwest::StatusCode) -> bool {
+    status == reqwest::StatusCode::REQUEST_TIMEOUT
+        || status == reqwest::StatusCode::TOO_EARLY
+        || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+        || status.is_server_error()
+}
+
+fn content_download_retry_delay(failed_attempt: usize) -> Duration {
+    let exponent = failed_attempt.saturating_sub(1).min(6) as u32;
+    let millis = CONTENT_DOWNLOAD_RETRY_BASE_DELAY_MS.saturating_mul(1u64 << exponent);
+    Duration::from_millis(millis.min(CONTENT_DOWNLOAD_RETRY_MAX_DELAY_MS))
+}
+
+async fn sleep_before_content_download_retry(
+    delay: Duration,
+    task_control: Option<&TaskControl>,
+) -> Result<()> {
+    if task_control.is_none() {
+        tokio::time::sleep(delay).await;
+        return Ok(());
+    }
+
+    let deadline = Instant::now() + delay;
+    loop {
+        ensure_not_cancelled(task_control, "install")?;
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Ok(());
+        }
+        tokio::time::sleep(remaining.min(Duration::from_millis(CONTENT_DOWNLOAD_CANCEL_POLL_MS)))
+            .await;
+    }
+}
+
+async fn schedule_content_download_retry(
+    operation: &str,
+    url: &str,
+    failed_attempt: usize,
+    error: &anyhow::Error,
+    task_control: Option<&TaskControl>,
+) -> Result<bool> {
+    if failed_attempt >= CONTENT_DOWNLOAD_MAX_ATTEMPTS {
+        return Ok(false);
+    }
+
+    let delay = content_download_retry_delay(failed_attempt);
+    crate::logger::log_info(
+        &format!(
+            "Retrying content download {} from '{}' after attempt {}/{} in {} ms: {}",
+            operation,
+            url,
+            failed_attempt,
+            CONTENT_DOWNLOAD_MAX_ATTEMPTS,
+            delay.as_millis(),
+            error
+        ),
+        Some(CONTENT_DOWNLOAD_LOG_CONTEXT),
+    );
+    sleep_before_content_download_retry(delay, task_control).await?;
+    Ok(true)
+}
+
+async fn read_content_download_response(
+    response: reqwest::Response,
+    expected_bytes: Option<u64>,
+    task_control: Option<&TaskControl>,
+    chunk_progress_callback: &Option<Arc<dyn Fn(String, u64) + Send + Sync>>,
+    rel_path: &str,
+    operation: &str,
+    url: &str,
+    progress_high_water: &mut u64,
+) -> Result<Vec<u8>> {
+    let capacity = expected_bytes
+        .and_then(|size| usize::try_from(size.min(CONTENT_DOWNLOAD_PREALLOCATE_MAX_BYTES)).ok())
+        .unwrap_or(0);
+    let mut data = Vec::with_capacity(capacity);
+    let mut stream = response.bytes_stream();
+    while let Some(next_chunk) = stream.next().await {
+        ensure_not_cancelled(task_control, "install")?;
+        let chunk = next_chunk
+            .with_context(|| format!("Failed to stream {} for '{}'", operation.trim(), url))?;
+        data.extend_from_slice(&chunk);
+
+        let received = data.len() as u64;
+        let reportable_received = expected_bytes
+            .map(|expected| received.min(expected))
+            .unwrap_or(received);
+        if reportable_received > *progress_high_water {
+            let delta = reportable_received - *progress_high_water;
+            *progress_high_water = reportable_received;
+            if let Some(callback) = chunk_progress_callback.as_ref() {
+                callback(rel_path.to_string(), delta);
+            }
+        }
+    }
+
+    if let Some(expected) = expected_bytes {
+        let actual = data.len() as u64;
+        if actual != expected {
+            return Err(anyhow!(
+                "Downloaded size mismatch for {} from '{}': expected {}, got {}",
+                operation,
+                url,
+                expected,
+                actual
+            ));
+        }
+    }
+
+    Ok(data)
+}
+
+#[derive(Clone, Copy)]
+struct ContentDownloadContext<'a> {
+    client: &'a reqwest::Client,
+    url: &'a str,
+    expected_file_bytes: Option<u64>,
+    semaphore: &'a Semaphore,
+    task_control: Option<&'a TaskControl>,
+    progress_callback: &'a Option<Arc<dyn Fn(String, u64) + Send + Sync>>,
+    rel_path: &'a str,
+}
+
+async fn download_file_single_with_retry(context: ContentDownloadContext<'_>) -> Result<Vec<u8>> {
+    let mut progress_high_water = 0u64;
+
+    for attempt in 1..=CONTENT_DOWNLOAD_MAX_ATTEMPTS {
+        ensure_not_cancelled(context.task_control, "install")?;
+        let permit = context
+            .semaphore
+            .acquire()
+            .await
+            .map_err(|_| anyhow!("Semaphore closed"))?;
+        let response = match context.client.get(context.url).send().await {
+            Ok(response) => response,
+            Err(request_error) => {
+                drop(permit);
+                let error = anyhow!("request failed: {}", request_error);
+                if schedule_content_download_retry(
+                    &format!("for '{}'", context.rel_path),
+                    context.url,
+                    attempt,
+                    &error,
+                    context.task_control,
+                )
+                .await?
+                {
+                    continue;
+                }
+                return Err(error.context(format!(
+                    "Failed to download '{}' after {} attempts",
+                    context.url, attempt
+                )));
+            }
+        };
+
+        let status = response.status();
+        if !status.is_success() {
+            drop(permit);
+            let error = anyhow!("HTTP {}", status);
+            if content_download_status_is_retryable(status)
+                && schedule_content_download_retry(
+                    &format!("for '{}'", context.rel_path),
+                    context.url,
+                    attempt,
+                    &error,
+                    context.task_control,
+                )
+                .await?
+            {
+                continue;
+            }
+            if content_download_status_is_retryable(status) {
+                return Err(error.context(format!(
+                    "Failed to download '{}' after {} attempts",
+                    context.url, attempt
+                )));
+            }
+            return Err(anyhow!(
+                "Download failed for '{}': HTTP {}",
+                context.url,
+                status
+            ));
+        }
+
+        let result = read_content_download_response(
+            response,
+            context.expected_file_bytes,
+            context.task_control,
+            context.progress_callback,
+            context.rel_path,
+            "response body",
+            context.url,
+            &mut progress_high_water,
+        )
+        .await;
+        drop(permit);
+
+        match result {
+            Ok(data) => return Ok(data),
+            Err(error) if is_cancelled_error(&error) => return Err(error),
+            Err(error) => {
+                if schedule_content_download_retry(
+                    &format!("for '{}'", context.rel_path),
+                    context.url,
+                    attempt,
+                    &error,
+                    context.task_control,
+                )
+                .await?
+                {
+                    continue;
+                }
+                return Err(error.context(format!(
+                    "Failed to download '{}' after {} attempts",
+                    context.url, attempt
+                )));
+            }
+        }
+    }
+
+    unreachable!("content download retry loop always returns")
+}
+
+async fn download_chunk_with_retry(
+    context: ContentDownloadContext<'_>,
+    index: usize,
+    start: u64,
+    end: u64,
+) -> Result<(usize, Vec<u8>, bool)> {
+    let expected_chunk_bytes = end.saturating_sub(start).saturating_add(1);
+    let mut progress_high_water = 0u64;
+
+    for attempt in 1..=CONTENT_DOWNLOAD_MAX_ATTEMPTS {
+        ensure_not_cancelled(context.task_control, "install")?;
+        let permit = context
+            .semaphore
+            .acquire()
+            .await
+            .map_err(|_| anyhow!("Semaphore closed"))?;
+        let range_header = format!("bytes={}-{}", start, end);
+        let response = match context
+            .client
+            .get(context.url)
+            .header("Range", &range_header)
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(request_error) => {
+                drop(permit);
+                let error = anyhow!("request failed: {}", request_error);
+                if schedule_content_download_retry(
+                    &format!("chunk {}", index),
+                    context.url,
+                    attempt,
+                    &error,
+                    context.task_control,
+                )
+                .await?
+                {
+                    continue;
+                }
+                return Err(error.context(format!(
+                    "Failed to download chunk {} of '{}' after {} attempts",
+                    index, context.url, attempt
+                )));
+            }
+        };
+
+        let status = response.status();
+        if status == reqwest::StatusCode::OK && index > 0 {
+            return Ok((index, Vec::new(), true));
+        }
+
+        if status != reqwest::StatusCode::PARTIAL_CONTENT && status != reqwest::StatusCode::OK {
+            drop(permit);
+            let error = anyhow!("HTTP {}", status);
+            if content_download_status_is_retryable(status)
+                && schedule_content_download_retry(
+                    &format!("chunk {}", index),
+                    context.url,
+                    attempt,
+                    &error,
+                    context.task_control,
+                )
+                .await?
+            {
+                continue;
+            }
+            if content_download_status_is_retryable(status) {
+                return Err(error.context(format!(
+                    "Failed to download chunk {} of '{}' after {} attempts",
+                    index, context.url, attempt
+                )));
+            }
+            return Err(anyhow!(
+                "Download failed for '{}' chunk {}: HTTP {}",
+                context.url,
+                index,
+                status
+            ));
+        }
+
+        let is_full_body_fallback = status == reqwest::StatusCode::OK;
+        let expected_bytes = if is_full_body_fallback {
+            context
+                .expected_file_bytes
+                .ok_or_else(|| anyhow!("Missing expected file size for chunked download"))?
+        } else {
+            expected_chunk_bytes
+        };
+        let operation = if is_full_body_fallback {
+            "response body".to_string()
+        } else {
+            format!("chunk {}", index)
+        };
+        let result = read_content_download_response(
+            response,
+            Some(expected_bytes),
+            context.task_control,
+            context.progress_callback,
+            context.rel_path,
+            &operation,
+            context.url,
+            &mut progress_high_water,
+        )
+        .await;
+        drop(permit);
+
+        match result {
+            Ok(data) => return Ok((index, data, is_full_body_fallback)),
+            Err(error) if is_cancelled_error(&error) => return Err(error),
+            Err(error) => {
+                if schedule_content_download_retry(
+                    &format!("chunk {}", index),
+                    context.url,
+                    attempt,
+                    &error,
+                    context.task_control,
+                )
+                .await?
+                {
+                    continue;
+                }
+                return Err(error.context(format!(
+                    "Failed to download chunk {} of '{}' after {} attempts",
+                    index, context.url, attempt
+                )));
+            }
+        }
+    }
+
+    unreachable!("content chunk retry loop always returns")
+}
+
 /// Download a single file using multiple concurrent HTTP Range connections.
 /// Each chunk acquires a permit from the semaphore before downloading.
 async fn download_file_chunked(
@@ -1272,6 +1634,17 @@ async fn download_file_chunked(
     chunk_progress_callback: &Option<Arc<dyn Fn(String, u64) + Send + Sync>>,
     rel_path: &str,
 ) -> Result<Vec<u8>> {
+    if file_size == 0 {
+        return Err(anyhow!("Cannot split an empty download into chunks"));
+    }
+    if num_chunks == 0 || num_chunks as u64 > file_size {
+        return Err(anyhow!(
+            "Invalid chunk count {} for a {} byte download",
+            num_chunks,
+            file_size
+        ));
+    }
+
     let chunk_size = file_size / num_chunks as u64;
     let mut ranges: Vec<(u64, u64)> = Vec::with_capacity(num_chunks);
     for i in 0..num_chunks {
@@ -1296,64 +1669,21 @@ async fn download_file_chunked(
         let end = *end;
 
         let handle = tokio::spawn(async move {
-            let _permit = semaphore
-                .acquire()
-                .await
-                .map_err(|_| anyhow!("Semaphore closed"))?;
-
-            ensure_not_cancelled(task_control.as_ref(), "install")?;
-
-            let range_header = format!("bytes={}-{}", start, end);
-            let response = client
-                .get(&url)
-                .header("Range", &range_header)
-                .send()
-                .await
-                .with_context(|| format!("Failed to download chunk {} of '{}'", idx, url))?;
-
-            let status = response.status();
-            // If server returns 200 instead of 206, it doesn't support Range for this request
-            if status == reqwest::StatusCode::OK && idx == 0 {
-                // First chunk gets full body - consume it all
-                let mut data = Vec::new();
-                let mut stream = response.bytes_stream();
-                while let Some(next_chunk) = stream.next().await {
-                    ensure_not_cancelled(task_control.as_ref(), "install")?;
-                    let chunk = next_chunk
-                        .with_context(|| format!("Failed to stream response body for '{}'", url))?;
-                    data.extend_from_slice(&chunk);
-                    if let Some(cb) = chunk_progress_callback.as_ref() {
-                        cb(rel_path.clone(), chunk.len() as u64);
-                    }
-                }
-                return Ok::<(usize, Vec<u8>, bool), anyhow::Error>((idx, data, true));
-            } else if status == reqwest::StatusCode::OK && idx > 0 {
-                // Non-first chunk got 200 - skip since first chunk has full data
-                return Ok((idx, Vec::new(), true));
-            }
-
-            if !status.is_success() {
-                return Err(anyhow!(
-                    "Download failed for '{}' chunk {}: HTTP {}",
-                    url,
-                    idx,
-                    status
-                ));
-            }
-
-            let mut data = Vec::with_capacity((end - start + 1) as usize);
-            let mut stream = response.bytes_stream();
-            while let Some(next_chunk) = stream.next().await {
-                ensure_not_cancelled(task_control.as_ref(), "install")?;
-                let chunk = next_chunk
-                    .with_context(|| format!("Failed to stream chunk {} for '{}'", idx, url))?;
-                data.extend_from_slice(&chunk);
-                if let Some(cb) = chunk_progress_callback.as_ref() {
-                    cb(rel_path.clone(), chunk.len() as u64);
-                }
-            }
-
-            Ok((idx, data, false))
+            download_chunk_with_retry(
+                ContentDownloadContext {
+                    client: &client,
+                    url: &url,
+                    expected_file_bytes: Some(file_size),
+                    semaphore: &semaphore,
+                    task_control: task_control.as_ref(),
+                    progress_callback: &chunk_progress_callback,
+                    rel_path: &rel_path,
+                },
+                idx,
+                start,
+                end,
+            )
+            .await
         });
 
         handles.push(handle);
@@ -1362,14 +1692,30 @@ async fn download_file_chunked(
     let mut chunks: Vec<(usize, Vec<u8>)> = Vec::with_capacity(num_chunks);
     let mut full_body_fallback = false;
 
+    let mut first_error = None;
     for handle in handles {
-        let (idx, data, is_fallback) = handle
-            .await
-            .map_err(|e| anyhow!("Chunk download task panicked: {}", e))??;
-        if is_fallback {
-            full_body_fallback = true;
+        match handle.await {
+            Ok(Ok((idx, data, is_fallback))) => {
+                if is_fallback {
+                    full_body_fallback = true;
+                }
+                chunks.push((idx, data));
+            }
+            Ok(Err(error)) => {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+            Err(error) => {
+                if first_error.is_none() {
+                    first_error = Some(anyhow!("Chunk download task panicked: {}", error));
+                }
+            }
         }
-        chunks.push((idx, data));
+    }
+
+    if let Some(error) = first_error {
+        return Err(error);
     }
 
     if full_body_fallback {
@@ -1471,38 +1817,16 @@ async fn download_files(
                 )
                 .await?
             } else {
-                // Single-connection download with semaphore permit
-                let _permit = semaphore
-                    .acquire()
-                    .await
-                    .map_err(|_| anyhow!("Semaphore closed"))?;
-
-                let response = client
-                    .get(url.clone())
-                    .send()
-                    .await
-                    .with_context(|| format!("Failed to download '{}'", url))?;
-
-                if !response.status().is_success() {
-                    return Err(anyhow!(
-                        "Download failed for '{}': HTTP {}",
-                        url,
-                        response.status()
-                    ));
-                }
-
-                let mut data = Vec::new();
-                let mut stream = response.bytes_stream();
-                while let Some(next_chunk) = stream.next().await {
-                    ensure_not_cancelled(task_control.as_ref(), "install")?;
-                    let chunk = next_chunk
-                        .with_context(|| format!("Failed to stream response body for '{}'", url))?;
-                    data.extend_from_slice(&chunk);
-                    if let Some(cb) = chunk_progress_callback.as_ref() {
-                        cb(rel_path.clone(), chunk.len() as u64);
-                    }
-                }
-                data
+                download_file_single_with_retry(ContentDownloadContext {
+                    client: &client,
+                    url: url.as_str(),
+                    expected_file_bytes: (file_size > 0).then_some(file_size),
+                    semaphore: &semaphore,
+                    task_control: task_control.as_ref(),
+                    progress_callback: &chunk_progress_callback,
+                    rel_path: &rel_path,
+                })
+                .await?
             };
 
             if let Some(expected) = expected_crc.get(&rel_path) {
@@ -2087,4 +2411,315 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::net::{SocketAddr, TcpListener, TcpStream};
+    use std::sync::atomic::{AtomicBool, AtomicUsize};
+    use std::thread::{self, JoinHandle};
+
+    struct TestResponse {
+        status: u16,
+        headers: Vec<(String, String)>,
+        body: Vec<u8>,
+    }
+
+    type TestHttpHandler = dyn Fn(&str) -> Option<TestResponse> + Send + Sync + 'static;
+
+    struct TestHttpServer {
+        base_url: String,
+        address: SocketAddr,
+        shutdown: Arc<AtomicBool>,
+        handle: Option<JoinHandle<()>>,
+    }
+
+    impl TestHttpServer {
+        fn start(handler: Arc<TestHttpHandler>) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind test HTTP server");
+            let address = listener.local_addr().expect("read test server address");
+            listener
+                .set_nonblocking(true)
+                .expect("set test server nonblocking");
+            let shutdown = Arc::new(AtomicBool::new(false));
+            let shutdown_for_thread = Arc::clone(&shutdown);
+            let handle = thread::spawn(move || {
+                while !shutdown_for_thread.load(Ordering::SeqCst) {
+                    match listener.accept() {
+                        Ok((mut stream, _)) => {
+                            let request = read_http_request(&mut stream);
+                            if let Some(response) = handler(&request) {
+                                write_http_response(&mut stream, response);
+                            }
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            thread::sleep(Duration::from_millis(2));
+                        }
+                        Err(error) => panic!("test HTTP server accept failed: {error}"),
+                    }
+                }
+            });
+
+            Self {
+                base_url: format!("http://{address}"),
+                address,
+                shutdown,
+                handle: Some(handle),
+            }
+        }
+    }
+
+    impl Drop for TestHttpServer {
+        fn drop(&mut self) {
+            self.shutdown.store(true, Ordering::SeqCst);
+            let _ = TcpStream::connect(self.address);
+            if let Some(handle) = self.handle.take() {
+                handle.join().expect("join test HTTP server");
+            }
+        }
+    }
+
+    fn read_http_request(stream: &mut TcpStream) -> String {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .expect("set test request timeout");
+        let mut request = Vec::new();
+        let mut buffer = [0u8; 1024];
+        loop {
+            let read = stream.read(&mut buffer).expect("read test HTTP request");
+            if read == 0 {
+                break;
+            }
+            request.extend_from_slice(&buffer[..read]);
+            if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                break;
+            }
+        }
+        String::from_utf8(request).expect("test HTTP request is UTF-8")
+    }
+
+    fn write_http_response(stream: &mut TcpStream, response: TestResponse) {
+        let reason = match response.status {
+            200 => "OK",
+            206 => "Partial Content",
+            404 => "Not Found",
+            503 => "Service Unavailable",
+            _ => "Test Response",
+        };
+        let mut head = format!(
+            "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\n",
+            response.status,
+            reason,
+            response.body.len()
+        );
+        for (name, value) in response.headers {
+            head.push_str(&format!("{}: {}\r\n", name, value));
+        }
+        head.push_str("\r\n");
+        stream
+            .write_all(head.as_bytes())
+            .expect("write test response headers");
+        stream
+            .write_all(&response.body)
+            .expect("write test response body");
+    }
+
+    fn request_header(request: &str, name: &str) -> Option<String> {
+        request.lines().find_map(|line| {
+            let (header_name, value) = line.split_once(':')?;
+            header_name
+                .eq_ignore_ascii_case(name)
+                .then(|| value.trim().to_string())
+        })
+    }
+
+    #[test]
+    fn content_download_retry_policy_only_retries_temporary_http_failures() {
+        for status in [408, 425, 429, 500, 502, 503, 504] {
+            assert!(
+                content_download_status_is_retryable(
+                    reqwest::StatusCode::from_u16(status).expect("valid HTTP status")
+                ),
+                "HTTP {status} should be retried"
+            );
+        }
+
+        for status in [400, 401, 403, 404, 416] {
+            assert!(
+                !content_download_status_is_retryable(
+                    reqwest::StatusCode::from_u16(status).expect("valid HTTP status")
+                ),
+                "HTTP {status} should fail without retrying"
+            );
+        }
+    }
+
+    #[test]
+    fn content_download_retry_delay_uses_a_bounded_exponential_backoff() {
+        assert_eq!(content_download_retry_delay(1), Duration::from_millis(350));
+        assert_eq!(content_download_retry_delay(2), Duration::from_millis(700));
+        assert_eq!(
+            content_download_retry_delay(3),
+            Duration::from_millis(1_400)
+        );
+        assert_eq!(
+            content_download_retry_delay(4),
+            Duration::from_millis(2_000)
+        );
+        assert_eq!(
+            content_download_retry_delay(10),
+            Duration::from_millis(2_000)
+        );
+    }
+
+    #[tokio::test]
+    async fn chunked_download_retries_a_transient_connection_failure() {
+        let payload = Arc::new(b"abcdefghijkl".to_vec());
+        let failed_range_attempts = Arc::new(AtomicUsize::new(0));
+        let payload_for_server = Arc::clone(&payload);
+        let attempts_for_server = Arc::clone(&failed_range_attempts);
+        let server = TestHttpServer::start(Arc::new(move |request| {
+            let range = request_header(request, "range").expect("range request header");
+            if range == "bytes=4-7" && attempts_for_server.fetch_add(1, Ordering::SeqCst) == 0 {
+                return None;
+            }
+
+            let bounds = range
+                .strip_prefix("bytes=")
+                .and_then(|value| value.split_once('-'))
+                .expect("valid byte range");
+            let start = bounds.0.parse::<usize>().expect("valid range start");
+            let end = bounds.1.parse::<usize>().expect("valid range end");
+            Some(TestResponse {
+                status: 206,
+                headers: vec![(
+                    "Content-Range".to_string(),
+                    format!("bytes {start}-{end}/{}", payload_for_server.len()),
+                )],
+                body: payload_for_server[start..=end].to_vec(),
+            })
+        }));
+
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .expect("build test HTTP client");
+        let semaphore = Arc::new(Semaphore::new(3));
+        let processed = Arc::new(AtomicU64::new(0));
+        let processed_for_callback = Arc::clone(&processed);
+        let progress_callback: Option<Arc<dyn Fn(String, u64) + Send + Sync>> =
+            Some(Arc::new(move |_, bytes| {
+                processed_for_callback.fetch_add(bytes, Ordering::SeqCst);
+            }));
+
+        let downloaded = download_file_chunked(
+            &client,
+            &format!("{}/content.bin", server.base_url),
+            payload.len() as u64,
+            3,
+            &semaphore,
+            &None,
+            &progress_callback,
+            "content.bin",
+        )
+        .await
+        .expect("transient chunk failure should recover");
+
+        assert_eq!(downloaded, *payload);
+        assert_eq!(failed_range_attempts.load(Ordering::SeqCst), 2);
+        assert_eq!(processed.load(Ordering::SeqCst), payload.len() as u64);
+    }
+
+    #[tokio::test]
+    async fn single_download_retries_a_temporary_server_failure() {
+        let payload = Arc::new(b"temporary failure recovered".to_vec());
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let payload_for_server = Arc::clone(&payload);
+        let attempts_for_server = Arc::clone(&attempts);
+        let server = TestHttpServer::start(Arc::new(move |_| {
+            let attempt = attempts_for_server.fetch_add(1, Ordering::SeqCst) + 1;
+            if attempt == 1 {
+                return Some(TestResponse {
+                    status: 503,
+                    headers: Vec::new(),
+                    body: Vec::new(),
+                });
+            }
+            Some(TestResponse {
+                status: 200,
+                headers: Vec::new(),
+                body: payload_for_server.as_ref().clone(),
+            })
+        }));
+
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .expect("build test HTTP client");
+        let semaphore = Arc::new(Semaphore::new(1));
+        let processed = Arc::new(AtomicU64::new(0));
+        let processed_for_callback = Arc::clone(&processed);
+        let progress_callback: Option<Arc<dyn Fn(String, u64) + Send + Sync>> =
+            Some(Arc::new(move |_, bytes| {
+                processed_for_callback.fetch_add(bytes, Ordering::SeqCst);
+            }));
+
+        let url = format!("{}/content.bin", server.base_url);
+        let downloaded = download_file_single_with_retry(ContentDownloadContext {
+            client: &client,
+            url: &url,
+            expected_file_bytes: Some(payload.len() as u64),
+            semaphore: &semaphore,
+            task_control: None,
+            progress_callback: &progress_callback,
+            rel_path: "content.bin",
+        })
+        .await
+        .expect("temporary server failure should recover");
+
+        assert_eq!(downloaded, *payload);
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        assert_eq!(processed.load(Ordering::SeqCst), payload.len() as u64);
+    }
+
+    #[tokio::test]
+    async fn single_download_does_not_retry_a_permanent_client_failure() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_for_server = Arc::clone(&attempts);
+        let server = TestHttpServer::start(Arc::new(move |_| {
+            attempts_for_server.fetch_add(1, Ordering::SeqCst);
+            Some(TestResponse {
+                status: 404,
+                headers: Vec::new(),
+                body: Vec::new(),
+            })
+        }));
+
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .expect("build test HTTP client");
+        let url = format!("{}/missing.bin", server.base_url);
+        let semaphore = Arc::new(Semaphore::new(1));
+        let progress_callback = None;
+        let error = download_file_single_with_retry(ContentDownloadContext {
+            client: &client,
+            url: &url,
+            expected_file_bytes: None,
+            semaphore: &semaphore,
+            task_control: None,
+            progress_callback: &progress_callback,
+            rel_path: "missing.bin",
+        })
+        .await
+        .expect_err("permanent client failure should be returned");
+
+        assert!(error.to_string().contains("HTTP 404"));
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    }
 }
