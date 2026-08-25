@@ -27,6 +27,11 @@ export interface DoctorBatchFixResult {
   failed: number
 }
 
+interface DoctorRunTiming {
+  startedAt: number
+  accumulatedDurationMs: number
+}
+
 const LOCAL_CONCURRENCY = 4
 const NETWORK_CONCURRENCY = 3
 const APP_VERSION_TIMEOUT_MS = 5_000
@@ -179,6 +184,7 @@ export const useDoctorStore = defineStore('doctor', () => {
   })
 
   const isRunning = computed(() => currentRun.value?.state === 'running')
+  const isBusy = computed(() => isRunning.value || fixingId.value !== null || repairingAll.value)
   const isDisplayingCurrentRun = computed(() =>
     Boolean(currentRun.value && displayedRun.value?.id === currentRun.value.id),
   )
@@ -213,6 +219,7 @@ export const useDoctorStore = defineStore('doctor', () => {
     currentRunIsLive.value = false
     currentRunPath.value = null
     lastContext = null
+    error.value = null
   }
 
   function reset() {
@@ -232,6 +239,7 @@ export const useDoctorStore = defineStore('doctor', () => {
 
     if (currentRunPath.value && currentRunPath.value !== xplanePath) {
       discardCurrentRun()
+      history.value = []
     }
 
     if (!xplanePath) {
@@ -275,7 +283,7 @@ export const useDoctorStore = defineStore('doctor', () => {
   }
 
   function selectHistoryRun(runId: string | null) {
-    if (isRunning.value) return
+    if (isBusy.value) return
     selectedRunId.value = runId && history.value.some((run) => run.id === runId) ? runId : null
   }
 
@@ -353,7 +361,12 @@ export const useDoctorStore = defineStore('doctor', () => {
     }
   }
 
-  async function finishRun(runToken: number, state: 'completed' | 'cancelled', runPath: string) {
+  async function finishRun(
+    runToken: number,
+    state: 'completed' | 'cancelled',
+    runPath: string,
+    timing?: DoctorRunTiming,
+  ) {
     if (activeRunToken !== runToken || !currentRun.value || currentRunPath.value !== runPath) {
       return
     }
@@ -363,7 +376,9 @@ export const useDoctorStore = defineStore('doctor', () => {
       ...currentRun.value,
       state,
       completedAt,
-      durationMs: completedAt - currentRun.value.startedAt,
+      durationMs: timing
+        ? timing.accumulatedDurationMs + Math.max(0, completedAt - timing.startedAt)
+        : Math.max(0, completedAt - currentRun.value.startedAt),
       checks,
       summary: summarizeDoctorRun(checks, state),
       installationId: lastContext?.installationId || currentRun.value.installationId,
@@ -392,7 +407,7 @@ export const useDoctorStore = defineStore('doctor', () => {
   }
 
   async function runDiagnostics(mode: DoctorRunMode = 'quick'): Promise<void> {
-    if (isRunning.value) return
+    if (isBusy.value) return
     const xplanePath = appStore.xplanePath
     if (!xplanePath) {
       reset()
@@ -554,6 +569,7 @@ export const useDoctorStore = defineStore('doctor', () => {
     try {
       xplaneRunning.value = await invoke<boolean>('is_xplane_running')
     } catch (reason) {
+      logError(`Health: X-Plane runtime check failed: ${reason}`, 'doctor')
       error.value = String(reason)
       return false
     }
@@ -625,6 +641,9 @@ export const useDoctorStore = defineStore('doctor', () => {
     )
     if (!definitions.length) return
 
+    const recheckStartedAt = Date.now()
+    const accumulatedDurationMs = currentRun.value.durationMs
+
     activeRunToken += 1
     const runToken = activeRunToken
     cancelRequested = false
@@ -647,7 +666,10 @@ export const useDoctorStore = defineStore('doctor', () => {
     await runBounded(definitions, LOCAL_CONCURRENCY, async (definition) => {
       updateRunChecks(runToken, await executeDefinition(definition, runToken))
     })
-    await finishRun(runToken, cancelRequested ? 'cancelled' : 'completed', runPath)
+    await finishRun(runToken, cancelRequested ? 'cancelled' : 'completed', runPath, {
+      startedAt: recheckStartedAt,
+      accumulatedDurationMs,
+    })
   }
 
   async function applyRemediation(check: DoctorCheckResult, recheck = true): Promise<boolean> {
@@ -657,18 +679,18 @@ export const useDoctorStore = defineStore('doctor', () => {
     if (!canRepairCurrentRun.value || !repairPath || remediation?.kind !== 'automatic') {
       return false
     }
-    if (!(await ensureFilesystemFixIsSafe(remediation))) return false
-    if (
-      currentRunPath.value !== repairPath ||
-      appStore.xplanePath !== repairPath ||
-      currentRun.value?.state !== 'completed'
-    ) {
-      return false
-    }
 
     fixingId.value = check.id
     error.value = null
     try {
+      if (!(await ensureFilesystemFixIsSafe(remediation))) return false
+      if (
+        currentRunPath.value !== repairPath ||
+        appStore.xplanePath !== repairPath ||
+        currentRun.value?.state !== 'completed'
+      ) {
+        return false
+      }
       await executeAutomaticRemediation(remediation, repairPath)
       const definitionId = remediationDefinitionId(remediation.id)
       if (
@@ -699,24 +721,24 @@ export const useDoctorStore = defineStore('doctor', () => {
     )
     if (!checks.length) return { applied: 0, failed: 0 }
 
-    const filesystemRemediation = checks
-      .map((check) => check.remediation)
-      .find((remediation): remediation is DoctorRemediation =>
-        Boolean(remediation && FILESYSTEM_REMEDIATIONS.has(remediation.id)),
-      )
-    if (filesystemRemediation && !(await ensureFilesystemFixIsSafe(filesystemRemediation))) {
-      return { applied: 0, failed: checks.length }
-    }
-    if (currentRunPath.value !== repairPath || appStore.xplanePath !== repairPath) {
-      return { applied: 0, failed: checks.length }
-    }
-
     repairingAll.value = true
     error.value = null
     let applied = 0
     let failed = 0
     const definitionsToRecheck = new Set<string>()
     try {
+      const filesystemRemediation = checks
+        .map((check) => check.remediation)
+        .find((remediation): remediation is DoctorRemediation =>
+          Boolean(remediation && FILESYSTEM_REMEDIATIONS.has(remediation.id)),
+        )
+      if (filesystemRemediation && !(await ensureFilesystemFixIsSafe(filesystemRemediation))) {
+        return { applied: 0, failed: checks.length }
+      }
+      if (currentRunPath.value !== repairPath || appStore.xplanePath !== repairPath) {
+        return { applied: 0, failed: checks.length }
+      }
+
       for (const check of checks) {
         if (!check.remediation) continue
         if (currentRunPath.value !== repairPath || appStore.xplanePath !== repairPath) {
@@ -780,6 +802,7 @@ export const useDoctorStore = defineStore('doctor', () => {
     appDataPath,
     currentRunIsLive,
     isRunning,
+    isBusy,
     isDisplayingCurrentRun,
     canRepairCurrentRun,
     isStale,

@@ -256,6 +256,8 @@ export interface InstallTask {
   sourcePath: string
   /** Stable internal source path used when the original source may be transient. */
   resolvedSourcePath?: string
+  /** Original file or folder supplied by the user before source-path resolution. */
+  originalInputPath?: string
   targetPath: string
   displayName: string
   conflictExists?: boolean

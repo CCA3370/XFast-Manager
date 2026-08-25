@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { DoctorRun } from '@/types/doctor'
 import { summarizeDoctorRun } from './doctor'
-import { buildDoctorReport } from './doctorReport'
+import { buildDoctorReport, redactDoctorText } from './doctorReport'
 
 function reportRun(): DoctorRun {
   const checks: DoctorRun['checks'] = [
@@ -10,14 +10,22 @@ function reportRun(): DoctorRun {
       section: 'stability',
       outcome: 'critical',
       durationMs: 10,
+      params: { module: 'C:\\Users\\Alex Smith\\plugins\\faulty.xpl' },
       evidence: [
         {
           kind: 'path',
           value: 'C:\\Users\\alex\\X-Plane 12\\Log.txt',
+          label: 'C:\\Users\\Alex Smith\\logs',
           sensitive: true,
         },
         { kind: 'log', value: '/home/alex/.local/share/com.xfastmanager.tool/logs/app.log' },
       ],
+      remediation: {
+        id: 'test',
+        kind: 'automatic',
+        risk: 'safe',
+        params: { source: 'C:\\Users\\Alex Smith\\plugins' },
+      },
     },
   ]
   return {
@@ -46,6 +54,7 @@ describe('doctor report export', () => {
     expect(result).toContain('<XPLANE_ROOT>')
     expect(result).toContain('<XFAST_DATA>')
     expect(result).not.toContain('alex')
+    expect(result).not.toContain('Alex Smith')
   })
 
   it('keeps raw evidence only after explicit opt-in', () => {
@@ -54,5 +63,14 @@ describe('doctor report export', () => {
       includeSensitive: true,
     })
     expect(result).toContain('C:\\Users\\alex\\X-Plane 12\\Log.txt')
+    expect(result).toContain('Alex Smith')
+  })
+
+  it('redacts a configured root consistently with or without a trailing separator', () => {
+    expect(
+      redactDoctorText('C:\\X-Plane 12', {
+        xplanePath: 'C:\\X-Plane 12\\',
+      }),
+    ).toBe('<XPLANE_ROOT>')
   })
 })

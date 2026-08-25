@@ -5,6 +5,8 @@ import {
   emptyDoctorHistory,
   getDoctorHistoryForPath,
   isDoctorRunStale,
+  normalizeDoctorHistoryPath,
+  sanitizeDoctorHistory,
   sortDoctorChecks,
   summarizeDoctorRun,
 } from './doctor'
@@ -14,6 +16,13 @@ function check(id: string, outcome: DoctorCheckResult['outcome']): DoctorCheckRe
 }
 
 describe('doctor run summary', () => {
+  it('does not report an empty running scan as complete or fully covered', () => {
+    const summary = summarizeDoctorRun([], 'running')
+
+    expect(summary.completeness).toBe('partial')
+    expect(summary.coveragePercent).toBe(0)
+  })
+
   it('keeps check failures separate from health severity and marks coverage partial', () => {
     const summary = summarizeDoctorRun(
       [check('path', 'pass'), check('network', 'unavailable')],
@@ -103,5 +112,36 @@ describe('doctor history', () => {
     history = addDoctorHistoryRun(history, 'C:\\X-Plane 12\\', run('run-1'))
 
     expect(getDoctorHistoryForPath(history, 'c:/x-plane 12')).toHaveLength(1)
+  })
+
+  it('normalizes Windows UNC paths without making Unix paths case-insensitive', () => {
+    expect(normalizeDoctorHistoryPath('\\\\Server\\Share\\X-Plane 12\\')).toBe(
+      '//server/share/x-plane 12',
+    )
+    expect(normalizeDoctorHistoryPath('/Volumes/X-Plane')).toBe('/Volumes/X-Plane')
+  })
+
+  it('drops malformed, mismatched, duplicate, and non-completed stored runs', () => {
+    const valid = run('run-2', 'installation')
+    const sanitized = sanitizeDoctorHistory({
+      schemaVersion: 1,
+      installationByPath: {
+        '/xplane': 'installation',
+        '/missing': 'missing',
+      },
+      runsByInstallation: {
+        installation: [
+          valid,
+          valid,
+          { ...run('wrong-installation', 'other') },
+          { ...run('running', 'installation'), state: 'running', completedAt: null },
+          { id: 'broken' },
+        ],
+        invalid: 'not-an-array',
+      },
+    })
+
+    expect(sanitized.installationByPath).toEqual({ '/xplane': 'installation' })
+    expect(sanitized.runsByInstallation.installation?.map((item) => item.id)).toEqual(['run-2'])
   })
 })

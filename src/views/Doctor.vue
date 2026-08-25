@@ -31,7 +31,8 @@
             type="button"
             data-testid="quick-health-scan"
             :title="t('doctor.center.quickHint')"
-            class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            :disabled="store.isBusy"
+            class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
             @click="runDiagnostics('quick')"
           >
             {{ t('doctor.center.quickCheck') }}
@@ -40,7 +41,8 @@
             type="button"
             data-testid="full-health-scan"
             :title="t('doctor.center.fullHint')"
-            class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
+            :disabled="store.isBusy"
+            class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-offset-gray-900"
             @click="runDiagnostics('full')"
           >
             {{ t('doctor.center.fullCheck') }}
@@ -51,7 +53,7 @@
 
     <main
       class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1"
-      :aria-busy="store.isRunning || store.isHistoryLoading"
+      :aria-busy="store.isBusy || store.isHistoryLoading"
     >
       <div
         v-if="store.error"
@@ -584,7 +586,7 @@
                           type="button"
                           :disabled="
                             store.fixingId === check.id ||
-                            store.isRunning ||
+                            store.isBusy ||
                             (check.remediation.kind === 'automatic' && !canRepair)
                           "
                           class="flex-none rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50"
@@ -704,7 +706,7 @@
               <div class="mt-3 grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  :disabled="store.isRunning"
+                  :disabled="store.isBusy"
                   class="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-700/60"
                   @click="exportReport('markdown')"
                 >
@@ -712,7 +714,7 @@
                 </button>
                 <button
                   type="button"
-                  :disabled="store.isRunning"
+                  :disabled="store.isBusy"
                   class="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-700/60"
                   @click="exportReport('json')"
                 >
@@ -737,7 +739,7 @@
               <button
                 v-if="store.selectedRunId"
                 type="button"
-                :disabled="store.isRunning"
+                :disabled="store.isBusy"
                 class="mt-3 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200"
                 @click="store.selectHistoryRun(null)"
               >
@@ -762,7 +764,7 @@
                   v-for="item in store.history"
                   :key="item.id"
                   type="button"
-                  :disabled="store.isRunning"
+                  :disabled="store.isBusy"
                   class="w-full rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-60"
                   :class="
                     store.displayedRun?.id === item.id
@@ -1085,6 +1087,13 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => (run.value ? `${run.value.id}:${run.value.completedAt ?? 'running'}` : null),
+  () => {
+    includeSensitive.value = false
+  },
+)
+
 async function runDiagnostics(mode: DoctorRunMode) {
   store.selectHistoryRun(null)
   await store.runDiagnostics(mode)
@@ -1276,7 +1285,10 @@ async function applyAllSafeFixes() {
     toastStore.error(t('doctor.center.messages.xplaneRunning'))
     return
   }
-  const message = t('doctor.center.messages.batchResult', result)
+  const message = t('doctor.center.messages.batchResult', {
+    applied: result.applied,
+    failed: result.failed,
+  })
   if (result.failed) toastStore.error(message)
   else toastStore.success(message)
 }

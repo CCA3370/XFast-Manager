@@ -12,13 +12,13 @@ export interface DoctorReportOptions {
 
 function redactCommonUserPaths(value: string): string {
   return value
-    .replace(/([A-Za-z]:[\\/]Users[\\/])[^\\/\s]+/gi, '$1<USER>')
-    .replace(/\/(home|Users)\/[^/\s]+/g, '/$1/<USER>')
+    .replace(/([A-Za-z]:[\\/]Users[\\/])[^\\/\r\n]+/gi, '$1<USER>')
+    .replace(/\/(home|Users)\/[^/\r\n]+/g, '/$1/<USER>')
     .replace(/([A-Za-z]:[\\/]Windows[\\/]Temp|\/tmp)(?=[\\/\s]|$)/gi, '<TEMP>')
 }
 
 function replacePath(value: string, path: string, token: string): string {
-  const normalized = path.trim().replace(/\\/g, '/')
+  const normalized = path.trim().replace(/\\/g, '/').replace(/\/+$/, '')
   if (!normalized) return value
   const variants = [normalized, normalized.replace(/\//g, '\\')]
   let result = value
@@ -27,6 +27,19 @@ function replacePath(value: string, path: string, token: string): string {
     result = result.replace(new RegExp(pattern, 'gi'), token)
   }
   return result
+}
+
+function redactParams(
+  params: Record<string, string | number> | undefined,
+  options: DoctorReportOptions,
+): Record<string, string | number> | undefined {
+  if (!params) return undefined
+  return Object.fromEntries(
+    Object.entries(params).map(([key, value]) => [
+      key,
+      typeof value === 'string' ? redactDoctorText(value, options) : value,
+    ]),
+  )
 }
 
 export function redactDoctorText(value: string, options: DoctorReportOptions): string {
@@ -39,10 +52,18 @@ export function redactDoctorText(value: string, options: DoctorReportOptions): s
 function reportCheck(check: DoctorCheckResult, options: DoctorReportOptions) {
   return {
     ...check,
+    params: redactParams(check.params, options),
     evidence: check.evidence?.map((evidence) => ({
       ...evidence,
+      label: evidence.label ? redactDoctorText(evidence.label, options) : undefined,
       value: redactDoctorText(evidence.value, options),
     })),
+    remediation: check.remediation
+      ? {
+          ...check.remediation,
+          params: redactParams(check.remediation.params, options),
+        }
+      : undefined,
   }
 }
 

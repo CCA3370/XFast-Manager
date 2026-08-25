@@ -12,8 +12,10 @@ const dialog = vi.hoisted(() => ({
 }))
 
 const history = vi.hoisted(() => ({
-  loadDoctorRunsForPath: vi.fn(async () => []),
-  saveDoctorRun: vi.fn(async (_path: string, run: unknown) => [run]),
+  loadDoctorRunsForPath: vi.fn<(path: string) => Promise<DoctorRun[]>>(async () => []),
+  saveDoctorRun: vi.fn<(path: string, run: DoctorRun) => Promise<DoctorRun[]>>(
+    async (_path, run) => [run],
+  ),
 }))
 
 const logging = vi.hoisted(() => ({
@@ -43,6 +45,7 @@ import Doctor from './Doctor.vue'
 import { i18n } from '@/i18n'
 import { useAppStore } from '@/stores/app'
 import { useDoctorStore } from '@/stores/doctor'
+import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 
 function deferred<T>() {
@@ -200,6 +203,15 @@ describe('Health page', () => {
     expect(runDiagnostics).toHaveBeenNthCalledWith(2, 'full')
   })
 
+  it('disables competing scans while a repair is in progress', async () => {
+    const { wrapper, doctorStore } = await mountDoctor('/xplane')
+    doctorStore.fixingId = 'xfast.scenery_index'
+    await nextTick()
+
+    expect(wrapper.get('[data-testid="quick-health-scan"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="full-health-scan"]').attributes('disabled')).toBeDefined()
+  })
+
   it('renders internal failures as localized user-facing errors', async () => {
     const { wrapper, doctorStore } = await mountDoctor('/xplane')
     doctorStore.error = 'C:\\Users\\alex\\private failure detail'
@@ -239,5 +251,24 @@ describe('Health page', () => {
       'doctor',
     )
     expect(wrapper.text()).toContain('1m 0s')
+  })
+
+  it('requires a fresh privacy opt-in when the displayed report changes', async () => {
+    const { wrapper, doctorStore, pinia } = await mountDoctor('/xplane')
+    doctorStore.currentRun = { ...runFixture('completed'), id: 'run-1' }
+    doctorStore.currentRunIsLive = true
+    await nextTick()
+
+    const includePathsButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Include original paths')
+    await includePathsButton?.trigger('click')
+    useModalStore(pinia).confirmAction()
+    await nextTick()
+    expect(wrapper.text()).toContain('Original local paths will be included.')
+
+    doctorStore.currentRun = { ...runFixture('completed'), id: 'run-2' }
+    await nextTick()
+    expect(wrapper.text()).toContain('Private paths are redacted by default.')
   })
 })

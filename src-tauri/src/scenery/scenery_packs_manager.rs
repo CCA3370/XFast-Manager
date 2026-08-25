@@ -835,10 +835,23 @@ fn prepare_path_for_write(path: &Path) {
     let Ok(metadata) = fs::metadata(path) else {
         return;
     };
-    let mut perms = metadata.permissions();
-    if perms.readonly() {
-        perms.set_readonly(false);
-        let _ = fs::set_permissions(path, perms);
+
+    #[cfg(target_os = "windows")]
+    #[allow(clippy::permissions_set_readonly_false)]
+    {
+        let mut perms = metadata.permissions();
+        if perms.readonly() {
+            perms.set_readonly(false);
+            let _ = fs::set_permissions(path, perms);
+        }
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(permissions.mode() | 0o200);
+        let _ = fs::set_permissions(path, permissions);
     }
 
     #[cfg(target_os = "macos")]
@@ -859,6 +872,24 @@ fn prepare_path_for_write(path: &Path) {
 mod tests {
     use super::*;
     use std::time::SystemTime;
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_path_for_write_adds_only_owner_write_permission() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("scenery_packs.ini");
+        fs::write(&file, "SCENERY_PACK Custom Scenery/Test/\n").unwrap();
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o444)).unwrap();
+
+        prepare_path_for_write(&file);
+
+        assert_eq!(
+            fs::metadata(file).unwrap().permissions().mode() & 0o777,
+            0o644
+        );
+    }
 
     fn global_airports_state(
         enabled: bool,

@@ -485,8 +485,8 @@ fn today_epoch_day() -> i64 {
 fn ymd_to_epoch_day(y: i64, m: u32, d: u32) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = (y - era * 400) as i64; // [0, 399]
-    let mp = ((m as i64 + 9) % 12) as i64; // [0, 11]
+    let yoe = y - era * 400; // [0, 399]
+    let mp = (m as i64 + 9) % 12; // [0, 11]
     let doy = (153 * mp + 2) / 5 + d as i64 - 1; // [0, 365]
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
     era * 146097 + doe - 719468
@@ -496,7 +496,7 @@ fn ymd_to_epoch_day(y: i64, m: u32, d: u32) -> i64 {
 fn epoch_day_to_ymd_string(z: i64) -> String {
     let z = z + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
-    let doe = (z - era * 146097) as i64;
+    let doe = z - era * 146097;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
     let y = yoe + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
@@ -525,6 +525,17 @@ fn month_from_abbrev(s: &str) -> Option<u32> {
     }
 }
 
+fn days_in_month(year: i64, month: u32) -> Option<u32> {
+    let days = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if year % 400 == 0 || (year % 4 == 0 && year % 100 != 0) => 29,
+        2 => 28,
+        _ => return None,
+    };
+    Some(days)
+}
+
 /// Parse a "DD/MMM/YYYY" token (e.g. "14/MAY/2026") to epoch day.
 fn parse_dmy(token: &str) -> Option<i64> {
     let parts: Vec<&str> = token.trim().split('/').collect();
@@ -534,7 +545,7 @@ fn parse_dmy(token: &str) -> Option<i64> {
     let d: u32 = parts[0].trim().parse().ok()?;
     let m = month_from_abbrev(parts[1].trim())?;
     let y: i64 = parts[2].trim().parse().ok()?;
-    if d == 0 || d > 31 {
+    if d == 0 || d > days_in_month(y, m)? {
         return None;
     }
     Some(ymd_to_epoch_day(y, m, d))
@@ -549,7 +560,7 @@ fn parse_validity_range(body: &str) -> Option<(i64, i64)> {
             continue;
         }
         // Take everything after the first ':' then split on '-'.
-        let after = line.splitn(2, ':').nth(1).unwrap_or(line);
+        let after = line.split_once(':').map_or(line, |(_, value)| value);
         let halves: Vec<&str> = after.split('-').map(|s| s.trim()).collect();
         if halves.len() < 2 {
             continue;
@@ -811,6 +822,12 @@ mod tests {
         );
         assert_eq!(parse_dmy("bad"), None);
         assert_eq!(parse_dmy("40/MAY/2026"), None);
+        assert_eq!(parse_dmy("31/APR/2026"), None);
+        assert_eq!(parse_dmy("29/FEB/2025"), None);
+        assert_eq!(
+            parse_dmy("29/FEB/2024"),
+            Some(ymd_to_epoch_day(2024, 2, 29))
+        );
     }
 
     #[test]

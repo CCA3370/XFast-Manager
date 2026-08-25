@@ -1,6 +1,6 @@
 import { Store } from '@tauri-apps/plugin-store'
 import type { DoctorHistoryFile, DoctorRun } from '@/types/doctor'
-import { addDoctorHistoryRun, emptyDoctorHistory, getDoctorHistoryForPath } from '@/utils/doctor'
+import { addDoctorHistoryRun, getDoctorHistoryForPath, sanitizeDoctorHistory } from '@/utils/doctor'
 
 const STORE_FILE = 'health-history.json'
 const STORE_KEY = 'history'
@@ -14,16 +14,7 @@ async function getStore(): Promise<Store> {
 
 export async function loadDoctorHistory(): Promise<DoctorHistoryFile> {
   const store = await getStore()
-  const value = await store.get<DoctorHistoryFile>(STORE_KEY)
-  if (
-    !value ||
-    value.schemaVersion !== 1 ||
-    !value.installationByPath ||
-    !value.runsByInstallation
-  ) {
-    return emptyDoctorHistory()
-  }
-  return value
+  return sanitizeDoctorHistory(await store.get<unknown>(STORE_KEY))
 }
 
 export async function loadDoctorRunsForPath(xplanePath: string): Promise<DoctorRun[]> {

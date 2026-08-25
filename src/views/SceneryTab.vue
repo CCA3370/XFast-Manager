@@ -722,10 +722,6 @@ function getSmartGroupKindTranslationKey(kind: SmartSceneryGroupKind): string {
   return smartGroupKindTranslationKeys[kind]
 }
 
-function isSmartGroupAllEnabled(group: SmartSceneryGroup): boolean {
-  return group.totalCount > 0 && group.entries.every((entry) => entry.enabled)
-}
-
 function setSmartGroupEnabled(group: SmartSceneryGroup, enabled: boolean) {
   for (const entry of group.entries) {
     if (entry.enabled !== enabled) {

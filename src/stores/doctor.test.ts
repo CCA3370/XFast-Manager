@@ -8,8 +8,10 @@ const tauri = vi.hoisted(() => ({
 }))
 
 const history = vi.hoisted(() => ({
-  loadDoctorRunsForPath: vi.fn(async () => []),
-  saveDoctorRun: vi.fn(async (_path: string, run: unknown) => [run]),
+  loadDoctorRunsForPath: vi.fn<(path: string) => Promise<DoctorRun[]>>(async () => []),
+  saveDoctorRun: vi.fn<(path: string, run: DoctorRun) => Promise<DoctorRun[]>>(
+    async (_path, run) => [run],
+  ),
 }))
 
 const locks = vi.hoisted(() => ({
@@ -208,7 +210,7 @@ describe('Health diagnostic store', () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     history.loadDoctorRunsForPath.mockResolvedValue([])
-    history.saveDoctorRun.mockImplementation(async (_path: string, run: unknown) => [run])
+    history.saveDoctorRun.mockImplementation(async (_path, run) => [run])
     storage.getItem.mockResolvedValue(null)
     installHealthyMocks()
     const appStore = useAppStore()
@@ -390,6 +392,30 @@ describe('Health diagnostic store', () => {
     expect(store.isHistoryLoading).toBe(false)
   })
 
+  it('clears the previous installation state before awaiting new history', async () => {
+    const nextHistory = deferred<DoctorRun[]>()
+    history.loadDoctorRunsForPath.mockImplementation((path: string) =>
+      path === '/xplane-a'
+        ? Promise.resolve([historyRun('run-a', 'installation-a')])
+        : nextHistory.promise,
+    )
+    const appStore = useAppStore()
+    const store = useDoctorStore()
+    appStore.xplanePath = '/xplane-a'
+    await store.loadHistory()
+    store.error = 'old installation error'
+
+    appStore.xplanePath = '/xplane-b'
+    const loading = store.loadHistory()
+
+    expect(store.currentRun).toBeNull()
+    expect(store.history).toEqual([])
+    expect(store.error).toBeNull()
+    expect(store.isHistoryLoading).toBe(true)
+    nextHistory.resolve([])
+    await loading
+  })
+
   it('keeps the active run visible while a scan is in progress', async () => {
     history.loadDoctorRunsForPath.mockResolvedValue([historyRun('saved-run', 'saved-installation')])
     const environmentResult = deferred<DoctorEnvironmentReport>()
@@ -459,6 +485,103 @@ describe('Health diagnostic store', () => {
     expect(store.currentRun?.summary.completeness).toBe('cancelled')
     expect(store.canRepairCurrentRun).toBe(false)
     expect(history.saveDoctorRun).toHaveBeenCalledTimes(1)
+  })
+
+  it('serializes repair preflight and blocks a competing diagnostic run', async () => {
+    let xfastScanCount = 0
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'doctor_scan_xfast_health') {
+        xfastScanCount += 1
+        return xfast(xfastScanCount === 1)
+      }
+      return healthyResponse(command)
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+    const check = store.currentRun?.checks.find((item) => item.id === 'xfast.scenery_index')
+    expect(check).toBeDefined()
+
+    const safetyCheck = deferred<boolean>()
+    tauri.invoke.mockClear()
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'is_xplane_running') return safetyCheck.promise
+      return healthyResponse(command)
+    })
+
+    const firstRepair = store.applyRemediation(check!)
+    expect(store.fixingId).toBe(check?.id)
+    expect(store.isBusy).toBe(true)
+
+    const secondRepair = store.applyRemediation(check!)
+    await store.runDiagnostics('full')
+    expect(store.currentRun?.mode).toBe('quick')
+
+    safetyCheck.resolve(false)
+    expect(await secondRepair).toBe(false)
+    expect(await firstRepair).toBe(true)
+    expect(
+      tauri.invoke.mock.calls.filter(([command]) => command === 'is_xplane_running'),
+    ).toHaveLength(1)
+    expect(
+      tauri.invoke.mock.calls.filter(([command]) => command === 'get_app_version'),
+    ).toHaveLength(0)
+  })
+
+  it('serializes safe batch repair preflight', async () => {
+    let xfastScanCount = 0
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'doctor_scan_xfast_health') {
+        xfastScanCount += 1
+        return xfast(xfastScanCount === 1)
+      }
+      return healthyResponse(command)
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+
+    const safetyCheck = deferred<boolean>()
+    tauri.invoke.mockClear()
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'is_xplane_running') return safetyCheck.promise
+      return healthyResponse(command)
+    })
+
+    const firstBatch = store.applyAllSafeFixes()
+    expect(store.repairingAll).toBe(true)
+    expect(store.isBusy).toBe(true)
+    const secondBatch = store.applyAllSafeFixes()
+
+    safetyCheck.resolve(false)
+    expect(await secondBatch).toEqual({ applied: 0, failed: 0 })
+    expect(await firstBatch).toEqual({ applied: 1, failed: 0 })
+    expect(
+      tauri.invoke.mock.calls.filter(([command]) => command === 'is_xplane_running'),
+    ).toHaveLength(1)
+  })
+
+  it('adds active recheck time without counting idle time since the original scan', async () => {
+    let xfastScanCount = 0
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'doctor_scan_xfast_health') {
+        xfastScanCount += 1
+        return xfast(xfastScanCount === 1)
+      }
+      return healthyResponse(command)
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+    const check = store.currentRun?.checks.find((item) => item.id === 'xfast.scenery_index')
+    expect(check).toBeDefined()
+    store.currentRun = {
+      ...store.currentRun!,
+      startedAt: 1,
+      durationMs: 2_000,
+    }
+
+    expect(await store.applyRemediation(check!)).toBe(true)
+
+    expect(store.currentRun?.durationMs).toBeGreaterThanOrEqual(2_000)
+    expect(store.currentRun?.durationMs).toBeLessThan(10_000)
   })
 
   it('uses saved update channels and actionable remediation routes in a full diagnosis', async () => {
