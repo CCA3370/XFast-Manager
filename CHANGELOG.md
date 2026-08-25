@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Resilient Add-on Updates** - Content downloads now recover automatically from temporary network, server, and interrupted-transfer failures before stopping an update.
 - **Reliable Installation Verification** - Harmless macOS and Windows metadata no longer causes installation checks to fail, and genuine failures now identify the affected file and the reason it could not be verified.
 - **Batch FlyWithLua Installs** - Multiple scripts from the same package now install reliably together without deleting one another's files.
 - **Management State Changes** - Enabling or disabling aircraft and plugins now recovers cleanly when their files were moved, removed, or changed outside the app.
