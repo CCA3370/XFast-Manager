@@ -197,7 +197,11 @@ async function handleDoubleClick() {
     const apiError = parseApiError(error)
     if (apiError?.code === 'not_found') {
       await sceneryStore.loadData()
-      modalStore.showError(t('sceneryManager.stalePathMessage'))
+      modalStore.showError({
+        code: 'not_found',
+        message: t('sceneryManager.stalePathMessage'),
+        reportable: false,
+      })
       return
     }
     modalStore.showError(t('sceneryManager.openFolderFailed') + ': ' + getErrorMessage(error))

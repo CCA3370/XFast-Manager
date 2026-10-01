@@ -36,6 +36,7 @@ describe('bug report route', () => {
 
   it.each([
     'Error performing inpage operation. (os error 999)',
+    'This scenery item may have been moved or deleted. The list has been refreshed.',
     'Failed to scan (/Downloads/aircraft.7z.002): Missing split archive volume for aircraft.7z.002: aircraft.7z.001',
   ])('rejects operational errors before contacting GitHub: %s', async (errorMessage) => {
     const fetchMock = vi.fn()

@@ -3,6 +3,7 @@ import { getErrorReportPolicy, shouldHideBugReportForMessage } from './index'
 
 const operationalErrors = [
   'Error performing inpage operation. (os error 999)',
+  'This scenery item may have been moved or deleted. The list has been refreshed.',
   '[internal] No such file or directory (os error 2)',
   'Operation not permitted (os error 1)',
   'The device is not ready. (os error 21)',

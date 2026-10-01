@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Moved Scenery Notices** - Opening a scenery item that was moved or deleted still refreshes the list and explains what happened, without suggesting an app bug report.
 - **Complete Disk Usage** - Disk usage totals now include base scenery, simulator resources, preferences, and other files alongside add-ons.
 - **Airport Flattening** - The scenery list now applies flattening to the correct airport when its published code differs from the identifier in its scenery files.
 - **Library Package Detection** - macOS metadata and similarly named files no longer cause ordinary folders to be mistaken for scenery libraries.

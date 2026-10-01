@@ -31,6 +31,7 @@ const OPERATIONAL_ERROR_PATTERNS = Object.freeze([
   'invalid or incomplete rar archive',
   'this archive appears to be incomplete',
   'missing split archive volume',
+  'this scenery item may have been moved or deleted. the list has been refreshed.',
   'this rar archive could not be extracted',
   'this 7z archive could not be extracted',
   'invalid zip archive',
