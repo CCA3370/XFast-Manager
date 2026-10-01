@@ -34,15 +34,15 @@ describe('bug report route', () => {
     delete process.env.XFAST_GITHUB_TOKEN
   })
 
-  it('rejects operational errors before contacting GitHub', async () => {
+  it.each([
+    'Error performing inpage operation. (os error 999)',
+    'Failed to scan (/Downloads/aircraft.7z.002): Missing split archive volume for aircraft.7z.002: aircraft.7z.001',
+  ])('rejects operational errors before contacting GitHub: %s', async (errorMessage) => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     const response = makeResponse()
 
-    await handler(
-      makeRequest({ errorMessage: 'Error performing inpage operation. (os error 999)' }),
-      response,
-    )
+    await handler(makeRequest({ errorMessage }), response)
 
     expect(response.statusCode).toBe(422)
     expect(response.payload.code).toBe('bug_report_not_allowed')

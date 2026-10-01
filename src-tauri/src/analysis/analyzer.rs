@@ -390,6 +390,13 @@ impl Analyzer {
         let lower = raw.to_ascii_lowercase();
         let prefix = format!("{} ({})", tr(LogMsg::ScanFailed), path_str);
 
+        if lower.contains("missing split archive volume") {
+            return format!(
+                "{}: {}. Place every volume from this download in the same folder, then try again.",
+                prefix, raw
+            );
+        }
+
         if lower.contains("invalid zip archive") || lower.contains("could not find eocd") {
             return format!(
                 "{}: Invalid or incomplete ZIP archive. The file may be corrupted, partially downloaded, or use the wrong extension.",
@@ -2080,6 +2087,16 @@ mod tests {
 
         assert!(formatted.contains("Invalid or incomplete 7z archive"));
         assert!(!formatted.contains("failed to fill whole buffer"));
+    }
+
+    #[test]
+    fn missing_split_volume_preserves_filename_and_explains_recovery() {
+        let error =
+            anyhow::anyhow!("Missing split archive volume for aircraft.7z.002: aircraft.7z.001");
+        let formatted =
+            Analyzer::format_scan_error_for_display("/Downloads/aircraft.7z.002", &error);
+        assert!(formatted.contains("aircraft.7z.001"));
+        assert!(formatted.contains("Place every volume from this download in the same folder"));
     }
 
     #[test]

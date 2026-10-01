@@ -30,6 +30,7 @@ const OPERATIONAL_ERROR_PATTERNS = Object.freeze([
   'invalid or incomplete 7z archive',
   'invalid or incomplete rar archive',
   'this archive appears to be incomplete',
+  'missing split archive volume',
   'this rar archive could not be extracted',
   'this 7z archive could not be extracted',
   'invalid zip archive',
