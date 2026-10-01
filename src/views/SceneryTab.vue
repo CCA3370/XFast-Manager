@@ -19,7 +19,7 @@ import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import { useLockStore } from '@/stores/lock'
 import { invoke } from '@tauri-apps/api/core'
 import { logError } from '@/services/logger'
-import { airportFlattenSetState } from '@/services/airport-flatten-api'
+import { airportFlattenSetState, sceneryGetFlattenTarget } from '@/services/airport-flatten-api'
 import { buildVercelApiUrl } from '@/services/vercelApi'
 import { isDrawerUpdatable } from '@/utils/addonUpdate'
 import {
@@ -1362,9 +1362,14 @@ async function handleToggleFlatten(entry: SceneryManagerEntry) {
   flattenBusyFolders.value = nextBusy
 
   try {
+    const target = await sceneryGetFlattenTarget(appStore.xplanePath, entry.folderName)
+    if (!target) {
+      handleOpenFlattenPage(entry)
+      return
+    }
     const updated = await airportFlattenSetState({
       xplanePath: appStore.xplanePath,
-      icao: entry.airportId,
+      icao: target.icao,
       sourceKind: 'custom',
       folderName: entry.folderName,
       enabled: !entry.flattened,
