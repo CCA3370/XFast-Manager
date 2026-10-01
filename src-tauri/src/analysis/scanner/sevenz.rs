@@ -102,7 +102,7 @@ impl Scanner {
                     }
                 }
                 marker_files.push((normalized, "acf"));
-            } else if normalized.ends_with("library.txt") {
+            } else if Self::is_library_archive_path(&normalized) {
                 marker_files.push((normalized, "library"));
             } else if normalized.ends_with(".dsf") {
                 marker_files.push((normalized, "dsf"));
@@ -745,7 +745,7 @@ impl Scanner {
                     }
                 }
                 marker_files.push((normalized, "acf"));
-            } else if normalized.ends_with("library.txt") {
+            } else if Self::is_library_archive_path(&normalized) {
                 marker_files.push((normalized, "library"));
             } else if normalized.ends_with(".dsf") {
                 marker_files.push((normalized, "dsf"));

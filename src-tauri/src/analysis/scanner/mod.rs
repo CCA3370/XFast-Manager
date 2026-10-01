@@ -307,6 +307,11 @@ impl Scanner {
         crate::package_artifacts::is_ignored_package_artifact_archive_path(path)
     }
 
+    /// Match the marker filename, not arbitrary names ending with it.
+    fn is_library_archive_path(path: &str) -> bool {
+        path.rsplit(['/', '\\']).next() == Some("library.txt")
+    }
+
     /// Check if a path should be skipped based on skip_dirs
     /// Optimized: O(1) average case with HashSet lookup for exact matches,
     /// O(n) worst case for prefix checking (but only when needed)
@@ -2693,6 +2698,44 @@ mod tests {
             .expect("lua script should be detected");
 
         assert_eq!(lua.companion_paths, vec!["SimLoadManager".to_string()]);
+    }
+
+    #[test]
+    fn zip_scan_ignores_appledouble_and_library_filename_suffixes() {
+        let temp = tempdir().expect("tempdir");
+        let archive_path = temp.path().join("libraries.zip");
+        let file = fs::File::create(&archive_path).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        for name in [
+            "FalseLibrary/mylibrary.txt",
+            "FalseLibrary/._library.txt",
+            "MetadataOnly/._aircraft.acf",
+            "__MACOSX/RealLibrary/._library.txt",
+            "RealLibrary/library.txt",
+        ] {
+            writer
+                .start_file(name, zip::write::FileOptions::<()>::default())
+                .unwrap();
+            writer.write_all(b"I\n800\nLIBRARY\n").unwrap();
+        }
+        writer.finish().unwrap();
+
+        let items = Scanner::new().scan_path(&archive_path, None).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].addon_type, AddonType::SceneryLibrary);
+        assert_eq!(items[0].display_name, "RealLibrary");
+        assert_eq!(
+            items[0].archive_internal_root.as_deref(),
+            Some("RealLibrary")
+        );
+    }
+
+    #[test]
+    fn library_archive_marker_requires_exact_basename() {
+        assert!(Scanner::is_library_archive_path("Folder/library.txt"));
+        assert!(Scanner::is_library_archive_path("Folder\\library.txt"));
+        assert!(!Scanner::is_library_archive_path("Folder/mylibrary.txt"));
+        assert!(!Scanner::is_library_archive_path("Folder/._library.txt"));
     }
 
     #[test]

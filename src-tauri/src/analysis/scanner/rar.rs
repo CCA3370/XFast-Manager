@@ -441,7 +441,7 @@ impl Scanner {
                     }
                 }
                 marker_files.push((file_path.clone(), "acf"));
-            } else if file_path.ends_with("library.txt") {
+            } else if Self::is_library_archive_path(&file_path) {
                 marker_files.push((file_path.clone(), "library"));
             } else if file_path.ends_with(".dsf") {
                 marker_files.push((file_path.clone(), "dsf"));

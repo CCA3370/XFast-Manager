@@ -4,9 +4,10 @@ const IGNORED_PACKAGE_ARTIFACT_NAMES: [&str; 4] =
     ["__MACOSX", ".DS_Store", "Thumbs.db", "desktop.ini"];
 
 fn is_ignored_component(name: &str) -> bool {
-    IGNORED_PACKAGE_ARTIFACT_NAMES
-        .iter()
-        .any(|ignored| name.eq_ignore_ascii_case(ignored))
+    name.starts_with("._")
+        || IGNORED_PACKAGE_ARTIFACT_NAMES
+            .iter()
+            .any(|ignored| name.eq_ignore_ascii_case(ignored))
 }
 
 /// Returns whether a filesystem path contains operating-system metadata that is
@@ -53,6 +54,8 @@ mod tests {
     fn ignores_metadata_at_any_depth_and_with_either_separator() {
         for path in [
             ".DS_Store",
+            "Scenery/._library.txt",
+            "Aircraft/._plane.acf",
             "Aircraft/__MACOSX/._plane.acf",
             "Aircraft\\Thumbs.db",
             "Scenery/Objects/desktop.ini",

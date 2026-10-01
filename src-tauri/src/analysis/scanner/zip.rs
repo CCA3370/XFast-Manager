@@ -238,7 +238,7 @@ impl Scanner {
                     }
                 }
                 marker_files.push((i, file_path, is_encrypted, "acf"));
-            } else if file_path.ends_with("library.txt") {
+            } else if Self::is_library_archive_path(&file_path) {
                 marker_files.push((i, file_path, is_encrypted, "library"));
             } else if file_path.ends_with(".dsf") {
                 marker_files.push((i, file_path, is_encrypted, "dsf"));
@@ -829,7 +829,7 @@ impl Scanner {
                     }
                 }
                 marker_files.push((i, file_path, "acf"));
-            } else if file_path.ends_with("library.txt") {
+            } else if Self::is_library_archive_path(&file_path) {
                 marker_files.push((i, file_path, "library"));
             } else if file_path.ends_with(".dsf") {
                 marker_files.push((i, file_path, "dsf"));
@@ -1093,7 +1093,7 @@ impl Scanner {
                     }
                 }
                 marker_files.push((i, file_path, is_encrypted, "acf"));
-            } else if file_path.ends_with("library.txt") {
+            } else if Self::is_library_archive_path(&file_path) {
                 marker_files.push((i, file_path, is_encrypted, "library"));
             } else if file_path.ends_with(".dsf") {
                 marker_files.push((i, file_path, is_encrypted, "dsf"));
