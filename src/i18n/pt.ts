@@ -2,6 +2,18 @@ import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  flightPlans: {
+    title: 'Planos de voo',
+    description: 'Gerencie planos de voo em Output/FMS plans.',
+    selectPath: 'Selecione a pasta do X-Plane nas configurações.',
+    drop: 'Arraste arquivos .fms ou clique para importar',
+    duplicates: 'Os planos existentes são mantidos; nomes repetidos recebem um número.',
+    imported: '{count} planos de voo importados',
+    search: 'Buscar planos de voo',
+    refresh: 'Atualizar',
+    empty: 'Nenhum plano de voo encontrado',
+    confirmDelete: 'Excluir {name} permanentemente?',
+  },
   common: {
     home: 'Instalar',
     settings: 'Configurações',

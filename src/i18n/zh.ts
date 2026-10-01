@@ -2,6 +2,18 @@ import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  flightPlans: {
+    title: '飞行计划',
+    description: '管理 Output/FMS plans 中的 X-Plane 飞行计划。',
+    selectPath: '请先在设置中选择 X-Plane 文件夹。',
+    drop: '拖入 .fms 文件或点击导入',
+    duplicates: '保留已有计划，重名文件会自动添加编号。',
+    imported: '已导入 {count} 个飞行计划',
+    search: '搜索飞行计划',
+    refresh: '刷新',
+    empty: '未找到飞行计划',
+    confirmDelete: '永久删除 {name}？',
+  },
   common: {
     home: '安装',
     settings: '设置',

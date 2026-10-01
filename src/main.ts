@@ -204,6 +204,7 @@ const router = createRouter({
     { path: '/doctor', component: () => import('./views/Doctor.vue') },
     { path: '/log-analysis', redirect: '/doctor' },
     { path: '/activity', component: () => import('./views/ActivityLog.vue') },
+    { path: '/flight-plans', component: () => import('./views/FlightPlans.vue') },
     { path: '/screenshots', component: () => import('./views/ScreenshotManager.vue') },
     { path: '/disk-usage', component: () => import('./views/DiskUsage.vue') },
     { path: '/disk-usage/output-cleanup', component: () => import('./views/OutputCleanup.vue') },

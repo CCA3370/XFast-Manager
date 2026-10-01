@@ -61,6 +61,8 @@ mod addon_updater;
 mod airport_flatten;
 #[path = "management/csl_index.rs"]
 mod csl_index;
+#[path = "management/flight_plans.rs"]
+mod flight_plans;
 #[path = "management/gateway.rs"]
 mod gateway;
 #[path = "management/management_index.rs"]
@@ -3231,6 +3233,27 @@ async fn delete_lua_script(
 }
 
 #[tauri::command]
+async fn list_flight_plans(xplane_path: String) -> Result<Vec<flight_plans::FlightPlan>, String> {
+    tokio::task::spawn_blocking(move || flight_plans::list(&xplane_path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn import_flight_plan(xplane_path: String, source: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || flight_plans::import(&xplane_path, &source))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn delete_flight_plan(xplane_path: String, name: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || flight_plans::delete(&xplane_path, &name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn list_screenshot_media(xplane_path: String) -> Result<Vec<ScreenshotMediaItem>, String> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
@@ -4147,6 +4170,9 @@ pub fn run() {
             get_lua_scripts,
             toggle_lua_script,
             delete_lua_script,
+            list_flight_plans,
+            import_flight_plan,
+            delete_flight_plan,
             list_screenshot_media,
             delete_screenshot_media,
             save_screenshot_media_as,

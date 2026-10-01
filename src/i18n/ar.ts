@@ -2,6 +2,18 @@ import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  flightPlans: {
+    title: 'خطط الطيران',
+    description: 'إدارة خطط الطيران في Output/FMS plans.',
+    selectPath: 'حدد مجلد X-Plane في الإعدادات أولاً.',
+    drop: 'اسحب ملفات .fms هنا أو انقر للاستيراد',
+    duplicates: 'تُحفظ الخطط الحالية وتُرقّم الأسماء المكررة.',
+    imported: 'تم استيراد {count} من خطط الطيران',
+    search: 'البحث عن خطط الطيران',
+    refresh: 'تحديث',
+    empty: 'لم يتم العثور على خطط طيران',
+    confirmDelete: 'هل تريد حذف {name} نهائيًا؟',
+  },
   common: {
     home: 'تثبيت',
     settings: 'الإعدادات',

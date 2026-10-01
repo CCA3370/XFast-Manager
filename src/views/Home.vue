@@ -761,6 +761,21 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
   logDebug(`Starting analysis with X-Plane path: ${store.xplanePath}`, 'analysis')
 
   try {
+    const flightPlans = paths.filter((path) => /\.fms$/i.test(path))
+    const planRoot = store.xplanePath
+    let importedPlans = 0
+    for (const source of flightPlans) {
+      try {
+        await invoke('import_flight_plan', { xplanePath: planRoot, source })
+        importedPlans++
+      } catch (error) {
+        modal.showError(error, '', { hideReport: true })
+      }
+    }
+    if (importedPlans) toast.success(t('flightPlans.imported', { count: importedPlans }))
+    paths = paths.filter((path) => !/\.fms$/i.test(path))
+    if (paths.length === 0) return
+
     logDebug(`Paths to analyze: ${paths.join(', ')}`, 'analysis')
 
     const result = await invoke<AnalysisResult>('analyze_addons', {

@@ -1,6 +1,18 @@
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  flightPlans: {
+    title: 'Flight Plans',
+    description: 'Manage X-Plane flight plans in Output/FMS plans.',
+    selectPath: 'Select your X-Plane folder in Settings first.',
+    drop: 'Drop .fms files here or click to import',
+    duplicates: 'Existing plans are kept; duplicate names receive a number.',
+    imported: 'Imported {count} flight plans',
+    search: 'Search flight plans',
+    refresh: 'Refresh',
+    empty: 'No flight plans found',
+    confirmDelete: 'Permanently delete {name}?',
+  },
   common: {
     home: 'Install',
     settings: 'Settings',

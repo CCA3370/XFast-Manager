@@ -2,6 +2,18 @@ import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  flightPlans: {
+    title: 'उड़ान योजनाएँ',
+    description: 'Output/FMS plans में उड़ान योजनाएँ प्रबंधित करें।',
+    selectPath: 'पहले सेटिंग में X-Plane फ़ोल्डर चुनें।',
+    drop: '.fms फ़ाइलें यहाँ छोड़ें या आयात करने के लिए क्लिक करें',
+    duplicates: 'मौजूदा योजनाएँ सुरक्षित रहती हैं; समान नामों में संख्या जुड़ती है।',
+    imported: '{count} उड़ान योजनाएँ आयात की गईं',
+    search: 'उड़ान योजनाएँ खोजें',
+    refresh: 'ताज़ा करें',
+    empty: 'कोई उड़ान योजना नहीं मिली',
+    confirmDelete: '{name} को हमेशा के लिए हटाएँ?',
+  },
   common: {
     home: 'स्थापित करें',
     settings: 'सेटिंग्स',
