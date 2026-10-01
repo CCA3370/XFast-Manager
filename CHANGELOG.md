@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Flight Plan Management** - Import FMS flight plans by dropping them onto Install or the new Flight Plans page, search saved plans, and delete them with confirmation. Repeated imports keep existing plans intact.
 - **Health Diagnostic Center** - Health now checks the X-Plane installation, recent stability, scenery, aircraft and plugins, navigation data, performance, storage, system environment, XFast Manager data, and available updates from one responsive center that matches the rest of the app.
 - **Health History and Shareable Reports** - The latest 20 completed checks are saved locally for each X-Plane installation, with Markdown and JSON reports that hide private paths across evidence and diagnostic details unless explicitly included for the selected report.
 - **Guided Health Repairs** - Health can apply verified safe repairs together, prevents overlapping scans or repairs, asks before higher-impact repairs, blocks file changes while X-Plane is running, and rechecks affected areas after a repair.
@@ -23,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Complete Disk Usage** - Disk usage totals now include base scenery, simulator resources, preferences, and other files alongside add-ons.
+- **Airport Flattening** - The scenery list now applies flattening to the correct airport when its published code differs from the identifier in its scenery files.
+- **Library Package Detection** - macOS metadata and similarly named files no longer cause ordinary folders to be mistaken for scenery libraries.
+- **Missing Archive Volumes** - Incomplete split downloads now explain how to supply the missing files without suggesting an app bug report.
 - **Resilient Add-on Updates** - Content downloads now recover automatically from temporary network, server, and interrupted-transfer failures before stopping an update.
 - **Reliable Installation Verification** - Harmless macOS and Windows metadata no longer causes installation checks to fail, and genuine failures now identify the affected file and the reason it could not be verified.
 - **Batch FlyWithLua Installs** - Multiple scripts from the same package now install reliably together without deleting one another's files.
