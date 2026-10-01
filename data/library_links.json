@@ -1,10 +1,11 @@
 {
 	"version": 1,
-	"updated": "2026-08-03",
+	"updated": "2026-10-01",
 	"libraries": {
 		"3d_people": "https://forums.x-plane.org/index.php?/files/file/26611-3d-people-library/",
 		"3d_people_library": "https://forums.x-plane.org/files/file/26611-3d-people-library/",
 		"adsparks_library": "https://forums.x-plane.org/files/file/47600-parking-stands-signs/",
+		"aircraft-static_and_animated": "https://forums.x-plane.org/files/file/17888-free-add-on-static-and-animated-aircraft-for-jeffmuellers-payware-airports-and-groundtraffic-developers",
 		"ales_dev_lib": "https://forums.x-plane.org/files/file/53427-ales-developer-library/",
 		"ar_library": "https://forums.x-plane.org/files/file/44586-ar_library-librer%C3%ADa-de-objetos-argentinos/",
 		"bs2001_objects": "https://forums.x-plane.org/files/file/28045-bs2001-object-library/",
