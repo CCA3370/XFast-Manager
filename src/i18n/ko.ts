@@ -1433,6 +1433,7 @@ export default {
     categoryScenery: '시너리',
     categoryNavdata: '항법 데이터',
     categoryScreenshots: '스크린샷',
+    categoryOther: '기타 X-Plane 파일',
     total: '전체',
     items: '개 항목',
     openFolder: '폴더 열기',

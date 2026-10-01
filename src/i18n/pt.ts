@@ -1478,6 +1478,7 @@ export default {
     categoryScenery: 'Cenários',
     categoryNavdata: 'Dados de navegação',
     categoryScreenshots: 'Capturas de tela',
+    categoryOther: 'Outros arquivos do X-Plane',
     total: 'Total geral',
     items: 'itens',
     openFolder: 'Abrir pasta',

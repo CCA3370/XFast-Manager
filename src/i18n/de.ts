@@ -1498,6 +1498,7 @@ export default {
     categoryScenery: 'Szenerie',
     categoryNavdata: 'Navigationsdaten',
     categoryScreenshots: 'Bildschirmfotos',
+    categoryOther: 'Weitere X-Plane-Dateien',
     total: 'Insgesamt',
     items: 'Artikel',
     openFolder: 'Ordner öffnen',

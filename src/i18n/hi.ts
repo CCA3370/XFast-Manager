@@ -1452,6 +1452,7 @@ export default {
     categoryScenery: 'दृश्य',
     categoryNavdata: 'नेवडेटा',
     categoryScreenshots: 'स्क्रीनशॉट',
+    categoryOther: 'अन्य X-Plane फ़ाइलें',
     total: 'कुल',
     items: 'आइटम',
     openFolder: 'फ़ोल्डर खोलें',

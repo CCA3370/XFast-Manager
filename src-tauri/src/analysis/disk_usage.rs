@@ -169,15 +169,52 @@ fn scan_category(xplane: &Path, spec: &CategorySpec) -> CategoryDiskUsage {
     }
 }
 
+// Keep the remainder separate so base scenery, simulator resources, output and
+// files at the X-Plane root are included without counting addon categories twice.
+fn remaining_files(xplane: &Path) -> impl Iterator<Item = walkdir::DirEntry> + '_ {
+    WalkDir::new(xplane)
+        .into_iter()
+        .filter_entry(move |entry| {
+            !CATEGORIES
+                .iter()
+                .any(|spec| entry.path() == xplane.join(spec.sub_dir))
+        })
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+}
+
+fn scan_remaining_category(xplane: &Path) -> CategoryDiskUsage {
+    let mut total_bytes = 0;
+    let mut file_count = 0;
+    for entry in remaining_files(xplane) {
+        total_bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+        file_count += 1;
+    }
+    CategoryDiskUsage {
+        category: "Other".to_string(),
+        total_bytes,
+        item_count: 1,
+        items: vec![ItemDiskUsage {
+            folder_name: String::new(),
+            display_name: "X-Plane".to_string(),
+            size_bytes: total_bytes,
+            file_count,
+            item_type: "other".to_string(),
+        }],
+    }
+}
+
 /// Full scan of all known directories.
 pub fn scan_disk_usage(xplane_path: &str) -> DiskUsageReport {
     let xplane = Path::new(xplane_path);
     let start = Instant::now();
 
-    let categories: Vec<CategoryDiskUsage> = CATEGORIES
+    let mut categories: Vec<CategoryDiskUsage> = CATEGORIES
         .par_iter()
         .map(|spec| scan_category(xplane, spec))
         .collect();
+
+    categories.push(scan_remaining_category(xplane));
 
     let total_bytes: u64 = categories.iter().map(|c| c.total_bytes).sum();
     let scan_duration_ms = start.elapsed().as_millis() as u64;
@@ -203,6 +240,7 @@ pub fn scan_folder_disk_usage(
         "scenery" => "Custom Scenery",
         "navdata" => "Custom Data",
         "screenshot" => "Output/screenshots",
+        "other" if folder_name.is_empty() => "",
         _ => return Err(format!("Unknown item type: {}", item_type)),
     };
 
@@ -215,7 +253,12 @@ pub fn scan_folder_disk_usage(
     let mut file_count: usize = 0;
     let mut files: Vec<FileEntry> = Vec::new();
 
-    for entry in WalkDir::new(&folder).into_iter().filter_map(|e| e.ok()) {
+    let entries: Box<dyn Iterator<Item = walkdir::DirEntry> + '_> = if item_type == "other" {
+        Box::new(remaining_files(xplane))
+    } else {
+        Box::new(WalkDir::new(&folder).into_iter().filter_map(Result::ok))
+    };
+    for entry in entries {
         if entry.file_type().is_file() {
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
             total_bytes += size;
@@ -244,4 +287,41 @@ pub fn scan_folder_disk_usage(
         file_count,
         largest_files: files,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn report_counts_base_files_once_and_remainder_detail_agrees() {
+        let root = tempfile::tempdir().unwrap();
+        let files = [
+            ("Aircraft/Test/plane.acf", 11),
+            ("Resources/plugins/Test/plugin.xpl", 13),
+            ("Custom Scenery/Test/Earth nav data/apt.dat", 17),
+            ("Custom Data/nav.dat", 19),
+            ("Output/screenshots/test.png", 23),
+            ("Global Scenery/Earth nav data/tile.dsf", 29),
+            ("Resources/default scenery/test.dat", 31),
+            ("Output/preferences/test.prf", 37),
+            ("X-Plane-x86_64", 41),
+        ];
+        for (name, bytes) in files {
+            let path = root.path().join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, vec![0; bytes]).unwrap();
+        }
+        let report = scan_disk_usage(root.path().to_str().unwrap());
+        assert_eq!(report.total_bytes, 221);
+        let other = report
+            .categories
+            .iter()
+            .find(|c| c.category == "Other")
+            .unwrap();
+        assert_eq!(other.total_bytes, 138);
+        let detail = scan_folder_disk_usage(root.path().to_str().unwrap(), "other", "").unwrap();
+        assert_eq!(detail.total_bytes, 138);
+        assert_eq!(detail.file_count, 4);
+    }
 }

@@ -1499,6 +1499,7 @@ export default {
     categoryScenery: 'Décors',
     categoryNavdata: 'Données de navigation',
     categoryScreenshots: "Captures d'écran",
+    categoryOther: 'Autres fichiers X-Plane',
     total: 'Espace total',
     items: 'articles',
     openFolder: 'Ouvrir le dossier',

@@ -1370,6 +1370,7 @@ export default {
     categoryScenery: '地景',
     categoryNavdata: '导航数据',
     categoryScreenshots: '截图',
+    categoryOther: '其他 X-Plane 文件',
     total: '总计',
     items: '项',
     openFolder: '打开文件夹',

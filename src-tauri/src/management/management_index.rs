@@ -1672,7 +1672,11 @@ pub fn open_management_folder(
     item_type: &str,
     folder_name: &str,
 ) -> Result<()> {
-    let target_path = resolve_management_path(xplane_path, item_type, folder_name)?;
+    let target_path = if item_type == "other" && folder_name.is_empty() {
+        xplane_path.to_path_buf()
+    } else {
+        resolve_management_path(xplane_path, item_type, folder_name)?
+    };
 
     #[cfg(target_os = "windows")]
     {

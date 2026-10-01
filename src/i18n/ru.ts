@@ -1471,6 +1471,7 @@ export default {
     categoryScenery: 'Сценерии',
     categoryNavdata: 'Навигационные данные',
     categoryScreenshots: 'Скриншоты',
+    categoryOther: 'Другие файлы X-Plane',
     total: 'Всего',
     items: 'элементов',
     openFolder: 'Открыть папку',

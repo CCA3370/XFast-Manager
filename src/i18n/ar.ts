@@ -1419,6 +1419,7 @@ export default {
     categoryScenery: 'المشاهد',
     categoryNavdata: 'بيانات الملاحة',
     categoryScreenshots: 'لقطات الشاشة',
+    categoryOther: 'ملفات X-Plane الأخرى',
     total: 'الإجمالي',
     items: 'عناصر',
     openFolder: 'فتح المجلد',

@@ -1447,6 +1447,7 @@ export default {
     categoryScenery: 'シーナリー',
     categoryNavdata: 'ナビデータ',
     categoryScreenshots: 'スクリーンショット',
+    categoryOther: 'その他の X-Plane ファイル',
     total: '合計',
     items: 'アイテム',
     openFolder: 'フォルダーを開く',
