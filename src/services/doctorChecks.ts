@@ -636,7 +636,10 @@ function createNavdataCheck(context: DoctorCheckContext): DoctorCheckDefinition 
       const report = await invoke<DoctorNavdataReport>('doctor_navdata_status', {
         xplanePath: context.xplanePath,
       })
-      if (!report.customDataExists || report.cycles.length === 0) {
+      if (
+        !report.customDataExists ||
+        (!report.simulatorOverridePresent && report.cycles.length === 0)
+      ) {
         return [result('navdata.custom_data', 'navdata', 'notApplicable')]
       }
 
@@ -646,13 +649,17 @@ function createNavdataCheck(context: DoctorCheckContext): DoctorCheckDefinition 
       const distinctCycles = new Set(report.cycles.map((cycle) => cycle.cycle).filter(Boolean))
       const cycleOutcome = expired.length
         ? 'warning'
-        : expiring.length || unknown.length
+        : expiring.length || unknown.length || report.cycles.length === 0
           ? 'info'
           : 'pass'
 
       return [
         result('navdata.cycles', 'navdata', cycleOutcome, {
-          params: { expired: expired.length, expiring: expiring.length, unknown: unknown.length },
+          params: {
+            expired: expired.length,
+            expiring: expiring.length,
+            unknown: unknown.length || (report.cycles.length === 0 ? 1 : 0),
+          },
           evidence: evidence(
             [...expired, ...expiring, ...unknown].map(
               (cycle) =>
@@ -660,10 +667,27 @@ function createNavdataCheck(context: DoctorCheckContext): DoctorCheckDefinition 
             ),
           ),
         }),
-        result('navdata.cifp', 'navdata', report.cifpPresent ? 'pass' : 'warning'),
-        result('navdata.integrity', 'navdata', report.earthDatMissing.length ? 'warning' : 'pass', {
-          evidence: evidence(report.earthDatMissing, 'path'),
-        }),
+        result(
+          'navdata.cifp',
+          'navdata',
+          report.simulatorOverridePresent
+            ? report.cifpPresent
+              ? 'pass'
+              : 'warning'
+            : 'notApplicable',
+        ),
+        result(
+          'navdata.integrity',
+          'navdata',
+          report.simulatorOverridePresent
+            ? report.earthDatMissing.length
+              ? 'warning'
+              : 'pass'
+            : 'notApplicable',
+          {
+            evidence: evidence(report.earthDatMissing, 'path'),
+          },
+        ),
         result('navdata.consistency', 'navdata', distinctCycles.size > 1 ? 'info' : 'pass', {
           params: { cycles: [...distinctCycles].join(', ') },
         }),

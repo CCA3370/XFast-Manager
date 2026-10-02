@@ -12,6 +12,7 @@ import {
 import { loadDoctorRunsForPath, saveDoctorRun } from '@/services/doctorHistory'
 import { buildDoctorReport, type DoctorReportFormat } from '@/utils/doctorReport'
 import { isDoctorRunStale, sortDoctorChecks, summarizeDoctorRun } from '@/utils/doctor'
+import type { AirportFlattenApplyAllResult } from '@/types'
 import type {
   DoctorCheckResult,
   DoctorCheckRuntime,
@@ -25,6 +26,10 @@ export type DoctorPhase = 'idle' | 'local' | 'network' | 'done'
 export interface DoctorBatchFixResult {
   applied: number
   failed: number
+}
+
+interface RemediationResult extends DoctorBatchFixResult {
+  errors: string[]
 }
 
 interface DoctorRunTiming {
@@ -583,14 +588,15 @@ export const useDoctorStore = defineStore('doctor', () => {
   async function executeAutomaticRemediation(
     remediation: DoctorRemediation,
     xplanePath: string,
-  ): Promise<void> {
+  ): Promise<RemediationResult> {
+    const success = { applied: 1, failed: 0, errors: [] }
     switch (remediation.id) {
       case 'sort_scenery':
         await invoke('sort_scenery_packs', {
           xplanePath,
           lockedFolderNames: await lockedSceneryFolders(),
         })
-        return
+        return success
       case 'enable_global_airports':
         await invoke('update_scenery_entry', {
           xplanePath,
@@ -599,19 +605,29 @@ export const useDoctorStore = defineStore('doctor', () => {
           sortOrder: null,
           category: null,
         })
-        return
-      case 'apply_flatten':
-        await invoke('airport_flatten_apply_all_drifted', { xplanePath })
-        return
+        return success
+      case 'apply_flatten': {
+        const result = await invoke<AirportFlattenApplyAllResult>(
+          'airport_flatten_apply_all_drifted',
+          { xplanePath },
+        )
+        return {
+          applied: result.applied,
+          failed: result.failed.length,
+          errors: result.failed.map(
+            (failure) => `${failure.icao} (${failure.sourcePath}): ${failure.error}`,
+          ),
+        }
+      }
       case 'refresh_scenery_index':
         await invoke('quick_scan_scenery_index', {
           xplanePath,
           lockedFolderNames: await lockedSceneryFolders(),
         })
-        return
+        return success
       case 'rebuild_scenery_index':
         await invoke('rebuild_scenery_index', { xplanePath })
-        return
+        return success
       default:
         throw new Error(`Unsupported automatic remediation: ${remediation.id}`)
     }
@@ -691,7 +707,8 @@ export const useDoctorStore = defineStore('doctor', () => {
       ) {
         return false
       }
-      await executeAutomaticRemediation(remediation, repairPath)
+      const result = await executeAutomaticRemediation(remediation, repairPath)
+      if (result.errors.length) error.value = result.errors.join('\n')
       const definitionId = remediationDefinitionId(remediation.id)
       if (
         recheck &&
@@ -701,7 +718,7 @@ export const useDoctorStore = defineStore('doctor', () => {
       ) {
         await recheckDefinitions(new Set([definitionId]), repairPath)
       }
-      return true
+      return result.failed === 0
     } catch (reason) {
       logError(`Health: remediation ${remediation.id} failed: ${reason}`, 'doctor')
       error.value = String(reason)
@@ -726,6 +743,7 @@ export const useDoctorStore = defineStore('doctor', () => {
     let applied = 0
     let failed = 0
     const definitionsToRecheck = new Set<string>()
+    const repairErrors: string[] = []
     try {
       const filesystemRemediation = checks
         .map((check) => check.remediation)
@@ -739,26 +757,30 @@ export const useDoctorStore = defineStore('doctor', () => {
         return { applied: 0, failed: checks.length }
       }
 
-      for (const check of checks) {
+      for (const [index, check] of checks.entries()) {
         if (!check.remediation) continue
         if (currentRunPath.value !== repairPath || appStore.xplanePath !== repairPath) {
-          failed += checks.length - applied - failed
+          failed += checks.length - index
           break
         }
         fixingId.value = check.id
         try {
-          await executeAutomaticRemediation(check.remediation, repairPath)
-          applied += 1
+          const result = await executeAutomaticRemediation(check.remediation, repairPath)
+          applied += result.applied
+          failed += result.failed
+          repairErrors.push(...result.errors)
           const definitionId = remediationDefinitionId(check.remediation.id)
           if (definitionId) definitionsToRecheck.add(definitionId)
         } catch (reason) {
           failed += 1
+          repairErrors.push(String(reason))
           logError(`Health: remediation ${check.remediation.id} failed: ${reason}`, 'doctor')
         }
       }
       if (currentRunPath.value === repairPath && appStore.xplanePath === repairPath) {
         await recheckDefinitions(definitionsToRecheck, repairPath)
       }
+      if (repairErrors.length) error.value = repairErrors.join('\n')
       return { applied, failed }
     } finally {
       fixingId.value = null

@@ -301,6 +301,8 @@ export interface InstallTask {
   companionPaths?: string[]
   /** For Patch: back up files that will be overwritten before merging (revertable) */
   patchBackup?: boolean
+  /** For Patch: selected aircraft root that all write targets must stay inside */
+  patchAircraftRoot?: string
   /** For Patch: shared backup session dir for all tasks of one patch install */
   patchBackupDir?: string
 }
@@ -996,6 +998,7 @@ export interface NavdataCycleReport {
 export interface DoctorNavdataReport {
   cycles: NavdataCycleReport[]
   customDataExists: boolean
+  simulatorOverridePresent: boolean
   cifpPresent: boolean
   earthDatMissing: string[]
 }

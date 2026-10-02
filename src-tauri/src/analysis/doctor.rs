@@ -455,6 +455,8 @@ pub struct DoctorNavdataReport {
     pub cycles: Vec<NavdataCycleReport>,
     /// Whether Custom Data exists at all.
     pub custom_data_exists: bool,
+    /// Whether simulator-root override data exists, independently of add-on cycles.
+    pub simulator_override_present: bool,
     /// Whether the CIFP (procedures) folder exists and is non-empty.
     pub cifp_present: bool,
     /// Core earth_*.dat files missing from Custom Data root (only meaningful when
@@ -706,12 +708,16 @@ pub fn navdata_status(xplane_path: &str) -> DoctorNavdataReport {
             .map(|mut it| it.next().is_some())
             .unwrap_or(false);
 
-    // earth_*.dat are only "missing" if the user placed at least one of them
-    // in Custom Data root (i.e. they intend a full override set there).
+    // Simulator overrides require root data; independent add-on cycles do not.
+    // Root metadata/CIFP also indicates an override when every earth file is missing.
     let any_earth_present = EARTH_DAT_FILES
         .iter()
         .any(|f| custom_data.join(f).is_file());
-    let earth_dat_missing: Vec<String> = if custom_data_exists && any_earth_present {
+    let simulator_override_present = any_earth_present
+        || cifp_dir.is_dir()
+        || custom_data.join("cycle.json").is_file()
+        || custom_data.join("cycle_info.txt").is_file();
+    let earth_dat_missing: Vec<String> = if custom_data_exists && simulator_override_present {
         EARTH_DAT_FILES
             .iter()
             .filter(|f| !custom_data.join(f).is_file())
@@ -724,6 +730,7 @@ pub fn navdata_status(xplane_path: &str) -> DoctorNavdataReport {
     DoctorNavdataReport {
         cycles,
         custom_data_exists,
+        simulator_override_present,
         cifp_present,
         earth_dat_missing,
     }
@@ -793,6 +800,49 @@ pub async fn doctor_navdata_status(xplane_path: String) -> Result<DoctorNavdataR
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn addon_cycles_do_not_require_simulator_root_navdata() {
+        let temp = tempfile::tempdir().unwrap();
+        let addon = temp.path().join("Custom Data/GNS430/navdata");
+        fs::create_dir_all(&addon).unwrap();
+        fs::write(
+            addon.join("cycle.json"),
+            r#"{"cycle":"2610","name":"Navigraph"}"#,
+        )
+        .unwrap();
+        let report = navdata_status(&temp.path().display().to_string());
+        assert_eq!(report.cycles.len(), 1);
+        assert!(!report.simulator_override_present);
+        assert!(report.earth_dat_missing.is_empty());
+    }
+
+    #[test]
+    fn partial_root_navdata_is_applicable_without_cycle_metadata() {
+        let temp = tempfile::tempdir().unwrap();
+        let custom_data = temp.path().join("Custom Data");
+        fs::create_dir_all(&custom_data).unwrap();
+        fs::write(custom_data.join("earth_nav.dat"), "I\n1200").unwrap();
+        let report = navdata_status(&temp.path().display().to_string());
+        assert!(report.cycles.is_empty());
+        assert!(report.simulator_override_present);
+        assert!(report
+            .earth_dat_missing
+            .contains(&"earth_fix.dat".to_string()));
+        assert!(!report.cifp_present);
+    }
+
+    #[test]
+    fn root_metadata_without_data_still_checks_integrity() {
+        let temp = tempfile::tempdir().unwrap();
+        let custom_data = temp.path().join("Custom Data");
+        fs::create_dir_all(&custom_data).unwrap();
+        fs::write(custom_data.join("cycle.json"), "broken metadata").unwrap();
+        let report = navdata_status(&temp.path().display().to_string());
+        assert!(report.cycles.is_empty());
+        assert!(report.simulator_override_present);
+        assert_eq!(report.earth_dat_missing.len(), EARTH_DAT_FILES.len());
+    }
 
     #[test]
     fn ymd_roundtrip() {

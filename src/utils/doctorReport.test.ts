@@ -19,6 +19,7 @@ function reportRun(): DoctorRun {
           sensitive: true,
         },
         { kind: 'log', value: '/home/alex/.local/share/com.xfastmanager.tool/logs/app.log' },
+        { kind: 'path', value: 'C:\\Users\\alex\\X-Plane 12\\Log.txt' },
       ],
       remediation: {
         id: 'test',
@@ -64,6 +65,43 @@ describe('doctor report export', () => {
     })
     expect(result).toContain('C:\\Users\\alex\\X-Plane 12\\Log.txt')
     expect(result).toContain('Alex Smith')
+  })
+
+  it.each(['json', 'markdown'] as const)('hides private external paths in %s exports', (format) => {
+    const run = reportRun()
+    run.checks[0].evidence = [
+      { kind: 'path', value: 'E:/Scenery/Demo Airport/Earth nav data/apt.dat', sensitive: true },
+      { kind: 'path', value: '/Volumes/Private Disk/Scenery/apt.dat' },
+      { kind: 'log', value: 'Cannot load \\\\server\\private\\apt.dat' },
+      {
+        kind: 'text',
+        value: 'personal diagnostic note',
+        label: 'private evidence label',
+        sensitive: true,
+      },
+    ]
+    run.checks[0].params = { source: 'E:/Scenery/Demo Airport/Earth nav data/apt.dat' }
+    const options = { xplanePath: '/xplane' }
+    const exported = buildDoctorReport(run, format, options)
+    for (const privateText of [
+      'Demo Airport',
+      'Private Disk',
+      'server',
+      'personal diagnostic note',
+      'private evidence label',
+    ]) {
+      expect(exported).not.toContain(privateText)
+    }
+    const raw = buildDoctorReport(run, format, { ...options, includeSensitive: true })
+    expect(raw).toContain('Demo Airport')
+    expect(raw).toContain('Private Disk')
+    expect(raw).toContain('personal diagnostic note')
+  })
+
+  it('preserves URLs when sanitizing log text', () => {
+    expect(redactDoctorText('See https://example.com/support', { xplanePath: '/xplane' })).toBe(
+      'See https://example.com/support',
+    )
   })
 
   it('redacts a configured root consistently with or without a trailing separator', () => {

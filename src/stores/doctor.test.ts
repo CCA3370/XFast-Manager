@@ -175,6 +175,7 @@ async function healthyResponse(command: string): Promise<unknown> {
       return {
         cycles: [],
         customDataExists: false,
+        simulatorOverridePresent: false,
         cifpPresent: false,
         earthDatMissing: [],
       }
@@ -316,6 +317,43 @@ describe('Health diagnostic store', () => {
     expect(
       store.currentRun?.checks.find((item) => item.id === 'xfast.scenery_index')?.outcome,
     ).toBe('pass')
+  })
+
+  it.each([
+    { batch: false, applied: 0 },
+    { batch: false, applied: 2 },
+    { batch: true, applied: 0 },
+    { batch: true, applied: 2 },
+  ])('reports flatten failures truthfully (%j)', async ({ batch, applied }) => {
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'airport_flatten_list_overrides') {
+        return [{ icao: 'TEST', sourcePath: '/scenery/apt.dat', status: 'drifted' }]
+      }
+      if (command === 'airport_flatten_apply_all_drifted') {
+        return {
+          applied,
+          skipped: 0,
+          failed: [{ icao: 'TEST', sourcePath: '/scenery/apt.dat', error: 'Permission denied' }],
+        }
+      }
+      return healthyResponse(command)
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+    const check = store.currentRun!.checks.find((item) => item.id === 'scenery.flatten')!
+    expect(check.remediation?.id).toBe('apply_flatten')
+    if (batch) {
+      expect(await store.applyAllSafeFixes()).toEqual({ applied, failed: 1 })
+    } else {
+      expect(await store.applyRemediation(check)).toBe(false)
+    }
+    expect(store.error).toContain('TEST (/scenery/apt.dat): Permission denied')
+    expect(store.currentRun!.checks.find((item) => item.id === 'scenery.flatten')?.outcome).toBe(
+      'warning',
+    )
+    expect(
+      tauri.invoke.mock.calls.filter(([command]) => command === 'airport_flatten_list_overrides'),
+    ).toHaveLength(2)
   })
 
   it('locks the scan synchronously so repeated clicks cannot start competing runs', async () => {

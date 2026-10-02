@@ -46,7 +46,13 @@ export function redactDoctorText(value: string, options: DoctorReportOptions): s
   if (options.includeSensitive) return value
   let redacted = replacePath(value, options.xplanePath, '<XPLANE_ROOT>')
   if (options.appDataPath) redacted = replacePath(redacted, options.appDataPath, '<XFAST_DATA>')
-  return redactCommonUserPaths(redacted)
+  redacted = redactCommonUserPaths(redacted)
+  // External disks, linked scenery and network shares need the same protection as
+  // configured roots. Preserve URLs and relative suffixes of our root tokens.
+  return redacted.replace(
+    /(^|[^\w:/>])(?:[A-Za-z]:[\\/]|\\\\|\/)([^\r\n"'<>|,;]*)/g,
+    '$1<PRIVATE_PATH>',
+  )
 }
 
 function reportCheck(check: DoctorCheckResult, options: DoctorReportOptions) {
@@ -55,8 +61,15 @@ function reportCheck(check: DoctorCheckResult, options: DoctorReportOptions) {
     params: redactParams(check.params, options),
     evidence: check.evidence?.map((evidence) => ({
       ...evidence,
-      label: evidence.label ? redactDoctorText(evidence.label, options) : undefined,
-      value: redactDoctorText(evidence.value, options),
+      label: evidence.label
+        ? evidence.sensitive && !options.includeSensitive
+          ? '<PRIVATE_EVIDENCE>'
+          : redactDoctorText(evidence.label, options)
+        : undefined,
+      value:
+        evidence.sensitive && !options.includeSensitive
+          ? '<PRIVATE_EVIDENCE>'
+          : redactDoctorText(evidence.value, options),
     })),
     remediation: check.remediation
       ? {
@@ -90,9 +103,9 @@ export function buildDoctorReport(
 
   for (const check of report.checks) {
     lines.push(
-      `## ${options.checkLabel?.(check) ?? check.id}`,
+      `## ${redactDoctorText(options.checkLabel?.(check) ?? check.id, options)}`,
       '',
-      `- Section: ${options.sectionLabel?.(check) ?? check.section}`,
+      `- Section: ${redactDoctorText(options.sectionLabel?.(check) ?? check.section, options)}`,
       `- Outcome: ${check.outcome}`,
       `- Duration: ${check.durationMs} ms`,
     )
