@@ -580,6 +580,8 @@ fn sort_packages_with_special_rules(
     let airport_mesh_matches = detect_airport_mesh_matches_with_path(xplane_path, packages);
     let category_changed = apply_airport_mesh_matches(packages, &airport_mesh_matches);
 
+    let airport_priority_changed = crate::scenery_sort_strategy::assign_sub_priorities(packages);
+
     let mut fixed_packages = Vec::new();
     let mut other_packages = Vec::new();
 
@@ -600,7 +602,7 @@ fn sort_packages_with_special_rules(
     apply_darkblue_airport_package_anchors(&mut fixed_packages, &airport_mesh_matches);
     *packages = fixed_packages;
 
-    known_profile_changed || category_changed
+    known_profile_changed || category_changed || airport_priority_changed
 }
 
 /// Manager for scenery index operations
@@ -2722,5 +2724,94 @@ mod tests {
             ordered_names,
             vec!["KSEA Demo", "DarkBlue-KSEA Mesh", "MisterX Library"]
         );
+    }
+
+    #[test]
+    fn custom_airports_rank_above_aerosoft_and_global_airports() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut packages = vec![
+            make_package("Aerosoft - LFPG Paris", SceneryCategory::Airport, 0),
+            make_package("Global Airports", SceneryCategory::DefaultAirport, 1),
+            make_package("Z Custom KSEA", SceneryCategory::Airport, 2),
+            make_package("MyAerosoftReplacement", SceneryCategory::Airport, 3),
+            make_package("AerosoftReplacement", SceneryCategory::Airport, 4),
+        ];
+        sort_packages_with_special_rules(temp.path(), &mut packages);
+        let names: Vec<_> = packages.iter().map(|p| p.folder_name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "AerosoftReplacement",
+                "MyAerosoftReplacement",
+                "Z Custom KSEA",
+                "Aerosoft - LFPG Paris",
+                "Global Airports"
+            ]
+        );
+    }
+
+    #[test]
+    fn airport_priority_changes_are_reported_for_persistence() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut packages = vec![make_package(
+            "Aerosoft - LFPG Paris",
+            SceneryCategory::Airport,
+            0,
+        )];
+        assert!(sort_packages_with_special_rules(temp.path(), &mut packages));
+        assert_eq!(packages[0].sub_priority, 1);
+        assert!(!sort_packages_with_special_rules(
+            temp.path(),
+            &mut packages
+        ));
+    }
+
+    #[test]
+    fn airport_rule_preserves_non_airport_sub_priorities() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut mesh = make_package("Aerosoft Mesh", SceneryCategory::Mesh, 0);
+        mesh.sub_priority = 2;
+        let mut packages = vec![mesh];
+        assert!(!sort_packages_with_special_rules(
+            temp.path(),
+            &mut packages
+        ));
+        assert_eq!(packages[0].sub_priority, 2);
+    }
+
+    #[test]
+    fn orthophotos_stay_below_overlays_and_darkblue_anchors() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut packages = vec![
+            make_package("zOrtho4XP_+50+005", SceneryCategory::Mesh, 0),
+            make_package("DarkBlue-KSEA", SceneryCategory::Airport, 1),
+            make_package("MisterX Library", SceneryCategory::Library, 2),
+            make_package("DarkBlue-KSEA_Overlays", SceneryCategory::Overlay, 3),
+            make_package("Some Overlay", SceneryCategory::Overlay, 4),
+        ];
+        sort_packages_with_special_rules(temp.path(), &mut packages);
+        let names: Vec<_> = packages.iter().map(|p| p.folder_name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "DarkBlue-KSEA",
+                "DarkBlue-KSEA_Overlays",
+                "MisterX Library",
+                "Some Overlay",
+                "zOrtho4XP_+50+005"
+            ]
+        );
+    }
+
+    #[test]
+    fn no_overlay_keeps_orthophotos_above_unknown_packages() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut packages = vec![
+            make_package("zOrtho4XP_+50+005", SceneryCategory::Mesh, 0),
+            make_package("Unknown", SceneryCategory::Unrecognized, 1),
+        ];
+        sort_packages_with_special_rules(temp.path(), &mut packages);
+        assert_eq!(packages[0].folder_name, "zOrtho4XP_+50+005");
+        assert_eq!(packages[1].folder_name, "Unknown");
     }
 }

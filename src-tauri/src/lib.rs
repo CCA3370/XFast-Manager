@@ -87,6 +87,8 @@ mod scenery_classifier;
 mod scenery_index;
 #[path = "scenery/scenery_packs_manager.rs"]
 mod scenery_packs_manager;
+#[path = "scenery/scenery_sort_strategy.rs"]
+mod scenery_sort_strategy;
 #[path = "scenery/scenery_sorting.rs"]
 mod scenery_sorting;
 

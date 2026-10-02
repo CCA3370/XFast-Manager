@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Custom Airport Priority** - Auto Sort now places custom airports above bundled Aerosoft airports while keeping both above Global Airports.
+
 - **Map and SimBrief Removed** - Removed the retired Map page and its SimBrief setting, keeping the app focused on currently supported management tools.
 - **Health at a Glance** - Opening Health runs one quick local check per session, clearly separates scan progress from completed results, and keeps history tied to the selected X-Plane installation. The navigation badge and 24-hour reminder show when attention or a fresh diagnosis is needed without running background scans.
 - **More Accurate Bug Report Prompts** - Error dialogs now offer bug reporting only for unexpected app failures, while attempts to reinstall content already inside X-Plane, invalid paths, permissions, unreadable downloads, security software blocks, insufficient space, network failures, cancellations, and hardware problems show guidance without suggesting a report.
