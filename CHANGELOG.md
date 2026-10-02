@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-02
+
 ### Added
 
+- **Aircraft Patch Installation** - Apply model patches to an installed aircraft with editable folder mappings, a preview of affected files, optional backups, and restoration of overwritten files.
 - **Flight Plan Management** - Import FMS flight plans by dropping them onto Install or the new Flight Plans page, search saved plans, and delete them with confirmation. Repeated imports keep existing plans intact.
 - **Health Diagnostic Center** - Health now checks the X-Plane installation, recent stability, scenery, aircraft and plugins, navigation data, performance, storage, system environment, XFast Manager data, and available updates from one responsive center that matches the rest of the app.
 - **Health History and Shareable Reports** - The latest 20 completed checks are saved locally for each X-Plane installation, with Markdown and JSON reports that hide private paths across evidence and diagnostic details unless explicitly included for the selected report.

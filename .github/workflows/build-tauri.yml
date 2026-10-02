@@ -2,6 +2,17 @@ name: Build Tauri (All Platforms)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -130,6 +141,14 @@ jobs:
           echo "CARGO_PROFILE_RELEASE_STRIP=debuginfo" >> $GITHUB_ENV
           echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
           echo "BUILD_MODE=standard" >> $GITHUB_ENV
+
+      - name: Verify frontend and Rust regressions
+        shell: bash
+        run: |
+          npm test
+          npm run lint
+          npm run build
+          cargo test --locked
 
       - name: Build Tauri
         shell: bash
@@ -306,9 +325,13 @@ jobs:
           echo "CARGO_PROFILE_RELEASE_PANIC=abort" >> $GITHUB_ENV
           echo "BUILD_MODE=standard" >> $GITHUB_ENV
 
-      - name: Build frontend
+      - name: Verify frontend and Rust regressions
         shell: bash
-        run: npm run build
+        run: |
+          npm test
+          npm run lint
+          npm run build
+          cargo test --locked
 
       - name: Build Arch Linux binary
         shell: bash
