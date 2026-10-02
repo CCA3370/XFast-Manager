@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isPreviewKeyboardTarget } from '@/utils/screenshotKeyboard'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
@@ -387,11 +388,6 @@ function selectPreviousMedia() {
 function selectNextMedia() {
   if (!canSelectNext.value) return
   selectPreviewItem(selectedIndex.value + 1)
-}
-
-function isPreviewKeyboardTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false
-  return Boolean(target.closest('button, input, textarea, select, video, [contenteditable="true"]'))
 }
 
 function onPreviewKeydown(event: KeyboardEvent) {
