@@ -296,6 +296,7 @@ mod tests {
             companion_paths: vec![],
             patch_backup: false,
             patch_backup_dir: None,
+            patch_aircraft_root: None,
         }
     }
 

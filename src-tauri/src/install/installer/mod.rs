@@ -2211,8 +2211,23 @@ impl Installer {
             } else if source.is_dir() {
                 task_size += self.get_directory_size(source)?;
             } else if source.is_file() {
-                task_size +=
-                    self.get_archive_size(source, task.archive_internal_root.as_deref())?;
+                // Exact patch-file mappings stage the containing directory;
+                // count those extraction bytes so progress is never zero/NaN.
+                let exact_file = if task.addon_type == AddonType::Patch {
+                    task.archive_internal_root.as_deref().and_then(|prefix| {
+                        crate::patch::list_archive_files(source)
+                            .ok()
+                            .and_then(|files| files.into_iter().find(|file| file == prefix))
+                    })
+                } else {
+                    None
+                };
+                let prefix = if let Some(ref file) = exact_file {
+                    file.rsplit_once('/').map(|(parent, _)| parent)
+                } else {
+                    task.archive_internal_root.as_deref()
+                };
+                task_size += self.get_archive_size(source, prefix)?;
             }
 
             task_sizes.push(task_size);
@@ -2599,6 +2614,7 @@ mod tests {
             companion_paths: Vec::new(),
             patch_backup: false,
             patch_backup_dir: None,
+            patch_aircraft_root: None,
         }
     }
 

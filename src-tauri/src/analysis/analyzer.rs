@@ -1137,6 +1137,7 @@ impl Analyzer {
             companion_paths: item.companion_paths,
             patch_backup: false,
             patch_backup_dir: None,
+            patch_aircraft_root: None,
         }
     }
 
@@ -1529,6 +1530,7 @@ mod tests {
             companion_paths: Vec::new(),
             patch_backup: false,
             patch_backup_dir: None,
+            patch_aircraft_root: None,
         }
     }
 

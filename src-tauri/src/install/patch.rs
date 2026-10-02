@@ -473,8 +473,8 @@ pub fn summarize_install(
 ) -> Result<PatchInstallSummary> {
     let aircraft_dir = resolve_aircraft_dir_by_name(xplane_path, aircraft_folder)
         .ok_or_else(|| anyhow!("Aircraft folder not found: {}", aircraft_folder))?;
-    let files = list_archive_files(archive_path).unwrap_or_default();
-    Ok(count_install_dests(&files, &aircraft_dir, mappings))
+    let files = list_archive_files(archive_path)?;
+    count_install_dests(&files, &aircraft_dir, mappings)
 }
 
 /// Pure core of [`summarize_install`]: resolve every mapping to its on-disk
@@ -484,28 +484,166 @@ fn count_install_dests(
     files: &[String],
     aircraft_dir: &Path,
     mappings: &[PatchMappingInput],
-) -> PatchInstallSummary {
+) -> Result<PatchInstallSummary> {
     let mut dests: BTreeSet<PathBuf> = BTreeSet::new();
     for m in mappings {
-        let archive_sub = m.archive_subpath.trim_matches('/');
-        let dest_sub = m.dest_subpath.trim_matches('/');
-        let base = if dest_sub.is_empty() {
-            aircraft_dir.to_path_buf()
-        } else {
-            aircraft_dir.join(dest_sub)
-        };
+        let archive_sub = safe_relative_subpath(&m.archive_subpath)?;
+        let dest_sub = safe_relative_subpath(&m.dest_subpath)?;
+        let base = aircraft_dir.join(&dest_sub);
+        validate_destination(aircraft_dir, &base)?;
+        let mut matched = false;
         for f in files {
-            if let Some(rel) = strip_offset(f, archive_sub) {
-                dests.insert(base.join(rel));
+            if let Some(rel) = mapping_relative_file(f, &archive_sub) {
+                let rel = safe_relative_subpath(rel)?;
+                let dest = base.join(rel);
+                validate_destination(aircraft_dir, &dest)?;
+                dests.insert(dest);
+                matched = true;
             }
         }
+        if !matched {
+            return Err(anyhow!("Patch mapping contains no files: {}", archive_sub));
+        }
     }
-
     let overwrite_count = dests.iter().filter(|p| p.is_file()).count();
-    PatchInstallSummary {
+    Ok(PatchInstallSummary {
         total_files: dests.len(),
         overwrite_count,
+    })
+}
+
+/// Interpret an archive prefix as either a directory or one exact file. File
+/// mappings preserve the basename, exactly as a directory overlay would.
+fn mapping_relative_file<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
+    if !prefix.is_empty() && path == prefix {
+        path.rsplit('/').next()
+    } else {
+        strip_offset(path, prefix)
     }
+}
+
+/// Validate paths with Windows semantics too, even on Unix. This prevents a
+/// mapping validated on one platform from acquiring a drive/root on another.
+fn safe_relative_subpath(value: &str) -> Result<String> {
+    let normalized = value.replace('\\', "/");
+    if normalized.starts_with('/')
+        || normalized.contains(':')
+        || normalized.contains('\0')
+        || normalized
+            .split('/')
+            .any(|s| s == ".." || s == "." || s.ends_with('.') || s.ends_with(' '))
+    {
+        return Err(anyhow!(
+            "Patch path must stay inside the selected aircraft: {}",
+            value
+        ));
+    }
+    let normalized = normalized.trim_end_matches('/').to_string();
+    if normalized
+        .split('/')
+        .any(|s| s.eq_ignore_ascii_case("_xfast_patch_backups"))
+    {
+        return Err(anyhow!("Patch mappings cannot modify patch backups"));
+    }
+    Ok(normalized)
+}
+
+/// Check every existing path component, including file symlinks and dangling
+/// links. Canonicalizing only the final target would miss a missing leaf below
+/// a directory link that points outside the selected aircraft.
+pub(crate) fn validate_destination(aircraft_root: &Path, target: &Path) -> Result<()> {
+    validate_destination_inner(aircraft_root, target, false)
+}
+
+fn validate_destination_inner(
+    aircraft_root: &Path,
+    target: &Path,
+    allow_backup: bool,
+) -> Result<()> {
+    let root = fs::canonicalize(aircraft_root)?;
+    let relative = target
+        .strip_prefix(aircraft_root)
+        .map_err(|_| anyhow!("Patch destination is outside the selected aircraft"))?;
+    let rel_string = relative.to_string_lossy();
+    if allow_backup {
+        // Backup paths are generated internally; still reject traversal/rooted
+        // components and use the same symlink containment checks below.
+        if relative
+            .components()
+            .any(|c| !matches!(c, std::path::Component::Normal(_)))
+        {
+            return Err(anyhow!("Invalid patch backup path"));
+        }
+    } else {
+        safe_relative_subpath(&rel_string)?;
+    }
+    let mut probe = root.clone();
+    for component in relative.components() {
+        probe.push(component.as_os_str());
+        match fs::symlink_metadata(&probe) {
+            Ok(_) => {
+                let resolved = fs::canonicalize(&probe)?;
+                if !resolved.starts_with(&root) {
+                    return Err(anyhow!(
+                        "Patch destination link escapes the selected aircraft: {}",
+                        probe.display()
+                    ));
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(())
+}
+
+/// Validate staging immediately before backup/merge. Do not allow links in the
+/// patch payload to introduce a second destination outside the aircraft.
+pub(crate) fn validate_staged_destinations(
+    staged: &Path,
+    target: &Path,
+    root: &Path,
+) -> Result<()> {
+    validate_destination(root, target)?;
+    let mut count = 0;
+    for entry in WalkDir::new(staged) {
+        let entry = entry?;
+        if entry.file_type().is_symlink() {
+            return Err(anyhow!(
+                "Patch payload contains a symbolic link: {}",
+                entry.path().display()
+            ));
+        }
+        let relative = entry.path().strip_prefix(staged)?;
+        validate_destination(root, &target.join(relative))?;
+        if entry.file_type().is_file() {
+            count += 1;
+        }
+    }
+    if count == 0 {
+        return Err(anyhow!("Patch mapping extracted no files"));
+    }
+    Ok(())
+}
+
+/// Keep only an exact-file mapping after its parent was safely extracted.
+pub(crate) fn retain_exact_file(staged: &Path, basename: &str) -> Result<()> {
+    let selected = staged.join(basename);
+    if !fs::symlink_metadata(&selected)?.file_type().is_file() {
+        return Err(anyhow!("Patch mapping did not extract its selected file"));
+    }
+    for entry in fs::read_dir(staged)? {
+        let entry = entry?;
+        if entry.file_name() == std::ffi::OsStr::new(basename) {
+            continue;
+        }
+        if entry.file_type()?.is_dir() {
+            fs::remove_dir_all(entry.path())?;
+        } else {
+            fs::remove_file(entry.path())?;
+        }
+    }
+    Ok(())
 }
 
 // --------------------------------------------------------------------------
@@ -538,10 +676,14 @@ pub fn build_install_tasks(
 ) -> Result<Vec<InstallTask>> {
     let aircraft_dir = resolve_aircraft_dir_by_name(xplane_path, aircraft_folder)
         .ok_or_else(|| anyhow!("Aircraft folder not found: {}", aircraft_folder))?;
+    let aircraft_dir = fs::canonicalize(aircraft_dir)?;
 
     if mappings.is_empty() {
         return Err(anyhow!("No patch mappings provided"));
     }
+
+    let files = list_archive_files(Path::new(archive_path))?;
+    count_install_dests(&files, &aircraft_dir, &mappings)?;
 
     let patch_name = Path::new(archive_path)
         .file_stem()
@@ -572,7 +714,7 @@ pub fn build_install_tasks(
     let tasks = mappings
         .into_iter()
         .map(|m| {
-            let dest = m.dest_subpath.trim_matches('/').to_string();
+            let dest = safe_relative_subpath(&m.dest_subpath)?;
             let target = if dest.is_empty() {
                 aircraft_dir.clone()
             } else {
@@ -584,7 +726,7 @@ pub fn build_install_tasks(
                 format!("{}/{}", aircraft_folder, dest)
             };
             let archive_internal_root = {
-                let trimmed = m.archive_subpath.trim_matches('/');
+                let trimmed = safe_relative_subpath(&m.archive_subpath)?;
                 if trimmed.is_empty() {
                     None
                 } else {
@@ -592,7 +734,7 @@ pub fn build_install_tasks(
                 }
             };
 
-            InstallTask {
+            Ok(InstallTask {
                 id: Uuid::new_v4().to_string(),
                 addon_type: AddonType::Patch,
                 source_path: archive_path.to_string(),
@@ -624,9 +766,10 @@ pub fn build_install_tasks(
                 companion_paths: Vec::new(),
                 patch_backup: backup_overwritten,
                 patch_backup_dir: backup_dir.clone(),
-            }
+                patch_aircraft_root: Some(aircraft_dir.to_string_lossy().to_string()),
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
 
     Ok(tasks)
 }
@@ -657,9 +800,15 @@ pub(crate) fn backup_overwritten_files(
     backup_dir: &Path,
     task_id: &str,
 ) -> Result<usize> {
+    static BACKUP_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = BACKUP_LOCK
+        .lock()
+        .map_err(|_| anyhow!("Patch backup lock poisoned"))?;
     // Mirror backups under the aircraft-relative path when possible so that
     // root- and liveries-mappings of the same patch never collide.
     let aircraft_root = backup_dir.parent().and_then(|p| p.parent());
+    let aircraft_root = aircraft_root.ok_or_else(|| anyhow!("Invalid patch backup directory"))?;
+    validate_destination_inner(aircraft_root, backup_dir, true)?;
     let files_root = backup_dir.join("files");
 
     let mut entries: Vec<BackupEntry> = Vec::new();
@@ -676,15 +825,38 @@ pub(crate) fn backup_overwritten_files(
             continue; // nothing to overwrite -> nothing to back up
         }
 
-        let mirror_rel = aircraft_root
-            .and_then(|ar| original.strip_prefix(ar).ok())
-            .map(|r| r.to_path_buf())
-            .unwrap_or_else(|| staged_rel.to_path_buf());
+        validate_destination(aircraft_root, &original)?;
+        let mirror_rel = original.strip_prefix(aircraft_root)?.to_path_buf();
         let backup_file = files_root.join(&mirror_rel);
+        validate_destination_inner(aircraft_root, &backup_file, true)?;
         if let Some(parent) = backup_file.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::copy(&original, &backup_file)?;
+        let snapshot = match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&backup_file)
+        {
+            Ok(file) => Some(file),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                if !fs::symlink_metadata(&backup_file)?.file_type().is_file() {
+                    return Err(anyhow!("Existing patch snapshot is not a regular file"));
+                }
+                None
+            }
+            Err(e) => return Err(e.into()),
+        };
+        if let Some(mut snapshot) = snapshot {
+            let snapshot_result = fs::File::open(&original)
+                .and_then(|mut source| std::io::copy(&mut source, &mut snapshot))
+                .and_then(|_| snapshot.sync_all());
+            if let Err(e) = snapshot_result {
+                let _ = fs::remove_file(&backup_file);
+                return Err(e.into());
+            }
+        }
+        // Every task records the immutable snapshot, even when a prior task
+        // saved it. This also makes retries safe if manifest writing failed.
         entries.push(BackupEntry {
             backup: backup_file.to_string_lossy().to_string(),
             original: original.to_string_lossy().to_string(),
@@ -711,7 +883,7 @@ pub(crate) fn backup_overwritten_files(
 
     crate::logger::log_info(
         &format!(
-            "Patch backup: saved {} overwritten file(s) to {:?}",
+            "Patch backup: preserved {} overwritten file(s) to {:?}",
             count, backup_dir
         ),
         Some("patch"),
@@ -727,7 +899,18 @@ pub fn revert_patch(backup_session_dir: &str) -> Result<usize> {
         return Err(anyhow!("Backup session not found: {}", backup_session_dir));
     }
 
+    let aircraft_root = dir
+        .parent()
+        .and_then(|p| p.parent())
+        .ok_or_else(|| anyhow!("Invalid patch backup session"))?;
+    if dir.parent().and_then(|p| p.file_name())
+        != Some(std::ffi::OsStr::new("_xfast_patch_backups"))
+    {
+        return Err(anyhow!("Invalid patch backup session"));
+    }
+    validate_destination_inner(aircraft_root, dir, true)?;
     let mut restored = 0usize;
+    let mut seen = BTreeSet::new();
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let name = entry.file_name();
@@ -741,7 +924,18 @@ pub fn revert_patch(backup_session_dir: &str) -> Result<usize> {
         for be in manifest.entries {
             let backup = Path::new(&be.backup);
             let original = Path::new(&be.original);
+            if !backup.starts_with(dir.join("files")) {
+                return Err(anyhow!("Backup manifest file is outside its session"));
+            }
+            validate_destination_inner(aircraft_root, backup, true)?;
+            validate_destination(aircraft_root, original)?;
             if !backup.is_file() {
+                return Err(anyhow!(
+                    "Patch backup file is missing: {}",
+                    backup.display()
+                ));
+            }
+            if !seen.insert(original.to_path_buf()) {
                 continue;
             }
             if let Some(parent) = original.parent() {
@@ -793,7 +987,7 @@ pub(crate) fn list_archive_files(archive_path: &Path) -> Result<Vec<String>> {
     Ok(entries
         .into_iter()
         .map(|e| e.replace('\\', "/"))
-        .map(|e| e.trim_start_matches("./").to_string())
+        .map(|e| e.strip_prefix("./").unwrap_or(&e).to_string())
         .filter(|e| !e.is_empty() && !e.ends_with('/'))
         .collect())
 }
@@ -1037,11 +1231,15 @@ fn resolve_aircraft_dir(xplane_path: &str, ac: &AircraftInfo) -> Option<PathBuf>
 
 fn resolve_aircraft_dir_by_name(xplane_path: &str, folder_name: &str) -> Option<PathBuf> {
     let base = Path::new(xplane_path).join("Aircraft");
-    let direct = base.join(folder_name);
+    let folder_name = safe_relative_subpath(folder_name).ok()?;
+    if folder_name.is_empty() {
+        return None;
+    }
+    let direct = base.join(&folder_name);
     if direct.is_dir() {
         return Some(direct);
     }
-    find_named_dir(&base, folder_name, 0, 4)
+    find_named_dir(&base, &folder_name, 0, 4)
 }
 
 fn find_named_dir(dir: &Path, name: &str, depth: usize, max_depth: usize) -> Option<PathBuf> {
@@ -1309,8 +1507,160 @@ mod tests {
             archive_subpath: "pack".to_string(),
             dest_subpath: String::new(),
         }];
-        let s = count_install_dests(&files, ac.path(), &mappings);
+        let s = count_install_dests(&files, ac.path(), &mappings).unwrap();
         assert_eq!(s.total_files, 4);
         assert_eq!(s.overwrite_count, 2);
+    }
+
+    #[test]
+    fn destinations_reject_traversal_and_windows_roots() {
+        let ac = make_aircraft(&["plane.acf"]);
+        for invalid in [
+            "../OtherPlane",
+            "objects/../../OtherPlane",
+            "/tmp/plane",
+            "C:\\Aircraft",
+            "C:plane",
+            "\\\\server\\share",
+            "objects/../plane",
+            ".. /OtherPlane",
+            "_XFAST_PATCH_BACKUPS/session",
+            "_xfast_patch_backups/session",
+        ] {
+            let mappings = vec![PatchMappingInput {
+                archive_subpath: String::new(),
+                dest_subpath: invalid.to_string(),
+            }];
+            assert!(
+                count_install_dests(&to_owned(&["plane.acf"]), ac.path(), &mappings).is_err(),
+                "accepted {}",
+                invalid
+            );
+        }
+    }
+
+    #[test]
+    fn exact_file_mapping_counts_only_selected_file_and_rejects_empty_mapping() {
+        let ac = make_aircraft(&["plane.acf"]);
+        let files = to_owned(&["plane.acf", "objects/body.obj"]);
+        let mapping = PatchMappingInput {
+            archive_subpath: "plane.acf".to_string(),
+            dest_subpath: String::new(),
+        };
+        let summary = count_install_dests(&files, ac.path(), &[mapping]).unwrap();
+        assert_eq!(summary.total_files, 1);
+        assert_eq!(summary.overwrite_count, 1);
+        let missing = PatchMappingInput {
+            archive_subpath: "missing".to_string(),
+            dest_subpath: String::new(),
+        };
+        assert!(count_install_dests(&files, ac.path(), &[missing]).is_err());
+    }
+
+    #[test]
+    fn exact_file_staging_keeps_basename_and_rejects_no_files() {
+        let staged = make_aircraft(&["plane.acf", "objects/body.obj", "README.txt"]);
+        retain_exact_file(staged.path(), "plane.acf").unwrap();
+        assert_eq!(fs::read(staged.path().join("plane.acf")).unwrap(), b"x");
+        assert!(!staged.path().join("objects").exists());
+        assert!(!staged.path().join("README.txt").exists());
+        let empty = tempfile::tempdir().unwrap();
+        let ac = make_aircraft(&["plane.acf"]);
+        assert!(validate_staged_destinations(empty.path(), ac.path(), ac.path()).is_err());
+    }
+
+    #[test]
+    fn overlapping_mappings_keep_first_snapshot_and_revert_original() {
+        let ac = make_aircraft(&["plane.acf"]);
+        let staged = make_aircraft(&["plane.acf"]);
+        let backup = ac.path().join("_xfast_patch_backups/session");
+        fs::write(ac.path().join("plane.acf"), b"original").unwrap();
+        assert_eq!(
+            backup_overwritten_files(staged.path(), ac.path(), &backup, "A").unwrap(),
+            1
+        );
+        fs::write(ac.path().join("plane.acf"), b"patch A").unwrap();
+        assert_eq!(
+            backup_overwritten_files(staged.path(), ac.path(), &backup, "B").unwrap(),
+            1
+        );
+        fs::write(ac.path().join("plane.acf"), b"patch B").unwrap();
+        assert_eq!(revert_patch(backup.to_str().unwrap()).unwrap(), 1);
+        assert_eq!(fs::read(ac.path().join("plane.acf")).unwrap(), b"original");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn destinations_reject_directory_and_file_symlink_escapes() {
+        use std::os::unix::fs::symlink;
+        let ac = make_aircraft(&["plane.acf"]);
+        let outside = make_aircraft(&["plane.acf"]);
+        symlink(outside.path(), ac.path().join("linked")).unwrap();
+        symlink(
+            outside.path().join("plane.acf"),
+            ac.path().join("external.acf"),
+        )
+        .unwrap();
+        assert!(validate_destination(ac.path(), &ac.path().join("linked/new.obj")).is_err());
+        assert!(validate_destination(ac.path(), &ac.path().join("external.acf")).is_err());
+        symlink(ac.path().join("missing"), ac.path().join("dangling")).unwrap();
+        assert!(validate_destination(ac.path(), &ac.path().join("dangling/new.obj")).is_err());
+        let staged = make_aircraft(&["external.acf"]);
+        assert!(validate_staged_destinations(staged.path(), ac.path(), ac.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backup_symlink_escape_is_rejected_before_writing() {
+        use std::os::unix::fs::symlink;
+        let ac = make_aircraft(&["plane.acf"]);
+        let staged = make_aircraft(&["plane.acf"]);
+        let outside = tempfile::tempdir().unwrap();
+        symlink(outside.path(), ac.path().join("_xfast_patch_backups")).unwrap();
+        let backup = ac.path().join("_xfast_patch_backups/session");
+        assert!(backup_overwritten_files(staged.path(), ac.path(), &backup, "A").is_err());
+        assert!(!outside.path().join("session").exists());
+    }
+
+    #[test]
+    fn task_builder_validates_real_archive_and_retains_aircraft_boundary() {
+        use std::io::Write;
+        let xplane = tempfile::tempdir().unwrap();
+        let aircraft = xplane.path().join("Aircraft/Demo");
+        fs::create_dir_all(&aircraft).unwrap();
+        fs::write(aircraft.join("plane.acf"), b"original").unwrap();
+        let archive = xplane.path().join("patch.zip");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+        zip.start_file("plane.acf", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(b"patch").unwrap();
+        zip.finish().unwrap();
+        let mapping = |dest: &str, source: &str| {
+            vec![PatchMappingInput {
+                archive_subpath: source.to_string(),
+                dest_subpath: dest.to_string(),
+            }]
+        };
+        let build = |dest: &str, source: &str| {
+            build_install_tasks(
+                archive.to_str().unwrap(),
+                None,
+                xplane.path().to_str().unwrap(),
+                "Demo",
+                mapping(dest, source),
+                false,
+            )
+        };
+        let tasks = build("", "plane.acf").unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].archive_internal_root.as_deref(), Some("plane.acf"));
+        let real_aircraft = fs::canonicalize(&aircraft).unwrap();
+        assert_eq!(
+            Path::new(tasks[0].patch_aircraft_root.as_ref().unwrap()),
+            real_aircraft
+        );
+        assert!(build("../OtherPlane", "plane.acf").is_err());
+        assert!(build("", "missing").is_err());
+        assert_eq!(fs::read(aircraft.join("plane.acf")).unwrap(), b"original");
     }
 }

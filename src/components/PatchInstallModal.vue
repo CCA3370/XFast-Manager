@@ -48,6 +48,7 @@
               <template v-else-if="candidates.length">
                 <select
                   v-model="selectedFolder"
+                  :disabled="building"
                   class="w-full px-3 py-2 bg-white dark:bg-gray-900/70 border border-gray-200 dark:border-gray-700/50 rounded-lg text-gray-900 dark:text-white text-sm focus:border-orange-400 focus:ring-2 focus:ring-orange-500/30 transition-all"
                   @change="onAircraftChange"
                 >
@@ -181,6 +182,7 @@
                   <button
                     type="button"
                     class="text-xs text-orange-600 dark:text-orange-400 hover:underline"
+                    :disabled="inferring || building"
                     @click="addMapping()"
                   >
                     + {{ $t('patch.addMapping') }}
@@ -323,7 +325,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import {
@@ -375,6 +377,7 @@ const archiveTree = ref<string[]>([])
 const aircraftSubdirs = ref<string[]>([])
 const unmapped = ref<string[]>([])
 const mappings = ref<EditableMapping[]>([])
+const mappingsFolder = ref('')
 
 // Install summary (what will happen) — kept current via summarizePatchInstall.
 const totalFiles = ref(0)
@@ -393,21 +396,35 @@ const selectedDisplayName = computed(
 )
 
 const canInstall = computed(
-  () => !!selectedFolder.value && mappings.value.length > 0 && !building.value && !inferring.value,
+  () =>
+    !!selectedFolder.value &&
+    mappingsFolder.value === selectedFolder.value &&
+    mappings.value.length > 0 &&
+    !building.value &&
+    !inferring.value,
 )
 
 let summarizeTimer: ReturnType<typeof setTimeout> | null = null
+let mounted = true
+let inferenceRequest = 0
+let summaryRequest = 0
 
 onMounted(runDetect)
+onUnmounted(() => {
+  mounted = false
+  inferenceRequest++
+  invalidateSummary()
+})
 
 // Any change to the mappings (re-inference or manual edit) re-previews the summary.
-watch(mappings, scheduleSummarize, { deep: true })
+watch(mappings, scheduleSummarize, { deep: true, flush: 'sync' })
 
 async function runDetect() {
   detecting.value = true
   errorMsg.value = ''
   try {
     const result = await detectPatchTargetAircraft(props.archivePath, store.xplanePath)
+    if (!mounted) return
     candidates.value = result.candidates
     recommendedFolder.value = result.recommendedFolder ?? null
 
@@ -425,20 +442,35 @@ async function runDetect() {
       await runInfer(selectedFolder.value)
     }
   } catch (e) {
-    errorMsg.value = getErrorMessage(e)
+    if (mounted) errorMsg.value = getErrorMessage(e)
   } finally {
-    detecting.value = false
+    if (mounted) detecting.value = false
   }
 }
 
 async function runInfer(folder: string) {
+  const request = ++inferenceRequest
+  const isCurrent = () => mounted && request === inferenceRequest && folder === selectedFolder.value
+  mappingsFolder.value = ''
   inferring.value = true
+  mappings.value = []
+  archiveTree.value = []
+  aircraftSubdirs.value = []
+  unmapped.value = []
+  invalidateSummary()
+  if (!folder) {
+    inferring.value = false
+    return
+  }
   errorMsg.value = ''
   try {
     const plan = await inferPatchMappings(props.archivePath, store.xplanePath, folder)
+    if (!isCurrent()) return
     archiveTree.value = plan.archiveTree
     aircraftSubdirs.value = plan.aircraftSubdirs
     unmapped.value = plan.unmapped
+    mappingsFolder.value = folder
+    inferring.value = false
     mappings.value = plan.suggestedMappings.map((m) => ({
       archiveSubpath: m.archiveSubpath,
       destSubpath: m.destSubpath,
@@ -451,14 +483,14 @@ async function runInfer(folder: string) {
       unmapped.value.length > 0 ||
       mappings.value.some((m) => m.reason === 'noAnchorDefaultRoot' || m.confidence === 'low')
   } catch (e) {
-    errorMsg.value = getErrorMessage(e)
+    if (isCurrent()) errorMsg.value = getErrorMessage(e)
   } finally {
-    inferring.value = false
+    if (isCurrent()) inferring.value = false
   }
 }
 
 function onAircraftChange() {
-  if (selectedFolder.value) runInfer(selectedFolder.value)
+  if (!building.value) runInfer(selectedFolder.value)
 }
 
 /** De-duplicated mapping inputs for the backend (shared by summary + install). */
@@ -474,28 +506,40 @@ function mappingInputs(): PatchMappingInput[] {
     })
 }
 
-function scheduleSummarize() {
-  if (!selectedFolder.value || !mappings.value.length) {
-    totalFiles.value = 0
-    overwriteCount.value = 0
-    summarizing.value = false
-    return
-  }
-  // Show the spinner immediately, then settle after edits stop.
-  summarizing.value = true
+function invalidateSummary() {
+  summaryRequest++
   if (summarizeTimer) clearTimeout(summarizeTimer)
-  summarizeTimer = setTimeout(runSummarize, 350)
+  summarizeTimer = null
+  totalFiles.value = 0
+  overwriteCount.value = 0
+  summarizing.value = false
 }
 
-async function runSummarize() {
-  const folder = selectedFolder.value
-  const inputs = mappingInputs()
-  if (!folder || !inputs.length) {
-    totalFiles.value = 0
-    overwriteCount.value = 0
-    summarizing.value = false
+function scheduleSummarize() {
+  invalidateSummary()
+  if (
+    !mounted ||
+    inferring.value ||
+    mappingsFolder.value !== selectedFolder.value ||
+    !selectedFolder.value ||
+    !mappings.value.length
+  ) {
     return
   }
+  // Invalidate in-flight previews immediately, including during the debounce.
+  const request = summaryRequest
+  summarizing.value = true
+  summarizeTimer = setTimeout(() => {
+    summarizeTimer = null
+    void runSummarize(request)
+  }, 350)
+}
+
+async function runSummarize(request: number) {
+  const folder = selectedFolder.value
+  const inputs = mappingInputs()
+  const isCurrent = () => mounted && request === summaryRequest && folder === selectedFolder.value
+  if (!isCurrent() || !folder || !inputs.length) return
   try {
     const summary = await summarizePatchInstall({
       archivePath: props.archivePath,
@@ -503,16 +547,18 @@ async function runSummarize() {
       aircraftFolder: folder,
       mappings: inputs,
     })
+    if (!isCurrent()) return
     totalFiles.value = summary.totalFiles
     overwriteCount.value = summary.overwriteCount
   } catch {
-    // The summary is informational; leave the last known counts on failure.
+    // Preview is informational. Unknown counts must never disable backups.
   } finally {
-    summarizing.value = false
+    if (isCurrent()) summarizing.value = false
   }
 }
 
 function addMapping(archiveSubpath = '') {
+  if (inferring.value || building.value || mappingsFolder.value !== selectedFolder.value) return
   // Suggest liveries as the destination when the source folder looks like one.
   const dest = /(^|\/)liveries$/i.test(archiveSubpath) ? 'liveries' : ''
   mappings.value.push({ archiveSubpath, destSubpath: dest })
@@ -561,10 +607,10 @@ async function confirmInstall() {
       xplanePath: store.xplanePath,
       aircraftFolder: selectedFolder.value,
       mappings: mappingInputs(),
-      // Nothing to back up (and no session dir) when no files are overwritten.
-      backupOverwritten: overwriteCount.value > 0 && backupEnabled.value,
+      // The backend determines actual overwrites; preview counts are informational.
+      backupOverwritten: backupEnabled.value,
     })
-    emit('install', tasks)
+    if (mounted) emit('install', tasks)
   } catch (e) {
     errorMsg.value = getErrorMessage(e)
     building.value = false

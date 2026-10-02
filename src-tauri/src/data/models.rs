@@ -195,6 +195,9 @@ pub struct InstallTask {
     /// install, so a single revert restores all overwritten files at once.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub patch_backup_dir: Option<String>,
+    /// Selected aircraft boundary, rechecked before a patch writes any files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch_aircraft_root: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

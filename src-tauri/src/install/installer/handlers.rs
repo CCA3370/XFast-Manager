@@ -634,6 +634,19 @@ impl Installer {
             std::sync::atomic::Ordering::SeqCst,
         );
 
+        // Patch tasks must always stage, validate and back up before writing,
+        // including when the general atomic-install preference is disabled.
+        // Dispatch before creating target parents so invalid paths write nothing.
+        if task.addon_type == AddonType::Patch {
+            if task.extraction_chain.is_some()
+                || !task.should_overwrite
+                || (!source.is_dir() && !Self::is_supported_archive_file(source))
+            {
+                return Err(anyhow::anyhow!("Invalid patch installation task"));
+            }
+            return self.install_task_atomic(task, source, target, ctx, password, xplane_path);
+        }
+
         // Create parent directory if it doesn't exist
         let mkdir_start = Instant::now();
         if let Some(parent) = target.parent() {
@@ -2293,6 +2306,38 @@ impl Installer {
     ) -> Result<()> {
         use crate::atomic_installer::AtomicInstaller;
 
+        let patch_root = if matches!(task.addon_type, AddonType::Patch) {
+            let root = task.patch_aircraft_root.as_deref().ok_or_else(|| {
+                anyhow::anyhow!("Patch task is missing its selected aircraft boundary")
+            })?;
+            let root = Path::new(root);
+            crate::patch::validate_destination(root, target)?;
+            Some(root)
+        } else {
+            None
+        };
+        // A file mapping extracts its parent, then keeps only the exact file.
+        // Reusing directory extraction retains its existing archive safeguards.
+        let exact_file = if patch_root.is_some() {
+            if let Some(prefix) = task.archive_internal_root.as_deref() {
+                crate::patch::list_archive_files(source)?
+                    .into_iter()
+                    .find(|entry| entry == prefix)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let extraction_root = exact_file
+            .as_deref()
+            .and_then(|entry| entry.rsplit_once('/').map(|(parent, _)| parent));
+        let extraction_root = if exact_file.is_some() {
+            extraction_root
+        } else {
+            task.archive_internal_root.as_deref()
+        };
+
         // Use X-Plane root path directly from settings
         let xplane_root = Path::new(xplane_path);
 
@@ -2347,10 +2392,18 @@ impl Installer {
         self.install_content_with_progress(
             source,
             atomic.temp_dir(),
-            task.archive_internal_root.as_deref(),
+            extraction_root,
             ctx,
             password,
         )?;
+
+        if let Some(ref entry) = exact_file {
+            let basename = entry.rsplit('/').next().unwrap_or(entry);
+            crate::patch::retain_exact_file(atomic.temp_dir(), basename)?;
+        }
+        if let Some(root) = patch_root {
+            crate::patch::validate_staged_destinations(atomic.temp_dir(), target, root)?;
+        }
 
         // Patch backup: snapshot the existing files that the upcoming merge is
         // about to overwrite, so the patch can be reverted later.
@@ -2363,6 +2416,10 @@ impl Installer {
                     &task.id,
                 )?;
             }
+        }
+
+        if let Some(root) = patch_root {
+            crate::patch::validate_staged_destinations(atomic.temp_dir(), target, root)?;
         }
 
         // Step 2: Perform atomic installation based on scenario
