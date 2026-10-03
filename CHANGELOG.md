@@ -13,7 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Windows Rust Test Startup** - Embed a Common Controls v6 manifest into Cargo test binaries so Windows CI can launch Tauri-linked tests instead of failing with `STATUS_ENTRYPOINT_NOT_FOUND` before the test harness starts.
 
 - **Health Live-Session Stability** - Health no longer treats an actively written X-Plane log as a completed crash, and runtime state is resolved before crash diagnostics begin.
 - **Health Coverage Accuracy** - Cancelling a diagnosis before any applicable result is produced now reports 0% coverage instead of 100%.
