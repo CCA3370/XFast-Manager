@@ -229,6 +229,14 @@ describe('Health page', () => {
       'X-Plane disk space',
     )
     expect(wrapper.get('[data-testid="health-detail-panel"]').text()).toContain('120 GB')
+
+    await wrapper.get('[data-testid="health-filter-issues"]').trigger('click')
+    expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(1)
+    expect(wrapper.get('[data-testid="health-detail-panel"]').text()).toContain(
+      'X-Plane installation structure',
+    )
+    await wrapper.get('[data-testid="health-filter-all"]').trigger('click')
+    expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(2)
   })
 
   it('keeps quick and full scans available from the compact header', async () => {

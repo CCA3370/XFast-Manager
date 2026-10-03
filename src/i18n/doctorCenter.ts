@@ -41,6 +41,10 @@ interface DoctorCenterMessages {
     notApplicable: string
     cancelled: string
   }
+  filters: {
+    all: string
+    issues: string
+  }
   sections: {
     installation: string
     stability: string
@@ -213,6 +217,10 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       notApplicable: 'Not applicable',
       cancelled: 'Cancelled',
     },
+    filters: {
+      all: 'All',
+      issues: 'Issues',
+    },
     sections: {
       installation: 'Installation',
       stability: 'Stability & crashes',
@@ -384,6 +392,10 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       notApplicable: '不适用',
       cancelled: '已取消',
     },
+    filters: {
+      all: '全部',
+      issues: '问题',
+    },
     sections: {
       installation: '安装完整性',
       stability: '稳定性与崩溃',
@@ -548,6 +560,10 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       unavailable: 'No disponible',
       notApplicable: 'No aplicable',
       cancelled: 'Cancelado',
+    },
+    filters: {
+      all: 'Todo',
+      issues: 'Problemas',
     },
     sections: {
       installation: 'Instalación',
@@ -725,6 +741,10 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       notApplicable: 'Non applicable',
       cancelled: 'Annulé',
     },
+    filters: {
+      all: 'Tout',
+      issues: 'Problèmes',
+    },
     sections: {
       installation: 'Installation X-Plane',
       stability: 'Stabilité et plantages',
@@ -899,6 +919,10 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       notApplicable: 'Nicht anwendbar',
       cancelled: 'Abgebrochen',
     },
+    filters: {
+      all: 'Alle',
+      issues: 'Probleme',
+    },
     sections: {
       installation: 'X-Plane-Installation',
       stability: 'Stabilität und Abstürze',
@@ -1072,6 +1096,10 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       notApplicable: '対象外',
       cancelled: '中止',
     },
+    filters: {
+      all: 'すべて',
+      issues: '問題',
+    },
     sections: {
       installation: 'インストール',
       stability: '安定性とクラッシュ',
@@ -1198,7 +1226,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
     },
   },
   pt: {
-    heading: 'Centro de diagnóstico',
+    heading: 'Diagnóstico',
     intro:
       'Verifique X-Plane, sistema, extensões, armazenamento, atualizações e XFast Manager em um só lugar.',
     quickCheck: 'Verificação rápida',
@@ -1242,6 +1270,10 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       unavailable: 'Indisponível',
       notApplicable: 'Não aplicável',
       cancelled: 'Cancelado',
+    },
+    filters: {
+      all: 'Tudo',
+      issues: 'Problemas',
     },
     sections: {
       installation: 'Instalação',
@@ -1414,6 +1446,10 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       notApplicable: 'लागू नहीं',
       cancelled: 'रद्द',
     },
+    filters: {
+      all: 'सभी',
+      issues: 'समस्याएँ',
+    },
     sections: {
       installation: 'इंस्टॉलेशन',
       stability: 'स्थिरता और क्रैश',
@@ -1581,6 +1617,10 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       unavailable: 'غير متاح',
       notApplicable: 'غير منطبق',
       cancelled: 'ملغى',
+    },
+    filters: {
+      all: 'الكل',
+      issues: 'المشكلات',
     },
     sections: {
       installation: 'التثبيت',
@@ -1751,6 +1791,10 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       unavailable: 'Недоступно',
       notApplicable: 'Не применимо',
       cancelled: 'Отменено',
+    },
+    filters: {
+      all: 'Все',
+      issues: 'Проблемы',
     },
     sections: {
       installation: 'Установка',
@@ -1923,6 +1967,10 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       unavailable: '확인 불가',
       notApplicable: '해당 없음',
       cancelled: '취소됨',
+    },
+    filters: {
+      all: '전체',
+      issues: '문제',
     },
     sections: {
       installation: '설치',

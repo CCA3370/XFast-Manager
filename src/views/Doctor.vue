@@ -257,23 +257,47 @@
                   {{ t('doctor.center.status.currentResult') }}
                 </h2>
                 <span class="text-[11px] text-gray-400">
-                  {{ run.summary.total }}
+                  {{ visibleCheckCount }}/{{ run.summary.total }}
                 </span>
               </div>
 
-              <button
-                v-if="safeFixCount > 0 && canRepair"
-                type="button"
-                :disabled="store.repairingAll || store.xplaneRunning"
-                class="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
-                @click="applyAllSafeFixes"
-              >
-                {{
-                  store.repairingAll
-                    ? t('doctor.center.remediation.fixingAll')
-                    : `${t('doctor.center.remediation.fixAllSafe')} (${safeFixCount})`
-                }}
-              </button>
+              <div class="flex flex-none items-center gap-2">
+                <div class="flex rounded-md border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-gray-900">
+                  <button
+                    type="button"
+                    data-testid="health-filter-all"
+                    class="rounded px-2 py-1 text-[10px] font-semibold transition-colors"
+                    :class="!issuesOnly ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'"
+                    @click="issuesOnly = false"
+                  >
+                    {{ t('doctor.center.filters.all') }}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="health-filter-issues"
+                    class="rounded px-2 py-1 text-[10px] font-semibold transition-colors"
+                    :class="issuesOnly ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'"
+                    @click="issuesOnly = true"
+                  >
+                    {{ t('doctor.center.filters.issues') }}
+                    <span class="ml-0.5 text-gray-400">{{ run.summary.info + run.summary.warning + run.summary.critical + run.summary.unavailable + run.summary.cancelled }}</span>
+                  </button>
+                </div>
+
+                <button
+                  v-if="safeFixCount > 0 && canRepair"
+                  type="button"
+                  :disabled="store.repairingAll || store.xplaneRunning"
+                  class="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
+                  @click="applyAllSafeFixes"
+                >
+                  {{
+                    store.repairingAll
+                      ? t('doctor.center.remediation.fixingAll')
+                      : `${t('doctor.center.remediation.fixAllSafe')} (${safeFixCount})`
+                  }}
+                </button>
+              </div>
             </header>
 
             <div>
@@ -650,6 +674,7 @@ const modalStore = useModalStore()
 const toastStore = useToastStore()
 const includeSensitive = ref(false)
 const selectedCheckId = ref<string | null>(null)
+const issuesOnly = ref(false)
 
 const CHECK_NAME_KEYS: Record<string, string> = {
   'installation.structure': 'installationStructure',
@@ -748,21 +773,24 @@ const safeFixCount = computed(
 )
 const checkGroups = computed(() =>
   DOCTOR_SECTION_ORDER.flatMap((section) => {
-    const checks = run.value?.checks.filter((check) => check.section === section) ?? []
+    const sectionChecks = run.value?.checks.filter((check) => check.section === section) ?? []
+    const issueCount = sectionChecks.filter((check) =>
+      ['info', 'warning', 'critical', 'unavailable', 'cancelled'].includes(check.outcome),
+    ).length
+    const checks = issuesOnly.value
+      ? sectionChecks.filter((check) =>
+          ['info', 'warning', 'critical', 'unavailable', 'cancelled'].includes(check.outcome),
+        )
+      : sectionChecks
     if (!checks.length) return []
-    return [
-      {
-        section,
-        checks,
-        issueCount: checks.filter((check) =>
-          ['info', 'warning', 'critical', 'unavailable'].includes(check.outcome),
-        ).length,
-      },
-    ]
+    return [{ section, checks, issueCount }]
   }),
 )
+const visibleCheckCount = computed(() =>
+  checkGroups.value.reduce((count, group) => count + group.checks.length, 0),
+)
 const selectedCheck = computed(() => {
-  const checks = run.value?.checks ?? []
+  const checks = checkGroups.value.flatMap((group) => group.checks)
   if (!checks.length) return null
   const explicit = selectedCheckId.value
     ? checks.find((check) => check.id === selectedCheckId.value)
@@ -851,8 +879,13 @@ watch(
   () => run.value?.id ?? null,
   () => {
     selectedCheckId.value = null
+    issuesOnly.value = false
   },
 )
+
+watch(issuesOnly, () => {
+  selectedCheckId.value = null
+})
 
 async function runDiagnostics(mode: DoctorRunMode) {
   store.selectHistoryRun(null)
