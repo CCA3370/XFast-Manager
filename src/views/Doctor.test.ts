@@ -192,6 +192,45 @@ describe('Health page', () => {
     expect(wrapper.text()).toContain('Ready to diagnose')
   })
 
+  it('uses a dense result list with a single contextual detail panel', async () => {
+    const { wrapper, doctorStore } = await mountDoctor('/xplane')
+    doctorStore.currentRun = runFixture('completed', [
+      {
+        id: 'installation.structure',
+        section: 'installation',
+        outcome: 'warning',
+        durationMs: 18,
+        evidence: [{ kind: 'text', value: 'Missing Resources folder' }],
+      },
+      {
+        id: 'storage.xplane_space',
+        section: 'storage',
+        outcome: 'pass',
+        durationMs: 7,
+        params: { free: '120 GB' },
+      },
+    ])
+    doctorStore.currentRunIsLive = true
+    await nextTick()
+
+    expect(wrapper.get('[data-testid="health-results-panel"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(2)
+    expect(wrapper.get('[data-testid="health-detail-panel"]').text()).toContain(
+      'X-Plane installation structure',
+    )
+    expect(wrapper.get('[data-testid="health-detail-panel"]').text()).toContain(
+      'Missing Resources folder',
+    )
+
+    await wrapper
+      .get('[data-testid="health-check-row"][data-check-id="storage.xplane_space"] button')
+      .trigger('click')
+    expect(wrapper.get('[data-testid="health-detail-panel"]').text()).toContain(
+      'X-Plane disk space',
+    )
+    expect(wrapper.get('[data-testid="health-detail-panel"]').text()).toContain('120 GB')
+  })
+
   it('keeps quick and full scans available from the compact header', async () => {
     const { wrapper, doctorStore } = await mountDoctor('/xplane')
     const runDiagnostics = vi.spyOn(doctorStore, 'runDiagnostics').mockResolvedValue()

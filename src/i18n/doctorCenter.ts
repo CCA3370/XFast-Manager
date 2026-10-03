@@ -169,7 +169,7 @@ type DoctorCenterLocale = 'en' | 'zh' | 'es' | 'fr' | 'de' | 'ja' | 'pt' | 'hi' 
 
 export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessages> = {
   en: {
-    heading: 'Health Diagnostic Center',
+    heading: 'Health',
     intro:
       'Inspect X-Plane, your system, addons, storage, updates, and XFast Manager in one place.',
     quickCheck: 'Quick check',
@@ -342,7 +342,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
     },
   },
   zh: {
-    heading: '健康诊断中心',
+    heading: '健康检查',
     intro: '在一个中心检查 X-Plane、系统、插件、地景、存储、更新和 XFast Manager。',
     quickCheck: '快速检查',
     fullCheck: '完整诊断',
@@ -503,7 +503,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
     },
   },
   es: {
-    heading: 'Centro de diagnóstico',
+    heading: 'Diagnóstico',
     intro:
       'Revisa X-Plane, el sistema, complementos, almacenamiento, actualizaciones y XFast Manager desde un solo lugar.',
     quickCheck: 'Comprobación rápida',
@@ -679,7 +679,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
     },
   },
   fr: {
-    heading: 'Centre de diagnostic',
+    heading: 'Diagnostic',
     intro:
       'Contrôlez X-Plane, le système, les extensions, le stockage, les mises à jour et XFast Manager au même endroit.',
     quickCheck: 'Contrôle rapide',
@@ -854,7 +854,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
     },
   },
   de: {
-    heading: 'Diagnosezentrum',
+    heading: 'Diagnose',
     intro:
       'Prüfe X-Plane, System, Erweiterungen, Speicher, Aktualisierungen und XFast Manager an einem Ort.',
     quickCheck: 'Schnellprüfung',
@@ -1029,7 +1029,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
     },
   },
   ja: {
-    heading: 'ヘルス診断センター',
+    heading: 'ヘルスチェック',
     intro: 'X-Plane、システム、アドオン、ストレージ、更新、XFast Manager を一か所で点検します。',
     quickCheck: 'クイックチェック',
     fullCheck: '完全診断',
@@ -1372,7 +1372,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
     },
   },
   hi: {
-    heading: 'स्वास्थ्य निदान केंद्र',
+    heading: 'स्वास्थ्य जाँच',
     intro: 'X-Plane, सिस्टम, ऐड-ऑन, स्टोरेज, अपडेट और XFast Manager की एक ही जगह जाँच करें।',
     quickCheck: 'त्वरित जाँच',
     fullCheck: 'पूर्ण निदान',
@@ -1539,7 +1539,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
     },
   },
   ar: {
-    heading: 'مركز التشخيص الصحي',
+    heading: 'فحص الصحة',
     intro: 'افحص X-Plane والنظام والإضافات والتخزين والتحديثات وXFast Manager من مكان واحد.',
     quickCheck: 'فحص سريع',
     fullCheck: 'تشخيص كامل',
@@ -1707,7 +1707,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
     },
   },
   ru: {
-    heading: 'Центр диагностики',
+    heading: 'Диагностика',
     intro:
       'Проверяйте X-Plane, систему, дополнения, хранилище, обновления и XFast Manager в одном месте.',
     quickCheck: 'Быстрая проверка',
@@ -1881,7 +1881,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
     },
   },
   ko: {
-    heading: '상태 진단 센터',
+    heading: '상태 점검',
     intro: 'X-Plane, 시스템, 애드온, 저장 공간, 업데이트와 XFast Manager를 한곳에서 점검합니다.',
     quickCheck: '빠른 점검',
     fullCheck: '전체 진단',

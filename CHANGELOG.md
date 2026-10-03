@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Health Workspace UI** - Rebuilt Health as a denser diagnostic workspace with a compact status strip, grouped result rows, a contextual detail panel, and condensed system, history, repair, and export controls.
+
 ### Fixed
 
 - **Health Live-Session Stability** - Health no longer treats an actively written X-Plane log as a completed crash, and runtime state is resolved before crash diagnostics begin.
