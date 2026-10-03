@@ -3,7 +3,7 @@
     data-testid="health-page"
     class="doctor-view flex h-full flex-col overflow-hidden px-6 pt-3 pb-6 text-gray-900 dark:text-white"
   >
-    <header class="mb-3 flex flex-none items-center justify-between gap-4">
+    <header class="mb-3 flex flex-none flex-wrap items-center justify-between gap-3">
       <div class="min-w-0">
         <h1 class="text-xl font-bold text-gray-900 dark:text-white">
           {{ t('doctor.center.heading') }}
@@ -142,7 +142,7 @@
                     v-if="store.xplaneRunning"
                     class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300"
                   >
-                    {{ t('doctor.center.checks.xplaneRunning') }}
+                    {{ t('home.xplaneRunning') }}
                   </span>
                 </div>
                 <div
@@ -251,7 +251,7 @@
             data-testid="health-results-panel"
             class="min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
           >
-            <header class="flex min-h-11 items-center justify-between gap-3 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
+            <header class="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
               <div class="flex min-w-0 items-center gap-2">
                 <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                   {{ t('doctor.center.status.currentResult') }}
