@@ -214,6 +214,10 @@ describe('Health page', () => {
     await nextTick()
 
     expect(wrapper.find('[data-testid="health-results-panel"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="health-workspace"]').classes()).toContain(
+      'sm:grid-cols-[minmax(0,1fr)_280px]',
+    )
+    expect(wrapper.get('[data-testid="health-filter-all"]').attributes('aria-pressed')).toBe('true')
     expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(2)
     expect(wrapper.get('[data-testid="health-detail-panel"]').text()).toContain(
       'X-Plane installation structure',
@@ -231,12 +235,33 @@ describe('Health page', () => {
     expect(wrapper.get('[data-testid="health-detail-panel"]').text()).toContain('120 GB')
 
     await wrapper.get('[data-testid="health-filter-issues"]').trigger('click')
+    expect(wrapper.get('[data-testid="health-filter-issues"]').attributes('aria-pressed')).toBe('true')
     expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="health-detail-panel"]').text()).toContain(
       'X-Plane installation structure',
     )
     await wrapper.get('[data-testid="health-filter-all"]').trigger('click')
     expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(2)
+  })
+
+  it('shows a useful empty state when the issues filter has no matches', async () => {
+    const { wrapper, doctorStore } = await mountDoctor('/xplane')
+    doctorStore.currentRun = runFixture('completed', [
+      {
+        id: 'storage.xplane_space',
+        section: 'storage',
+        outcome: 'pass',
+        durationMs: 7,
+      },
+    ])
+    doctorStore.currentRunIsLive = true
+    await nextTick()
+
+    await wrapper.get('[data-testid="health-filter-issues"]').trigger('click')
+
+    expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(0)
+    expect(wrapper.get('[data-testid="health-no-issues"]').text()).toContain('No issues found')
+    expect(wrapper.find('[data-testid="health-detail-panel"]').exists()).toBe(false)
   })
 
   it('keeps quick and full scans available from the compact header', async () => {

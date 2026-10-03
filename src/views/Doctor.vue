@@ -168,23 +168,39 @@
               </div>
             </div>
 
-            <div v-if="run.state !== 'running'" class="flex flex-wrap items-center gap-1.5 text-[11px]">
-              <span class="rounded bg-emerald-50 px-2 py-1 font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
-                {{ t('doctor.center.outcomes.pass') }} {{ run.summary.pass }}
+            <div
+              v-if="run.state !== 'running'"
+              class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-600 dark:text-gray-300"
+            >
+              <span class="inline-flex items-center gap-1.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                <span>{{ t('doctor.center.outcomes.pass') }}</span>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{ run.summary.pass }}</strong>
               </span>
-              <span v-if="run.summary.info" class="rounded bg-blue-50 px-2 py-1 font-medium text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
-                {{ t('doctor.center.outcomes.info') }} {{ run.summary.info }}
+              <span v-if="run.summary.info" class="inline-flex items-center gap-1.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-blue-500" aria-hidden="true" />
+                <span>{{ t('doctor.center.outcomes.info') }}</span>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{ run.summary.info }}</strong>
               </span>
-              <span v-if="run.summary.warning" class="rounded bg-amber-50 px-2 py-1 font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
-                {{ t('doctor.center.outcomes.warning') }} {{ run.summary.warning }}
+              <span v-if="run.summary.warning" class="inline-flex items-center gap-1.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+                <span>{{ t('doctor.center.outcomes.warning') }}</span>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{ run.summary.warning }}</strong>
               </span>
-              <span v-if="run.summary.critical" class="rounded bg-red-50 px-2 py-1 font-medium text-red-700 dark:bg-red-950/30 dark:text-red-300">
-                {{ t('doctor.center.outcomes.critical') }} {{ run.summary.critical }}
+              <span v-if="run.summary.critical" class="inline-flex items-center gap-1.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-red-500" aria-hidden="true" />
+                <span>{{ t('doctor.center.outcomes.critical') }}</span>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{ run.summary.critical }}</strong>
               </span>
-              <span v-if="run.summary.unavailable" class="rounded bg-gray-100 px-2 py-1 font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                {{ t('doctor.center.outcomes.unavailable') }} {{ run.summary.unavailable }}
+              <span v-if="run.summary.unavailable" class="inline-flex items-center gap-1.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-gray-400" aria-hidden="true" />
+                <span>{{ t('doctor.center.outcomes.unavailable') }}</span>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{ run.summary.unavailable }}</strong>
               </span>
-              <span class="ml-1 font-semibold text-gray-600 dark:text-gray-300">
+              <span
+                class="border-l border-gray-200 pl-3 font-semibold tabular-nums text-gray-700 dark:border-gray-700 dark:text-gray-200"
+                :title="t('doctor.center.status.coverage')"
+              >
                 {{ run.summary.coveragePercent }}%
               </span>
             </div>
@@ -246,14 +262,18 @@
           </div>
         </section>
 
-        <div v-if="run" class="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div
+          v-if="run"
+          data-testid="health-workspace"
+          class="grid items-start gap-3 sm:grid-cols-[minmax(0,1fr)_280px] lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]"
+        >
           <section
             data-testid="health-results-panel"
             class="min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
           >
             <header class="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
               <div class="flex min-w-0 items-center gap-2">
-                <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <h2 class="text-xs font-semibold text-gray-600 dark:text-gray-300">
                   {{ t('doctor.center.status.currentResult') }}
                 </h2>
                 <span class="text-[11px] text-gray-400">
@@ -266,8 +286,9 @@
                   <button
                     type="button"
                     data-testid="health-filter-all"
-                    class="rounded px-2 py-1 text-[10px] font-semibold transition-colors"
+                    class="rounded px-2 py-1 text-[11px] font-semibold transition-colors"
                     :class="!issuesOnly ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'"
+                    :aria-pressed="!issuesOnly"
                     @click="issuesOnly = false"
                   >
                     {{ t('doctor.center.filters.all') }}
@@ -275,8 +296,9 @@
                   <button
                     type="button"
                     data-testid="health-filter-issues"
-                    class="rounded px-2 py-1 text-[10px] font-semibold transition-colors"
+                    class="rounded px-2 py-1 text-[11px] font-semibold transition-colors"
                     :class="issuesOnly ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'"
+                    :aria-pressed="issuesOnly"
                     @click="issuesOnly = true"
                   >
                     {{ t('doctor.center.filters.issues') }}
@@ -328,8 +350,8 @@
                       {{ sectionLabel(group.section) }}
                     </span>
                   </div>
-                  <span class="font-normal text-gray-400">
-                    {{ group.issueCount ? `${group.issueCount} / ` : '' }}{{ group.checks.length }}
+                  <span class="font-normal tabular-nums text-gray-400">
+                    {{ issuesOnly ? `${group.checks.length}/${group.totalCount}` : group.totalCount }}
                   </span>
                 </div>
 
@@ -376,7 +398,7 @@
                           <span
                             v-for="(value, key) in check.params"
                             :key="key"
-                            class="max-w-[220px] truncate font-mono text-[10px] text-gray-400"
+                            class="hidden max-w-[220px] truncate font-mono text-[11px] text-gray-400 lg:inline"
                           >
                             {{ formatParamKey(String(key)) }}={{ value }}
                           </span>
@@ -384,12 +406,12 @@
                       </div>
                       <div class="flex items-center gap-2">
                         <span
-                          class="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                          class="rounded px-1.5 py-0.5 text-[11px] font-semibold"
                           :class="outcomeBadgeClass(check.outcome)"
                         >
                           {{ outcomeLabel(check.outcome) }}
                         </span>
-                        <span class="w-12 text-right font-mono text-[10px] tabular-nums text-gray-400">
+                        <span class="hidden w-12 text-right font-mono text-[11px] tabular-nums text-gray-400 md:inline">
                           {{ formatDuration(check.durationMs) }}
                         </span>
                       </div>
@@ -397,7 +419,7 @@
 
                     <div
                       v-if="check.remediation"
-                      class="flex items-center border-l border-gray-100 px-2 dark:border-gray-800"
+                      class="hidden items-center border-l border-gray-100 px-2 dark:border-gray-800 lg:flex"
                     >
                       <button
                         type="button"
@@ -406,7 +428,7 @@
                           store.isBusy ||
                           (check.remediation.kind === 'automatic' && !canRepair)
                         "
-                        class="rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                        class="rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50"
                         :class="remediationButtonClass(check.remediation)"
                         @click="handleRemediation(check)"
                       >
@@ -420,10 +442,39 @@
                   </div>
                 </div>
               </section>
+
+              <div
+                v-if="issuesOnly && visibleCheckCount === 0"
+                data-testid="health-no-issues"
+                class="flex min-h-40 items-center justify-center border-t border-gray-100 px-6 py-8 text-center dark:border-gray-800"
+              >
+                <div class="max-w-xs">
+                  <svg
+                    class="mx-auto h-5 w-5 text-emerald-600 dark:text-emerald-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <p class="mt-2 text-xs font-semibold text-gray-800 dark:text-gray-100">
+                    {{ t('doctor.center.messages.noIssues') }}
+                  </p>
+                  <p class="mt-1 text-[11px] leading-4 text-gray-500 dark:text-gray-400">
+                    {{ t('doctor.center.messages.noIssuesDescription') }}
+                  </p>
+                </div>
+              </div>
             </div>
           </section>
 
-          <aside class="min-w-0 space-y-3 xl:sticky xl:top-0">
+          <aside class="min-w-0 space-y-3 sm:sticky sm:top-0 sm:self-start">
             <section
               v-if="selectedCheck"
               data-testid="health-detail-panel"
@@ -431,12 +482,12 @@
             >
               <header class="flex items-start justify-between gap-3 border-b border-gray-200 px-3 py-2.5 dark:border-gray-700">
                 <div class="min-w-0">
-                  <div class="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-                    {{ sectionLabel(selectedCheck.section) }}
-                  </div>
-                  <h2 class="mt-0.5 text-sm font-semibold leading-5 text-gray-900 dark:text-white">
+                  <h2 class="text-sm font-semibold leading-5 text-gray-900 dark:text-white">
                     {{ checkLabel(selectedCheck) }}
                   </h2>
+                  <p class="mt-0.5 text-[11px] text-gray-400">
+                    {{ sectionLabel(selectedCheck.section) }}
+                  </p>
                 </div>
                 <span
                   class="flex-none rounded px-1.5 py-0.5 text-[10px] font-semibold"
@@ -482,7 +533,7 @@
                       {{ selectedCheck.evidence.length }}
                     </span>
                   </div>
-                  <div class="max-h-52 space-y-1 overflow-y-auto rounded-md bg-gray-50 p-2 font-mono text-[10px] leading-4 text-gray-600 dark:bg-gray-950/60 dark:text-gray-300">
+                  <div class="max-h-52 space-y-1 overflow-y-auto rounded-md bg-gray-50 p-2 font-mono text-[11px] leading-4 text-gray-600 dark:bg-gray-950/60 dark:text-gray-300">
                     <div
                       v-for="(item, index) in selectedCheck.evidence"
                       :key="`${index}-${item.value}`"
@@ -515,27 +566,28 @@
             </section>
 
             <section
-              v-if="run.system"
-              class="rounded-lg border border-gray-200 bg-white px-3 py-2.5 dark:border-gray-700 dark:bg-gray-900/45"
+              data-testid="health-utilities"
+              class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
             >
-              <h2 class="text-xs font-semibold text-gray-700 dark:text-gray-200">
-                {{ t('doctor.center.system.title') }}
-              </h2>
-              <dl class="mt-2 grid gap-y-1.5 text-[11px]">
-                <div
-                  v-for="item in systemItems"
-                  :key="item.label"
-                  class="grid grid-cols-[92px_minmax(0,1fr)] gap-2"
-                >
-                  <dt class="text-gray-400">{{ item.label }}</dt>
-                  <dd class="min-w-0 truncate text-right text-gray-700 dark:text-gray-200" :title="item.value">
-                    {{ item.value }}
-                  </dd>
-                </div>
-              </dl>
-            </section>
+              <div v-if="run.system" class="px-3 py-2.5">
+                <h2 class="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                  {{ t('doctor.center.system.title') }}
+                </h2>
+                <dl class="mt-2 grid gap-y-1.5 text-[11px]">
+                  <div
+                    v-for="item in systemItems"
+                    :key="item.label"
+                    class="grid grid-cols-[88px_minmax(0,1fr)] gap-2"
+                  >
+                    <dt class="text-gray-400">{{ item.label }}</dt>
+                    <dd class="min-w-0 truncate text-right text-gray-700 dark:text-gray-200" :title="item.value">
+                      {{ item.value }}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
 
-            <details class="group rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45">
+              <details class="group border-t border-gray-100 dark:border-gray-800">
               <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-semibold text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:text-gray-200">
                 <span>{{ t('doctor.center.history.title') }}</span>
                 <span class="flex items-center gap-2 text-[10px] font-normal text-gray-400">
@@ -564,7 +616,13 @@
                     :key="item.id"
                     type="button"
                     :disabled="store.isBusy"
-                    class="flex w-full items-center justify-between gap-3 px-1 py-2 text-left text-[11px] transition-colors hover:bg-gray-50 disabled:opacity-50 dark:hover:bg-gray-800/50"
+                    class="flex w-full items-center justify-between gap-3 rounded px-1.5 py-2 text-left text-[11px] transition-colors disabled:opacity-50"
+                    :class="
+                      store.selectedRunId === item.id
+                        ? 'bg-blue-50 text-blue-800 dark:bg-blue-950/30 dark:text-blue-200'
+                        : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                    "
+                    :aria-current="store.selectedRunId === item.id ? 'true' : undefined"
                     @click="store.selectHistoryRun(item.id)"
                   >
                     <span class="min-w-0 truncate">
@@ -588,9 +646,9 @@
                   {{ t('doctor.center.history.empty') }}
                 </p>
               </div>
-            </details>
+              </details>
 
-            <details class="group rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45">
+              <details class="group border-t border-gray-100 dark:border-gray-800">
               <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-semibold text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:text-gray-200">
                 <span>{{ t('doctor.center.export') }}</span>
                 <svg class="h-3 w-3 text-gray-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -637,7 +695,8 @@
                   </button>
                 </div>
               </div>
-            </details>
+              </details>
+            </section>
           </aside>
         </div>
       </template>
@@ -783,7 +842,7 @@ const checkGroups = computed(() =>
         )
       : sectionChecks
     if (!checks.length) return []
-    return [{ section, checks, issueCount }]
+    return [{ section, checks, issueCount, totalCount: sectionChecks.length }]
   }),
 )
 const visibleCheckCount = computed(() =>
