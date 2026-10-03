@@ -2470,6 +2470,14 @@ mod tests {
                             if shutdown_for_thread.load(Ordering::SeqCst) {
                                 break;
                             }
+                            // The listening socket is non-blocking so the server can poll
+                            // the shutdown flag. On BSD-derived platforms such as macOS,
+                            // accepted sockets may retain that mode, which makes the first
+                            // request read race with the client and fail with WouldBlock.
+                            // Handle each accepted connection in blocking mode instead.
+                            stream
+                                .set_nonblocking(false)
+                                .expect("set test client blocking");
                             let request = read_http_request(&mut stream);
                             if let Some(response) = handler(&request) {
                                 write_http_response(&mut stream, response);
