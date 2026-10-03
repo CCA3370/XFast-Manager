@@ -213,7 +213,7 @@ describe('Health page', () => {
     doctorStore.currentRunIsLive = true
     await nextTick()
 
-    expect(wrapper.get('[data-testid="health-results-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="health-results-panel"]').exists()).toBe(true)
     expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(2)
     expect(wrapper.get('[data-testid="health-detail-panel"]').text()).toContain(
       'X-Plane installation structure',
