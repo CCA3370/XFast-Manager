@@ -21,6 +21,22 @@ function navdataCheck() {
   return createDoctorCheckDefinitions(context).find((check) => check.id === 'navdata')!
 }
 
+function logCheck(xplaneRunning: boolean) {
+  const context: DoctorCheckContext = {
+    xplanePath: '/xplane',
+    mode: 'full',
+    crashAnalysisDmpEnabled: true,
+    crashAnalysisIgnoreDateCheck: false,
+    installationId: '',
+    xplaneRunning,
+    environment: null,
+    xfast: null,
+    log: null,
+    system: null,
+  }
+  return createDoctorCheckDefinitions(context).find((check) => check.id === 'log')!
+}
+
 function report(overrides: Partial<DoctorNavdataReport> = {}): DoctorNavdataReport {
   return {
     customDataExists: true,
@@ -81,5 +97,44 @@ describe('navdata diagnostic applicability', () => {
     expect(await navdataCheck().run()).toEqual([
       expect.objectContaining({ id: 'navdata.custom_data', outcome: 'notApplicable' }),
     ])
+  })
+})
+
+
+describe('live-session stability diagnostics', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('does not classify an actively written Log.txt as a completed crash', async () => {
+    tauri.invoke.mockImplementation(async (command: string) => {
+      if (command === 'analyze_xplane_log') {
+        return {
+          log_path: '/xplane/Log.txt',
+          is_xplane_log: true,
+          crash_detected: true,
+          crash_info: 'missing normal shutdown ending',
+          issues: [],
+          system_info: {
+            xplane_version: '12.1.4-r1',
+            gpu_model: null,
+            gpu_driver: null,
+          },
+        }
+      }
+      if (command === 'analyze_crash_report') {
+        throw new Error('deep crash analysis must not run for a live session')
+      }
+      return null
+    })
+
+    const checks = await logCheck(true).run()
+
+    expect(checks.find((check) => check.id === 'stability.last_session')).toMatchObject({
+      outcome: 'notApplicable',
+      evidence: undefined,
+    })
+    expect(tauri.invoke).not.toHaveBeenCalledWith(
+      'analyze_crash_report',
+      expect.anything(),
+    )
   })
 })

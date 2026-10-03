@@ -536,8 +536,19 @@ export const useDoctorStore = defineStore('doctor', () => {
       updateRunChecks(runToken, await executeDefinition(environment, runToken))
     }
 
+    // Runtime state is a prerequisite for interpreting Log.txt. A live X-Plane
+    // session has no normal shutdown marker yet and must never be reported as a
+    // previous crash simply because the log is still being written.
+    const runtime = definitions.find((definition) => definition.id === 'runtime')
+    if (runtime) {
+      updateRunChecks(runToken, await executeDefinition(runtime, runToken))
+    }
+
     const localDefinitions = definitions.filter(
-      (definition) => definition.phase === 'local' && definition.id !== 'environment',
+      (definition) =>
+        definition.phase === 'local' &&
+        definition.id !== 'environment' &&
+        definition.id !== 'runtime',
     )
     await runBounded(localDefinitions, LOCAL_CONCURRENCY, async (definition) => {
       updateRunChecks(runToken, await executeDefinition(definition, runToken))

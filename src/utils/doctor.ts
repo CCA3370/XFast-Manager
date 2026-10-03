@@ -183,7 +183,7 @@ export function summarizeDoctorRun(
   const eligible = checks.length - counts.notApplicable
   const covered = counts.pass + counts.info + counts.warning + counts.critical
   const coveragePercent =
-    eligible === 0 ? (runState === 'running' ? 0 : 100) : Math.round((covered / eligible) * 100)
+    eligible === 0 ? (runState === 'completed' ? 100 : 0) : Math.round((covered / eligible) * 100)
 
   return {
     severity,

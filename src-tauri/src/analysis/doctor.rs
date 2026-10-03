@@ -588,7 +588,16 @@ fn status_for(expiry_day: i64, today: i64) -> (NavdataStatus, i64) {
     (status, days_remaining)
 }
 
+fn json_scalar_to_string(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::String(value) => Some(value.clone()),
+        serde_json::Value::Number(value) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
 /// Read provider/cycle/airac from a cycle.json next to a navdata set.
+/// Providers in the wild use both JSON strings and numbers for cycle fields.
 fn read_cycle_json(path: &Path) -> Option<(String, Option<String>, Option<String>)> {
     let content = fs::read_to_string(path).ok()?;
     let json: serde_json::Value = serde_json::from_str(&content).ok()?;
@@ -597,14 +606,8 @@ fn read_cycle_json(path: &Path) -> Option<(String, Option<String>, Option<String
         .and_then(|v| v.as_str())
         .unwrap_or("Unknown")
         .to_string();
-    let cycle = json
-        .get("cycle")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let airac = json
-        .get("airac")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+    let cycle = json.get("cycle").and_then(json_scalar_to_string);
+    let airac = json.get("airac").and_then(json_scalar_to_string);
     Some((provider, cycle, airac))
 }
 
@@ -800,6 +803,22 @@ pub async fn doctor_navdata_status(xplane_path: String) -> Result<DoctorNavdataR
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cycle_json_accepts_numeric_cycle_values() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("cycle.json");
+        fs::write(
+            &path,
+            r#"{"cycle":2408,"airac":2408,"revision":1,"name":"XPNavData"}"#,
+        )
+        .unwrap();
+
+        let (provider, cycle, airac) = read_cycle_json(&path).expect("cycle.json should parse");
+        assert_eq!(provider, "XPNavData");
+        assert_eq!(cycle.as_deref(), Some("2408"));
+        assert_eq!(airac.as_deref(), Some("2408"));
+    }
 
     #[test]
     fn addon_cycles_do_not_require_simulator_root_navdata() {

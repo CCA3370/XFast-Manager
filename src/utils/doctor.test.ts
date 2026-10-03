@@ -23,6 +23,13 @@ describe('doctor run summary', () => {
     expect(summary.coveragePercent).toBe(0)
   })
 
+  it('reports zero coverage when a scan is cancelled before producing a result', () => {
+    const summary = summarizeDoctorRun([], 'cancelled')
+
+    expect(summary.completeness).toBe('cancelled')
+    expect(summary.coveragePercent).toBe(0)
+  })
+
   it('keeps check failures separate from health severity and marks coverage partial', () => {
     const summary = summarizeDoctorRun(
       [check('path', 'pass'), check('network', 'unavailable')],

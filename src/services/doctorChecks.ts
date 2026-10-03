@@ -462,12 +462,19 @@ function createLogCheck(context: DoctorCheckContext): DoctorCheckDefinition {
         context.system.gpuDriver = log.system_info.gpu_driver
       }
 
+      const canEvaluateSessionEnd = !context.xplaneRunning
       const checks: DoctorCheckResult[] = [
-        result('stability.last_session', 'stability', log.crash_detected ? 'critical' : 'pass', {
-          evidence: log.crash_info
-            ? evidence(log.crash_info.split('\n').slice(0, 20), 'log')
-            : undefined,
-        }),
+        result(
+          'stability.last_session',
+          'stability',
+          canEvaluateSessionEnd ? (log.crash_detected ? 'critical' : 'pass') : 'notApplicable',
+          {
+            evidence:
+              canEvaluateSessionEnd && log.crash_info
+                ? evidence(log.crash_info.split('\n').slice(0, 20), 'log')
+                : undefined,
+          },
+        ),
       ]
 
       if (detectBeta(rawVersion)) {
@@ -490,7 +497,7 @@ function createLogCheck(context: DoctorCheckContext): DoctorCheckDefinition {
         )
       }
 
-      if (log.crash_detected && context.mode === 'full') {
+      if (canEvaluateSessionEnd && log.crash_detected && context.mode === 'full') {
         if (!context.crashAnalysisDmpEnabled) {
           checks.push(
             result('stability.crash_dump', 'stability', 'notApplicable', {

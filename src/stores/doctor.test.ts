@@ -236,6 +236,45 @@ describe('Health diagnostic store', () => {
     expect(store.currentRunIsLive).toBe(true)
   })
 
+  it('resolves X-Plane runtime state before interpreting the current log', async () => {
+    const runtimeState = deferred<boolean>()
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'is_xplane_running') return runtimeState.promise
+      if (command === 'analyze_xplane_log') {
+        return {
+          log_path: '/xplane/Log.txt',
+          is_xplane_log: true,
+          crash_detected: true,
+          crash_info: 'Log ended before a normal shutdown marker',
+          issues: [],
+          system_info: {
+            xplane_version: '12.1.4-r1',
+            gpu_model: 'Test GPU',
+            gpu_driver: '1.0',
+          },
+        }
+      }
+      return healthyResponse(command)
+    })
+    const store = useDoctorStore()
+    const running = store.runDiagnostics('quick')
+
+    await vi.waitFor(() =>
+      expect(tauri.invoke).toHaveBeenCalledWith('is_xplane_running'),
+    )
+    expect(
+      tauri.invoke.mock.calls.some(([command]) => command === 'analyze_xplane_log'),
+    ).toBe(false)
+
+    runtimeState.resolve(true)
+    await running
+
+    expect(store.xplaneRunning).toBe(true)
+    expect(
+      store.currentRun?.checks.find((item) => item.id === 'stability.last_session')?.outcome,
+    ).toBe('notApplicable')
+  })
+
   it('marks a failed probe unavailable instead of reporting an all-clear result', async () => {
     tauri.invoke.mockImplementation(async (command) => {
       if (command === 'doctor_scan_xfast_health') throw new Error('database locked')

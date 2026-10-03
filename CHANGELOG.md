@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Health Live-Session Stability** - Health no longer treats an actively written X-Plane log as a completed crash, and runtime state is resolved before crash diagnostics begin.
+- **Health Coverage Accuracy** - Cancelling a diagnosis before any applicable result is produced now reports 0% coverage instead of 100%.
+- **Health Navdata Compatibility** - Navigation diagnostics now read numeric `cycle` and `airac` values from provider `cycle.json` files as well as strings.
+
 ## [1.3.0] - 2026-10-02
 
 ### Added
