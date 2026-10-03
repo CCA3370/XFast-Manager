@@ -157,6 +157,8 @@
                     })
                   }}
                   <span class="px-1">·</span>
+                  <span class="font-semibold text-gray-600 dark:text-gray-300">{{ runtimePercent }}%</span>
+                  <span class="px-1">·</span>
                   {{
                     store.phase === 'network'
                       ? t('doctor.center.networkPhase')
@@ -1088,6 +1090,14 @@ async function exportReport(format: DoctorReportFormat) {
     toastStore.error(t('doctor.center.messages.exportFailed'))
   }
 }
+
+const coverageBarClass = computed(() => {
+  if (run.value?.summary.completeness !== 'complete') return 'bg-gray-500'
+  if (run.value?.summary.severity === 'critical') return 'bg-red-500'
+  if (run.value?.summary.severity === 'warning') return 'bg-amber-500'
+  if (run.value?.summary.severity === 'info') return 'bg-blue-500'
+  return 'bg-emerald-500'
+})
 
 const modeBadgeClass = computed(() =>
   run.value?.mode === 'full'
