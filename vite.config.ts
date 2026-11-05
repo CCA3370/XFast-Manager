@@ -9,7 +9,9 @@ export default defineConfig({
     port: 1431,
     strictPort: true,
     watch: {
-      ignored: ['**/src-tauri/**'],
+      // Cargo writes to the workspace root's target directory, outside src-tauri.
+      // Watching build artifacts can fail on Windows while the linker holds an executable.
+      ignored: ['**/src-tauri/**', '**/target/**', '**/target-*/**'],
     },
   },
   resolve: {
