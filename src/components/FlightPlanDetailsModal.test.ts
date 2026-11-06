@@ -25,6 +25,10 @@ describe('automatic navigation and separate inspector sections', () => {
     })
     await flushPromises()
     expect(api.invoke).not.toHaveBeenCalled()
+    expect(document.querySelector('dialog header')?.textContent).not.toContain('FMS')
+    expect(document.querySelector('dialog')?.textContent).not.toContain('flightPlanDetails.navHint')
+    expect(document.querySelector('dialog')?.textContent).not.toContain('flightPlanDetails.altHint')
+
     const tabs = document.querySelectorAll('dialog nav button')
     expect(tabs).toHaveLength(4)
     ;(tabs[1] as HTMLButtonElement).click()

@@ -135,7 +135,6 @@ const profileLines = computed(() =>
       </text>
     </svg>
     <p v-else class="py-4 text-sm text-gray-500">{{ label('unknown') }}</p>
-    <p class="text-xs text-gray-500">{{ label('altHint') }}</p>
   </section>
 </template>
 <style scoped>

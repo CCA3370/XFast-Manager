@@ -31,7 +31,7 @@ function fit(animate = true) {
       padding: [35, 35],
       maxZoom: 12,
       animate: animate && sized && !reducedMotion,
-      duration: 0.35,
+      duration: 0.18,
     })
 }
 function draw() {
@@ -131,9 +131,9 @@ onMounted(() => {
     fadeAnimation: !reducedMotion,
     markerZoomAnimation: !reducedMotion,
     zoomSnap: 0.5,
-    zoomDelta: 0.5,
-    wheelPxPerZoomLevel: 100,
-    wheelDebounceTime: 40,
+    zoomDelta: 1,
+    wheelPxPerZoomLevel: 35,
+    wheelDebounceTime: 20,
     worldCopyJump: false,
   })
   map.createPane('offline-basemap').style.zIndex = '150'
@@ -169,7 +169,7 @@ onMounted(() => {
     map?.invalidateSize({ animate: false })
     if (!sized) {
       sized = true
-      fit()
+      fit(false)
     }
   })
   observer.observe(host.value)
@@ -222,10 +222,12 @@ function attribution(event: MouseEvent) {
     <p v-if="failures || offline" role="status" class="text-xs text-amber-600">
       {{ t('flightPlanDetails.mapUnavailable') }}
     </p>
-    <p class="text-xs leading-5 text-gray-500">{{ t('flightPlanDetails.scope') }}</p>
   </section>
 </template>
 <style scoped>
+.route-map :deep(.leaflet-zoom-anim .leaflet-zoom-animated) {
+  transition-duration: 0.14s;
+}
 .route-map {
   height: clamp(280px, 42vh, 420px);
   z-index: 0;

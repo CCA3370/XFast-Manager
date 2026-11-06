@@ -11,6 +11,13 @@ const label = (key: string) => t(`flightPlanDetails.${key}`)
 const dialog = ref<HTMLDialogElement | null>(null)
 const plan = ref(props.plan)
 const tab = ref('route')
+const procedureFields = computed(() =>
+  Object.fromEntries(
+    Object.entries(plan.value.fields).filter(
+      ([key]) => !['ADEP', 'ADES', 'DEP', 'DES', 'CYCLE'].includes(key),
+    ),
+  ),
+)
 const busy = ref(false)
 const lookup = ref<NavLookup | null>(null)
 const error = ref('')
@@ -73,7 +80,7 @@ onBeforeUnmount(() => {
               {{ name }}
             </h2>
             <p class="mt-1 text-sm text-gray-500">
-              FMS {{ plan.version || '—' }} · AIRAC {{ plan.fields.CYCLE || '—' }} ·
+              <template v-if="plan.fields.CYCLE">AIRAC {{ plan.fields.CYCLE }} · </template>
               {{ plan.points.length }} {{ label('waypoints') }}
             </p>
           </div>
@@ -122,10 +129,10 @@ onBeforeUnmount(() => {
               {{ label('partial') }}
             </p>
             <dl
-              v-if="Object.keys(plan.fields).length"
+              v-if="Object.keys(procedureFields).length"
               class="flex flex-wrap gap-x-5 gap-y-2 text-sm"
             >
-              <div v-for="(value, key) in plan.fields" :key="key" class="flex gap-2">
+              <div v-for="(value, key) in procedureFields" :key="key" class="flex gap-2">
                 <dt class="text-gray-500">{{ key }}</dt>
                 <dd class="font-mono">{{ value }}</dd>
               </div>
@@ -133,12 +140,8 @@ onBeforeUnmount(() => {
             <FlightPlanCharts :points="plan.points" />
             <div v-if="busy || lookup || error" class="border-t border-gray-400/20 pt-4 space-y-2">
               <p v-if="busy" class="text-sm text-gray-500">{{ t('common.loading') }}</p>
-              <p class="text-xs text-gray-500">{{ label('navHint') }}</p>
               <p v-if="error" role="alert" class="select-text text-sm text-red-600">{{ error }}</p>
               <template v-if="lookup">
-                <p class="break-all text-xs text-gray-500">
-                  {{ label('sources') }}: {{ lookup.sources.join(' · ') || '—' }}
-                </p>
                 <p v-for="warning in lookup.warnings" :key="warning" class="text-xs text-amber-600">
                   {{ warning.startsWith('unreadable:') ? warning : label(warning) }}
                 </p>

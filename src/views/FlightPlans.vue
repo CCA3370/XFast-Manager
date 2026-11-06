@@ -215,10 +215,9 @@ onBeforeUnmount(() => {
               </p>
             </div>
             <div>
-              <p class="text-xs text-gray-500">AIRAC / FMS</p>
+              <p class="text-xs text-gray-500">AIRAC</p>
               <p class="mt-1">
-                {{ details[plan.name]!.fields.CYCLE || '—' }} /
-                {{ details[plan.name]!.version || '—' }}
+                {{ details[plan.name]!.fields.CYCLE || '—' }}
               </p>
             </div>
           </div>
