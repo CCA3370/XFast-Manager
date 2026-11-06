@@ -7,26 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- **Health Workspace UI** - Rebuilt Health as a denser diagnostic workspace with a compact status strip, grouped result rows, a contextual detail panel, and condensed system, history, repair, and export controls.
-
-### Fixed
-
-
-- **Health Live-Session Stability** - Health no longer treats an actively written X-Plane log as a completed crash, and runtime state is resolved before crash diagnostics begin.
-- **Health Coverage Accuracy** - Cancelling a diagnosis before any applicable result is produced now reports 0% coverage instead of 100%.
-- **Health Navdata Compatibility** - Navigation diagnostics now read numeric `cycle` and `airac` values from provider `cycle.json` files as well as strings.
-
 ## [1.3.0] - 2026-10-02
 
 ### Added
 
 - **Aircraft Patch Installation** - Apply model patches to an installed aircraft with editable folder mappings, a preview of affected files, optional backups, and restoration of overwritten files.
 - **Flight Plan Management** - Import FMS flight plans by dropping them onto Install or the new Flight Plans page, search saved plans, and delete them with confirmation. Repeated imports keep existing plans intact.
-- **Health Diagnostic Center** - Health now checks the X-Plane installation, recent stability, scenery, aircraft and plugins, navigation data, performance, storage, system environment, XFast Manager data, and available updates from one responsive center that matches the rest of the app.
-- **Health History and Shareable Reports** - The latest 20 completed checks are saved locally for each X-Plane installation, with Markdown and JSON reports that hide private paths across evidence and diagnostic details unless explicitly included for the selected report.
-- **Guided Health Repairs** - Health can apply verified safe repairs together, prevents overlapping scans or repairs, asks before higher-impact repairs, blocks file changes while X-Plane is running, and rechecks affected areas after a repair.
+- **Health Diagnostic Center** - Inspect the X-Plane installation, session logs, scenery registration and links, plugin files, navigation data, memory, storage, system environment, XFast Manager data, and online updates. Results distinguish confirmed crashes from incomplete logs, show evidence and scan limits, and can be searched by check name or evidence.
+- **Health Overview** - A compact, searchable results list and a readable evidence panel keep findings and actions together. A local quick check runs once per session, with scan progress, installation-specific history, navigation badges and reminders for results older than 24 hours.
+- **Health History and Shareable Reports** - Keep the latest 20 completed checks for each installation and export English Markdown or JSON reports in any interface language. Reports retain diagnostic evidence while hiding user names, installation roots and network share locations by default.
+- **Health Repairs and Recovery** - Apply safe repairs together or confirm a scenery-list repair, injector DLL disable, shader-cache rebuild, or preferences reset. File changes require X-Plane to be closed and are followed by another check. Injector, cache and preferences repairs retain local backups that can be restored from Health; restoring also preserves newer files.
 - **Screenshot Preview Navigation** - Screenshot previews now support moving to the previous or next item without closing the preview.
 
 ### Changed
@@ -34,7 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Custom Airport Priority** - Auto Sort now places custom airports above bundled Aerosoft airports while keeping both above Global Airports.
 
 - **Map and SimBrief Removed** - Removed the retired Map page and its SimBrief setting, keeping the app focused on currently supported management tools.
-- **Health at a Glance** - Opening Health runs one quick local check per session, clearly separates scan progress from completed results, and keeps history tied to the selected X-Plane installation. The navigation badge and 24-hour reminder show when attention or a fresh diagnosis is needed without running background scans.
 - **More Accurate Bug Report Prompts** - Error dialogs now offer bug reporting only for unexpected app failures, while attempts to reinstall content already inside X-Plane, invalid paths, permissions, unreadable downloads, security software blocks, insufficient space, network failures, cancellations, and hardware problems show guidance without suggesting a report.
 - **Duplicate Bug Reports Reused** - Repeated automatic reports for the same app failure now open the existing issue instead of creating another one.
 

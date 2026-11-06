@@ -207,15 +207,15 @@ function createEnvironmentCheck(context: DoctorCheckContext): DoctorCheckDefinit
         logicalCores: env.system.logicalCores,
         totalMemoryBytes: env.system.totalMemoryBytes,
         availableMemoryBytes: env.system.availableMemoryBytes,
-        xplaneVersion: null,
-        xplaneVersionRaw: null,
-        isBeta: false,
-        gpuModel: null,
-        gpuDriver: null,
+        xplaneVersion: context.system?.xplaneVersion ?? null,
+        xplaneVersionRaw: context.system?.xplaneVersionRaw ?? null,
+        isBeta: context.system?.isBeta ?? false,
+        gpuModel: context.system?.gpuModel ?? null,
+        gpuDriver: context.system?.gpuDriver ?? null,
         xplaneFreeBytes: env.freeBytes,
         xplaneTotalBytes: env.totalBytes,
-        appDataFreeBytes: null,
-        appDataTotalBytes: null,
+        appDataFreeBytes: context.system?.appDataFreeBytes ?? null,
+        appDataTotalBytes: context.system?.appDataTotalBytes ?? null,
       }
 
       const checks: DoctorCheckResult[] = []

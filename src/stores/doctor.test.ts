@@ -246,6 +246,7 @@ describe('Health diagnostic store', () => {
         ([command]) => command === 'doctor_inspect_installation',
       ).length
       expect(await store.runMaintenance(action)).toBe(true)
+      expect(store.currentRun?.system?.gpuModel).toBe('Test GPU')
       expect(tauri.invoke).toHaveBeenCalledWith('doctor_apply_repair', {
         xplanePath: '/xplane',
         repair: action,

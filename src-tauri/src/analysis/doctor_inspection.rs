@@ -38,7 +38,10 @@ fn scenery_target(
     let target = root.join(normalized.trim_end_matches('/'));
     #[cfg(windows)]
     if !target.exists() {
-        let shortcut = target.with_extension("lnk");
+        let shortcut = target.with_file_name(format!(
+            "{}.lnk",
+            target.file_name().unwrap_or_default().to_string_lossy()
+        ));
         if let Some(resolved) = _resolve_shortcut(&shortcut) {
             return resolved;
         }
@@ -289,6 +292,20 @@ pub fn inspect_installation(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn dotted_scenery_folder_names_keep_the_full_shortcut_name() {
+        let temp = tempfile::tempdir().unwrap();
+        fn resolver(path: &Path) -> Option<std::path::PathBuf> {
+            assert_eq!(path.file_name().unwrap(), "Airport.v2.lnk");
+            Some(std::path::PathBuf::from("D:/External/Airport"))
+        }
+        assert_eq!(
+            scenery_target(temp.path(), "Custom Scenery/Airport.v2/", resolver),
+            std::path::PathBuf::from("D:/External/Airport")
+        );
+    }
 
     #[test]
     fn detects_duplicate_and_missing_enabled_scenery_but_ignores_disabled_entries() {

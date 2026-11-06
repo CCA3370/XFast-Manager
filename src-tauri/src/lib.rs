@@ -1387,7 +1387,13 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
     let log_path = std::path::PathBuf::from(&xplane_path).join("Log.txt");
     let log_path_str = log_path.to_string_lossy().to_string();
 
-    let file = File::open(&log_path).map_err(|e| format!("Cannot open Log.txt: {e}"))?;
+    let file = File::open(&log_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "Log.txt not found".to_string()
+        } else {
+            format!("Cannot open Log.txt: {e}")
+        }
+    })?;
     let reader = BufReader::new(file);
     let lines: Vec<String> = reader
         .lines()
@@ -1453,7 +1459,8 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
         "normal"
     } else {
         "unknown"
-    }.to_string();
+    }
+    .to_string();
     let log_tail = extract_log_tail_context(&lines);
     let crash_info = first_crash_marker_idx.map(|idx| extract_crash_context(&lines, idx));
 

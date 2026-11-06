@@ -199,6 +199,7 @@ export const useDoctorStore = defineStore('doctor', () => {
 
   let activeRunToken = 0
   let historyLoadToken = 0
+  let backupLoadToken = 0
   let cancelRequested = false
   let lastContext: DoctorCheckContext | null = null
   let cancelActiveWork: (() => void) | null = null
@@ -251,6 +252,7 @@ export const useDoctorStore = defineStore('doctor', () => {
     checkRuntime.value = []
     xplaneRunning.value = false
     appDataPath.value = null
+    backupLoadToken += 1
     backups.value = []
     backupError.value = null
     inspectionReport.value = null
@@ -871,16 +873,18 @@ export const useDoctorStore = defineStore('doctor', () => {
   }
 
   async function loadBackups(path = appStore.xplanePath): Promise<void> {
+    const token = ++backupLoadToken
     if (!path) return
     try {
       const result = await invoke<DoctorRepairBackup[]>('doctor_list_backups', { xplanePath: path })
-      if (appStore.xplanePath === path) {
+      if (backupLoadToken === token && appStore.xplanePath === path) {
         if (!Array.isArray(result)) throw new Error('Invalid backup listing')
         backups.value = result
         backupError.value = null
       }
     } catch (reason) {
-      if (appStore.xplanePath === path) backupError.value = String(reason)
+      if (backupLoadToken === token && appStore.xplanePath === path)
+        backupError.value = String(reason)
       logError(`Health backup listing failed: ${reason}`, 'doctor')
     }
   }
