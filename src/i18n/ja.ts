@@ -1,7 +1,9 @@
+import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  flightPlanDetails: flightPlanDetailMessages.ja,
   flightPlans: {
     conflictTitle: '同名のフライトプランがあります',
     conflictDescription:

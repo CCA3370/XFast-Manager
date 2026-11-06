@@ -1,6 +1,8 @@
+import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  flightPlanDetails: flightPlanDetailMessages.en,
   flightPlans: {
     conflictTitle: 'Flight plan already exists',
     conflictDescription:

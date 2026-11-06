@@ -1,7 +1,9 @@
+import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  flightPlanDetails: flightPlanDetailMessages.pt,
   flightPlans: {
     conflictTitle: 'O plano de voo já existe',
     conflictDescription:

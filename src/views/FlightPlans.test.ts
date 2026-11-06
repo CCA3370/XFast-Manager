@@ -45,11 +45,31 @@ describe('flight plan management', () => {
     wrapper.unmount()
   })
 
+  it('lazily expands basic information and opens the route details dialog', async () => {
+    mocks.invoke.mockImplementation(async (command: string) =>
+      command === 'list_flight_plans'
+        ? [{ name: 'route.fms', size: 300, modified: 1 }]
+        : 'I\n1100 Version\nCYCLE 2611\nADEP KAAA\nADES KBBB\nNUMENR 2\n1 KAAA ADEP 100 30 120\n1 KBBB ADES 100 31 121\n',
+    )
+    const wrapper = mount(FlightPlans, { attachTo: document.body })
+    await flushPromises()
+    expect(mocks.invoke).toHaveBeenCalledTimes(1)
+    await wrapper.get('li button').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('li').text()).toContain('KAAA')
+    expect(wrapper.get('li button').attributes('aria-expanded')).toBe('true')
+    await wrapper.findAll('li button')[1]!.trigger('click')
+    await flushPromises()
+    expect(document.querySelector('dialog')?.open).toBe(true)
+    expect(document.querySelector('dialog')?.textContent).toContain('KBBB')
+    wrapper.unmount()
+  })
+
   it('requires confirmation before deleting a listed plan', async () => {
     mocks.invoke.mockResolvedValue([{ name: 'route.fms', size: 300, modified: 1 }])
     const wrapper = mount(FlightPlans)
     await flushPromises()
-    await wrapper.find('li button').trigger('click')
+    await wrapper.find('[data-testid="delete-plan"]').trigger('click')
     expect(mocks.invoke).not.toHaveBeenCalledWith('delete_flight_plan', expect.anything())
     const confirmation = mocks.confirm.mock.calls[0][0]
     await confirmation.onCancel()

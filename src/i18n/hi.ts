@@ -1,7 +1,9 @@
+import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  flightPlanDetails: flightPlanDetailMessages.hi,
   flightPlans: {
     conflictTitle: 'उड़ान योजना पहले से मौजूद है',
     conflictDescription:
