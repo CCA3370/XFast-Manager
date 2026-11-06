@@ -2096,7 +2096,7 @@
             <!-- Log viewer -->
             <div
               ref="logContainer"
-              class="h-48 overflow-y-auto bg-gray-900 rounded-lg p-3 font-mono text-xs scrollbar-thin"
+              class="select-text h-48 overflow-y-auto bg-gray-900 rounded-lg p-3 font-mono text-xs scrollbar-thin"
             >
               <div v-if="recentLogs.length === 0" class="text-gray-500 text-center py-4">
                 {{ $t('settings.noLogs') }}

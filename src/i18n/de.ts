@@ -6,8 +6,6 @@ export default {
     title: 'Flugpläne',
     description: 'X-Plane-Flugpläne in Output/FMS plans verwalten.',
     selectPath: 'Zuerst den X-Plane-Ordner in den Einstellungen auswählen.',
-    drop: '.fms-Dateien hier ablegen oder zum Importieren klicken',
-    duplicates: 'Vorhandene Pläne bleiben erhalten; gleiche Namen erhalten eine Nummer.',
     imported: '{count} Flugpläne importiert',
     search: 'Flugpläne suchen',
     refresh: 'Aktualisieren',

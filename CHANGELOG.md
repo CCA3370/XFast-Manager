@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Aircraft Patch Installation** - Apply model patches to an installed aircraft with editable folder mappings, a preview of affected files, optional backups, and restoration of overwritten files.
-- **Flight Plan Management** - Import FMS flight plans by dropping them onto Install or the new Flight Plans page, search saved plans, and delete them with confirmation. Repeated imports keep existing plans intact.
+- **Flight Plan Management** - Import FMS flight plans from the Install home page, then search, refresh and delete saved plans on the dedicated Flight Plans page. Repeated imports keep existing plans intact.
 - **Health Diagnostic Center** - Inspect the X-Plane installation, session logs, scenery registration and links, plugin files, navigation data, memory, storage, system environment, XFast Manager data, and online updates. Results distinguish confirmed crashes from incomplete logs, show evidence and scan limits, and can be searched by check name or evidence.
 - **Health Overview** - A compact, searchable results list and a readable evidence panel fill the available window height, with aligned panel edges and independent scrolling for findings and details. Evidence starts collapsed and can be expanded for the selected check. A local quick check runs once per session, with scan progress, installation-specific history, navigation badges and reminders for results older than 24 hours.
 - **Health History and Shareable Reports** - Keep the latest 20 completed checks for each installation and export English Markdown or JSON reports in any interface language. Reports retain diagnostic evidence while hiding user names, installation roots and network share locations by default.
@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Screenshot Preview Navigation** - Screenshot previews now support moving to the previous or next item without closing the preview.
 
 ### Changed
+
+- **Desktop Text Selection** - Repeated clicks on page labels and navigation no longer select them. Error messages, log viewers, diagnostic evidence, search fields and text editors retain normal selection, and Copy buttons remain available.
 
 - **Custom Airport Priority** - Auto Sort now places custom airports above bundled Aerosoft airports while keeping both above Global Airports.
 

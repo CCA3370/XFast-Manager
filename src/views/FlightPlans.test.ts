@@ -26,29 +26,23 @@ beforeEach(() => {
 })
 
 describe('flight plan management', () => {
-  it('imports selected files, keeps successful results when another file fails, and refreshes', async () => {
-    mocks.open.mockResolvedValue(['/downloads/good.fms', '/downloads/bad.fms'])
-    mocks.invoke.mockImplementation(async (command, args) => {
-      if (command === 'import_flight_plan' && args.source.endsWith('bad.fms')) {
-        throw new Error('Invalid flight plan')
-      }
-      return command === 'list_flight_plans' ? [] : 'good.fms'
-    })
+  it('lists and searches plans without offering or registering imports', async () => {
+    mocks.invoke.mockResolvedValue([
+      { name: 'route.fms', size: 300, modified: 1 },
+      { name: 'other.fms', size: 200, modified: 1 },
+    ])
     const wrapper = mount(FlightPlans)
     await flushPromises()
-    await wrapper.find('button').trigger('click')
-    await flushPromises()
-    expect(mocks.invoke).toHaveBeenCalledWith('import_flight_plan', {
-      xplanePath: '/sim',
-      source: '/downloads/good.fms',
-    })
-    expect(wrapper.find('[role="status"]').exists()).toBe(true)
-    expect(wrapper.find('[role="alert"]').text()).toContain('bad.fms')
-    expect(
-      mocks.invoke.mock.calls.filter(([command]) => command === 'list_flight_plans'),
-    ).toHaveLength(2)
+    expect(wrapper.findAll('li')).toHaveLength(2)
+    expect(wrapper.find('[data-testid="import-flight-plans"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('flightPlans.drop')
+    expect(mocks.listen).not.toHaveBeenCalled()
+    expect(mocks.open).not.toHaveBeenCalled()
+    await wrapper.get('input').setValue('ROUTE')
+    expect(wrapper.findAll('li')).toHaveLength(1)
+    expect(wrapper.get('li').text()).toContain('route.fms')
+    expect(mocks.invoke.mock.calls.every(([command]) => command === 'list_flight_plans')).toBe(true)
     wrapper.unmount()
-    expect(mocks.stop).toHaveBeenCalledOnce()
   })
 
   it('requires confirmation before deleting a listed plan', async () => {
@@ -68,15 +62,17 @@ describe('flight plan management', () => {
     wrapper.unmount()
   })
 
-  it('imports native file drops', async () => {
+  it('refreshes the list without importing files', async () => {
     const wrapper = mount(FlightPlans)
     await flushPromises()
-    mocks.listen.mock.calls[0][0]({ payload: { type: 'drop', paths: ['/route.fms'] } })
+    await wrapper.get('button').trigger('click')
     await flushPromises()
-    expect(mocks.invoke).toHaveBeenCalledWith('import_flight_plan', {
-      xplanePath: '/sim',
-      source: '/route.fms',
-    })
+    expect(
+      mocks.invoke.mock.calls.filter(([command]) => command === 'list_flight_plans'),
+    ).toHaveLength(2)
+    expect(mocks.listen).not.toHaveBeenCalled()
+    expect(mocks.open).not.toHaveBeenCalled()
+    expect(mocks.invoke).not.toHaveBeenCalledWith('import_flight_plan', expect.anything())
     wrapper.unmount()
   })
 })

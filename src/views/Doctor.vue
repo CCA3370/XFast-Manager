@@ -617,7 +617,7 @@
                     </span>
                   </summary>
                   <div
-                    class="mt-2 max-h-80 space-y-1 overflow-auto rounded-md bg-gray-50 p-3 font-mono text-xs leading-5 text-gray-600 dark:bg-gray-950/60 dark:text-gray-300"
+                    class="select-text mt-2 max-h-80 space-y-1 overflow-auto rounded-md bg-gray-50 p-3 font-mono text-xs leading-5 text-gray-600 dark:bg-gray-950/60 dark:text-gray-300"
                   >
                     <div
                       v-for="(item, index) in selectedCheck.evidence"

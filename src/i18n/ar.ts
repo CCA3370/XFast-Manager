@@ -6,8 +6,6 @@ export default {
     title: 'خطط الطيران',
     description: 'إدارة خطط الطيران في Output/FMS plans.',
     selectPath: 'حدد مجلد X-Plane في الإعدادات أولاً.',
-    drop: 'اسحب ملفات .fms هنا أو انقر للاستيراد',
-    duplicates: 'تُحفظ الخطط الحالية وتُرقّم الأسماء المكررة.',
     imported: 'تم استيراد {count} من خطط الطيران',
     search: 'البحث عن خطط الطيران',
     refresh: 'تحديث',

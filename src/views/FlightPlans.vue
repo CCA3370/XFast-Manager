@@ -2,8 +2,6 @@
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { open } from '@tauri-apps/plugin-dialog'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 
@@ -18,11 +16,7 @@ const modal = useModalStore()
 const plans = ref<FlightPlan[]>([])
 const query = ref('')
 const busy = ref(false)
-const dragging = ref(false)
 const errors = ref<string[]>([])
-const imported = ref(0)
-let disposed = false
-let unlisten: (() => void) | undefined
 let generation = 0
 const filtered = computed(() =>
   plans.value.filter((p) => p.name.toLowerCase().includes(query.value.toLowerCase())),
@@ -37,34 +31,6 @@ async function refresh() {
     if (current === generation) plans.value = result
   } catch (e) {
     if (current === generation) errors.value = [String(e)]
-  }
-}
-async function importPlans(paths: string[]) {
-  if (busy.value || !app.xplanePath) return
-  busy.value = true
-  errors.value = []
-  imported.value = 0
-  const root = app.xplanePath
-  try {
-    for (const source of paths) {
-      try {
-        await invoke('import_flight_plan', { xplanePath: root, source })
-        imported.value++
-      } catch (e) {
-        errors.value.push(`${source.split(/[\\/]/).pop()}: ${String(e)}`)
-      }
-    }
-    await refresh()
-  } finally {
-    busy.value = false
-  }
-}
-async function browse() {
-  try {
-    const result = await open({ multiple: true, filters: [{ name: 'FMS', extensions: ['fms'] }] })
-    if (result) await importPlans(Array.isArray(result) ? result : [result])
-  } catch (e) {
-    errors.value = [String(e)]
   }
 }
 function remove(plan: FlightPlan) {
@@ -95,48 +61,25 @@ watch(
   () => app.xplanePath,
   () => {
     errors.value = []
-    imported.value = 0
     void refresh()
   },
 )
-onMounted(async () => {
-  void refresh()
-  try {
-    const stop = await getCurrentWebviewWindow().onDragDropEvent((event) => {
-      dragging.value = event.payload.type === 'enter' || event.payload.type === 'over'
-      if (event.payload.type === 'drop') void importPlans(event.payload.paths)
-    })
-    if (disposed) stop()
-    else unlisten = stop
-  } catch (e) {
-    errors.value = [String(e)]
-  }
-})
+onMounted(() => void refresh())
 onBeforeUnmount(() => {
-  disposed = true
   generation++
-  unlisten?.()
 })
 </script>
 
 <template>
   <div class="p-6 space-y-4">
-    <h1 class="text-2xl font-bold">{{ t('flightPlans.title') }}</h1>
-    <p class="text-sm text-gray-500">{{ t('flightPlans.description') }}</p>
+    <header class="flex flex-wrap items-center justify-between gap-3">
+      <div class="min-w-0">
+        <h1 class="text-2xl font-bold">{{ t('flightPlans.title') }}</h1>
+        <p class="mt-1 text-sm text-gray-500">{{ t('flightPlans.description') }}</p>
+      </div>
+    </header>
     <p v-if="!app.xplanePath">{{ t('flightPlans.selectPath') }}</p>
     <template v-else>
-      <button
-        class="w-full rounded-xl border-2 border-dashed p-8 text-center transition-colors disabled:opacity-50"
-        :class="dragging ? 'border-blue-500 bg-blue-500/10' : 'border-gray-400/40'"
-        :disabled="busy"
-        @click="browse"
-      >
-        {{ busy ? t('common.loading') : t('flightPlans.drop') }}
-      </button>
-      <p class="text-sm text-gray-500">{{ t('flightPlans.duplicates') }}</p>
-      <p v-if="imported" role="status" class="text-green-600">
-        {{ t('flightPlans.imported', { count: imported }) }}
-      </p>
       <div
         v-if="errors.length"
         role="alert"

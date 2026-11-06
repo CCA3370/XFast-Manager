@@ -582,7 +582,7 @@ async function handleDropZoneClick() {
       filters: [
         {
           name: 'Addon Files',
-          extensions: ['zip', '7z', 'rar', 'lua'],
+          extensions: ['zip', '7z', 'rar', 'lua', 'fms'],
         },
         {
           name: 'All Files',

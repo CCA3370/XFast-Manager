@@ -6,8 +6,6 @@ export default {
     title: 'Plans de vol',
     description: 'Gérez les plans de vol dans Output/FMS plans.',
     selectPath: 'Sélectionnez le dossier X-Plane dans les paramètres.',
-    drop: 'Déposez des fichiers .fms ou cliquez pour importer',
-    duplicates: 'Les plans existants sont conservés ; les doublons sont numérotés.',
     imported: '{count} plans de vol importés',
     search: 'Rechercher un plan de vol',
     refresh: 'Actualiser',
