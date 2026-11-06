@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import FlightPlanDetailsModal from './FlightPlanDetailsModal.vue'
 import { parsePlan } from '@/services/flightPlanDetails'
 const api = vi.hoisted(() => ({ invoke: vi.fn() }))
+vi.mock('@/components/FlightPlanRouteMap.vue', () => ({
+  default: { template: '<div data-map-stub />' },
+}))
 vi.mock('@tauri-apps/api/core', () => api)
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 beforeEach(() => {

@@ -1,4 +1,6 @@
 const en = {
+  mapUnavailable:
+    'Online map unavailable. Showing the offline basemap; the route remains available.',
   details: 'Details',
   summary: 'Basic information',
   route: 'Route diagram',
@@ -42,6 +44,7 @@ const en = {
   average: 'Average leg',
 }
 const zh = {
+  mapUnavailable: '在线地图不可用，已显示离线底图，航路仍可查看。',
   details: '详细信息',
   summary: '基本信息',
   route: '航路示意图',
@@ -82,6 +85,7 @@ const zh = {
   average: '平均航段',
 }
 const de = {
+  mapUnavailable: 'Onlinekarte nicht verfügbar. Offlinekarte und Route bleiben sichtbar.',
   details: 'Details',
   summary: 'Basisinformationen',
   route: 'Routenskizze',
@@ -125,6 +129,7 @@ const de = {
   average: 'Durchschnitt',
 }
 const fr = {
+  mapUnavailable: 'Carte en ligne indisponible. Le fond hors ligne et la route restent visibles.',
   details: 'Détails',
   summary: 'Informations de base',
   route: 'Tracé de route',
@@ -168,6 +173,7 @@ const fr = {
   average: 'Moyenne',
 }
 const es = {
+  mapUnavailable: 'Mapa en línea no disponible. Se muestran el mapa sin conexión y la ruta.',
   details: 'Detalles',
   summary: 'Información básica',
   route: 'Esquema de ruta',
@@ -211,6 +217,7 @@ const es = {
   average: 'Promedio',
 }
 const pt = {
+  mapUnavailable: 'Mapa online indisponível. O mapa offline e a rota continuam visíveis.',
   details: 'Detalhes',
   summary: 'Informações básicas',
   route: 'Diagrama da rota',
@@ -254,6 +261,7 @@ const pt = {
   average: 'Média',
 }
 const ja = {
+  mapUnavailable: 'オンライン地図を利用できません。オフライン地図と航路を表示しています。',
   details: '詳細',
   summary: '基本情報',
   route: '航路図',
@@ -295,6 +303,7 @@ const ja = {
   average: '平均区間',
 }
 const ko = {
+  mapUnavailable: '온라인 지도를 사용할 수 없습니다. 오프라인 지도와 항로를 표시합니다.',
   details: '상세 정보',
   summary: '기본 정보',
   route: '항로도',
@@ -337,6 +346,7 @@ const ko = {
   average: '평균 구간',
 }
 const ru = {
+  mapUnavailable: 'Онлайн-карта недоступна. Отображаются офлайн-карта и маршрут.',
   details: 'Подробнее',
   summary: 'Основные сведения',
   route: 'Схема маршрута',
@@ -379,6 +389,7 @@ const ru = {
   average: 'Средняя длина',
 }
 const ar = {
+  mapUnavailable: 'الخريطة المتصلة غير متاحة. تُعرض الخريطة المحلية والمسار.',
   details: 'التفاصيل',
   summary: 'المعلومات الأساسية',
   route: 'مخطط المسار',
@@ -421,6 +432,7 @@ const ar = {
   average: 'متوسط المقاطع',
 }
 const hi = {
+  mapUnavailable: 'ऑनलाइन मानचित्र अनुपलब्ध है। ऑफलाइन मानचित्र और मार्ग दिख रहे हैं।',
   details: 'विवरण',
   summary: 'मूल जानकारी',
   route: 'मार्ग आरेख',

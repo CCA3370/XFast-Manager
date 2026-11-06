@@ -140,3 +140,18 @@ export function enrichPlan(plan: PlanDetails, lookup: NavLookup): PlanDetails {
 export async function readPlan(root: string, name: string) {
   return parsePlan(await invoke<string>('read_flight_plan', { xplanePath: root, name }))
 }
+
+/** Unwrap adjacent longitudes so dateline crossings follow the short route. */
+export function mapCoordinates(points: Waypoint[]): ([number, number] | null)[] {
+  let previous: number | null = null
+  return points.map((point) => {
+    if (point.lat === null || point.lon === null) return null
+    let lon = point.lon
+    if (previous !== null) {
+      while (lon - previous > 180) lon -= 360
+      while (lon - previous < -180) lon += 360
+    }
+    previous = lon
+    return [point.lat, lon]
+  })
+}

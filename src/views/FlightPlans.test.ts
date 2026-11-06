@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   stop: vi.fn(),
   listen: vi.fn(),
 }))
+vi.mock('@/components/FlightPlanRouteMap.vue', () => ({
+  default: { template: '<div data-map-stub />' },
+}))
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }))
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: mocks.open }))
 vi.mock('@tauri-apps/api/webviewWindow', () => ({

@@ -46,3 +46,14 @@ cargo test --locked --no-run
 8. 更换 X-Plane 路径、刷新列表后再次打开详情，确认没有沿用上次安装或旧文件的缓存。航点表应位于独立分页；高度连续不变的区间只在中间标注一次，图表所有文字禁止选中；底图应离线显示海陆和国界。检查中文/英文、明暗主题、较小窗口下的滚动与表格。
 
 格式依据：[X-Plane FMS 规范](https://developer.x-plane.com/article/flightplan-files-v11-fms-file-format/)、[X-Plane 导航数据层级](https://developer.x-plane.com/article/navdata-in-x-plane-11/)。此视图为文件检查工具，不执行完整飞行轨迹、程序航段或地形安全计算。
+
+
+## 在线地图与离线回退
+
+- 联网打开详情，确认城市、道路和水域等 OpenStreetMap 底图正常显示，航路叠加位置正确，底部署名可见。
+- 拖动、缩放、“适应航路”、调整窗口尺寸，再切换分页返回，地图应继续正常显示；缩放应有平滑动画与半级步进，瓦片渐显，起终点分别以绿色和琥珀色区分。半级缩放后断网再恢复，瓦片应正确重新加载；跨越日期变更线的航路不应绕地球一圈。
+- 切断网络或阻断 tile.openstreetmap.org 后移动到未缓存区域，确认显示离线底图及提示，航路、航点标签、高度剖面仍可查看。部分瓦片失败时，仅缺失区域露出离线底图。
+- 恢复网络，在线底图自动重试并覆盖离线底图；联网但瓦片服务器不可达时，地图继续使用离线底图。
+- 双击、三击地图标签或高度文字不应选中文字。文件内容仍应可选择复制。
+
+在线底图仅请求当前视野的地图瓦片，不发送计划文件正文。使用 Leaflet 1.9.4 和 OpenStreetMap 标准瓦片；离线回退沿用随软件提供的 Natural Earth 地理概览，在高倍缩放时细节较少。参考：[Leaflet](https://leafletjs.com/reference-1.9.4.html)、[OSM 瓦片使用政策](https://operations.osmfoundation.org/policies/tiles/)。

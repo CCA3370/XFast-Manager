@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
-import { parsePlan, distance, legs, enrichPlan } from './flightPlanDetails'
+import { parsePlan, distance, legs, enrichPlan, mapCoordinates } from './flightPlanDetails'
 const modern =
   'I\n1100 Version\nCYCLE 2611\nADEP KAAA\nADES KBBB\nSID TEST1\nNUMENR 3\n1 KAAA ADEP 100 0 179\n11 FIX DRCT 30000 0 -179\n1 KBBB ADES 200 1 -178\n'
 describe('FMS inspection', () => {
@@ -56,5 +56,14 @@ describe('FMS inspection', () => {
         warnings: [],
       }).points[1]?.lon,
     ).toBe(-179)
+  })
+})
+
+describe('map longitude wrapping', () => {
+  it('keeps dateline crossings short while preserving missing coordinate gaps', () => {
+    const p = parsePlan(
+      'I\n1100 Version\nNUMENR 4\n11 A DRCT 10000 0 179\n11 B DRCT 10000 1 -179\n11 C DRCT 10000 x y\n11 D DRCT 10000 2 -178',
+    )
+    expect(mapCoordinates(p.points)).toEqual([[0, 179], [1, 181], null, [2, 182]])
   })
 })
