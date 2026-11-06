@@ -241,6 +241,179 @@ fn normalized_content(text: &str) -> String {
         .to_owned()
 }
 
+/// Read only a regular, bounded plan inside this installation's managed folder.
+pub fn read(root: &str, name: &str) -> Result<String, String> {
+    if !valid_name(name) {
+        return Err("Invalid flight plan name".into());
+    }
+    let path = directory(root, false)?.join(name);
+    if !fs::symlink_metadata(&path)
+        .map_err(|e| e.to_string())?
+        .file_type()
+        .is_file()
+    {
+        return Err("Flight plan must be a regular file".into());
+    }
+    let mut bytes = Vec::new();
+    fs::File::open(path)
+        .map_err(|e| e.to_string())?
+        .take(MAX_PLAN_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() as u64 > MAX_PLAN_BYTES {
+        return Err("Flight plan exceeds 8 MB".into());
+    }
+    String::from_utf8(bytes).map_err(|_| "Flight plan must be UTF-8 text".into())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavPoint {
+    kind: u8,
+    id: String,
+    latitude: f64,
+    longitude: f64,
+    region: String,
+    terminal: String,
+    name: String,
+    source: String,
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavLookup {
+    points: Vec<NavPoint>,
+    sources: Vec<String>,
+    warnings: Vec<String>,
+}
+
+/// Targeted streaming lookup: never load the entire navigation database into memory.
+pub fn navigation(root: &str, identifiers: Vec<String>) -> Result<NavLookup, String> {
+    use std::collections::{HashMap, HashSet};
+    use std::io::{BufRead, BufReader};
+    let root = fs::canonicalize(root).map_err(|e| e.to_string())?;
+    if !root.join("Resources").is_dir() {
+        return Err("Select a valid X-Plane installation".into());
+    }
+    if identifiers.len() > 10000 {
+        return Err("Too many navigation identifiers".into());
+    }
+    let wanted: HashSet<_> = identifiers.into_iter().collect();
+    let mut output = NavLookup {
+        points: vec![],
+        sources: vec![],
+        warnings: vec![],
+    };
+    if root.join("Custom Data/earth_424.dat").exists() {
+        output.warnings.push("arincOverride".into());
+        return Ok(output);
+    }
+    let custom = root.join("Custom Data/earth_fix.dat").exists()
+        || root.join("Custom Data/earth_nav.dat").exists();
+    let base = if custom {
+        "Custom Data"
+    } else {
+        "Resources/default data"
+    };
+    let mut points = HashMap::new();
+    for (relative, fix) in [
+        (format!("{base}/earth_fix.dat"), true),
+        (format!("{base}/earth_nav.dat"), false),
+        ("Custom Data/user_fix.dat".into(), true),
+        ("Custom Data/user_nav.dat".into(), false),
+    ] {
+        let path = root.join(&relative);
+        if !path.exists() {
+            continue;
+        }
+        let result = (|| -> Result<(), String> {
+            let file = fs::File::open(&path).map_err(|e| e.to_string())?;
+            if file.metadata().map_err(|e| e.to_string())?.len() > 512 * 1024 * 1024 {
+                return Err("Navigation file too large".into());
+            }
+            let mut reader = BufReader::new(file);
+            let mut line = String::new();
+            loop {
+                line.clear();
+                let count = reader
+                    .by_ref()
+                    .take(16385)
+                    .read_line(&mut line)
+                    .map_err(|e| e.to_string())?;
+                if count == 0 {
+                    break;
+                }
+                if count > 16384 {
+                    return Err("Navigation line too long".into());
+                }
+                let c: Vec<_> = line.split_whitespace().collect();
+                let (kind, id, lat, lon, terminal, region, name) = if fix && c.len() >= 5 {
+                    (11, c[2], c[0], c[1], c[3], c[4], String::new())
+                } else if !fix && c.len() >= 10 && matches!(c[0], "2" | "3") {
+                    (
+                        c[0].parse().unwrap_or(0),
+                        c[7],
+                        c[1],
+                        c[2],
+                        c[8],
+                        c[9],
+                        c[10..].join(" "),
+                    )
+                } else {
+                    continue;
+                };
+                if !wanted.contains(id) {
+                    continue;
+                }
+                let (Ok(latitude), Ok(longitude)) = (lat.parse::<f64>(), lon.parse::<f64>()) else {
+                    continue;
+                };
+                if !latitude.is_finite()
+                    || !longitude.is_finite()
+                    || latitude.abs() > 90.0
+                    || longitude.abs() > 180.0
+                {
+                    continue;
+                }
+                if points.len() >= 100000 {
+                    return Err("Too many navigation matches".into());
+                }
+                points.insert(
+                    (
+                        kind,
+                        id.to_string(),
+                        region.to_string(),
+                        terminal.to_string(),
+                    ),
+                    NavPoint {
+                        kind,
+                        id: id.into(),
+                        latitude,
+                        longitude,
+                        region: region.into(),
+                        terminal: terminal.into(),
+                        name,
+                        source: relative.clone(),
+                    },
+                );
+            }
+            Ok(())
+        })();
+        if result.is_err() {
+            output.warnings.push(format!("unreadable: {relative}"));
+        } else {
+            output.sources.push(relative);
+        }
+    }
+    output.points = points.into_values().collect();
+    output
+        .points
+        .sort_by(|a, b| (&a.id, &a.region, &a.terminal).cmp(&(&b.id, &b.region, &b.terminal)));
+    if output.sources.is_empty() {
+        output.warnings.push("noNavdata".into());
+    }
+    Ok(output)
+}
+
 pub fn delete(root: &str, name: &str) -> Result<(), String> {
     if !valid_name(name) {
         return Err("Invalid flight plan name".into());
@@ -271,6 +444,62 @@ mod tests {
     fn run(root: &Path, plan: &Path, action: Option<ConflictAction>) -> ImportResult {
         import(root.to_str().unwrap(), plan.to_str().unwrap(), action).unwrap()
     }
+    #[test]
+    fn read_is_bounded_and_rejects_traversal_and_non_files() {
+        let (root, _source, plan) = fixture();
+        run(root.path(), &plan, None);
+        let root_path = root.path().to_str().unwrap();
+        assert_eq!(
+            read(root_path, "route.fms").unwrap(),
+            fs::read_to_string(plan).unwrap()
+        );
+        assert!(read(root_path, "../route.fms").is_err());
+        fs::create_dir(root.path().join("Output/FMS plans/folder.fms")).unwrap();
+        assert!(read(root_path, "folder.fms").is_err());
+        fs::write(
+            root.path().join("Output/FMS plans/large.fms"),
+            vec![b'x'; MAX_PLAN_BYTES as usize + 1],
+        )
+        .unwrap();
+        assert!(read(root_path, "large.fms").is_err());
+    }
+
+    #[test]
+    fn nav_lookup_selects_custom_layers_and_user_overrides_without_guessing_regions() {
+        let (root, _source, _) = fixture();
+        fs::create_dir_all(root.path().join("Resources/default data")).unwrap();
+        fs::create_dir_all(root.path().join("Custom Data")).unwrap();
+        fs::write(
+            root.path().join("Resources/default data/earth_fix.dat"),
+            "1 2 TEST ENRT K1 0",
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("Custom Data/earth_fix.dat"),
+            "3 4 TEST ENRT K1 0\n5 6 TEST ENRT K2 0\n7 8 OTHER ENRT K1 0",
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("Custom Data/user_fix.dat"),
+            "9 10 TEST ENRT K1 0",
+        )
+        .unwrap();
+        let output = navigation(root.path().to_str().unwrap(), vec!["TEST".into()]).unwrap();
+        assert_eq!(output.points.len(), 2);
+        assert!(output
+            .points
+            .iter()
+            .any(|p| p.latitude == 9.0 && p.region == "K1"));
+        assert!(output
+            .points
+            .iter()
+            .any(|p| p.latitude == 5.0 && p.region == "K2"));
+        fs::write(root.path().join("Custom Data/earth_424.dat"), "override").unwrap();
+        let output = navigation(root.path().to_str().unwrap(), vec!["TEST".into()]).unwrap();
+        assert!(output.points.is_empty());
+        assert_eq!(output.warnings, vec!["arincOverride"]);
+    }
+
     #[test]
     fn identical_content_is_skipped_even_under_another_name_or_line_endings() {
         let (root, _source, plan) = fixture();

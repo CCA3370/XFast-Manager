@@ -3237,6 +3237,23 @@ async fn import_flight_plan(
 }
 
 #[tauri::command]
+async fn read_flight_plan(xplane_path: String, name: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || flight_plans::read(&xplane_path, &name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn lookup_flight_plan_navigation(
+    xplane_path: String,
+    identifiers: Vec<String>,
+) -> Result<flight_plans::NavLookup, String> {
+    tokio::task::spawn_blocking(move || flight_plans::navigation(&xplane_path, identifiers))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn delete_flight_plan(xplane_path: String, name: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || flight_plans::delete(&xplane_path, &name))
         .await
@@ -4161,6 +4178,8 @@ pub fn run() {
             toggle_lua_script,
             delete_lua_script,
             list_flight_plans,
+            read_flight_plan,
+            lookup_flight_plan_navigation,
             import_flight_plan,
             delete_flight_plan,
             list_screenshot_media,
