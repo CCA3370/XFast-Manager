@@ -35,7 +35,75 @@ const finite = (value: string | undefined) => {
   const n = Number(value)
   return Number.isFinite(n) ? n : null
 }
+function parseSimBrief(raw: string): PlanDetails {
+  const result: PlanDetails = { raw, version: 0, fields: {}, points: [], issues: [] }
+  if (/<!DOCTYPE|<!ENTITY/i.test(raw)) {
+    result.issues.push('format')
+    return result
+  }
+  const doc = new DOMParser().parseFromString(raw, 'application/xml')
+  if (
+    doc.getElementsByTagName('parsererror').length > 0 ||
+    doc.documentElement?.tagName !== 'OFP'
+  ) {
+    result.issues.push('format')
+    return result
+  }
+  const child = (parent: Element | null, key: string) =>
+    Array.from(parent?.children ?? []).find((e) => e.localName === key) ?? null
+  const value = (parent: Element | null, key: string) =>
+    child(parent, key)?.textContent?.trim() ?? ''
+  const root = doc.documentElement
+  const origin = child(root, 'origin'),
+    destination = child(root, 'destination')
+  for (const [key, text] of Object.entries({
+    ADEP: value(origin, 'icao_code'),
+    ADES: value(destination, 'icao_code'),
+    DEPRWY: value(origin, 'plan_rwy'),
+    DESRWY: value(destination, 'plan_rwy'),
+    CYCLE: value(child(root, 'params'), 'airac'),
+  }))
+    if (text) result.fields[key] = text
+  const point = (element: Element, endpoint = false): Waypoint => {
+    let lat = finite(value(element, 'pos_lat')),
+      lon = finite(value(element, 'pos_long'))
+    if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+      lat = lon = null
+      result.issues.push(`coordinates:${result.points.length + 1}`)
+    }
+    const type = value(element, 'type')
+    return {
+      id: value(element, endpoint ? 'icao_code' : 'ident') || '?',
+      kind: endpoint || type === 'apt' ? 1 : type === 'vor' ? 3 : type === 'ndb' ? 2 : 11,
+      via: endpoint ? 'DRCT' : value(element, 'via_airway') || 'DRCT',
+      altitude: finite(value(element, endpoint ? 'elevation' : 'altitude_feet')) || null,
+      lat,
+      lon,
+      name: value(element, 'name'),
+    }
+  }
+  for (const fix of Array.from(child(root, 'navlog')?.children ?? []).filter(
+    (e) => e.localName === 'fix',
+  )) {
+    if (result.points.length >= 10000) {
+      result.issues.push('limit')
+      break
+    }
+    result.points.push(point(fix))
+  }
+  if (!result.points.length) {
+    result.issues.push('empty')
+    return result
+  }
+  // OFP navlogs can begin after takeoff and end before the destination.
+  if (origin && result.points[0]?.id !== result.fields.ADEP)
+    result.points.unshift(point(origin, true))
+  if (destination && result.points.at(-1)?.id !== result.fields.ADES)
+    result.points.push(point(destination, true))
+  return result
+}
 export function parsePlan(raw: string): PlanDetails {
+  if (raw.trimStart().startsWith('<')) return parseSimBrief(raw)
   const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/)
   const version = Number(lines[1]?.trim().split(/\s+/)[0])
   const result: PlanDetails = { raw, version, fields: {}, points: [], issues: [] }

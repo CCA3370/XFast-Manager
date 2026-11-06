@@ -75,7 +75,52 @@ fn valid_name(name: &str) -> bool {
         && path.components().count() == 1
         && path
             .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("fms"))
+            .is_some_and(|e| e.eq_ignore_ascii_case("fms") || e.eq_ignore_ascii_case("xml"))
+}
+
+fn valid_ofp(content: &str) -> bool {
+    use quick_xml::events::Event;
+    let mut reader = quick_xml::Reader::from_str(content);
+    let mut depth = 0usize;
+    let mut roots = 0;
+    let mut navlog = false;
+    let mut fix = false;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                if depth == 0 {
+                    roots += 1;
+                    if e.name().as_ref() != b"OFP" {
+                        return false;
+                    }
+                }
+                if depth == 1 && e.name().as_ref() == b"navlog" {
+                    navlog = true;
+                }
+                if depth == 2 && navlog && e.name().as_ref() == b"fix" {
+                    fix = true;
+                }
+                depth += 1;
+                if depth > 128 {
+                    return false;
+                }
+            }
+            Ok(Event::Empty(_)) if depth == 0 => return false,
+            Ok(Event::End(e)) => {
+                if depth == 0 {
+                    return false;
+                }
+                depth -= 1;
+                if e.name().as_ref() == b"navlog" {
+                    navlog = false;
+                }
+            }
+            Ok(Event::DocType(_)) | Err(_) => return false,
+            Ok(Event::Eof) => break,
+            _ => {}
+        }
+    }
+    roots == 1 && depth == 0 && fix
 }
 
 pub fn list(root: &str) -> Result<Vec<FlightPlan>, String> {
@@ -115,7 +160,7 @@ pub fn import(
         .and_then(|n| n.to_str())
         .ok_or("Invalid file name")?;
     if !valid_name(name) {
-        return Err("Choose an .fms flight plan file".into());
+        return Err("Choose an .fms or SimBrief .xml flight plan file".into());
     }
     let file = fs::File::open(source).map_err(|e| e.to_string())?;
     if !file.metadata().map_err(|e| e.to_string())?.is_file() {
@@ -129,13 +174,25 @@ pub fn import(
         return Err("Flight plan exceeds 8 MB".into());
     }
     let content = std::str::from_utf8(&bytes).map_err(|_| "Flight plan must be text")?;
-    let mut lines = content.trim_start_matches('\u{feff}').lines();
-    if !matches!(lines.next().map(str::trim), Some("I" | "A"))
-        || !lines.next().is_some_and(|line| {
-            matches!(line.trim(), "3 version" | "1100 Version" | "1100 version")
-        })
-    {
-        return Err("Invalid or unsupported X-Plane FMS flight plan".into());
+    let is_xml = source
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("xml"));
+    if is_xml {
+        if !valid_ofp(content) {
+            return Err("Choose a valid SimBrief OFP XML flight plan".into());
+        }
+    } else {
+        let mut lines = content.trim_start_matches('\u{feff}').lines();
+        if !matches!(lines.next().map(str::trim), Some("I" | "A"))
+            || !lines.next().is_some_and(|line| {
+                let fields: Vec<_> = line.split_whitespace().collect();
+                fields.len() == 2
+                    && matches!(fields[0], "3" | "1100")
+                    && fields[1].eq_ignore_ascii_case("version")
+            })
+        {
+            return Err("Invalid or unsupported X-Plane FMS flight plan".into());
+        }
     }
     // Serialize check-and-publish so concurrent imports cannot create duplicates.
     let _guard = IMPORT_LOCK.lock().map_err(|error| error.to_string())?;
@@ -202,7 +259,10 @@ pub fn import(
         let candidate = if index == 0 {
             name.to_owned()
         } else {
-            format!("{stem}.{index}.fms")
+            format!(
+                "{stem}.{index}.{}",
+                source.extension().and_then(|e| e.to_str()).unwrap_or("fms")
+            )
         };
         match temp.persist_noclobber(dir.join(&candidate)) {
             Ok(_) => {
@@ -498,6 +558,44 @@ mod tests {
         let output = navigation(root.path().to_str().unwrap(), vec!["TEST".into()]).unwrap();
         assert!(output.points.is_empty());
         assert_eq!(output.warnings, vec!["arincOverride"]);
+    }
+
+    #[test]
+    fn xml_plans_are_listed_imported_and_renamed_with_their_original_extension() {
+        let (root, source, _) = fixture();
+        let plan = source.path().join("b738x.xml");
+        let content =
+            "<?xml version=\"1.0\"?><OFP><navlog><fix><ident>ABC</ident></fix></navlog></OFP>";
+        fs::write(&plan, content).unwrap();
+        assert!(matches!(
+            run(root.path(), &plan, None),
+            ImportResult::Imported { .. }
+        ));
+        assert_eq!(
+            list(root.path().to_str().unwrap()).unwrap()[0].name,
+            "b738x.xml"
+        );
+        assert!(matches!(
+            run(root.path(), &plan, None),
+            ImportResult::Duplicate { .. }
+        ));
+        fs::write(&plan, content.replace("ABC", "DEF")).unwrap();
+        assert!(matches!(
+            run(root.path(), &plan, None),
+            ImportResult::Conflict { .. }
+        ));
+        assert!(
+            matches!(run(root.path(), &plan, Some(ConflictAction::Rename)), ImportResult::Imported { name, .. } if name == "b738x.1.xml")
+        );
+        assert!(read(root.path().to_str().unwrap(), "b738x.1.xml")
+            .unwrap()
+            .contains("DEF"));
+        fs::write(&plan, "<settings/>").unwrap();
+        assert!(import(root.path().to_str().unwrap(), plan.to_str().unwrap(), None).is_err());
+        assert!(!valid_ofp("<OFP><navlog><fix></navlog></OFP>"));
+        assert!(!valid_ofp(
+            "<!DOCTYPE OFP SYSTEM \"file:///private\"><OFP><navlog><fix/></navlog></OFP>"
+        ));
     }
 
     #[test]

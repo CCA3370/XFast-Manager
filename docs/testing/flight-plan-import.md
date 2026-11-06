@@ -57,3 +57,14 @@ cargo test --locked --no-run
 - 双击、三击地图标签或高度文字不应选中文字。文件内容仍应可选择复制。
 
 在线底图仅请求当前视野的地图瓦片，不发送计划文件正文。使用 Leaflet 1.9.4 和 OpenStreetMap 标准瓦片；离线回退沿用随软件提供的 Natural Earth 地理概览，在高倍缩放时细节较少。参考：[Leaflet](https://leafletjs.com/reference-1.9.4.html)、[OSM 瓦片使用政策](https://operations.osmfoundation.org/policies/tiles/)。
+
+
+## 实际计划格式核查
+
+```powershell
+node scripts/verify-flight-plan-directory.mjs "F:\SteamLibrary\steamapps\common\X-Plane 12\Output\FMS plans"
+```
+
+该命令只读检查目录内 FMS 和 SimBrief OFP XML，汇总航点与解析问题，并比较读取前后的文件哈希。此次目录包含 176 个当前版 FMS 和 1 个 SimBrief OFP XML，共 5,146 个航点，全部解析成功。
+
+XML 计划应能列出、展开、查看图表及原文，也能从首页导入。分别测试重复跳过、同名冲突取消、替换及重命名；重命名必须保留 `.xml` 扩展名。普通配置 XML 和格式错误的 XML 应拒绝导入。

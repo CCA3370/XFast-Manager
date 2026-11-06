@@ -590,7 +590,7 @@ async function handleDropZoneClick() {
       filters: [
         {
           name: 'Addon Files',
-          extensions: ['zip', '7z', 'rar', 'lua', 'fms'],
+          extensions: ['zip', '7z', 'rar', 'lua', 'fms', 'xml'],
         },
         {
           name: 'All Files',
@@ -770,7 +770,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
   logDebug(`Starting analysis with X-Plane path: ${store.xplanePath}`, 'analysis')
 
   try {
-    const flightPlans = paths.filter((path) => /\.fms$/i.test(path))
+    const flightPlans = paths.filter((path) => /\.(fms|xml)$/i.test(path))
     const planRoot = store.xplanePath
     let importedPlans = 0
     for (const source of flightPlans) {
@@ -795,7 +795,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
       }
     }
     if (importedPlans) toast.success(t('flightPlans.imported', { count: importedPlans }))
-    paths = paths.filter((path) => !/\.fms$/i.test(path))
+    paths = paths.filter((path) => !/\.(fms|xml)$/i.test(path))
     if (paths.length === 0) return
 
     logDebug(`Paths to analyze: ${paths.join(', ')}`, 'analysis')

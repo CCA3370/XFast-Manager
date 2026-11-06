@@ -16,6 +16,7 @@ edition = "2021"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+quick-xml = "0.38.4"
 tempfile = "3"
 `)
 await fs.writeFile(path.join(harness, 'src', 'lib.rs'), `#![allow(dead_code)]
