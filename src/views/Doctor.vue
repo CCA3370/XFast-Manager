@@ -657,13 +657,11 @@
                 <h2 class="text-xs font-semibold text-gray-700 dark:text-gray-200">
                   {{ t('doctor.center.system.title') }}
                 </h2>
-                <dl class="mt-2 grid gap-y-1.5 text-xs">
-                  <div
-                    v-for="item in systemItems"
-                    :key="item.label"
-                    class="grid grid-cols-[88px_minmax(0,1fr)] gap-2"
-                  >
-                    <dt class="text-gray-400">{{ item.label }}</dt>
+                <dl
+                  class="mt-2 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs"
+                >
+                  <div v-for="item in systemItems" :key="item.label" class="contents">
+                    <dt class="whitespace-nowrap text-gray-400">{{ item.label }}</dt>
                     <dd
                       class="min-w-0 truncate text-right text-gray-700 dark:text-gray-200"
                       :title="item.value"
