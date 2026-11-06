@@ -1,8 +1,10 @@
+import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  healthDetails: healthDetailMessages.ko,
   flightPlanDetails: flightPlanDetailMessages.ko,
   flightPlans: {
     conflictTitle: '같은 이름의 비행 계획이 있습니다',

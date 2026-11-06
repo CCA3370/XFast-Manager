@@ -1,8 +1,10 @@
+import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  healthDetails: healthDetailMessages.fr,
   flightPlanDetails: flightPlanDetailMessages.fr,
   flightPlans: {
     conflictTitle: 'Le plan de vol existe déjà',

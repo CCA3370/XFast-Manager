@@ -1,7 +1,9 @@
+import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  healthDetails: healthDetailMessages.en,
   flightPlanDetails: flightPlanDetailMessages.en,
   flightPlans: {
     conflictTitle: 'Flight plan already exists',

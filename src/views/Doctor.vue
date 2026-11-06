@@ -577,7 +577,7 @@
                   class="grid grid-cols-[minmax(90px,auto)_minmax(0,1fr)] gap-x-3 gap-y-1.5 border-t border-gray-100 pt-3 text-xs dark:border-gray-800"
                 >
                   <template v-for="(value, key) in selectedParams" :key="key">
-                    <dt class="text-gray-400">{{ formatParamKey(String(key)) }}</dt>
+                    <dt class="text-gray-500 dark:text-gray-400">{{ key }}</dt>
                     <dd
                       class="min-w-0 break-words text-right font-mono text-gray-700 dark:text-gray-200"
                     >
@@ -942,9 +942,21 @@ const selectedCheck = computed(() => {
 })
 const selectedParams = computed(() =>
   Object.fromEntries(
-    Object.entries(selectedCheck.value?.params ?? {}).filter(
-      ([key]) => !['sessionEnd', 'steam'].includes(key),
-    ),
+    Object.entries(selectedCheck.value?.params ?? {})
+      .filter(([key]) => key !== 'sessionEnd' && te(`healthDetails.fields.${key}`))
+      .map(([key, value]) => {
+        let text =
+          typeof value === 'number'
+            ? new Intl.NumberFormat(locale.value).format(value)
+            : String(value)
+        if (['capped', 'steam'].includes(key))
+          text = t(Number(value) ? 'healthDetails.yes' : 'healthDetails.no')
+        if (key === 'cause')
+          text = te(`logAnalysis.crashAnalysis.causes.${value}.name`)
+            ? t(`logAnalysis.crashAnalysis.causes.${value}.name`)
+            : t('common.unknown')
+        return [t(`healthDetails.fields.${key}`), text]
+      }),
   ),
 )
 const runtimeCompleted = computed(
@@ -1055,7 +1067,8 @@ function sectionIcon(section: DoctorSection): string {
 }
 
 function checkLabel(check: DoctorCheckResult): string {
-  if (DOCTOR_FINDINGS[check.id]) return describeDoctorCheck(check, locale.value).title
+  if (DOCTOR_FINDINGS[check.id])
+    return t(`healthDetails.findings.${check.id.replaceAll('.', '_')}.title`)
   const key = CHECK_NAME_KEYS[check.id]
   if (key) return t(`doctor.center.checks.${key}`, check.params ?? {})
   if (check.id.startsWith('log.')) {
@@ -1064,11 +1077,9 @@ function checkLabel(check: DoctorCheckResult): string {
     if (te(logKey)) return t(logKey, check.params ?? {})
   }
   if (check.id.startsWith('diagnostic.')) {
-    return t('doctor.center.checks.diagnosticProbe', {
-      probe: check.id.slice('diagnostic.'.length),
-    })
+    return sectionLabel(check.section)
   }
-  return t('doctor.center.checks.generic', { id: check.id })
+  return sectionLabel(check.section)
 }
 
 function legacyTextRoot(check: DoctorCheckResult): string | null {
@@ -1080,23 +1091,39 @@ function legacyTextRoot(check: DoctorCheckResult): string | null {
 }
 
 function checkDescription(check: DoctorCheckResult): string {
+  if (check.id === 'stability.last_session') {
+    const state = String(check.params?.sessionEnd ?? 'unknown')
+    return t(
+      `healthDetails.sessions.${['crash', 'normal', 'unknown', 'running'].includes(state) ? state : 'unknown'}`,
+    )
+  }
+  if (['unavailable', 'cancelled', 'notApplicable'].includes(check.outcome))
+    return t(`doctor.center.checkDescriptions.${check.outcome}`)
+  if (check.id === 'navdata.cycles') {
+    const p = check.params ?? {}
+    const state =
+      Number(p.expired) > 0
+        ? 'expired'
+        : Number(p.expiring) > 0
+          ? 'expiring'
+          : !('unknown' in p) || Number(p.unknown) > 0
+            ? 'unknown'
+            : 'current'
+    return t(`healthDetails.nav.${state}`)
+  }
   if (
-    Boolean(DOCTOR_FINDINGS[check.id]) ||
-    locale.value === 'en' ||
-    locale.value === 'zh' ||
-    ['stability.last_session', 'updates.gateway', 'system.injectors'].includes(check.id)
-  ) {
+    ['stability.last_session', 'updates.gateway', 'system.injectors'].includes(check.id) &&
+    ['en', 'zh'].includes(locale.value)
+  )
     return describeDoctorCheck(check, locale.value).description
-  }
+  if (DOCTOR_FINDINGS[check.id] && check.outcome !== 'pass')
+    return t(`healthDetails.findings.${check.id.replaceAll('.', '_')}.description`)
   const root = legacyTextRoot(check)
-  if (
-    root &&
-    ['info', 'warning', 'critical'].includes(check.outcome) &&
-    te(`${root}.description`)
-  ) {
+  if (check.outcome !== 'pass' && root && te(`${root}.description`))
     return t(`${root}.description`, check.params ?? {})
-  }
-  return t(`doctor.center.checkDescriptions.${check.outcome}`)
+  const purpose = `healthDetails.purposes.${check.id.replaceAll('.', '_')}`
+  if (te(purpose)) return t(purpose)
+  return t(`healthDetails.scope.${check.section}`)
 }
 
 function checkSuggestion(check: DoctorCheckResult): string {
@@ -1136,30 +1163,6 @@ function formatBytes(bytes: number | null): string {
 function formatDisk(free: number | null, total: number | null): string {
   if (free === null || total === null) return t('common.unknown')
   return `${formatBytes(free)} / ${formatBytes(total)}`
-}
-
-function formatParamKey(key: string): string {
-  const labels: Record<string, [string, string]> = {
-    count: ['Count', '数量'],
-    installed: ['Installed', '已安装'],
-    checked: ['Checked', '已检查'],
-    free: ['Available', '可用'],
-    total: ['Total', '总计'],
-    available: ['Available', '可用'],
-    line: ['Log line', '日志行号'],
-    days: ['Age (days)', '距今天数'],
-    errors: ['Read errors', '读取错误'],
-    indexed: ['Indexed', '已索引'],
-    found: ['On disk', '磁盘条目'],
-    files: ['Files', '文件数'],
-    size: ['Size', '大小'],
-    platform: ['Platform', '平台'],
-    sessionEnd: ['Session ending', '会话结尾'],
-  }
-  return (
-    labels[key]?.[locale.value === 'zh' ? 1 : 0] ??
-    key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ')
-  )
 }
 
 function severityDotClass(severity: string, completeness: string): string {
@@ -1328,3 +1331,29 @@ const modeBadgeClass = computed(() =>
     : 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200',
 )
 </script>
+
+<style scoped>
+.doctor-view {
+  font-size: 1rem;
+}
+.doctor-view :deep(.text-xs) {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+.doctor-view :deep(.text-sm) {
+  font-size: 1rem;
+  line-height: 1.5rem;
+}
+.doctor-view :deep(.text-base) {
+  font-size: 1.125rem;
+  line-height: 1.65rem;
+}
+.doctor-view :deep(.text-xl) {
+  font-size: 1.5rem;
+  line-height: 2rem;
+}
+.doctor-view :deep(.h-3.w-3) {
+  height: 0.875rem;
+  width: 0.875rem;
+}
+</style>

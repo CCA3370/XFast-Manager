@@ -146,6 +146,57 @@ describe('Health page', () => {
     i18n.global.locale.value = 'en'
   })
 
+  it('localizes AIRAC conclusions and statistics without exposing internal parameter keys', async () => {
+    const { wrapper, doctorStore } = await mountDoctor('/xplane')
+    doctorStore.currentRun = runFixture('completed', [
+      {
+        id: 'navdata.cycles',
+        section: 'navdata',
+        outcome: 'warning',
+        params: { expired: 4, expiring: 0, unknown: 0, internalOnly: 99 },
+        durationMs: 1,
+      },
+    ])
+    await nextTick()
+    const panel = () => wrapper.get('[data-testid="health-detail-panel"]')
+    expect(panel().text()).toContain('Some installed navigation packages have expired')
+    expect(
+      panel()
+        .findAll('dt')
+        .map((e) => e.text()),
+    ).toEqual(['Expired data packages', 'Expiring data packages', 'Validity unknown'])
+    i18n.global.locale.value = 'zh'
+    await nextTick()
+    expect(panel().text()).toContain('部分已安装导航数据包已过期')
+    expect(panel().text()).toContain('已过期数据包')
+    expect(panel().text()).not.toContain('internalOnly')
+    expect(panel().find('[data-testid="health-evidence"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('never turns an unknown session ending into a crash when changing languages', async () => {
+    const { wrapper, doctorStore } = await mountDoctor('/xplane')
+    doctorStore.currentRun = runFixture('completed', [
+      {
+        id: 'stability.last_session',
+        section: 'stability',
+        outcome: 'info',
+        params: { sessionEnd: 'unknown' },
+        durationMs: 1,
+      },
+    ])
+    for (const [locale, text] of [
+      ['en', 'cannot be determined'],
+      ['zh', '无法据此判断'],
+      ['fr', 'indéterminée'],
+    ] as const) {
+      i18n.global.locale.value = locale
+      await nextTick()
+      expect(wrapper.get('[data-testid="health-detail-panel"]').text()).toContain(text)
+    }
+    wrapper.unmount()
+  })
+
   it('searches diagnostic evidence and does not render a generic guidance button', async () => {
     const { wrapper, doctorStore } = await mountDoctor('/xplane')
     doctorStore.currentRun = runFixture('completed', [
