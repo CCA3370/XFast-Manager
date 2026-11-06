@@ -3,6 +3,18 @@ import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
   flightPlans: {
+    conflictTitle: 'План полёта уже существует',
+    conflictDescription:
+      'План с таким именем имеет другое содержимое. Замените его или переименуйте новый файл, чтобы сохранить оба.',
+    rememberChoice: 'Больше не спрашивать (запомнить выбор)',
+    replace: 'Заменить',
+    rename: 'Переименовать',
+    conflictPreference: 'Совпадение имён планов полёта',
+    askEveryTime: 'Спрашивать каждый раз',
+    duplicateSkipped: 'Такое содержимое уже есть; пропущено: {name}',
+    renamed: '{source} сохранён как {name}.',
+    replaced: 'План полёта заменён: {name}',
+    preferenceNotSaved: 'Не удалось сохранить настройку. Вопрос будет задан снова.',
     title: 'Планы полёта',
     description: 'Управление планами полёта в Output/FMS plans.',
     selectPath: 'Выберите папку X-Plane в настройках.',

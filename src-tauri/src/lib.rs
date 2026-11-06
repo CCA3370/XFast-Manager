@@ -3224,10 +3224,16 @@ async fn list_flight_plans(xplane_path: String) -> Result<Vec<flight_plans::Flig
 }
 
 #[tauri::command]
-async fn import_flight_plan(xplane_path: String, source: String) -> Result<String, String> {
-    tokio::task::spawn_blocking(move || flight_plans::import(&xplane_path, &source))
-        .await
-        .map_err(|e| e.to_string())?
+async fn import_flight_plan(
+    xplane_path: String,
+    source: String,
+    conflict_action: Option<flight_plans::ConflictAction>,
+) -> Result<flight_plans::ImportResult, String> {
+    tokio::task::spawn_blocking(move || {
+        flight_plans::import(&xplane_path, &source, conflict_action)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

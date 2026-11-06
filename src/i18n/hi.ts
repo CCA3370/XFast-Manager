@@ -3,6 +3,18 @@ import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
   flightPlans: {
+    conflictTitle: 'उड़ान योजना पहले से मौजूद है',
+    conflictDescription:
+      'इसी नाम की योजना की सामग्री अलग है। उसे बदलें या दोनों रखने के लिए नई योजना का नाम बदलें।',
+    rememberChoice: 'दोबारा न पूछें (यह विकल्प याद रखें)',
+    replace: 'बदलें',
+    rename: 'नाम बदलें',
+    conflictPreference: 'उड़ान योजना के समान नाम',
+    askEveryTime: 'हर बार पूछें',
+    duplicateSkipped: 'समान सामग्री मौजूद है; छोड़ा गया: {name}',
+    renamed: '{source} को {name} के रूप में सहेजा गया।',
+    replaced: 'उड़ान योजना बदली गई: {name}',
+    preferenceNotSaved: 'पसंद सहेजी नहीं जा सकी। अगली बार फिर पूछा जाएगा।',
     title: 'उड़ान योजनाएँ',
     description: 'Output/FMS plans में उड़ान योजनाएँ प्रबंधित करें।',
     selectPath: 'पहले सेटिंग में X-Plane फ़ोल्डर चुनें।',

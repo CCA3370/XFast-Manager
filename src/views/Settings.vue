@@ -1434,6 +1434,7 @@
           <!-- Collapsible content -->
           <transition name="collapse">
             <div v-if="preferencesExpanded" class="px-4 pb-4 space-y-3">
+              <FlightPlanImportPreference />
               <!-- Master Toggle -->
               <div
                 class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-white/5"
@@ -2291,6 +2292,7 @@ import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import AnimatedText from '@/components/AnimatedText.vue'
+import FlightPlanImportPreference from '@/components/FlightPlanImportPreference.vue'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import { AddonType, getErrorMessage } from '@/types'
 import { logger, logError, logDebug } from '@/services/logger'

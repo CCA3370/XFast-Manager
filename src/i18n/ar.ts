@@ -3,6 +3,18 @@ import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
   flightPlans: {
+    conflictTitle: 'خطة الرحلة موجودة بالفعل',
+    conflictDescription:
+      'توجد خطة بالاسم نفسه وبمحتوى مختلف. استبدلها أو غيّر اسم الخطة الجديدة للاحتفاظ بالاثنتين.',
+    rememberChoice: 'عدم السؤال مجددًا (تذكر هذا الاختيار)',
+    replace: 'استبدال',
+    rename: 'إعادة تسمية',
+    conflictPreference: 'تعارض أسماء خطط الرحلات',
+    askEveryTime: 'السؤال في كل مرة',
+    duplicateSkipped: 'المحتوى نفسه موجود؛ تم التخطي: {name}',
+    renamed: 'تم حفظ {source} باسم {name}.',
+    replaced: 'تم استبدال خطة الرحلة: {name}',
+    preferenceNotSaved: 'تعذر حفظ التفضيل. سيتم السؤال مجددًا.',
     title: 'خطط الطيران',
     description: 'إدارة خطط الطيران في Output/FMS plans.',
     selectPath: 'حدد مجلد X-Plane في الإعدادات أولاً.',

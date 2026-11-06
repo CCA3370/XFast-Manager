@@ -3,6 +3,18 @@ import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
   flightPlans: {
+    conflictTitle: 'Le plan de vol existe déjà',
+    conflictDescription:
+      'Un plan de ce nom existe avec un contenu différent. Remplacez-le ou renommez le nouveau pour conserver les deux.',
+    rememberChoice: 'Ne plus demander (mémoriser ce choix)',
+    replace: 'Remplacer',
+    rename: 'Renommer',
+    conflictPreference: 'Conflits de noms des plans de vol',
+    askEveryTime: 'Toujours demander',
+    duplicateSkipped: 'Contenu identique existant ; ignoré : {name}',
+    renamed: '{source} enregistré sous {name}.',
+    replaced: 'Plan de vol remplacé : {name}',
+    preferenceNotSaved: 'Impossible de mémoriser ce choix. La question sera posée à nouveau.',
     title: 'Plans de vol',
     description: 'Gérez les plans de vol dans Output/FMS plans.',
     selectPath: 'Sélectionnez le dossier X-Plane dans les paramètres.',

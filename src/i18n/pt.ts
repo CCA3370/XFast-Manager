@@ -3,6 +3,18 @@ import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
   flightPlans: {
+    conflictTitle: 'O plano de voo já existe',
+    conflictDescription:
+      'Existe um plano com o mesmo nome e conteúdo diferente. Substitua-o ou renomeie o novo para manter ambos.',
+    rememberChoice: 'Não perguntar novamente (lembrar escolha)',
+    replace: 'Substituir',
+    rename: 'Renomear',
+    conflictPreference: 'Conflitos de nomes dos planos de voo',
+    askEveryTime: 'Perguntar sempre',
+    duplicateSkipped: 'Conteúdo idêntico existente; ignorado: {name}',
+    renamed: '{source} salvo como {name}.',
+    replaced: 'Plano de voo substituído: {name}',
+    preferenceNotSaved: 'Não foi possível salvar a preferência. A pergunta será exibida novamente.',
     title: 'Planos de voo',
     description: 'Gerencie planos de voo em Output/FMS plans.',
     selectPath: 'Selecione a pasta do X-Plane nas configurações.',

@@ -400,6 +400,7 @@
         </div>
       </transition>
     </div>
+    <FlightPlanConflictModal :conflict="flightPlanConflict" @resolve="resolveFlightPlanConflict" />
   </div>
 </template>
 
@@ -420,6 +421,8 @@ import { listen } from '@tauri-apps/api/event'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import ConfirmationModal from '@/components/ConfirmationModal.vue'
+import FlightPlanConflictModal from '@/components/FlightPlanConflictModal.vue'
+import { useFlightPlanImport } from '@/composables/useFlightPlanImport'
 import PasswordModal from '@/components/PasswordModal.vue'
 import PatchInstallModal from '@/components/PatchInstallModal.vue'
 import AnimatedText from '@/components/AnimatedText.vue'
@@ -444,6 +447,11 @@ const lockStore = useLockStore()
 const patchStore = usePatchStore()
 const isDragging = ref(false)
 const showConfirmation = ref(false)
+const {
+  conflict: flightPlanConflict,
+  importPlan,
+  resolveConflict: resolveFlightPlanConflict,
+} = useFlightPlanImport()
 const showLaunchConfirmDialog = ref(false)
 const isLaunchingXPlane = ref(false)
 const isXPlaneRunning = ref(false)
@@ -451,8 +459,8 @@ let xplaneCheckInterval: number | null = null
 const debugDropFlash = ref(false)
 
 // Sync confirmation modal state with store for exit confirmation
-watch(showConfirmation, (value) => {
-  store.setConfirmationOpen(value)
+watch([showConfirmation, flightPlanConflict], ([show, conflict]) => {
+  store.setConfirmationOpen(show || conflict !== null)
 })
 
 // Password modal state
@@ -616,9 +624,9 @@ onMounted(async () => {
     unlistenDragDrop = await webview.onDragDropEvent(async (event) => {
       logDebug(`Tauri drag-drop event: ${event.payload.type}`, 'drag-drop')
 
-      // Ignore all drag-drop events when installing
-      if (store.isInstalling) {
-        logDebug('Ignoring drag-drop event (installing)', 'drag-drop')
+      // Do not start another drop while an import or conflict decision is pending.
+      if (store.isInstalling || store.isAnalyzing) {
+        logDebug('Ignoring drag-drop event (busy)', 'drag-drop')
         return
       }
 
@@ -713,6 +721,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  store.setConfirmationOpen(false)
   window.removeEventListener('dragover', onWindowDragOver)
   window.removeEventListener('dragleave', onWindowDragLeave)
   window.removeEventListener('drop', onWindowDrop)
@@ -766,8 +775,21 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
     let importedPlans = 0
     for (const source of flightPlans) {
       try {
-        await invoke('import_flight_plan', { xplanePath: planRoot, source })
-        importedPlans++
+        const result = await importPlan(planRoot, source)
+        if (result.status === 'imported') {
+          importedPlans++
+          if (result.renamed)
+            toast.info(
+              t('flightPlans.renamed', {
+                source: source.split(/[\\/]/).pop() ?? source,
+                name: result.name,
+              }),
+            )
+          else if (result.replaced) toast.success(t('flightPlans.replaced', { name: result.name }))
+        } else if (result.status === 'duplicate') {
+          toast.info(t('flightPlans.duplicateSkipped', { name: result.name }))
+        }
+        if (result.preferenceSaveFailed) toast.warning(t('flightPlans.preferenceNotSaved'))
       } catch (error) {
         modal.showError(error, '', { hideReport: true })
       }

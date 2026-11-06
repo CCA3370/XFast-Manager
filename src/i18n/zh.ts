@@ -3,6 +3,18 @@ import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
   flightPlans: {
+    conflictTitle: '飞行计划文件名冲突',
+    conflictDescription:
+      '已有同名飞行计划，但内容不同。请选择替换原文件，或为新文件重命名并保留两份。',
+    rememberChoice: '下次不再提醒（记住本次选择）',
+    replace: '替换',
+    rename: '重命名',
+    conflictPreference: '飞行计划同名冲突',
+    askEveryTime: '每次询问',
+    duplicateSkipped: '已存在相同内容，跳过：{name}',
+    renamed: '已将 {source} 重命名为 {name}。',
+    replaced: '已替换飞行计划：{name}',
+    preferenceNotSaved: '未能保存偏好设置，下次仍会询问。',
     title: '飞行计划',
     description: '管理 Output/FMS plans 中的 X-Plane 飞行计划。',
     selectPath: '请先在设置中选择 X-Plane 文件夹。',
