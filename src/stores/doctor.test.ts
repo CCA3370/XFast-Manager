@@ -139,6 +139,23 @@ async function healthyResponse(command: string): Promise<unknown> {
       return '1.2.5'
     case 'validate_xplane_path':
       return true
+    case 'doctor_inspect_installation':
+      return {
+        sceneryIniExists: true,
+        missingSceneryPaths: [],
+        duplicateSceneryPaths: [],
+        brokenSceneryLinks: [],
+        emptyNavdataFiles: [],
+        pluginBinaryProblems: [],
+        scanErrors: [],
+        scanCapped: false,
+        pluginBinariesChecked: 0,
+        shaderCachePresent: true,
+        preferencesPresent: true,
+        logAgeDays: 0,
+      }
+    case 'doctor_list_backups':
+      return []
     case 'doctor_scan_environment':
       return environment()
     case 'is_xplane_running':
@@ -149,6 +166,8 @@ async function healthyResponse(command: string): Promise<unknown> {
       return {
         log_path: '/xplane/Log.txt',
         is_xplane_log: true,
+        session_end: 'normal',
+        log_tail: '',
         crash_detected: false,
         crash_info: null,
         issues: [],
@@ -218,6 +237,78 @@ describe('Health diagnostic store', () => {
     appStore.xplanePath = '/xplane'
   })
 
+  it.each(['disable_injectors', 'rebuild_shader_cache', 'reset_preferences'])(
+    'backs up %s and rechecks the affected installation',
+    async (action) => {
+      const store = useDoctorStore()
+      await store.runDiagnostics('quick')
+      const scansBefore = tauri.invoke.mock.calls.filter(
+        ([command]) => command === 'doctor_inspect_installation',
+      ).length
+      expect(await store.runMaintenance(action)).toBe(true)
+      expect(tauri.invoke).toHaveBeenCalledWith('doctor_apply_repair', {
+        xplanePath: '/xplane',
+        repair: action,
+      })
+      expect(tauri.invoke).toHaveBeenCalledWith('doctor_list_backups', { xplanePath: '/xplane' })
+      expect(
+        tauri.invoke.mock.calls.filter(([command]) => command === 'doctor_inspect_installation'),
+      ).toHaveLength(scansBefore + 1)
+      expect(
+        store.currentRun?.checks.filter((check) => check.id === 'scenery.registration'),
+      ).toHaveLength(1)
+    },
+  )
+
+  it('blocks maintenance when X-Plane starts after the check', async () => {
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+    tauri.invoke.mockImplementation(async (command) =>
+      command === 'is_xplane_running' ? true : healthyResponse(command),
+    )
+    expect(await store.runMaintenance('reset_preferences')).toBe(false)
+    expect(store.error).toBe('xplane_running')
+    expect(tauri.invoke.mock.calls.some(([command]) => command === 'doctor_apply_repair')).toBe(
+      false,
+    )
+  })
+
+  it('restores the selected backup and refreshes the available backups', async () => {
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+    expect(await store.runMaintenance('restore_health_backup', 'selected-backup')).toBe(true)
+    expect(tauri.invoke).toHaveBeenCalledWith('doctor_restore_backup', {
+      xplanePath: '/xplane',
+      backupId: 'selected-backup',
+    })
+  })
+
+  it('writes scenery fixes to the simulator file after updating the index', async () => {
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'get_scenery_manager_data')
+        return {
+          entries: [{ folderName: '*GLOBAL_AIRPORTS*', enabled: false }],
+          needsSync: true,
+          missingDepsCount: 0,
+          duplicateTilesCount: 0,
+          duplicateAirportsCount: 0,
+        }
+      return healthyResponse(command)
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+    const sort = store.currentRun!.checks.find((check) => check.id === 'scenery.load_order')!
+    expect(await store.applyRemediation(sort)).toBe(true)
+    const commands = tauri.invoke.mock.calls.map(([command]) => command)
+    expect(commands.indexOf('apply_scenery_changes')).toBeGreaterThan(
+      commands.indexOf('sort_scenery_packs'),
+    )
+    expect(tauri.invoke).toHaveBeenCalledWith('apply_scenery_changes', {
+      xplanePath: '/xplane',
+      entries: [],
+    })
+  })
+
   it('completes a quick run with full coverage and persists it by installation', async () => {
     const store = useDoctorStore()
 
@@ -259,12 +350,10 @@ describe('Health diagnostic store', () => {
     const store = useDoctorStore()
     const running = store.runDiagnostics('quick')
 
-    await vi.waitFor(() =>
-      expect(tauri.invoke).toHaveBeenCalledWith('is_xplane_running'),
+    await vi.waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith('is_xplane_running'))
+    expect(tauri.invoke.mock.calls.some(([command]) => command === 'analyze_xplane_log')).toBe(
+      false,
     )
-    expect(
-      tauri.invoke.mock.calls.some(([command]) => command === 'analyze_xplane_log'),
-    ).toBe(false)
 
     runtimeState.resolve(true)
     await running

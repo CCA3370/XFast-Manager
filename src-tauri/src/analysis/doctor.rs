@@ -1,11 +1,8 @@
 //! Doctor — environment & navdata detection.
 //!
-//! This module provides the *new* detection signals the Doctor page needs that
-//! are not already derivable from existing commands. It is intentionally
-//! limited to read-only inspection: it never mutates the filesystem. All
-//! remediation is performed by the existing, already-audited commands
-//! (`sort_scenery_packs`, `clean_output_items`, `airport_flatten_apply_all_drifted`,
-//! addon/gateway updaters, …) orchestrated from the frontend Doctor store.
+//! Scans inspect installation evidence without modifying simulator files.
+//! Explicit repairs use fixed targets and restorable local backups; scenery
+//! changes reuse the existing management commands.
 
 use std::collections::HashSet;
 use std::fs;
@@ -18,6 +15,11 @@ use sysinfo::System;
 use walkdir::WalkDir;
 
 use crate::{app_dirs, database, logger};
+
+#[path = "doctor_inspection.rs"]
+mod inspection;
+#[path = "doctor_repairs.rs"]
+mod repairs;
 
 const LOG_CTX: &str = "doctor";
 
@@ -143,34 +145,17 @@ fn detect_steam_install(root: &Path) -> bool {
 /// sidecar (ReShade.ini / reshade-shaders) is also present, to avoid flagging
 /// legitimate system libraries that some setups copy in.
 fn detect_injectors(root: &Path) -> Vec<DetectedInjector> {
-    let mut found: Vec<DetectedInjector> = Vec::new();
-
-    let reshade_ini = root.join("ReShade.ini").exists();
-    let reshade_shaders = root.join("reshade-shaders").is_dir();
-    if reshade_ini || reshade_shaders {
-        let evidence = if reshade_ini {
-            "ReShade.ini"
-        } else {
-            "reshade-shaders/"
-        };
-        found.push(DetectedInjector {
-            id: "reshade".to_string(),
-            evidence: evidence.to_string(),
-        });
-
-        // Only attribute proxy DLLs when ReShade is confirmed present.
-        for proxy in ["dxgi.dll", "d3d11.dll", "d3d12.dll", "opengl32.dll"] {
-            if root.join(proxy).exists() {
-                found.push(DetectedInjector {
-                    id: "injector_proxy_dll".to_string(),
-                    evidence: proxy.to_string(),
-                });
-                break;
-            }
-        }
+    if !root.join("ReShade.ini").is_file() && !root.join("reshade-shaders").is_dir() {
+        return Vec::new();
     }
-
-    found
+    repairs::INJECTOR_DLLS
+        .iter()
+        .filter(|name| root.join(name).is_file())
+        .map(|name| DetectedInjector {
+            id: "reshade_proxy".to_string(),
+            evidence: name.to_string(),
+        })
+        .collect()
 }
 
 /// Known competing scenery-organizer artifacts.
@@ -739,6 +724,68 @@ pub fn navdata_status(xplane_path: &str) -> DoctorNavdataReport {
     }
 }
 
+// ========== Bounded inspection and reversible repairs ==========
+
+#[tauri::command]
+pub async fn doctor_inspect_installation(
+    xplane_path: String,
+    depth: String,
+) -> Result<inspection::InspectionReport, String> {
+    tokio::task::spawn_blocking(move || {
+        inspection::inspect_installation(
+            Path::new(&xplane_path),
+            depth == "full",
+            super::scenery_index::resolve_shortcut,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn doctor_list_backups(
+    xplane_path: String,
+) -> Result<Vec<repairs::RepairBackup>, String> {
+    tokio::task::spawn_blocking(move || {
+        let _guard = repairs::REPAIR_LOCK.lock().map_err(|e| e.to_string())?;
+        super::validate_xplane_root_path(Path::new(&xplane_path))?;
+        repairs::list_backups(Path::new(&xplane_path))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn doctor_apply_repair(
+    xplane_path: String,
+    repair: String,
+) -> Result<repairs::RepairBackup, String> {
+    if super::is_xplane_running().await {
+        return Err("Close X-Plane before applying Health repairs".into());
+    }
+    tokio::task::spawn_blocking(move || {
+        let _guard = repairs::REPAIR_LOCK.lock().map_err(|e| e.to_string())?;
+        super::validate_xplane_root_path(Path::new(&xplane_path))?;
+        repairs::apply_repair(Path::new(&xplane_path), &repair)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn doctor_restore_backup(xplane_path: String, backup_id: String) -> Result<(), String> {
+    if super::is_xplane_running().await {
+        return Err("Close X-Plane before restoring Health backups".into());
+    }
+    tokio::task::spawn_blocking(move || {
+        let _guard = repairs::REPAIR_LOCK.lock().map_err(|e| e.to_string())?;
+        super::validate_xplane_root_path(Path::new(&xplane_path))?;
+        repairs::restore_backup(Path::new(&xplane_path), &backup_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 // ========== Tauri Commands ==========
 
 #[tauri::command]
@@ -803,6 +850,18 @@ pub async fn doctor_navdata_status(xplane_path: String) -> Result<DoctorNavdataR
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reshade_sidecars_alone_do_not_prove_an_injector_is_present() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir(temp.path().join("reshade-shaders")).unwrap();
+        fs::write(temp.path().join("ReShade.ini"), "settings").unwrap();
+        assert!(detect_injectors(temp.path()).is_empty());
+        fs::write(temp.path().join("dxgi.dll"), "proxy").unwrap();
+        let found = detect_injectors(temp.path());
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].evidence, "dxgi.dll");
+    }
 
     #[test]
     fn cycle_json_accepts_numeric_cycle_values() {

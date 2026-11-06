@@ -4180,6 +4180,10 @@ pub fn run() {
             submit_unknown_output_cleanup_item,
             // Doctor diagnostics
             doctor::doctor_export_report,
+            doctor::doctor_inspect_installation,
+            doctor::doctor_list_backups,
+            doctor::doctor_apply_repair,
+            doctor::doctor_restore_backup,
             doctor::doctor_scan_environment,
             doctor::doctor_scan_xfast_health,
             doctor::doctor_navdata_status,

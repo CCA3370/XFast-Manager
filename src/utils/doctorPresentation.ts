@@ -1,6 +1,7 @@
 import type { DoctorCheckResult } from '@/types/doctor'
 import en from '@/i18n/en'
 import zh from '@/i18n/zh'
+import { DOCTOR_FINDINGS } from './doctorFindings'
 import { CHECK_NAME_KEYS, LEGACY_TEXT_ROOTS } from './doctorCatalog'
 
 function message(
@@ -25,14 +26,13 @@ export function describeDoctorCheck(check: DoctorCheckResult, locale = 'en') {
   const root = check.id.startsWith('log.')
     ? `doctor.checks.log.${check.id.slice(4)}`
     : LEGACY_TEXT_ROOTS[check.id]
+  const finding = DOCTOR_FINDINGS[check.id]?.[chinese ? 'zh' : 'en']
   const title =
+    finding?.[0] ||
     (name && message(locale, `doctor.center.checks.${name}`, params)) ||
     (root && message(locale, `${root}.title`, params)) ||
     check.id
   const generic = message(locale, `doctor.center.checkDescriptions.${check.outcome}`)
-  if (['unavailable', 'notApplicable', 'cancelled'].includes(check.outcome)) {
-    return { title, description: generic, suggestion: '' }
-  }
   if (check.id === 'stability.last_session') {
     const descriptions: Record<string, string> = chinese
       ? {
@@ -55,12 +55,18 @@ export function describeDoctorCheck(check: DoctorCheckResult, locale = 'en') {
       suggestion: '',
     }
   }
+  if (['unavailable', 'notApplicable', 'cancelled'].includes(check.outcome)) {
+    return { title, description: generic, suggestion: '' }
+  }
+  if (finding) {
+    return { title, description: check.outcome === 'pass' ? generic : finding[1], suggestion: '' }
+  }
   if (check.id === 'updates.gateway') {
     return {
       title,
       description: chinese
-        ? `已检查 ${params.installed ?? 0} 个已安装机场，${params.count ?? 0} 个有更新。`
-        : `Checked ${params.installed ?? 0} installed airports; ${params.count ?? 0} have updates.`,
+        ? `已安装 ${params.installed ?? 0} 个机场，完成 ${params.checked ?? 0} 个更新查询，${params.count ?? 0} 个有更新。`
+        : `Installed airports: ${params.installed ?? 0}; successfully checked: ${params.checked ?? 0}; updates available: ${params.count ?? 0}.`,
       suggestion: '',
     }
   }

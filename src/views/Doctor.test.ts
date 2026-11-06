@@ -146,6 +146,44 @@ describe('Health page', () => {
     i18n.global.locale.value = 'en'
   })
 
+  it('searches diagnostic evidence and does not render a generic guidance button', async () => {
+    const { wrapper, doctorStore } = await mountDoctor('/xplane')
+    doctorStore.currentRun = runFixture('completed', [
+      {
+        id: 'system.injectors',
+        section: 'system',
+        outcome: 'warning',
+        durationMs: 1,
+        evidence: [{ kind: 'path', value: 'dxgi.dll' }],
+        remediation: { id: 'old_guide', kind: 'guide', risk: 'destructive' },
+      },
+      { id: 'storage.xplane_space', section: 'storage', outcome: 'pass', durationMs: 1 },
+    ])
+    await nextTick()
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Review guidance')).toBe(
+      false,
+    )
+    await wrapper.get('[data-testid="health-search"]').setValue('dxgi.dll')
+    expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(1)
+    await wrapper.get('[data-testid="health-filter-issues"]').trigger('click')
+    expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(1)
+    await wrapper.get('[data-testid="health-search"]').setValue('unmatched')
+    expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(0)
+  })
+
+  it('does not show an update notice for Gateway without installed airports', async () => {
+    i18n.global.locale.value = 'zh'
+    const { wrapper, doctorStore } = await mountDoctor('/xplane')
+    doctorStore.currentRun = runFixture('completed', [
+      { id: 'updates.gateway', section: 'updates', outcome: 'notApplicable', durationMs: 1 },
+    ])
+    await nextTick()
+    const detail = wrapper.get('[data-testid="health-detail-panel"]')
+    expect(detail.text()).toContain('不适用')
+    expect(detail.text()).not.toContain('拥有更新的地景')
+    expect(detail.text()).not.toContain('前往 Gateway')
+  })
+
   it('uses the same compact page shell as the other management views', async () => {
     const { wrapper } = await mountDoctor('')
 
@@ -215,7 +253,7 @@ describe('Health page', () => {
 
     expect(wrapper.find('[data-testid="health-results-panel"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="health-workspace"]').classes()).toContain(
-      'sm:grid-cols-[minmax(0,1fr)_280px]',
+      '@3xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)]',
     )
     expect(wrapper.get('[data-testid="health-filter-all"]').attributes('aria-pressed')).toBe('true')
     expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(2)
@@ -235,7 +273,9 @@ describe('Health page', () => {
     expect(wrapper.get('[data-testid="health-detail-panel"]').text()).toContain('120 GB')
 
     await wrapper.get('[data-testid="health-filter-issues"]').trigger('click')
-    expect(wrapper.get('[data-testid="health-filter-issues"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.get('[data-testid="health-filter-issues"]').attributes('aria-pressed')).toBe(
+      'true',
+    )
     expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="health-detail-panel"]').text()).toContain(
       'X-Plane installation structure',
@@ -304,6 +344,7 @@ describe('Health page', () => {
         durationMs: 59_600,
       },
     ])
+    doctorStore.currentRun.durationMs = 59_600
     doctorStore.currentRunIsLive = true
     dialog.save.mockRejectedValueOnce(new Error('native dialog secret'))
     await nextTick()

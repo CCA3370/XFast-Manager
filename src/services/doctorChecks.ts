@@ -13,6 +13,7 @@ import type {
 } from '@/types'
 import type {
   DoctorCheckResult,
+  DoctorInspectionReport,
   DoctorRunMode,
   DoctorSection,
   DoctorSystemSnapshot,
@@ -93,6 +94,7 @@ export interface DoctorCheckContext {
   xfast: DoctorXfastHealthReport | null
   log: XPlaneLogAnalysis | null
   system: DoctorSystemSnapshot | null
+  inspection?: DoctorInspectionReport | null
 }
 
 export interface DoctorCheckDefinition {
@@ -280,6 +282,9 @@ function createEnvironmentCheck(context: DoctorCheckContext): DoctorCheckDefinit
             env.injectors.map((item) => item.evidence),
             'path',
           ),
+          remediation: env.injectors.length
+            ? { id: 'disable_injectors', kind: 'automatic', risk: 'confirm' }
+            : undefined,
         }),
       )
 
@@ -344,6 +349,100 @@ function createRuntimeCheck(context: DoctorCheckContext): DoctorCheckDefinition 
           context.xplaneRunning ? 'info' : 'pass',
         ),
       ]
+    },
+  }
+}
+
+function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefinition {
+  return {
+    id: 'inspection',
+    section: 'installation',
+    phase: 'local',
+    modes: ['quick', 'full'],
+    timeoutMs: 45_000,
+    async run() {
+      const report = await invoke<DoctorInspectionReport>('doctor_inspect_installation', {
+        xplanePath: context.xplanePath,
+        depth: context.mode,
+      })
+      context.inspection = report
+      const checks: DoctorCheckResult[] = [
+        result('scenery.registration', 'scenery', report.sceneryIniExists ? 'pass' : 'info', {
+          remediation: report.sceneryIniExists
+            ? undefined
+            : { id: 'sync_scenery_file', kind: 'automatic', risk: 'confirm' },
+        }),
+        ...(
+          [
+            ['scenery.missing_paths', 'scenery', report.missingSceneryPaths],
+            ['scenery.duplicate_paths', 'scenery', report.duplicateSceneryPaths],
+            ['scenery.broken_links', 'scenery', report.brokenSceneryLinks],
+            ['navdata.empty_files', 'navdata', report.emptyNavdataFiles],
+          ] as const
+        ).map(([id, section, paths]) =>
+          result(id, section, paths.length ? 'warning' : 'pass', {
+            params: { count: paths.length },
+            evidence: evidence([...paths], 'path'),
+            remediation:
+              paths.length && id.startsWith('scenery.')
+                ? {
+                    id: 'manage_scenery',
+                    kind: 'navigate',
+                    risk: 'safe',
+                    route: '/management?tab=scenery',
+                  }
+                : undefined,
+          }),
+        ),
+        result(
+          'stability.log_freshness',
+          'stability',
+          report.logAgeDays === null ? 'notApplicable' : report.logAgeDays > 7 ? 'info' : 'pass',
+          {
+            params: { days: report.logAgeDays ?? 0 },
+          },
+        ),
+        result(
+          'installation.scan_access',
+          'installation',
+          report.scanErrors.length || report.scanCapped ? 'unavailable' : 'pass',
+          {
+            params: { errors: report.scanErrors.length, capped: Number(report.scanCapped) },
+            evidence: evidence(report.scanErrors),
+          },
+        ),
+      ]
+      if (context.mode === 'full') {
+        checks.push(
+          result(
+            'addons.binary_integrity',
+            'addons',
+            report.pluginBinaryProblems.length
+              ? 'critical'
+              : report.scanCapped || report.scanErrors.length
+                ? 'unavailable'
+                : report.pluginBinariesChecked
+                  ? 'pass'
+                  : 'notApplicable',
+            {
+              params: {
+                checked: report.pluginBinariesChecked,
+                count: report.pluginBinaryProblems.length,
+              },
+              evidence: evidence(report.pluginBinaryProblems, 'path'),
+              remediation: report.pluginBinaryProblems.length
+                ? {
+                    id: 'manage_plugins',
+                    kind: 'navigate',
+                    risk: 'safe',
+                    route: '/management?tab=plugin',
+                  }
+                : undefined,
+            },
+          ),
+        )
+      }
+      return checks
     },
   }
 }
@@ -414,7 +513,7 @@ function createXfastCheck(context: DoctorCheckContext): DoctorCheckDefinition {
           remediation:
             indexOutcome === 'pass'
               ? undefined
-              : report.schemaCompatible
+              : report.schemaCompatible && report.sceneryIndex.indexExists
                 ? { id: 'refresh_scenery_index', kind: 'automatic', risk: 'safe' }
                 : { id: 'rebuild_scenery_index', kind: 'automatic', risk: 'confirm' },
         }),
@@ -915,17 +1014,26 @@ function createGatewayUpdateCheck(context: DoctorCheckContext): DoctorCheckDefin
               }),
             ]
           : []),
-        result('updates.gateway', 'updates', count ? 'info' : 'pass', {
-          params: { count, installed: checked.length },
-          evidence: evidence(
-            checked
-              .filter((item) => item.updateAvailable === true)
-              .map((item) => `${item.airportIcao}: ${item.sceneryId} -> ${item.latestSceneryId}`),
-          ),
-          remediation: count
-            ? { id: 'manage_gateway', kind: 'navigate', risk: 'safe', route: '/gateway' }
-            : undefined,
-        }),
+        result(
+          'updates.gateway',
+          'updates',
+          unavailable.length === checked.length ? 'unavailable' : count ? 'info' : 'pass',
+          {
+            params: {
+              count,
+              installed: installed.length,
+              checked: checked.length - unavailable.length,
+            },
+            evidence: evidence(
+              checked
+                .filter((item) => item.updateAvailable === true)
+                .map((item) => `${item.airportIcao}: ${item.sceneryId} -> ${item.latestSceneryId}`),
+            ),
+            remediation: count
+              ? { id: 'manage_gateway', kind: 'navigate', risk: 'safe', route: '/gateway' }
+              : undefined,
+          },
+        ),
       ]
     },
   }
@@ -1015,6 +1123,7 @@ export function createDoctorCheckDefinitions(context: DoctorCheckContext): Docto
   return [
     createEnvironmentCheck(context),
     createRuntimeCheck(context),
+    createInspectionCheck(context),
     createXfastCheck(context),
     createLogCheck(context),
     createSceneryCheck(context),

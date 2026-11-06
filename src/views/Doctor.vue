@@ -61,7 +61,7 @@
     </header>
 
     <main
-      class="min-h-0 flex-1 overflow-y-auto pr-1"
+      class="@container min-h-0 flex-1 overflow-y-auto pr-1"
       :aria-busy="store.isBusy || store.isHistoryLoading"
     >
       <div
@@ -135,7 +135,7 @@
                     {{ healthTitle }}
                   </h2>
                   <span
-                    class="rounded border px-1.5 py-0.5 text-[11px] font-semibold"
+                    class="rounded border px-1.5 py-0.5 text-xs font-semibold"
                     :class="modeBadgeClass"
                   >
                     {{
@@ -146,7 +146,7 @@
                   </span>
                   <span
                     v-if="store.xplaneRunning"
-                    class="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                    class="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300"
                   >
                     {{ t('home.xplaneRunning') }}
                   </span>
@@ -154,7 +154,7 @@
                 <div
                   v-if="run.state === 'running'"
                   data-testid="health-scan-progress"
-                  class="mt-1 text-[11px] text-gray-500 dark:text-gray-400"
+                  class="mt-1 text-xs text-gray-500 dark:text-gray-400"
                 >
                   {{
                     t('doctor.center.progress', {
@@ -178,7 +178,7 @@
 
             <div
               v-if="run.state !== 'running'"
-              class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-600 dark:text-gray-300"
+              class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600 dark:text-gray-300"
             >
               <span class="inline-flex items-center gap-1.5">
                 <span class="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
@@ -238,7 +238,7 @@
             v-if="
               !store.isRunning && (displayedRunIsStale || run.summary.completeness !== 'complete')
             "
-            class="flex flex-wrap gap-x-4 gap-y-1 border-t border-gray-100 px-3 py-2 text-[11px] text-gray-600 dark:border-gray-800 dark:text-gray-300"
+            class="flex flex-wrap gap-x-4 gap-y-1 border-t border-gray-100 px-3 py-2 text-xs text-gray-600 dark:border-gray-800 dark:text-gray-300"
           >
             <span v-if="displayedRunIsStale">
               <strong>{{ t('doctor.center.status.stale') }}</strong>
@@ -287,7 +287,7 @@
         <div
           v-if="run"
           data-testid="health-workspace"
-          class="grid items-start gap-3 sm:grid-cols-[minmax(0,1fr)_280px] lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]"
+          class="grid items-start gap-3 @3xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)] @5xl:grid-cols-[minmax(0,1fr)_minmax(400px,0.85fr)]"
         >
           <section
             data-testid="health-results-panel"
@@ -300,7 +300,7 @@
                 <h2 class="text-xs font-semibold text-gray-600 dark:text-gray-300">
                   {{ t('doctor.center.status.currentResult') }}
                 </h2>
-                <span class="text-[11px] text-gray-400">
+                <span class="text-xs text-gray-400">
                   {{ visibleCheckCount }}/{{ run.summary.total }}
                 </span>
               </div>
@@ -312,7 +312,7 @@
                   <button
                     type="button"
                     data-testid="health-filter-all"
-                    class="rounded px-2 py-1 text-[11px] font-semibold transition-colors"
+                    class="rounded px-2 py-1 text-xs font-semibold transition-colors"
                     :class="
                       !issuesOnly
                         ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-800 dark:text-gray-100'
@@ -326,7 +326,7 @@
                   <button
                     type="button"
                     data-testid="health-filter-issues"
-                    class="rounded px-2 py-1 text-[11px] font-semibold transition-colors"
+                    class="rounded px-2 py-1 text-xs font-semibold transition-colors"
                     :class="
                       issuesOnly
                         ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-800 dark:text-gray-100'
@@ -350,7 +350,7 @@
                   v-if="safeFixCount > 0 && canRepair"
                   type="button"
                   :disabled="store.repairingAll || store.xplaneRunning"
-                  class="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
+                  class="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
                   @click="applyAllSafeFixes"
                 >
                   {{
@@ -362,14 +362,24 @@
               </div>
             </header>
 
-            <div>
+            <div class="border-b border-gray-100 px-3 py-2 dark:border-gray-800">
+              <input
+                v-model="searchQuery"
+                type="search"
+                data-testid="health-search"
+                :placeholder="t('management.searchPlaceholder')"
+                :aria-label="t('management.searchPlaceholder')"
+                class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-blue-400 dark:border-gray-700 dark:bg-gray-900"
+              />
+            </div>
+            <div class="max-h-[38vh] overflow-y-auto @3xl:max-h-[calc(100vh-270px)]">
               <section
                 v-for="group in checkGroups"
                 :key="group.section"
                 :aria-labelledby="`health-section-${group.section}`"
               >
                 <div
-                  class="flex h-8 items-center justify-between border-b border-gray-100 bg-gray-50/80 px-3 text-[11px] font-semibold text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
+                  class="flex h-8 items-center justify-between border-b border-gray-100 bg-gray-50/80 px-3 text-xs font-semibold text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
                 >
                   <div class="flex min-w-0 items-center gap-2">
                     <svg
@@ -412,55 +422,30 @@
                   >
                     <button
                       type="button"
-                      class="grid min-w-0 grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40"
+                      class="grid min-w-0 grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-2.5 px-4 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40"
                       :aria-pressed="selectedCheck?.id === check.id"
                       @click="selectCheck(check)"
                     >
                       <span
                         class="h-2 w-2 rounded-full"
-                        :class="
-                          severityDotClass(
-                            check.outcome === 'critical'
-                              ? 'critical'
-                              : check.outcome === 'warning'
-                                ? 'warning'
-                                : check.outcome === 'info'
-                                  ? 'info'
-                                  : 'ok',
-                            check.outcome === 'unavailable' || check.outcome === 'cancelled'
-                              ? 'partial'
-                              : 'complete',
-                          )
-                        "
+                        :class="outcomeDotClass(check.outcome)"
                         aria-hidden="true"
                       />
                       <div class="min-w-0">
                         <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
                           <span
-                            class="truncate text-xs font-medium text-gray-900 dark:text-gray-100"
+                            class="truncate text-[13px] font-medium text-gray-900 dark:text-gray-100"
                           >
                             {{ checkLabel(check) }}
-                          </span>
-                          <span
-                            v-for="(value, key) in check.params"
-                            :key="key"
-                            class="hidden max-w-[220px] truncate font-mono text-[11px] text-gray-400 lg:inline"
-                          >
-                            {{ formatParamKey(String(key)) }}={{ value }}
                           </span>
                         </div>
                       </div>
                       <div class="flex items-center gap-2">
                         <span
-                          class="rounded px-1.5 py-0.5 text-[11px] font-semibold"
+                          class="rounded px-1.5 py-0.5 text-xs font-semibold"
                           :class="outcomeBadgeClass(check.outcome)"
                         >
                           {{ outcomeLabel(check.outcome) }}
-                        </span>
-                        <span
-                          class="hidden w-12 text-right font-mono text-[11px] tabular-nums text-gray-400 md:inline"
-                        >
-                          {{ formatDuration(check.durationMs) }}
                         </span>
                       </div>
                     </button>
@@ -476,7 +461,7 @@
                           store.isBusy ||
                           (check.remediation.kind === 'automatic' && !canRepair)
                         "
-                        class="rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                        class="rounded-md border px-2 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50"
                         :class="remediationButtonClass(check.remediation)"
                         @click="handleRemediation(check)"
                       >
@@ -492,7 +477,7 @@
               </section>
 
               <div
-                v-if="issuesOnly && visibleCheckCount === 0"
+                v-if="visibleCheckCount === 0"
                 data-testid="health-no-issues"
                 class="flex min-h-40 items-center justify-center border-t border-gray-100 px-6 py-8 text-center dark:border-gray-800"
               >
@@ -512,17 +497,25 @@
                     />
                   </svg>
                   <p class="mt-2 text-xs font-semibold text-gray-800 dark:text-gray-100">
-                    {{ t('doctor.center.messages.noIssues') }}
+                    {{
+                      searchQuery.trim()
+                        ? recoveryCopy.noMatches
+                        : t('doctor.center.messages.noIssues')
+                    }}
                   </p>
-                  <p class="mt-1 text-[11px] leading-4 text-gray-500 dark:text-gray-400">
-                    {{ t('doctor.center.messages.noIssuesDescription') }}
+                  <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-gray-400">
+                    {{
+                      searchQuery.trim()
+                        ? recoveryCopy.trySearch
+                        : t('doctor.center.messages.noIssuesDescription')
+                    }}
                   </p>
                 </div>
               </div>
             </div>
           </section>
 
-          <aside class="min-w-0 space-y-3 sm:sticky sm:top-0 sm:self-start">
+          <aside class="min-w-0 space-y-3 @3xl:sticky @3xl:top-0 @3xl:self-start">
             <section
               v-if="selectedCheck"
               data-testid="health-detail-panel"
@@ -535,19 +528,19 @@
                   <h2 class="text-sm font-semibold leading-5 text-gray-900 dark:text-white">
                     {{ checkLabel(selectedCheck) }}
                   </h2>
-                  <p class="mt-0.5 text-[11px] text-gray-400">
+                  <p class="mt-0.5 text-xs text-gray-400">
                     {{ sectionLabel(selectedCheck.section) }}
                   </p>
                 </div>
                 <span
-                  class="flex-none rounded px-1.5 py-0.5 text-[11px] font-semibold"
+                  class="flex-none rounded px-1.5 py-0.5 text-xs font-semibold"
                   :class="outcomeBadgeClass(selectedCheck.outcome)"
                 >
                   {{ outcomeLabel(selectedCheck.outcome) }}
                 </span>
               </header>
 
-              <div class="space-y-3 px-3 py-3 text-xs">
+              <div class="space-y-3 px-4 py-3 text-sm">
                 <p class="leading-5 text-gray-600 dark:text-gray-300">
                   {{ checkDescription(selectedCheck) }}
                 </p>
@@ -576,10 +569,10 @@
                 </div>
 
                 <dl
-                  v-if="selectedCheck.params && Object.keys(selectedCheck.params).length"
-                  class="grid grid-cols-[minmax(90px,auto)_minmax(0,1fr)] gap-x-3 gap-y-1.5 border-t border-gray-100 pt-3 text-[11px] dark:border-gray-800"
+                  v-if="Object.keys(selectedParams).length"
+                  class="grid grid-cols-[minmax(90px,auto)_minmax(0,1fr)] gap-x-3 gap-y-1.5 border-t border-gray-100 pt-3 text-xs dark:border-gray-800"
                 >
-                  <template v-for="(value, key) in selectedCheck.params" :key="key">
+                  <template v-for="(value, key) in selectedParams" :key="key">
                     <dt class="text-gray-400">{{ formatParamKey(String(key)) }}</dt>
                     <dd
                       class="min-w-0 break-words text-right font-mono text-gray-700 dark:text-gray-200"
@@ -597,17 +590,17 @@
                     <span class="font-semibold text-gray-700 dark:text-gray-200">
                       {{ t('doctor.center.evidence.title') }}
                     </span>
-                    <span class="text-[11px] text-gray-400">
+                    <span class="text-xs text-gray-400">
                       {{ selectedCheck.evidence.length }}
                     </span>
                   </div>
                   <div
-                    class="max-h-52 space-y-1 overflow-y-auto rounded-md bg-gray-50 p-2 font-mono text-[11px] leading-4 text-gray-600 dark:bg-gray-950/60 dark:text-gray-300"
+                    class="max-h-80 space-y-1 overflow-auto rounded-md bg-gray-50 p-3 font-mono text-xs leading-5 text-gray-600 dark:bg-gray-950/60 dark:text-gray-300"
                   >
                     <div
                       v-for="(item, index) in selectedCheck.evidence"
                       :key="`${index}-${item.value}`"
-                      class="break-all"
+                      class="whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
                     >
                       <span v-if="item.label" class="font-semibold">{{ item.label }}: </span
                       >{{ item.value }}
@@ -640,11 +633,12 @@
               data-testid="health-utilities"
               class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
             >
+              <DoctorRecoveryPanel />
               <div v-if="run.system" class="px-3 py-2.5">
                 <h2 class="text-xs font-semibold text-gray-700 dark:text-gray-200">
                   {{ t('doctor.center.system.title') }}
                 </h2>
-                <dl class="mt-2 grid gap-y-1.5 text-[11px]">
+                <dl class="mt-2 grid gap-y-1.5 text-xs">
                   <div
                     v-for="item in systemItems"
                     :key="item.label"
@@ -666,7 +660,7 @@
                   class="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-semibold text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:text-gray-200"
                 >
                   <span>{{ t('doctor.center.history.title') }}</span>
-                  <span class="flex items-center gap-2 text-[11px] font-normal text-gray-400">
+                  <span class="flex items-center gap-2 text-xs font-normal text-gray-400">
                     {{ store.history.length }}/20
                     <svg
                       class="h-3 w-3 transition-transform group-open:rotate-180"
@@ -689,7 +683,7 @@
                     v-if="store.selectedRunId"
                     type="button"
                     :disabled="store.isBusy"
-                    class="mb-2 w-full rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-[11px] font-semibold text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"
+                    class="mb-2 w-full rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-xs font-semibold text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"
                     @click="store.selectHistoryRun(null)"
                   >
                     {{ t('doctor.center.history.backToCurrent') }}
@@ -697,7 +691,7 @@
                   <div
                     v-if="store.isHistoryLoading"
                     role="status"
-                    class="py-3 text-center text-[11px] text-gray-400"
+                    class="py-3 text-center text-xs text-gray-400"
                   >
                     {{ t('common.loading') }}
                   </div>
@@ -710,7 +704,7 @@
                       :key="item.id"
                       type="button"
                       :disabled="store.isBusy"
-                      class="flex w-full items-center justify-between gap-3 rounded px-1.5 py-2 text-left text-[11px] transition-colors disabled:opacity-50"
+                      class="flex w-full items-center justify-between gap-3 rounded px-1.5 py-2 text-left text-xs transition-colors disabled:opacity-50"
                       :class="
                         store.selectedRunId === item.id
                           ? 'bg-blue-50 text-blue-800 dark:bg-blue-950/30 dark:text-blue-200'
@@ -740,7 +734,7 @@
                       </span>
                     </button>
                   </div>
-                  <p v-else class="py-3 text-center text-[11px] text-gray-400">
+                  <p v-else class="py-3 text-center text-xs text-gray-400">
                     {{ t('doctor.center.history.empty') }}
                   </p>
                 </div>
@@ -767,7 +761,8 @@
                   </svg>
                 </summary>
                 <div class="space-y-2 border-t border-gray-100 px-3 py-2.5 dark:border-gray-800">
-                  <div class="flex items-center justify-between gap-3 text-[11px]">
+                  <p class="text-xs text-gray-500">{{ recoveryCopy.englishReport }}</p>
+                  <div class="flex items-center justify-between gap-3 text-xs">
                     <span
                       :class="
                         includeSensitive
@@ -797,7 +792,7 @@
                     <button
                       type="button"
                       :disabled="store.isBusy"
-                      class="rounded-md border border-gray-300 px-2 py-1.5 text-[11px] font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
+                      class="rounded-md border border-gray-300 px-2 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
                       @click="exportReport('markdown')"
                     >
                       {{ t('doctor.center.exportMarkdown') }}
@@ -805,7 +800,7 @@
                     <button
                       type="button"
                       :disabled="store.isBusy"
-                      class="rounded-md border border-gray-300 px-2 py-1.5 text-[11px] font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
+                      class="rounded-md border border-gray-300 px-2 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
                       @click="exportReport('json')"
                     >
                       {{ t('doctor.center.exportJson') }}
@@ -823,6 +818,8 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import DoctorRecoveryPanel from '@/components/DoctorRecoveryPanel.vue'
+import { DOCTOR_FINDINGS, HEALTH_RECOVERY_COPY } from '@/utils/doctorFindings'
 import { save } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -852,6 +849,8 @@ const toastStore = useToastStore()
 const includeSensitive = ref(false)
 const selectedCheckId = ref<string | null>(null)
 const issuesOnly = ref(false)
+const searchQuery = ref('')
+const recoveryCopy = computed(() => HEALTH_RECOVERY_COPY[locale.value === 'zh' ? 'zh' : 'en'])
 
 const SECTION_ICONS: Record<DoctorSection, string> = {
   installation: 'M4 7h16M6 3h12a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2z',
@@ -878,18 +877,30 @@ const errorMessage = computed(() => {
 })
 const safeFixCount = computed(
   () =>
-    run.value?.checks.filter(
-      (check) => check.remediation?.kind === 'automatic' && check.remediation.risk === 'safe',
-    ).length ?? 0,
+    new Set(
+      run.value?.checks
+        .filter(
+          (check) => check.remediation?.kind === 'automatic' && check.remediation.risk === 'safe',
+        )
+        .map((check) => check.remediation?.id) ?? [],
+    ).size,
 )
 const checkGroups = computed(() =>
   DOCTOR_SECTION_ORDER.flatMap((section) => {
     const sectionChecks = run.value?.checks.filter((check) => check.section === section) ?? []
-    const checks = issuesOnly.value
+    const filtered = searchQuery.value.trim()
       ? sectionChecks.filter((check) =>
-          ['info', 'warning', 'critical', 'unavailable', 'cancelled'].includes(check.outcome),
+          [checkLabel(check), ...(check.evidence?.map((item) => item.value) ?? [])]
+            .join(' ')
+            .toLocaleLowerCase()
+            .includes(searchQuery.value.trim().toLocaleLowerCase()),
         )
       : sectionChecks
+    const checks = issuesOnly.value
+      ? filtered.filter((check) =>
+          ['info', 'warning', 'critical', 'unavailable', 'cancelled'].includes(check.outcome),
+        )
+      : filtered
     if (!checks.length) return []
     return [{ section, checks, totalCount: sectionChecks.length }]
   }),
@@ -910,6 +921,13 @@ const selectedCheck = computed(() => {
     ) ?? checks[0]
   )
 })
+const selectedParams = computed(() =>
+  Object.fromEntries(
+    Object.entries(selectedCheck.value?.params ?? {}).filter(
+      ([key]) => !['sessionEnd', 'steam'].includes(key),
+    ),
+  ),
+)
 const runtimeCompleted = computed(
   () =>
     store.checkRuntime.filter((runtime) => ['completed', 'cancelled'].includes(runtime.state))
@@ -972,7 +990,10 @@ watch(
   () => appStore.xplanePath,
   async (path) => {
     await store.loadHistory()
-    if (path) await store.runAutomaticQuickCheck()
+    if (path) {
+      void store.loadBackups(path)
+      await store.runAutomaticQuickCheck()
+    }
   },
   { immediate: true },
 )
@@ -988,6 +1009,7 @@ watch(
   () => run.value?.id ?? null,
   () => {
     selectedCheckId.value = null
+    searchQuery.value = ''
     issuesOnly.value = false
   },
 )
@@ -1014,6 +1036,7 @@ function sectionIcon(section: DoctorSection): string {
 }
 
 function checkLabel(check: DoctorCheckResult): string {
+  if (DOCTOR_FINDINGS[check.id]) return describeDoctorCheck(check, locale.value).title
   const key = CHECK_NAME_KEYS[check.id]
   if (key) return t(`doctor.center.checks.${key}`, check.params ?? {})
   if (check.id.startsWith('log.')) {
@@ -1039,6 +1062,7 @@ function legacyTextRoot(check: DoctorCheckResult): string | null {
 
 function checkDescription(check: DoctorCheckResult): string {
   if (
+    Boolean(DOCTOR_FINDINGS[check.id]) ||
     locale.value === 'en' ||
     locale.value === 'zh' ||
     ['stability.last_session', 'updates.gateway', 'system.injectors'].includes(check.id)
@@ -1096,7 +1120,27 @@ function formatDisk(free: number | null, total: number | null): string {
 }
 
 function formatParamKey(key: string): string {
-  return key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ')
+  const labels: Record<string, [string, string]> = {
+    count: ['Count', '数量'],
+    installed: ['Installed', '已安装'],
+    checked: ['Checked', '已检查'],
+    free: ['Available', '可用'],
+    total: ['Total', '总计'],
+    available: ['Available', '可用'],
+    line: ['Log line', '日志行号'],
+    days: ['Age (days)', '距今天数'],
+    errors: ['Read errors', '读取错误'],
+    indexed: ['Indexed', '已索引'],
+    found: ['On disk', '磁盘条目'],
+    files: ['Files', '文件数'],
+    size: ['Size', '大小'],
+    platform: ['Platform', '平台'],
+    sessionEnd: ['Session ending', '会话结尾'],
+  }
+  return (
+    labels[key]?.[locale.value === 'zh' ? 1 : 0] ??
+    key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ')
+  )
 }
 
 function severityDotClass(severity: string, completeness: string): string {
@@ -1113,6 +1157,18 @@ function historyStatusLabel(severity: string, completeness: string): string {
   if (severity === 'info') return t('doctor.center.status.informational')
   if (completeness !== 'complete') return t('doctor.center.status.incomplete')
   return t('doctor.center.status.allClear')
+}
+
+function outcomeDotClass(outcome: DoctorCheckOutcome): string {
+  return {
+    pass: 'bg-emerald-500',
+    warning: 'bg-amber-500',
+    critical: 'bg-red-500',
+    info: 'bg-blue-500',
+    unavailable: 'bg-gray-400',
+    notApplicable: 'bg-gray-300',
+    cancelled: 'bg-gray-400',
+  }[outcome]
 }
 
 function outcomeBadgeClass(outcome: DoctorCheckOutcome): string {
@@ -1159,7 +1215,10 @@ async function handleRemediation(check: DoctorCheckResult) {
   if (remediation.risk !== 'safe') {
     modalStore.showConfirm({
       title: t('doctor.center.remediation.confirmTitle'),
-      message: t('doctor.center.remediation.confirmBody'),
+      message:
+        remediation.id === 'disable_injectors'
+          ? recoveryCopy.value.disable_injectorsBody
+          : t('doctor.center.remediation.confirmBody'),
       confirmText: t('doctor.center.remediation.apply'),
       cancelText: t('common.cancel'),
       type: remediation.risk === 'destructive' ? 'danger' : 'warning',

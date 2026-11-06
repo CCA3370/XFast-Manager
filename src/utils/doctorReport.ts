@@ -56,9 +56,12 @@ export function redactDoctorText(value: string, options: DoctorReportOptions): s
 }
 
 function reportCheck(check: DoctorCheckResult, options: DoctorReportOptions) {
+  const text = describeDoctorCheck(check, 'en')
   return {
     ...check,
-    ...describeDoctorCheck(check, 'en'),
+    title: redactDoctorText(text.title, options),
+    description: redactDoctorText(text.description, options),
+    suggestion: redactDoctorText(text.suggestion, options),
     params: redactParams(check.params, options),
     evidence: check.evidence?.map((evidence) => ({
       ...evidence,

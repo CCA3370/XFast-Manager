@@ -121,3 +121,26 @@ export interface DoctorHistoryFile {
   installationByPath: Record<string, string>
   runsByInstallation: Record<string, DoctorRun[]>
 }
+
+export interface DoctorInspectionReport {
+  sceneryIniExists: boolean
+  missingSceneryPaths: string[]
+  duplicateSceneryPaths: string[]
+  brokenSceneryLinks: string[]
+  emptyNavdataFiles: string[]
+  pluginBinaryProblems: string[]
+  scanErrors: string[]
+  scanCapped: boolean
+  pluginBinariesChecked: number
+  shaderCachePresent: boolean
+  preferencesPresent: boolean
+  logAgeDays: number | null
+}
+
+export interface DoctorRepairBackup {
+  id: string
+  action: string
+  createdAt: number
+  paths: string[]
+  restored: boolean
+}
