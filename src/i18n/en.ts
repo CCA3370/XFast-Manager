@@ -307,7 +307,8 @@ export default {
     windowsIntegrationNote: 'Note: Only available on Windows systems',
     // Scenery Auto-Sorting
     sceneryAutoSort: 'Scenery Auto-Sorting',
-    sceneryAutoSortDesc: 'Automatically sort scenery_packs.ini after scenery installation',
+    sceneryAutoSortDesc:
+      'Automatically manage scenery load order. Manual sorting and other management features remain available when off.',
     sceneryAutoSortExplain: 'Feature Explanation',
     sceneryAutoSortBenefit1:
       'Automatically classifies scenery by type (Airport, Overlay, Mesh, Library, etc.)',

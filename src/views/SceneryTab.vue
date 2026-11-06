@@ -1642,7 +1642,7 @@ function handleReset() {
 }
 
 async function performAutoSort() {
-  if (!sceneryStore.indexExists) return
+  if (!appStore.autoSortScenery || !sceneryStore.indexExists) return
   isSortingScenery.value = true
   try {
     if (!lockStore.isInitialized) {
@@ -1672,7 +1672,13 @@ async function performAutoSort() {
 }
 
 function handleSortSceneryNow() {
-  if (isSortingScenery.value || !appStore.xplanePath || !sceneryStore.indexExists) return
+  if (
+    !appStore.autoSortScenery ||
+    isSortingScenery.value ||
+    !appStore.xplanePath ||
+    !sceneryStore.indexExists
+  )
+    return
 
   showMoreMenu.value = false
 
@@ -2118,7 +2124,11 @@ onBeforeUnmount(() => {
 
       <!-- Scenery-specific action buttons -->
       <!-- Auto-sort button (shown for all locales, only when index exists) -->
-      <Transition v-if="sceneryStore.indexExists" name="button-fade" mode="out-in">
+      <Transition
+        v-if="appStore.autoSortScenery && sceneryStore.indexExists"
+        name="button-fade"
+        mode="out-in"
+      >
         <button
           key="auto-sort-button"
           :disabled="isSortingScenery || !appStore.xplanePath || !sceneryStore.indexExists"

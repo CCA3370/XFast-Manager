@@ -2398,7 +2398,7 @@ function toggleAllPreferences() {
 
 async function handleToggleAutoSortScenery() {
   const wasEnabled = store.autoSortScenery
-  store.toggleAutoSortScenery()
+  await store.toggleAutoSortScenery()
 
   if (!wasEnabled && store.autoSortScenery) {
     const shown = await getItem<string>(STORAGE_KEYS.SCENERY_AUTO_SORT_HINT_SHOWN)

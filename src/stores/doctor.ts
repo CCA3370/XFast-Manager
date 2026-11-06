@@ -212,11 +212,18 @@ export const useDoctorStore = defineStore('doctor', () => {
   }
 
   const displayedRun = computed(() => {
+    let run = currentRun.value
     if (selectedRunId.value) {
       const selected = history.value.find((run) => run.id === selectedRunId.value)
-      if (selected) return selected
+      if (selected) run = selected
     }
-    return currentRun.value
+    if (!run || appStore.autoSortScenery) return run
+    return {
+      ...run,
+      checks: run.checks.map((check) =>
+        check.remediation?.id === 'sort_scenery' ? { ...check, remediation: undefined } : check,
+      ),
+    }
   })
 
   const isRunning = computed(() => currentRun.value?.state === 'running')
@@ -768,6 +775,7 @@ export const useDoctorStore = defineStore('doctor', () => {
     if (!canRepairCurrentRun.value || !repairPath || remediation?.kind !== 'automatic') {
       return false
     }
+    if (remediation.id === 'sort_scenery' && !appStore.autoSortScenery) return false
 
     fixingId.value = check.id
     error.value = null
@@ -814,7 +822,10 @@ export const useDoctorStore = defineStore('doctor', () => {
       return { applied: 0, failed: 0 }
     }
     const candidates = (currentRun.value?.checks ?? []).filter(
-      (check) => check.remediation?.kind === 'automatic' && check.remediation.risk === 'safe',
+      (check) =>
+        check.remediation?.kind === 'automatic' &&
+        check.remediation.risk === 'safe' &&
+        (appStore.autoSortScenery || check.remediation.id !== 'sort_scenery'),
     )
     const checks = [...new Map(candidates.map((check) => [check.remediation!.id, check])).values()]
     if (!checks.length) return { applied: 0, failed: 0 }
@@ -840,6 +851,7 @@ export const useDoctorStore = defineStore('doctor', () => {
 
       for (const [index, check] of checks.entries()) {
         if (!check.remediation) continue
+        if (check.remediation.id === 'sort_scenery' && !appStore.autoSortScenery) continue
         if (currentRunPath.value !== repairPath || appStore.xplanePath !== repairPath) {
           failed += checks.length - index
           break

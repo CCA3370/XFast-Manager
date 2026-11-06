@@ -1,5 +1,19 @@
 //! Shared scenery sorting profiles.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+// Initialized from the persisted application setting before management starts.
+// Read again when writing so turning the option off also affects running installs.
+static AUTO_SORT_ENABLED: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn auto_sort_enabled() -> bool {
+    AUTO_SORT_ENABLED.load(Ordering::SeqCst)
+}
+
+pub(crate) fn set_auto_sort_enabled(enabled: bool) {
+    AUTO_SORT_ENABLED.store(enabled, Ordering::SeqCst);
+}
+
 /// Return the numeric layer for a SimHeaven X-WORLD/X-* package folder.
 ///
 /// Supported examples include current names such as

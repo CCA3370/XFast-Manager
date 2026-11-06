@@ -37,18 +37,11 @@ const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
 // Tab state
 const activeTab = ref<ManagementTab>('aircraft')
 
-// Available tabs based on settings
-const availableTabs = computed(() => {
-  const tabs: ManagementTab[] = ['aircraft', 'plugin', 'navdata']
-  if (appStore.autoSortScenery) {
-    tabs.push('scenery')
-  }
-  return tabs
-})
+const availableTabs: ManagementTab[] = ['aircraft', 'plugin', 'navdata', 'scenery']
 
 // Active tab index for indicator position
 const activeTabIndex = computed(() => {
-  return availableTabs.value.indexOf(activeTab.value)
+  return availableTabs.indexOf(activeTab.value)
 })
 
 // Transition direction for tab switching
@@ -78,7 +71,7 @@ const selectedPlugins = ref<Set<string>>(new Set())
 // Initialize tab from route query
 onMounted(() => {
   const tabParam = route.query.tab as ManagementTab | undefined
-  if (tabParam && availableTabs.value.includes(tabParam)) {
+  if (tabParam && availableTabs.includes(tabParam)) {
     activeTab.value = tabParam
   }
 
@@ -89,8 +82,8 @@ onMounted(() => {
 // Watch for tab changes
 watch(activeTab, async (newTab, oldTab) => {
   // Determine transition direction
-  const oldIndex = availableTabs.value.indexOf(oldTab)
-  const newIndex = availableTabs.value.indexOf(newTab)
+  const oldIndex = availableTabs.indexOf(oldTab)
+  const newIndex = availableTabs.indexOf(newTab)
   tabTransitionName.value = newIndex > oldIndex ? 'tab-slide-left' : 'tab-slide-right'
 
   // Suppress loading during transition to prevent animation blocking

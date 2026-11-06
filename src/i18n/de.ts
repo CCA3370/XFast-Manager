@@ -319,7 +319,8 @@ export default {
       'Registrierung in der aktuellen Benutzerkonfiguration gespeichert, keine Administratorrechte erforderlich',
     windowsIntegrationNote: 'Hinweis: Nur auf Windows-Systemen verfügbar',
     sceneryAutoSort: 'Automatische Landschaftssortierung',
-    sceneryAutoSortDesc: 'Scenery_packs.ini nach der Scenery-Installation automatisch sortieren',
+    sceneryAutoSortDesc:
+      'Ladereihenfolge der Szenerien automatisch verwalten. Manuelle Sortierung und andere Verwaltungsfunktionen bleiben bei deaktivierter Option verfügbar.',
     sceneryAutoSortExplain: 'Funktionserklärung',
     sceneryAutoSortBenefit1:
       'Klassifizierung der Szenerie automatisch nach Typ (Flughafen, Overlay, Mesh, Bibliothek usw.)',

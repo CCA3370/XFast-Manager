@@ -295,7 +295,7 @@ export default {
     windowsIntegrationBenefit4: '注册信息保存在当前用户配置中，不需要管理员权限',
     windowsIntegrationNote: '注意：仅在 Windows 系统上可用',
     sceneryAutoSort: '地景自动排序',
-    sceneryAutoSortDesc: '安装地景后自动排序 scenery_packs.ini',
+    sceneryAutoSortDesc: '自动管理地景加载顺序。关闭后保留手动排序和其他管理功能。',
     sceneryAutoSortExplain: '功能说明',
     sceneryAutoSortBenefit1: '自动识别地景类型（机场、叠加层、网格、库等）',
     sceneryAutoSortBenefit2: '按正确的加载顺序排序 scenery_packs.ini，获得最佳渲染效果',

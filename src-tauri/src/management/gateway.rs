@@ -2080,6 +2080,16 @@ async fn remove_managed_scenery_folder(
         }
     }
 
+    let packs_manager = SceneryPacksManager::new(xplane_root, conn.clone());
+    if let Err(error) = packs_manager.remove_entry_from_ini(folder_name).await {
+        logger::log_error(
+            &format!(
+                "Failed to remove Gateway scenery registration {}: {}",
+                folder_name, error
+            ),
+            Some("gateway"),
+        );
+    }
     if let Err(error) = crate::scenery_index::remove_scenery_entry(
         conn,
         &xplane_root.to_string_lossy(),
@@ -2090,17 +2100,6 @@ async fn remove_managed_scenery_folder(
         logger::log_error(
             &format!(
                 "Failed to remove Gateway scenery {} from index: {}",
-                folder_name, error
-            ),
-            Some("gateway"),
-        );
-    }
-
-    let packs_manager = SceneryPacksManager::new(xplane_root, conn.clone());
-    if let Err(error) = packs_manager.apply_from_index().await {
-        logger::log_error(
-            &format!(
-                "Failed to update scenery_packs.ini after removing Gateway scenery {}: {}",
                 folder_name, error
             ),
             Some("gateway"),

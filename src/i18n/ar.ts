@@ -300,7 +300,8 @@ export default {
     windowsIntegrationNote: 'ملاحظة: هذه الميزة متاحة فقط على ويندوز',
     // الفرز التلقائي للمشاهد
     sceneryAutoSort: 'الفرز التلقائي للمشاهد',
-    sceneryAutoSortDesc: 'فرز scenery_packs.ini تلقائيًا بعد تثبيت المشاهد',
+    sceneryAutoSortDesc:
+      'إدارة ترتيب تحميل المشاهد تلقائيًا. يظل الترتيب اليدوي ووظائف الإدارة الأخرى متاحة عند إيقاف هذا الخيار.',
     sceneryAutoSortExplain: 'شرح الميزة',
     sceneryAutoSortBenefit1:
       'يصنف المشاهد تلقائيًا حسب النوع (مطار، تراكب، شبكة تضاريس، مكتبة، إلخ)',

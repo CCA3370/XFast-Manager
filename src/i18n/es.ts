@@ -319,7 +319,7 @@ export default {
     windowsIntegrationNote: 'Nota: Sólo disponible en sistemas Windows',
     sceneryAutoSort: 'Clasificación automática de paisajes',
     sceneryAutoSortDesc:
-      'Ordenar automáticamente paisaje_packs.ini después de la instalación del paisaje',
+      'Gestionar automáticamente el orden de carga de los escenarios. Al desactivarlo, la ordenación manual y las demás funciones de gestión siguen disponibles.',
     sceneryAutoSortExplain: 'Explicación de la característica',
     sceneryAutoSortBenefit1:
       'Clasifica automáticamente el paisaje por tipo (Aeropuerto, Superposición, Malla, Biblioteca, etc.)',

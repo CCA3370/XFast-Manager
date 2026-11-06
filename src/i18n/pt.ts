@@ -316,7 +316,8 @@ export default {
     windowsIntegrationNote: 'Nota: Disponível apenas em sistemas Windows',
     // Scenery Auto-Sorting
     sceneryAutoSort: 'Ordenação automática de cenários',
-    sceneryAutoSortDesc: 'Ordenar automaticamente o scenery_packs.ini após instalar cenários',
+    sceneryAutoSortDesc:
+      'Gerir automaticamente a ordem de carregamento dos cenários. A ordenação manual e as outras funções de gestão continuam disponíveis quando desativado.',
     sceneryAutoSortExplain: 'Explicação do recurso',
     sceneryAutoSortBenefit1:
       'Classifica automaticamente cenários por tipo (Aeroporto, Sobreposição, Malha, Biblioteca, etc.)',

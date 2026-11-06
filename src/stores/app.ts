@@ -262,6 +262,7 @@ export const useAppStore = defineStore('app', () => {
     if (typeof savedAutoSortScenery === 'boolean') {
       autoSortScenery.value = savedAutoSortScenery
     }
+    await invokeVoidCommand('set_scenery_auto_sort', { enabled: autoSortScenery.value })
 
     // Load X-Plane launch arguments
     const savedLaunchArgs = await getItem<string>(STORAGE_KEYS.XPLANE_LAUNCH_ARGS)
@@ -343,6 +344,7 @@ export const useAppStore = defineStore('app', () => {
 
   async function toggleAutoSortScenery() {
     autoSortScenery.value = !autoSortScenery.value
+    await invokeVoidCommand('set_scenery_auto_sort', { enabled: autoSortScenery.value })
     await setItem(STORAGE_KEYS.AUTO_SORT_SCENERY, autoSortScenery.value)
   }
 

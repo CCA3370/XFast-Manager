@@ -919,7 +919,7 @@ async function finishOnboarding() {
     }
 
     if (store.autoSortScenery !== autoSortSceneryEnabled.value) {
-      store.toggleAutoSortScenery()
+      await store.toggleAutoSortScenery()
     }
 
     await setItem(STORAGE_KEYS.ONBOARDING_COMPLETED, 'true')

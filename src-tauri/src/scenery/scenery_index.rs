@@ -808,7 +808,11 @@ impl SceneryIndexManager {
             }
 
             // Apply shared post-processing and sorting rules.
-            sort_packages_with_special_rules(&xplane_path, &mut packages_vec);
+            if crate::scenery_sorting::auto_sort_enabled() {
+                sort_packages_with_special_rules(&xplane_path, &mut packages_vec);
+            } else {
+                packages_vec.sort_by(|a, b| a.folder_name.cmp(&b.folder_name));
+            }
 
             // Assign sort_order and set default enabled state
             // Fresh rebuild: Unrecognized packages default to disabled, others default to enabled
@@ -849,6 +853,14 @@ impl SceneryIndexManager {
 
     /// Update missing libraries for all packages using the complete index
     async fn update_missing_libraries(&self, mut index: SceneryIndex) -> Result<SceneryIndex> {
+        if !crate::scenery_sorting::auto_sort_enabled() {
+            crate::scenery_packs_manager::SceneryPacksManager::new(
+                &self.xplane_path,
+                self.db.clone(),
+            )
+            .import_file_state(&mut index)
+            .await?;
+        }
         logger::log_info(
             "Updating missing libraries for all packages...",
             Some("scenery_index"),
@@ -1114,9 +1126,11 @@ impl SceneryIndexManager {
 
                 // After adding new packages, recalculate sort_order using the same logic as rebuild_index
                 // This ensures incremental updates produce the same ordering as full rebuilds
-                Self::recalculate_sort_order(&mut index, &xplane_path);
+                if crate::scenery_sorting::auto_sort_enabled() {
+                    Self::recalculate_sort_order(&mut index, &xplane_path);
+                }
 
-                if !locked_anchor_orders.is_empty() {
+                if crate::scenery_sorting::auto_sort_enabled() && !locked_anchor_orders.is_empty() {
                     let mut sorted_entries: Vec<(&String, &SceneryPackageInfo)> =
                         index.packages.iter().collect();
                     sorted_entries.sort_by(|(name_a, info_a), (name_b, info_b)| {
@@ -1219,10 +1233,13 @@ impl SceneryIndexManager {
         // Classify and update index
         let folder_path = folder_path.to_path_buf();
         let xplane_path = self.xplane_path.clone();
-        let info =
+        let mut info =
             tokio::task::spawn_blocking(move || classify_scenery(&folder_path, &xplane_path))
                 .await
                 .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
+        if let Some(existing) = self.get_package(&info.folder_name).await? {
+            preserve_user_managed_state(&existing, &mut info);
+        }
         self.update_package(info.clone()).await?;
         Ok(info)
     }
@@ -1649,13 +1666,19 @@ impl SceneryIndexManager {
 
     /// Get scenery manager data for UI
     pub async fn get_manager_data(&self) -> Result<SceneryManagerData> {
-        let index = self.load_index().await?;
+        let mut index = self.load_index().await?;
 
         // Check if ini is synced with index
         let packs_manager = crate::scenery_packs_manager::SceneryPacksManager::new(
             &self.xplane_path,
             self.db.clone(),
         );
+        if !crate::scenery_sorting::auto_sort_enabled() {
+            let changes = packs_manager.import_file_state(&mut index).await?;
+            if !changes.is_empty() {
+                self.batch_update_entries(&changes).await?;
+            }
+        }
         let needs_sync = !packs_manager.is_synced_with_index().await.unwrap_or(true);
 
         // Detect duplicate tiles within Mesh and AirportMesh categories
@@ -2389,6 +2412,50 @@ fn extract_scenery_prefix(folder_name: &str) -> Option<String> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn auto_sort_off_rebuild_and_scan_preserve_file_order_and_enabled_state() {
+        let temp = tempfile::tempdir().unwrap();
+        write_test_airport(temp.path(), "Z First Airport", "ZBAA", 40.0, 116.0);
+        write_test_airport(temp.path(), "A Second Airport", "ZSPD", 31.0, 121.0);
+        let ini = temp.path().join("Custom Scenery/scenery_packs.ini");
+        let before = "# deliberate order\nSCENERY_PACK_DISABLED Custom Scenery/Z First Airport/\nSCENERY_PACK *GLOBAL_AIRPORTS*\nSCENERY_PACK Custom Scenery/A Second Airport/\nSCENERY_PACK E:/Unmanaged/Keep/\n";
+        fs::write(&ini, before).unwrap();
+        let db = crate::database::open_memory_connection().unwrap();
+        crate::database::apply_migrations(&db).unwrap();
+        let manager = SceneryIndexManager::new(temp.path(), db);
+        tauri::async_runtime::block_on(async {
+            let rebuilt = manager.rebuild_index().await.unwrap();
+            assert!(!rebuilt.packages["Z First Airport"].enabled);
+            assert!(
+                rebuilt.packages["Z First Airport"].sort_order
+                    < rebuilt.packages["A Second Airport"].sort_order
+            );
+            write_test_airport(temp.path(), "0 New Airport", "ZGGG", 23.0, 113.0);
+            let scanned = manager.update_index().await.unwrap();
+            assert!(!scanned.packages["Z First Airport"].enabled);
+            assert!(
+                scanned.packages["A Second Airport"].sort_order
+                    < scanned.packages["0 New Airport"].sort_order
+            );
+            assert_eq!(fs::read_to_string(&ini).unwrap(), before);
+            let data = manager.get_manager_data().await.unwrap();
+            let names: Vec<_> = data
+                .entries
+                .iter()
+                .map(|entry| entry.folder_name.as_str())
+                .collect();
+            assert_eq!(
+                names,
+                vec![
+                    "Z First Airport",
+                    GLOBAL_AIRPORTS_ENTRY_NAME,
+                    "A Second Airport",
+                    "0 New Airport"
+                ]
+            );
+        });
+    }
 
     fn make_package(
         folder_name: &str,

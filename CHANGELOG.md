@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Scenery Sorting Preference** - Turning off automatic scenery sorting keeps scenery management and manual ordering available. While off, installation, scanning, updates, presets and health repairs preserve the existing load order; enabling, disabling or deleting a package does not reorder the others.
+
 - **Desktop Text Selection** - Repeated clicks on page labels and navigation no longer select them. Error messages, log viewers, diagnostic evidence, search fields and text editors retain normal selection, and Copy buttons remain available.
 
 - **Custom Airport Priority** - Auto Sort now places custom airports above bundled Aerosoft airports while keeping both above Global Airports.

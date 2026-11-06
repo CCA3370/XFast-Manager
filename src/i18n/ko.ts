@@ -306,7 +306,8 @@ export default {
     windowsIntegrationNote: '참고: 이 기능은 윈도우 시스템에서만 사용할 수 있습니다',
     // 시너리 자동 정렬
     sceneryAutoSort: '시너리 자동 정렬',
-    sceneryAutoSortDesc: '시너리 설치 후 scenery_packs.ini를 자동으로 정렬합니다',
+    sceneryAutoSortDesc:
+      '시너리 로드 순서를 자동으로 관리합니다. 꺼도 수동 정렬과 다른 관리 기능은 계속 사용할 수 있습니다.',
     sceneryAutoSortExplain: '기능 설명',
     sceneryAutoSortBenefit1:
       '시너리를 유형별로 자동 분류합니다 (공항, 오버레이, 메시, 라이브러리 등)',

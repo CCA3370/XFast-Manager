@@ -285,6 +285,7 @@ describe('Health diagnostic store', () => {
   })
 
   it('writes scenery fixes to the simulator file after updating the index', async () => {
+    useAppStore().autoSortScenery = true
     tauri.invoke.mockImplementation(async (command) => {
       if (command === 'get_scenery_manager_data')
         return {
@@ -308,6 +309,32 @@ describe('Health diagnostic store', () => {
       xplanePath: '/xplane',
       entries: [],
     })
+  })
+
+  it('does not offer or execute an automatic scenery sort when the setting is off', async () => {
+    useAppStore().autoSortScenery = false
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'get_scenery_manager_data')
+        return {
+          entries: [{ folderName: '*GLOBAL_AIRPORTS*', enabled: true }],
+          needsSync: true,
+          missingDepsCount: 0,
+          duplicateTilesCount: 0,
+          duplicateAirportsCount: 0,
+        }
+      return healthyResponse(command)
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+    const sort = store.currentRun!.checks.find((check) => check.id === 'scenery.load_order')!
+    expect(
+      store.displayedRun!.checks.find((check) => check.id === sort.id)!.remediation,
+    ).toBeUndefined()
+    expect(await store.applyRemediation(sort)).toBe(false)
+    await store.applyAllSafeFixes()
+    expect(tauri.invoke.mock.calls.some(([command]) => command === 'sort_scenery_packs')).toBe(
+      false,
+    )
   })
 
   it('completes a quick run with full coverage and persists it by installation', async () => {

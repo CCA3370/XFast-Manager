@@ -324,7 +324,7 @@ export default {
     windowsIntegrationNote: 'Remarque : disponible uniquement sur les systèmes Windows',
     sceneryAutoSort: 'Tri automatique des paysages',
     sceneryAutoSortDesc:
-      "Trier automatiquement le fichier scene_packs.ini après l'installation de la scène",
+      'Gérer automatiquement l’ordre de chargement des scènes. Le tri manuel et les autres fonctions de gestion restent disponibles après désactivation.',
     sceneryAutoSortExplain: 'Explication des fonctionnalités',
     sceneryAutoSortBenefit1:
       'Classifie automatiquement les scènes par type (aéroport, superposition, maillage, bibliothèque, etc.)',

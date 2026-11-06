@@ -88,6 +88,7 @@ describe('Scenery store category changes', () => {
 
     expect(tauri.invoke).toHaveBeenCalledWith('apply_scenery_changes', {
       xplanePath: '/xplane',
+      reorder: true,
       entries: [
         {
           folderName: 'Unknown Scenery',
@@ -98,5 +99,74 @@ describe('Scenery store category changes', () => {
       ],
     })
     expect(store.hasLocalChanges).toBe(false)
+  })
+
+  it('keeps file order when applying only enable changes with automatic sorting off', async () => {
+    const app = useAppStore()
+    app.xplanePath = '/xplane'
+    app.autoSortScenery = false
+    const store = useSceneryStore()
+    await store.loadData()
+    const first = {
+      ...createEntry(),
+      folderName: 'Mesh first',
+      category: SceneryCategory.Mesh,
+      sortOrder: 0,
+    }
+    const second = {
+      ...createEntry(),
+      folderName: 'Airport second',
+      category: SceneryCategory.Airport,
+      sortOrder: 1,
+    }
+    store.data!.entries = [first, second]
+    store.toggleEnabled(first.folderName)
+    await store.applyChanges([second, first]) // Category-grouped display is not a manual reorder.
+    expect(tauri.invoke).toHaveBeenCalledWith('apply_scenery_changes', {
+      xplanePath: '/xplane',
+      reorder: false,
+      entries: [
+        {
+          folderName: first.folderName,
+          enabled: true,
+          sortOrder: 0,
+          category: SceneryCategory.Mesh,
+        },
+        {
+          folderName: second.folderName,
+          enabled: false,
+          sortOrder: 1,
+          category: SceneryCategory.Airport,
+        },
+      ],
+    })
+  })
+
+  it('applies an explicitly dragged order while automatic sorting is off', async () => {
+    const app = useAppStore()
+    app.xplanePath = '/xplane'
+    app.autoSortScenery = false
+    const store = useSceneryStore()
+    await store.loadData()
+    const first = { ...createEntry(), folderName: 'First', sortOrder: 0 }
+    const second = { ...createEntry(), folderName: 'Second', sortOrder: 1 }
+    store.data!.entries = [first, second]
+    await store.reorderEntries([second, first])
+    await store.applyChanges()
+    const payload = tauri.invoke.mock.calls
+      .slice()
+      .reverse()
+      .find(([command]) => command === 'apply_scenery_changes')![1]!
+    expect(payload.reorder).toBe(true)
+    expect(
+      (payload.entries as Array<{ folderName: string }>).map((entry) => entry.folderName),
+    ).toEqual(['Second', 'First'])
+    await store.applyChanges()
+    expect(
+      tauri.invoke.mock.calls
+        .slice()
+        .reverse()
+        .find(([command]) => command === 'apply_scenery_changes')![1]!.reorder,
+    ).toBe(false)
   })
 })

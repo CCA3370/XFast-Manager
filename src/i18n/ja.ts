@@ -308,7 +308,8 @@ export default {
     windowsIntegrationBenefit4: '登録は現在のユーザー構成に保存され、管理者権限は不要です',
     windowsIntegrationNote: '注: Windows システムでのみ利用可能です',
     sceneryAutoSort: '風景自動分類',
-    sceneryAutoSortDesc: 'シーナリーのインストール後に scene_packs.ini を自動的に並べ替える',
+    sceneryAutoSortDesc:
+      'シーナリーの読み込み順を自動管理します。オフにしても手動並べ替えとその他の管理機能は利用できます。',
     sceneryAutoSortExplain: '機能の説明',
     sceneryAutoSortBenefit1:
       'シーナリーをタイプ (空港、オーバーレイ、メッシュ、図書館など) ごとに自動的に分類します。',

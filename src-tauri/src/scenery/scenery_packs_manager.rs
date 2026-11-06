@@ -6,13 +6,14 @@
 use crate::database::SceneryQueries;
 use crate::logger;
 use crate::models::{
-    is_global_airports_folder_name, SceneryCategory, SceneryPackEntry, SceneryPackageInfo,
-    GLOBAL_AIRPORTS_ENTRY_NAME,
+    is_global_airports_folder_name, SceneryCategory, SceneryEntryUpdate, SceneryIndex,
+    SceneryPackEntry, SceneryPackageInfo, GLOBAL_AIRPORTS_ENTRY_NAME,
 };
 use crate::scenery_index::SceneryIndexManager;
 use anyhow::{anyhow, Result};
 use chrono::Local;
 use sea_orm::DatabaseConnection;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -314,6 +315,154 @@ fn parse_ini_entries(content: &str) -> Vec<SceneryPackEntry> {
     entries
 }
 
+fn ini_path_key(xplane_path: &Path, path: &str) -> String {
+    if path.contains(GLOBAL_AIRPORTS_ENTRY_NAME) {
+        return GLOBAL_AIRPORTS_ENTRY_NAME.to_string();
+    }
+    let normalized = path.trim().replace('\\', "/");
+    let normalized = normalized.trim_start_matches("./").trim_end_matches('/');
+    let absolute =
+        if Path::new(normalized).is_absolute() || normalized.as_bytes().get(1) == Some(&b':') {
+            normalized.to_string()
+        } else {
+            format!(
+                "{}/{}",
+                xplane_path
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    .trim_end_matches('/'),
+                normalized
+            )
+        };
+    if cfg!(windows) {
+        absolute.to_lowercase()
+    } else {
+        absolute
+    }
+}
+
+fn package_ini_path(info: &SceneryPackageInfo) -> String {
+    info.actual_path
+        .clone()
+        .unwrap_or_else(|| format!("Custom Scenery/{}/", info.folder_name))
+}
+
+/// Import the file's order and switches; never classify-sort its entries.
+fn import_ini_order(
+    xplane_path: &Path,
+    content: &str,
+    index: &mut SceneryIndex,
+) -> (Option<(bool, u32)>, Vec<SceneryEntryUpdate>) {
+    let entries = parse_ini_entries(content);
+    let mut states = HashMap::new();
+    for (position, entry) in entries.iter().enumerate() {
+        states
+            .entry(ini_path_key(xplane_path, &entry.path))
+            .or_insert((entry.enabled, position as u32));
+    }
+    let mut packages: Vec<_> = index.packages.values_mut().collect();
+    packages.sort_by(|a, b| {
+        a.sort_order
+            .cmp(&b.sort_order)
+            .then_with(|| a.folder_name.cmp(&b.folder_name))
+    });
+    let mut next = entries.len() as u32;
+    let mut changes = Vec::new();
+    for info in packages {
+        let before = (info.enabled, info.sort_order);
+        if let Some(&(enabled, order)) =
+            states.get(&ini_path_key(xplane_path, &package_ini_path(info)))
+        {
+            info.enabled = enabled;
+            info.sort_order = order;
+        } else {
+            info.sort_order = next;
+            next += 1;
+        }
+        if before != (info.enabled, info.sort_order) {
+            changes.push(SceneryEntryUpdate {
+                folder_name: info.folder_name.clone(),
+                enabled: info.enabled,
+                sort_order: info.sort_order,
+                category: None,
+            });
+        }
+    }
+    (states.get(GLOBAL_AIRPORTS_ENTRY_NAME).copied(), changes)
+}
+
+/// Patch switches or remove named paths while preserving all other lines byte-for-byte.
+fn patch_ini_without_reordering(
+    xplane_path: &Path,
+    content: &str,
+    updates: &[SceneryPackEntry],
+    removed: &HashSet<String>,
+) -> String {
+    let updates_by_path: HashMap<_, _> = updates
+        .iter()
+        .map(|entry| (ini_path_key(xplane_path, &entry.path), entry))
+        .collect();
+    let mut seen = HashSet::new();
+    let mut output = String::new();
+    for line in content.split_inclusive('\n') {
+        let parsed = parse_ini_entries(line);
+        let Some(entry) = parsed.first() else {
+            output.push_str(line);
+            continue;
+        };
+        let key = ini_path_key(xplane_path, &entry.path);
+        if removed.contains(&key) {
+            continue;
+        }
+        seen.insert(key.clone());
+        if let Some(update) = updates_by_path
+            .get(&key)
+            .filter(|update| update.enabled != entry.enabled)
+        {
+            let trimmed = line.trim_start();
+            output.push_str(&line[..line.len() - trimmed.len()]);
+            let old_prefix = if entry.enabled {
+                "SCENERY_PACK "
+            } else {
+                "SCENERY_PACK_DISABLED "
+            };
+            output.push_str(if update.enabled {
+                "SCENERY_PACK "
+            } else {
+                "SCENERY_PACK_DISABLED "
+            });
+            output.push_str(trimmed.strip_prefix(old_prefix).unwrap());
+        } else {
+            output.push_str(line);
+        }
+    }
+    let newline = if content.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
+    if output.is_empty() && content.is_empty() {
+        output.push_str(INI_HEADER);
+    }
+    for entry in updates {
+        let key = ini_path_key(xplane_path, &entry.path);
+        if removed.contains(&key) || !seen.insert(key) {
+            continue;
+        }
+        if !output.ends_with('\n') {
+            output.push_str(newline);
+        }
+        output.push_str(if entry.enabled {
+            "SCENERY_PACK "
+        } else {
+            "SCENERY_PACK_DISABLED "
+        });
+        output.push_str(&entry_path_for_ini(entry));
+        output.push_str(newline);
+    }
+    output
+}
+
 /// Manager for scenery_packs.ini operations
 pub struct SceneryPacksManager {
     xplane_path: PathBuf,
@@ -497,8 +646,6 @@ impl SceneryPacksManager {
     }
 
     fn write_ini_at_path(ini_path: &Path, entries: &[SceneryPackEntry]) -> Result<()> {
-        Self::ensure_ini_parent_dir(ini_path)?;
-
         // Build content in memory first so we can retry with a fallback strategy
         let mut content: Vec<u8> = Vec::new();
         content.extend_from_slice(INI_HEADER.as_bytes());
@@ -511,6 +658,11 @@ impl SceneryPacksManager {
             let path = entry_path_for_ini(entry);
             content.extend_from_slice(format!("{} {}\n", prefix, path).as_bytes());
         }
+        Self::write_content_at_path(ini_path, &content)
+    }
+
+    fn write_content_at_path(ini_path: &Path, content: &[u8]) -> Result<()> {
+        Self::ensure_ini_parent_dir(ini_path)?;
 
         // Clear anything that might block the write (read-only bit, macOS uchg flag)
         prepare_path_for_write(ini_path);
@@ -690,6 +842,11 @@ impl SceneryPacksManager {
                 .await?;
         }
 
+        if !crate::scenery_sorting::auto_sort_enabled() {
+            index_manager.update_index().await?;
+            return self.apply_preserving_order().await;
+        }
+
         let _ = index_manager
             .reset_sort_order_with_locked_entries(locked_folder_names.to_vec())
             .await?;
@@ -736,6 +893,18 @@ impl SceneryPacksManager {
     /// Sort scenery_packs.ini based entirely on index sort_order
     /// This is used by the scenery manager after manual reordering
     pub async fn auto_sort_from_index(&self) -> Result<()> {
+        if !crate::scenery_sorting::auto_sort_enabled() {
+            return self.apply_preserving_order().await;
+        }
+        self.write_order_from_index(true).await
+    }
+
+    /// Explicit manual ordering is independent of the automatic sorting preference.
+    pub async fn apply_order_from_index(&self) -> Result<()> {
+        self.write_order_from_index(false).await
+    }
+
+    async fn write_order_from_index(&self, automatic: bool) -> Result<()> {
         let index_manager = SceneryIndexManager::new(&self.xplane_path, self.db.clone());
         let index = index_manager.load_index().await?;
 
@@ -745,6 +914,10 @@ impl SceneryPacksManager {
                 Some("scenery_packs"),
             );
             return Ok(());
+        }
+
+        if automatic && !crate::scenery_sorting::auto_sort_enabled() {
+            return self.apply_preserving_order().await;
         }
 
         // Create backup if ini exists
@@ -791,6 +964,111 @@ impl SceneryPacksManager {
         self.auto_sort_from_index().await
     }
 
+    pub async fn import_file_state(
+        &self,
+        index: &mut SceneryIndex,
+    ) -> Result<Vec<SceneryEntryUpdate>> {
+        let content = match fs::read_to_string(&self.ini_path) {
+            Ok(content) => content,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(error) => return Err(error.into()),
+        };
+        let (global, changes) = import_ini_order(&self.xplane_path, &content, index);
+        if let Some((enabled, order)) = global {
+            for (key, value) in [
+                (
+                    GLOBAL_AIRPORTS_ENABLED_METADATA_KEY,
+                    if enabled { "1" } else { "0" }.to_string(),
+                ),
+                (GLOBAL_AIRPORTS_SORT_ORDER_METADATA_KEY, order.to_string()),
+            ] {
+                let existing = SceneryQueries::get_metadata(&self.db, key)
+                    .await
+                    .map_err(|error| anyhow!("{error}"))?;
+                if existing.as_deref() != Some(value.as_str()) {
+                    SceneryQueries::set_metadata(&self.db, key, &value)
+                        .await
+                        .map_err(|error| anyhow!("{error}"))?;
+                }
+            }
+        }
+        Ok(changes)
+    }
+
+    pub async fn apply_preserving_order(&self) -> Result<()> {
+        let index = SceneryIndexManager::new(&self.xplane_path, self.db.clone())
+            .load_index()
+            .await?;
+        let mut packages: Vec<_> = index.packages.values().collect();
+        packages.sort_by(|a, b| {
+            a.sort_order
+                .cmp(&b.sort_order)
+                .then_with(|| a.folder_name.cmp(&b.folder_name))
+        });
+        let global = self
+            .get_global_airports_state_for_packages(&packages)
+            .await?;
+        let mut updates: Vec<_> = packages
+            .into_iter()
+            .filter(|info| !is_global_airports_package(info))
+            .map(|info| SceneryPackEntry {
+                enabled: info.enabled,
+                path: package_ini_path(info),
+                is_global_airports: false,
+            })
+            .collect();
+        updates.push(SceneryPackEntry {
+            enabled: global.enabled,
+            path: GLOBAL_AIRPORTS_ENTRY_NAME.to_string(),
+            is_global_airports: true,
+        });
+        self.patch_file_preserving_order(updates, HashSet::new())
+            .await
+    }
+
+    pub async fn remove_entry_from_ini(&self, folder_name: &str) -> Result<()> {
+        let info = SceneryIndexManager::new(&self.xplane_path, self.db.clone())
+            .get_package(folder_name)
+            .await?;
+        let mut removed = HashSet::from([ini_path_key(
+            &self.xplane_path,
+            &format!("Custom Scenery/{folder_name}/"),
+        )]);
+        if let Some(info) = info {
+            removed.insert(ini_path_key(&self.xplane_path, &package_ini_path(&info)));
+        }
+        self.patch_file_preserving_order(Vec::new(), removed).await
+    }
+
+    async fn patch_file_preserving_order(
+        &self,
+        updates: Vec<SceneryPackEntry>,
+        removed: HashSet<String>,
+    ) -> Result<()> {
+        let ini_path = self.ini_path.clone();
+        let xplane_path = self.xplane_path.clone();
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            let content = match fs::read_to_string(&ini_path) {
+                Ok(content) => content,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+                Err(error) => return Err(error.into()),
+            };
+            if content.is_empty() && updates.is_empty() {
+                return Ok(());
+            }
+            let patched = patch_ini_without_reordering(&xplane_path, &content, &updates, &removed);
+            if patched == content {
+                return Ok(());
+            }
+            if ini_path.exists() {
+                Self::backup_ini_at_path(&ini_path)?;
+            }
+            Self::write_content_at_path(&ini_path, patched.as_bytes())
+        })
+        .await
+        .map_err(|error| anyhow!("Blocking task failed: {error}"))?
+    }
+
     /// Check if ini file is in sync with the index
     /// Returns true if ini order/enabled states match the entries generated from the index.
     pub async fn is_synced_with_index(&self) -> Result<bool> {
@@ -819,6 +1097,16 @@ impl SceneryPacksManager {
             .await?;
         let expected_entries = build_entries_from_sorted_packages(&packages, &global_airports);
         let ini_entries = parse_ini_entries(&content);
+
+        if !crate::scenery_sorting::auto_sort_enabled() {
+            let actual: HashMap<_, _> = ini_entries
+                .iter()
+                .map(|entry| (ini_path_key(&self.xplane_path, &entry.path), entry.enabled))
+                .collect();
+            return Ok(expected_entries.iter().all(|entry| {
+                actual.get(&ini_path_key(&self.xplane_path, &entry.path)) == Some(&entry.enabled)
+            }));
+        }
 
         Ok(entries_match_expected(&ini_entries, &expected_entries))
     }
@@ -872,6 +1160,118 @@ fn prepare_path_for_write(path: &Path) {
 mod tests {
     use super::*;
     use std::time::SystemTime;
+
+    fn registration(path: &str, enabled: bool) -> SceneryPackEntry {
+        SceneryPackEntry {
+            enabled,
+            path: path.to_string(),
+            is_global_airports: path == GLOBAL_AIRPORTS_ENTRY_NAME,
+        }
+    }
+
+    #[test]
+    fn patches_switches_without_reordering_or_removing_unmanaged_lines() {
+        let root = Path::new("/sim");
+        let before = "I\r\n1000 Version\r\nSCENERY\r\n# hand ordered\r\nSCENERY_PACK Custom Scenery/Z Mesh/\r\nSCENERY_PACK *GLOBAL_AIRPORTS*\r\nSCENERY_PACK_DISABLED Custom Scenery/A Airport/\r\nSCENERY_PACK E:/External/Unknown/\r\n";
+        let output = patch_ini_without_reordering(
+            root,
+            before,
+            &[
+                registration("Custom Scenery/A Airport/", true),
+                registration("Custom Scenery/Z Mesh/", false),
+                registration(GLOBAL_AIRPORTS_ENTRY_NAME, false),
+            ],
+            &HashSet::new(),
+        );
+        assert_eq!(
+            output,
+            before
+                .replace(
+                    "SCENERY_PACK Custom Scenery/Z Mesh/",
+                    "SCENERY_PACK_DISABLED Custom Scenery/Z Mesh/"
+                )
+                .replace(
+                    "SCENERY_PACK *GLOBAL_AIRPORTS*",
+                    "SCENERY_PACK_DISABLED *GLOBAL_AIRPORTS*"
+                )
+                .replace(
+                    "SCENERY_PACK_DISABLED Custom Scenery/A Airport/",
+                    "SCENERY_PACK Custom Scenery/A Airport/"
+                )
+        );
+    }
+
+    #[test]
+    fn appends_new_entries_and_matches_external_paths_without_duplicate_registrations() {
+        let root = Path::new("/sim");
+        let before = "SCENERY_PACK E:\\External\\Pack\\\nSCENERY_PACK Custom Scenery/Z Mesh/";
+        let output = patch_ini_without_reordering(
+            root,
+            before,
+            &[
+                registration("E:/External/Pack/", true),
+                registration("Custom Scenery/New Airport/", true),
+            ],
+            &HashSet::new(),
+        );
+        assert_eq!(
+            output,
+            format!("{before}\nSCENERY_PACK Custom Scenery/New Airport/\n")
+        );
+    }
+
+    #[test]
+    fn deleting_one_path_keeps_comments_and_remaining_order_exactly() {
+        let root = Path::new("/sim");
+        let before = "# custom\nSCENERY_PACK Custom Scenery/Keep/\nSCENERY_PACK_DISABLED E:/External/Delete/\nSCENERY_PACK *GLOBAL_AIRPORTS*\n";
+        let removed = HashSet::from([ini_path_key(root, "E:\\External\\Delete\\")]);
+        assert_eq!(
+            patch_ini_without_reordering(root, before, &[], &removed),
+            before.replace("SCENERY_PACK_DISABLED E:/External/Delete/\n", "")
+        );
+    }
+
+    #[test]
+    fn auto_sort_off_still_allows_explicit_manual_order() {
+        let temp = tempfile::tempdir().unwrap();
+        let db = crate::database::open_memory_connection().unwrap();
+        crate::database::apply_migrations(&db).unwrap();
+        let index_manager = SceneryIndexManager::new(temp.path(), db.clone());
+        let index = SceneryIndex {
+            version: crate::database::CURRENT_SCHEMA_VERSION as u32,
+            packages: HashMap::from([
+                (
+                    "Z Mesh".to_string(),
+                    make_package("Z Mesh", SceneryCategory::Mesh, 0, true),
+                ),
+                (
+                    "A Airport".to_string(),
+                    make_package("A Airport", SceneryCategory::Airport, 1, true),
+                ),
+            ]),
+            last_updated: SystemTime::UNIX_EPOCH,
+        };
+        let packs = SceneryPacksManager::new(temp.path(), db);
+        fs::create_dir_all(temp.path().join("Custom Scenery")).unwrap();
+        let before = "# user order\nSCENERY_PACK Custom Scenery/A Airport/\nSCENERY_PACK *GLOBAL_AIRPORTS*\nSCENERY_PACK Custom Scenery/Z Mesh/\n";
+        fs::write(&packs.ini_path, before).unwrap();
+        tauri::async_runtime::block_on(async {
+            index_manager.save_index(&index).await.unwrap();
+            packs.auto_sort_from_index().await.unwrap();
+            assert_eq!(fs::read_to_string(&packs.ini_path).unwrap(), before);
+            packs.apply_order_from_index().await.unwrap();
+            let after = parse_ini_entries(&fs::read_to_string(&packs.ini_path).unwrap());
+            let names: Vec<_> = after
+                .iter()
+                .filter(|entry| !entry.is_global_airports)
+                .map(|entry| entry.path.as_str())
+                .collect();
+            assert_eq!(
+                names,
+                vec!["Custom Scenery/Z Mesh/", "Custom Scenery/A Airport/"]
+            );
+        });
+    }
 
     #[cfg(unix)]
     #[test]

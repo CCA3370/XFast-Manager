@@ -1778,21 +1778,23 @@ async fn delete_scenery_folder(
         remove_scenery_dir_all_with_permission_fix(&canonical_path, &folder_name)?;
     }
 
+    // Remove only this registration; deleting a package must not reorder other entries.
+    let packs_manager = scenery_packs_manager::SceneryPacksManager::new(
+        std::path::Path::new(&xplane_path),
+        db.get(),
+    );
+    if let Err(e) = packs_manager.remove_entry_from_ini(&folder_name).await {
+        logger::log_error(
+            &format!("Failed to remove scenery registration: {}", e),
+            Some("scenery"),
+        );
+    }
+
     // Remove from scenery index if it exists
     if let Err(e) = scenery_index::remove_scenery_entry(&db.get(), &xplane_path, &folder_name).await
     {
         logger::log_error(
             &format!("Failed to remove scenery from index: {}", e),
-            Some("scenery"),
-        );
-    }
-
-    // Update scenery_packs.ini to remove the deleted entry
-    let xplane_path = std::path::Path::new(&xplane_path);
-    let packs_manager = scenery_packs_manager::SceneryPacksManager::new(xplane_path, db.get());
-    if let Err(e) = packs_manager.apply_from_index().await {
-        logger::log_error(
-            &format!("Failed to update scenery_packs.ini after deletion: {}", e),
             Some("scenery"),
         );
     }
@@ -2138,6 +2140,11 @@ async fn lookup_library_links_remote(
 // ========== Scenery Auto-Sorting Commands ==========
 
 #[tauri::command]
+fn set_scenery_auto_sort(enabled: bool) {
+    scenery_sorting::set_auto_sort_enabled(enabled);
+}
+
+#[tauri::command]
 async fn get_scenery_classification(
     db: State<'_, DatabaseState>,
     xplane_path: String,
@@ -2167,6 +2174,9 @@ async fn sort_scenery_packs(
     xplane_path: String,
     locked_folder_names: Option<Vec<String>>,
 ) -> Result<bool, String> {
+    if !scenery_sorting::auto_sort_enabled() {
+        return Err("Scenery auto-sorting is disabled in Settings".to_string());
+    }
     let db = db.get();
     let db_for_log = db.clone();
     let xplane_path = std::path::Path::new(&xplane_path);
@@ -2440,6 +2450,7 @@ async fn apply_scenery_changes(
     db: State<'_, DatabaseState>,
     xplane_path: String,
     entries: Vec<models::SceneryEntryUpdate>,
+    reorder: Option<bool>,
 ) -> Result<(), String> {
     let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
@@ -2492,10 +2503,12 @@ async fn apply_scenery_changes(
             .await
             .map_err(|e| format!("Failed to update Global Airports category: {}", e))?;
     }
-    packs_manager
-        .apply_from_index()
-        .await
-        .map_err(|e| format!("Failed to apply scenery changes: {}", e))?;
+    let apply_result = if reorder.unwrap_or(false) {
+        packs_manager.apply_order_from_index().await
+    } else {
+        packs_manager.apply_from_index().await
+    };
+    apply_result.map_err(|e| format!("Failed to apply scenery changes: {}", e))?;
 
     logger::log_info("Scenery changes applied successfully", Some("scenery"));
 
@@ -4118,6 +4131,7 @@ pub fn run() {
             lookup_library_links_remote,
             // Scenery auto-sorting commands
             get_scenery_classification,
+            set_scenery_auto_sort,
             sort_scenery_packs,
             rebuild_scenery_index,
             reset_scenery_database,
