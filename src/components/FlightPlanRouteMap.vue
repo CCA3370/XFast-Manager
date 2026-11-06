@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core'
 import * as L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { GeoJsonObject } from 'geojson'
+import { smoothMapZoom } from '@/utils/smoothMapZoom'
 import countries from '@/assets/geography/countries.json'
 import { mapCoordinates, type Waypoint } from '@/services/flightPlanDetails'
 const props = defineProps<{ points: Waypoint[] }>()
@@ -18,6 +19,7 @@ let offlineLayer: L.LayerGroup | undefined
 let tiles: L.TileLayer | undefined
 let observer: ResizeObserver | undefined
 let sized = false
+let smooth: ReturnType<typeof smoothMapZoom> | undefined
 let offlineRenderer: L.Canvas | undefined
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 const failedTiles = new Set<HTMLElement>()
@@ -25,6 +27,7 @@ const coordinates = computed(() =>
   mapCoordinates(props.points).map((point) => (point ? L.latLng(point) : null)),
 )
 function fit(animate = true) {
+  smooth?.cancel()
   const points = coordinates.value.filter((p) => p !== null)
   if (map && points.length)
     map.fitBounds(L.latLngBounds(points), {
@@ -130,10 +133,9 @@ onMounted(() => {
     zoomAnimation: !reducedMotion,
     fadeAnimation: !reducedMotion,
     markerZoomAnimation: !reducedMotion,
-    zoomSnap: 0.5,
+    zoomSnap: 0,
+    scrollWheelZoom: false,
     zoomDelta: 1,
-    wheelPxPerZoomLevel: 35,
-    wheelDebounceTime: 20,
     worldCopyJump: false,
   })
   map.createPane('offline-basemap').style.zIndex = '150'
@@ -164,6 +166,15 @@ onMounted(() => {
   route = L.layerGroup().addTo(map)
   L.control.scale({ imperial: false }).addTo(map)
   draw()
+  smooth = smoothMapZoom(
+    {
+      getZoom: () => map!.getZoom(),
+      getMinZoom: () => map!.getMinZoom(),
+      getMaxZoom: () => map!.getMaxZoom(),
+      setZoomAround: (point, zoom, options) => map!.setZoomAround(L.point(point), zoom, options),
+    },
+    host.value,
+  )
   observer = new ResizeObserver(() => {
     if (!host.value?.clientWidth || !host.value.clientHeight) return
     map?.invalidateSize({ animate: false })
@@ -180,6 +191,7 @@ watch(() => props.points, draw)
 onBeforeUnmount(() => {
   window.removeEventListener('online', networkOnline)
   window.removeEventListener('offline', networkOffline)
+  smooth?.dispose()
   observer?.disconnect()
   map?.remove()
   map = undefined
@@ -202,12 +214,12 @@ function attribution(event: MouseEvent) {
         <button
           class="map-button"
           :aria-label="t('flightPlanDetails.zoomOut')"
-          @click="map?.zoomOut()"
+          @click="smooth?.step(-1)"
           v-text="'−'"
         /><button
           class="map-button"
           :aria-label="t('flightPlanDetails.zoomIn')"
-          @click="map?.zoomIn()"
+          @click="smooth?.step(1)"
           v-text="'+'"
         /><button class="map-button" @click="fit()">{{ t('flightPlanDetails.fit') }}</button>
       </div>

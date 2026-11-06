@@ -44,7 +44,11 @@ describe('flight plan management', () => {
     await wrapper.get('input').setValue('ROUTE')
     expect(wrapper.findAll('li')).toHaveLength(1)
     expect(wrapper.get('li').text()).toContain('route.fms')
-    expect(mocks.invoke.mock.calls.every(([command]) => command === 'list_flight_plans')).toBe(true)
+    expect(
+      mocks.invoke.mock.calls.every(([command]) =>
+        ['list_flight_plans', 'read_flight_plan'].includes(command),
+      ),
+    ).toBe(true)
     wrapper.unmount()
   })
 
@@ -56,7 +60,7 @@ describe('flight plan management', () => {
     )
     const wrapper = mount(FlightPlans, { attachTo: document.body })
     await flushPromises()
-    expect(mocks.invoke).toHaveBeenCalledTimes(1)
+    expect(mocks.invoke).toHaveBeenCalledTimes(2)
     await wrapper.get('li button').trigger('click')
     await flushPromises()
     expect(wrapper.get('li').text()).toContain('KAAA')
@@ -66,6 +70,48 @@ describe('flight plan management', () => {
     expect(document.querySelector('dialog')?.open).toBe(true)
     expect(document.querySelector('dialog')?.textContent).toContain('KBBB')
     wrapper.unmount()
+  })
+
+  it('combines airport, cycle and text filters using parsed metadata, with no future-cycle option', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-06T12:00:00Z'))
+    const fixtures = [
+      ['a.fms', 'ZBAA', 'ZSPD', '2611'],
+      ['b.fms', 'ZBAA', 'ZGGG', '2610'],
+      ['c.fms', 'ZSPD', 'ZBAA', '2611'],
+      ['unknown.fms', 'ZBAA', 'ZSPD', ''],
+      ['future.fms', 'ZBAA', 'ZSPD', '2612'],
+    ]
+    mocks.invoke.mockImplementation(async (command: string, args: { name: string }) =>
+      command === 'list_flight_plans'
+        ? fixtures.map(([name]) => ({ name, size: 100, modified: 1 }))
+        : (() => {
+            const [, dep, arr, cycle] = fixtures.find((p) => p[0] === args.name)!
+            return `I\n1100 Version\nCYCLE ${cycle}\nADEP ${dep}\nADES ${arr}\nNUMENR 0\n`
+          })(),
+    )
+    const wrapper = mount(FlightPlans)
+    await flushPromises()
+    const selects = wrapper.findAll('select')
+    expect(selects[2]!.find('option[value="future"]').exists()).toBe(false)
+    await selects[0]!.setValue('ZBAA')
+    expect(wrapper.findAll('li')).toHaveLength(4)
+    await selects[1]!.setValue('ZSPD')
+    expect(wrapper.findAll('li')).toHaveLength(3)
+    await selects[2]!.setValue('current')
+    expect(wrapper.findAll('li')).toHaveLength(1)
+    expect(wrapper.get('li').text()).toContain('a.fms')
+    await selects[2]!.setValue('outdated')
+    expect(wrapper.findAll('li')).toHaveLength(0)
+    await selects[1]!.setValue('')
+    expect(wrapper.get('li').text()).toContain('b.fms')
+    await selects[1]!.setValue('ZSPD')
+    await selects[2]!.setValue('unknown')
+    expect(wrapper.findAll('li')).toHaveLength(2)
+    await wrapper.get('input').setValue('unknown')
+    expect(wrapper.findAll('li')).toHaveLength(1)
+    wrapper.unmount()
+    vi.useRealTimers()
   })
 
   it('requires confirmation before deleting a listed plan', async () => {

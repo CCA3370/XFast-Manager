@@ -1,4 +1,12 @@
 const en = {
+  unknownCycle: 'Unknown cycle',
+  allDepartures: 'All departures',
+  allArrivals: 'All arrivals',
+  allCycles: 'All cycles',
+  current: 'Current cycle',
+  outdated: 'Outdated cycle',
+  future: 'Future cycle',
+
   mapUnavailable:
     'Online map unavailable. Showing the offline basemap; the route remains available.',
   details: 'Details',
@@ -44,6 +52,14 @@ const en = {
   average: 'Average leg',
 }
 const zh = {
+  unknownCycle: '周期未知',
+  allDepartures: '全部出发机场',
+  allArrivals: '全部到达机场',
+  allCycles: '全部周期',
+  current: '当期数据',
+  outdated: '过期数据',
+  future: '未来周期',
+
   mapUnavailable: '在线地图不可用，已显示离线底图，航路仍可查看。',
   details: '详细信息',
   summary: '基本信息',
@@ -85,6 +101,14 @@ const zh = {
   average: '平均航段',
 }
 const de = {
+  unknownCycle: 'Unbekannter Zyklus',
+  allDepartures: 'Alle Abflüge',
+  allArrivals: 'Alle Ziele',
+  allCycles: 'Alle Zyklen',
+  current: 'Aktueller Zyklus',
+  outdated: 'Veralteter Zyklus',
+  future: 'Zukünftiger Zyklus',
+
   mapUnavailable: 'Onlinekarte nicht verfügbar. Offlinekarte und Route bleiben sichtbar.',
   details: 'Details',
   summary: 'Basisinformationen',
@@ -129,6 +153,14 @@ const de = {
   average: 'Durchschnitt',
 }
 const fr = {
+  unknownCycle: 'Cycle inconnu',
+  allDepartures: 'Tous les départs',
+  allArrivals: 'Toutes les arrivées',
+  allCycles: 'Tous les cycles',
+  current: 'Cycle actuel',
+  outdated: 'Cycle expiré',
+  future: 'Cycle futur',
+
   mapUnavailable: 'Carte en ligne indisponible. Le fond hors ligne et la route restent visibles.',
   details: 'Détails',
   summary: 'Informations de base',
@@ -173,6 +205,14 @@ const fr = {
   average: 'Moyenne',
 }
 const es = {
+  unknownCycle: 'Ciclo desconocido',
+  allDepartures: 'Todas las salidas',
+  allArrivals: 'Todas las llegadas',
+  allCycles: 'Todos los ciclos',
+  current: 'Ciclo actual',
+  outdated: 'Ciclo vencido',
+  future: 'Ciclo futuro',
+
   mapUnavailable: 'Mapa en línea no disponible. Se muestran el mapa sin conexión y la ruta.',
   details: 'Detalles',
   summary: 'Información básica',
@@ -217,6 +257,14 @@ const es = {
   average: 'Promedio',
 }
 const pt = {
+  unknownCycle: 'Ciclo desconhecido',
+  allDepartures: 'Todas as partidas',
+  allArrivals: 'Todos os destinos',
+  allCycles: 'Todos os ciclos',
+  current: 'Ciclo atual',
+  outdated: 'Ciclo antigo',
+  future: 'Ciclo futuro',
+
   mapUnavailable: 'Mapa online indisponível. O mapa offline e a rota continuam visíveis.',
   details: 'Detalhes',
   summary: 'Informações básicas',
@@ -261,6 +309,14 @@ const pt = {
   average: 'Média',
 }
 const ja = {
+  unknownCycle: 'サイクル不明',
+  allDepartures: 'すべての出発地',
+  allArrivals: 'すべての目的地',
+  allCycles: 'すべてのサイクル',
+  current: '現行サイクル',
+  outdated: '期限切れ',
+  future: '将来のサイクル',
+
   mapUnavailable: 'オンライン地図を利用できません。オフライン地図と航路を表示しています。',
   details: '詳細',
   summary: '基本情報',
@@ -303,6 +359,14 @@ const ja = {
   average: '平均区間',
 }
 const ko = {
+  unknownCycle: '주기 불명',
+  allDepartures: '모든 출발지',
+  allArrivals: '모든 목적지',
+  allCycles: '모든 주기',
+  current: '현재 주기',
+  outdated: '지난 주기',
+  future: '미래 주기',
+
   mapUnavailable: '온라인 지도를 사용할 수 없습니다. 오프라인 지도와 항로를 표시합니다.',
   details: '상세 정보',
   summary: '기본 정보',
@@ -346,6 +410,14 @@ const ko = {
   average: '평균 구간',
 }
 const ru = {
+  unknownCycle: 'Неизвестный цикл',
+  allDepartures: 'Все вылеты',
+  allArrivals: 'Все прибытия',
+  allCycles: 'Все циклы',
+  current: 'Текущий цикл',
+  outdated: 'Устаревший цикл',
+  future: 'Будущий цикл',
+
   mapUnavailable: 'Онлайн-карта недоступна. Отображаются офлайн-карта и маршрут.',
   details: 'Подробнее',
   summary: 'Основные сведения',
@@ -389,6 +461,14 @@ const ru = {
   average: 'Средняя длина',
 }
 const ar = {
+  unknownCycle: 'دورة غير معروفة',
+  allDepartures: 'كل المغادرات',
+  allArrivals: 'كل الوجهات',
+  allCycles: 'كل الدورات',
+  current: 'الدورة الحالية',
+  outdated: 'دورة منتهية',
+  future: 'دورة مستقبلية',
+
   mapUnavailable: 'الخريطة المتصلة غير متاحة. تُعرض الخريطة المحلية والمسار.',
   details: 'التفاصيل',
   summary: 'المعلومات الأساسية',
@@ -432,6 +512,14 @@ const ar = {
   average: 'متوسط المقاطع',
 }
 const hi = {
+  unknownCycle: 'अज्ञात चक्र',
+  allDepartures: 'सभी प्रस्थान',
+  allArrivals: 'सभी गंतव्य',
+  allCycles: 'सभी चक्र',
+  current: 'वर्तमान चक्र',
+  outdated: 'पुराना चक्र',
+  future: 'भावी चक्र',
+
   mapUnavailable: 'ऑनलाइन मानचित्र अनुपलब्ध है। ऑफलाइन मानचित्र और मार्ग दिख रहे हैं।',
   details: 'विवरण',
   summary: 'मूल जानकारी',
