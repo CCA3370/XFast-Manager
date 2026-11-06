@@ -63,31 +63,15 @@ const departure = ref(''),
 const index = ref<Record<string, { departure: string; arrival: string; cycle: string }>>({})
 const indexing = ref(false)
 const now = ref(new Date())
-const departures = computed(() =>
-  [
-    ...new Set(
-      Object.values(index.value)
-        .map((p) => p.departure)
-        .filter(Boolean),
-    ),
-  ].sort(),
-)
-const arrivals = computed(() =>
-  [
-    ...new Set(
-      Object.values(index.value)
-        .map((p) => p.arrival)
-        .filter(Boolean),
-    ),
-  ].sort(),
-)
 const filtered = computed(() =>
   plans.value.filter((plan) => {
     const meta = index.value[plan.name]
     return (
       plan.name.toLowerCase().includes(query.value.toLowerCase()) &&
-      (!departure.value || meta?.departure === departure.value) &&
-      (!arrival.value || meta?.arrival === arrival.value) &&
+      (!departure.value ||
+        meta?.departure.toUpperCase().includes(departure.value.trim().toUpperCase())) &&
+      (!arrival.value ||
+        meta?.arrival.toUpperCase().includes(arrival.value.trim().toUpperCase())) &&
       (!cycleFilter.value ||
         (getNavdataCycleStatus(meta?.cycle, now.value) === 'future'
           ? 'unknown'
@@ -119,7 +103,9 @@ async function buildIndex(root: string, list: FlightPlan[], current: number) {
     if (current !== generation) return
     index.value = { ...index.value, ...Object.fromEntries(batch) }
   }
-  if (current === generation) indexing.value = false
+  if (current === generation) {
+    indexing.value = false
+  }
 }
 async function refresh() {
   inspection++
@@ -171,6 +157,7 @@ watch(
   () => app.xplanePath,
   () => {
     errors.value = []
+    departure.value = arrival.value = cycleFilter.value = ''
     void refresh()
   },
 )
@@ -181,7 +168,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="p-6 space-y-4">
+  <div class="p-6 space-y-4 text-gray-900 dark:text-gray-100">
     <header class="flex flex-wrap items-center justify-between gap-3">
       <div class="min-w-0">
         <h1 class="text-2xl font-bold">{{ t('flightPlans.title') }}</h1>
@@ -197,36 +184,31 @@ onBeforeUnmount(() => {
       >
         <p v-for="(error, i) in errors" :key="i">{{ error }}</p>
       </div>
-      <div
-        class="grid grid-cols-[minmax(100px,1fr)_repeat(3,minmax(86px,.65fr))_auto] items-center gap-2"
-        data-testid="plan-filters"
-      >
+      <div class="plan-filter-bar" data-testid="plan-filters">
         <input
           v-model="query"
           :placeholder="t('flightPlans.search')"
           :aria-label="t('flightPlans.search')"
           class="min-w-0 rounded-lg border border-gray-400/30 bg-transparent p-2"
         />
-        <select
+        <input
           v-model="departure"
-          :disabled="indexing"
+          data-testid="departure-filter"
           :aria-label="t('flightPlanDetails.departure')"
-          class="min-w-0 rounded-lg border border-gray-400/30 bg-white p-2 text-sm dark:bg-gray-900"
-        >
-          <option value="">{{ t('flightPlanDetails.allDepartures') }}</option>
-          <option v-for="airport in departures" :key="airport" :value="airport">
-            {{ airport }}
-          </option>
-        </select>
-        <select
+          :placeholder="t('flightPlanDetails.from') + ' ICAO'"
+          spellcheck="false"
+          autocapitalize="characters"
+          class="uppercase"
+        />
+        <input
           v-model="arrival"
-          :disabled="indexing"
+          data-testid="arrival-filter"
           :aria-label="t('flightPlanDetails.destination')"
-          class="min-w-0 rounded-lg border border-gray-400/30 bg-white p-2 text-sm dark:bg-gray-900"
-        >
-          <option value="">{{ t('flightPlanDetails.allArrivals') }}</option>
-          <option v-for="airport in arrivals" :key="airport" :value="airport">{{ airport }}</option>
-        </select>
+          :placeholder="t('flightPlanDetails.to') + ' ICAO'"
+          spellcheck="false"
+          autocapitalize="characters"
+          class="uppercase"
+        />
         <select
           v-model="cycleFilter"
           :disabled="indexing"
@@ -341,3 +323,61 @@ onBeforeUnmount(() => {
     />
   </div>
 </template>
+
+<style scoped>
+.plan-filter-bar {
+  --filter-surface: #fff;
+  --filter-text: #1f2937;
+  --filter-border: #cbd5e1;
+  --filter-placeholder: #64748b;
+  --filter-scheme: light;
+  display: grid;
+  grid-template-columns:
+    minmax(120px, 1fr) repeat(2, clamp(100px, 11vw, 150px)) clamp(110px, 12vw, 150px)
+    76px;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid rgb(148 163 184 / 25%);
+  border-radius: 0.75rem;
+  background: #f1f5f9;
+}
+:global(.dark .plan-filter-bar) {
+  --filter-surface: #111827;
+  --filter-text: #f3f4f6;
+  --filter-border: #374151;
+  --filter-placeholder: #9ca3af;
+  --filter-scheme: dark;
+  background: #192230;
+}
+.plan-filter-bar > input,
+.plan-filter-bar > select,
+.plan-filter-bar > button {
+  box-sizing: border-box;
+  height: 42px;
+  min-width: 0;
+  border: 1px solid var(--filter-border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--filter-text);
+  background: var(--filter-surface);
+  color-scheme: var(--filter-scheme);
+}
+.plan-filter-bar > input::placeholder {
+  color: var(--filter-placeholder);
+  opacity: 1;
+}
+.plan-filter-bar > button {
+  font-weight: 600;
+  min-width: 76px;
+  white-space: nowrap;
+}
+.plan-filter-bar > button:hover {
+  border-color: #3b82f6;
+}
+.plan-filter-bar > :focus-visible {
+  outline: 2px solid rgb(59 130 246 / 35%);
+  outline-offset: 1px;
+}
+</style>

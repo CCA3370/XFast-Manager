@@ -1,4 +1,6 @@
 interface ZoomMap {
+  begin?(): void
+  end?(): void
   getZoom(): number
   getMinZoom(): number
   getMaxZoom(): number
@@ -11,7 +13,10 @@ export function smoothMapZoom(map: ZoomMap, host: HTMLElement) {
     last = 0
   let anchor: [number, number] = [host.clientWidth / 2, host.clientHeight / 2]
   function cancel() {
-    if (frame) cancelAnimationFrame(frame)
+    if (frame) {
+      cancelAnimationFrame(frame)
+      map.end?.()
+    }
     frame = 0
     last = 0
     target = map.getZoom()
@@ -20,14 +25,20 @@ export function smoothMapZoom(map: ZoomMap, host: HTMLElement) {
     const current = map.getZoom()
     const delta = last ? Math.min(64, now - last) : 16
     last = now
-    const next = current + (target - current) * (1 - Math.exp(-delta / 45))
+    const next = current + (target - current) * (1 - Math.exp(-delta / 60))
     const done = Math.abs(target - next) < 0.004
     map.setZoomAround(anchor, done ? target : next, { animate: false })
     frame = done ? 0 : requestAnimationFrame(tick)
-    if (done) last = 0
+    if (done) {
+      last = 0
+      map.end?.()
+    }
   }
   function step(amount: number, point?: [number, number]) {
-    if (!frame) target = map.getZoom()
+    if (!frame) {
+      target = map.getZoom()
+      map.begin?.()
+    }
     anchor = point ?? [host.clientWidth / 2, host.clientHeight / 2]
     target = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), target + amount))
     if (!frame) frame = requestAnimationFrame(tick)

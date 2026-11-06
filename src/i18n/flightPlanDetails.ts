@@ -1,4 +1,6 @@
 const en = {
+  missingMap: 'No saved map for this area. View this area online first.',
+
   unknownCycle: 'Unknown cycle',
   allDepartures: 'All departures',
   allArrivals: 'All arrivals',
@@ -7,8 +9,7 @@ const en = {
   outdated: 'Outdated cycle',
   future: 'Future cycle',
 
-  mapUnavailable:
-    'Online map unavailable. Showing the offline basemap; the route remains available.',
+  mapUnavailable: 'Offline: using saved map tiles.',
   details: 'Details',
   summary: 'Basic information',
   route: 'Route diagram',
@@ -52,6 +53,8 @@ const en = {
   average: 'Average leg',
 }
 const zh = {
+  missingMap: '此区域暂无已保存地图。请先联网浏览此区域。',
+
   unknownCycle: '周期未知',
   allDepartures: '全部出发机场',
   allArrivals: '全部到达机场',
@@ -60,7 +63,7 @@ const zh = {
   outdated: '过期数据',
   future: '未来周期',
 
-  mapUnavailable: '在线地图不可用，已显示离线底图，航路仍可查看。',
+  mapUnavailable: '当前离线，正在使用已保存的地图。',
   details: '详细信息',
   summary: '基本信息',
   route: '航路示意图',
@@ -101,6 +104,8 @@ const zh = {
   average: '平均航段',
 }
 const de = {
+  missingMap: 'Keine gespeicherte Karte für diesen Bereich. zuerst online öffnen.',
+
   unknownCycle: 'Unbekannter Zyklus',
   allDepartures: 'Alle Abflüge',
   allArrivals: 'Alle Ziele',
@@ -109,7 +114,7 @@ const de = {
   outdated: 'Veralteter Zyklus',
   future: 'Zukünftiger Zyklus',
 
-  mapUnavailable: 'Onlinekarte nicht verfügbar. Offlinekarte und Route bleiben sichtbar.',
+  mapUnavailable: 'Offline: gespeicherte Karten werden verwendet.',
   details: 'Details',
   summary: 'Basisinformationen',
   route: 'Routenskizze',
@@ -153,6 +158,8 @@ const de = {
   average: 'Durchschnitt',
 }
 const fr = {
+  missingMap: 'Aucune carte enregistrée ici. consultez cette zone en ligne.',
+
   unknownCycle: 'Cycle inconnu',
   allDepartures: 'Tous les départs',
   allArrivals: 'Toutes les arrivées',
@@ -161,7 +168,7 @@ const fr = {
   outdated: 'Cycle expiré',
   future: 'Cycle futur',
 
-  mapUnavailable: 'Carte en ligne indisponible. Le fond hors ligne et la route restent visibles.',
+  mapUnavailable: 'Hors ligne : cartes enregistrées utilisées.',
   details: 'Détails',
   summary: 'Informations de base',
   route: 'Tracé de route',
@@ -205,6 +212,8 @@ const fr = {
   average: 'Moyenne',
 }
 const es = {
+  missingMap: 'No hay mapa guardado aquí. visita esta zona en línea.',
+
   unknownCycle: 'Ciclo desconocido',
   allDepartures: 'Todas las salidas',
   allArrivals: 'Todas las llegadas',
@@ -213,7 +222,7 @@ const es = {
   outdated: 'Ciclo vencido',
   future: 'Ciclo futuro',
 
-  mapUnavailable: 'Mapa en línea no disponible. Se muestran el mapa sin conexión y la ruta.',
+  mapUnavailable: 'Sin conexión: usando mapas guardados.',
   details: 'Detalles',
   summary: 'Información básica',
   route: 'Esquema de ruta',
@@ -257,6 +266,8 @@ const es = {
   average: 'Promedio',
 }
 const pt = {
+  missingMap: 'Não há mapa salvo aqui. visite a área online.',
+
   unknownCycle: 'Ciclo desconhecido',
   allDepartures: 'Todas as partidas',
   allArrivals: 'Todos os destinos',
@@ -265,7 +276,7 @@ const pt = {
   outdated: 'Ciclo antigo',
   future: 'Ciclo futuro',
 
-  mapUnavailable: 'Mapa online indisponível. O mapa offline e a rota continuam visíveis.',
+  mapUnavailable: 'Offline: usando mapas salvos.',
   details: 'Detalhes',
   summary: 'Informações básicas',
   route: 'Diagrama da rota',
@@ -309,6 +320,8 @@ const pt = {
   average: 'Média',
 }
 const ja = {
+  missingMap: 'この地域の保存済み地図がありません。オンラインで表示してください。',
+
   unknownCycle: 'サイクル不明',
   allDepartures: 'すべての出発地',
   allArrivals: 'すべての目的地',
@@ -317,7 +330,7 @@ const ja = {
   outdated: '期限切れ',
   future: '将来のサイクル',
 
-  mapUnavailable: 'オンライン地図を利用できません。オフライン地図と航路を表示しています。',
+  mapUnavailable: 'オフライン：保存済み地図を使用しています。',
   details: '詳細',
   summary: '基本情報',
   route: '航路図',
@@ -359,6 +372,8 @@ const ja = {
   average: '平均区間',
 }
 const ko = {
+  missingMap: '저장된 지도가 없습니다. 온라인에서 이 지역을 보세요.',
+
   unknownCycle: '주기 불명',
   allDepartures: '모든 출발지',
   allArrivals: '모든 목적지',
@@ -367,7 +382,7 @@ const ko = {
   outdated: '지난 주기',
   future: '미래 주기',
 
-  mapUnavailable: '온라인 지도를 사용할 수 없습니다. 오프라인 지도와 항로를 표시합니다.',
+  mapUnavailable: '오프라인: 저장된 지도를 사용합니다.',
   details: '상세 정보',
   summary: '기본 정보',
   route: '항로도',
@@ -410,6 +425,8 @@ const ko = {
   average: '평균 구간',
 }
 const ru = {
+  missingMap: 'Карта этой области не сохранена. откройте область онлайн.',
+
   unknownCycle: 'Неизвестный цикл',
   allDepartures: 'Все вылеты',
   allArrivals: 'Все прибытия',
@@ -418,7 +435,7 @@ const ru = {
   outdated: 'Устаревший цикл',
   future: 'Будущий цикл',
 
-  mapUnavailable: 'Онлайн-карта недоступна. Отображаются офлайн-карта и маршрут.',
+  mapUnavailable: 'Офлайн: используются сохранённые карты.',
   details: 'Подробнее',
   summary: 'Основные сведения',
   route: 'Схема маршрута',
@@ -461,6 +478,8 @@ const ru = {
   average: 'Средняя длина',
 }
 const ar = {
+  missingMap: 'لا توجد خريطة محفوظة هنا. اعرض المنطقة متصلاً أولاً.',
+
   unknownCycle: 'دورة غير معروفة',
   allDepartures: 'كل المغادرات',
   allArrivals: 'كل الوجهات',
@@ -469,7 +488,7 @@ const ar = {
   outdated: 'دورة منتهية',
   future: 'دورة مستقبلية',
 
-  mapUnavailable: 'الخريطة المتصلة غير متاحة. تُعرض الخريطة المحلية والمسار.',
+  mapUnavailable: 'غير متصل: تُستخدم الخرائط المحفوظة.',
   details: 'التفاصيل',
   summary: 'المعلومات الأساسية',
   route: 'مخطط المسار',
@@ -512,6 +531,8 @@ const ar = {
   average: 'متوسط المقاطع',
 }
 const hi = {
+  missingMap: 'इस क्षेत्र का मानचित्र सहेजा नहीं गया। पहले ऑनलाइन देखें।',
+
   unknownCycle: 'अज्ञात चक्र',
   allDepartures: 'सभी प्रस्थान',
   allArrivals: 'सभी गंतव्य',
@@ -520,7 +541,7 @@ const hi = {
   outdated: 'पुराना चक्र',
   future: 'भावी चक्र',
 
-  mapUnavailable: 'ऑनलाइन मानचित्र अनुपलब्ध है। ऑफलाइन मानचित्र और मार्ग दिख रहे हैं।',
+  mapUnavailable: 'ऑफलाइन: सहेजे मानचित्र उपयोग में हैं।',
   details: 'विवरण',
   summary: 'मूल जानकारी',
   route: 'मार्ग आरेख',

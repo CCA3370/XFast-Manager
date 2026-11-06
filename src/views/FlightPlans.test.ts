@@ -92,9 +92,13 @@ describe('flight plan management', () => {
     )
     const wrapper = mount(FlightPlans)
     await flushPromises()
-    const selects = wrapper.findAll('select')
+    const selects = [
+      wrapper.get('[data-testid="departure-filter"]'),
+      wrapper.get('[data-testid="arrival-filter"]'),
+      wrapper.get('select'),
+    ]
     expect(selects[2]!.find('option[value="future"]').exists()).toBe(false)
-    await selects[0]!.setValue('ZBAA')
+    await selects[0]!.setValue('zba')
     expect(wrapper.findAll('li')).toHaveLength(4)
     await selects[1]!.setValue('ZSPD')
     expect(wrapper.findAll('li')).toHaveLength(3)

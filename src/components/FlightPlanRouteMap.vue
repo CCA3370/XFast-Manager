@@ -4,25 +4,85 @@ import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import * as L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { GeoJsonObject } from 'geojson'
+import { loadMapTile, type TileResult } from '@/services/mapTiles'
 import { smoothMapZoom } from '@/utils/smoothMapZoom'
-import countries from '@/assets/geography/countries.json'
 import { mapCoordinates, type Waypoint } from '@/services/flightPlanDetails'
+// Leaflet 1.9's gesture lifecycle keeps existing tile levels during a continuous
+// transform; public setView() would invalidate all tiles on every animation frame.
+type AnimatedMap = L.Map & {
+  _moveStart(changed: boolean): void
+  _moveEnd(changed: boolean): void
+  _move(center: L.LatLng, zoom: number, data: { pinch: boolean; round: boolean }): void
+}
 const props = defineProps<{ points: Waypoint[] }>()
 const { t } = useI18n()
 const host = ref<HTMLDivElement | null>(null)
 const failures = ref(0)
+const sources = new Map<HTMLElement, string>()
+let disposed = false
+class CachedMapLayer extends L.GridLayer {
+  private pending = new Map<HTMLElement, { controller: AbortController; revoke?: () => void }>()
+  constructor() {
+    super({
+      maxZoom: 19,
+      keepBuffer: 2,
+      updateWhenZooming: true,
+      updateWhenIdle: true,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+    })
+    this.on('tileunload', (e) => {
+      const job = this.pending.get(e.tile)
+      job?.controller.abort()
+      job?.revoke?.()
+      this.pending.delete(e.tile)
+      sources.delete(e.tile)
+      failures.value = [...sources.values()].filter((s) => s === 'missing').length
+    })
+  }
+  createTile(coords: L.Coords, done: L.DoneCallback) {
+    const image = document.createElement('img')
+    image.alt = ''
+    image.dataset.tileKey = `${coords.z}/${coords.x}/${coords.y}`
+    image.width = 256
+    image.height = 256
+    image.draggable = false
+    const job: { controller: AbortController; revoke?: () => void } = {
+      controller: new AbortController(),
+    }
+    this.pending.set(image, job)
+    void loadMapTile(coords.z, coords.x, coords.y, job.controller.signal).then(
+      (result: TileResult) => {
+        if (job.controller.signal.aborted || disposed) {
+          result.revoke?.()
+          return
+        }
+        job.revoke = result.revoke
+        sources.set(image, result.source)
+        image.dataset.mapSource = result.source
+        failures.value = [...sources.values()].filter((s) => s === 'missing').length
+        image.onload = () => done(undefined, image)
+        image.onerror = () => done(new Error('Map image unavailable'), image)
+        image.src = result.url
+      },
+    )
+    return image
+  }
+}
+function refreshTiles() {
+  if (map && tiles) {
+    tiles.remove()
+    tiles.addTo(map)
+  }
+}
 const offline = ref(!navigator.onLine)
 let map: L.Map | undefined
 let route: L.LayerGroup | undefined
-let offlineLayer: L.LayerGroup | undefined
-let tiles: L.TileLayer | undefined
+let tiles: L.GridLayer | undefined
 let observer: ResizeObserver | undefined
 let sized = false
 let smooth: ReturnType<typeof smoothMapZoom> | undefined
-let offlineRenderer: L.Canvas | undefined
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-const failedTiles = new Set<HTMLElement>()
 const coordinates = computed(() =>
   mapCoordinates(props.points).map((point) => (point ? L.latLng(point) : null)),
 )
@@ -38,38 +98,10 @@ function fit(animate = true) {
     })
 }
 function draw() {
-  if (!map || !route || !offlineLayer) return
+  if (!map || !route) return
   route.clearLayers()
-  offlineLayer.clearLayers()
   const valid = coordinates.value.filter((p) => p !== null)
   if (!valid.length) map.setView([0, 0], 2)
-  const world = valid.length
-    ? Math.round(valid.reduce((sum, p) => sum + p.lng, 0) / valid.length / 360) * 360
-    : 0
-  for (const offset of [-360, 0, 360]) {
-    L.geoJSON(
-      {
-        type: 'FeatureCollection',
-        features: countries.map((c) => ({
-          type: 'Feature',
-          properties: {},
-          geometry: { type: c.type, coordinates: c.coordinates },
-        })),
-      } as GeoJsonObject,
-      {
-        pane: 'offline-basemap',
-        interactive: false,
-        coordsToLatLng: (c) => L.latLng(c[1]!, c[0]! + offset + world),
-        style: {
-          renderer: offlineRenderer,
-          color: '#9daea8',
-          weight: 0.6,
-          fillColor: '#f1f1e7',
-          fillOpacity: 1,
-        },
-      },
-    ).addTo(offlineLayer)
-  }
   let segment: L.LatLng[] = []
   const finish = () => {
     if (segment.length > 1) {
@@ -114,12 +146,7 @@ function draw() {
 }
 function networkOnline() {
   offline.value = false
-  // Reattach to let Leaflet round the tile zoom. redraw() uses fractional
-  // map zooms verbatim in Leaflet 1.9, yielding invalid OSM tile URLs.
-  if (map && tiles) {
-    tiles.remove()
-    tiles.addTo(map)
-  }
+  refreshTiles()
 }
 function networkOffline() {
   offline.value = true
@@ -138,40 +165,32 @@ onMounted(() => {
     zoomDelta: 1,
     worldCopyJump: false,
   })
-  map.createPane('offline-basemap').style.zIndex = '150'
-  offlineRenderer = L.canvas({ pane: 'offline-basemap', padding: 0.3 })
-  offlineLayer = L.layerGroup().addTo(map)
-  // Normal browser caching, no prefetch: request only the current viewport.
-  tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    keepBuffer: 1,
-    updateWhenZooming: false,
-    updateWhenIdle: true,
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> · Natural Earth',
-  })
-  tiles.on('tileerror', (e: L.TileErrorEvent) => {
-    failedTiles.add(e.tile)
-    e.tile.style.visibility = 'hidden'
-    failures.value = failedTiles.size
-  })
-  const clearFailure = (e: L.TileEvent) => {
-    failedTiles.delete(e.tile)
-    e.tile.style.visibility = ''
-    failures.value = failedTiles.size
-  }
-  tiles.on('tileload', clearFailure)
-  tiles.on('tileunload', clearFailure)
+  tiles = new CachedMapLayer()
   tiles.addTo(map)
   route = L.layerGroup().addTo(map)
   L.control.scale({ imperial: false }).addTo(map)
   draw()
   smooth = smoothMapZoom(
     {
+      begin: () => {
+        host.value?.classList.add('is-zooming')
+        ;(map as AnimatedMap)._moveStart(true)
+      },
+      end: () => {
+        ;(map as AnimatedMap)._moveEnd(true)
+        host.value?.classList.remove('is-zooming')
+      },
       getZoom: () => map!.getZoom(),
       getMinZoom: () => map!.getMinZoom(),
       getMaxZoom: () => map!.getMaxZoom(),
-      setZoomAround: (point, zoom, options) => map!.setZoomAround(L.point(point), zoom, options),
+      setZoomAround: (point, zoom) => {
+        const half = map!.getSize().divideBy(2)
+        const offset = L.point(point)
+          .subtract(half)
+          .multiplyBy(1 - 1 / map!.getZoomScale(zoom))
+        const center = map!.containerPointToLatLng(half.add(offset))
+        ;(map as AnimatedMap)._move(center, zoom, { pinch: true, round: false })
+      },
     },
     host.value,
   )
@@ -195,7 +214,8 @@ onBeforeUnmount(() => {
   observer?.disconnect()
   map?.remove()
   map = undefined
-  failedTiles.clear()
+  disposed = true
+  sources.clear()
 })
 function attribution(event: MouseEvent) {
   const target = (event.target as HTMLElement).closest('a')
@@ -231,12 +251,18 @@ function attribution(event: MouseEvent) {
       :aria-label="t('flightPlanDetails.route')"
       @click="attribution"
     />
-    <p v-if="failures || offline" role="status" class="text-xs text-amber-600">
+    <p v-if="failures" role="status" class="text-xs text-amber-600">
+      {{ t('flightPlanDetails.missingMap') }}
+    </p>
+    <p v-else-if="offline" role="status" class="text-xs text-amber-600">
       {{ t('flightPlanDetails.mapUnavailable') }}
     </p>
   </section>
 </template>
 <style scoped>
+.route-map.is-zooming :deep(.leaflet-tile-container) {
+  will-change: transform;
+}
 .route-map :deep(.leaflet-zoom-anim .leaflet-zoom-animated) {
   transition-duration: 0.14s;
 }
