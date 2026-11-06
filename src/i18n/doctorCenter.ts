@@ -337,9 +337,8 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       noResultTitle: 'Ready to diagnose',
       noResultDescription:
         'Run a quick check for local essentials or a full diagnosis for every available check.',
-      noIssues: 'No actionable issues in this section',
-      noIssuesDescription:
-        'Passed and not-applicable checks remain visible so coverage can be audited.',
+      noIssues: 'No issues found',
+      noIssuesDescription: 'Switch to All to see passed and not-applicable checks.',
       xplaneRunning: 'Close X-Plane before applying repairs that change files.',
       exportSuccess: 'Health report exported.',
       exportFailed: 'Could not export the health report.',

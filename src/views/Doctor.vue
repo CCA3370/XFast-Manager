@@ -12,9 +12,13 @@
           v-if="run?.completedAt"
           class="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-gray-500 dark:text-gray-400"
         >
-          <span>{{ t('doctor.center.status.lastChecked', { time: formatDateTime(run.completedAt) }) }}</span>
+          <span>{{
+            t('doctor.center.status.lastChecked', { time: formatDateTime(run.completedAt) })
+          }}</span>
           <span aria-hidden="true">·</span>
-          <span>{{ t('doctor.center.status.duration', { duration: formatDuration(run.durationMs) }) }}</span>
+          <span>{{
+            t('doctor.center.status.duration', { duration: formatDuration(run.durationMs) })
+          }}</span>
           <span v-if="store.selectedRunId" aria-hidden="true">·</span>
           <span v-if="store.selectedRunId">{{ t('doctor.center.status.viewingHistory') }}</span>
         </div>
@@ -116,7 +120,9 @@
           aria-live="polite"
           class="mb-3 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
         >
-          <div class="flex flex-col gap-3 px-3 py-2.5 lg:flex-row lg:items-center lg:justify-between">
+          <div
+            class="flex flex-col gap-3 px-3 py-2.5 lg:flex-row lg:items-center lg:justify-between"
+          >
             <div class="flex min-w-0 items-center gap-3">
               <span
                 class="h-2.5 w-2.5 flex-none rounded-full"
@@ -157,7 +163,9 @@
                     })
                   }}
                   <span class="px-1">·</span>
-                  <span class="font-semibold text-gray-600 dark:text-gray-300">{{ runtimePercent }}%</span>
+                  <span class="font-semibold text-gray-600 dark:text-gray-300"
+                    >{{ runtimePercent }}%</span
+                  >
                   <span class="px-1">·</span>
                   {{
                     store.phase === 'network'
@@ -175,27 +183,37 @@
               <span class="inline-flex items-center gap-1.5">
                 <span class="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
                 <span>{{ t('doctor.center.outcomes.pass') }}</span>
-                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{ run.summary.pass }}</strong>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{
+                  run.summary.pass
+                }}</strong>
               </span>
               <span v-if="run.summary.info" class="inline-flex items-center gap-1.5">
                 <span class="h-1.5 w-1.5 rounded-full bg-blue-500" aria-hidden="true" />
                 <span>{{ t('doctor.center.outcomes.info') }}</span>
-                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{ run.summary.info }}</strong>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{
+                  run.summary.info
+                }}</strong>
               </span>
               <span v-if="run.summary.warning" class="inline-flex items-center gap-1.5">
                 <span class="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
                 <span>{{ t('doctor.center.outcomes.warning') }}</span>
-                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{ run.summary.warning }}</strong>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{
+                  run.summary.warning
+                }}</strong>
               </span>
               <span v-if="run.summary.critical" class="inline-flex items-center gap-1.5">
                 <span class="h-1.5 w-1.5 rounded-full bg-red-500" aria-hidden="true" />
                 <span>{{ t('doctor.center.outcomes.critical') }}</span>
-                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{ run.summary.critical }}</strong>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{
+                  run.summary.critical
+                }}</strong>
               </span>
               <span v-if="run.summary.unavailable" class="inline-flex items-center gap-1.5">
                 <span class="h-1.5 w-1.5 rounded-full bg-gray-400" aria-hidden="true" />
                 <span>{{ t('doctor.center.outcomes.unavailable') }}</span>
-                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{ run.summary.unavailable }}</strong>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{
+                  run.summary.unavailable
+                }}</strong>
               </span>
               <span
                 class="border-l border-gray-200 pl-3 font-semibold tabular-nums text-gray-700 dark:border-gray-700 dark:text-gray-200"
@@ -210,12 +228,16 @@
             <div
               class="h-full transition-all duration-300"
               :class="run.state === 'running' ? 'bg-blue-600' : coverageBarClass"
-              :style="{ width: `${run.state === 'running' ? runtimePercent : run.summary.coveragePercent}%` }"
+              :style="{
+                width: `${run.state === 'running' ? runtimePercent : run.summary.coveragePercent}%`,
+              }"
             />
           </div>
 
           <div
-            v-if="!store.isRunning && (displayedRunIsStale || run.summary.completeness !== 'complete')"
+            v-if="
+              !store.isRunning && (displayedRunIsStale || run.summary.completeness !== 'complete')
+            "
             class="flex flex-wrap gap-x-4 gap-y-1 border-t border-gray-100 px-3 py-2 text-[11px] text-gray-600 dark:border-gray-800 dark:text-gray-300"
           >
             <span v-if="displayedRunIsStale">
@@ -271,7 +293,9 @@
             data-testid="health-results-panel"
             class="min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
           >
-            <header class="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
+            <header
+              class="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-700"
+            >
               <div class="flex min-w-0 items-center gap-2">
                 <h2 class="text-xs font-semibold text-gray-600 dark:text-gray-300">
                   {{ t('doctor.center.status.currentResult') }}
@@ -282,12 +306,18 @@
               </div>
 
               <div class="flex flex-none items-center gap-2">
-                <div class="flex rounded-md border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-gray-900">
+                <div
+                  class="flex rounded-md border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-gray-900"
+                >
                   <button
                     type="button"
                     data-testid="health-filter-all"
                     class="rounded px-2 py-1 text-[11px] font-semibold transition-colors"
-                    :class="!issuesOnly ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'"
+                    :class="
+                      !issuesOnly
+                        ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-800 dark:text-gray-100'
+                        : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+                    "
                     :aria-pressed="!issuesOnly"
                     @click="issuesOnly = false"
                   >
@@ -297,12 +327,22 @@
                     type="button"
                     data-testid="health-filter-issues"
                     class="rounded px-2 py-1 text-[11px] font-semibold transition-colors"
-                    :class="issuesOnly ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'"
+                    :class="
+                      issuesOnly
+                        ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-800 dark:text-gray-100'
+                        : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+                    "
                     :aria-pressed="issuesOnly"
                     @click="issuesOnly = true"
                   >
                     {{ t('doctor.center.filters.issues') }}
-                    <span class="ml-0.5 text-gray-400">{{ run.summary.info + run.summary.warning + run.summary.critical + run.summary.unavailable + run.summary.cancelled }}</span>
+                    <span class="ml-0.5 text-gray-400">{{
+                      run.summary.info +
+                      run.summary.warning +
+                      run.summary.critical +
+                      run.summary.unavailable +
+                      run.summary.cancelled
+                    }}</span>
                   </button>
                 </div>
 
@@ -351,7 +391,9 @@
                     </span>
                   </div>
                   <span class="font-normal tabular-nums text-gray-400">
-                    {{ issuesOnly ? `${group.checks.length}/${group.totalCount}` : group.totalCount }}
+                    {{
+                      issuesOnly ? `${group.checks.length}/${group.totalCount}` : group.totalCount
+                    }}
                   </span>
                 </div>
 
@@ -376,23 +418,27 @@
                     >
                       <span
                         class="h-2 w-2 rounded-full"
-                        :class="severityDotClass(
-                          check.outcome === 'critical'
-                            ? 'critical'
-                            : check.outcome === 'warning'
-                              ? 'warning'
-                              : check.outcome === 'info'
-                                ? 'info'
-                                : 'ok',
-                          check.outcome === 'unavailable' || check.outcome === 'cancelled'
-                            ? 'partial'
-                            : 'complete',
-                        )"
+                        :class="
+                          severityDotClass(
+                            check.outcome === 'critical'
+                              ? 'critical'
+                              : check.outcome === 'warning'
+                                ? 'warning'
+                                : check.outcome === 'info'
+                                  ? 'info'
+                                  : 'ok',
+                            check.outcome === 'unavailable' || check.outcome === 'cancelled'
+                              ? 'partial'
+                              : 'complete',
+                          )
+                        "
                         aria-hidden="true"
                       />
                       <div class="min-w-0">
                         <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                          <span class="truncate text-xs font-medium text-gray-900 dark:text-gray-100">
+                          <span
+                            class="truncate text-xs font-medium text-gray-900 dark:text-gray-100"
+                          >
                             {{ checkLabel(check) }}
                           </span>
                           <span
@@ -411,14 +457,16 @@
                         >
                           {{ outcomeLabel(check.outcome) }}
                         </span>
-                        <span class="hidden w-12 text-right font-mono text-[11px] tabular-nums text-gray-400 md:inline">
+                        <span
+                          class="hidden w-12 text-right font-mono text-[11px] tabular-nums text-gray-400 md:inline"
+                        >
                           {{ formatDuration(check.durationMs) }}
                         </span>
                       </div>
                     </button>
 
                     <div
-                      v-if="check.remediation"
+                      v-if="check.remediation && check.remediation.kind !== 'guide'"
                       class="hidden items-center border-l border-gray-100 px-2 dark:border-gray-800 lg:flex"
                     >
                       <button
@@ -480,7 +528,9 @@
               data-testid="health-detail-panel"
               class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
             >
-              <header class="flex items-start justify-between gap-3 border-b border-gray-200 px-3 py-2.5 dark:border-gray-700">
+              <header
+                class="flex items-start justify-between gap-3 border-b border-gray-200 px-3 py-2.5 dark:border-gray-700"
+              >
                 <div class="min-w-0">
                   <h2 class="text-sm font-semibold leading-5 text-gray-900 dark:text-white">
                     {{ checkLabel(selectedCheck) }}
@@ -531,7 +581,9 @@
                 >
                   <template v-for="(value, key) in selectedCheck.params" :key="key">
                     <dt class="text-gray-400">{{ formatParamKey(String(key)) }}</dt>
-                    <dd class="min-w-0 break-words text-right font-mono text-gray-700 dark:text-gray-200">
+                    <dd
+                      class="min-w-0 break-words text-right font-mono text-gray-700 dark:text-gray-200"
+                    >
                       {{ value }}
                     </dd>
                   </template>
@@ -549,19 +601,22 @@
                       {{ selectedCheck.evidence.length }}
                     </span>
                   </div>
-                  <div class="max-h-52 space-y-1 overflow-y-auto rounded-md bg-gray-50 p-2 font-mono text-[11px] leading-4 text-gray-600 dark:bg-gray-950/60 dark:text-gray-300">
+                  <div
+                    class="max-h-52 space-y-1 overflow-y-auto rounded-md bg-gray-50 p-2 font-mono text-[11px] leading-4 text-gray-600 dark:bg-gray-950/60 dark:text-gray-300"
+                  >
                     <div
                       v-for="(item, index) in selectedCheck.evidence"
                       :key="`${index}-${item.value}`"
                       class="break-all"
                     >
-                      <span v-if="item.label" class="font-semibold">{{ item.label }}: </span>{{ item.value }}
+                      <span v-if="item.label" class="font-semibold">{{ item.label }}: </span
+                      >{{ item.value }}
                     </div>
                   </div>
                 </div>
 
                 <button
-                  v-if="selectedCheck.remediation"
+                  v-if="selectedCheck.remediation && selectedCheck.remediation.kind !== 'guide'"
                   type="button"
                   :disabled="
                     store.fixingId === selectedCheck.id ||
@@ -596,7 +651,10 @@
                     class="grid grid-cols-[88px_minmax(0,1fr)] gap-2"
                   >
                     <dt class="text-gray-400">{{ item.label }}</dt>
-                    <dd class="min-w-0 truncate text-right text-gray-700 dark:text-gray-200" :title="item.value">
+                    <dd
+                      class="min-w-0 truncate text-right text-gray-700 dark:text-gray-200"
+                      :title="item.value"
+                    >
                       {{ item.value }}
                     </dd>
                   </div>
@@ -604,112 +662,155 @@
               </div>
 
               <details class="group border-t border-gray-100 dark:border-gray-800">
-                <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-semibold text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:text-gray-200">
-                <span>{{ t('doctor.center.history.title') }}</span>
-                <span class="flex items-center gap-2 text-[11px] font-normal text-gray-400">
-                  {{ store.history.length }}/20
-                  <svg class="h-3 w-3 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 9l6 6 6-6" />
-                  </svg>
-                </span>
+                <summary
+                  class="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-semibold text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:text-gray-200"
+                >
+                  <span>{{ t('doctor.center.history.title') }}</span>
+                  <span class="flex items-center gap-2 text-[11px] font-normal text-gray-400">
+                    {{ store.history.length }}/20
+                    <svg
+                      class="h-3 w-3 transition-transform group-open:rotate-180"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 9l6 6 6-6"
+                      />
+                    </svg>
+                  </span>
                 </summary>
                 <div class="border-t border-gray-100 px-2 py-2 dark:border-gray-800">
-                <button
-                  v-if="store.selectedRunId"
-                  type="button"
-                  :disabled="store.isBusy"
-                  class="mb-2 w-full rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-[11px] font-semibold text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"
-                  @click="store.selectHistoryRun(null)"
-                >
-                  {{ t('doctor.center.history.backToCurrent') }}
-                </button>
-                <div v-if="store.isHistoryLoading" role="status" class="py-3 text-center text-[11px] text-gray-400">
-                  {{ t('common.loading') }}
-                </div>
-                <div v-else-if="store.history.length" class="max-h-52 divide-y divide-gray-100 overflow-y-auto dark:divide-gray-800">
                   <button
-                    v-for="item in store.history"
-                    :key="item.id"
+                    v-if="store.selectedRunId"
                     type="button"
                     :disabled="store.isBusy"
-                    class="flex w-full items-center justify-between gap-3 rounded px-1.5 py-2 text-left text-[11px] transition-colors disabled:opacity-50"
-                    :class="
-                      store.selectedRunId === item.id
-                        ? 'bg-blue-50 text-blue-800 dark:bg-blue-950/30 dark:text-blue-200'
-                        : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
-                    "
-                    :aria-current="store.selectedRunId === item.id ? 'true' : undefined"
-                    @click="store.selectHistoryRun(item.id)"
+                    class="mb-2 w-full rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-[11px] font-semibold text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"
+                    @click="store.selectHistoryRun(null)"
                   >
-                    <span class="min-w-0 truncate">
-                      {{ formatDateTime(item.startedAt) }}
-                    </span>
-                    <span class="flex flex-none items-center gap-2 text-gray-400">
-                      {{
-                        item.mode === 'quick'
-                          ? t('doctor.center.history.quick')
-                          : t('doctor.center.history.full')
-                      }}
-                      <span
-                        class="h-2 w-2 rounded-full"
-                        :class="severityDotClass(item.summary.severity, item.summary.completeness)"
-                        :title="historyStatusLabel(item.summary.severity, item.summary.completeness)"
-                      />
-                    </span>
+                    {{ t('doctor.center.history.backToCurrent') }}
                   </button>
-                </div>
-                <p v-else class="py-3 text-center text-[11px] text-gray-400">
-                  {{ t('doctor.center.history.empty') }}
-                </p>
+                  <div
+                    v-if="store.isHistoryLoading"
+                    role="status"
+                    class="py-3 text-center text-[11px] text-gray-400"
+                  >
+                    {{ t('common.loading') }}
+                  </div>
+                  <div
+                    v-else-if="store.history.length"
+                    class="max-h-52 divide-y divide-gray-100 overflow-y-auto dark:divide-gray-800"
+                  >
+                    <button
+                      v-for="item in store.history"
+                      :key="item.id"
+                      type="button"
+                      :disabled="store.isBusy"
+                      class="flex w-full items-center justify-between gap-3 rounded px-1.5 py-2 text-left text-[11px] transition-colors disabled:opacity-50"
+                      :class="
+                        store.selectedRunId === item.id
+                          ? 'bg-blue-50 text-blue-800 dark:bg-blue-950/30 dark:text-blue-200'
+                          : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                      "
+                      :aria-current="store.selectedRunId === item.id ? 'true' : undefined"
+                      @click="store.selectHistoryRun(item.id)"
+                    >
+                      <span class="min-w-0 truncate">
+                        {{ formatDateTime(item.startedAt) }}
+                      </span>
+                      <span class="flex flex-none items-center gap-2 text-gray-400">
+                        {{
+                          item.mode === 'quick'
+                            ? t('doctor.center.history.quick')
+                            : t('doctor.center.history.full')
+                        }}
+                        <span
+                          class="h-2 w-2 rounded-full"
+                          :class="
+                            severityDotClass(item.summary.severity, item.summary.completeness)
+                          "
+                          :title="
+                            historyStatusLabel(item.summary.severity, item.summary.completeness)
+                          "
+                        />
+                      </span>
+                    </button>
+                  </div>
+                  <p v-else class="py-3 text-center text-[11px] text-gray-400">
+                    {{ t('doctor.center.history.empty') }}
+                  </p>
                 </div>
               </details>
 
               <details class="group border-t border-gray-100 dark:border-gray-800">
-                <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-semibold text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:text-gray-200">
-                <span>{{ t('doctor.center.export') }}</span>
-                <svg class="h-3 w-3 text-gray-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 9l6 6 6-6" />
-                </svg>
+                <summary
+                  class="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-semibold text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:text-gray-200"
+                >
+                  <span>{{ t('doctor.center.export') }}</span>
+                  <svg
+                    class="h-3 w-3 text-gray-400 transition-transform group-open:rotate-180"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M6 9l6 6 6-6"
+                    />
+                  </svg>
                 </summary>
                 <div class="space-y-2 border-t border-gray-100 px-3 py-2.5 dark:border-gray-800">
-                <div class="flex items-center justify-between gap-3 text-[11px]">
-                  <span :class="includeSensitive ? 'text-amber-700 dark:text-amber-300' : 'text-gray-500 dark:text-gray-400'">
-                    {{
-                      includeSensitive
-                        ? t('doctor.center.privacy.sensitive')
-                        : t('doctor.center.privacy.redacted')
-                    }}
-                  </span>
-                  <button
-                    type="button"
-                    class="flex-none font-semibold text-blue-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:text-blue-400"
-                    @click="toggleSensitivePaths"
-                  >
-                    {{
-                      includeSensitive
-                        ? t('doctor.center.excludeSensitive')
-                        : t('doctor.center.includeSensitive')
-                    }}
-                  </button>
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    :disabled="store.isBusy"
-                    class="rounded-md border border-gray-300 px-2 py-1.5 text-[11px] font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
-                    @click="exportReport('markdown')"
-                  >
-                    {{ t('doctor.center.exportMarkdown') }}
-                  </button>
-                  <button
-                    type="button"
-                    :disabled="store.isBusy"
-                    class="rounded-md border border-gray-300 px-2 py-1.5 text-[11px] font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
-                    @click="exportReport('json')"
-                  >
-                    {{ t('doctor.center.exportJson') }}
-                  </button>
-                </div>
+                  <div class="flex items-center justify-between gap-3 text-[11px]">
+                    <span
+                      :class="
+                        includeSensitive
+                          ? 'text-amber-700 dark:text-amber-300'
+                          : 'text-gray-500 dark:text-gray-400'
+                      "
+                    >
+                      {{
+                        includeSensitive
+                          ? t('doctor.center.privacy.sensitive')
+                          : t('doctor.center.privacy.redacted')
+                      }}
+                    </span>
+                    <button
+                      type="button"
+                      class="flex-none font-semibold text-blue-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:text-blue-400"
+                      @click="toggleSensitivePaths"
+                    >
+                      {{
+                        includeSensitive
+                          ? t('doctor.center.excludeSensitive')
+                          : t('doctor.center.includeSensitive')
+                      }}
+                    </button>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      :disabled="store.isBusy"
+                      class="rounded-md border border-gray-300 px-2 py-1.5 text-[11px] font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
+                      @click="exportReport('markdown')"
+                    >
+                      {{ t('doctor.center.exportMarkdown') }}
+                    </button>
+                    <button
+                      type="button"
+                      :disabled="store.isBusy"
+                      class="rounded-md border border-gray-300 px-2 py-1.5 text-[11px] font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
+                      @click="exportReport('json')"
+                    >
+                      {{ t('doctor.center.exportJson') }}
+                    </button>
+                  </div>
                 </div>
               </details>
             </section>
@@ -731,7 +832,8 @@ import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import { logError } from '@/services/logger'
 import { DOCTOR_SECTION_ORDER, isDoctorRunStale } from '@/utils/doctor'
-import { formatDoctorDuration } from '@/utils/doctorPresentation'
+import { describeDoctorCheck, formatDoctorDuration } from '@/utils/doctorPresentation'
+import { CHECK_NAME_KEYS, LEGACY_TEXT_ROOTS } from '@/utils/doctorCatalog'
 import type { DoctorReportFormat } from '@/utils/doctorReport'
 import type {
   DoctorCheckOutcome,
@@ -750,72 +852,6 @@ const toastStore = useToastStore()
 const includeSensitive = ref(false)
 const selectedCheckId = ref<string | null>(null)
 const issuesOnly = ref(false)
-
-const CHECK_NAME_KEYS: Record<string, string> = {
-  'installation.structure': 'installationStructure',
-  'installation.xplane_running': 'xplaneRunning',
-  'storage.xplane_space': 'xplaneSpace',
-  'installation.location': 'installationLocation',
-  'installation.readonly': 'readonlyFiles',
-  'system.injectors': 'graphicsInjectors',
-  'scenery.competing_organizer': 'competingOrganizer',
-  'system.inventory': 'systemInventory',
-  'performance.available_memory': 'availableMemory',
-  'storage.app_data_space': 'appDataSpace',
-  'xfast.app_data': 'appDataWritable',
-  'xfast.database': 'database',
-  'xfast.scenery_index': 'sceneryIndex',
-  'stability.log_available': 'logAvailable',
-  'stability.last_session': 'lastSession',
-  'stability.crash_dump': 'crashDump',
-  'system.beta_build': 'betaBuild',
-  'scenery.global_airports': 'globalAirports',
-  'scenery.load_order': 'loadOrder',
-  'scenery.dependencies': 'sceneryDependencies',
-  'scenery.overlaps': 'sceneryOverlaps',
-  'scenery.duplicate_airports': 'duplicateAirports',
-  'scenery.flatten': 'flattenOverrides',
-  'navdata.custom_data': 'customNavdata',
-  'navdata.cycles': 'navdataCycles',
-  'navdata.cifp': 'cifp',
-  'navdata.integrity': 'navdataIntegrity',
-  'navdata.consistency': 'navdataConsistency',
-  'xfast.recent_failures': 'recentFailures',
-  'storage.cleanable': 'cleanableFiles',
-  'addons.inventory': 'addonInventory',
-  'addons.platform': 'addonPlatform',
-  'updates.addons': 'addonUpdates',
-  'updates.gateway': 'gatewayUpdates',
-  'updates.app': 'appUpdate',
-  'updates.csl': 'cslUpdates',
-}
-
-const LEGACY_TEXT_ROOTS: Record<string, string> = {
-  'installation.structure': 'doctor.checks.integrity.missing_core_dirs',
-  'installation.xplane_running': 'doctor.checks.integrity.xplane_running',
-  'storage.xplane_space': 'doctor.checks.disk.low_space',
-  'installation.location': 'doctor.checks.integrity.program_files',
-  'installation.readonly': 'doctor.checks.integrity.readonly_files',
-  'system.injectors': 'doctor.checks.environment.injectors',
-  'scenery.competing_organizer': 'doctor.checks.scenery.competing_organizer',
-  'stability.last_session': 'doctor.checks.crashes.last_session_crashed',
-  'system.beta_build': 'doctor.checks.environment.beta_build',
-  'scenery.global_airports': 'doctor.checks.scenery.global_airports_disabled',
-  'scenery.load_order': 'doctor.checks.scenery.needs_sort',
-  'scenery.dependencies': 'doctor.checks.scenery.missing_libraries',
-  'scenery.overlaps': 'doctor.checks.scenery.duplicate_tiles',
-  'scenery.duplicate_airports': 'doctor.checks.scenery.duplicate_airports',
-  'scenery.flatten': 'doctor.checks.scenery.flatten_drift',
-  'navdata.custom_data': 'doctor.checks.navdata.no_custom_data',
-  'navdata.cifp': 'doctor.checks.navdata.cifp_missing',
-  'navdata.integrity': 'doctor.checks.navdata.earth_dat_missing',
-  'navdata.consistency': 'doctor.checks.navdata.cycle_mismatch',
-  'xfast.recent_failures': 'doctor.checks.integrity.recent_failures',
-  'storage.cleanable': 'doctor.checks.disk.cleanable_caches',
-  'updates.addons': 'doctor.checks.updates.addons',
-  'updates.gateway': 'doctor.checks.updates.gateway',
-  'updates.app': 'doctor.checks.updates.app',
-}
 
 const SECTION_ICONS: Record<DoctorSection, string> = {
   installation: 'M4 7h16M6 3h12a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2z',
@@ -869,8 +905,9 @@ const selectedCheck = computed(() => {
     : null
   if (explicit) return explicit
   return (
-    checks.find((check) => ['critical', 'warning', 'unavailable', 'info'].includes(check.outcome)) ??
-    checks[0]
+    checks.find((check) =>
+      ['critical', 'warning', 'unavailable', 'info'].includes(check.outcome),
+    ) ?? checks[0]
   )
 })
 const runtimeCompleted = computed(
@@ -1001,23 +1038,32 @@ function legacyTextRoot(check: DoctorCheckResult): string | null {
 }
 
 function checkDescription(check: DoctorCheckResult): string {
+  if (
+    locale.value === 'en' ||
+    locale.value === 'zh' ||
+    ['stability.last_session', 'updates.gateway', 'system.injectors'].includes(check.id)
+  ) {
+    return describeDoctorCheck(check, locale.value).description
+  }
   const root = legacyTextRoot(check)
-  if (root && check.outcome !== 'pass' && te(`${root}.description`)) {
+  if (
+    root &&
+    ['info', 'warning', 'critical'].includes(check.outcome) &&
+    te(`${root}.description`)
+  ) {
     return t(`${root}.description`, check.params ?? {})
   }
   return t(`doctor.center.checkDescriptions.${check.outcome}`)
 }
 
 function checkSuggestion(check: DoctorCheckResult): string {
-  const root = legacyTextRoot(check)
-  if (root && check.outcome !== 'pass' && te(`${root}.suggestion`)) {
-    return t(`${root}.suggestion`, check.params ?? {})
+  if (locale.value === 'en' || locale.value === 'zh') {
+    return describeDoctorCheck(check, locale.value).suggestion
   }
-  if (check.remediation?.kind === 'automatic')
-    return t('doctor.center.remediation.automaticAvailable')
-  if (check.outcome === 'critical' || check.outcome === 'warning')
-    return t('doctor.center.remediation.manualReview')
-  return ''
+  const root = legacyTextRoot(check)
+  return root && ['info', 'warning', 'critical'].includes(check.outcome) && te(`${root}.suggestion`)
+    ? t(`${root}.suggestion`, check.params ?? {})
+    : ''
 }
 
 function outcomeLabel(outcome: DoctorCheckOutcome): string {
@@ -1081,8 +1127,6 @@ function outcomeBadgeClass(outcome: DoctorCheckOutcome): string {
   }[outcome]
 }
 
-
-
 function remediationButtonClass(remediation: DoctorRemediation): string {
   if (remediation.kind !== 'automatic')
     return 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
@@ -1106,7 +1150,6 @@ async function handleRemediation(check: DoctorCheckResult) {
   }
   if (remediation.kind === 'guide') {
     if (remediation.route) await router.push(remediation.route)
-    else toastStore.info(t('doctor.center.remediation.manualReview'))
     return
   }
   if (!canRepair.value) {
@@ -1185,10 +1228,7 @@ async function exportReport(format: DoctorReportFormat) {
       ],
     })
     if (!selected || Array.isArray(selected)) return
-    await store.exportReport(selected, format, includeSensitive.value, {
-      checkLabel,
-      sectionLabel: (check) => sectionLabel(check.section),
-    })
+    await store.exportReport(selected, format, includeSensitive.value)
     toastStore.success(t('doctor.center.messages.exportSuccess'))
   } catch (reason) {
     logError(`Health report export failed: ${reason}`, 'doctor')

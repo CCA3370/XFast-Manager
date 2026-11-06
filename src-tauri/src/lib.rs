@@ -995,6 +995,8 @@ struct XPlaneLogAnalysis {
     log_path: String,
     is_xplane_log: bool,
     crash_detected: bool,
+    session_end: String,
+    log_tail: String,
     crash_info: Option<String>,
     issues: Vec<LogIssue>,
     system_info: SystemInfo,
@@ -1442,39 +1444,18 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
         }
     }
 
-    let missing_log_ending =
-        is_xplane_log && first_crash_marker_idx.is_none() && !has_normal_shutdown_ending(&lines);
-    let crash_detected = first_crash_marker_idx.is_some() || missing_log_ending;
-    let crash_info = first_crash_marker_idx
-        .map(|idx| extract_crash_context(&lines, idx))
-        .or_else(|| {
-            if missing_log_ending {
-                let context = extract_log_tail_context(&lines);
-                if context.is_empty() {
-                    None
-                } else {
-                    Some(context)
-                }
-            } else {
-                None
-            }
-        });
-
-    if missing_log_ending {
-        let line_number = last_non_empty_line_index(&lines)
-            .map(|idx| idx + 1)
-            .unwrap_or(1);
-        let sample_line = extract_log_tail_context(&lines);
-        let entry = issue_map
-            .entry("crash")
-            .or_insert(("high", Vec::new(), String::new()));
-        if entry.1.len() < 5 {
-            entry.1.push(line_number);
-        }
-        if entry.2.is_empty() {
-            entry.2 = sample_line;
-        }
-    }
+    // Absence of a shutdown marker cannot distinguish a live, truncated or
+    // interrupted log. Only an explicit X-Plane crash marker confirms a crash.
+    let crash_detected = first_crash_marker_idx.is_some();
+    let session_end = if crash_detected {
+        "crash"
+    } else if has_normal_shutdown_ending(&lines) {
+        "normal"
+    } else {
+        "unknown"
+    }.to_string();
+    let log_tail = extract_log_tail_context(&lines);
+    let crash_info = first_crash_marker_idx.map(|idx| extract_crash_context(&lines, idx));
 
     let sev_order = |s: &str| match s {
         "high" => 0u8,
@@ -1500,6 +1481,8 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
         log_path: log_path_str,
         is_xplane_log,
         crash_detected,
+        session_end,
+        log_tail,
         crash_info,
         issues,
         system_info,
@@ -1532,25 +1515,17 @@ mod log_analysis_tests {
     }
 
     #[test]
-    fn unfinished_xplane_log_is_detected_as_crash() {
+    fn unfinished_xplane_log_is_inconclusive() {
         let result = analyze_log_lines(&[
             "Log.txt for X-Plane 12.4.0",
-            "X-System folder:'C:\\X-Plane 12', case sensitive=0",
-            "0:00:01.000 I/FLT: Init flight",
-            "0:00:02.000 I/SCN: Loading scenery",
+            "[NSC] [INFO] UiService initialized",
         ]);
-
         assert!(result.is_xplane_log);
-        assert!(result.crash_detected);
-        assert!(result
-            .crash_info
-            .as_deref()
-            .unwrap_or("")
-            .contains("Loading scenery"));
-        assert!(result
-            .issues
-            .iter()
-            .any(|issue| issue.category == "crash" && issue.severity == "high"));
+        assert!(!result.crash_detected);
+        assert_eq!(result.session_end, "unknown");
+        assert!(result.crash_info.is_none());
+        assert!(result.log_tail.contains("UiService initialized"));
+        assert!(result.issues.iter().all(|issue| issue.category != "crash"));
     }
 
     #[test]

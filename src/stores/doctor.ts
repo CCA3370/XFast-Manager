@@ -803,10 +803,6 @@ export const useDoctorStore = defineStore('doctor', () => {
     exportPath: string,
     format: DoctorReportFormat,
     includeSensitive = false,
-    labels?: {
-      checkLabel?: (check: DoctorCheckResult) => string
-      sectionLabel?: (check: DoctorCheckResult) => string
-    },
   ): Promise<void> {
     const run = displayedRun.value
     if (!run) throw new Error('No health report is available')
@@ -814,7 +810,6 @@ export const useDoctorStore = defineStore('doctor', () => {
       xplanePath: currentRunPath.value ?? appStore.xplanePath,
       appDataPath: appDataPath.value,
       includeSensitive,
-      ...labels,
     })
     await invoke('doctor_export_report', { exportPath, content })
   }

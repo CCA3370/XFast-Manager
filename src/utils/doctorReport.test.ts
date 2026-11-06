@@ -67,35 +67,48 @@ describe('doctor report export', () => {
     expect(result).toContain('Alex Smith')
   })
 
-  it.each(['json', 'markdown'] as const)('hides private external paths in %s exports', (format) => {
+  it.each(['json', 'markdown'] as const)('retains useful evidence in %s exports', (format) => {
     const run = reportRun()
     run.checks[0].evidence = [
+      {
+        kind: 'log',
+        value: '12:01 E/PLG: Failed C:/Users/Alex/plugins/faulty.xpl: error 126',
+        sensitive: true,
+      },
       { kind: 'path', value: 'E:/Scenery/Demo Airport/Earth nav data/apt.dat', sensitive: true },
       { kind: 'path', value: '/Volumes/Private Disk/Scenery/apt.dat' },
       { kind: 'log', value: 'Cannot load \\\\server\\private\\apt.dat' },
-      {
-        kind: 'text',
-        value: 'personal diagnostic note',
-        label: 'private evidence label',
-        sensitive: true,
-      },
     ]
-    run.checks[0].params = { source: 'E:/Scenery/Demo Airport/Earth nav data/apt.dat' }
-    const options = { xplanePath: '/xplane' }
-    const exported = buildDoctorReport(run, format, options)
-    for (const privateText of [
-      'Demo Airport',
-      'Private Disk',
-      'server',
-      'personal diagnostic note',
-      'private evidence label',
-    ]) {
-      expect(exported).not.toContain(privateText)
+    const exported = buildDoctorReport(run, format, { xplanePath: '/xplane' })
+    for (const text of ['faulty.xpl', 'error 126', '12:01 E/PLG', 'Demo Airport', 'apt.dat']) {
+      expect(exported).toContain(text)
     }
-    const raw = buildDoctorReport(run, format, { ...options, includeSensitive: true })
-    expect(raw).toContain('Demo Airport')
-    expect(raw).toContain('Private Disk')
-    expect(raw).toContain('personal diagnostic note')
+    for (const text of ['Alex', 'Private Disk', 'server', '<PRIVATE_EVIDENCE>']) {
+      expect(exported).not.toContain(text)
+    }
+  })
+
+  it('exports English titles and findings with diagnostic details in both formats', () => {
+    const run = reportRun()
+    run.checks[0] = {
+      id: 'stability.last_session',
+      section: 'stability',
+      outcome: 'info',
+      params: { sessionEnd: 'unknown' },
+      durationMs: 1,
+    }
+    for (const format of ['json', 'markdown'] as const) {
+      const output = buildDoctorReport(run, format, { xplanePath: '/xplane' })
+      expect(output).toContain('Last X-Plane session')
+      expect(output).toContain('cannot be determined')
+    }
+  })
+
+  it('does not replace similarly prefixed paths or remove log explanations', () => {
+    const output = redactDoctorText('C:/X-Plane Backup/plugins/foo.xpl: file not found', {
+      xplanePath: 'C:/X-Plane',
+    })
+    expect(output).toContain('X-Plane Backup/plugins/foo.xpl: file not found')
   })
 
   it('preserves URLs when sanitizing log text', () => {

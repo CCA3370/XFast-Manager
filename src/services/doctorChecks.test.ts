@@ -37,6 +37,36 @@ function logCheck(xplaneRunning: boolean) {
   return createDoctorCheckDefinitions(context).find((check) => check.id === 'log')!
 }
 
+describe('Gateway diagnostics', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('skips the network when no managed airports are installed', async () => {
+    tauri.invoke.mockResolvedValue([])
+    const check = createDoctorCheckDefinitions({
+      xplanePath: '/xplane',
+      mode: 'full',
+    } as DoctorCheckContext).find((item) => item.id === 'gateway_updates')!
+    expect(await check.run()).toEqual([expect.objectContaining({ outcome: 'notApplicable' })])
+    expect(tauri.invoke).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports partial upstream failures separately rather than passing unchecked airports', async () => {
+    tauri.invoke.mockResolvedValueOnce([{}, {}]).mockResolvedValueOnce([
+      { airportIcao: 'ZBAA', updateAvailable: null },
+      { airportIcao: 'ZSPD', updateAvailable: false },
+    ])
+    const check = createDoctorCheckDefinitions({
+      xplanePath: '/xplane',
+      mode: 'full',
+    } as DoctorCheckContext).find((item) => item.id === 'gateway_updates')!
+    expect(await check.run()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'updates.gateway_unavailable', outcome: 'unavailable' }),
+      ]),
+    )
+  })
+})
+
 function report(overrides: Partial<DoctorNavdataReport> = {}): DoctorNavdataReport {
   return {
     customDataExists: true,
@@ -100,9 +130,27 @@ describe('navdata diagnostic applicability', () => {
   })
 })
 
-
 describe('live-session stability diagnostics', () => {
   beforeEach(() => vi.clearAllMocks())
+
+  it('keeps an unfinished log inconclusive rather than reporting a crash', async () => {
+    tauri.invoke.mockResolvedValue({
+      log_path: '/xplane/Log.txt',
+      is_xplane_log: true,
+      crash_detected: false,
+      crash_info: null,
+      session_end: 'unknown',
+      log_tail: '[NSC] [INFO] UiService initialized',
+      issues: [],
+      system_info: { xplane_version: '12.1.4-r1', gpu_model: null, gpu_driver: null },
+    })
+    const checks = await logCheck(false).run()
+    expect(checks.find((check) => check.id === 'stability.last_session')).toMatchObject({
+      outcome: 'info',
+      params: { sessionEnd: 'unknown' },
+    })
+    expect(tauri.invoke).toHaveBeenCalledTimes(1)
+  })
 
   it('does not classify an actively written Log.txt as a completed crash', async () => {
     tauri.invoke.mockImplementation(async (command: string) => {
@@ -132,9 +180,6 @@ describe('live-session stability diagnostics', () => {
       outcome: 'notApplicable',
       evidence: undefined,
     })
-    expect(tauri.invoke).not.toHaveBeenCalledWith(
-      'analyze_crash_report',
-      expect.anything(),
-    )
+    expect(tauri.invoke).not.toHaveBeenCalledWith('analyze_crash_report', expect.anything())
   })
 })

@@ -42,6 +42,8 @@ interface LogIssue {
 interface XPlaneLogAnalysis {
   log_path: string
   is_xplane_log: boolean
+  session_end: 'crash' | 'normal' | 'unknown'
+  log_tail: string
   crash_detected: boolean
   crash_info: string | null
   issues: LogIssue[]
@@ -278,9 +280,6 @@ function createEnvironmentCheck(context: DoctorCheckContext): DoctorCheckDefinit
             env.injectors.map((item) => item.evidence),
             'path',
           ),
-          remediation: env.injectors.length
-            ? { id: 'guide_injectors', kind: 'guide', risk: 'destructive' }
-            : undefined,
         }),
       )
 
@@ -463,15 +462,23 @@ function createLogCheck(context: DoctorCheckContext): DoctorCheckDefinition {
       }
 
       const canEvaluateSessionEnd = !context.xplaneRunning
+      const sessionEnd = log.session_end ?? 'unknown'
       const checks: DoctorCheckResult[] = [
         result(
           'stability.last_session',
           'stability',
-          canEvaluateSessionEnd ? (log.crash_detected ? 'critical' : 'pass') : 'notApplicable',
+          canEvaluateSessionEnd
+            ? sessionEnd === 'crash'
+              ? 'critical'
+              : sessionEnd === 'normal'
+                ? 'pass'
+                : 'info'
+            : 'notApplicable',
           {
+            params: { sessionEnd: canEvaluateSessionEnd ? sessionEnd : 'running' },
             evidence:
-              canEvaluateSessionEnd && log.crash_info
-                ? evidence(log.crash_info.split('\n').slice(0, 20), 'log')
+              canEvaluateSessionEnd && (log.crash_info || log.log_tail)
+                ? evidence((log.crash_info || log.log_tail).split('\n').slice(-20), 'log')
                 : undefined,
           },
         ),
@@ -497,7 +504,7 @@ function createLogCheck(context: DoctorCheckContext): DoctorCheckDefinition {
         )
       }
 
-      if (canEvaluateSessionEnd && log.crash_detected && context.mode === 'full') {
+      if (canEvaluateSessionEnd && sessionEnd === 'crash' && context.mode === 'full') {
         if (!context.crashAnalysisDmpEnabled) {
           checks.push(
             result('stability.crash_dump', 'stability', 'notApplicable', {
@@ -897,10 +904,24 @@ function createGatewayUpdateCheck(context: DoctorCheckContext): DoctorCheckDefin
       const checked = await invoke<GatewayInstalledAirport[]>('gateway_check_updates', {
         xplanePath: context.xplanePath,
       })
-      const count = checked.filter((item) => item.updateAvailable).length
+      const count = checked.filter((item) => item.updateAvailable === true).length
+      const unavailable = checked.filter((item) => item.updateAvailable == null)
       return [
+        ...(unavailable.length
+          ? [
+              result('updates.gateway_unavailable', 'updates', 'unavailable', {
+                params: { count: unavailable.length },
+                evidence: evidence(unavailable.map((item) => item.airportIcao)),
+              }),
+            ]
+          : []),
         result('updates.gateway', 'updates', count ? 'info' : 'pass', {
-          params: { count },
+          params: { count, installed: checked.length },
+          evidence: evidence(
+            checked
+              .filter((item) => item.updateAvailable === true)
+              .map((item) => `${item.airportIcao}: ${item.sceneryId} -> ${item.latestSceneryId}`),
+          ),
           remediation: count
             ? { id: 'manage_gateway', kind: 'navigate', risk: 'safe', route: '/gateway' }
             : undefined,

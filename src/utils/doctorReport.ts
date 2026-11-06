@@ -1,4 +1,5 @@
 import type { DoctorCheckResult, DoctorRun } from '@/types/doctor'
+import { describeDoctorCheck } from './doctorPresentation'
 
 export type DoctorReportFormat = 'markdown' | 'json'
 
@@ -6,8 +7,6 @@ export interface DoctorReportOptions {
   xplanePath: string
   appDataPath?: string | null
   includeSensitive?: boolean
-  checkLabel?: (check: DoctorCheckResult) => string
-  sectionLabel?: (check: DoctorCheckResult) => string
 }
 
 function redactCommonUserPaths(value: string): string {
@@ -24,7 +23,7 @@ function replacePath(value: string, path: string, token: string): string {
   let result = value
   for (const variant of variants) {
     const pattern = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    result = result.replace(new RegExp(pattern, 'gi'), token)
+    result = result.replace(new RegExp(`${pattern}(?=$|[\\\\/"'(),;:])`, 'gi'), () => token)
   }
   return result
 }
@@ -47,29 +46,24 @@ export function redactDoctorText(value: string, options: DoctorReportOptions): s
   let redacted = replacePath(value, options.xplanePath, '<XPLANE_ROOT>')
   if (options.appDataPath) redacted = replacePath(redacted, options.appDataPath, '<XFAST_DATA>')
   redacted = redactCommonUserPaths(redacted)
-  // External disks, linked scenery and network shares need the same protection as
-  // configured roots. Preserve URLs and relative suffixes of our root tokens.
-  return redacted.replace(
-    /(^|[^\w:/>])(?:[A-Za-z]:[\\/]|\\\\|\/)([^\r\n"'<>|,;]*)/g,
-    '$1<PRIVATE_PATH>',
-  )
+  // Redact identifiable personal components, retaining diagnostic filenames,
+  // relative paths, plugin names, timestamps and the rest of each log line.
+  return redacted
+    .replace(/\\\\[^\\/\s]+[\\/][^\\/\r\n"'<>|]+/g, '<NETWORK_SHARE>')
+    .replace(/\b([A-Za-z]:)[\\/]/g, '<VOLUME>/')
+    .replace(/\/Volumes\/[^/\r\n]+/g, '<VOLUME>')
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '<EMAIL>')
 }
 
 function reportCheck(check: DoctorCheckResult, options: DoctorReportOptions) {
   return {
     ...check,
+    ...describeDoctorCheck(check, 'en'),
     params: redactParams(check.params, options),
     evidence: check.evidence?.map((evidence) => ({
       ...evidence,
-      label: evidence.label
-        ? evidence.sensitive && !options.includeSensitive
-          ? '<PRIVATE_EVIDENCE>'
-          : redactDoctorText(evidence.label, options)
-        : undefined,
-      value:
-        evidence.sensitive && !options.includeSensitive
-          ? '<PRIVATE_EVIDENCE>'
-          : redactDoctorText(evidence.value, options),
+      label: evidence.label ? redactDoctorText(evidence.label, options) : undefined,
+      value: redactDoctorText(evidence.value, options),
     })),
     remediation: check.remediation
       ? {
@@ -91,6 +85,10 @@ export function buildDoctorReport(
   const lines = [
     '# XFast Manager Health Report',
     '',
+    `- Application version: ${run.appVersion}`,
+    '- Report language: English',
+    `- Privacy: ${options.includeSensitive ? 'Original paths included' : 'User names, installation roots and network shares redacted; evidence retained'}`,
+    '',
     `- Run: ${run.id}`,
     `- Mode: ${run.mode}`,
     `- Started: ${new Date(run.startedAt).toISOString()}`,
@@ -101,13 +99,20 @@ export function buildDoctorReport(
     '',
   ]
 
+  if (report.system) {
+    lines.push('## System', '', '```json', JSON.stringify(report.system, null, 2), '```', '')
+  }
+
   for (const check of report.checks) {
     lines.push(
-      `## ${redactDoctorText(options.checkLabel?.(check) ?? check.id, options)}`,
+      `## ${check.title}`,
       '',
-      `- Section: ${redactDoctorText(options.sectionLabel?.(check) ?? check.section, options)}`,
+      `- Section: ${check.section}`,
       `- Outcome: ${check.outcome}`,
       `- Duration: ${check.durationMs} ms`,
+      '',
+      check.description,
+      ...(check.suggestion ? ['', `Suggested action: ${check.suggestion}`] : []),
     )
     if (check.params && Object.keys(check.params).length > 0) {
       lines.push(`- Parameters: ${JSON.stringify(check.params)}`)
@@ -115,7 +120,11 @@ export function buildDoctorReport(
     if (check.evidence?.length) {
       lines.push('', 'Evidence:')
       for (const evidence of check.evidence.slice(0, 20)) {
-        lines.push(`- ${evidence.label ? `${evidence.label}: ` : ''}${evidence.value}`)
+        lines.push(
+          '```text',
+          `${evidence.label ? `${evidence.label}: ` : ''}${evidence.value}`,
+          '```',
+        )
       }
     }
     lines.push('')
