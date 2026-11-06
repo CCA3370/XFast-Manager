@@ -284,6 +284,40 @@ describe('Health page', () => {
     expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(2)
   })
 
+  it('starts evidence collapsed and resets it when the selected check or report changes', async () => {
+    const { wrapper, doctorStore } = await mountDoctor('/xplane')
+    doctorStore.currentRun = runFixture('completed', [
+      {
+        id: 'installation.structure',
+        section: 'installation',
+        outcome: 'warning',
+        durationMs: 1,
+        evidence: [{ kind: 'text', value: 'Missing Resources folder' }],
+      },
+      {
+        id: 'system.injectors',
+        section: 'system',
+        outcome: 'warning',
+        durationMs: 1,
+        evidence: [{ kind: 'path', value: 'dxgi.dll' }],
+      },
+    ])
+    await nextTick()
+    const first = wrapper.get<HTMLDetailsElement>('[data-testid="health-evidence"]')
+    expect(first.element.open).toBe(false)
+    first.element.open = true
+    await wrapper.get('[data-check-id="system.injectors"] button').trigger('click')
+    const second = wrapper.get<HTMLDetailsElement>('[data-testid="health-evidence"]')
+    expect(second.element).not.toBe(first.element)
+    expect(second.element.open).toBe(false)
+    second.element.open = true
+    doctorStore.currentRun = { ...doctorStore.currentRun, id: 'another-report' }
+    await nextTick()
+    expect(wrapper.get<HTMLDetailsElement>('[data-testid="health-evidence"]').element.open).toBe(
+      false,
+    )
+  })
+
   it('shows a useful empty state when the issues filter has no matches', async () => {
     const { wrapper, doctorStore } = await mountDoctor('/xplane')
     doctorStore.currentRun = runFixture('completed', [

@@ -61,14 +61,15 @@
     </header>
 
     <main
-      class="@container min-h-0 flex-1 overflow-y-auto pr-1"
+      class="@container flex min-h-0 flex-1 flex-col pr-1"
+      :class="run ? 'overflow-hidden' : 'overflow-y-auto'"
       :aria-busy="store.isBusy || store.isHistoryLoading"
     >
       <div
         v-if="store.error"
         role="alert"
         aria-live="assertive"
-        class="mb-3 flex items-center justify-between gap-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
+        class="mb-3 flex flex-none items-center justify-between gap-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
       >
         <span>{{ errorMessage }}</span>
         <button
@@ -118,7 +119,7 @@
           v-if="run"
           data-testid="health-summary"
           aria-live="polite"
-          class="mb-3 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
+          class="mb-3 flex-none overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
         >
           <div
             class="flex flex-col gap-3 px-3 py-2.5 lg:flex-row lg:items-center lg:justify-between"
@@ -287,14 +288,14 @@
         <div
           v-if="run"
           data-testid="health-workspace"
-          class="grid items-start gap-3 @3xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)] @5xl:grid-cols-[minmax(0,1fr)_minmax(400px,0.85fr)]"
+          class="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] items-stretch gap-3 @3xl:grid-rows-1 @3xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)] @5xl:grid-cols-[minmax(0,1fr)_minmax(400px,0.85fr)]"
         >
           <section
             data-testid="health-results-panel"
-            class="min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
+            class="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
           >
             <header
-              class="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-700"
+              class="flex min-h-11 flex-none flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-700"
             >
               <div class="flex min-w-0 items-center gap-2">
                 <h2 class="text-xs font-semibold text-gray-600 dark:text-gray-300">
@@ -362,7 +363,7 @@
               </div>
             </header>
 
-            <div class="border-b border-gray-100 px-3 py-2 dark:border-gray-800">
+            <div class="flex-none border-b border-gray-100 px-3 py-2 dark:border-gray-800">
               <input
                 v-model="searchQuery"
                 type="search"
@@ -372,7 +373,7 @@
                 class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-blue-400 dark:border-gray-700 dark:bg-gray-900"
               />
             </div>
-            <div class="max-h-[38vh] overflow-y-auto @3xl:max-h-[calc(100vh-270px)]">
+            <div data-testid="health-results-scroll" class="min-h-0 flex-1 overflow-y-auto">
               <section
                 v-for="group in checkGroups"
                 :key="group.section"
@@ -515,11 +516,14 @@
             </div>
           </section>
 
-          <aside class="min-w-0 space-y-3 @3xl:sticky @3xl:top-0 @3xl:self-start">
+          <aside
+            data-testid="health-detail-column"
+            class="min-h-0 min-w-0 overflow-y-auto rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
+          >
             <section
               v-if="selectedCheck"
               data-testid="health-detail-panel"
-              class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
+              class="border-b border-gray-200 dark:border-gray-700"
             >
               <header
                 class="flex items-start justify-between gap-3 border-b border-gray-200 px-3 py-2.5 dark:border-gray-700"
@@ -582,20 +586,38 @@
                   </template>
                 </dl>
 
-                <div
+                <details
                   v-if="selectedCheck.evidence?.length"
-                  class="border-t border-gray-100 pt-3 dark:border-gray-800"
+                  :key="`${run.id}-${selectedCheck.id}`"
+                  data-testid="health-evidence"
+                  class="group/evidence border-t border-gray-100 pt-3 dark:border-gray-800"
                 >
-                  <div class="mb-1.5 flex items-center justify-between">
-                    <span class="font-semibold text-gray-700 dark:text-gray-200">
+                  <summary
+                    class="flex cursor-pointer list-none items-center justify-between gap-2 rounded-sm font-semibold text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:text-gray-200"
+                  >
+                    <span class="flex items-center gap-2">
+                      <svg
+                        class="h-3 w-3 flex-none text-gray-400 transition-transform group-open/evidence:rotate-90"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
                       {{ t('doctor.center.evidence.title') }}
                     </span>
-                    <span class="text-xs text-gray-400">
+                    <span class="text-xs font-normal text-gray-400">
                       {{ selectedCheck.evidence.length }}
                     </span>
-                  </div>
+                  </summary>
                   <div
-                    class="max-h-80 space-y-1 overflow-auto rounded-md bg-gray-50 p-3 font-mono text-xs leading-5 text-gray-600 dark:bg-gray-950/60 dark:text-gray-300"
+                    class="mt-2 max-h-80 space-y-1 overflow-auto rounded-md bg-gray-50 p-3 font-mono text-xs leading-5 text-gray-600 dark:bg-gray-950/60 dark:text-gray-300"
                   >
                     <div
                       v-for="(item, index) in selectedCheck.evidence"
@@ -606,7 +628,7 @@
                       >{{ item.value }}
                     </div>
                   </div>
-                </div>
+                </details>
 
                 <button
                   v-if="selectedCheck.remediation && selectedCheck.remediation.kind !== 'guide'"
@@ -629,10 +651,7 @@
               </div>
             </section>
 
-            <section
-              data-testid="health-utilities"
-              class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
-            >
+            <section data-testid="health-utilities" class="min-w-0">
               <DoctorRecoveryPanel />
               <div v-if="run.system" class="px-3 py-2.5">
                 <h2 class="text-xs font-semibold text-gray-700 dark:text-gray-200">
