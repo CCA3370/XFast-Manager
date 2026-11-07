@@ -156,6 +156,13 @@ export default {
     Patch: 'पैच',
   },
   patch: {
+    addedFiles: '{count} जोड़ी गई फ़ाइलें',
+    removeAddedFiles: 'पैच से जोड़ी गई फ़ाइलें भी हटाएँ',
+    addedFilesNotRecorded: 'इस बैकअप में जोड़ी गई फ़ाइलों का रिकॉर्ड नहीं है।',
+    restoreRemoveConfirm:
+      '{aircraft} के लिए {backup} बहाल करें? केवल वे जोड़ी गई फ़ाइलें हटेंगी जिनमें बदलाव नहीं हुआ है।',
+    removedAddedFiles: '{count} जोड़ी गई फ़ाइलें हटाई गईं',
+    skippedAddedFiles: '{count} बदली गई फ़ाइलें रखी गईं',
     backupTitle: 'पैच बैकअप',
     backupFiles: 'बैकअप में {count} फ़ाइलें',
     noBackups: 'इस विमान का कोई पैच बैकअप नहीं है।',
@@ -186,9 +193,8 @@ export default {
     archiveRoot: 'संग्रह की मूल',
     aircraftRoot: 'विमान की मूल',
     unmappedHint: 'बिना मैप किए फ़ोल्डर — मैपिंग जोड़ने के लिए क्लिक करें:',
-    backupLabel: 'अधिलेखित होने वाली फ़ाइलों का बैकअप लें',
-    backupHint:
-      'यह पैच जिन फ़ाइलों को अधिलेखित करता है उन्हें सहेजता है ताकि इसे वापस लाया जा सके।',
+    backupLabel: 'पैच का बैकअप रखें',
+    backupHint: 'बहाली के लिए बदली गई फ़ाइलें सहेजता है और जोड़ी गई फ़ाइलों का रिकॉर्ड रखता है।',
     preparing: 'तैयार किया जा रहा है…',
     install: 'पैच इंस्टॉल करें',
     installAsPatch: 'पैच के रूप में इंस्टॉल करें',

@@ -5,6 +5,7 @@ import type {
   PatchInstallSummary,
   PatchMappingInput,
   PatchPlan,
+  PatchRestoreResult,
   PatchTargetDetection,
 } from '@/types'
 
@@ -90,6 +91,12 @@ export function revertPatch(
   xplanePath: string,
   aircraftFolder: string,
   sessionId: string,
-): Promise<number> {
-  return invokeCommand<number>('revert_patch', { xplanePath, aircraftFolder, sessionId })
+  removeAddedFiles: boolean,
+): Promise<PatchRestoreResult> {
+  return invokeCommand<PatchRestoreResult>('revert_patch', {
+    xplanePath,
+    aircraftFolder,
+    sessionId,
+    removeAddedFiles,
+  })
 }

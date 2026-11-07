@@ -2,15 +2,23 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { listPatchBackups, revertPatch } from '@/services/patch-api'
-import { getErrorMessage, type PatchBackupSession } from '@/types'
+import { getErrorMessage, type PatchBackupSession, type PatchRestoreResult } from '@/types'
 
 const props = defineProps<{ xplanePath: string; aircraftFolder: string; aircraftName: string }>()
-const emit = defineEmits<{ close: []; restored: [count: number] }>()
+const emit = defineEmits<{ close: []; restored: [result: PatchRestoreResult] }>()
 const { t, locale } = useI18n()
 const dialog = ref<HTMLDialogElement | null>(null)
 const sessions = ref<PatchBackupSession[]>([])
 const selectedId = ref('')
 const selected = computed(() => sessions.value.find((session) => session.id === selectedId.value))
+const removeAdded = ref(false)
+const addedCount = computed(() => selected.value?.addedFiles?.length ?? 0)
+const canRestore = computed(
+  () =>
+    !!selected.value &&
+    !selected.value.error &&
+    (selected.value.files.length > 0 || (removeAdded.value && addedCount.value > 0)),
+)
 const size = computed(
   () => selected.value?.files.reduce((sum, file) => sum + file.sizeBytes, 0) ?? 0,
 )
@@ -67,14 +75,24 @@ function resetConfirmation() {
   error.value = ''
 }
 
+function selectBackup() {
+  removeAdded.value = false
+  resetConfirmation()
+}
+
 async function confirmRestore() {
   const session = selected.value
-  if (!session || session.error || restoring.value || !confirming.value) return
+  if (!session || !canRestore.value || restoring.value || !confirming.value) return
   restoring.value = true
   error.value = ''
   try {
-    const count = await revertPatch(props.xplanePath, props.aircraftFolder, session.id)
-    if (!disposed) emit('restored', count)
+    const result = await revertPatch(
+      props.xplanePath,
+      props.aircraftFolder,
+      session.id,
+      removeAdded.value,
+    )
+    if (!disposed) emit('restored', result)
   } catch (cause) {
     if (!disposed) error.value = getErrorMessage(cause)
   } finally {
@@ -140,7 +158,7 @@ async function confirmRestore() {
                 v-model="selectedId"
                 :disabled="restoring"
                 class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-                @change="resetConfirmation"
+                @change="selectBackup"
               >
                 <option v-for="session in sessions" :key="session.id" :value="session.id">
                   {{ session.name }} · {{ dateLabel(session.timestamp)
@@ -158,7 +176,7 @@ async function confirmRestore() {
               </p>
               <p class="mt-1 break-words text-gray-600 dark:text-gray-300">{{ selected.error }}</p>
             </div>
-            <section v-else aria-labelledby="patch-backup-files">
+            <section v-else-if="selected.files.length" aria-labelledby="patch-backup-files">
               <h3 id="patch-backup-files" class="mb-2 text-sm font-semibold">
                 {{ t('patch.backupFiles', { count: selected.files.length }) }} ·
                 {{ sizeLabel(size) }}
@@ -180,6 +198,29 @@ async function confirmRestore() {
                 </li>
               </ul>
             </section>
+            <details
+              v-if="!selected.error && addedCount > 0"
+              class="rounded-lg border border-gray-400/20 px-3 py-2 text-sm"
+            >
+              <summary class="cursor-pointer font-medium">
+                {{ t('patch.addedFiles', { count: addedCount }) }}
+              </summary>
+              <ul class="mt-2 divide-y divide-gray-400/20">
+                <li
+                  v-for="file in selected.addedFiles"
+                  :key="file"
+                  class="break-all py-1.5 font-mono text-xs select-text"
+                >
+                  {{ file }}
+                </li>
+              </ul>
+            </details>
+            <p
+              v-else-if="!selected.error && selected.addedFiles === null"
+              class="text-xs text-gray-500 dark:text-gray-400"
+            >
+              {{ t('patch.addedFilesNotRecorded') }}
+            </p>
           </template>
           <p
             v-if="error"
@@ -194,12 +235,26 @@ async function confirmRestore() {
           v-if="selected && !selected.error"
           class="shrink-0 border-t border-gray-400/20 px-5 py-4"
         >
+          <label v-if="addedCount > 0" class="mb-3 flex items-center gap-2 text-sm">
+            <input
+              v-model="removeAdded"
+              type="checkbox"
+              :disabled="confirming || restoring"
+              class="h-4 w-4 accent-blue-600"
+            />
+            {{ t('patch.removeAddedFiles') }}
+          </label>
           <p
             v-if="confirming"
             role="status"
             class="mb-3 break-words text-sm text-amber-800 dark:text-amber-300"
           >
-            {{ t('patch.restoreConfirm', { aircraft: aircraftName, backup: selected.name }) }}
+            {{
+              t(removeAdded ? 'patch.restoreRemoveConfirm' : 'patch.restoreConfirm', {
+                aircraft: aircraftName,
+                backup: selected.name,
+              })
+            }}
           </p>
           <div class="flex flex-wrap justify-end gap-2">
             <button
@@ -223,7 +278,8 @@ async function confirmRestore() {
             <button
               v-else
               type="button"
-              class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+              class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              :disabled="!canRestore"
               @click="confirming = true"
             >
               {{ t('management.restoreBackup') }}

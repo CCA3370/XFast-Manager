@@ -901,9 +901,15 @@ async fn revert_patch(
     xplane_path: String,
     aircraft_folder: String,
     session_id: String,
-) -> Result<usize, String> {
+    remove_added_files: Option<bool>,
+) -> Result<patch::PatchRestoreResult, String> {
     tokio::task::spawn_blocking(move || {
-        patch::restore_aircraft_backup(&xplane_path, &aircraft_folder, &session_id)
+        patch::restore_aircraft_backup(
+            &xplane_path,
+            &aircraft_folder,
+            &session_id,
+            remove_added_files.unwrap_or(false),
+        )
     })
     .await
     .map_err(|e| format!("Task join error: {e}"))?

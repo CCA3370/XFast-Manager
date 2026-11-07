@@ -385,7 +385,14 @@ export interface PatchBackupSession {
   name: string
   timestamp: number | null
   files: { path: string; sizeBytes: number }[]
+  addedFiles: string[] | null
   error: string | null
+}
+
+export interface PatchRestoreResult {
+  restoredCount: number
+  removedCount: number
+  skippedCount: number
 }
 
 export type InstallPhase = 'calculating' | 'installing' | 'verifying' | 'finalizing'

@@ -201,6 +201,7 @@ describe('patch installation confirmation', () => {
     newSummary.resolve({ totalFiles: 2, overwriteCount: 0, planId: 'preview' })
     await flushPromises()
     expect(wrapper.text()).not.toContain('patch.filesOverwritten')
+    expect(wrapper.get<HTMLInputElement>('input[type=checkbox]').element.checked).toBe(true)
     await installButton().trigger('click')
     expect(api.buildPatchInstallTasks).toHaveBeenCalledWith(
       expect.objectContaining({

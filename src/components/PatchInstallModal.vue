@@ -140,10 +140,7 @@
                   </svg>
                   <span>{{ $t('patch.filesOverwritten', { count: overwriteCount }) }}</span>
                 </div>
-                <label
-                  v-if="overwriteCount > 0"
-                  class="flex items-center gap-2 cursor-pointer pt-1"
-                >
+                <label class="flex items-center gap-2 cursor-pointer pt-1">
                   <input
                     v-model="backupEnabled"
                     type="checkbox"
@@ -153,10 +150,7 @@
                     {{ $t('patch.backupLabel') }}
                   </span>
                 </label>
-                <p
-                  v-if="overwriteCount > 0 && backupEnabled"
-                  class="text-[11px] text-gray-500 dark:text-gray-400 ml-6"
-                >
+                <p v-if="backupEnabled" class="text-[11px] text-gray-500 dark:text-gray-400 ml-6">
                   {{ $t('patch.backupHint') }}
                 </p>
               </div>

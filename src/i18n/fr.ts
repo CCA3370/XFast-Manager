@@ -160,6 +160,13 @@ export default {
     Patch: 'Correctif',
   },
   patch: {
+    addedFiles: '{count} fichiers ajoutés',
+    removeAddedFiles: 'Supprimer aussi les fichiers ajoutés par le correctif',
+    addedFilesNotRecorded: 'Cette sauvegarde ne répertorie pas les fichiers ajoutés.',
+    restoreRemoveConfirm:
+      'Restaurer {backup} pour {aircraft} ? Seuls les fichiers ajoutés et inchangés seront supprimés.',
+    removedAddedFiles: '{count} fichiers ajoutés supprimés',
+    skippedAddedFiles: '{count} fichiers modifiés conservés',
     backupTitle: 'Sauvegardes de correctifs',
     backupFiles: '{count} fichiers sauvegardés',
     noBackups: 'Aucune sauvegarde de correctif pour cet avion.',
@@ -191,8 +198,9 @@ export default {
     archiveRoot: 'racine de l’archive',
     aircraftRoot: 'racine de l’avion',
     unmappedHint: 'Dossiers non affectés — cliquez pour ajouter une affectation :',
-    backupLabel: 'Sauvegarder les fichiers écrasés',
-    backupHint: 'Conserve les fichiers que ce correctif écrase afin de pouvoir l’annuler.',
+    backupLabel: 'Conserver une sauvegarde du correctif',
+    backupHint:
+      'Sauvegarde les fichiers écrasés et répertorie les fichiers ajoutés pour la restauration.',
     preparing: 'Préparation…',
     install: 'Installer le correctif',
     installAsPatch: 'Installer comme correctif',

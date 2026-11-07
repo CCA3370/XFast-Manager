@@ -21,6 +21,7 @@ import {
   type ManagementTab,
   type ManagementItemType,
   type NavdataBackupInfo,
+  type PatchRestoreResult,
   type AddonUpdatableItemType,
   type AddonUpdateDrawerTask,
 } from '@/types'
@@ -573,9 +574,19 @@ function handleRestorePatch(folderName: string) {
   }
 }
 
-async function handlePatchRestored(count: number) {
+async function handlePatchRestored(result: PatchRestoreResult) {
   patchBackupTarget.value = null
-  toastStore.success(t('patch.restoreSuccess', { count }))
+  const messages = []
+  if (result.restoredCount)
+    messages.push(t('patch.restoreSuccess', { count: result.restoredCount }))
+  if (result.removedCount)
+    messages.push(t('patch.removedAddedFiles', { count: result.removedCount }))
+  if (result.skippedCount) {
+    messages.push(t('patch.skippedAddedFiles', { count: result.skippedCount }))
+    toastStore.warning(messages.join(' · '))
+  } else {
+    toastStore.success(messages.join(' · ') || t('patch.removedAddedFiles', { count: 0 }))
+  }
   await loadTabData('aircraft')
 }
 

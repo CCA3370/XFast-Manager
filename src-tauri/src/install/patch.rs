@@ -640,12 +640,22 @@ struct BackupEntry {
     checksum: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct AddedFile {
+    /// Aircraft-relative destination and the exact bytes installed by this patch.
+    path: String,
+    checksum: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct PatchBackupManifest {
     #[serde(default)]
     patch: String,
     #[serde(default)]
     entries: Vec<BackupEntry>,
+    /// None identifies older backups without an inventory of added files.
+    #[serde(default)]
+    added_files: Option<Vec<AddedFile>>,
 }
 
 // Install and restore must not interleave their preflight/snapshot/write steps.
@@ -728,13 +738,41 @@ fn write_patch_files(
     backup: Option<&Path>,
     replace: impl Fn(&Path, &Path) -> Result<()>,
 ) -> Result<usize> {
+    transact_patch_files(root, writes, &[], backup, replace)?;
+    Ok(writes.len())
+}
+
+enum PatchFileAction<'a> {
+    Replace(&'a Path),
+    Remove(&'a str),
+}
+
+fn transact_patch_files(
+    root: &Path,
+    writes: &[(PathBuf, PathBuf)],
+    removals: &[(PathBuf, String)],
+    backup: Option<&Path>,
+    replace: impl Fn(&Path, &Path) -> Result<()>,
+) -> Result<()> {
+    let edits: Vec<_> = writes
+        .iter()
+        .map(|(source, destination)| (PatchFileAction::Replace(source), destination))
+        .chain(
+            removals
+                .iter()
+                .map(|(destination, checksum)| (PatchFileAction::Remove(checksum), destination)),
+        )
+        .collect();
+    if edits.is_empty() {
+        return Ok(());
+    }
     // A temporary snapshot is required for rollback even when the user opts
     // out of a retained backup. Do not write anything before every copy exists.
     let journal = tempfile::Builder::new()
         .prefix(".xfast-patch-rollback-")
         .tempdir_in(root)?;
-    let mut originals = Vec::with_capacity(writes.len());
-    for (_, destination) in writes {
+    let mut originals = Vec::with_capacity(edits.len());
+    for (_, destination) in &edits {
         validate_destination(root, destination)?;
         let snapshot = if destination.is_file() {
             let path = journal.path().join(destination.strip_prefix(root)?);
@@ -755,22 +793,38 @@ fn write_patch_files(
         save_backup(root, backup, writes, &originals)?;
     }
     let mut created_dirs = Vec::new();
-    for (index, (source, destination)) in writes.iter().enumerate() {
+    for (index, (action, destination)) in edits.iter().enumerate() {
         let result = (|| {
             validate_destination(root, destination)?;
-            let parent = destination
-                .parent()
-                .ok_or_else(|| anyhow!("Invalid patch destination"))?;
-            let missing: Vec<_> = parent.ancestors().take_while(|p| !p.exists()).collect();
-            for dir in missing.into_iter().rev() {
-                fs::create_dir(dir)?;
-                created_dirs.push(dir.to_path_buf());
+            match action {
+                PatchFileAction::Remove(checksum) => {
+                    // Recheck immediately before unlinking, after snapshots and
+                    // any restores that may have taken time to finish.
+                    if !file_checksum(destination)?.eq_ignore_ascii_case(checksum) {
+                        return Err(anyhow!(
+                            "Patch file changed during restore: {}",
+                            destination.display()
+                        ));
+                    }
+                    fs::remove_file(destination)?;
+                    Ok(())
+                }
+                PatchFileAction::Replace(source) => {
+                    let parent = destination
+                        .parent()
+                        .ok_or_else(|| anyhow!("Invalid patch destination"))?;
+                    let missing: Vec<_> = parent.ancestors().take_while(|p| !p.exists()).collect();
+                    for dir in missing.into_iter().rev() {
+                        fs::create_dir(dir)?;
+                        created_dirs.push(dir.to_path_buf());
+                    }
+                    replace(source, destination)
+                }
             }
-            replace(source, destination)
         })();
         if let Err(error) = result {
             let mut rollback_errors = Vec::new();
-            for ((_, dest), original) in writes[..index].iter().zip(&originals[..index]).rev() {
+            for ((_, dest), original) in edits[..index].iter().zip(&originals[..index]).rev() {
                 let restored = validate_destination(root, dest).and_then(|()| match original {
                     Some(original) => replace_file(original, dest),
                     None => fs::remove_file(dest).map_err(Into::into),
@@ -797,7 +851,7 @@ fn write_patch_files(
             )));
         }
     }
-    Ok(writes.len())
+    Ok(())
 }
 
 fn file_checksum(path: &Path) -> Result<String> {
@@ -812,9 +866,6 @@ fn save_backup(
     writes: &[(PathBuf, PathBuf)],
     originals: &[Option<PathBuf>],
 ) -> Result<()> {
-    if !originals.iter().any(Option::is_some) {
-        return Ok(());
-    }
     if backup.parent() != Some(root.join("_xfast_patch_backups").as_path()) {
         return Err(anyhow!("Invalid patch backup directory"));
     }
@@ -824,11 +875,16 @@ fn save_backup(
     // Publish only complete sessions, including all snapshots and their manifest.
     let staging = tempfile::tempdir_in(backup_root)?;
     let mut manifest = PatchBackupManifest::default();
-    for ((_, destination), original) in writes.iter().zip(originals) {
+    let mut added_files = Vec::new();
+    for ((source, destination), original) in writes.iter().zip(originals) {
+        let relative = destination.strip_prefix(root)?;
         let Some(original) = original else {
+            added_files.push(AddedFile {
+                path: relative.to_string_lossy().replace('\\', "/"),
+                checksum: file_checksum(source)?,
+            });
             continue;
         };
-        let relative = destination.strip_prefix(root)?;
         let staged = staging.path().join("files").join(relative);
         fs::create_dir_all(staged.parent().unwrap())?;
         fs::copy(original, &staged)?;
@@ -842,6 +898,7 @@ fn save_backup(
             checksum: Some(file_checksum(&staged)?),
         });
     }
+    manifest.added_files = Some(added_files);
     fs::write(
         staging.path().join("manifest_patch.json"),
         serde_json::to_vec_pretty(&manifest)?,
@@ -864,6 +921,7 @@ pub struct PatchBackupSession {
     pub name: String,
     pub timestamp: Option<u64>,
     pub files: Vec<PatchBackupFile>,
+    pub added_files: Option<Vec<String>>,
     pub error: Option<String>,
 }
 
@@ -871,6 +929,19 @@ struct RestoreFile {
     source: PathBuf,
     destination: PathBuf,
     info: PatchBackupFile,
+}
+
+struct BackupContents {
+    files: Vec<RestoreFile>,
+    added_files: Option<Vec<AddedFile>>,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchRestoreResult {
+    pub restored_count: usize,
+    pub removed_count: usize,
+    pub skipped_count: usize,
 }
 
 fn backup_aircraft_root(xplane_path: &str, aircraft_folder: &str) -> Result<PathBuf> {
@@ -906,15 +977,22 @@ pub fn list_aircraft_backups(
         }
         let mut timestamp = None;
         let result = read_backup_session(&root, &entry.path(), false, &mut timestamp);
-        let (files, error) = match result {
-            Ok(files) => (files.into_iter().map(|file| file.info).collect(), None),
-            Err(error) => (Vec::new(), Some(format!("{error:#}"))),
+        let (files, added_files, error) = match result {
+            Ok(contents) => (
+                contents.files.into_iter().map(|file| file.info).collect(),
+                contents
+                    .added_files
+                    .map(|files| files.into_iter().map(|file| file.path).collect()),
+                None,
+            ),
+            Err(error) => (Vec::new(), None, Some(format!("{error:#}"))),
         };
         backups.push(PatchBackupSession {
             id,
             name,
             timestamp,
             files,
+            added_files,
             error,
         });
     }
@@ -937,7 +1015,8 @@ pub fn restore_aircraft_backup(
     xplane_path: &str,
     aircraft_folder: &str,
     session_id: &str,
-) -> Result<usize> {
+    remove_added_files: bool,
+) -> Result<PatchRestoreResult> {
     if session_id.is_empty()
         || session_id.contains('/')
         || safe_relative_subpath(session_id)? != session_id
@@ -945,10 +1024,13 @@ pub fn restore_aircraft_backup(
         return Err(anyhow!("Invalid patch backup session"));
     }
     let root = backup_aircraft_root(xplane_path, aircraft_folder)?;
-    revert_patch(&root.join("_xfast_patch_backups").join(session_id))
+    revert_patch(
+        &root.join("_xfast_patch_backups").join(session_id),
+        remove_added_files,
+    )
 }
 
-fn revert_patch(dir: &Path) -> Result<usize> {
+fn revert_patch(dir: &Path, remove_added_files: bool) -> Result<PatchRestoreResult> {
     let _guard = PATCH_WRITE_LOCK
         .lock()
         .map_err(|_| anyhow!("Patch write lock poisoned"))?;
@@ -956,11 +1038,45 @@ fn revert_patch(dir: &Path) -> Result<usize> {
         .parent()
         .and_then(Path::parent)
         .ok_or_else(|| anyhow!("Invalid patch backup session"))?;
-    let writes: Vec<_> = read_backup_session(root, dir, true, &mut None)?
+    let contents = read_backup_session(root, dir, true, &mut None)?;
+    let writes: Vec<_> = contents
+        .files
         .into_iter()
         .map(|file| (file.source, file.destination))
         .collect();
-    write_patch_files(root, &writes, None, replace_file)
+    let mut result = PatchRestoreResult {
+        restored_count: writes.len(),
+        ..Default::default()
+    };
+    let mut removals = Vec::new();
+    if remove_added_files {
+        let files = contents
+            .added_files
+            .ok_or_else(|| anyhow!("This backup does not track files added by the patch"))?;
+        for file in files {
+            let destination = root.join(&file.path);
+            // Changed files, links and replacements with directories belong to
+            // the current aircraft state and are left alone.
+            if validate_destination(root, &destination).is_err() {
+                result.skipped_count += 1;
+                continue;
+            }
+            match fs::symlink_metadata(&destination) {
+                Ok(metadata)
+                    if metadata.is_file()
+                        && file_checksum(&destination)?.eq_ignore_ascii_case(&file.checksum) =>
+                {
+                    removals.push((destination, file.checksum));
+                }
+                Ok(_) => result.skipped_count += 1,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+    }
+    transact_patch_files(root, &writes, &removals, None, replace_file)?;
+    result.removed_count = removals.len();
+    Ok(result)
 }
 
 /// Use the same manifest and path validation for display and restore. The
@@ -970,12 +1086,13 @@ fn read_backup_session(
     dir: &Path,
     verify_checksums: bool,
     timestamp: &mut Option<u64>,
-) -> Result<Vec<RestoreFile>> {
+) -> Result<BackupContents> {
     if dir.parent() != Some(root.join("_xfast_patch_backups").as_path()) {
         return Err(anyhow!("Invalid patch backup session"));
     }
     validate_destination_inner(root, dir, true)?;
     let mut files = Vec::new();
+    let mut added_files = Some(Vec::new());
     let mut seen = BTreeSet::new();
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -997,6 +1114,11 @@ fn read_backup_session(
         *timestamp = (*timestamp).max(modified);
         let manifest: PatchBackupManifest = serde_json::from_slice(&fs::read(entry.path())?)
             .with_context(|| format!("Invalid patch backup manifest {name}"))?;
+        match (&mut added_files, manifest.added_files) {
+            (Some(all), Some(files)) => all.extend(files),
+            (_, None) => added_files = None,
+            (None, Some(_)) => {}
+        }
         for file in manifest.entries {
             let source = PathBuf::from(file.backup);
             let destination = PathBuf::from(file.original);
@@ -1035,11 +1157,24 @@ fn read_backup_session(
             }
         }
     }
-    if files.is_empty() {
+    if let Some(added) = &mut added_files {
+        for file in &*added {
+            if file.path.is_empty()
+                || safe_relative_subpath(&file.path)? != file.path
+                || file.checksum.len() != 64
+                || !file.checksum.bytes().all(|byte| byte.is_ascii_hexdigit())
+                || !seen.insert(matching::path_key(&file.path))
+            {
+                return Err(anyhow!("Invalid added file in patch backup: {}", file.path));
+            }
+        }
+        added.sort_by(|a, b| a.path.cmp(&b.path));
+    }
+    if files.is_empty() && added_files.as_ref().is_none_or(Vec::is_empty) {
         return Err(anyhow!("No files to restore in this patch backup"));
     }
     files.sort_by(|a, b| a.info.path.cmp(&b.info.path));
-    Ok(files)
+    Ok(BackupContents { files, added_files })
 }
 
 /// Sanitize a string for use as a single path component.
@@ -1591,10 +1726,10 @@ mod tests {
         );
         assert_eq!(fs::read(root.join("one.acf")).unwrap(), b"patched");
         fs::write(backup.join("files/two.acf"), b"tampered").unwrap();
-        assert!(revert_patch(&backup).is_err());
+        assert!(revert_patch(&backup, false).is_err());
         assert_eq!(fs::read(root.join("one.acf")).unwrap(), b"patched");
         fs::write(backup.join("files/two.acf"), b"x").unwrap();
-        assert_eq!(revert_patch(&backup).unwrap(), 2);
+        assert_eq!(revert_patch(&backup, false).unwrap().restored_count, 2);
         assert_eq!(fs::read(root.join("one.acf")).unwrap(), b"x");
         assert_eq!(fs::read(root.join("two.acf")).unwrap(), b"x");
         assert_eq!(fs::read(root.join("new.obj")).unwrap(), b"patched");
@@ -1798,8 +1933,14 @@ mod tests {
         assert!(!root.join("README.txt").exists());
         let backup = Path::new(task.patch_backup_dir.as_ref().unwrap());
         assert_eq!(
-            restore_aircraft_backup(sim, folder, backup.file_name().unwrap().to_str().unwrap())
-                .unwrap(),
+            restore_aircraft_backup(
+                sim,
+                folder,
+                backup.file_name().unwrap().to_str().unwrap(),
+                false
+            )
+            .unwrap()
+            .restored_count,
             1
         );
         assert_eq!(fs::read(root.join("plane.acf")).unwrap(), b"original");
@@ -1822,7 +1963,9 @@ mod tests {
             serde_json::to_vec(&manifest).unwrap(),
         )
         .unwrap();
-        assert_eq!(revert_patch(&session).unwrap(), 1);
+        assert!(revert_patch(&session, true).is_err());
+        assert_eq!(fs::read(root.join("plane.acf")).unwrap(), b"patched");
+        assert_eq!(revert_patch(&session, false).unwrap().restored_count, 1);
         assert_eq!(fs::read(root.join("plane.acf")).unwrap(), b"x");
     }
 
@@ -1988,19 +2131,114 @@ mod tests {
         assert!(list_aircraft_backups(xplane, "Other/Demo")
             .unwrap()
             .is_empty());
-        assert!(restore_aircraft_backup(xplane, "Other/Demo", new_id).is_err());
-        assert!(restore_aircraft_backup(xplane, "Vendor/Demo", "../broken").is_err());
-        assert!(restore_aircraft_backup(xplane, "Vendor/Demo", "broken").is_err());
+        assert!(restore_aircraft_backup(xplane, "Other/Demo", new_id, false).is_err());
+        assert!(restore_aircraft_backup(xplane, "Vendor/Demo", "../broken", false).is_err());
+        assert!(restore_aircraft_backup(xplane, "Vendor/Demo", "broken", false).is_err());
         assert_eq!(fs::read(&dest).unwrap(), b"x");
         assert_eq!(
-            restore_aircraft_backup(xplane, "Vendor/Demo", new_id).unwrap(),
+            restore_aircraft_backup(xplane, "Vendor/Demo", new_id, false)
+                .unwrap()
+                .restored_count,
             1
         );
         assert_eq!(fs::read(&dest).unwrap(), b"first patch");
         assert_eq!(
-            restore_aircraft_backup(xplane, "Vendor/Demo", old_id).unwrap(),
+            restore_aircraft_backup(xplane, "Vendor/Demo", old_id, false)
+                .unwrap()
+                .restored_count,
             1
         );
         assert_eq!(fs::read(&dest).unwrap(), b"stock");
+    }
+
+    #[test]
+    fn restore_can_remove_only_unchanged_added_files() {
+        let aircraft = make_aircraft(&["plane.acf", "untouched.obj"]);
+        let root = fs::canonicalize(aircraft.path()).unwrap();
+        let staged = make_aircraft(&[
+            "plane.acf",
+            "extras/added.obj",
+            "extras/changed.obj",
+            "extras/absent.obj",
+        ]);
+        fs::write(staged.path().join("plane.acf"), b"patched plane").unwrap();
+        let files = [
+            "plane.acf",
+            "extras/added.obj",
+            "extras/changed.obj",
+            "extras/absent.obj",
+        ];
+        let writes = files.map(|file| (staged.path().join(file), root.join(file)));
+        let backup = root.join("_xfast_patch_backups/session");
+        write_patch_files(&root, &writes, Some(&backup), replace_file).unwrap();
+        let keep = revert_patch(&backup, false).unwrap();
+        assert_eq!(
+            (keep.restored_count, keep.removed_count, keep.skipped_count),
+            (1, 0, 0)
+        );
+        for file in &files[1..] {
+            assert!(root.join(file).is_file());
+        }
+        fs::write(
+            root.join("extras/changed.obj"),
+            b"modified outside the patch",
+        )
+        .unwrap();
+        fs::remove_file(root.join("extras/absent.obj")).unwrap();
+        let remove = revert_patch(&backup, true).unwrap();
+        assert_eq!(
+            (
+                remove.restored_count,
+                remove.removed_count,
+                remove.skipped_count
+            ),
+            (1, 1, 1)
+        );
+        assert!(!root.join("extras/added.obj").exists());
+        assert_eq!(
+            fs::read(root.join("extras/changed.obj")).unwrap(),
+            b"modified outside the patch"
+        );
+        assert_eq!(fs::read(root.join("untouched.obj")).unwrap(), b"x");
+    }
+
+    #[test]
+    fn an_add_only_patch_has_a_listed_backup_and_can_be_undone() {
+        let sim = tempfile::tempdir().unwrap();
+        let root = sim.path().join("Aircraft/Test");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("plane.acf"), b"original").unwrap();
+        let root = fs::canonicalize(root).unwrap();
+        let staged = make_aircraft(&["new.obj"]);
+        let writes = [(staged.path().join("new.obj"), root.join("new.obj"))];
+        let session = root.join("_xfast_patch_backups/session");
+        write_patch_files(&root, &writes, Some(&session), replace_file).unwrap();
+        let xplane = sim.path().to_str().unwrap();
+        let backups = list_aircraft_backups(xplane, "Test").unwrap();
+        assert_eq!(backups.len(), 1);
+        assert!(backups[0].files.is_empty());
+        assert_eq!(backups[0].added_files.as_deref().unwrap(), ["new.obj"]);
+        assert!(backups[0].error.is_none());
+        let removed = restore_aircraft_backup(xplane, "Test", "session", true).unwrap();
+        assert_eq!((removed.restored_count, removed.removed_count), (0, 1));
+        assert!(!root.join("new.obj").exists());
+    }
+
+    #[test]
+    fn failed_cleanup_rolls_back_prior_removals_and_restores() {
+        let aircraft = make_aircraft(&["plane.acf", "first.obj", "second.obj"]);
+        let root = aircraft.path();
+        let staged = make_aircraft(&["plane.acf"]);
+        fs::write(staged.path().join("plane.acf"), b"restored version").unwrap();
+        let writes = [(staged.path().join("plane.acf"), root.join("plane.acf"))];
+        let first = root.join("first.obj");
+        let removals = [
+            (first.clone(), file_checksum(&first).unwrap()),
+            (root.join("second.obj"), "invalidated checksum".into()),
+        ];
+        assert!(transact_patch_files(root, &writes, &removals, None, replace_file).is_err());
+        for file in ["plane.acf", "first.obj", "second.obj"] {
+            assert_eq!(fs::read(root.join(file)).unwrap(), b"x");
+        }
     }
 }

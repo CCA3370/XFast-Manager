@@ -159,6 +159,13 @@ export default {
     Patch: 'Patch',
   },
   patch: {
+    addedFiles: '{count} hinzugefügte Dateien',
+    removeAddedFiles: 'Vom Patch hinzugefügte Dateien ebenfalls entfernen',
+    addedFilesNotRecorded: 'Diese Sicherung enthält keine Liste hinzugefügter Dateien.',
+    restoreRemoveConfirm:
+      '{backup} für {aircraft} wiederherstellen? Nur unveränderte hinzugefügte Dateien werden entfernt.',
+    removedAddedFiles: '{count} hinzugefügte Dateien entfernt',
+    skippedAddedFiles: '{count} geänderte Dateien behalten',
     backupTitle: 'Patch-Sicherungen',
     backupFiles: '{count} gesicherte Dateien',
     noBackups: 'Keine Patch-Sicherungen für dieses Flugzeug.',
@@ -189,9 +196,9 @@ export default {
     archiveRoot: 'Archiv-Stammverzeichnis',
     aircraftRoot: 'Flugzeug-Stammverzeichnis',
     unmappedHint: 'Nicht zugeordnete Ordner – zum Hinzufügen einer Zuordnung anklicken:',
-    backupLabel: 'Überschriebene Dateien sichern',
+    backupLabel: 'Patch-Sicherung behalten',
     backupHint:
-      'Sichert die von diesem Patch überschriebenen Dateien, damit er rückgängig gemacht werden kann.',
+      'Sichert überschriebene Dateien und erfasst hinzugefügte Dateien für die Wiederherstellung.',
     preparing: 'Wird vorbereitet…',
     install: 'Patch installieren',
     installAsPatch: 'Als Patch installieren',
