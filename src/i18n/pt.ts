@@ -1575,7 +1575,11 @@ export default {
       levelCleanable: 'Pode ser limpo',
       levelCautious: 'Limpeza cautelosa',
       levelUnknown: 'Não reconhecido',
+      addonDataDescription:
+        'Dados ou cache salvos por uma aeronave ou plugin. Podem conter arquivos importantes. Tente desativar o item para investigar falhas.',
       warnings: {
+        addon_data:
+          'A limpeza pode excluir permanentemente dados importantes do complemento. Tente desativar o item primeiro.',
         shadercache:
           'O cache do renderizador será recriado automaticamente; a próxima inicialização ou carregamento de cenário pode ser mais lento.',
         replays: 'Excluir este item limpará os arquivos de replay salvos.',

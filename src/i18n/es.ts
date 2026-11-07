@@ -1590,7 +1590,11 @@ export default {
       levelCleanable: 'Se puede limpiar',
       levelCautious: 'Limpieza con precaución',
       levelUnknown: 'No reconocido',
+      addonDataDescription:
+        'Datos o caché guardados por una aeronave o un complemento. Pueden incluir archivos importantes. Prueba a desactivar el elemento para diagnosticar fallos.',
       warnings: {
+        addon_data:
+          'La limpieza puede borrar de forma permanente datos importantes del complemento. Prueba primero a desactivar el elemento.',
         shadercache:
           'La caché del renderizador se reconstruirá automáticamente; el próximo inicio o carga de escenarios puede ser más lento.',
         replays: 'Al eliminar este elemento se borrarán los archivos de repetición guardados.',

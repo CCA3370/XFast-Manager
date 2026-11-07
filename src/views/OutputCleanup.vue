@@ -180,7 +180,7 @@
                   {{ cleanupItemDescription(item) }}
                 </p>
                 <p
-                  v-if="cleanupWarningText(item)"
+                  v-if="item.warningKey !== 'addon_data' && cleanupWarningText(item)"
                   class="mt-1 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg px-2 py-1"
                 >
                   {{ cleanupWarningText(item) }}
@@ -384,11 +384,12 @@ function formatSize(bytes: number): string {
 }
 
 function cleanupItemName(item: OutputCleanupItem): string {
-  if (!item.recognized) return item.displayName
+  if (!item.recognized || item.warningKey === 'addon_data') return item.displayName
   return t(`diskUsage.outputCleanup.items.${item.id}.name`, item.displayName)
 }
 
 function cleanupItemDescription(item: OutputCleanupItem): string {
+  if (item.warningKey === 'addon_data') return t('diskUsage.outputCleanup.addonDataDescription')
   if (!item.recognized) {
     return t('diskUsage.outputCleanup.unknownDescription')
   }

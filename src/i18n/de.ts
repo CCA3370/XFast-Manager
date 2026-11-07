@@ -1598,7 +1598,11 @@ export default {
       levelCleanable: 'Bereinigbar',
       levelCautious: 'Vorsichtige Bereinigung',
       levelUnknown: 'Nicht erkannt',
+      addonDataDescription:
+        'Von einem Flugzeug oder Plugin gespeicherte Daten oder Cache-Dateien. Sie können wichtige Dateien enthalten. Zur Fehlersuche kann der Ordner deaktiviert werden.',
       warnings: {
+        addon_data:
+          'Beim Bereinigen können wichtige Add-on-Daten dauerhaft gelöscht werden. Versuche zuerst, den Ordner zu deaktivieren.',
         shadercache:
           'Der Renderer-Cache wird automatisch neu erstellt; der nächste Start oder das Laden von Szenerien kann langsamer sein.',
         replays: 'Durch Löschen dieses Eintrags werden gespeicherte Wiederholungen entfernt.',

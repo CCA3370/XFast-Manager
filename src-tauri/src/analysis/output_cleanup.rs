@@ -185,6 +185,10 @@ fn normalize_catalog(catalog: &mut OutputCleanupCatalog) -> Result<(), String> {
         if !ALLOWED_LEVELS.contains(&item.level.as_str()) {
             item.level = "cleanable".to_string();
         }
+        if item.warning_key.as_deref() == Some("addon_data") {
+            item.level = "cautious".to_string();
+            item.default_selected = false;
+        }
 
         if !ids.insert(item.id.clone()) {
             return Err(format!("Duplicate output cleanup item id: {}", item.id));
@@ -351,6 +355,9 @@ pub async fn refresh_remote_catalog() -> Result<OutputCleanupConfigInfo, String>
     let mut guard = CLEANUP_CATALOG
         .write()
         .expect("output cleanup catalog lock poisoned during write");
+    if catalog.version < guard.catalog.version {
+        return Ok(config_info(&guard));
+    }
     *guard = LoadedCatalog {
         source: "remote".to_string(),
         catalog,
@@ -874,9 +881,22 @@ mod tests {
 
     #[test]
     fn catalog_defaults_match_policy() {
-        let loaded = current_catalog();
+        let loaded = load_embedded_catalog();
         let by_id = catalog_by_id(&loaded.catalog);
 
+        for id in [
+            "cl650",
+            "q4xp",
+            "nss_scenery_core",
+            "taxipilot",
+            "tbm900",
+            "cl650_technical_log",
+        ] {
+            let item = &by_id[id];
+            assert_eq!(item.level, "cautious");
+            assert_eq!(item.warning_key.as_deref(), Some("addon_data"));
+            assert!(!item.default_selected);
+        }
         assert!(by_id.get("autodgs").unwrap().default_selected);
         let logbooks = by_id.get("logbooks").unwrap();
         assert!(!logbooks.default_selected);

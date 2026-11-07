@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "updated": "2026-06-07",
+  "version": 2,
+  "updated": "2026-11-07",
   "items": [
     {
       "id": "shadercache",
@@ -173,6 +173,54 @@
       "description": "User Profile",
       "level": "cautious",
       "defaultSelected": false
+    },
+    {
+      "id": "cl650",
+      "relativePath": "Output/CL650",
+      "displayName": "CL650",
+      "description": "Data or cache saved by an aircraft or plugin. It may contain important files. Try disabling it when troubleshooting.",
+      "level": "cautious",
+      "warningKey": "addon_data"
+    },
+    {
+      "id": "nss_scenery_core",
+      "relativePath": "Output/NSS Scenery Core",
+      "displayName": "NSS Scenery Core",
+      "description": "Data or cache saved by an aircraft or plugin. It may contain important files. Try disabling it when troubleshooting.",
+      "level": "cautious",
+      "warningKey": "addon_data"
+    },
+    {
+      "id": "q4xp",
+      "relativePath": "Output/Q4XP",
+      "displayName": "Q4XP",
+      "description": "Data or cache saved by an aircraft or plugin. It may contain important files. Try disabling it when troubleshooting.",
+      "level": "cautious",
+      "warningKey": "addon_data"
+    },
+    {
+      "id": "taxipilot",
+      "relativePath": "Output/TaxiPilot",
+      "displayName": "TaxiPilot",
+      "description": "Data or cache saved by an aircraft or plugin. It may contain important files. Try disabling it when troubleshooting.",
+      "level": "cautious",
+      "warningKey": "addon_data"
+    },
+    {
+      "id": "tbm900",
+      "relativePath": "Output/TBM900",
+      "displayName": "TBM900",
+      "description": "Data or cache saved by an aircraft or plugin. It may contain important files. Try disabling it when troubleshooting.",
+      "level": "cautious",
+      "warningKey": "addon_data"
+    },
+    {
+      "id": "cl650_technical_log",
+      "relativePath": "Output/CL650_Technical_Log",
+      "displayName": "CL650 Technical Log",
+      "description": "Data or cache saved by an aircraft or plugin. It may contain important files. Try disabling it when troubleshooting.",
+      "level": "cautious",
+      "warningKey": "addon_data"
     }
   ]
 }

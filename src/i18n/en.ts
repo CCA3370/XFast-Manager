@@ -1541,7 +1541,11 @@ export default {
       levelCleanable: 'Cleanable',
       levelCautious: 'Cautious cleanup',
       levelUnknown: 'Unrecognized',
+      addonDataDescription:
+        'Data or cache saved by an aircraft or plugin. It may contain important files. Try disabling it when troubleshooting.',
       warnings: {
+        addon_data:
+          'Cleaning this item can permanently remove important add-on data. Try disabling it first.',
         shadercache:
           'Renderer cache will be rebuilt automatically; the next launch or scenery load may be slower.',
         replays: 'Deleting this item will clear saved replay files.',

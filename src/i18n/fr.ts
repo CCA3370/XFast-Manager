@@ -1599,7 +1599,11 @@ export default {
       levelCleanable: 'Nettoyable',
       levelCautious: 'Nettoyage prudent',
       levelUnknown: 'Non reconnu',
+      addonDataDescription:
+        'Données ou cache enregistrés par un avion ou une extension. Ce dossier peut contenir des fichiers importants. Essayez de le désactiver pour diagnostiquer un problème.',
       warnings: {
+        addon_data:
+          'Le nettoyage peut effacer des données importantes de façon permanente. Essayez d’abord de désactiver cet élément.',
         shadercache:
           'Le cache du moteur de rendu sera reconstruit automatiquement ; le prochain lancement ou chargement de décor peut être plus lent.',
         replays: 'La suppression de cet élément effacera les fichiers de relecture enregistrés.',

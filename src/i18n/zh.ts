@@ -1462,7 +1462,10 @@ export default {
       levelCleanable: '可清理',
       levelCautious: '谨慎清理',
       levelUnknown: '未识别',
+      addonDataDescription:
+        '机模或插件保存的数据或缓存，可能包含重要文件。如果发生故障，可以尝试禁用此项进行排查。',
       warnings: {
+        addon_data: '清理此项可能永久删除重要的机模或插件数据。排查故障时可先尝试禁用。',
         shadercache: '渲染器缓存会自动重建；下次启动或加载地景可能更慢。',
         replays: '删除此项会清空已保存的回放文件。',
         fms_plans: '删除此项会清空已保存的 FMS 飞行计划。',

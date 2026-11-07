@@ -1529,7 +1529,11 @@ export default {
       levelCleanable: '정리 가능',
       levelCautious: '주의해서 정리',
       levelUnknown: '알 수 없음',
+      addonDataDescription:
+        '항공기나 플러그인이 저장한 데이터 또는 캐시입니다. 중요한 파일이 포함될 수 있습니다. 문제를 진단할 때 이 항목을 비활성화해 보세요.',
       warnings: {
+        addon_data:
+          '정리하면 중요한 애드온 데이터가 영구적으로 삭제될 수 있습니다. 먼저 비활성화를 시도하세요.',
         shadercache:
           '렌더러 캐시는 자동으로 다시 생성됩니다. 다음 실행 또는 시너리 로딩이 느려질 수 있습니다.',
         replays: '이 항목을 삭제하면 저장된 리플레이 파일이 비워집니다.',
