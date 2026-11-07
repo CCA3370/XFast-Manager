@@ -1601,6 +1601,7 @@ async fn scan_packages_internal(
     server: &str,
     paths: Vec<CslPath>,
     local_path_strings: Vec<String>,
+    verify_hashes: bool,
     request_ctx: &RequestContext,
 ) -> Result<CslScanResult, String> {
     csl_debug!(
@@ -1648,8 +1649,11 @@ async fn scan_packages_internal(
             async move {
                 if let Some(dir) = local_dir {
                     tokio::task::spawn_blocking(move || {
-                        let (status, files_to_update, update_size) =
-                            compare_package_quick(&pkg, &dir);
+                        let (status, files_to_update, update_size) = if verify_hashes {
+                            compare_package_exact(&pkg, &dir)
+                        } else {
+                            compare_package_quick(&pkg, &dir)
+                        };
                         build_csl_package_info(&pkg, &status, files_to_update, update_size)
                     })
                     .await
@@ -3406,7 +3410,7 @@ pub async fn csl_fetch_package_descriptions(
 ///
 /// Optimizations vs. naive approach:
 /// 1. No per-package HTTP requests for descriptions — uses package name instead
-/// 2. First pass is size-only and returns `checking` for packages awaiting exact hash verification
+/// 2. Interactive scans can defer hash verification. Health requests an exact comparison.
 /// 3. Package directory discovery is done once per scan instead of probing every package name
 /// 4. Comparison concurrency is capped to keep first-open scans responsive
 #[tauri::command]
@@ -3416,6 +3420,7 @@ pub async fn csl_scan_packages(
     install_location: Option<String>,
     server_base_url: Option<String>,
     request_id: Option<String>,
+    verify_hashes: Option<bool>,
 ) -> Result<CslScanResult, String> {
     let request_ctx = RequestContext::new("csl_scan_packages", request_id);
     let (paths, _) = collect_scan_paths(&xplane_path, &custom_paths);
@@ -3440,7 +3445,14 @@ pub async fn csl_scan_packages(
         api_base
     );
 
-    let result = scan_packages_internal(&api_base, paths, scan_paths, &request_ctx).await;
+    let result = scan_packages_internal(
+        &api_base,
+        paths,
+        scan_paths,
+        verify_hashes.unwrap_or(false),
+        &request_ctx,
+    )
+    .await;
 
     match &result {
         Ok(scan_result) => csl_debug!(

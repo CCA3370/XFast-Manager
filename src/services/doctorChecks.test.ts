@@ -173,6 +173,10 @@ it('keeps the stale index reason visible when verified CSL updates exceed the ev
     mode: 'full',
   } as DoctorCheckContext).find((item) => item.id === 'csl_updates')!
   const [result] = await check.run()
+  expect(tauri.invoke).toHaveBeenCalledWith(
+    'csl_scan_packages',
+    expect.objectContaining({ verifyHashes: true }),
+  )
   expect(result).toMatchObject({
     id: 'updates.csl',
     outcome: 'unavailable',

@@ -1491,7 +1491,7 @@ function createCslUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinitio
     section: 'updates',
     phase: 'network',
     modes: ['full'],
-    timeoutMs: 60_000,
+    timeoutMs: 120_000,
     async run() {
       const [customPaths, installLocation, activeServer] = await Promise.all([
         getItem<string[]>(STORAGE_KEYS.CSL_CUSTOM_PATHS),
@@ -1507,6 +1507,7 @@ function createCslUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinitio
           installLocation: installLocation || null,
           serverBaseUrl,
           requestId: `${requestId}-csl`,
+          verifyHashes: true,
         }),
         invoke<CslScanResult>('altitude_scan_packages', {
           xplanePath: context.xplanePath,
