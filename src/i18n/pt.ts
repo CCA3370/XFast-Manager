@@ -197,6 +197,7 @@ export default {
       'Este arquivo não é um complemento reconhecido. Instalá-lo como correção para uma aeronave existente?',
     noArchive: 'Nenhum arquivo de correção disponível.',
     reasonMatched: 'corresponde a {count} arquivos existentes',
+    reasonLayout: 'A estrutura de pastas da aeronave corresponde',
     reasonLivery: 'pasta de pinturas',
     reasonNoAnchor: 'sem âncora — raiz da aeronave por padrão',
     reasonNoListing: 'não foi possível inspecionar o arquivo',

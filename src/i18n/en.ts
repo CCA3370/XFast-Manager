@@ -194,6 +194,7 @@ export default {
       'This archive is not a recognized add-on. Install it as a patch for an existing aircraft?',
     noArchive: 'No patch archive available.',
     reasonMatched: 'matches {count} existing files',
+    reasonLayout: 'Aircraft folder layout matches',
     reasonLivery: 'liveries folder',
     reasonNoAnchor: 'no anchor — defaults to aircraft root',
     reasonNoListing: 'could not inspect archive',

@@ -199,6 +199,7 @@ export default {
       'Cette archive n’est pas un module reconnu. L’installer comme correctif pour un avion existant ?',
     noArchive: 'Aucune archive de correctif disponible.',
     reasonMatched: 'correspond à {count} fichiers existants',
+    reasonLayout: 'La structure des dossiers de l’avion correspond',
     reasonLivery: 'dossier de livrées',
     reasonNoAnchor: 'aucun point d’ancrage — racine de l’avion par défaut',
     reasonNoListing: 'impossible d’inspecter l’archive',

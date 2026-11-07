@@ -134,17 +134,7 @@ pub fn infer_mappings(
         .find(|candidate| candidate.folder_name == aircraft_folder.replace('\\', "/"))
         .ok_or_else(|| anyhow!("Aircraft folder not found: {}", aircraft_folder))?;
     let (suggested_mappings, unmapped) =
-        if candidate.ambiguous_mapping || candidate.matched_count == 0 {
-            (Vec::new(), matching::uncovered(&files, &[]))
-        } else {
-            plan_at_offset(
-                &files,
-                &dirs,
-                &candidate.best_offset,
-                &candidate.best_destination,
-                candidate.matched_count,
-            )
-        };
+        build_mapping_plan(&files, &dirs, candidate, &aircraft_subdirs);
 
     Ok(PatchPlan {
         archive_tree,
@@ -169,14 +159,82 @@ fn plan_mappings(
         }],
     )
     .unwrap();
-    let candidate = &detection.candidates[0];
-    plan_at_offset(
+    build_mapping_plan(
         files,
         dirs,
-        &candidate.best_offset,
-        &candidate.best_destination,
-        candidate.matched_count,
+        &detection.candidates[0],
+        &immediate_subdirs(aircraft_dir),
     )
+}
+
+fn build_mapping_plan(
+    files: &[String],
+    dirs: &BTreeSet<String>,
+    candidate: &AircraftCandidate,
+    aircraft_subdirs: &[String],
+) -> (Vec<PatchMapping>, Vec<String>) {
+    let mut mappings = if candidate.ambiguous_mapping || candidate.matched_count == 0 {
+        Vec::new()
+    } else {
+        plan_at_offset(
+            files,
+            dirs,
+            &candidate.best_offset,
+            &candidate.best_destination,
+            candidate.matched_count,
+        )
+        .0
+    };
+    for (source, destination) in matching::layout_mappings(files, dirs, aircraft_subdirs) {
+        let livery = matching::is_livery_wrapper(&source, files);
+        if mappings.iter().any(|mapping| {
+            // A broader existing alignment that already places the anchor
+            // correctly can include other siblings too. Keep that alignment.
+            projected_dir(&source, &mapping.archive_subpath, &mapping.dest_subpath)
+                .is_some_and(|dir| matching::path_key(&dir) == matching::path_key(&destination))
+                // A narrower exact match into a different aircraft subtree
+                // is stronger than a base directory name alone.
+                || (!livery && projected_dir(&mapping.archive_subpath, &source, &destination)
+                    .is_some_and(|dir| matching::path_key(&dir) != matching::path_key(&mapping.dest_subpath)))
+        }) { continue; }
+        // A conflicting broad alignment would preserve an extra wrapper, or
+        // put a paint's files in the aircraft's shared objects directory.
+        mappings.retain(|mapping| {
+            projected_dir(&source, &mapping.archive_subpath, &mapping.dest_subpath).is_none()
+                && projected_dir(&mapping.archive_subpath, &source, &destination).is_none()
+        });
+        mappings.push(PatchMapping {
+            file_count: count_under(files, &source),
+            archive_subpath: source,
+            dest_subpath: destination,
+            confidence: Confidence::Medium,
+            reason: if livery {
+                "liveryFolder"
+            } else {
+                "matchedLayout"
+            }
+            .to_string(),
+        });
+    }
+    let prefixes = mappings
+        .iter()
+        .map(|mapping| mapping.archive_subpath.clone())
+        .collect::<Vec<_>>();
+    let unmapped = matching::uncovered(files, &prefixes);
+    (mappings, unmapped)
+}
+
+/// Where an archive directory lands under a mapping, if that mapping owns it.
+fn projected_dir(dir: &str, source: &str, destination: &str) -> Option<String> {
+    if dir == source {
+        return Some(destination.to_string());
+    }
+    let relative = strip_offset(dir, source)?;
+    Some(if destination.is_empty() {
+        relative.to_string()
+    } else {
+        format!("{destination}/{relative}")
+    })
 }
 
 fn plan_at_offset(
@@ -201,10 +259,7 @@ fn plan_at_offset(
     // Recognize separate liveries at any wrapper depth. Never map an ancestor
     // of the selected root (that would duplicate already mapped files).
     for dir in dirs {
-        if dir
-            .rsplit('/')
-            .next()
-            .is_some_and(|name| name.eq_ignore_ascii_case("liveries"))
+        if matching::is_livery_wrapper(dir, files)
             && !mappings.iter().any(|mapping| {
                 strip_offset(dir, &mapping.archive_subpath).is_some()
                     || dir == &mapping.archive_subpath
@@ -1657,5 +1712,108 @@ mod tests {
         .unwrap();
         assert_eq!(revert_patch(&session).unwrap(), 1);
         assert_eq!(fs::read(root.join("plane.acf")).unwrap(), b"x");
+    }
+
+    #[test]
+    fn model_and_layout_align_an_engine_pack_with_no_existing_assets() {
+        let a321 = make_aircraft(&["a321.acf", "objects/engines.obj"]);
+        let a346 = make_aircraft(&["a346.acf", "objects/engines.obj"]);
+        let other = make_aircraft(&["b777.acf", "docs/MANUAL.pdf"]);
+        let files = to_owned(&[
+            "MANUAL.pdf",
+            "Toliss321 Base Folder/objects/CFM56/cfm56_l_engine.obj",
+            "Toliss321 Base Folder/objects/CFM56/particles/CFM-Particles.pss",
+            "TolissA321 Liveries/Delta/objects/CFM56/cfm_l_engine.dds",
+            "TolissA321 Liveries/Lufthansa Grey/objects/CFM56/cfm_l_engine.dds",
+        ]);
+        let targets = [
+            target("777", other.path()),
+            target("A346", a346.path()),
+            target("A321", a321.path()),
+        ];
+        let detection = rank_candidates(&files, &targets).unwrap();
+        assert_eq!(detection.recommended_folder.as_deref(), Some("A321"));
+        assert_eq!(detection.candidates[0].matched_count, 0);
+        let (mappings, unmapped) = build_mapping_plan(
+            &files,
+            &derive_dirs(&files),
+            &detection.candidates[0],
+            &immediate_subdirs(a321.path()),
+        );
+        assert_eq!(unmapped, to_owned(&["MANUAL.pdf"]));
+        assert_eq!(mappings.len(), 2);
+        let inputs: Vec<_> = mappings
+            .into_iter()
+            .map(|mapping| PatchMappingInput {
+                archive_subpath: mapping.archive_subpath,
+                dest_subpath: mapping.dest_subpath,
+            })
+            .collect();
+        let writes = plan_install_files(&files, a321.path(), &inputs).unwrap();
+        assert_eq!(
+            writes
+                .iter()
+                .map(|write| write.destination.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "liveries/Delta/objects/CFM56/cfm_l_engine.dds",
+                "liveries/Lufthansa Grey/objects/CFM56/cfm_l_engine.dds",
+                "objects/CFM56/cfm56_l_engine.obj",
+                "objects/CFM56/particles/CFM-Particles.pss",
+            ]
+        );
+        assert!(writes.iter().all(|write| !write.overwrite));
+        let mut duplicate = targets.into_iter().collect::<Vec<_>>();
+        duplicate.push(target("A321 copy", a321.path()));
+        assert!(rank_candidates(&files, &duplicate)
+            .unwrap()
+            .recommended_folder
+            .is_none());
+    }
+
+    #[test]
+    fn aligned_overwrite_still_installs_independent_new_branches() {
+        let a321 = make_aircraft(&[
+            "a321.acf",
+            "objects/engines.obj",
+            "liveries/Delta/objects/CFM56/cfm_l_engine.dds",
+        ]);
+        let files = to_owned(&[
+            "Release/Toliss321 Base Folder/objects/CFM56/cfm56_l_engine.obj",
+            "Release/TolissA321 Liveries/Delta/objects/CFM56/cfm_l_engine.dds",
+            "Release/TolissA321 Liveries/Delta/objects/CFM56/cfm_r_engine.dds",
+        ]);
+        let (mappings, unmapped) = plan_mappings(&files, &derive_dirs(&files), a321.path());
+        assert!(unmapped.is_empty());
+        let inputs: Vec<_> = mappings
+            .into_iter()
+            .map(|mapping| PatchMappingInput {
+                archive_subpath: mapping.archive_subpath,
+                dest_subpath: mapping.dest_subpath,
+            })
+            .collect();
+        let writes = plan_install_files(&files, a321.path(), &inputs).unwrap();
+        assert_eq!(writes.len(), 3);
+        let overwritten: Vec<_> = writes
+            .iter()
+            .filter(|write| write.overwrite)
+            .map(|write| write.destination.as_str())
+            .collect();
+        assert_eq!(
+            overwritten,
+            ["liveries/Delta/objects/CFM56/cfm_l_engine.dds"]
+        );
+        assert!(writes
+            .iter()
+            .any(|write| write.destination == "objects/CFM56/cfm56_l_engine.obj"));
+    }
+
+    #[test]
+    fn a_manual_or_generic_layout_does_not_identify_an_aircraft() {
+        let aircraft = make_aircraft(&["a321.acf", "objects/body.obj", "docs/MANUAL.pdf"]);
+        let files = to_owned(&["MANUAL.pdf", "Generic Pack/objects/extra.obj"]);
+        let result = rank_candidates(&files, &[target("A321", aircraft.path())]).unwrap();
+        assert!(result.recommended_folder.is_none());
+        assert_eq!(result.candidates[0].matched_count, 0);
     }
 }

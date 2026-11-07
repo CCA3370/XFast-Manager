@@ -196,6 +196,7 @@ export default {
       '이 압축 파일은 인식된 애드온이 아닙니다. 기존 항공기의 패치로 설치하시겠습니까?',
     noArchive: '사용 가능한 패치 압축 파일이 없습니다.',
     reasonMatched: '기존 {count}개 파일과 일치',
+    reasonLayout: '항공기 폴더 구조 일치',
     reasonLivery: '도색 폴더',
     reasonNoAnchor: '앵커 없음 — 기본값은 항공기 루트',
     reasonNoListing: '압축 파일을 검사할 수 없습니다',

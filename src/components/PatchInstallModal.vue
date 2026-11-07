@@ -55,7 +55,11 @@
                   <option value="" disabled>{{ $t('patch.selectAircraft') }}</option>
                   <option v-for="c in candidates" :key="c.folderName" :value="c.folderName">
                     {{ c.displayName }} ·
-                    {{ $t('patch.matchingFiles', { matched: c.matchedCount, total: c.fileCount }) }}
+                    {{
+                      c.matchedCount === 0 && c.matchScore > 0
+                        ? $t('patch.reasonLayout')
+                        : $t('patch.matchingFiles', { matched: c.matchedCount, total: c.fileCount })
+                    }}
                   </option>
                 </select>
                 <p
@@ -602,6 +606,8 @@ function describeMapping(m: EditableMapping): string {
   let reason = ''
   if (m.reason?.startsWith('matchedExisting:')) {
     reason = ' · ' + t('patch.reasonMatched', { count: Number(m.reason.split(':')[1]) || 0 })
+  } else if (m.reason === 'matchedLayout') {
+    reason = ' · ' + t('patch.reasonLayout')
   } else if (m.reason === 'liveryFolder') {
     reason = ' · ' + t('patch.reasonLivery')
   } else if (m.reason === 'noAnchorDefaultRoot') {

@@ -1,4 +1,4 @@
-//! Complete file-tree alignment. Paths, never package/folder names, supply evidence.
+//! Aircraft file-tree alignment, with a model and layout fallback for new assets.
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,7 +7,9 @@ use anyhow::{Context, Result};
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
-use super::{AircraftCandidate, Confidence, TargetDetection};
+use super::{
+    derive_dirs, immediate_subdirs, strip_offset, AircraftCandidate, Confidence, TargetDetection,
+};
 
 pub(super) struct ProbeTarget {
     pub folder_name: String,
@@ -113,7 +115,7 @@ pub(super) fn file_tree(dir: &Path) -> Result<HashSet<String>> {
 /// per ancestor rather than scanning all files for each directory.
 fn alignments(files: &[String]) -> BTreeMap<String, Vec<String>> {
     let mut result: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for file in files {
+    for file in files.iter().filter(|file| !is_documentation(file)) {
         result.entry(String::new()).or_default().push(file.clone());
         for (index, _) in file.match_indices('/') {
             result
@@ -123,6 +125,164 @@ fn alignments(files: &[String]) -> BTreeMap<String, Vec<String>> {
         }
     }
     result
+}
+
+fn is_documentation(path: &str) -> bool {
+    let leaf = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
+    leaf.ends_with(".pdf")
+        || leaf.starts_with("readme")
+        || leaf.starts_with("license")
+        || leaf.starts_with("changelog")
+        || leaf.starts_with("manual.")
+}
+
+/// A model-labelled wrapper such as `A321 Liveries` is a collection only if
+/// it contains a paint folder with an objects subtree. Preserve that paint
+/// name and everything below it when removing the wrapper.
+pub(super) fn is_livery_wrapper(dir: &str, files: &[String]) -> bool {
+    let leaf = dir.rsplit('/').next().unwrap_or(dir);
+    if leaf.eq_ignore_ascii_case("liveries") {
+        return true;
+    }
+    leaf.rsplit(|c: char| !c.is_ascii_alphanumeric())
+        .find(|word| !word.is_empty())
+        .is_some_and(|word| word.eq_ignore_ascii_case("liveries"))
+        && files
+            .iter()
+            .filter_map(|file| strip_offset(file, dir))
+            .any(|path| {
+                let mut parts = path.split('/');
+                parts.next().is_some()
+                    && parts
+                        .next()
+                        .is_some_and(|part| part.eq_ignore_ascii_case("objects"))
+                    && parts.next().is_some()
+            })
+}
+
+/// Align new files by a known aircraft directory, preserving all descendants
+/// of that anchor. Repeated anchors may be alternative versions of a patch;
+/// let the user choose between them instead of merging them automatically.
+pub(super) fn layout_mappings(
+    files: &[String],
+    dirs: &BTreeSet<String>,
+    aircraft_dirs: &[String],
+) -> Vec<(String, String)> {
+    const ROOTS: &[&str] = &[
+        "objects",
+        "fmod",
+        "airfoils",
+        "sounds",
+        "cockpit",
+        "cockpit_3d",
+        "plugins",
+        "instruments",
+    ];
+    let mut liveries = Vec::<&str>::new();
+    for dir in dirs {
+        if is_livery_wrapper(dir, files)
+            && !liveries
+                .iter()
+                .any(|root| strip_offset(dir, root).is_some())
+        {
+            liveries.push(dir);
+        }
+    }
+    let mut groups = BTreeMap::<String, Vec<String>>::new();
+    let livery_dest = aircraft_dirs
+        .iter()
+        .find(|name| name.eq_ignore_ascii_case("liveries"))
+        .map_or("liveries", String::as_str);
+    if !liveries.is_empty() {
+        groups.insert(
+            livery_dest.to_string(),
+            liveries.iter().map(|dir| dir.to_string()).collect(),
+        );
+    }
+    let mut anchors = Vec::<&str>::new();
+    for dir in dirs {
+        if liveries
+            .iter()
+            .any(|root| *root == dir || strip_offset(dir, root).is_some())
+            || anchors.iter().any(|root| strip_offset(dir, root).is_some())
+        {
+            continue;
+        }
+        let leaf = dir.rsplit('/').next().unwrap_or(dir);
+        if !ROOTS.iter().any(|root| leaf.eq_ignore_ascii_case(root)) {
+            continue;
+        }
+        let Some(dest) = aircraft_dirs
+            .iter()
+            .find(|name| leaf.eq_ignore_ascii_case(name))
+        else {
+            continue;
+        };
+        // A texture-only objects directory can be a standalone repaint. A
+        // model/particle file or an explicit base wrapper establishes its role.
+        if leaf.eq_ignore_ascii_case("objects") {
+            let base_wrapper = dir.rsplit_once('/').is_some_and(|(parent, _)| {
+                parent
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(parent)
+                    .split(|c: char| !c.is_ascii_alphanumeric())
+                    .any(|word| word.eq_ignore_ascii_case("base"))
+            });
+            let contains_model =
+                files
+                    .iter()
+                    .filter_map(|file| strip_offset(file, dir))
+                    .any(|file| {
+                        let lower = file.to_ascii_lowercase();
+                        lower.ends_with(".obj") || lower.ends_with(".pss")
+                    });
+            if !base_wrapper && !contains_model {
+                continue;
+            }
+        }
+        anchors.push(dir);
+        groups.entry(dest.clone()).or_default().push(dir.clone());
+    }
+    groups
+        .into_iter()
+        .filter_map(|(destination, mut sources)| {
+            (sources.len() == 1).then(|| (sources.pop().unwrap(), destination))
+        })
+        .collect()
+}
+
+fn names_aircraft_model(tree: &HashSet<String>, sources: &[(String, String)]) -> bool {
+    tree.iter()
+        .filter_map(|file| {
+            if file.contains('/') {
+                return None;
+            }
+            let (name, extension) = file.rsplit_once('.')?;
+            extension
+                .eq_ignore_ascii_case("acf")
+                .then(|| name.split(['_', ' ']).next().unwrap_or(name))
+        })
+        .any(|identifier| {
+            let identifier = identifier.to_ascii_lowercase();
+            if identifier.len() < 3
+                || !identifier.bytes().any(|c| c.is_ascii_digit())
+                || !identifier.bytes().any(|c| c.is_ascii_alphabetic())
+            {
+                return false;
+            }
+            sources.iter().any(|(source, _)| {
+                source.split('/').any(|part| {
+                    let part = part.to_ascii_lowercase();
+                    part.match_indices(&identifier).any(|(index, _)| {
+                        let after = part.as_bytes().get(index + identifier.len());
+                        let before = index.checked_sub(1).and_then(|i| part.as_bytes().get(i));
+                        !before.is_some_and(u8::is_ascii_digit)
+                            && !after.is_some_and(u8::is_ascii_digit)
+                    })
+                })
+            })
+        })
 }
 
 /// Generic runtime binaries and documentation cannot identify an aircraft.
@@ -278,6 +438,19 @@ pub(super) fn rank_candidates(
             Confidence::Low
         };
         scored.push(candidate);
+    }
+    // All-new assets cannot produce an overlap score. Require a model name
+    // from a usable archive branch AND an alignable aircraft directory. Equal
+    // model copies receive equal scores and still require explicit selection.
+    if scored.iter().all(|candidate| candidate.match_score == 0.0) {
+        let dirs = derive_dirs(files);
+        for ((candidate, target), tree) in scored.iter_mut().zip(targets).zip(&trees) {
+            let layout = layout_mappings(files, &dirs, &immediate_subdirs(&target.dir));
+            if names_aircraft_model(tree, &layout) {
+                candidate.match_score = 1.0;
+                candidate.confidence = Confidence::Medium;
+            }
+        }
     }
     scored.sort_by(|a, b| {
         b.match_score

@@ -190,6 +190,7 @@ export default {
     maybePatchMessage: '此压缩包不是可识别的插件。是否作为补丁安装到已有机型？',
     noArchive: '没有可用的补丁压缩包。',
     reasonMatched: '匹配到 {count} 个已有文件',
+    reasonLayout: '符合机模目录结构',
     reasonLivery: '涂装目录',
     reasonNoAnchor: '无锚点——默认机型根目录',
     reasonNoListing: '无法读取压缩包',

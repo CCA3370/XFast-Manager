@@ -198,6 +198,7 @@ export default {
       'Este comprimido no es un complemento reconocido. ¿Instalarlo como parche para un avión existente?',
     noArchive: 'No hay ningún comprimido de parche disponible.',
     reasonMatched: 'coincide con {count} archivos existentes',
+    reasonLayout: 'Coincide la estructura de carpetas del avión',
     reasonLivery: 'carpeta de libreas',
     reasonNoAnchor: 'sin ancla: se usa la raíz del avión',
     reasonNoListing: 'no se pudo inspeccionar el comprimido',

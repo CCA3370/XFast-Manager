@@ -196,6 +196,7 @@ export default {
       'このアーカイブは認識されたアドオンではありません。既存の機体のパッチとしてインストールしますか？',
     noArchive: '利用可能なパッチアーカイブがありません。',
     reasonMatched: '既存の {count} 個のファイルに一致',
+    reasonLayout: '機体のフォルダー構成と一致',
     reasonLivery: 'カラーリングフォルダ',
     reasonNoAnchor: 'アンカーなし — 既定で機体のルート',
     reasonNoListing: 'アーカイブを読み取れませんでした',

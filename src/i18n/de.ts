@@ -198,6 +198,7 @@ export default {
       'Dieses Archiv ist keine erkannte Erweiterung. Als Patch für ein vorhandenes Flugzeug installieren?',
     noArchive: 'Kein Patch-Archiv verfügbar.',
     reasonMatched: 'stimmt mit {count} vorhandenen Dateien überein',
+    reasonLayout: 'Ordnerstruktur des Flugzeugs stimmt überein',
     reasonLivery: 'Lackierungsordner',
     reasonNoAnchor: 'kein Anker – Flugzeug-Stammverzeichnis als Standard',
     reasonNoListing: 'Archiv konnte nicht gelesen werden',

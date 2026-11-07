@@ -192,6 +192,7 @@ export default {
     maybePatchMessage: 'هذا الأرشيف ليس إضافة معروفة. هل تريد تثبيته كتصحيح لطائرة موجودة؟',
     noArchive: 'لا يوجد أرشيف تصحيح متاح.',
     reasonMatched: 'يطابق {count} من الملفات الموجودة',
+    reasonLayout: 'تتطابق بنية مجلدات الطائرة',
     reasonLivery: 'مجلد الطلاء',
     reasonNoAnchor: 'لا توجد نقطة ربط — جذر الطائرة افتراضيًا',
     reasonNoListing: 'تعذّر فحص الأرشيف',
