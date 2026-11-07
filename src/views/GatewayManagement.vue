@@ -85,18 +85,6 @@
       <button
         class="px-3 py-1.5 rounded-lg text-sm transition-colors"
         :class="
-          activeTab === 'installed'
-            ? 'bg-blue-600 text-white'
-            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-        "
-        @click="activeTab = 'installed'"
-      >
-        {{ $t('gatewayManager.installedTitle') }}
-        <span class="ml-1 text-xs opacity-70">({{ filteredInstalled.length }})</span>
-      </button>
-      <button
-        class="px-3 py-1.5 rounded-lg text-sm transition-colors"
-        :class="
           activeTab === 'search'
             ? 'bg-blue-600 text-white'
             : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -105,6 +93,18 @@
       >
         {{ $t('gatewayManager.results') }}
         <span class="ml-1 text-xs opacity-70">({{ store.searchResults.length }})</span>
+      </button>
+      <button
+        class="px-3 py-1.5 rounded-lg text-sm transition-colors"
+        :class="
+          activeTab === 'installed'
+            ? 'bg-blue-600 text-white'
+            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+        "
+        @click="activeTab = 'installed'"
+      >
+        {{ $t('gatewayManager.installedTitle') }}
+        <span class="ml-1 text-xs opacity-70">({{ filteredInstalled.length }})</span>
       </button>
       <div v-if="store.isSearching && activeTab === 'search'" class="ml-2">
         <div
@@ -723,7 +723,7 @@ const store = useGatewayStore()
 const modal = useModalStore()
 const toast = useToastStore()
 
-const activeTab = ref<'installed' | 'search'>('installed')
+const activeTab = ref<'installed' | 'search'>('search')
 const searchText = ref('')
 const showAirportModal = ref(false)
 const showInstallWarning = ref(false)
