@@ -63,6 +63,11 @@ export const healthDetailMessages = {
         description:
           'scenery_packs.ini is missing. X-Plane may not have generated it yet. Synchronize the scenery list to create it.',
       },
+      scenery_invalid_entries: {
+        title: 'Invalid scenery registrations',
+        description:
+          'Some enabled entries in scenery_packs.ini have no path. Review the listed lines.',
+      },
       scenery_missing_paths: {
         title: 'Missing scenery paths',
         description:
@@ -231,6 +236,10 @@ export const healthDetailMessages = {
       scenery_registration: {
         title: '地景注册文件',
         description: 'scenery_packs.ini 不存在，可能尚未由 X-Plane 生成。可同步地景列表来创建。',
+      },
+      scenery_invalid_entries: {
+        title: '无效地景注册',
+        description: 'scenery_packs.ini 中有已启用条目未填写路径，请核对列出的行号。',
       },
       scenery_missing_paths: {
         title: '失效地景路径',

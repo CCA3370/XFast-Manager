@@ -2,15 +2,33 @@
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 #[path = "doctor_plugins.rs"]
 mod plugins;
 
+const SCENERY_INI: &str = "Custom Scenery/scenery_packs.ini";
+const SCENERY_INI_BYTE_LIMIT: u64 = 4 * 1024 * 1024;
+const SCENERY_LINK_ENTRY_LIMIT: usize = 60_000;
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SceneryRegistration {
+    #[default]
+    Missing,
+    Readable,
+    Unavailable,
+}
+
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InspectionReport {
-    pub scenery_ini_exists: bool,
+    pub scenery_registration: SceneryRegistration,
+    pub scenery_registration_error: Option<String>,
+    pub scenery_path_errors: Vec<String>,
+    pub scenery_link_errors: Vec<String>,
+    pub invalid_scenery_entries: Vec<String>,
     pub missing_scenery_paths: Vec<String>,
     pub duplicate_scenery_paths: Vec<String>,
     pub broken_scenery_links: Vec<String>,
@@ -44,110 +62,178 @@ fn scenery_target(
     target
 }
 
-fn inspect_scenery(
+fn read_scenery_registration(root: &Path) -> io::Result<Option<String>> {
+    let ini = root.join(SCENERY_INI);
+    match fs::symlink_metadata(&ini) {
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    }
+    if !fs::metadata(&ini)?.is_file() {
+        return Err(io::Error::other("not a regular file"));
+    }
+    let mut body = String::new();
+    fs::File::open(ini)?
+        .take(SCENERY_INI_BYTE_LIMIT + 1)
+        .read_to_string(&mut body)?;
+    if body.len() as u64 > SCENERY_INI_BYTE_LIMIT {
+        return Err(io::Error::other(
+            "scenery registration exceeds the 4 MiB inspection limit",
+        ));
+    }
+    Ok(Some(body))
+}
+
+fn inspect_scenery_registration(
+    root: &Path,
+    report: &mut InspectionReport,
+    resolve_shortcut: ShortcutResolver,
+) -> Option<Vec<PathBuf>> {
+    let body = match read_scenery_registration(root) {
+        Ok(Some(body)) => body,
+        Ok(None) => return None,
+        Err(error) => {
+            report.scenery_registration = SceneryRegistration::Unavailable;
+            report.scenery_registration_error = Some(format!("{SCENERY_INI}: {error}"));
+            return None;
+        }
+    };
+    report.scenery_registration = SceneryRegistration::Readable;
+    let mut seen = HashMap::new();
+    let mut packs = Vec::new();
+    for (index, line) in body.trim_start_matches('\u{feff}').lines().enumerate() {
+        let line_number = index + 1;
+        let line = line.trim();
+        if line == "SCENERY_PACK" {
+            report
+                .invalid_scenery_entries
+                .push(format!("line {line_number}: {line}"));
+            continue;
+        }
+        let Some(path) = line
+            .strip_prefix("SCENERY_PACK")
+            .filter(|rest| rest.starts_with(char::is_whitespace))
+        else {
+            continue;
+        };
+        let path = path.trim();
+        let target =
+            (path != "*GLOBAL_AIRPORTS*").then(|| scenery_target(root, path, resolve_shortcut));
+        let key = match &target {
+            Some(target) => {
+                let mut key = target
+                    .canonicalize()
+                    .unwrap_or_else(|_| target.clone())
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if cfg!(windows) {
+                    key.make_ascii_lowercase();
+                }
+                key
+            }
+            None => path.to_owned(),
+        };
+        let first = *seen.entry(key).or_insert(line_number);
+        if first != line_number {
+            report
+                .duplicate_scenery_paths
+                .push(format!("lines {first}, {line_number}: {path}"));
+            continue;
+        }
+        let Some(target) = target else { continue };
+        match fs::metadata(&target) {
+            Ok(meta) if meta.is_dir() => packs.push(target),
+            Ok(_) => report
+                .missing_scenery_paths
+                .push(format!("line {line_number}: {path} (not a directory)")),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                report
+                    .missing_scenery_paths
+                    .push(format!("line {line_number}: {path}"));
+            }
+            Err(error) => report
+                .scenery_path_errors
+                .push(format!("line {line_number}: {path}: {error}")),
+        }
+    }
+    Some(packs)
+}
+
+fn inspect_scenery_links(
     root: &Path,
     report: &mut InspectionReport,
     _resolve_shortcut: ShortcutResolver,
-) -> (Option<Vec<PathBuf>>, Vec<String>) {
-    let ini = root.join("Custom Scenery/scenery_packs.ini");
-    let mut enabled_packs = None;
-    let mut inaccessible_packs = Vec::new();
-    match fs::metadata(&ini) {
-        Ok(meta) if meta.is_file() => {
-            report.scenery_ini_exists = true;
-            match fs::read_to_string(&ini) {
-                Ok(body) => {
-                    let mut seen = HashMap::new();
-                    let mut packs = Vec::new();
-                    for (index, line) in body.lines().enumerate() {
-                        let Some(path) = line.trim().strip_prefix("SCENERY_PACK ") else {
-                            continue; // Disabled scenery is intentionally not loaded.
-                        };
-                        let path = path.trim();
-                        if path.is_empty() || path == "*GLOBAL_AIRPORTS*" {
-                            continue;
-                        }
-                        let target = scenery_target(root, path, _resolve_shortcut);
-                        let mut key = target
-                            .canonicalize()
-                            .unwrap_or_else(|_| target.clone())
-                            .to_string_lossy()
-                            .replace('\\', "/");
-                        if cfg!(windows) {
-                            key.make_ascii_lowercase();
-                        }
-                        let duplicate = seen.insert(key, index + 1);
-                        if let Some(first) = duplicate {
-                            report
-                                .duplicate_scenery_paths
-                                .push(format!("lines {first}, {}: {path}", index + 1));
-                        }
-                        match fs::metadata(&target) {
-                            Ok(meta) if meta.is_dir() => {
-                                if duplicate.is_none() {
-                                    packs.push(target);
-                                }
-                            }
-                            Ok(_) => report
-                                .missing_scenery_paths
-                                .push(format!("line {}: {path} (not a directory)", index + 1)),
-                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => report
-                                .missing_scenery_paths
-                                .push(format!("line {}: {path}", index + 1)),
-                            Err(error) => inaccessible_packs.push(format!("{path}: {error}")),
-                        }
-                    }
-                    enabled_packs = Some(packs);
+) {
+    let entries = match fs::read_dir(root.join("Custom Scenery")) {
+        Ok(entries) => entries,
+        Err(error) => {
+            report
+                .scenery_link_errors
+                .push(format!("Custom Scenery: {error}"));
+            return;
+        }
+    };
+    for (index, entry) in entries.enumerate() {
+        if index == SCENERY_LINK_ENTRY_LIMIT {
+            report.scenery_link_errors.push(format!(
+                "Custom Scenery: reached the {SCENERY_LINK_ENTRY_LIMIT} entry inspection limit"
+            ));
+            break;
+        }
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                report
+                    .scenery_link_errors
+                    .push(format!("Custom Scenery: {error}"));
+                continue;
+            }
+        };
+        let path = entry.path();
+        match entry.file_type() {
+            Ok(kind) if kind.is_symlink() => match fs::metadata(&path) {
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                    report.broken_scenery_links.push(path.display().to_string());
                 }
                 Err(error) => report
-                    .scan_errors
-                    .push(format!("Custom Scenery/scenery_packs.ini: {error}")),
+                    .scenery_link_errors
+                    .push(format!("{}: {error}", path.display())),
+                Ok(_) => {}
+            },
+            Ok(_) => {}
+            Err(error) => report
+                .scenery_link_errors
+                .push(format!("{}: {error}", path.display())),
+        }
+        #[cfg(windows)]
+        if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("lnk"))
+        {
+            match _resolve_shortcut(&path) {
+                Some(target) => check_link_target(&path, &target, report),
+                None => report.broken_scenery_links.push(path.display().to_string()),
             }
         }
+    }
+    report.broken_scenery_links.sort();
+    report.broken_scenery_links.dedup();
+}
+
+#[cfg(windows)]
+fn check_link_target(link: &Path, target: &Path, report: &mut InspectionReport) {
+    match fs::metadata(target) {
+        Ok(meta) if meta.is_dir() => {}
         Ok(_) => report
-            .scan_errors
-            .push("Custom Scenery/scenery_packs.ini: not a file".into()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => report
-            .scan_errors
-            .push(format!("Custom Scenery/scenery_packs.ini: {error}")),
-    }
-    match fs::read_dir(root.join("Custom Scenery")) {
-        Ok(entries) => {
-            for entry in entries {
-                match entry {
-                    Ok(entry) => {
-                        let path = entry.path();
-                        let is_link = entry.file_type().is_ok_and(|kind| kind.is_symlink());
-                        if is_link {
-                            match fs::metadata(&path) {
-                                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                                    report.broken_scenery_links.push(path.display().to_string())
-                                }
-                                Err(error) => report
-                                    .scan_errors
-                                    .push(format!("{}: {error}", path.display())),
-                                _ => {}
-                            }
-                        }
-                        #[cfg(windows)]
-                        if path
-                            .extension()
-                            .is_some_and(|ext| ext.eq_ignore_ascii_case("lnk"))
-                        {
-                            match _resolve_shortcut(&path) {
-                                Some(target) if target.is_dir() => {}
-                                _ => report.broken_scenery_links.push(path.display().to_string()),
-                            }
-                        }
-                    }
-                    Err(error) => report.scan_errors.push(format!("Custom Scenery: {error}")),
-                }
-            }
+            .broken_scenery_links
+            .push(format!("{} (target is not a directory)", link.display())),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            report.broken_scenery_links.push(link.display().to_string());
         }
-        Err(error) => report.scan_errors.push(format!("Custom Scenery: {error}")),
+        Err(error) => report
+            .scenery_link_errors
+            .push(format!("{}: {error}", link.display())),
     }
-    (enabled_packs, inaccessible_packs)
 }
 
 pub fn inspect_installation(
@@ -156,7 +242,8 @@ pub fn inspect_installation(
     resolve_shortcut: ShortcutResolver,
 ) -> InspectionReport {
     let mut report = InspectionReport::default();
-    let (scenery, inaccessible_packs) = inspect_scenery(root, &mut report, resolve_shortcut);
+    let scenery = inspect_scenery_registration(root, &mut report, resolve_shortcut);
+    inspect_scenery_links(root, &mut report, resolve_shortcut);
     for name in [
         "earth_nav.dat",
         "earth_fix.dat",
@@ -184,10 +271,10 @@ pub fn inspect_installation(
         .map(|age| age.as_secs() / 86_400);
     if full {
         let mut plugins = plugins::inspect(root, scenery.as_deref());
-        plugins.errors.extend(inaccessible_packs);
+        plugins
+            .errors
+            .extend(report.scenery_path_errors.iter().cloned());
         report.plugins = Some(plugins);
-    } else {
-        report.scan_errors.extend(inaccessible_packs);
     }
     report
 }
@@ -195,6 +282,60 @@ pub fn inspect_installation(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn distinguishes_missing_registration_from_invalid_utf8_and_oversized_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        fs::create_dir(root.join("Custom Scenery")).unwrap();
+        let report = inspect_installation(root, false, |_| None);
+        assert!(matches!(
+            report.scenery_registration,
+            SceneryRegistration::Missing
+        ));
+        assert!(report.scenery_registration_error.is_none());
+        assert!(report.scenery_link_errors.is_empty());
+
+        let path = root.join(SCENERY_INI);
+        fs::write(&path, [0xff]).unwrap();
+        let report = inspect_installation(root, false, |_| None);
+        assert!(matches!(
+            report.scenery_registration,
+            SceneryRegistration::Unavailable
+        ));
+        assert!(report
+            .scenery_registration_error
+            .unwrap()
+            .contains(SCENERY_INI));
+
+        let file = fs::File::create(path).unwrap();
+        file.set_len(SCENERY_INI_BYTE_LIMIT + 1).unwrap();
+        assert!(read_scenery_registration(root)
+            .unwrap_err()
+            .to_string()
+            .contains("limit"));
+    }
+
+    #[test]
+    fn checks_bom_and_tab_separated_registrations_with_original_line_numbers() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("Custom Scenery/Present")).unwrap();
+        fs::write(
+            root.join(SCENERY_INI),
+            "\u{feff}SCENERY_PACK\tCustom Scenery/Present/\r\nSCENERY_PACK Custom Scenery/Present\nSCENERY_PACK Custom Scenery/Present\nSCENERY_PACK  \n",
+        )
+        .unwrap();
+        let report = inspect_installation(root, false, |_| None);
+        assert_eq!(
+            report.duplicate_scenery_paths,
+            [
+                "lines 1, 2: Custom Scenery/Present",
+                "lines 1, 3: Custom Scenery/Present"
+            ]
+        );
+        assert_eq!(report.invalid_scenery_entries, ["line 4: SCENERY_PACK"]);
+    }
 
     #[cfg(windows)]
     #[test]

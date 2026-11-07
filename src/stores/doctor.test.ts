@@ -141,7 +141,11 @@ async function healthyResponse(command: string): Promise<unknown> {
       return true
     case 'doctor_inspect_installation':
       return {
-        sceneryIniExists: true,
+        sceneryRegistration: 'readable',
+        sceneryRegistrationError: null,
+        sceneryPathErrors: [],
+        sceneryLinkErrors: [],
+        invalidSceneryEntries: [],
         missingSceneryPaths: [],
         duplicateSceneryPaths: [],
         brokenSceneryLinks: [],
@@ -233,6 +237,34 @@ describe('Health diagnostic store', () => {
     installHealthyMocks()
     const appStore = useAppStore()
     appStore.xplanePath = '/xplane'
+  })
+
+  it('keeps unreadable scenery registrations separate from readable link inventory', async () => {
+    tauri.invoke.mockImplementation(async (command) => {
+      const response = await healthyResponse(command)
+      if (command !== 'doctor_inspect_installation') return response
+      return {
+        ...(response as object),
+        sceneryRegistration: 'unavailable',
+        sceneryRegistrationError: 'Custom Scenery/scenery_packs.ini: invalid UTF-8',
+      }
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+    const checks = store.currentRun?.checks ?? []
+    for (const id of [
+      'scenery.registration',
+      'scenery.invalid_entries',
+      'scenery.missing_paths',
+      'scenery.duplicate_paths',
+    ]) {
+      expect(checks.find((check) => check.id === id)).toMatchObject({
+        outcome: 'unavailable',
+        remediation: undefined,
+      })
+    }
+    expect(checks.find((check) => check.id === 'scenery.broken_links')?.outcome).toBe('pass')
+    expect(store.currentRun?.summary.completeness).toBe('partial')
   })
 
   it.each([

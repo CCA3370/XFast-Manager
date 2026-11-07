@@ -70,6 +70,7 @@ const DEFINITION_RESULT_IDS: Record<string, string[]> = {
   ],
   inspection: [
     'scenery.registration',
+    'scenery.invalid_entries',
     'scenery.missing_paths',
     'scenery.duplicate_paths',
     'scenery.broken_links',

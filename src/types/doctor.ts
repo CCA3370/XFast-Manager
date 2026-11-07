@@ -123,7 +123,11 @@ export interface DoctorHistoryFile {
 }
 
 export interface DoctorInspectionReport {
-  sceneryIniExists: boolean
+  sceneryRegistration: 'missing' | 'readable' | 'unavailable'
+  sceneryRegistrationError: string | null
+  sceneryPathErrors: string[]
+  sceneryLinkErrors: string[]
+  invalidSceneryEntries: string[]
   missingSceneryPaths: string[]
   duplicateSceneryPaths: string[]
   brokenSceneryLinks: string[]

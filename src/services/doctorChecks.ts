@@ -367,26 +367,68 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
       })
       context.inspection = report
       const plugins = report.plugins
-      const scanErrors = [...report.scanErrors, ...(plugins?.errors ?? [])]
+      const registrationErrors = report.sceneryRegistrationError
+        ? [report.sceneryRegistrationError]
+        : []
+      const scanErrors = [
+        ...new Set([
+          ...registrationErrors,
+          ...report.sceneryPathErrors,
+          ...report.sceneryLinkErrors,
+          ...report.scanErrors,
+          ...(plugins?.errors ?? []),
+        ]),
+      ]
+      const registrationOutcome = {
+        missing: 'info',
+        readable: 'pass',
+        unavailable: 'unavailable',
+      } as const
+      const registeredCheck =
+        report.sceneryRegistration === 'missing'
+          ? 'notApplicable'
+          : report.sceneryRegistration === 'unavailable'
+            ? 'unavailable'
+            : 'pass'
       const checks: DoctorCheckResult[] = [
-        result('scenery.registration', 'scenery', report.sceneryIniExists ? 'pass' : 'info', {
-          remediation: report.sceneryIniExists
-            ? undefined
-            : { id: 'sync_scenery_file', kind: 'automatic', risk: 'confirm' },
+        result('scenery.registration', 'scenery', registrationOutcome[report.sceneryRegistration], {
+          evidence: evidence(registrationErrors, 'path'),
+          remediation:
+            report.sceneryRegistration === 'missing'
+              ? { id: 'sync_scenery_file', kind: 'automatic', risk: 'confirm' }
+              : undefined,
         }),
         ...(
           [
-            ['scenery.missing_paths', 'scenery', report.missingSceneryPaths],
-            ['scenery.duplicate_paths', 'scenery', report.duplicateSceneryPaths],
-            ['scenery.broken_links', 'scenery', report.brokenSceneryLinks],
-            ['navdata.empty_files', 'navdata', report.emptyNavdataFiles],
+            [
+              'scenery.invalid_entries',
+              report.invalidSceneryEntries,
+              registrationErrors,
+              registeredCheck,
+            ],
+            [
+              'scenery.missing_paths',
+              report.missingSceneryPaths,
+              [...registrationErrors, ...report.sceneryPathErrors],
+              registeredCheck,
+            ],
+            [
+              'scenery.duplicate_paths',
+              report.duplicateSceneryPaths,
+              [...registrationErrors, ...report.sceneryPathErrors],
+              registeredCheck,
+            ],
+            ['scenery.broken_links', report.brokenSceneryLinks, report.sceneryLinkErrors, 'pass'],
           ] as const
-        ).map(([id, section, paths]) =>
-          result(id, section, paths.length ? 'warning' : 'pass', {
-            params: { count: paths.length },
-            evidence: evidence([...paths], 'path'),
-            remediation:
-              paths.length && id.startsWith('scenery.')
+        ).map(([id, paths, errors, fallback]) =>
+          result(
+            id,
+            'scenery',
+            paths.length ? 'warning' : errors.length ? 'unavailable' : fallback,
+            {
+              params: { count: paths.length },
+              evidence: evidence([...paths, ...errors], 'path'),
+              remediation: paths.length
                 ? {
                     id: 'manage_scenery',
                     kind: 'navigate',
@@ -394,7 +436,21 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
                     route: '/management?tab=scenery',
                   }
                 : undefined,
-          }),
+            },
+          ),
+        ),
+        result(
+          'navdata.empty_files',
+          'navdata',
+          report.emptyNavdataFiles.length
+            ? 'warning'
+            : report.scanErrors.length
+              ? 'unavailable'
+              : 'pass',
+          {
+            params: { count: report.emptyNavdataFiles.length },
+            evidence: evidence([...report.emptyNavdataFiles, ...report.scanErrors], 'path'),
+          },
         ),
         result(
           'stability.log_freshness',

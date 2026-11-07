@@ -15,6 +15,16 @@ export const DOCTOR_FINDINGS: Record<string, { en: [string, string]; zh: [string
       'scenery_packs.ini 不存在，可能尚未由 X-Plane 生成。可同步地景列表来创建。',
     ],
   },
+  'scenery.invalid_entries': {
+    en: [
+      healthDetailMessages.en.findings.scenery_invalid_entries.title,
+      healthDetailMessages.en.findings.scenery_invalid_entries.description,
+    ],
+    zh: [
+      healthDetailMessages.zh.findings.scenery_invalid_entries.title,
+      healthDetailMessages.zh.findings.scenery_invalid_entries.description,
+    ],
+  },
   'scenery.missing_paths': {
     en: [
       'Missing scenery paths',
