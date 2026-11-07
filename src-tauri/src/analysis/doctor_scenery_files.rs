@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use walkdir::WalkDir;
 
 const TILE_LIMIT: usize = 250_000;
-const SCAN_TIME_LIMIT: Duration = Duration::from_secs(20);
+const SCAN_TIME_LIMIT: Duration = Duration::from_secs(50);
 
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -16,7 +16,14 @@ pub(super) struct SceneryFiles {
     pub(super) checked: usize,
     pub(super) problems: Vec<String>,
     pub(super) errors: Vec<String>,
-    pub(super) capped: bool,
+    pub(super) limit: Option<ScanLimit>,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ScanLimit {
+    Time,
+    TileCount,
 }
 
 fn relative(root: &Path, path: &Path) -> String {
@@ -104,7 +111,6 @@ fn check(
     report: &mut SceneryFiles,
     verify: impl FnOnce(File) -> io::Result<bool>,
 ) -> bool {
-    let label = relative(root, path);
     let result = fs::metadata(path).and_then(|meta| {
         if meta.is_file() {
             File::open(path).and_then(verify)
@@ -112,17 +118,30 @@ fn check(
             Ok(false)
         }
     });
+    record_check(root, path, required, report, result)
+}
+
+fn record_check(
+    root: &Path,
+    path: &Path,
+    required: bool,
+    report: &mut SceneryFiles,
+    result: io::Result<bool>,
+) -> bool {
     match result {
         Ok(true) => true,
         Ok(false) => {
-            report
-                .problems
-                .push(format!("{label}: empty or invalid file header"));
+            report.problems.push(format!(
+                "{}: empty or invalid file header",
+                relative(root, path)
+            ));
             true
         }
         Err(error) if !required && error.kind() == io::ErrorKind::NotFound => false,
         Err(error) => {
-            report.errors.push(format!("{label}: {error}"));
+            report
+                .errors
+                .push(format!("{}: {error}", relative(root, path)));
             true
         }
     }
@@ -142,10 +161,9 @@ fn inspect_with_budget(
     let started = Instant::now();
     'packages: for package in packages {
         if started.elapsed() >= duration {
-            report.capped = true;
+            report.limit = Some(ScanLimit::Time);
             break;
         }
-        report.checked += 1;
         let errors_before = report.errors.len();
         let library = check(
             root,
@@ -166,18 +184,24 @@ fn inspect_with_budget(
             .filter_entry(|entry| entry.depth() != 1 || is_tile_block(entry.path()));
         for entry in entries {
             if started.elapsed() >= duration {
-                report.capped = true;
+                report.limit = Some(ScanLimit::Time);
                 break 'packages;
             }
             match entry {
                 Ok(entry) if entry.depth() == 2 && is_tile_file(entry.path()) => {
                     if remaining_tiles == 0 {
-                        report.capped = true;
+                        report.limit = Some(ScanLimit::TileCount);
                         break 'packages;
                     }
                     remaining_tiles -= 1;
                     tiles = true;
-                    check(root, entry.path(), true, &mut report, dsf_header);
+                    // WalkDir already resolved the entry's file type.
+                    let result = if entry.file_type().is_file() {
+                        File::open(entry.path()).and_then(dsf_header)
+                    } else {
+                        Ok(false)
+                    };
+                    record_check(root, entry.path(), true, &mut report, result);
                 }
                 Ok(_) => {}
                 Err(error)
@@ -222,6 +246,7 @@ fn inspect_with_budget(
                 )),
             }
         }
+        report.checked += 1;
     }
     report.problems.sort();
     report.errors.sort();
@@ -255,7 +280,7 @@ mod tests {
 
         let report = inspect_with_budget(root, &[package], 1, SCAN_TIME_LIMIT);
         assert_eq!(report.checked, 1);
-        assert!(!report.capped, "{report:?}");
+        assert_eq!(report.limit, None);
         assert!(
             report.problems.is_empty() && report.errors.is_empty(),
             "{report:?}"
@@ -276,11 +301,25 @@ mod tests {
         bytes[..6].copy_from_slice(b"7z\xbc\xaf\x27\x1c");
         fs::write(nav.join("+01+001.dsf"), bytes).unwrap();
         let report = inspect_with_budget(root, &[package.clone()], 1, SCAN_TIME_LIMIT);
-        assert!(!report.capped && report.errors.is_empty(), "{report:?}");
+        assert!(
+            report.limit.is_none() && report.errors.is_empty(),
+            "{report:?}"
+        );
 
         fs::write(nav.join("+01+002.dsf"), bytes).unwrap();
         let report = inspect_with_budget(root, &[package], 1, SCAN_TIME_LIMIT);
-        assert!(report.capped && report.errors.is_empty(), "{report:?}");
+        assert_eq!(report.limit, Some(ScanLimit::TileCount));
+        assert_eq!(report.checked, 0);
+        assert!(report.errors.is_empty(), "{report:?}");
+    }
+
+    #[test]
+    fn reports_time_limits_separately_from_tile_limits() {
+        let root = Path::new("unused");
+        let report = inspect_with_budget(root, &[root.join("pack")], 100, Duration::ZERO);
+        assert_eq!(report.limit, Some(ScanLimit::Time));
+        assert_eq!(report.checked, 0);
+        assert!(report.errors.is_empty());
     }
 
     #[test]

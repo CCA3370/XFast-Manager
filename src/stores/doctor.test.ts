@@ -259,7 +259,7 @@ describe('Health diagnostic store', () => {
       if (command !== 'doctor_inspect_installation') return response
       return {
         ...(response as object),
-        sceneryFiles: { checked: 25, problems: [], errors: [], capped: true },
+        sceneryFiles: { checked: 25, problems: [], errors: [], limit: 'time' },
       }
     })
     const store = useDoctorStore()
@@ -270,6 +270,9 @@ describe('Health diagnostic store', () => {
           id: 'installation.scan_access',
           outcome: 'unavailable',
           params: { errors: 0, capped: 1 },
+          evidence: [
+            expect.objectContaining({ value: 'Enabled scenery files: time limit reached' }),
+          ],
         }),
         expect.objectContaining({ id: 'scenery.files', outcome: 'unavailable' }),
       ]),

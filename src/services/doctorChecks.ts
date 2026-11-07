@@ -499,7 +499,7 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
     section: 'installation',
     phase: 'local',
     modes: ['quick', 'full'],
-    timeoutMs: 45_000,
+    timeoutMs: context.mode === 'full' ? 85_000 : 45_000,
     async run() {
       const report = await invoke<DoctorInspectionReport>('doctor_inspect_installation', {
         xplanePath: context.xplanePath,
@@ -508,12 +508,18 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
       context.inspection = report
       const plugins = report.plugins
       const files = report.sceneryFiles
+      const sceneryLimit =
+        files?.limit === 'time'
+          ? 'Enabled scenery files: time limit reached'
+          : files?.limit === 'tile_count'
+            ? 'Enabled scenery files: DSF tile count limit reached'
+            : null
       const registrationErrors = report.sceneryRegistrationError
         ? [report.sceneryRegistrationError]
         : []
       const limits = [
         ...(report.sceneryLinksCapped ? ['Custom Scenery links: inspection limit reached'] : []),
-        ...(files?.capped ? ['Enabled scenery files: inspection limit reached'] : []),
+        ...(sceneryLimit ? [sceneryLimit] : []),
         ...(plugins?.capped ? ['Plugin files: inspection limit reached'] : []),
       ]
       const scanErrors = [
@@ -636,9 +642,7 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
             'scenery',
             files?.problems.length
               ? 'warning'
-              : files?.errors.length ||
-                  files?.capped ||
-                  report.sceneryRegistration === 'unavailable'
+              : files?.errors.length || sceneryLimit || report.sceneryRegistration === 'unavailable'
                 ? 'unavailable'
                 : files?.checked
                   ? 'pass'
@@ -647,11 +651,11 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
               params: {
                 checked: files?.checked ?? 0,
                 count: files?.problems.length ?? 0,
-                ...(files?.capped ? { capped: 1 } : {}),
+                ...(sceneryLimit ? { capped: 1 } : {}),
               },
               evidence: evidence(
                 [
-                  ...(files?.capped ? ['Enabled scenery files: inspection limit reached'] : []),
+                  ...(sceneryLimit ? [sceneryLimit] : []),
                   ...(files?.problems ?? []),
                   ...(files?.errors ?? []),
                   ...registrationErrors,

@@ -133,7 +133,12 @@ export interface DoctorInspectionReport {
   missingSceneryPaths: string[]
   duplicateSceneryPaths: string[]
   brokenSceneryLinks: string[]
-  sceneryFiles: { checked: number; problems: string[]; errors: string[]; capped: boolean } | null
+  sceneryFiles: {
+    checked: number
+    problems: string[]
+    errors: string[]
+    limit: 'time' | 'tile_count' | null
+  } | null
   plugins: {
     checked: number
     problems: string[]
