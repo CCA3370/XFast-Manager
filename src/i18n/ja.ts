@@ -158,6 +158,9 @@ export default {
     Patch: 'パッチ',
   },
   patch: {
+    backupAutoDeleteNotice: '復元結果の検証後、このバックアップは削除されます。',
+    backupDeleted: 'バックアップを削除しました',
+    backupCleanupFailed: '復元は確認できましたが、バックアップの削除に失敗しました: {reason}',
     addedFiles: '追加ファイル {count} 件',
     removeAddedFiles: 'パッチで追加されたファイルも削除する',
     addedFilesNotRecorded: 'このバックアップには追加ファイルの記録がありません。',

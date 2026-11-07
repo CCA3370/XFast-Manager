@@ -160,6 +160,11 @@ export default {
     Patch: 'Correctif',
   },
   patch: {
+    backupAutoDeleteNotice:
+      'Cette sauvegarde sera supprimée après vérification de la restauration.',
+    backupDeleted: 'Sauvegarde supprimée',
+    backupCleanupFailed:
+      'Restauration vérifiée, mais la suppression de la sauvegarde a échoué : {reason}',
     addedFiles: '{count} fichiers ajoutés',
     removeAddedFiles: 'Supprimer aussi les fichiers ajoutés par le correctif',
     addedFilesNotRecorded: 'Cette sauvegarde ne répertorie pas les fichiers ajoutés.',

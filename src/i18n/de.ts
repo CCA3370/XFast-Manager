@@ -159,6 +159,11 @@ export default {
     Patch: 'Patch',
   },
   patch: {
+    backupAutoDeleteNotice:
+      'Diese Sicherung wird nach erfolgreicher Prüfung der Wiederherstellung gelöscht.',
+    backupDeleted: 'Sicherung gelöscht',
+    backupCleanupFailed:
+      'Wiederherstellung geprüft, aber Sicherung konnte nicht gelöscht werden: {reason}',
     addedFiles: '{count} hinzugefügte Dateien',
     removeAddedFiles: 'Vom Patch hinzugefügte Dateien ebenfalls entfernen',
     addedFilesNotRecorded: 'Diese Sicherung enthält keine Liste hinzugefügter Dateien.',

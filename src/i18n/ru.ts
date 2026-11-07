@@ -158,6 +158,9 @@ export default {
     Patch: 'Патч',
   },
   patch: {
+    backupAutoDeleteNotice: 'Эта копия будет удалена после проверки восстановления.',
+    backupDeleted: 'Резервная копия удалена',
+    backupCleanupFailed: 'Восстановление проверено, но не удалось удалить копию: {reason}',
     addedFiles: 'Добавлено файлов: {count}',
     removeAddedFiles: 'Также удалить файлы, добавленные патчем',
     addedFilesNotRecorded: 'В этой копии не записаны добавленные файлы.',

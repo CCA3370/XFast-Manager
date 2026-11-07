@@ -156,6 +156,9 @@ export default {
     Patch: 'पैच',
   },
   patch: {
+    backupAutoDeleteNotice: 'बहाली की पुष्टि होने के बाद यह बैकअप हटा दिया जाएगा।',
+    backupDeleted: 'बैकअप हटा दिया गया',
+    backupCleanupFailed: 'बहाली की पुष्टि हुई, लेकिन बैकअप नहीं हट सका: {reason}',
     addedFiles: '{count} जोड़ी गई फ़ाइलें',
     removeAddedFiles: 'पैच से जोड़ी गई फ़ाइलें भी हटाएँ',
     addedFilesNotRecorded: 'इस बैकअप में जोड़ी गई फ़ाइलों का रिकॉर्ड नहीं है।',

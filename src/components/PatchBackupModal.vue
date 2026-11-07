@@ -255,6 +255,7 @@ async function confirmRestore() {
                 backup: selected.name,
               })
             }}
+            <span class="mt-1 block">{{ t('patch.backupAutoDeleteNotice') }}</span>
           </p>
           <div class="flex flex-wrap justify-end gap-2">
             <button

@@ -738,7 +738,7 @@ fn write_patch_files(
     backup: Option<&Path>,
     replace: impl Fn(&Path, &Path) -> Result<()>,
 ) -> Result<usize> {
-    transact_patch_files(root, writes, &[], backup, replace)?;
+    transact_patch_files(root, writes, &[], backup, replace, || Ok(()))?;
     Ok(writes.len())
 }
 
@@ -753,6 +753,7 @@ fn transact_patch_files(
     removals: &[(PathBuf, String)],
     backup: Option<&Path>,
     replace: impl Fn(&Path, &Path) -> Result<()>,
+    verify: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
     let edits: Vec<_> = writes
         .iter()
@@ -764,7 +765,7 @@ fn transact_patch_files(
         )
         .collect();
     if edits.is_empty() {
-        return Ok(());
+        return verify();
     }
     // A temporary snapshot is required for rollback even when the user opts
     // out of a retained backup. Do not write anything before every copy exists.
@@ -793,7 +794,9 @@ fn transact_patch_files(
         save_backup(root, backup, writes, &originals)?;
     }
     let mut created_dirs = Vec::new();
-    for (index, (action, destination)) in edits.iter().enumerate() {
+    let mut applied = 0;
+    let mut failure = None;
+    for (action, destination) in &edits {
         let result = (|| {
             validate_destination(root, destination)?;
             match action {
@@ -823,33 +826,36 @@ fn transact_patch_files(
             }
         })();
         if let Err(error) = result {
-            let mut rollback_errors = Vec::new();
-            for ((_, dest), original) in edits[..index].iter().zip(&originals[..index]).rev() {
-                let restored = validate_destination(root, dest).and_then(|()| match original {
-                    Some(original) => replace_file(original, dest),
-                    None => fs::remove_file(dest).map_err(Into::into),
-                });
-                if let Err(error) = restored {
-                    rollback_errors.push(format!("{}: {}", dest.display(), error));
-                }
-            }
-            for dir in created_dirs.iter().rev() {
-                let _ = fs::remove_dir(dir);
-            }
-            if !rollback_errors.is_empty() {
-                let recovery = journal.keep();
-                return Err(anyhow!(
-                    "Patch write failed at {}: {error}; rollback failed: {}. Recovery files: {}",
-                    destination.display(),
-                    rollback_errors.join("; "),
-                    recovery.display()
-                ));
-            }
-            return Err(error.context(format!(
-                "Patch write failed at {}; changes were rolled back",
-                destination.display()
-            )));
+            failure =
+                Some(error.context(format!("Patch write failed at {}", destination.display())));
+            break;
         }
+        applied += 1;
+    }
+    // Verification runs while the rollback journal is still intact.
+    if let Some(error) = failure.or_else(|| verify().err()) {
+        let mut rollback_errors = Vec::new();
+        for ((_, dest), original) in edits[..applied].iter().zip(&originals[..applied]).rev() {
+            let restored = validate_destination(root, dest).and_then(|()| match original {
+                Some(original) => replace_file(original, dest),
+                None => fs::remove_file(dest).map_err(Into::into),
+            });
+            if let Err(error) = restored {
+                rollback_errors.push(format!("{}: {}", dest.display(), error));
+            }
+        }
+        for dir in created_dirs.iter().rev() {
+            let _ = fs::remove_dir(dir);
+        }
+        if !rollback_errors.is_empty() {
+            let recovery = journal.keep();
+            return Err(anyhow!(
+                "{error:#}; rollback failed: {}. Recovery files: {}",
+                rollback_errors.join("; "),
+                recovery.display()
+            ));
+        }
+        return Err(error.context("Patch changes were rolled back"));
     }
     Ok(())
 }
@@ -929,6 +935,7 @@ struct RestoreFile {
     source: PathBuf,
     destination: PathBuf,
     info: PatchBackupFile,
+    verified_checksum: Option<String>,
 }
 
 struct BackupContents {
@@ -942,6 +949,7 @@ pub struct PatchRestoreResult {
     pub restored_count: usize,
     pub removed_count: usize,
     pub skipped_count: usize,
+    pub backup_cleanup_error: Option<String>,
 }
 
 fn backup_aircraft_root(xplane_path: &str, aircraft_folder: &str) -> Result<PathBuf> {
@@ -1027,10 +1035,15 @@ pub fn restore_aircraft_backup(
     revert_patch(
         &root.join("_xfast_patch_backups").join(session_id),
         remove_added_files,
+        replace_file,
     )
 }
 
-fn revert_patch(dir: &Path, remove_added_files: bool) -> Result<PatchRestoreResult> {
+fn revert_patch(
+    dir: &Path,
+    remove_added_files: bool,
+    replace: impl Fn(&Path, &Path) -> Result<()>,
+) -> Result<PatchRestoreResult> {
     let _guard = PATCH_WRITE_LOCK
         .lock()
         .map_err(|_| anyhow!("Patch write lock poisoned"))?;
@@ -1041,14 +1054,18 @@ fn revert_patch(dir: &Path, remove_added_files: bool) -> Result<PatchRestoreResu
     let contents = read_backup_session(root, dir, true, &mut None)?;
     let writes: Vec<_> = contents
         .files
-        .into_iter()
-        .map(|file| (file.source, file.destination))
+        .iter()
+        .map(|file| (file.source.clone(), file.destination.clone()))
         .collect();
+    if writes.is_empty() && !remove_added_files {
+        return Err(anyhow!("Select removal of added files to undo this patch"));
+    }
     let mut result = PatchRestoreResult {
         restored_count: writes.len(),
         ..Default::default()
     };
     let mut removals = Vec::new();
+    let mut already_absent = Vec::new();
     if remove_added_files {
         let files = contents
             .added_files
@@ -1069,14 +1086,61 @@ fn revert_patch(dir: &Path, remove_added_files: bool) -> Result<PatchRestoreResu
                     removals.push((destination, file.checksum));
                 }
                 Ok(_) => result.skipped_count += 1,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    already_absent.push(destination)
+                }
                 Err(error) => return Err(error.into()),
             }
         }
     }
-    transact_patch_files(root, &writes, &removals, None, replace_file)?;
+    transact_patch_files(root, &writes, &removals, None, replace, || {
+        for file in &contents.files {
+            validate_destination(root, &file.destination)?;
+            if file.verified_checksum.as_deref() != Some(file_checksum(&file.destination)?.as_str())
+            {
+                return Err(anyhow!(
+                    "Restored file failed verification: {}",
+                    file.info.path
+                ));
+            }
+        }
+        for destination in removals.iter().map(|(path, _)| path).chain(&already_absent) {
+            validate_destination(root, destination)?;
+            match fs::symlink_metadata(destination) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+                Ok(_) => {
+                    return Err(anyhow!(
+                        "Removed file is still present: {}",
+                        destination.display()
+                    ))
+                }
+            }
+        }
+        Ok(())
+    })?;
     result.removed_count = removals.len();
+    result.backup_cleanup_error = retire_verified_backup(root, dir)
+        .err()
+        .map(|error| format!("{error:#}"));
     Ok(result)
+}
+
+fn retire_verified_backup(root: &Path, dir: &Path) -> Result<()> {
+    let backup_root = root.join("_xfast_patch_backups");
+    validate_destination_inner(root, dir, true)?;
+    if dir.parent() != Some(backup_root.as_path()) || fs::canonicalize(dir)? != dir {
+        return Err(anyhow!("Invalid patch backup session"));
+    }
+    // Move the complete session out of the browser before deleting it. If
+    // cleanup is interrupted, it cannot leave a half-deleted session listed.
+    let cleanup = tempfile::tempdir_in(&backup_root)?;
+    validate_destination_inner(root, cleanup.path(), true)?;
+    fs::rename(dir, cleanup.path().join("session"))?;
+    let cleanup_path = cleanup.path().to_path_buf();
+    cleanup
+        .close()
+        .with_context(|| format!("Could not delete {}", cleanup_path.display()))
 }
 
 /// Use the same manifest and path validation for display and restore. The
@@ -1136,19 +1200,26 @@ fn read_backup_session(
             if !metadata.is_file() {
                 return Err(anyhow!("Invalid patch backup file: {path}"));
             }
-            if verify_checksums {
-                if let Some(checksum) = file.checksum {
-                    if file_checksum(&source)? != checksum {
-                        return Err(anyhow!(
-                            "Patch backup file failed integrity checking: {path}"
-                        ));
-                    }
+            let verified_checksum = if verify_checksums {
+                let actual = file_checksum(&source)?;
+                if file
+                    .checksum
+                    .as_ref()
+                    .is_some_and(|checksum| *checksum != actual)
+                {
+                    return Err(anyhow!(
+                        "Patch backup file failed integrity checking: {path}"
+                    ));
                 }
-            }
+                Some(actual)
+            } else {
+                None
+            };
             if seen.insert(matching::path_key(&path)) {
                 files.push(RestoreFile {
                     source,
                     destination,
+                    verified_checksum,
                     info: PatchBackupFile {
                         path,
                         size_bytes: metadata.len(),
@@ -1726,10 +1797,18 @@ mod tests {
         );
         assert_eq!(fs::read(root.join("one.acf")).unwrap(), b"patched");
         fs::write(backup.join("files/two.acf"), b"tampered").unwrap();
-        assert!(revert_patch(&backup, false).is_err());
+        assert!(revert_patch(&backup, false, replace_file).is_err());
+        assert!(backup.join("manifest_patch.json").is_file());
         assert_eq!(fs::read(root.join("one.acf")).unwrap(), b"patched");
         fs::write(backup.join("files/two.acf"), b"x").unwrap();
-        assert_eq!(revert_patch(&backup, false).unwrap().restored_count, 2);
+        let sibling = backup.with_file_name("another_session");
+        fs::create_dir(&sibling).unwrap();
+        fs::write(sibling.join("keep.txt"), b"other backup").unwrap();
+        let restored = revert_patch(&backup, false, replace_file).unwrap();
+        assert_eq!(restored.restored_count, 2);
+        assert!(restored.backup_cleanup_error.is_none());
+        assert!(!backup.exists());
+        assert_eq!(fs::read(sibling.join("keep.txt")).unwrap(), b"other backup");
         assert_eq!(fs::read(root.join("one.acf")).unwrap(), b"x");
         assert_eq!(fs::read(root.join("two.acf")).unwrap(), b"x");
         assert_eq!(fs::read(root.join("new.obj")).unwrap(), b"patched");
@@ -1963,9 +2042,14 @@ mod tests {
             serde_json::to_vec(&manifest).unwrap(),
         )
         .unwrap();
-        assert!(revert_patch(&session, true).is_err());
+        assert!(revert_patch(&session, true, replace_file).is_err());
         assert_eq!(fs::read(root.join("plane.acf")).unwrap(), b"patched");
-        assert_eq!(revert_patch(&session, false).unwrap().restored_count, 1);
+        assert_eq!(
+            revert_patch(&session, false, replace_file)
+                .unwrap()
+                .restored_count,
+            1
+        );
         assert_eq!(fs::read(root.join("plane.acf")).unwrap(), b"x");
     }
 
@@ -2171,21 +2255,13 @@ mod tests {
         let writes = files.map(|file| (staged.path().join(file), root.join(file)));
         let backup = root.join("_xfast_patch_backups/session");
         write_patch_files(&root, &writes, Some(&backup), replace_file).unwrap();
-        let keep = revert_patch(&backup, false).unwrap();
-        assert_eq!(
-            (keep.restored_count, keep.removed_count, keep.skipped_count),
-            (1, 0, 0)
-        );
-        for file in &files[1..] {
-            assert!(root.join(file).is_file());
-        }
         fs::write(
             root.join("extras/changed.obj"),
             b"modified outside the patch",
         )
         .unwrap();
         fs::remove_file(root.join("extras/absent.obj")).unwrap();
-        let remove = revert_patch(&backup, true).unwrap();
+        let remove = revert_patch(&backup, true, replace_file).unwrap();
         assert_eq!(
             (
                 remove.restored_count,
@@ -2194,6 +2270,8 @@ mod tests {
             ),
             (1, 1, 1)
         );
+        assert!(remove.backup_cleanup_error.is_none());
+        assert!(!backup.exists());
         assert!(!root.join("extras/added.obj").exists());
         assert_eq!(
             fs::read(root.join("extras/changed.obj")).unwrap(),
@@ -2219,8 +2297,12 @@ mod tests {
         assert!(backups[0].files.is_empty());
         assert_eq!(backups[0].added_files.as_deref().unwrap(), ["new.obj"]);
         assert!(backups[0].error.is_none());
+        assert!(restore_aircraft_backup(xplane, "Test", "session", false).is_err());
+        assert!(session.is_dir());
         let removed = restore_aircraft_backup(xplane, "Test", "session", true).unwrap();
         assert_eq!((removed.restored_count, removed.removed_count), (0, 1));
+        assert!(removed.backup_cleanup_error.is_none());
+        assert!(!session.exists());
         assert!(!root.join("new.obj").exists());
     }
 
@@ -2236,9 +2318,41 @@ mod tests {
             (first.clone(), file_checksum(&first).unwrap()),
             (root.join("second.obj"), "invalidated checksum".into()),
         ];
-        assert!(transact_patch_files(root, &writes, &removals, None, replace_file).is_err());
+        assert!(
+            transact_patch_files(root, &writes, &removals, None, replace_file, || Ok(())).is_err()
+        );
         for file in ["plane.acf", "first.obj", "second.obj"] {
             assert_eq!(fs::read(root.join(file)).unwrap(), b"x");
         }
+    }
+
+    #[test]
+    fn failed_post_restore_verification_rolls_back_and_keeps_the_backup() {
+        let aircraft = make_aircraft(&["plane.acf"]);
+        let root = fs::canonicalize(aircraft.path()).unwrap();
+        let staged = make_aircraft(&["plane.acf", "added.obj"]);
+        fs::write(staged.path().join("plane.acf"), b"patched").unwrap();
+        let backup = root.join("_xfast_patch_backups/session");
+        let writes =
+            ["plane.acf", "added.obj"].map(|name| (staged.path().join(name), root.join(name)));
+        write_patch_files(&root, &writes, Some(&backup), replace_file).unwrap();
+
+        let error = revert_patch(&backup, true, |_, destination| {
+            // Simulate a successful write that produced different bytes.
+            fs::write(destination, b"different bytes")?;
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(format!("{error:#}").contains("Restored file failed verification"));
+        assert_eq!(fs::read(root.join("plane.acf")).unwrap(), b"patched");
+        assert_eq!(fs::read(root.join("added.obj")).unwrap(), b"x");
+        assert_eq!(fs::read(backup.join("files/plane.acf")).unwrap(), b"x");
+        assert!(backup.join("manifest_patch.json").is_file());
+
+        let result = revert_patch(&backup, true, replace_file).unwrap();
+        assert!(result.backup_cleanup_error.is_none());
+        assert_eq!(fs::read(root.join("plane.acf")).unwrap(), b"x");
+        assert!(!root.join("added.obj").exists());
+        assert!(!backup.exists());
     }
 }

@@ -583,9 +583,16 @@ async function handlePatchRestored(result: PatchRestoreResult) {
     messages.push(t('patch.removedAddedFiles', { count: result.removedCount }))
   if (result.skippedCount) {
     messages.push(t('patch.skippedAddedFiles', { count: result.skippedCount }))
+  }
+  if (result.backupCleanupError) {
+    messages.push(t('patch.backupCleanupFailed', { reason: result.backupCleanupError }))
+  } else {
+    messages.push(t('patch.backupDeleted'))
+  }
+  if (result.skippedCount || result.backupCleanupError) {
     toastStore.warning(messages.join(' · '))
   } else {
-    toastStore.success(messages.join(' · ') || t('patch.removedAddedFiles', { count: 0 }))
+    toastStore.success(messages.join(' · '))
   }
   await loadTabData('aircraft')
 }

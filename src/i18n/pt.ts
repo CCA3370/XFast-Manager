@@ -158,6 +158,9 @@ export default {
     Patch: 'Correção',
   },
   patch: {
+    backupAutoDeleteNotice: 'Este backup será excluído após a verificação da restauração.',
+    backupDeleted: 'Backup excluído',
+    backupCleanupFailed: 'Restauração verificada, mas não foi possível excluir o backup: {reason}',
     addedFiles: '{count} arquivos adicionados',
     removeAddedFiles: 'Remover também os arquivos adicionados pela correção',
     addedFilesNotRecorded: 'Este backup não registra os arquivos adicionados.',

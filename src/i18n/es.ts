@@ -159,6 +159,9 @@ export default {
     Patch: 'Parche',
   },
   patch: {
+    backupAutoDeleteNotice: 'Esta copia se eliminará después de verificar la restauración.',
+    backupDeleted: 'Copia eliminada',
+    backupCleanupFailed: 'Restauración verificada, pero no se pudo eliminar la copia: {reason}',
     addedFiles: '{count} archivos añadidos',
     removeAddedFiles: 'Eliminar también los archivos añadidos por el parche',
     addedFilesNotRecorded: 'Esta copia no registra los archivos añadidos.',

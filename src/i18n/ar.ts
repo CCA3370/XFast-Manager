@@ -155,6 +155,9 @@ export default {
     Patch: 'تصحيح',
   },
   patch: {
+    backupAutoDeleteNotice: 'ستُحذف هذه النسخة الاحتياطية بعد التحقق من الاستعادة.',
+    backupDeleted: 'تم حذف النسخة الاحتياطية',
+    backupCleanupFailed: 'تم التحقق من الاستعادة لكن تعذر حذف النسخة الاحتياطية: {reason}',
     addedFiles: '{count} ملفات مضافة',
     removeAddedFiles: 'إزالة الملفات التي أضافها التصحيح أيضًا',
     addedFilesNotRecorded: 'لم تُسجل الملفات المضافة في هذه النسخة الاحتياطية.',

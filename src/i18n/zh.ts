@@ -154,6 +154,9 @@ export default {
     Patch: '补丁',
   },
   patch: {
+    backupAutoDeleteNotice: '恢复结果校验通过后，这份备份会自动删除。',
+    backupDeleted: '已删除备份',
+    backupCleanupFailed: '恢复已校验，但未能完全删除备份：{reason}',
     addedFiles: '补丁新增了 {count} 个文件',
     removeAddedFiles: '同时删除补丁新增的文件',
     addedFilesNotRecorded: '此备份未记录补丁新增的文件。',

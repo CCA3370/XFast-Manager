@@ -158,6 +158,9 @@ export default {
     Patch: '패치',
   },
   patch: {
+    backupAutoDeleteNotice: '복원이 검증되면 이 백업을 삭제합니다.',
+    backupDeleted: '백업을 삭제했습니다',
+    backupCleanupFailed: '복원은 검증했으나 백업을 삭제하지 못했습니다: {reason}',
     addedFiles: '추가된 파일 {count}개',
     removeAddedFiles: '패치로 추가된 파일도 삭제',
     addedFilesNotRecorded: '이 백업에는 추가된 파일이 기록되지 않았습니다.',

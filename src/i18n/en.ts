@@ -156,6 +156,9 @@ export default {
     Patch: 'Patch',
   },
   patch: {
+    backupAutoDeleteNotice: 'This backup will be deleted after the restore is verified.',
+    backupDeleted: 'Backup deleted',
+    backupCleanupFailed: 'Restore verified, but backup deletion failed: {reason}',
     addedFiles: '{count} added files',
     removeAddedFiles: 'Also remove files added by the patch',
     addedFilesNotRecorded: 'This backup did not record added files.',

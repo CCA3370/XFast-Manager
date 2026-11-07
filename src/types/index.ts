@@ -393,6 +393,7 @@ export interface PatchRestoreResult {
   restoredCount: number
   removedCount: number
   skippedCount: number
+  backupCleanupError: string | null
 }
 
 export type InstallPhase = 'calculating' | 'installing' | 'verifying' | 'finalizing'
