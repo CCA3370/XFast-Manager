@@ -1,6 +1,9 @@
 export const healthDetailMessages = {
   en: {
     coverage: {
+      gatewayNoManaged: 'No Gateway airports managed by XFast Manager are installed.',
+      cslUpdates: 'Checked {checked} installed model packages. Updates found: {count}.',
+      manualUpdates: '{manual} require a manual upgrade.',
       navConflict: 'Some AIRAC cycle numbers disagree. Review the listed differences.',
       addonUpdates:
         'Compared {checked} of {installed} supported add-ons. Updates found: {count}. External updater: {external}.',
@@ -235,6 +238,9 @@ export const healthDetailMessages = {
   },
   zh: {
     coverage: {
+      gatewayNoManaged: '当前安装没有由 XFast Manager 管理的 Gateway 机场。',
+      cslUpdates: '已检查 {checked} 个已安装的机模包，发现 {count} 个更新。',
+      manualUpdates: '其中 {manual} 个需要手动升级。',
       navConflict: '部分 AIRAC 周期编号不一致，请查看证据中的差异。',
       addonUpdates:
         '已比对 {checked}/{installed} 个受支持的扩展，发现 {count} 个更新，{external} 个需使用外部更新器。',
@@ -435,6 +441,10 @@ export const healthDetailMessages = {
   },
   de: {
     coverage: {
+      gatewayNoManaged:
+        'Es sind keine von XFast Manager verwalteten Gateway-Flughäfen installiert.',
+      cslUpdates: '{checked} installierte Modellpakete geprüft. Verfügbare Updates: {count}.',
+      manualUpdates: '{manual} müssen manuell aktualisiert werden.',
       navConflict:
         'Einige AIRAC-Zyklusnummern stimmen nicht überein. Prüfe die aufgeführten Abweichungen.',
       addonUpdates:
@@ -645,6 +655,10 @@ export const healthDetailMessages = {
   },
   fr: {
     coverage: {
+      gatewayNoManaged: 'Aucun aéroport Gateway géré par XFast Manager n’est installé.',
+      cslUpdates:
+        '{checked} paquets de modèles installés ont été vérifiés. Mises à jour trouvées : {count}.',
+      manualUpdates: '{manual} nécessitent une mise à niveau manuelle.',
       navConflict: 'Certains numéros de cycle AIRAC diffèrent. Consultez les écarts indiqués.',
       addonUpdates:
         '{checked} extensions comparées sur {installed} prises en charge. Mises à jour : {count}. Outil externe : {external}.',
@@ -851,6 +865,10 @@ export const healthDetailMessages = {
   },
   es: {
     coverage: {
+      gatewayNoManaged: 'No hay aeropuertos de Gateway instalados que gestione XFast Manager.',
+      cslUpdates:
+        'Se comprobaron {checked} paquetes de modelos instalados. Actualizaciones encontradas: {count}.',
+      manualUpdates: '{manual} requieren una actualización manual.',
       navConflict: 'Algunos números de ciclo AIRAC no coinciden. Revisa las diferencias indicadas.',
       addonUpdates:
         '{checked} de {installed} complementos compatibles comparados. Actualizaciones: {count}. Actualizador externo: {external}.',
@@ -1054,6 +1072,11 @@ export const healthDetailMessages = {
   },
   pt: {
     coverage: {
+      gatewayNoManaged:
+        'Não há aeroportos do Gateway instalados que sejam gerenciados pelo XFast Manager.',
+      cslUpdates:
+        'Foram verificados {checked} pacotes de modelos instalados. Atualizações encontradas: {count}.',
+      manualUpdates: '{manual} precisam de atualização manual.',
       navConflict:
         'Alguns números de ciclo AIRAC não coincidem. Verifique as diferenças indicadas.',
       addonUpdates:
@@ -1258,6 +1281,10 @@ export const healthDetailMessages = {
   },
   ja: {
     coverage: {
+      gatewayNoManaged: 'XFast Manager が管理する Gateway 空港はインストールされていません。',
+      cslUpdates:
+        'インストール済みのモデルパッケージ {checked} 件を確認し、{count} 件の更新を検出しました。',
+      manualUpdates: 'うち {manual} 件は手動で更新する必要があります。',
       navConflict: '一部の AIRAC サイクル番号が一致しません。表示された相違を確認してください。',
       addonUpdates:
         '対応アドオン {installed} 件中 {checked} 件を比較しました。更新 {count} 件、外部アップデーター {external} 件。',
@@ -1463,6 +1490,9 @@ export const healthDetailMessages = {
   },
   ko: {
     coverage: {
+      gatewayNoManaged: 'XFast Manager에서 관리하는 Gateway 공항이 설치되어 있지 않습니다.',
+      cslUpdates: '설치된 모델 패키지 {checked}개를 확인해 업데이트 {count}개를 찾았습니다.',
+      manualUpdates: '그중 {manual}개는 수동으로 업데이트해야 합니다.',
       navConflict: '일부 AIRAC 주기 번호가 일치하지 않습니다. 표시된 차이를 확인하세요.',
       addonUpdates:
         '지원 애드온 {installed}개 중 {checked}개 비교. 업데이트 {count}개, 외부 업데이트 도구 {external}개.',
@@ -1660,6 +1690,10 @@ export const healthDetailMessages = {
   },
   ru: {
     coverage: {
+      gatewayNoManaged: 'Установленных аэропортов Gateway, управляемых XFast Manager, нет.',
+      cslUpdates:
+        'Проверено установленных пакетов моделей: {checked}. Найдено обновлений: {count}.',
+      manualUpdates: 'Обновить вручную: {manual}.',
       navConflict: 'Некоторые номера циклов AIRAC не совпадают. Проверьте указанные различия.',
       addonUpdates:
         'Сопоставлено {checked} из {installed} поддерживаемых дополнений. Обновления: {count}. Внешняя программа: {external}.',
@@ -1861,6 +1895,9 @@ export const healthDetailMessages = {
   },
   ar: {
     coverage: {
+      gatewayNoManaged: 'لا توجد مطارات Gateway مثبّتة يديرها XFast Manager.',
+      cslUpdates: 'تم فحص {checked} حزمة نماذج مثبّتة والعثور على {count} تحديثات.',
+      manualUpdates: 'يتطلب {manual} منها ترقية يدوية.',
       navConflict: 'بعض أرقام دورات AIRAC غير متطابقة. راجع الاختلافات المذكورة.',
       addonUpdates:
         'تمت مقارنة {checked} من {installed} إضافة مدعومة. التحديثات: {count}. أداة تحديث خارجية: {external}.',
@@ -2055,6 +2092,9 @@ export const healthDetailMessages = {
   },
   hi: {
     coverage: {
+      gatewayNoManaged: 'XFast Manager से प्रबंधित कोई Gateway हवाई अड्डा इंस्टॉल नहीं है।',
+      cslUpdates: 'इंस्टॉल किए गए {checked} मॉडल पैकेज जाँचे गए। {count} अपडेट मिले।',
+      manualUpdates: 'इनमें से {manual} को मैन्युअल रूप से अपग्रेड करना होगा।',
       navConflict: 'कुछ AIRAC चक्र संख्याएँ मेल नहीं खातीं। सूचीबद्ध अंतर जाँचें।',
       addonUpdates:
         '{installed} समर्थित ऐड-ऑन में से {checked} की तुलना हुई। अपडेट: {count}। बाहरी अपडेटर: {external}।',

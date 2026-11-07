@@ -63,9 +63,30 @@ export function describeDoctorCheck(check: DoctorCheckResult, locale = 'en') {
     }
   }
   if (check.id === 'updates.addons' && 'checked' in params) {
+    const summary = message(locale, 'healthDetails.coverage.addonUpdates', params)
     return {
       title,
-      description: message(locale, 'healthDetails.coverage.addonUpdates', params),
+      description: params.manual
+        ? `${summary} ${message(locale, 'healthDetails.coverage.manualUpdates', params)}`
+        : summary,
+      suggestion: '',
+    }
+  }
+  if (check.id === 'updates.gateway' && check.outcome === 'notApplicable') {
+    return {
+      title,
+      description: message(locale, 'healthDetails.coverage.gatewayNoManaged'),
+      suggestion: '',
+    }
+  }
+  if (
+    check.id === 'updates.csl' &&
+    ['pass', 'info'].includes(check.outcome) &&
+    'checked' in params
+  ) {
+    return {
+      title,
+      description: message(locale, 'healthDetails.coverage.cslUpdates', params),
       suggestion: '',
     }
   }

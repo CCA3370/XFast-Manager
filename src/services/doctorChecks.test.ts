@@ -150,6 +150,37 @@ describe('add-on update diagnostics', () => {
       }),
     ])
   })
+
+  it('reports a verified migration separately from updates that XFast can install', async () => {
+    const item = {
+      folderName: 'openSAM',
+      updateUrl:
+        'https://raw.githubusercontent.com/hotbso/openSAM/refs/heads/release/release/XP12/openSAM/',
+      version: 'v4.5.5',
+    }
+    const manualUpdateUrl = 'https://github.com/hotbso/openSAM/releases/latest'
+    tauri.invoke.mockReset().mockImplementation(async (command: string) => {
+      if (command === 'scan_plugins') return { entries: [item] }
+      if (command === 'check_plugins_updates') {
+        return [{ ...item, latestVersion: 'v5.4.1', hasUpdate: true, manualUpdateUrl }]
+      }
+      return { entries: [] }
+    })
+
+    const [report] = await check().run()
+    expect(tauri.invoke).toHaveBeenCalledWith(
+      'check_plugins_updates',
+      expect.objectContaining({ checkMigrations: true }),
+    )
+    expect(report).toMatchObject({
+      outcome: 'info',
+      params: { checked: 1, count: 1, manual: 1 },
+      evidence: [
+        { value: expect.stringContaining(`v4.5.5 → v5.4.1 · manual upgrade: ${manualUpdateUrl}`) },
+      ],
+      remediation: undefined,
+    })
+  })
 })
 
 it('keeps the stale index reason visible when verified CSL updates exceed the evidence limit', async () => {

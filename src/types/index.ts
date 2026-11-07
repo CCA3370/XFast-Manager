@@ -572,6 +572,7 @@ export interface SceneryManagerEntry {
   updateProvider?: 'skunkcrafts'
   version?: string
   latestVersion?: string
+  manualUpdateUrl?: string
   hasUpdate: boolean
   missingLibraries: string[]
   requiredLibraries: string[]
@@ -636,6 +637,7 @@ export interface PluginInfo {
   updateUrl?: string
   updateProvider?: 'skunkcrafts' | 'x-updater'
   latestVersion?: string
+  manualUpdateUrl?: string
   hasUpdate: boolean
   cfgDisabled?: boolean
   hasScripts: boolean

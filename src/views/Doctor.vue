@@ -1095,8 +1095,16 @@ function checkDescription(check: DoctorCheckResult): string {
       `healthDetails.sessions.${['crash', 'normal', 'unknown', 'running'].includes(state) ? state : 'unknown'}`,
     )
   }
-  if (check.id === 'updates.addons' && check.params && 'checked' in check.params)
-    return t('healthDetails.coverage.addonUpdates', check.params)
+  if (check.id === 'updates.addons' && check.params && 'checked' in check.params) {
+    const summary = t('healthDetails.coverage.addonUpdates', check.params)
+    return check.params.manual
+      ? `${summary} ${t('healthDetails.coverage.manualUpdates', check.params)}`
+      : summary
+  }
+  if (check.id === 'updates.gateway' && check.outcome === 'notApplicable')
+    return t('healthDetails.coverage.gatewayNoManaged')
+  if (check.id === 'updates.csl' && ['pass', 'info'].includes(check.outcome) && check.params)
+    return t('healthDetails.coverage.cslUpdates', check.params)
   if (check.id === 'installation.scan_access' && check.outcome === 'unavailable')
     return t('healthDetails.findings.installation_scan_access.description')
   if (['unavailable', 'cancelled', 'notApplicable'].includes(check.outcome))

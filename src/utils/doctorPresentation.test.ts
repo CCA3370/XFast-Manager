@@ -2,18 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { describeDoctorCheck, formatDoctorDuration } from './doctorPresentation'
 
 describe('Health presentation helpers', () => {
-  it('does not claim Gateway updates when the check does not apply', () => {
+  it('explains that there are no managed Gateway airports to check', () => {
     const check = {
       id: 'updates.gateway',
       section: 'updates',
       outcome: 'notApplicable',
       durationMs: 0,
     } as const
-    for (const locale of ['zh', 'en']) {
-      const text = describeDoctorCheck(check, locale)
-      expect(text.description).not.toMatch(/have updates|有更新|更新的地景/)
-      expect(text.suggestion).toBe('')
-    }
+    expect(describeDoctorCheck(check, 'en').description).toContain('No Gateway airports managed')
+    expect(describeDoctorCheck(check, 'zh').description).toContain('没有由 XFast Manager 管理')
   })
 
   it('does not mistake unavailable checks for known failures', () => {

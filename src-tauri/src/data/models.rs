@@ -656,6 +656,8 @@ pub struct SceneryManagerEntry {
     /// Latest version fetched from remote (populated by check_scenery_updates)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual_update_url: Option<String>,
     /// True when latest_version differs from local version (set by check_scenery_updates)
     #[serde(default)]
     pub has_update: bool,
@@ -775,6 +777,8 @@ pub struct PluginInfo {
     pub update_provider: Option<String>,
     /// Latest version from remote server (populated by check_plugins_updates)
     pub latest_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual_update_url: Option<String>,
     /// Whether an update is available
     pub has_update: bool,
     /// Whether disabled in skunkcrafts_updater.cfg (disabled|true)
@@ -1198,6 +1202,7 @@ mod tests {
             update_provider: Some("skunkcrafts".to_string()),
             version: Some("1.0".to_string()),
             latest_version: None,
+            manual_update_url: None,
             has_update: false,
             missing_libraries: vec![],
             required_libraries: vec!["opensceneryx".to_string()],

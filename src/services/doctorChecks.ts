@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { getErrorMessage } from '@/types'
 import type {
   AircraftInfo,
   AirportFlattenOverride,
@@ -1299,7 +1300,14 @@ function createAddonUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinit
           )
           const details = external.map((item) => `${item.folderName} · ${getUpdateProvider(item)}`)
           if (!candidates.length) {
-            return { candidates: 0, checked: 0, updates: 0, external: external.length, details }
+            return {
+              candidates: 0,
+              checked: 0,
+              updates: 0,
+              manual: 0,
+              external: external.length,
+              details,
+            }
           }
 
           let responses: Addon[]
@@ -1308,20 +1316,27 @@ function createAddonUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinit
               xplanePath,
               [argument]: candidates,
               betaFolders: betaFoldersFor(betaPreferences, type, candidates),
+              ...(type !== 'aircraft' ? { checkMigrations: true } : {}),
             })
           } catch (error) {
             return {
               candidates: candidates.length,
               checked: 0,
               updates: 0,
+              manual: 0,
               external: external.length,
-              details: [...details, ...candidates.map((item) => item.folderName), String(error)],
+              details: [
+                getErrorMessage(error),
+                ...details,
+                ...candidates.map((item) => item.folderName),
+              ],
             }
           }
 
           const byFolder = new Map(responses.map((item) => [item.folderName, item]))
           let checked = 0
           let updates = 0
+          let manual = 0
           for (const item of candidates) {
             const response = byFolder.get(item.folderName)
             const provider = getUpdateProvider(item)
@@ -1336,8 +1351,10 @@ function createAddonUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinit
             checked++
             if (response.hasUpdate) {
               updates++
+              const manualUrl = 'manualUpdateUrl' in response ? response.manualUpdateUrl : undefined
+              if (manualUrl) manual++
               details.push(
-                `${item.folderName} · ${provider} · ${item.version} → ${response.latestVersion}`,
+                `${item.folderName} · ${item.version} → ${response.latestVersion} · ${manualUrl ? `manual upgrade: ${manualUrl}` : provider}`,
               )
             }
           }
@@ -1345,6 +1362,7 @@ function createAddonUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinit
             candidates: candidates.length,
             checked,
             updates,
+            manual,
             external: external.length,
             details,
           }
@@ -1354,6 +1372,7 @@ function createAddonUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinit
       let candidates = 0
       let checked = 0
       let updates = 0
+      let manual = 0
       let external = 0
       let failedSources = 0
       const details: string[] = []
@@ -1361,12 +1380,13 @@ function createAddonUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinit
         const source = sources[index]!.type
         if (group.status === 'rejected') {
           failedSources++
-          details.push(`${source}: ${String(group.reason)}`)
+          details.push(`${source}: ${getErrorMessage(group.reason)}`)
           return
         }
         candidates += group.value.candidates
         checked += group.value.checked
         updates += group.value.updates
+        manual += group.value.manual
         external += group.value.external
         details.push(...group.value.details.map((detail) => `${source}: ${detail}`))
       })
@@ -1377,11 +1397,18 @@ function createAddonUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinit
           'updates',
           incomplete ? 'unavailable' : updates ? 'info' : checked ? 'pass' : 'notApplicable',
           {
-            params: { count: updates, installed: candidates, checked, external },
+            params: {
+              count: updates,
+              installed: candidates,
+              checked,
+              external,
+              ...(manual ? { manual } : {}),
+            },
             evidence: evidence(details),
-            remediation: updates
-              ? { id: 'manage_updates', kind: 'navigate', risk: 'safe', route: '/management' }
-              : undefined,
+            remediation:
+              updates > manual
+                ? { id: 'manage_updates', kind: 'navigate', risk: 'safe', route: '/management' }
+                : undefined,
           },
         ),
       ]

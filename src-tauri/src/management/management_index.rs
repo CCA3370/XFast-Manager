@@ -1147,7 +1147,8 @@ fn scan_single_plugin_folder(path: &Path, folder_name: &str) -> Option<PluginInf
         update_url,
         update_provider,
         latest_version: None, // Will be populated by check_plugins_updates
-        has_update: false,    // Will be set by check_plugins_updates
+        manual_update_url: None,
+        has_update: false, // Will be set by check_plugins_updates
         cfg_disabled,
         has_scripts,
         script_count,
@@ -1825,6 +1826,7 @@ pub async fn check_plugins_updates(
     xplane_path: &Path,
     plugins: &mut [PluginInfo],
     beta_folders: &HashSet<String>,
+    check_migrations: bool,
 ) {
     use futures::future::join_all;
 
@@ -1852,17 +1854,19 @@ pub async fn check_plugins_updates(
     // Fetch all remote configs in parallel
     let fetch_futures: Vec<_> = update_tasks
         .iter()
-        .map(|(_, url)| fetch_remote_version(url.clone()))
+        .map(|(idx, url)| {
+            fetch_addon_version(url, plugins[*idx].version.as_deref(), check_migrations)
+        })
         .collect();
 
     let results = join_all(fetch_futures).await;
 
     // Update plugins with results
     for ((idx, _), result) in update_tasks.into_iter().zip(results) {
-        if let Some(remote_version) = result {
-            let local_version = plugins[idx].version.as_deref().unwrap_or("");
-            plugins[idx].latest_version = Some(remote_version.clone());
-            plugins[idx].has_update = remote_version != local_version;
+        if let Some((version, has_update, manual_url)) = result {
+            plugins[idx].latest_version = Some(version);
+            plugins[idx].has_update = has_update;
+            plugins[idx].manual_update_url = manual_url;
         }
     }
 }
@@ -1873,6 +1877,7 @@ pub async fn check_scenery_updates(
     xplane_path: &Path,
     scenery: &mut [SceneryManagerEntry],
     beta_folders: &HashSet<String>,
+    check_migrations: bool,
 ) {
     use futures::future::join_all;
 
@@ -1904,16 +1909,18 @@ pub async fn check_scenery_updates(
 
     let fetch_futures: Vec<_> = update_tasks
         .iter()
-        .map(|(_, url)| fetch_remote_version(url.clone()))
+        .map(|(idx, url)| {
+            fetch_addon_version(url, scenery[*idx].version.as_deref(), check_migrations)
+        })
         .collect();
 
     let results = join_all(fetch_futures).await;
 
     for ((idx, _), result) in update_tasks.into_iter().zip(results) {
-        if let Some(remote_version) = result {
-            let local_version = scenery[idx].version.as_deref().unwrap_or("");
-            scenery[idx].latest_version = Some(remote_version.clone());
-            scenery[idx].has_update = remote_version != local_version;
+        if let Some((version, has_update, manual_url)) = result {
+            scenery[idx].latest_version = Some(version);
+            scenery[idx].has_update = has_update;
+            scenery[idx].manual_update_url = manual_url;
         }
     }
 }
@@ -1963,6 +1970,41 @@ fn resolve_update_check_url(
             Some(fallback.to_string())
         }
     }
+}
+
+fn migrated_opensam_module(url: &str) -> Option<&'static str> {
+    match url.trim_end_matches('/') {
+        "https://raw.githubusercontent.com/hotbso/openSAM/refs/heads/release/release/XP12/openSAM" => {
+            Some("https://raw.githubusercontent.com/hotbso/openSAM/refs/heads/release/release/openSAM")
+        }
+        "https://raw.githubusercontent.com/hotbso/openSAM/refs/heads/release/release/XP12/openSAM_Library" => {
+            Some("https://raw.githubusercontent.com/hotbso/openSAM/refs/heads/release/release/openSAM_Library")
+        }
+        _ => None,
+    }
+}
+
+async fn fetch_addon_version(
+    url: &str,
+    installed: Option<&str>,
+    check_migrations: bool,
+) -> Option<(String, bool, Option<String>)> {
+    if let Some(version) = fetch_remote_version(url.to_owned()).await {
+        let has_update = Some(version.as_str()) != installed;
+        return Some((version, has_update, None));
+    }
+    if !check_migrations {
+        return None;
+    }
+
+    let module = migrated_opensam_module(url)?;
+    let installed = semver::Version::parse(installed?.trim().trim_start_matches('v')).ok()?;
+    let version = fetch_remote_version(module.to_owned()).await?;
+    let latest = semver::Version::parse(version.trim_start_matches('v')).ok()?;
+    let has_update = latest > installed;
+    // The upstream release recommends a fresh installation when migrating from v4.
+    let manual_url = has_update.then(|| "https://github.com/hotbso/openSAM/releases/latest".into());
+    Some((version, has_update, manual_url))
 }
 
 /// Fetch remote version from skunkcrafts_updater.cfg
@@ -2681,12 +2723,30 @@ pub fn delete_lua_script(xplane_path: &Path, file_name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        delete_management_item, remove_dir_all_with_permission_fix, resolve_management_path,
-        scan_aircraft, scan_navdata, toggle_aircraft_acf_file, toggle_aircraft_folder,
-        toggle_management_item,
+        delete_management_item, migrated_opensam_module, remove_dir_all_with_permission_fix,
+        resolve_management_path, scan_aircraft, scan_navdata, toggle_aircraft_acf_file,
+        toggle_aircraft_folder, toggle_management_item,
     };
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn resolves_only_known_legacy_opensam_modules() {
+        for name in ["openSAM", "openSAM_Library"] {
+            let base =
+                "https://raw.githubusercontent.com/hotbso/openSAM/refs/heads/release/release";
+            let official = format!("{base}/{name}");
+            assert_eq!(
+                migrated_opensam_module(&format!("{base}/XP12/{name}/")),
+                Some(official.as_str())
+            );
+            assert_eq!(migrated_opensam_module(&official), None);
+        }
+        assert_eq!(
+            migrated_opensam_module("https://example.com/XP12/openSAM"),
+            None
+        );
+    }
 
     #[test]
     fn scan_aircraft_returns_empty_when_aircraft_folder_is_missing() {

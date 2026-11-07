@@ -2691,11 +2691,17 @@ async fn check_plugins_updates(
     xplane_path: String,
     mut plugins: Vec<PluginInfo>,
     beta_folders: Option<Vec<String>>,
+    check_migrations: Option<bool>,
 ) -> Result<Vec<PluginInfo>, String> {
     let beta_folder_set: HashSet<String> = beta_folders.unwrap_or_default().into_iter().collect();
     let xplane_path = PathBuf::from(xplane_path);
-    management_index::check_plugins_updates(xplane_path.as_path(), &mut plugins, &beta_folder_set)
-        .await;
+    management_index::check_plugins_updates(
+        xplane_path.as_path(),
+        &mut plugins,
+        &beta_folder_set,
+        check_migrations.unwrap_or(false),
+    )
+    .await;
     Ok(plugins)
 }
 
@@ -2704,11 +2710,17 @@ async fn check_scenery_updates(
     xplane_path: String,
     mut scenery: Vec<SceneryManagerEntry>,
     beta_folders: Option<Vec<String>>,
+    check_migrations: Option<bool>,
 ) -> Result<Vec<SceneryManagerEntry>, String> {
     let beta_folder_set: HashSet<String> = beta_folders.unwrap_or_default().into_iter().collect();
     let xplane_path = PathBuf::from(xplane_path);
-    management_index::check_scenery_updates(xplane_path.as_path(), &mut scenery, &beta_folder_set)
-        .await;
+    management_index::check_scenery_updates(
+        xplane_path.as_path(),
+        &mut scenery,
+        &beta_folder_set,
+        check_migrations.unwrap_or(false),
+    )
+    .await;
     Ok(scenery)
 }
 
