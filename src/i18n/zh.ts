@@ -154,6 +154,11 @@ export default {
     Patch: '补丁',
   },
   patch: {
+    backupTitle: '补丁备份',
+    backupFiles: '{count} 个备份文件',
+    noBackups: '此机模暂无补丁备份。',
+    backupUnavailable: '备份不可用',
+    restoring: '正在恢复…',
     restoreBackup: '恢复补丁备份…',
     restoreConfirm: '要为 {aircraft} 恢复 {backup} 中的文件吗？补丁新增的文件会保留。',
     restoreSuccess: '已恢复 {count} 个备份文件',

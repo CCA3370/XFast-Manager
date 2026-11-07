@@ -380,6 +380,14 @@ export interface PatchInstallSummary {
   planId: string
 }
 
+export interface PatchBackupSession {
+  id: string
+  name: string
+  timestamp: number | null
+  files: { path: string; sizeBytes: number }[]
+  error: string | null
+}
+
 export type InstallPhase = 'calculating' | 'installing' | 'verifying' | 'finalizing'
 
 export interface InstallProgress {

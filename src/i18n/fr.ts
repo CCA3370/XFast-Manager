@@ -160,6 +160,11 @@ export default {
     Patch: 'Correctif',
   },
   patch: {
+    backupTitle: 'Sauvegardes de correctifs',
+    backupFiles: '{count} fichiers sauvegardés',
+    noBackups: 'Aucune sauvegarde de correctif pour cet avion.',
+    backupUnavailable: 'Sauvegarde indisponible',
+    restoring: 'Restauration…',
     restoreBackup: 'Restaurer la sauvegarde du correctif…',
     restoreConfirm:
       'Restaurer les fichiers de {backup} pour {aircraft} ? Les fichiers ajoutés par le correctif seront conservés.',

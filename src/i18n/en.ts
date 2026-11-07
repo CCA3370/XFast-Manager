@@ -156,6 +156,11 @@ export default {
     Patch: 'Patch',
   },
   patch: {
+    backupTitle: 'Patch backups',
+    backupFiles: '{count} backed-up files',
+    noBackups: 'No patch backups for this aircraft.',
+    backupUnavailable: 'Backup unavailable',
+    restoring: 'Restoring…',
     restoreBackup: 'Restore patch backup…',
     restoreConfirm:
       'Restore files backed up in {backup} for {aircraft}? Files added by the patch will remain.',

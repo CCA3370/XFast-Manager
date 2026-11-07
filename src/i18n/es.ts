@@ -159,6 +159,11 @@ export default {
     Patch: 'Parche',
   },
   patch: {
+    backupTitle: 'Copias de parches',
+    backupFiles: '{count} archivos respaldados',
+    noBackups: 'No hay copias de parches para este avión.',
+    backupUnavailable: 'Copia no disponible',
+    restoring: 'Restaurando…',
     restoreBackup: 'Restaurar copia del parche…',
     restoreConfirm:
       '¿Restaurar los archivos de {backup} para {aircraft}? Se conservarán los archivos añadidos por el parche.',

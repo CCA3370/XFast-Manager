@@ -8,12 +8,11 @@ import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import { usePatchStore } from '@/stores/patch'
-import { revertPatch } from '@/services/patch-api'
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
-import { join } from '@tauri-apps/api/path'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import { isDrawerUpdatable } from '@/utils/addonUpdate'
 import AircraftAcfManagerModal from '@/components/AircraftAcfManagerModal.vue'
+import PatchBackupModal from '@/components/PatchBackupModal.vue'
 import ManagementEntryCard from '@/components/ManagementEntryCard.vue'
 import SceneryTab from '@/views/SceneryTab.vue'
 import {
@@ -58,6 +57,11 @@ const togglingAcfItems = ref<Set<string>>(new Set())
 const acfManagerFolderName = ref<string | null>(null)
 const acfManagerAircraft = ref<AircraftInfo | null>(null)
 const pendingCloseAcfManager = ref(false)
+const patchBackupTarget = ref<{
+  xplanePath: string
+  folderName: string
+  displayName: string
+} | null>(null)
 let acfManagerSyncToken = 0
 
 // Filter state for non-scenery tabs
@@ -559,37 +563,20 @@ async function handleInstallPatch(folderName: string) {
   router.push('/')
 }
 
-async function handleRestorePatch(folderName: string) {
-  const xplanePath = appStore.xplanePath
-  try {
-    const session = await openFileDialog({
-      multiple: false,
-      directory: true,
-      title: t('patch.restoreBackup'),
-      defaultPath: await join(xplanePath, 'Aircraft', folderName, '_xfast_patch_backups'),
-    })
-    if (typeof session !== 'string') return
-    const name = session.split(/[/\\]/).pop() || session
-    modalStore.showConfirm({
-      title: t('patch.restoreBackup'),
-      message: t('patch.restoreConfirm', { aircraft: folderName, backup: name }),
-      confirmText: t('management.restoreBackup'),
-      cancelText: t('common.cancel'),
-      type: 'warning',
-      onConfirm: async () => {
-        try {
-          const count = await revertPatch(xplanePath, folderName, session)
-          toastStore.success(t('patch.restoreSuccess', { count }))
-          await loadTabData('aircraft')
-        } catch (error) {
-          modalStore.showError(error, t('patch.restoreBackup'))
-        }
-      },
-      onCancel: () => {},
-    })
-  } catch (error) {
-    modalStore.showError(error, t('patch.restoreBackup'))
+function handleRestorePatch(folderName: string) {
+  patchBackupTarget.value = {
+    xplanePath: appStore.xplanePath,
+    folderName,
+    displayName:
+      managementStore.aircraft.find((item) => item.folderName === folderName)?.displayName ||
+      folderName,
   }
+}
+
+async function handlePatchRestored(count: number) {
+  patchBackupTarget.value = null
+  toastStore.success(t('patch.restoreSuccess', { count }))
+  await loadTabData('aircraft')
 }
 
 function cloneAircraftInfo(aircraft: AircraftInfo): AircraftInfo {
@@ -1345,6 +1332,14 @@ const isLoading = computed(() => {
         </Transition>
       </div>
     </template>
+    <PatchBackupModal
+      v-if="patchBackupTarget"
+      :xplane-path="patchBackupTarget.xplanePath"
+      :aircraft-folder="patchBackupTarget.folderName"
+      :aircraft-name="patchBackupTarget.displayName"
+      @close="patchBackupTarget = null"
+      @restored="handlePatchRestored"
+    />
     <AircraftAcfManagerModal
       :aircraft="acfManagerAircraft"
       :busy-files="busyAcfFiles"

@@ -158,6 +158,11 @@ export default {
     Patch: 'Патч',
   },
   patch: {
+    backupTitle: 'Резервные копии патчей',
+    backupFiles: 'Файлов в копии: {count}',
+    noBackups: 'Для этого самолёта нет резервных копий патчей.',
+    backupUnavailable: 'Копия недоступна',
+    restoring: 'Восстановление…',
     restoreBackup: 'Восстановить резервную копию патча…',
     restoreConfirm:
       'Восстановить файлы из {backup} для {aircraft}? Файлы, добавленные патчем, сохранятся.',

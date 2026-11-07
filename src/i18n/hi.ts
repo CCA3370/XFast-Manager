@@ -156,6 +156,11 @@ export default {
     Patch: 'पैच',
   },
   patch: {
+    backupTitle: 'पैच बैकअप',
+    backupFiles: 'बैकअप में {count} फ़ाइलें',
+    noBackups: 'इस विमान का कोई पैच बैकअप नहीं है।',
+    backupUnavailable: 'बैकअप उपलब्ध नहीं है',
+    restoring: 'बहाल किया जा रहा है…',
     restoreBackup: 'पैच बैकअप बहाल करें…',
     restoreConfirm:
       '{aircraft} के लिए {backup} में बैकअप की गई फ़ाइलें बहाल करें? पैच द्वारा जोड़ी गई फ़ाइलें बनी रहेंगी।',

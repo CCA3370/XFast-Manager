@@ -158,6 +158,11 @@ export default {
     Patch: 'Correção',
   },
   patch: {
+    backupTitle: 'Backups de correções',
+    backupFiles: '{count} arquivos no backup',
+    noBackups: 'Não há backups de correções para esta aeronave.',
+    backupUnavailable: 'Backup indisponível',
+    restoring: 'Restaurando…',
     restoreBackup: 'Restaurar backup da correção…',
     restoreConfirm:
       'Restaurar os arquivos de {backup} para {aircraft}? Os arquivos adicionados pela correção serão mantidos.',

@@ -1,6 +1,7 @@
 import { invokeCommand } from './api'
 import type {
   InstallTask,
+  PatchBackupSession,
   PatchInstallSummary,
   PatchMappingInput,
   PatchPlan,
@@ -77,11 +78,18 @@ export function buildPatchInstallTasks(params: {
   })
 }
 
-/** Restore a patch backup session, undoing the overwritten files. */
+export function listPatchBackups(
+  xplanePath: string,
+  aircraftFolder: string,
+): Promise<PatchBackupSession[]> {
+  return invokeCommand<PatchBackupSession[]>('list_patch_backups', { xplanePath, aircraftFolder })
+}
+
+/** Restore the overwritten files from a session listed for this aircraft. */
 export function revertPatch(
   xplanePath: string,
   aircraftFolder: string,
-  backupSessionDir: string,
+  sessionId: string,
 ): Promise<number> {
-  return invokeCommand<number>('revert_patch', { xplanePath, aircraftFolder, backupSessionDir })
+  return invokeCommand<number>('revert_patch', { xplanePath, aircraftFolder, sessionId })
 }

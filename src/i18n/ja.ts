@@ -158,6 +158,11 @@ export default {
     Patch: 'パッチ',
   },
   patch: {
+    backupTitle: 'パッチのバックアップ',
+    backupFiles: 'バックアップ済みファイル {count} 件',
+    noBackups: 'この機体のパッチバックアップはありません。',
+    backupUnavailable: 'バックアップを利用できません',
+    restoring: '復元中…',
     restoreBackup: 'パッチのバックアップを復元…',
     restoreConfirm:
       '{aircraft} の {backup} にあるバックアップを復元しますか？パッチが追加したファイルは残ります。',

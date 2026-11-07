@@ -850,43 +850,132 @@ fn save_backup(
     Ok(())
 }
 
-/// Restore all overwritten files from one backup session. Validate every record
-/// before making any changes and roll back the restore if a write fails.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchBackupFile {
+    pub path: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchBackupSession {
+    pub id: String,
+    pub name: String,
+    pub timestamp: Option<u64>,
+    pub files: Vec<PatchBackupFile>,
+    pub error: Option<String>,
+}
+
+struct RestoreFile {
+    source: PathBuf,
+    destination: PathBuf,
+    info: PatchBackupFile,
+}
+
+fn backup_aircraft_root(xplane_path: &str, aircraft_folder: &str) -> Result<PathBuf> {
+    let aircraft = resolve_aircraft_dir_by_name(xplane_path, aircraft_folder)
+        .ok_or_else(|| anyhow!("Aircraft folder not found: {}", aircraft_folder))?;
+    Ok(fs::canonicalize(aircraft)?)
+}
+
+/// Discover the selected aircraft's backup sessions. A damaged session is
+/// reported individually and cannot prevent browsing the other backups.
+pub fn list_aircraft_backups(
+    xplane_path: &str,
+    aircraft_folder: &str,
+) -> Result<Vec<PatchBackupSession>> {
+    let root = backup_aircraft_root(xplane_path, aircraft_folder)?;
+    let backup_root = root.join("_xfast_patch_backups");
+    validate_destination_inner(&root, &backup_root, true)?;
+    let entries = match fs::read_dir(&backup_root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.into()),
+    };
+    let mut backups = Vec::new();
+    for entry in entries {
+        let entry = entry?;
+        let Ok(id) = entry.file_name().into_string() else {
+            continue;
+        };
+        let name = backup_name(&id).to_string();
+        // tempfile creates unpublished staging directories with a .tmp prefix.
+        if !entry.file_type()?.is_dir() || (id.starts_with(".tmp") && id == name) {
+            continue;
+        }
+        let mut timestamp = None;
+        let result = read_backup_session(&root, &entry.path(), false, &mut timestamp);
+        let (files, error) = match result {
+            Ok(files) => (files.into_iter().map(|file| file.info).collect(), None),
+            Err(error) => (Vec::new(), Some(format!("{error:#}"))),
+        };
+        backups.push(PatchBackupSession {
+            id,
+            name,
+            timestamp,
+            files,
+            error,
+        });
+    }
+    backups.sort_by(|a, b| b.timestamp.cmp(&a.timestamp).then_with(|| a.id.cmp(&b.id)));
+    Ok(backups)
+}
+
+fn backup_name(id: &str) -> &str {
+    id.rsplit_once('_')
+        .filter(|(_, suffix)| {
+            Uuid::parse_str(suffix).is_ok()
+                || (suffix.len() == 8 && suffix.bytes().all(|b| b.is_ascii_hexdigit()))
+        })
+        .map_or(id, |(name, _)| name)
+}
+
+/// Resolve the selected session within this aircraft. The frontend never needs
+/// a filesystem path or a folder picker to restore a backup.
 pub fn restore_aircraft_backup(
     xplane_path: &str,
     aircraft_folder: &str,
-    session: &Path,
+    session_id: &str,
 ) -> Result<usize> {
-    let aircraft = resolve_aircraft_dir_by_name(xplane_path, aircraft_folder)
-        .ok_or_else(|| anyhow!("Aircraft folder not found: {}", aircraft_folder))?;
-    let aircraft = fs::canonicalize(aircraft)?;
-    let session_name = session
-        .file_name()
-        .ok_or_else(|| anyhow!("Invalid patch backup session"))?;
-    let expected = aircraft.join("_xfast_patch_backups").join(session_name);
-    validate_destination_inner(&aircraft, &expected, true)?;
-    let session = fs::canonicalize(session).context("Patch backup session not found")?;
-    if session != expected {
-        return Err(anyhow!(
-            "Select a backup session belonging to this aircraft"
-        ));
+    if session_id.is_empty()
+        || session_id.contains('/')
+        || safe_relative_subpath(session_id)? != session_id
+    {
+        return Err(anyhow!("Invalid patch backup session"));
     }
-    revert_patch(&session)
+    let root = backup_aircraft_root(xplane_path, aircraft_folder)?;
+    revert_patch(&root.join("_xfast_patch_backups").join(session_id))
 }
 
 fn revert_patch(dir: &Path) -> Result<usize> {
     let _guard = PATCH_WRITE_LOCK
         .lock()
         .map_err(|_| anyhow!("Patch write lock poisoned"))?;
-    let backup_root = dir
+    let root = dir
         .parent()
-        .filter(|p| p.file_name() == Some(std::ffi::OsStr::new("_xfast_patch_backups")))
+        .and_then(Path::parent)
         .ok_or_else(|| anyhow!("Invalid patch backup session"))?;
-    let aircraft_root = backup_root
-        .parent()
-        .ok_or_else(|| anyhow!("Invalid patch backup session"))?;
-    validate_destination_inner(aircraft_root, dir, true)?;
-    let mut writes = Vec::new();
+    let writes: Vec<_> = read_backup_session(root, dir, true, &mut None)?
+        .into_iter()
+        .map(|file| (file.source, file.destination))
+        .collect();
+    write_patch_files(root, &writes, None, replace_file)
+}
+
+/// Use the same manifest and path validation for display and restore. The
+/// browser reads metadata only; restoration also checks each recorded hash.
+fn read_backup_session(
+    root: &Path,
+    dir: &Path,
+    verify_checksums: bool,
+    timestamp: &mut Option<u64>,
+) -> Result<Vec<RestoreFile>> {
+    if dir.parent() != Some(root.join("_xfast_patch_backups").as_path()) {
+        return Err(anyhow!("Invalid patch backup session"));
+    }
+    validate_destination_inner(root, dir, true)?;
+    let mut files = Vec::new();
     let mut seen = BTreeSet::new();
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -895,43 +984,62 @@ fn revert_patch(dir: &Path) -> Result<usize> {
         if !(name.starts_with("manifest_") && name.ends_with(".json")) {
             continue;
         }
-        validate_destination_inner(aircraft_root, &entry.path(), true)?;
+        validate_destination_inner(root, &entry.path(), true)?;
+        if !entry.file_type()?.is_file() {
+            return Err(anyhow!("Invalid patch backup manifest {name}"));
+        }
+        let modified = entry
+            .metadata()?
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .and_then(|duration| u64::try_from(duration.as_millis()).ok());
+        *timestamp = (*timestamp).max(modified);
         let manifest: PatchBackupManifest = serde_json::from_slice(&fs::read(entry.path())?)
             .with_context(|| format!("Invalid patch backup manifest {name}"))?;
         for file in manifest.entries {
             let source = PathBuf::from(file.backup);
             let destination = PathBuf::from(file.original);
-            validate_destination(aircraft_root, &destination)?;
-            let relative = destination.strip_prefix(aircraft_root)?;
+            validate_destination(root, &destination)?;
+            let relative = destination.strip_prefix(root)?;
             if source != dir.join("files").join(relative) {
                 return Err(anyhow!(
                     "Patch backup entry does not match its original location"
                 ));
             }
-            validate_destination_inner(aircraft_root, &source, true)?;
-            if !source.is_file() {
-                return Err(anyhow!(
-                    "Patch backup file is missing: {}",
-                    source.display()
-                ));
+            validate_destination_inner(root, &source, true)?;
+            let path = relative.to_string_lossy().replace('\\', "/");
+            let metadata = fs::metadata(&source)
+                .with_context(|| format!("Cannot read patch backup file: {path}"))?;
+            if !metadata.is_file() {
+                return Err(anyhow!("Invalid patch backup file: {path}"));
             }
-            if let Some(checksum) = file.checksum {
-                if file_checksum(&source)? != checksum {
-                    return Err(anyhow!(
-                        "Patch backup file failed integrity checking: {}",
-                        source.display()
-                    ));
+            if verify_checksums {
+                if let Some(checksum) = file.checksum {
+                    if file_checksum(&source)? != checksum {
+                        return Err(anyhow!(
+                            "Patch backup file failed integrity checking: {path}"
+                        ));
+                    }
                 }
             }
-            if seen.insert(matching::path_key(&destination.to_string_lossy())) {
-                writes.push((source, destination));
+            if seen.insert(matching::path_key(&path)) {
+                files.push(RestoreFile {
+                    source,
+                    destination,
+                    info: PatchBackupFile {
+                        path,
+                        size_bytes: metadata.len(),
+                    },
+                });
             }
         }
     }
-    if writes.is_empty() {
+    if files.is_empty() {
         return Err(anyhow!("No files to restore in this patch backup"));
     }
-    write_patch_files(aircraft_root, &writes, None, replace_file)
+    files.sort_by(|a, b| a.info.path.cmp(&b.info.path));
+    Ok(files)
 }
 
 /// Sanitize a string for use as a single path component.
@@ -1689,7 +1797,11 @@ mod tests {
         assert_eq!(fs::read(root.join("unrelated.obj")).unwrap(), b"untouched");
         assert!(!root.join("README.txt").exists());
         let backup = Path::new(task.patch_backup_dir.as_ref().unwrap());
-        assert_eq!(restore_aircraft_backup(sim, folder, backup).unwrap(), 1);
+        assert_eq!(
+            restore_aircraft_backup(sim, folder, backup.file_name().unwrap().to_str().unwrap())
+                .unwrap(),
+            1
+        );
         assert_eq!(fs::read(root.join("plane.acf")).unwrap(), b"original");
         assert_eq!(fs::read(&livery).unwrap(), b"payload");
     }
@@ -1815,5 +1927,80 @@ mod tests {
         let result = rank_candidates(&files, &[target("A321", aircraft.path())]).unwrap();
         assert!(result.recommended_folder.is_none());
         assert_eq!(result.candidates[0].matched_count, 0);
+    }
+
+    #[test]
+    fn lists_backup_contents_by_aircraft_and_restores_the_selected_session() {
+        let sim = tempfile::tempdir().unwrap();
+        let xplane = sim.path().to_str().unwrap();
+        let root = sim.path().join("Aircraft/Vendor/Demo");
+        let other = sim.path().join("Aircraft/Other/Demo");
+        for aircraft in [&root, &other] {
+            fs::create_dir_all(aircraft).unwrap();
+            fs::write(aircraft.join("plane.acf"), b"aircraft").unwrap();
+        }
+        let root = fs::canonicalize(root).unwrap();
+        assert!(list_aircraft_backups(xplane, "Vendor/Demo")
+            .unwrap()
+            .is_empty());
+        let staged = make_aircraft(&["one.obj", "two.obj"]);
+        let dest = root.join("objects/body.obj");
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        fs::write(&dest, b"stock").unwrap();
+        fs::write(staged.path().join("one.obj"), b"first patch").unwrap();
+        let backup_root = root.join("_xfast_patch_backups");
+        let old_id = "old_patch_a1b2c3d4";
+        let new_id = "new_patch_39d05131-85f7-4c6c-9d94-3aa25b981ad2";
+        for (id, source, seconds) in [
+            (old_id, "one.obj", 1_700_000_000),
+            (new_id, "two.obj", 1_700_000_100),
+        ] {
+            let session = backup_root.join(id);
+            write_patch_files(
+                &root,
+                &[(staged.path().join(source), dest.clone())],
+                Some(&session),
+                replace_file,
+            )
+            .unwrap();
+            fs::OpenOptions::new()
+                .write(true)
+                .open(session.join("manifest_patch.json"))
+                .unwrap()
+                .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds))
+                .unwrap();
+        }
+        fs::create_dir(backup_root.join(".tmpunpublished")).unwrap();
+        let broken = backup_root.join("broken");
+        fs::create_dir(&broken).unwrap();
+        fs::write(broken.join("manifest_patch.json"), b"invalid json").unwrap();
+        let backups = list_aircraft_backups(xplane, "Vendor/Demo").unwrap();
+        assert_eq!(backups.len(), 3);
+        assert_eq!(backups[0].id, "broken");
+        assert!(backups[0].error.is_some());
+        assert_eq!(backups[1].id, new_id);
+        assert_eq!(backups[1].timestamp, Some(1_700_000_100_000));
+        assert_eq!(backups[1].name, "new_patch");
+        assert_eq!(backups[1].files[0].path, "objects/body.obj");
+        assert_eq!(backups[1].files[0].size_bytes, 11);
+        assert_eq!(backups[2].id, old_id);
+        assert_eq!(backups[2].name, "old_patch");
+        assert!(list_aircraft_backups(xplane, "Other/Demo")
+            .unwrap()
+            .is_empty());
+        assert!(restore_aircraft_backup(xplane, "Other/Demo", new_id).is_err());
+        assert!(restore_aircraft_backup(xplane, "Vendor/Demo", "../broken").is_err());
+        assert!(restore_aircraft_backup(xplane, "Vendor/Demo", "broken").is_err());
+        assert_eq!(fs::read(&dest).unwrap(), b"x");
+        assert_eq!(
+            restore_aircraft_backup(xplane, "Vendor/Demo", new_id).unwrap(),
+            1
+        );
+        assert_eq!(fs::read(&dest).unwrap(), b"first patch");
+        assert_eq!(
+            restore_aircraft_backup(xplane, "Vendor/Demo", old_id).unwrap(),
+            1
+        );
+        assert_eq!(fs::read(&dest).unwrap(), b"stock");
     }
 }

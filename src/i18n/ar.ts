@@ -155,6 +155,11 @@ export default {
     Patch: 'تصحيح',
   },
   patch: {
+    backupTitle: 'نسخ التصحيحات الاحتياطية',
+    backupFiles: '{count} ملفات في النسخة الاحتياطية',
+    noBackups: 'لا توجد نسخ احتياطية للتصحيحات لهذه الطائرة.',
+    backupUnavailable: 'النسخة الاحتياطية غير متاحة',
+    restoring: 'جارٍ الاستعادة…',
     restoreBackup: 'استعادة نسخة التصحيح الاحتياطية…',
     restoreConfirm:
       'هل تريد استعادة ملفات {backup} للطائرة {aircraft}؟ ستبقى الملفات التي أضافها التصحيح.',

@@ -881,23 +881,33 @@ async fn build_patch_install_tasks(
     .map_err(|e| format!("Failed to build patch tasks: {}", e))
 }
 
-/// Restore a patch backup session, undoing the overwritten files.
+/// List the backup sessions for a selected aircraft without changing any files.
+#[tauri::command]
+async fn list_patch_backups(
+    xplane_path: String,
+    aircraft_folder: String,
+) -> Result<Vec<patch::PatchBackupSession>, String> {
+    tokio::task::spawn_blocking(move || {
+        patch::list_aircraft_backups(&xplane_path, &aircraft_folder)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {e}"))?
+    .map_err(|e| format!("Failed to list patch backups: {e:#}"))
+}
+
+/// Restore the overwritten files from a session listed for this aircraft.
 #[tauri::command]
 async fn revert_patch(
     xplane_path: String,
     aircraft_folder: String,
-    backup_session_dir: String,
+    session_id: String,
 ) -> Result<usize, String> {
     tokio::task::spawn_blocking(move || {
-        patch::restore_aircraft_backup(
-            &xplane_path,
-            &aircraft_folder,
-            std::path::Path::new(&backup_session_dir),
-        )
+        patch::restore_aircraft_backup(&xplane_path, &aircraft_folder, &session_id)
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
-    .map_err(|e| format!("Failed to revert patch: {}", e))
+    .map_err(|e| format!("Task join error: {e}"))?
+    .map_err(|e| format!("Failed to revert patch: {e:#}"))
 }
 
 // ============================================================================
@@ -4114,6 +4124,7 @@ pub fn run() {
             infer_patch_mappings,
             summarize_patch_install,
             build_patch_install_tasks,
+            list_patch_backups,
             revert_patch,
             cancel_installation,
             skip_current_task,

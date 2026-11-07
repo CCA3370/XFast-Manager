@@ -158,6 +158,11 @@ export default {
     Patch: '패치',
   },
   patch: {
+    backupTitle: '패치 백업',
+    backupFiles: '백업 파일 {count}개',
+    noBackups: '이 항공기의 패치 백업이 없습니다.',
+    backupUnavailable: '백업을 사용할 수 없음',
+    restoring: '복원 중…',
     restoreBackup: '패치 백업 복원…',
     restoreConfirm:
       '{aircraft}의 {backup}에 백업된 파일을 복원하시겠습니까? 패치로 추가한 파일은 유지됩니다.',
