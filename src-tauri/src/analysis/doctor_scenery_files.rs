@@ -3,9 +3,11 @@ use serde::Serialize;
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use walkdir::WalkDir;
 
-const ENTRY_LIMIT: usize = 60_000;
+const TILE_LIMIT: usize = 250_000;
+const SCAN_TIME_LIMIT: Duration = Duration::from_secs(20);
 
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +15,7 @@ pub(super) struct SceneryFiles {
     pub(super) checked: usize,
     pub(super) problems: Vec<String>,
     pub(super) errors: Vec<String>,
+    pub(super) capped: bool,
 }
 
 fn relative(root: &Path, path: &Path) -> String {
@@ -81,16 +84,22 @@ fn check(
 }
 
 pub(super) fn inspect(root: &Path, packages: &[PathBuf]) -> SceneryFiles {
+    inspect_with_budget(root, packages, TILE_LIMIT, SCAN_TIME_LIMIT)
+}
+
+fn inspect_with_budget(
+    root: &Path,
+    packages: &[PathBuf],
+    mut remaining_tiles: usize,
+    duration: Duration,
+) -> SceneryFiles {
     let mut report = SceneryFiles::default();
-    let mut remaining = ENTRY_LIMIT;
+    let started = Instant::now();
     'packages: for package in packages {
-        if remaining == 0 {
-            report
-                .errors
-                .push("Custom Scenery: reached the scenery file inspection limit".into());
+        if started.elapsed() >= duration {
+            report.capped = true;
             break;
         }
-        remaining -= 1;
         report.checked += 1;
         let errors_before = report.errors.len();
         let library = check(
@@ -106,13 +115,10 @@ pub(super) fn inspect(root: &Path, packages: &[PathBuf]) -> SceneryFiles {
         });
         let mut tiles = false;
         for entry in WalkDir::new(&nav).max_depth(2).follow_links(true) {
-            if remaining == 0 {
-                report
-                    .errors
-                    .push("Custom Scenery: reached the scenery file inspection limit".into());
+            if started.elapsed() >= duration {
+                report.capped = true;
                 break 'packages;
             }
-            remaining -= 1;
             match entry {
                 Ok(entry)
                     if entry
@@ -120,6 +126,11 @@ pub(super) fn inspect(root: &Path, packages: &[PathBuf]) -> SceneryFiles {
                         .extension()
                         .is_some_and(|ext| ext.eq_ignore_ascii_case("dsf")) =>
                 {
+                    if remaining_tiles == 0 {
+                        report.capped = true;
+                        break 'packages;
+                    }
+                    remaining_tiles -= 1;
                     tiles = true;
                     check(root, entry.path(), true, &mut report, dsf_header);
                 }
@@ -166,6 +177,27 @@ pub(super) fn inspect(root: &Path, packages: &[PathBuf]) -> SceneryFiles {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn applies_the_limit_to_dsf_files_and_does_not_count_it_as_a_read_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let package = root.join("Test");
+        let nav = package.join("Earth nav data/+00+000");
+        fs::create_dir_all(&nav).unwrap();
+        for index in 0..10 {
+            fs::write(nav.join(format!("other-{index}.txt")), "irrelevant").unwrap();
+        }
+        let mut bytes = [0; 32];
+        bytes[..6].copy_from_slice(b"7z\xbc\xaf\x27\x1c");
+        fs::write(nav.join("+01+001.dsf"), bytes).unwrap();
+        let report = inspect_with_budget(root, &[package.clone()], 1, SCAN_TIME_LIMIT);
+        assert!(!report.capped && report.errors.is_empty(), "{report:?}");
+
+        fs::write(nav.join("+01+002.dsf"), bytes).unwrap();
+        let report = inspect_with_budget(root, &[package], 1, SCAN_TIME_LIMIT);
+        assert!(report.capped && report.errors.is_empty(), "{report:?}");
+    }
 
     #[test]
     fn recognizes_airport_only_library_only_and_compressed_tiles() {

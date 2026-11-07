@@ -159,6 +159,7 @@ async function healthyResponse(command: string): Promise<unknown> {
         globalAirportsEnabled: true,
         sceneryPathErrors: [],
         sceneryLinkErrors: [],
+        sceneryLinksCapped: false,
         invalidSceneryEntries: [],
         missingSceneryPaths: [],
         duplicateSceneryPaths: [],
@@ -250,6 +251,29 @@ describe('Health diagnostic store', () => {
     installHealthyMocks()
     const appStore = useAppStore()
     appStore.xplanePath = '/xplane'
+  })
+
+  it('reports a scenery inspection limit separately from read errors', async () => {
+    tauri.invoke.mockImplementation(async (command) => {
+      const response = await healthyResponse(command)
+      if (command !== 'doctor_inspect_installation') return response
+      return {
+        ...(response as object),
+        sceneryFiles: { checked: 25, problems: [], errors: [], capped: true },
+      }
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('full')
+    expect(store.currentRun?.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'installation.scan_access',
+          outcome: 'unavailable',
+          params: { errors: 0, capped: 1 },
+        }),
+        expect.objectContaining({ id: 'scenery.files', outcome: 'unavailable' }),
+      ]),
+    )
   })
 
   it('continues checking a readable installation when the executable is missing', async () => {

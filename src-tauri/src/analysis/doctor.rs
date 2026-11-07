@@ -120,8 +120,9 @@ pub struct DoctorXfastHealthReport {
     pub scenery_index_error: Option<String>,
 }
 
-/// Cap the read-only scan so a huge install does not stall the Doctor.
-const READONLY_SCAN_FILE_CAP: usize = 60_000;
+/// Large orthophoto libraries can contain hundreds of thousands of entries.
+const READONLY_SCAN_ENTRY_CAP: usize = 500_000;
+const READONLY_SCAN_TIME_LIMIT: std::time::Duration = std::time::Duration::from_secs(18);
 /// Directories scanned for read-only files (the ones installs/updates write to).
 const READONLY_SCAN_DIRS: &[&str] = &["Aircraft", "Resources/plugins", "Custom Scenery"];
 
@@ -192,10 +193,11 @@ fn count_readonly_files(root: &Path) -> (usize, bool, Vec<String>) {
     let mut count = 0;
     let mut scanned = 0;
     let mut errors = Vec::new();
+    let started = std::time::Instant::now();
     for sub in READONLY_SCAN_DIRS {
         let dir = root.join(sub);
         for entry in WalkDir::new(&dir).follow_links(false) {
-            if scanned == READONLY_SCAN_FILE_CAP {
+            if scanned == READONLY_SCAN_ENTRY_CAP || started.elapsed() >= READONLY_SCAN_TIME_LIMIT {
                 return (count, true, errors);
             }
             scanned += 1;

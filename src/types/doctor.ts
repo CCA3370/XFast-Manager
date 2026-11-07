@@ -128,11 +128,12 @@ export interface DoctorInspectionReport {
   globalAirportsEnabled: boolean | null
   sceneryPathErrors: string[]
   sceneryLinkErrors: string[]
+  sceneryLinksCapped: boolean
   invalidSceneryEntries: string[]
   missingSceneryPaths: string[]
   duplicateSceneryPaths: string[]
   brokenSceneryLinks: string[]
-  sceneryFiles: { checked: number; problems: string[]; errors: string[] } | null
+  sceneryFiles: { checked: number; problems: string[]; errors: string[]; capped: boolean } | null
   plugins: {
     checked: number
     problems: string[]

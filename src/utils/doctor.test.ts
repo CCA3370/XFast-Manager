@@ -95,6 +95,27 @@ function run(id: string, installationId = 'install'): DoctorRun {
 }
 
 describe('doctor history', () => {
+  it('corrects old scenery limits once while preserving real access errors', () => {
+    const legacy = run('run-1')
+    legacy.checks.push({
+      ...check('installation.scan_access', 'unavailable'),
+      params: { errors: 2, capped: 0 },
+      evidence: [
+        { kind: 'path', value: 'Custom Scenery: reached the scenery file inspection limit' },
+        { kind: 'path', value: 'Custom Scenery/Test: permission denied' },
+      ],
+    })
+    const history = addDoctorHistoryRun(emptyDoctorHistory(), '/xplane', legacy)
+    const normalized = sanitizeDoctorHistory(sanitizeDoctorHistory(history))
+    const result = getDoctorHistoryForPath(normalized, '/xplane')[0]?.checks.find(
+      (item) => item.id === 'installation.scan_access',
+    )
+    expect(result?.params).toEqual({ errors: 1, capped: 1 })
+    expect(result?.evidence?.map((item) => item.value)).toContain(
+      'Custom Scenery/Test: permission denied',
+    )
+  })
+
   it('marks only older plugin header conclusions as requiring a new scan', () => {
     const legacy = run('run-1')
     legacy.checks.push({

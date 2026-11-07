@@ -329,7 +329,12 @@ function createEnvironmentCheck(context: DoctorCheckContext): DoctorCheckDefinit
                   ? 'info'
                   : 'pass',
           {
-            params: { count: readonlyIncomplete ? `${env.readonlyCount}+` : env.readonlyCount },
+            params: {
+              count: readonlyIncomplete ? `${env.readonlyCount}+` : env.readonlyCount,
+              ...(readonlyIncomplete
+                ? { capped: Number(env.readonlyScanCapped), errors: env.readonlyScanErrors.length }
+                : {}),
+            },
             evidence: evidence(
               [
                 ...env.readonlyScanErrors,
@@ -506,6 +511,11 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
       const registrationErrors = report.sceneryRegistrationError
         ? [report.sceneryRegistrationError]
         : []
+      const limits = [
+        ...(report.sceneryLinksCapped ? ['Custom Scenery links: inspection limit reached'] : []),
+        ...(files?.capped ? ['Enabled scenery files: inspection limit reached'] : []),
+        ...(plugins?.capped ? ['Plugin files: inspection limit reached'] : []),
+      ]
       const scanErrors = [
         ...new Set([
           ...registrationErrors,
@@ -575,7 +585,12 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
               [...registrationErrors, ...report.sceneryPathErrors],
               registeredCheck,
             ],
-            ['scenery.broken_links', report.brokenSceneryLinks, report.sceneryLinkErrors, 'pass'],
+            [
+              'scenery.broken_links',
+              report.brokenSceneryLinks,
+              report.sceneryLinkErrors,
+              report.sceneryLinksCapped ? 'unavailable' : 'pass',
+            ],
           ] as const
         ).map(([id, paths, errors, fallback]) =>
           result(
@@ -604,16 +619,15 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
             params: { days: report.logAgeDays ?? 0 },
           },
         ),
-        result(
-          'installation.scan_access',
-          'installation',
-          scanErrors.length || plugins?.capped ? 'unavailable' : 'pass',
-          {
-            params: { errors: scanErrors.length, capped: Number(Boolean(plugins?.capped)) },
-            evidence: evidence(scanErrors, 'path'),
-          },
-        ),
       ]
+      if (scanErrors.length || limits.length) {
+        checks.push(
+          result('installation.scan_access', 'installation', 'unavailable', {
+            params: { errors: scanErrors.length, capped: Number(limits.length > 0) },
+            evidence: evidence([...limits, ...scanErrors], 'path'),
+          }),
+        )
+      }
       if (context.mode === 'full') {
         const incompatible = plugins?.incompatible ?? []
         checks.push(
@@ -622,15 +636,26 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
             'scenery',
             files?.problems.length
               ? 'warning'
-              : files?.errors.length || report.sceneryRegistration === 'unavailable'
+              : files?.errors.length ||
+                  files?.capped ||
+                  report.sceneryRegistration === 'unavailable'
                 ? 'unavailable'
                 : files?.checked
                   ? 'pass'
                   : 'notApplicable',
             {
-              params: { checked: files?.checked ?? 0, count: files?.problems.length ?? 0 },
+              params: {
+                checked: files?.checked ?? 0,
+                count: files?.problems.length ?? 0,
+                ...(files?.capped ? { capped: 1 } : {}),
+              },
               evidence: evidence(
-                [...(files?.problems ?? []), ...(files?.errors ?? []), ...registrationErrors],
+                [
+                  ...(files?.capped ? ['Enabled scenery files: inspection limit reached'] : []),
+                  ...(files?.problems ?? []),
+                  ...(files?.errors ?? []),
+                  ...registrationErrors,
+                ],
                 'path',
               ),
               remediation: files?.problems.length

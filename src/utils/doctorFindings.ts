@@ -16,6 +16,7 @@ export const DOCTOR_FINDINGS: Record<string, { en: [string, string]; zh: [string
         'installation_permission_access',
         'system_vulkan_runtime',
         'scenery_files',
+        'installation_scan_access',
       ] as const
     ).map((key) => {
       const en = healthDetailMessages.en.findings[key]
@@ -116,16 +117,6 @@ export const DOCTOR_FINDINGS: Record<string, { en: [string, string]; zh: [string
   'addons.binary_integrity': {
     en: [enPlugin.title, enPlugin.description],
     zh: [zhPlugin.title, zhPlugin.description],
-  },
-  'installation.scan_access': {
-    en: [
-      'Inspection access and limits',
-      'Some files could not be read, or the inspection reached its entry limit. Results cover only the files inspected; see the recorded access errors.',
-    ],
-    zh: [
-      '扫描可读性与范围',
-      '部分文件无法读取，或扫描达到条目上限。结果仅覆盖已检查文件，请查看证据中的读取错误。',
-    ],
   },
   'stability.log_freshness': {
     en: [

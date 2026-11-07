@@ -35,6 +35,7 @@ pub struct InspectionReport {
     pub global_airports_enabled: Option<bool>,
     pub scenery_path_errors: Vec<String>,
     pub scenery_link_errors: Vec<String>,
+    pub scenery_links_capped: bool,
     pub invalid_scenery_entries: Vec<String>,
     pub missing_scenery_paths: Vec<String>,
     pub duplicate_scenery_paths: Vec<String>,
@@ -192,9 +193,7 @@ fn inspect_scenery_links(
     };
     for (index, entry) in entries.enumerate() {
         if index == SCENERY_LINK_ENTRY_LIMIT {
-            report.scenery_link_errors.push(format!(
-                "Custom Scenery: reached the {SCENERY_LINK_ENTRY_LIMIT} entry inspection limit"
-            ));
+            report.scenery_links_capped = true;
             break;
         }
         let entry = match entry {

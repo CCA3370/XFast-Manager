@@ -146,6 +146,25 @@ describe('Health page', () => {
     i18n.global.locale.value = 'en'
   })
 
+  it('renders a scenery limit as reached with zero read errors', async () => {
+    const { wrapper, doctorStore } = await mountDoctor('/xplane')
+    i18n.global.locale.value = 'zh'
+    doctorStore.currentRun = runFixture('completed', [
+      {
+        id: 'installation.scan_access',
+        section: 'installation',
+        outcome: 'unavailable',
+        durationMs: 1,
+        params: { errors: 0, capped: 1 },
+      },
+    ])
+    await nextTick()
+    const panel = wrapper.get('[data-testid="health-detail-panel"]')
+    expect(panel.text()).toContain('文件检查未完成')
+    expect(panel.findAll('dd').map((value) => value.text())).toEqual(['0', '是'])
+    wrapper.unmount()
+  })
+
   it('localizes AIRAC conclusions and statistics without exposing internal parameter keys', async () => {
     const { wrapper, doctorStore } = await mountDoctor('/xplane')
     doctorStore.currentRun = runFixture('completed', [

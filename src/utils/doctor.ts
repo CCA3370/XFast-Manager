@@ -243,6 +243,30 @@ export function sanitizeDoctorHistory(value: unknown): DoctorHistoryFile {
       .slice(0, DOCTOR_HISTORY_LIMIT)
       .map((run) => {
         const checks = run.checks.map((check): DoctorCheckResult => {
+          if (check.id === 'installation.scan_access' && check.evidence) {
+            const oldLimit =
+              /^Custom Scenery: reached the (?:scenery file|\d+ entry) inspection limit$/
+            const legacyLimits = check.evidence.filter((item) => oldLimit.test(item.value)).length
+            if (legacyLimits) {
+              const previousErrors = check.params?.errors
+              return {
+                ...check,
+                params: {
+                  ...check.params,
+                  capped: 1,
+                  errors:
+                    typeof previousErrors === 'number'
+                      ? Math.max(0, previousErrors - legacyLimits)
+                      : 0,
+                },
+                evidence: check.evidence.map((item) =>
+                  oldLimit.test(item.value)
+                    ? { ...item, value: 'Custom Scenery: inspection limit reached' }
+                    : item,
+                ),
+              }
+            }
+          }
           if (
             check.id !== 'addons.binary_integrity' ||
             check.params?.loaderScoped === 1 ||

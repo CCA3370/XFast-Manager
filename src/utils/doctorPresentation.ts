@@ -76,6 +76,9 @@ export function describeDoctorCheck(check: DoctorCheckResult, locale = 'en') {
       suggestion: '',
     }
   }
+  if (check.id === 'installation.scan_access' && check.outcome === 'unavailable' && finding) {
+    return { title, description: finding[1], suggestion: '' }
+  }
   if (['unavailable', 'notApplicable', 'cancelled'].includes(check.outcome)) {
     return { title, description: generic, suggestion: '' }
   }

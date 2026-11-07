@@ -155,9 +155,9 @@ export const healthDetailMessages = {
           'This saved result predates platform entry selection. Run a new full scan to verify the plugin files.',
       },
       installation_scan_access: {
-        title: 'Inspection access and limits',
+        title: 'File check incomplete',
         description:
-          'Some files could not be read, or the inspection reached its entry limit. Results cover only the files inspected; see the recorded access errors.',
+          'Some files could not be inspected. See the listed read errors or scan limit notices.',
       },
       stability_log_freshness: {
         title: 'Log age',
@@ -374,9 +374,8 @@ export const healthDetailMessages = {
         outdated: '此记录来自旧版插件检查。请重新运行全面检查，以验证 X-Plane 会选择的插件入口。',
       },
       installation_scan_access: {
-        title: '扫描可读性与范围',
-        description:
-          '部分文件无法读取，或扫描达到条目上限。结果仅覆盖已检查文件，请查看证据中的读取错误。',
+        title: '文件检查未完成',
+        description: '部分文件未能检查，请查看证据中的读取错误或扫描中断原因。',
       },
       stability_log_freshness: {
         title: '日志时效',
@@ -583,8 +582,9 @@ export const healthDetailMessages = {
           'Dieses Ergebnis stammt aus der früheren Plugin-Prüfung. Bitte eine neue vollständige Prüfung starten.',
       },
       installation_scan_access: {
-        title: 'Scan-Zugriff und Grenzen',
-        description: 'Installationsordner und Dateizugriff wurden geprüft.',
+        title: 'Dateiprüfung unvollständig',
+        description:
+          'Einige Dateien konnten nicht geprüft werden. Siehe die Lesefehler oder Hinweise zum Abbruch.',
       },
       stability_log_freshness: {
         title: 'Aktualität des Protokolls',
@@ -788,8 +788,9 @@ export const healthDetailMessages = {
           'Ce résultat provient de l’ancienne vérification des plugins. Lancez une nouvelle analyse complète.',
       },
       installation_scan_access: {
-        title: 'Accès et limites du contrôle',
-        description: 'Dossiers et accès aux fichiers vérifiés.',
+        title: 'Contrôle des fichiers incomplet',
+        description:
+          'Certains fichiers ne peuvent pas être vérifiés. Consultez les erreurs ou les motifs d’arrêt indiqués.',
       },
       stability_log_freshness: {
         title: 'Ancienneté du journal',
@@ -990,8 +991,9 @@ export const healthDetailMessages = {
           'Este resultado procede de la revisión anterior. Ejecuta un nuevo análisis completo.',
       },
       installation_scan_access: {
-        title: 'Acceso y límites de revisión',
-        description: 'Se revisaron las carpetas y el acceso a archivos.',
+        title: 'Comprobación de archivos incompleta',
+        description:
+          'Algunos archivos no se pudieron comprobar. Consulta los errores de lectura o los motivos de interrupción.',
       },
       stability_log_freshness: {
         title: 'Antigüedad del registro',
@@ -1191,8 +1193,9 @@ export const healthDetailMessages = {
         outdated: 'Este resultado é da verificação anterior. Execute uma nova análise completa.',
       },
       installation_scan_access: {
-        title: 'Acesso e limites da verificação',
-        description: 'Pastas e acesso aos arquivos verificados.',
+        title: 'Verificação de ficheiros incompleta',
+        description:
+          'Alguns ficheiros não puderam ser verificados. Consulte os erros de leitura ou os motivos de interrupção.',
       },
       stability_log_freshness: {
         title: 'Idade do registro',
@@ -1394,8 +1397,9 @@ export const healthDetailMessages = {
           '以前のプラグイン検査で保存された結果です。再度、完全スキャンを実行してください。',
       },
       installation_scan_access: {
-        title: '走査のアクセスと制限',
-        description: '設置フォルダーとファイルへのアクセスを確認しました。',
+        title: 'ファイル検査が未完了',
+        description:
+          '一部のファイルを確認できませんでした。表示された読み取りエラーや中断理由を確認してください。',
       },
       stability_log_freshness: {
         title: 'ログの鮮度',
@@ -1591,8 +1595,8 @@ export const healthDetailMessages = {
         outdated: '이 결과는 이전 플러그인 검사에서 저장되었습니다. 전체 검사를 다시 실행하세요.',
       },
       installation_scan_access: {
-        title: '검사 접근 및 한도',
-        description: '설치 폴더와 파일 접근을 확인했습니다.',
+        title: '파일 검사 미완료',
+        description: '일부 파일을 검사할 수 없었습니다. 표시된 읽기 오류나 중단 사유를 확인하세요.',
       },
       stability_log_freshness: {
         title: '로그 최신성',
@@ -1791,8 +1795,8 @@ export const healthDetailMessages = {
           'Результат получен при старой проверке плагинов. Запустите новое полное сканирование.',
       },
       installation_scan_access: {
-        title: 'Доступ и пределы проверки',
-        description: 'Проверены папки и доступ к файлам.',
+        title: 'Проверка файлов не завершена',
+        description: 'Часть файлов не удалось проверить. См. ошибки чтения или причины остановки.',
       },
       stability_log_freshness: {
         title: 'Возраст журнала',
@@ -1984,8 +1988,8 @@ export const healthDetailMessages = {
         outdated: 'حُفظت هذه النتيجة بواسطة فحص الإضافات القديم. أعد إجراء الفحص الشامل.',
       },
       installation_scan_access: {
-        title: 'الوصول وحدود الفحص',
-        description: 'تم فحص المجلدات والوصول إلى الملفات.',
+        title: 'فحص الملفات غير مكتمل',
+        description: 'تعذّر فحص بعض الملفات. راجع أخطاء القراءة أو أسباب التوقف المذكورة.',
       },
       stability_log_freshness: {
         title: 'عمر السجل',
@@ -2181,8 +2185,9 @@ export const healthDetailMessages = {
         outdated: 'यह परिणाम पुराने प्लगइन स्कैन से है। फिर से पूर्ण स्कैन चलाएँ।',
       },
       installation_scan_access: {
-        title: 'स्कैन पहुँच और सीमाएँ',
-        description: 'स्थापना फ़ोल्डर और फ़ाइल पहुँच जाँची गई।',
+        title: 'फ़ाइल जाँच अधूरी',
+        description:
+          'कुछ फ़ाइलों की जाँच नहीं हो सकी। सूचीबद्ध पठन त्रुटियाँ या जाँच रुकने के कारण देखें।',
       },
       stability_log_freshness: {
         title: 'लॉग की आयु',

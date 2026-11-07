@@ -1097,6 +1097,8 @@ function checkDescription(check: DoctorCheckResult): string {
   }
   if (check.id === 'updates.addons' && check.params && 'checked' in check.params)
     return t('healthDetails.coverage.addonUpdates', check.params)
+  if (check.id === 'installation.scan_access' && check.outcome === 'unavailable')
+    return t('healthDetails.findings.installation_scan_access.description')
   if (['unavailable', 'cancelled', 'notApplicable'].includes(check.outcome))
     return t(`doctor.center.checkDescriptions.${check.outcome}`)
   if (check.id === 'navdata.cycles') {
