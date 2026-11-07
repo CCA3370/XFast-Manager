@@ -1,5 +1,5 @@
-import type { DoctorCheckResult, DoctorRun, DoctorRunMode } from '@/types/doctor'
-import { describeDoctorCheck, describeDoctorScope } from './doctorPresentation'
+import type { DoctorCheckResult, DoctorRun } from '@/types/doctor'
+import { describeDoctorCheck } from './doctorPresentation'
 
 export type DoctorReportFormat = 'markdown' | 'json'
 
@@ -55,16 +55,16 @@ export function redactDoctorText(value: string, options: DoctorReportOptions): s
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '<EMAIL>')
 }
 
-function reportCheck(check: DoctorCheckResult, mode: DoctorRunMode, options: DoctorReportOptions) {
+function reportCheck(check: DoctorCheckResult, options: DoctorReportOptions) {
   const text = describeDoctorCheck(check, 'en')
-  const scope = describeDoctorScope(check, mode)
   return {
-    ...check,
+    id: check.id,
+    section: check.section,
+    outcome: check.outcome,
+    durationMs: check.durationMs,
     title: redactDoctorText(text.title, options),
     description: redactDoctorText(text.description, options),
     suggestion: redactDoctorText(text.suggestion, options),
-    sources: check.sources?.map((source) => redactDoctorText(source, options)),
-    scope: scope ? redactDoctorText(scope, options) : undefined,
     params: redactParams(check.params, options),
     evidence: check.evidence?.map((evidence) => ({
       ...evidence,
@@ -87,7 +87,7 @@ export function buildDoctorReport(
 ): string {
   const report = {
     ...run,
-    checks: run.checks.map((check) => reportCheck(check, run.mode, options)),
+    checks: run.checks.map((check) => reportCheck(check, options)),
   }
   if (format === 'json') return JSON.stringify(report, null, 2)
 
@@ -123,8 +123,6 @@ export function buildDoctorReport(
       check.description,
       ...(check.suggestion ? ['', `Suggested action: ${check.suggestion}`] : []),
     )
-    if (check.sources?.length) lines.push(`- Data sources: ${check.sources.join(' · ')}`)
-    if (check.scope) lines.push(`- Check scope: ${check.scope}`)
     if (check.params && Object.keys(check.params).length > 0) {
       lines.push(`- Parameters: ${JSON.stringify(check.params)}`)
     }

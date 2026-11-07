@@ -100,12 +100,6 @@ function isDoctorCheckResult(value: unknown): value is DoctorCheckResult {
   if (!DOCTOR_OUTCOMES.has(String(value.outcome))) return false
   if (!isFiniteNonNegativeNumber(value.durationMs) || !isOptionalParams(value.params)) return false
   if (
-    value.sources !== undefined &&
-    (!Array.isArray(value.sources) || !value.sources.every((source) => typeof source === 'string'))
-  ) {
-    return false
-  }
-  if (
     value.evidence !== undefined &&
     (!Array.isArray(value.evidence) ||
       !value.evidence.every(

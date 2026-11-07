@@ -1,7 +1,6 @@
-import type { DoctorCheckResult, DoctorRunMode } from '@/types/doctor'
+import type { DoctorCheckResult } from '@/types/doctor'
 import en from '@/i18n/en'
 import zh from '@/i18n/zh'
-import { healthDetailMessages } from '@/i18n/healthDetails'
 import { DOCTOR_FINDINGS } from './doctorFindings'
 import { CHECK_NAME_KEYS, LEGACY_TEXT_ROOTS } from './doctorCatalog'
 
@@ -109,25 +108,6 @@ export function describeDoctorCheck(check: DoctorCheckResult, locale = 'en') {
     title,
     description: (hasFinding && root && message(locale, `${root}.description`, params)) || generic,
     suggestion: (hasFinding && root && message(locale, `${root}.suggestion`, params)) || '',
-  }
-}
-
-export function describeDoctorScope(check: DoctorCheckResult, mode: DoctorRunMode, locale = 'en') {
-  if (!check.sources?.length) return ''
-  const copy =
-    healthDetailMessages[locale as keyof typeof healthDetailMessages] ?? healthDetailMessages.en
-  switch (check.id) {
-    case 'navdata.bundled':
-    case 'navdata.integrity':
-      return mode === 'full' ? copy.coverage.navFull : copy.coverage.navQuick
-    case 'navdata.supplemental':
-      return copy.coverage.navSupplemental
-    case 'navdata.cycles':
-      return copy.coverage.navCycles
-    default: {
-      const purposes: Record<string, string> = copy.purposes
-      return purposes[check.id.replaceAll('.', '_')] ?? ''
-    }
   }
 }
 
