@@ -7,6 +7,7 @@ import type {
   DoctorNavdataLayer,
   DoctorNavdataReport,
   DoctorXfastHealthReport,
+  DoctorVolumeSpace,
   GatewayInstalledAirport,
   PluginInfo,
   SceneryManagerData,
@@ -188,6 +189,28 @@ function logOutcome(issue: LogIssue): DoctorCheckResult['outcome'] {
   return 'info'
 }
 
+function diskSpaceCheck(id: string, space: DoctorVolumeSpace, openCleanup = false) {
+  const { availableBytes, totalBytes, error } = space
+  if (availableBytes === null || totalBytes === null || totalBytes === 0) {
+    return result(id, 'storage', 'unavailable', {
+      evidence: error ? evidence([error], 'path') : undefined,
+    })
+  }
+  const outcome =
+    availableBytes < LOW_DISK_CRITICAL_BYTES
+      ? 'critical'
+      : availableBytes < LOW_DISK_WARNING_BYTES
+        ? 'warning'
+        : 'pass'
+  return result(id, 'storage', outcome, {
+    params: { free: formatBytes(availableBytes), total: formatBytes(totalBytes) },
+    remediation:
+      openCleanup && outcome !== 'pass'
+        ? { id: 'open_cleanup', kind: 'navigate', risk: 'safe', route: '/disk-usage' }
+        : undefined,
+  })
+}
+
 function createEnvironmentCheck(context: DoctorCheckContext): DoctorCheckDefinition {
   return {
     id: 'environment',
@@ -215,8 +238,8 @@ function createEnvironmentCheck(context: DoctorCheckContext): DoctorCheckDefinit
         isBeta: context.system?.isBeta ?? false,
         gpuModel: context.system?.gpuModel ?? null,
         gpuDriver: context.system?.gpuDriver ?? null,
-        xplaneFreeBytes: env.freeBytes,
-        xplaneTotalBytes: env.totalBytes,
+        xplaneFreeBytes: env.diskSpace.availableBytes,
+        xplaneTotalBytes: env.diskSpace.totalBytes,
         appDataFreeBytes: context.system?.appDataFreeBytes ?? null,
         appDataTotalBytes: context.system?.appDataTotalBytes ?? null,
       }
@@ -270,31 +293,26 @@ function createEnvironmentCheck(context: DoctorCheckContext): DoctorCheckDefinit
         )
       }
 
+      checks.push(diskSpaceCheck('storage.xplane_space', env.diskSpace, true))
+      checks.push(
+        result('installation.location', 'installation', env.inProgramFiles ? 'info' : 'pass', {
+          params: { steam: env.isSteamInstall ? 1 : 0 },
+        }),
+      )
+      const access = env.directoryAccess
       checks.push(
         result(
-          'storage.xplane_space',
-          'storage',
-          env.freeBytes < LOW_DISK_CRITICAL_BYTES
-            ? 'critical'
-            : env.freeBytes < LOW_DISK_WARNING_BYTES
-              ? 'warning'
-              : 'pass',
+          'installation.write_access',
+          'installation',
+          access.blocked.length ? 'warning' : access.errors.length ? 'unavailable' : 'pass',
           {
-            params: { free: formatBytes(env.freeBytes), total: formatBytes(env.totalBytes) },
-            remediation:
-              env.freeBytes < LOW_DISK_WARNING_BYTES
-                ? { id: 'open_cleanup', kind: 'navigate', risk: 'safe', route: '/disk-usage' }
-                : undefined,
+            params: { count: access.blocked.length },
+            evidence: evidence([...access.blocked, ...access.errors], 'path'),
           },
         ),
       )
 
-      checks.push(
-        result('installation.location', 'installation', env.inProgramFiles ? 'warning' : 'pass', {
-          params: { steam: env.isSteamInstall ? 1 : 0 },
-        }),
-      )
-
+      const readonlyIncomplete = env.readonlyScanCapped || env.readonlyScanErrors.length > 0
       checks.push(
         result(
           'installation.readonly',
@@ -303,16 +321,44 @@ function createEnvironmentCheck(context: DoctorCheckContext): DoctorCheckDefinit
             ? 'notApplicable'
             : env.readonlyCount >= READONLY_WARNING_COUNT
               ? 'warning'
-              : env.readonlyCount > 0
-                ? 'info'
-                : 'pass',
+              : readonlyIncomplete
+                ? 'unavailable'
+                : env.readonlyCount > 0
+                  ? 'info'
+                  : 'pass',
           {
-            params: {
-              count: env.readonlyScanCapped ? `${env.readonlyCount}+` : env.readonlyCount,
-            },
+            params: { count: readonlyIncomplete ? `${env.readonlyCount}+` : env.readonlyCount },
+            evidence: evidence(
+              [
+                ...env.readonlyScanErrors,
+                ...(env.readonlyScanCapped
+                  ? ['Reached the add-on filesystem inspection limit']
+                  : []),
+              ],
+              'path',
+            ),
           },
         ),
       )
+      if (
+        (access.blocked.length && access.errors.length) ||
+        (env.readonlyCount >= READONLY_WARNING_COUNT && readonlyIncomplete)
+      ) {
+        checks.push(
+          result('installation.permission_access', 'installation', 'unavailable', {
+            evidence: evidence(
+              [
+                ...access.errors,
+                ...env.readonlyScanErrors,
+                ...(env.readonlyScanCapped
+                  ? ['Reached the add-on filesystem inspection limit']
+                  : []),
+              ],
+              'path',
+            ),
+          }),
+        )
+      }
 
       checks.push(
         result('system.injectors', 'system', env.injectors.length ? 'warning' : 'pass', {
@@ -341,19 +387,67 @@ function createEnvironmentCheck(context: DoctorCheckContext): DoctorCheckDefinit
         ),
       )
 
+      const physicalCores = env.system.physicalCores
+      const totalMemory = env.system.totalMemoryBytes
+      const hardwareIssues: string[] = []
+      if (
+        (physicalCores ?? env.system.logicalCores) > 0 &&
+        (physicalCores ?? env.system.logicalCores) < 4
+      ) {
+        hardwareIssues.push(
+          `CPU: ${physicalCores ?? env.system.logicalCores} cores reported, 4 required`,
+        )
+      }
+      // Allow a small hardware-reserved portion of an 8 GiB system.
+      if (totalMemory > 0 && totalMemory < 7.5 * 1024 ** 3) {
+        hardwareIssues.push(`RAM: ${formatBytes(totalMemory)} reported, 8 GB required`)
+      }
       checks.push(
-        result('system.inventory', 'system', 'pass', {
-          params: {
-            os: env.system.os,
-            arch: env.system.architecture,
-            cores: env.system.logicalCores,
-            memory: formatBytes(env.system.totalMemoryBytes),
+        result(
+          'system.inventory',
+          'system',
+          hardwareIssues.length
+            ? 'warning'
+            : physicalCores === null || !totalMemory
+              ? 'unavailable'
+              : 'pass',
+          {
+            params: {
+              os: env.system.os,
+              arch: env.system.architecture,
+              cores: physicalCores ?? env.system.logicalCores,
+              memory: formatBytes(totalMemory),
+            },
+            evidence: evidence(hardwareIssues),
           },
-        }),
+        ),
       )
 
-      const memoryOutcome =
-        env.system.availableMemoryBytes < LOW_MEMORY_CRITICAL_BYTES
+      const vulkan = env.vulkanRuntime
+      if (vulkan) {
+        const available = vulkan.state === 'available'
+        checks.push(
+          result(
+            'system.vulkan_runtime',
+            'system',
+            available
+              ? vulkan.meetsMinimum
+                ? 'pass'
+                : 'warning'
+              : vulkan.state === 'missing'
+                ? 'warning'
+                : 'unavailable',
+            {
+              params: available ? { version: vulkan.version } : undefined,
+              evidence: available ? undefined : evidence([vulkan.detail], 'path'),
+            },
+          ),
+        )
+      }
+
+      const memoryOutcome = !totalMemory
+        ? 'unavailable'
+        : env.system.availableMemoryBytes < LOW_MEMORY_CRITICAL_BYTES
           ? 'critical'
           : env.system.availableMemoryBytes < LOW_MEMORY_WARNING_BYTES ||
               env.system.availableMemoryBytes < env.system.totalMemoryBytes * 0.05
@@ -540,70 +634,66 @@ function createXfastCheck(context: DoctorCheckContext): DoctorCheckDefinition {
     section: 'xfast',
     phase: 'local',
     modes: ['quick', 'full'],
-    timeoutMs: 15_000,
+    timeoutMs: context.mode === 'full' ? 45_000 : 15_000,
     async run() {
       const report = await invoke<DoctorXfastHealthReport>('doctor_scan_xfast_health', {
         xplanePath: context.xplanePath,
+        depth: context.mode,
       })
       context.xfast = report
       if (context.system) {
-        context.system.appDataFreeBytes = report.appDataFreeBytes
-        context.system.appDataTotalBytes = report.appDataTotalBytes
+        context.system.appDataFreeBytes = report.diskSpace.availableBytes
+        context.system.appDataTotalBytes = report.diskSpace.totalBytes
       }
 
+      const index = report.sceneryIndex
       const staleIndex =
-        report.sceneryIndex.missingFromIndex.length > 0 ||
-        report.sceneryIndex.missingFromDisk.length > 0
-      const indexOutcome = !report.schemaCompatible
-        ? 'critical'
-        : !report.sceneryIndex.indexExists && report.sceneryIndex.filesystemCount > 0
-          ? 'warning'
-          : staleIndex
-            ? 'warning'
+        index && (index.missingFromIndex.length > 0 || index.missingFromDisk.length > 0)
+      const indexEvidence = index
+        ? [
+            ...index.missingFromIndex.map((name) => `+ ${name}`),
+            ...index.missingFromDisk.map((name) => `- ${name}`),
+          ]
+        : report.sceneryIndexError
+          ? [report.sceneryIndexError]
+          : []
+      const databaseOutcome =
+        report.databaseOk === false || report.schemaCompatible === false
+          ? 'critical'
+          : report.databaseOk === null || report.schemaCompatible === null
+            ? 'unavailable'
             : 'pass'
-      const indexEvidence = [
-        ...report.sceneryIndex.missingFromIndex.map((name) => `+ ${name}`),
-        ...report.sceneryIndex.missingFromDisk.map((name) => `- ${name}`),
-      ]
 
       return [
+        diskSpaceCheck('storage.app_data_space', report.diskSpace),
+        result('xfast.app_data', 'xfast', report.appDataWritable ? 'pass' : 'critical', {
+          evidence: report.appDataWriteError
+            ? evidence([report.appDataWriteError], 'path')
+            : undefined,
+        }),
+        result('xfast.database', 'xfast', databaseOutcome, {
+          evidence: evidence(report.databaseDetails),
+          remediation:
+            databaseOutcome === 'critical'
+              ? { id: 'reset_database', kind: 'guide', risk: 'destructive', route: '/settings' }
+              : undefined,
+        }),
         result(
-          'storage.app_data_space',
-          'storage',
-          report.appDataFreeBytes < LOW_DISK_CRITICAL_BYTES
-            ? 'critical'
-            : report.appDataFreeBytes < LOW_DISK_WARNING_BYTES
-              ? 'warning'
-              : 'pass',
+          'xfast.scenery_index',
+          'xfast',
+          index ? (staleIndex ? 'warning' : 'pass') : 'unavailable',
           {
-            params: {
-              free: formatBytes(report.appDataFreeBytes),
-              total: formatBytes(report.appDataTotalBytes),
-            },
+            params: index
+              ? { indexed: index.indexedCount, found: index.filesystemCount }
+              : undefined,
+            evidence: evidence(indexEvidence, 'path'),
+            remediation: staleIndex
+              ? index.indexExists
+                ? { id: 'refresh_scenery_index', kind: 'automatic', risk: 'safe' }
+                : { id: 'rebuild_scenery_index', kind: 'automatic', risk: 'confirm' }
+              : undefined,
           },
         ),
-        result('xfast.app_data', 'xfast', report.appDataWritable ? 'pass' : 'critical', {
-          evidence: report.appDataWriteError ? evidence([report.appDataWriteError]) : undefined,
-        }),
-        result('xfast.database', 'xfast', report.databaseOk ? 'pass' : 'critical', {
-          evidence: report.databaseDetail ? evidence([report.databaseDetail]) : undefined,
-          remediation: report.databaseOk
-            ? undefined
-            : { id: 'reset_database', kind: 'guide', risk: 'destructive', route: '/settings' },
-        }),
-        result('xfast.scenery_index', 'xfast', indexOutcome, {
-          params: {
-            indexed: report.sceneryIndex.indexedCount,
-            found: report.sceneryIndex.filesystemCount,
-          },
-          evidence: evidence(indexEvidence),
-          remediation:
-            indexOutcome === 'pass'
-              ? undefined
-              : report.schemaCompatible && report.sceneryIndex.indexExists
-                ? { id: 'refresh_scenery_index', kind: 'automatic', risk: 'safe' }
-                : { id: 'rebuild_scenery_index', kind: 'automatic', risk: 'confirm' },
-        }),
       ]
     },
   }

@@ -959,6 +959,16 @@ export interface DoctorFileFindings {
   errors: string[]
 }
 
+export interface DoctorVolumeSpace {
+  availableBytes: number | null
+  totalBytes: number | null
+  error: string | null
+}
+
+export type DoctorVulkanRuntime =
+  | { state: 'available'; version: string; meetsMinimum: boolean }
+  | { state: 'missing' | 'unavailable'; detail: string }
+
 export interface DoctorEnvironmentReport {
   installationId: string
   installation: {
@@ -967,12 +977,14 @@ export interface DoctorEnvironmentReport {
     aircraft: DoctorFileFindings
     airfoils: DoctorFileFindings
   }
-  freeBytes: number
-  totalBytes: number
+  diskSpace: DoctorVolumeSpace
+  directoryAccess: { blocked: string[]; errors: string[] }
+  vulkanRuntime: DoctorVulkanRuntime | null
   inProgramFiles: boolean
   isSteamInstall: boolean
   readonlyCount: number
   readonlyScanCapped: boolean
+  readonlyScanErrors: string[]
   readonlyScanPerformed: boolean
   injectors: DetectedInjector[]
   competingOrganizers: CompetingOrganizer[]
@@ -985,6 +997,7 @@ export interface DoctorHostSystemSnapshot {
   architecture: string
   cpuModel: string | null
   logicalCores: number
+  physicalCores: number | null
   totalMemoryBytes: number
   availableMemoryBytes: number
 }
@@ -1001,12 +1014,12 @@ export interface DoctorXfastHealthReport {
   appDataDir: string
   appDataWritable: boolean
   appDataWriteError: string | null
-  appDataFreeBytes: number
-  appDataTotalBytes: number
-  databaseOk: boolean
-  databaseDetail: string | null
-  schemaCompatible: boolean
-  sceneryIndex: DoctorSceneryIndexHealth
+  diskSpace: DoctorVolumeSpace
+  databaseOk: boolean | null
+  databaseDetails: string[]
+  schemaCompatible: boolean | null
+  sceneryIndex: DoctorSceneryIndexHealth | null
+  sceneryIndexError: string | null
 }
 
 export type NavdataStatus = 'expired' | 'expiring_soon' | 'not_yet_effective' | 'ok' | 'unknown'

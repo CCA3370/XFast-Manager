@@ -20,8 +20,13 @@ tempfile = "3"
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
 walkdir = "2"
+fs2 = "0.4"
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["libloaderapi"] }
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 `)
-const modules = ['doctor_inspection', 'doctor_installation', 'doctor_navdata', 'doctor_repairs'].map((name) =>
+const modules = ['doctor_host', 'doctor_inspection', 'doctor_installation', 'doctor_navdata', 'doctor_repairs'].map((name) =>
   `#[path = ${JSON.stringify(path.join(root, 'src-tauri', 'src', 'analysis', `${name}.rs`))}]
 mod ${name.replace('doctor_', '')};`,
 )

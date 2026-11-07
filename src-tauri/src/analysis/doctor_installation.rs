@@ -47,14 +47,14 @@ const AIRCRAFT_ENTRY_LIMIT: usize = 100_000;
 const AIRFOIL_ENTRY_LIMIT: usize = 4096;
 const ACF_BYTE_LIMIT: u64 = 8 * 1024 * 1024;
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Findings {
     pub problems: Vec<String>,
     pub errors: Vec<String>,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallationInspection {
     pub root_usable: bool,

@@ -57,7 +57,7 @@ sysinfo = "0.36"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
-winapi = { version = "0.3", features = ["fileapi", "minwindef", "combaseapi", "objbase", "objidl", "shlobj", "shobjidl_core", "shtypes", "wtypesbase", "unknwnbase", "wtypes", "ole2", "winerror", "winver"] }
+winapi = { version = "0.3", features = ["fileapi", "libloaderapi", "minwindef", "combaseapi", "objbase", "objidl", "shlobj", "shobjidl_core", "shtypes", "wtypesbase", "unknwnbase", "wtypes", "ole2", "winerror", "winver"] }
 lnk = "0.5"
 junction = "1"
 

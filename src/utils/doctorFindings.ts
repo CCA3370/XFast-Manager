@@ -6,11 +6,21 @@ const zhPlugin = healthDetailMessages.zh.findings.addons_binary_integrity
 // Check-specific wording shared by the UI and English exports.
 export const DOCTOR_FINDINGS: Record<string, { en: [string, string]; zh: [string, string] }> = {
   ...Object.fromEntries(
-    (['structure', 'stock_aircraft', 'airfoils', 'asset_access'] as const).map((id) => {
-      const en = healthDetailMessages.en.findings[`installation_${id}`]
-      const zh = healthDetailMessages.zh.findings[`installation_${id}`]
+    (
+      [
+        'installation_structure',
+        'installation_stock_aircraft',
+        'installation_airfoils',
+        'installation_asset_access',
+        'installation_write_access',
+        'installation_permission_access',
+        'system_vulkan_runtime',
+      ] as const
+    ).map((key) => {
+      const en = healthDetailMessages.en.findings[key]
+      const zh = healthDetailMessages.zh.findings[key]
       return [
-        `installation.${id}`,
+        key.replace('_', '.'),
         { en: [en.title, en.description], zh: [zh.title, zh.description] },
       ]
     }),

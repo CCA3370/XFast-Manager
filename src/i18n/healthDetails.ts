@@ -64,6 +64,20 @@ export const healthDetailMessages = {
     yes: 'Yes',
     no: 'No',
     findings: {
+      installation_write_access: {
+        title: 'Installation write access',
+        description:
+          'The listed folders cannot accept new files. Check their permissions and volume state.',
+      },
+      installation_permission_access: {
+        title: 'Permission check incomplete',
+        description: 'Some permissions could not be verified. Review the listed errors.',
+      },
+      system_vulkan_runtime: {
+        title: 'Vulkan runtime',
+        description:
+          'The system Vulkan loader is missing or below 1.3. Install or update the graphics driver.',
+      },
       installation_structure: {
         title: 'X-Plane installation structure',
         description:
@@ -276,6 +290,18 @@ export const healthDetailMessages = {
     yes: '是',
     no: '否',
     findings: {
+      installation_write_access: {
+        title: '安装目录写入权限',
+        description: '无法在列出的目录中新增文件，请检查权限和卷状态。',
+      },
+      installation_permission_access: {
+        title: '权限检查未完成',
+        description: '部分权限无法核实，请查看列出的错误。',
+      },
+      system_vulkan_runtime: {
+        title: 'Vulkan 运行库',
+        description: '系统 Vulkan 加载器缺失或低于 1.3，请安装或更新显卡驱动。',
+      },
       installation_structure: {
         title: 'X-Plane 安装结构',
         description: '请使用 X-Plane 安装器或 Steam 文件验证恢复列出的启动文件。',
@@ -461,6 +487,20 @@ export const healthDetailMessages = {
     yes: 'Ja',
     no: 'Nein',
     findings: {
+      installation_write_access: {
+        title: 'Schreibzugriff auf die Installation',
+        description:
+          'In den aufgeführten Ordnern können keine Dateien angelegt werden. Prüfe Berechtigungen und Laufwerk.',
+      },
+      installation_permission_access: {
+        title: 'Berechtigungsprüfung unvollständig',
+        description: 'Einige Berechtigungen konnten nicht geprüft werden. Siehe die Fehler.',
+      },
+      system_vulkan_runtime: {
+        title: 'Vulkan-Laufzeit',
+        description:
+          'Der Vulkan-Loader fehlt oder ist älter als 1.3. Installiere oder aktualisiere den Grafiktreiber.',
+      },
       installation_structure: {
         title: 'X-Plane-Installation',
         description:
@@ -648,6 +688,20 @@ export const healthDetailMessages = {
     yes: 'Oui',
     no: 'Non',
     findings: {
+      installation_write_access: {
+        title: 'Accès en écriture à l’installation',
+        description:
+          'Impossible de créer des fichiers dans les dossiers indiqués. Vérifiez les autorisations et le volume.',
+      },
+      installation_permission_access: {
+        title: 'Vérification des autorisations incomplète',
+        description: 'Certaines autorisations n’ont pas pu être vérifiées. Consultez les erreurs.',
+      },
+      system_vulkan_runtime: {
+        title: 'Environnement Vulkan',
+        description:
+          'Le chargeur Vulkan est absent ou antérieur à 1.3. Installez ou mettez à jour le pilote graphique.',
+      },
       installation_structure: {
         title: 'Installation de X-Plane',
         description:
@@ -833,6 +887,20 @@ export const healthDetailMessages = {
     yes: 'Sí',
     no: 'No',
     findings: {
+      installation_write_access: {
+        title: 'Acceso de escritura a la instalación',
+        description:
+          'No se pueden crear archivos en las carpetas indicadas. Revisa los permisos y el volumen.',
+      },
+      installation_permission_access: {
+        title: 'Comprobación de permisos incompleta',
+        description: 'No se pudieron verificar algunos permisos. Revisa los errores.',
+      },
+      system_vulkan_runtime: {
+        title: 'Entorno de Vulkan',
+        description:
+          'Falta el cargador de Vulkan o es anterior a 1.3. Instala o actualiza el controlador gráfico.',
+      },
       installation_structure: {
         title: 'Instalación de X-Plane',
         description:
@@ -1015,6 +1083,20 @@ export const healthDetailMessages = {
     yes: 'Sim',
     no: 'Não',
     findings: {
+      installation_write_access: {
+        title: 'Acesso de escrita à instalação',
+        description:
+          'Não é possível criar ficheiros nas pastas indicadas. Verifique as permissões e o volume.',
+      },
+      installation_permission_access: {
+        title: 'Verificação de permissões incompleta',
+        description: 'Não foi possível verificar algumas permissões. Consulte os erros.',
+      },
+      system_vulkan_runtime: {
+        title: 'Ambiente Vulkan',
+        description:
+          'O carregador Vulkan está ausente ou é anterior a 1.3. Instale ou atualize o controlador gráfico.',
+      },
       installation_structure: {
         title: 'Instalação do X-Plane',
         description:
@@ -1197,6 +1279,20 @@ export const healthDetailMessages = {
     yes: 'はい',
     no: 'いいえ',
     findings: {
+      installation_write_access: {
+        title: 'インストール先への書き込み',
+        description:
+          '表示されたフォルダーにファイルを作成できません。権限とドライブの状態を確認してください。',
+      },
+      installation_permission_access: {
+        title: '権限の確認が未完了',
+        description: '一部の権限を確認できませんでした。表示されたエラーを確認してください。',
+      },
+      system_vulkan_runtime: {
+        title: 'Vulkan ランタイム',
+        description:
+          'Vulkan ローダーが存在しないか、1.3 未満です。グラフィックスドライバーをインストールまたは更新してください。',
+      },
       installation_structure: {
         title: 'X-Plane インストール',
         description:
@@ -1380,6 +1476,19 @@ export const healthDetailMessages = {
     yes: '예',
     no: '아니요',
     findings: {
+      installation_write_access: {
+        title: '설치 폴더 쓰기 권한',
+        description: '표시된 폴더에 파일을 만들 수 없습니다. 권한과 볼륨 상태를 확인하세요.',
+      },
+      installation_permission_access: {
+        title: '권한 확인 미완료',
+        description: '일부 권한을 확인할 수 없습니다. 표시된 오류를 확인하세요.',
+      },
+      system_vulkan_runtime: {
+        title: 'Vulkan 런타임',
+        description:
+          'Vulkan 로더가 없거나 1.3 미만입니다. 그래픽 드라이버를 설치하거나 업데이트하세요.',
+      },
       installation_structure: {
         title: 'X-Plane 설치 구조',
         description:
@@ -1559,6 +1668,20 @@ export const healthDetailMessages = {
     yes: 'Да',
     no: 'Нет',
     findings: {
+      installation_write_access: {
+        title: 'Доступ на запись в папки установки',
+        description:
+          'В указанных папках нельзя создать файлы. Проверьте разрешения и состояние диска.',
+      },
+      installation_permission_access: {
+        title: 'Проверка разрешений не завершена',
+        description: 'Не все разрешения удалось проверить. См. указанные ошибки.',
+      },
+      system_vulkan_runtime: {
+        title: 'Среда выполнения Vulkan',
+        description:
+          'Загрузчик Vulkan отсутствует или старше версии 1.3. Установите или обновите видеодрайвер.',
+      },
       installation_structure: {
         title: 'Установка X-Plane',
         description:
@@ -1739,6 +1862,18 @@ export const healthDetailMessages = {
     yes: 'نعم',
     no: 'لا',
     findings: {
+      installation_write_access: {
+        title: 'إذن الكتابة في مجلدات التثبيت',
+        description: 'تعذّر إنشاء ملفات في المجلدات المذكورة. راجع الأذونات وحالة وحدة التخزين.',
+      },
+      installation_permission_access: {
+        title: 'فحص الأذونات غير مكتمل',
+        description: 'تعذّر التحقق من بعض الأذونات. راجع الأخطاء المذكورة.',
+      },
+      system_vulkan_runtime: {
+        title: 'بيئة تشغيل Vulkan',
+        description: 'محمّل Vulkan مفقود أو أقدم من 1.3. ثبّت برنامج تشغيل الرسوميات أو حدّثه.',
+      },
       installation_structure: {
         title: 'تثبيت X-Plane',
         description: 'استعد ملفات التشغيل المذكورة عبر مثبت X-Plane أو التحقق من الملفات في Steam.',
@@ -1915,6 +2050,20 @@ export const healthDetailMessages = {
     yes: 'हाँ',
     no: 'नहीं',
     findings: {
+      installation_write_access: {
+        title: 'इंस्टॉलेशन में लिखने की अनुमति',
+        description:
+          'सूचीबद्ध फ़ोल्डर में फ़ाइलें नहीं बनाई जा सकतीं। अनुमति और वॉल्यूम की स्थिति जाँचें।',
+      },
+      installation_permission_access: {
+        title: 'अनुमति जाँच अधूरी',
+        description: 'कुछ अनुमतियाँ सत्यापित नहीं हो सकीं। सूचीबद्ध त्रुटियाँ देखें।',
+      },
+      system_vulkan_runtime: {
+        title: 'Vulkan रनटाइम',
+        description:
+          'Vulkan लोडर गुम है या 1.3 से पुराना है। ग्राफ़िक्स ड्राइवर इंस्टॉल या अपडेट करें।',
+      },
       installation_structure: {
         title: 'X-Plane इंस्टॉलेशन',
         description:

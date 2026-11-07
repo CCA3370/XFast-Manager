@@ -65,9 +65,12 @@ const DEFINITION_RESULT_IDS: Record<string, string[]> = {
     'storage.xplane_space',
     'installation.location',
     'installation.readonly',
+    'installation.write_access',
+    'installation.permission_access',
     'system.injectors',
     'scenery.competing_organizer',
     'system.inventory',
+    'system.vulkan_runtime',
     'performance.available_memory',
   ],
   inspection: [

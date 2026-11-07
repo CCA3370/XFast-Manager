@@ -6,16 +6,19 @@
 
 use std::collections::HashSet;
 use std::fs;
+use std::io::{Read, Seek, Write};
 use std::path::Path;
 
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use sysinfo::System;
+use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
 use walkdir::WalkDir;
 
 use crate::{app_dirs, database, logger};
 
+#[path = "doctor_host.rs"]
+mod host;
 #[path = "doctor_inspection.rs"]
 mod inspection;
 #[path = "doctor_installation.rs"]
@@ -58,10 +61,9 @@ pub struct DoctorEnvironmentReport {
     /// Stable, non-reversible identifier for this X-Plane installation.
     pub installation_id: String,
     pub installation: installation::InstallationInspection,
-    /// Free bytes on the volume hosting the X-Plane install.
-    pub free_bytes: u64,
-    /// Total bytes on that volume.
-    pub total_bytes: u64,
+    pub disk_space: host::VolumeSpace,
+    pub directory_access: host::DirectoryAccess,
+    pub vulkan_runtime: Option<host::VulkanRuntime>,
     /// Whether the install lives under a UAC-restricted Program Files path.
     pub in_program_files: bool,
     /// Whether this looks like a Steam install (steam_api dll / steamapps path).
@@ -71,6 +73,7 @@ pub struct DoctorEnvironmentReport {
     pub readonly_count: usize,
     /// Whether the read-only scan was truncated by the cap (count is a lower bound).
     pub readonly_scan_capped: bool,
+    pub readonly_scan_errors: Vec<String>,
     /// Quick scans intentionally skip the recursive read-only inspection.
     pub readonly_scan_performed: bool,
     /// Detected graphics injectors (ReShade etc.).
@@ -88,6 +91,7 @@ pub struct DoctorSystemSnapshot {
     pub architecture: String,
     pub cpu_model: Option<String>,
     pub logical_cores: usize,
+    pub physical_cores: Option<usize>,
     pub total_memory_bytes: u64,
     pub available_memory_bytes: u64,
 }
@@ -108,12 +112,12 @@ pub struct DoctorXfastHealthReport {
     pub app_data_dir: String,
     pub app_data_writable: bool,
     pub app_data_write_error: Option<String>,
-    pub app_data_free_bytes: u64,
-    pub app_data_total_bytes: u64,
-    pub database_ok: bool,
-    pub database_detail: Option<String>,
-    pub schema_compatible: bool,
-    pub scenery_index: DoctorSceneryIndexHealth,
+    pub disk_space: host::VolumeSpace,
+    pub database_ok: Option<bool>,
+    pub database_details: Vec<String>,
+    pub schema_compatible: Option<bool>,
+    pub scenery_index: Option<DoctorSceneryIndexHealth>,
+    pub scenery_index_error: Option<String>,
 }
 
 /// Cap the read-only scan so a huge install does not stall the Doctor.
@@ -121,14 +125,25 @@ const READONLY_SCAN_FILE_CAP: usize = 60_000;
 /// Directories scanned for read-only files (the ones installs/updates write to).
 const READONLY_SCAN_DIRS: &[&str] = &["Aircraft", "Resources/plugins", "Custom Scenery"];
 
+#[cfg(windows)]
 fn path_is_in_program_files(path: &Path) -> bool {
-    let lower = path.to_string_lossy().to_lowercase();
-    lower.contains("program files")
+    let lower = path.to_string_lossy().to_ascii_lowercase();
+    ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+        .any(|base| Path::new(&lower).starts_with(base.to_string_lossy().to_ascii_lowercase()))
+}
+
+#[cfg(not(windows))]
+fn path_is_in_program_files(_: &Path) -> bool {
+    false
 }
 
 fn detect_steam_install(root: &Path) -> bool {
-    let lower = root.to_string_lossy().to_lowercase();
-    if lower.contains("steamapps") {
+    if root
+        .components()
+        .any(|part| part.as_os_str().eq_ignore_ascii_case("steamapps"))
+    {
         return true;
     }
     root.join("steam_api64.dll").exists()
@@ -173,34 +188,42 @@ fn detect_competing_organizers(root: &Path) -> Vec<CompetingOrganizer> {
     found
 }
 
-fn count_readonly_files(root: &Path) -> (usize, bool) {
-    let mut count = 0usize;
-    let mut scanned = 0usize;
-    let mut capped = false;
-
-    'outer: for sub in READONLY_SCAN_DIRS {
+fn count_readonly_files(root: &Path) -> (usize, bool, Vec<String>) {
+    let mut count = 0;
+    let mut scanned = 0;
+    let mut errors = Vec::new();
+    for sub in READONLY_SCAN_DIRS {
         let dir = root.join(sub);
-        if !dir.is_dir() {
-            continue;
-        }
-        for entry in WalkDir::new(&dir).follow_links(false).into_iter().flatten() {
-            if !entry.file_type().is_file() {
-                continue;
+        for entry in WalkDir::new(&dir).follow_links(false) {
+            if scanned == READONLY_SCAN_FILE_CAP {
+                return (count, true, errors);
             }
             scanned += 1;
-            if scanned > READONLY_SCAN_FILE_CAP {
-                capped = true;
-                break 'outer;
-            }
-            if let Ok(meta) = entry.metadata() {
-                if meta.permissions().readonly() {
-                    count += 1;
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error)
+                    if error.depth() == 0
+                        && error
+                            .io_error()
+                            .is_some_and(|e| e.kind() == std::io::ErrorKind::NotFound) =>
+                {
+                    continue
+                }
+                Err(error) => {
+                    errors.push(error.to_string());
+                    continue;
+                }
+            };
+            if entry.file_type().is_file() {
+                match entry.metadata() {
+                    Ok(meta) if meta.permissions().readonly() => count += 1,
+                    Ok(_) => {}
+                    Err(error) => errors.push(error.to_string()),
                 }
             }
         }
     }
-
-    (count, capped)
+    (count, false, errors)
 }
 
 fn installation_id(root: &Path) -> String {
@@ -214,8 +237,11 @@ fn installation_id(root: &Path) -> String {
 }
 
 fn collect_system_snapshot() -> DoctorSystemSnapshot {
-    let mut system = System::new_all();
-    system.refresh_all();
+    let system = System::new_with_specifics(
+        RefreshKind::nothing()
+            .with_cpu(CpuRefreshKind::nothing())
+            .with_memory(MemoryRefreshKind::nothing().with_ram()),
+    );
 
     DoctorSystemSnapshot {
         os: System::name().unwrap_or_else(|| std::env::consts::OS.to_string()),
@@ -227,6 +253,7 @@ fn collect_system_snapshot() -> DoctorSystemSnapshot {
             .map(|cpu| cpu.brand().trim().to_string())
             .filter(|value| !value.is_empty()),
         logical_cores: system.cpus().len(),
+        physical_cores: System::physical_core_count(),
         total_memory_bytes: system.total_memory(),
         available_memory_bytes: system.available_memory(),
     }
@@ -235,28 +262,28 @@ fn collect_system_snapshot() -> DoctorSystemSnapshot {
 pub fn scan_environment_with_depth(xplane_path: &str, full: bool) -> DoctorEnvironmentReport {
     let root = Path::new(xplane_path);
 
-    let free_bytes = fs2::available_space(root).unwrap_or(0);
-    let total_bytes = fs2::total_space(root).unwrap_or(0);
-
     let launcher = super::find_xplane_executable_in_root(root);
     let installation =
         installation::inspect(root, launcher.as_deref(), inspection::host_binary_problem);
 
-    let (readonly_count, readonly_scan_capped) = if full {
-        count_readonly_files(root)
-    } else {
-        (0, false)
-    };
+    let (readonly_count, readonly_scan_capped, readonly_scan_errors) =
+        if full && installation.root_usable {
+            count_readonly_files(root)
+        } else {
+            (0, false, Vec::new())
+        };
 
     let report = DoctorEnvironmentReport {
         installation_id: installation_id(root),
         installation,
-        free_bytes,
-        total_bytes,
+        disk_space: host::volume_space(root),
+        directory_access: host::directory_access(root),
+        vulkan_runtime: host::vulkan_runtime(),
         in_program_files: path_is_in_program_files(root),
         is_steam_install: detect_steam_install(root),
         readonly_count,
         readonly_scan_capped,
+        readonly_scan_errors,
         readonly_scan_performed: full,
         injectors: detect_injectors(root),
         competing_organizers: detect_competing_organizers(root),
@@ -265,8 +292,7 @@ pub fn scan_environment_with_depth(xplane_path: &str, full: bool) -> DoctorEnvir
 
     logger::log_info(
         &format!(
-            "Environment scan: free={}GB injectors={} organizers={} readonly={} startupProblems={}",
-            report.free_bytes / 1_073_741_824,
+            "Environment scan: injectors={} organizers={} readonly={} startupProblems={}",
             report.injectors.len(),
             report.competing_organizers.len(),
             report.readonly_count,
@@ -278,34 +304,31 @@ pub fn scan_environment_with_depth(xplane_path: &str, full: bool) -> DoctorEnvir
     report
 }
 
-fn scenery_folder_names(custom_scenery: &Path) -> HashSet<String> {
-    let Ok(entries) = fs::read_dir(custom_scenery) else {
-        return HashSet::new();
-    };
-
-    entries
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-            let path = entry.path();
-            if path
-                .metadata()
-                .map(|metadata| metadata.is_dir())
-                .unwrap_or(false)
-            {
-                return entry.file_name().into_string().ok();
+fn scenery_folder_names(custom_scenery: &Path) -> Result<HashSet<String>, String> {
+    let entries = fs::read_dir(custom_scenery)
+        .map_err(|error| format!("{}: {error}", custom_scenery.display()))?;
+    let mut folders = HashSet::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("{}: {error}", custom_scenery.display()))?;
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with('.') || name.eq_ignore_ascii_case("scenery_packs.ini") {
+            continue;
+        }
+        let info = fs::metadata(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        if info.is_dir() {
+            folders.insert(name.into_owned());
+        } else if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("lnk"))
+        {
+            if let Some(stem) = path.file_stem() {
+                folders.insert(stem.to_string_lossy().into_owned());
             }
-            if path
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("lnk"))
-            {
-                return path
-                    .file_stem()
-                    .and_then(|value| value.to_str())
-                    .map(str::to_string);
-            }
-            None
-        })
-        .collect()
+        }
+    }
+    Ok(folders)
 }
 
 fn compare_scenery_index(
@@ -328,67 +351,97 @@ fn compare_scenery_index(
 
 fn probe_app_data_writable(app_data_dir: &Path) -> Result<(), String> {
     fs::create_dir_all(app_data_dir).map_err(|error| error.to_string())?;
-    tempfile::NamedTempFile::new_in(app_data_dir)
-        .map(|_| ())
-        .map_err(|error| error.to_string())
+    const PROBE: &[u8] = b"xfast-health";
+    let mut file =
+        tempfile::NamedTempFile::new_in(app_data_dir).map_err(|error| error.to_string())?;
+    file.write_all(PROBE).map_err(|error| error.to_string())?;
+    file.as_file()
+        .sync_all()
+        .map_err(|error| error.to_string())?;
+    file.rewind().map_err(|error| error.to_string())?;
+    let mut contents = [0; PROBE.len()];
+    file.read_exact(&mut contents)
+        .map_err(|error| error.to_string())?;
+    if contents.as_slice() != PROBE {
+        return Err("Application data write probe read back different bytes".into());
+    }
+    file.close().map_err(|error| error.to_string())
 }
 
 pub async fn scan_xfast_health(
     xplane_path: &str,
     conn: &sea_orm::DatabaseConnection,
+    full: bool,
 ) -> DoctorXfastHealthReport {
     let app_data_dir = app_dirs::get_app_data_dir();
     let app_data_write_result = probe_app_data_writable(&app_data_dir);
-    let app_data_free_bytes = fs2::available_space(&app_data_dir).unwrap_or(0);
-    let app_data_total_bytes = fs2::total_space(&app_data_dir).unwrap_or(0);
-
-    let database_result = conn
-        .query_one(Statement::from_string(
-            DatabaseBackend::Sqlite,
-            "PRAGMA quick_check".to_string(),
-        ))
-        .await;
-    let (database_ok, database_detail) = match database_result {
-        Ok(Some(row)) => {
-            let detail = row
-                .try_get_by_index::<String>(0)
-                .unwrap_or_else(|error| error.to_string());
-            (detail.eq_ignore_ascii_case("ok"), Some(detail))
-        }
-        Ok(None) => (
-            false,
-            Some("PRAGMA quick_check returned no result".to_string()),
-        ),
-        Err(error) => (false, Some(error.to_string())),
+    let disk_space = host::volume_space(&app_data_dir);
+    let pragma = if full {
+        "PRAGMA integrity_check(8)"
+    } else {
+        "PRAGMA quick_check(8)"
     };
-
-    let schema_compatible = database::is_schema_compatible(conn).await.unwrap_or(false);
-    let indexed = if schema_compatible {
-        database::SceneryQueries::load_all(conn)
-            .await
-            .map(|index| {
-                index
+    let query = conn
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            pragma.to_owned(),
+        ))
+        .await
+        .and_then(|rows| {
+            rows.into_iter()
+                .map(|row| row.try_get_by_index::<String>(0))
+                .collect()
+        });
+    let (database_ok, mut database_details) = match query {
+        Ok(details) if Vec::<String>::is_empty(&details) => {
+            (None, vec!["SQLite returned no integrity result".into()])
+        }
+        Ok(details) => (
+            Some(details.len() == 1 && details[0].eq_ignore_ascii_case("ok")),
+            details,
+        ),
+        Err(error) => (None, vec![error.to_string()]),
+    };
+    let schema = database::is_schema_compatible(conn).await;
+    if let Err(error) = &schema {
+        database_details.push(error.to_string());
+    }
+    let schema_compatible = schema.ok();
+    let mut scenery_index_error = None;
+    let scenery_index = if schema_compatible == Some(true) && database_ok == Some(true) {
+        let filesystem = scenery_folder_names(&Path::new(xplane_path).join("Custom Scenery"));
+        match (database::SceneryQueries::load_all(conn).await, filesystem) {
+            (Ok(index), Ok(filesystem)) => {
+                let indexed = index
                     .packages
                     .into_keys()
                     .filter(|name| name != crate::models::GLOBAL_AIRPORTS_ENTRY_NAME)
-                    .collect()
-            })
-            .unwrap_or_default()
+                    .collect();
+                Some(compare_scenery_index(filesystem, indexed))
+            }
+            (Err(error), _) => {
+                scenery_index_error = Some(error.to_string());
+                None
+            }
+            (_, Err(error)) => {
+                scenery_index_error = Some(error);
+                None
+            }
+        }
     } else {
-        HashSet::new()
+        None
     };
-    let filesystem = scenery_folder_names(&Path::new(xplane_path).join("Custom Scenery"));
 
     DoctorXfastHealthReport {
         app_data_dir: app_data_dir.to_string_lossy().to_string(),
         app_data_writable: app_data_write_result.is_ok(),
         app_data_write_error: app_data_write_result.err(),
-        app_data_free_bytes,
-        app_data_total_bytes,
+        disk_space,
         database_ok,
-        database_detail,
+        database_details,
         schema_compatible,
-        scenery_index: compare_scenery_index(filesystem, indexed),
+        scenery_index,
+        scenery_index_error,
     }
 }
 
@@ -471,8 +524,9 @@ pub async fn doctor_scan_environment(
 pub async fn doctor_scan_xfast_health(
     db: tauri::State<'_, crate::database::DatabaseState>,
     xplane_path: String,
+    depth: Option<String>,
 ) -> Result<DoctorXfastHealthReport, String> {
-    Ok(scan_xfast_health(&xplane_path, &db.get()).await)
+    Ok(scan_xfast_health(&xplane_path, &db.get(), depth.as_deref() == Some("full")).await)
 }
 
 fn export_report(path: &Path, content: &str) -> Result<(), String> {

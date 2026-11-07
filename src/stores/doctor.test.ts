@@ -94,12 +94,18 @@ function environment(): DoctorEnvironmentReport {
       aircraft: { problems: [], errors: [] },
       airfoils: { problems: [], errors: [] },
     },
-    freeBytes: 50 * 1024 * 1024 * 1024,
-    totalBytes: 500 * 1024 * 1024 * 1024,
+    diskSpace: {
+      availableBytes: 50 * 1024 * 1024 * 1024,
+      totalBytes: 500 * 1024 * 1024 * 1024,
+      error: null,
+    },
+    directoryAccess: { blocked: [], errors: [] },
+    vulkanRuntime: null,
     inProgramFiles: false,
     isSteamInstall: false,
     readonlyCount: 0,
     readonlyScanCapped: false,
+    readonlyScanErrors: [],
     readonlyScanPerformed: false,
     injectors: [],
     competingOrganizers: [],
@@ -109,6 +115,7 @@ function environment(): DoctorEnvironmentReport {
       architecture: 'x86_64',
       cpuModel: 'Test CPU',
       logicalCores: 8,
+      physicalCores: 4,
       totalMemoryBytes: 32 * 1024 * 1024 * 1024,
       availableMemoryBytes: 16 * 1024 * 1024 * 1024,
     },
@@ -120,10 +127,14 @@ function xfast(indexMissing = false): DoctorXfastHealthReport {
     appDataDir: '/data/xfast',
     appDataWritable: true,
     appDataWriteError: null,
-    appDataFreeBytes: 20 * 1024 * 1024 * 1024,
-    appDataTotalBytes: 100 * 1024 * 1024 * 1024,
+    diskSpace: {
+      availableBytes: 20 * 1024 * 1024 * 1024,
+      totalBytes: 100 * 1024 * 1024 * 1024,
+      error: null,
+    },
     databaseOk: true,
-    databaseDetail: 'ok',
+    databaseDetails: ['ok'],
+    sceneryIndexError: null,
     schemaCompatible: true,
     sceneryIndex: {
       indexExists: true,
@@ -272,6 +283,56 @@ describe('Health diagnostic store', () => {
       expect.objectContaining({ id: 'installation.structure', outcome: 'unavailable' }),
     ])
     expect(tauri.invoke).not.toHaveBeenCalledWith('doctor_navdata_status', expect.anything())
+  })
+
+  it('distinguishes unavailable host measurements from confirmed resource and permission problems', async () => {
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command !== 'doctor_scan_environment') return healthyResponse(command)
+      const env = environment()
+      env.diskSpace = { availableBytes: null, totalBytes: null, error: 'volume query failed' }
+      env.directoryAccess.blocked = ['Output: permission denied']
+      env.system.physicalCores = 2
+      env.vulkanRuntime = { state: 'available', version: '1.2.0', meetsMinimum: false }
+      return env
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+    expect(store.currentRun?.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'storage.xplane_space', outcome: 'unavailable' }),
+        expect.objectContaining({ id: 'installation.write_access', outcome: 'warning' }),
+        expect.objectContaining({ id: 'system.inventory', outcome: 'warning' }),
+        expect.objectContaining({ id: 'system.vulkan_runtime', outcome: 'warning' }),
+      ]),
+    )
+  })
+
+  it('does not suggest rebuilding an index when its database could not be checked', async () => {
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command !== 'doctor_scan_xfast_health') return healthyResponse(command)
+      return {
+        ...xfast(),
+        databaseOk: null,
+        databaseDetails: ['database is locked'],
+        sceneryIndex: null,
+      }
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+    expect(store.currentRun?.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'xfast.database',
+          outcome: 'unavailable',
+          remediation: undefined,
+        }),
+        expect.objectContaining({
+          id: 'xfast.scenery_index',
+          outcome: 'unavailable',
+          remediation: undefined,
+        }),
+      ]),
+    )
   })
 
   it('keeps unreadable scenery registrations separate from readable link inventory', async () => {
