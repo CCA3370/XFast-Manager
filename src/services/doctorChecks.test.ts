@@ -152,10 +152,16 @@ describe('add-on update diagnostics', () => {
   })
 })
 
-it('keeps verified CSL updates when the other model index is stale', async () => {
+it('keeps the stale index reason visible when verified CSL updates exceed the evidence limit', async () => {
   tauri.invoke.mockReset().mockImplementation(async (command: string) => {
     if (command === 'csl_scan_packages') {
-      return { packages: [{ name: 'Test models', status: 'needs_update', files_to_update: 2 }] }
+      return {
+        packages: Array.from({ length: 25 }, (_, index) => ({
+          name: `Model ${index + 1}`,
+          status: 'needs_update',
+          files_to_update: 2,
+        })),
+      }
     }
     if (command === 'altitude_scan_packages') {
       return { packages: [], index_warning: 'Using cached index' }
@@ -166,17 +172,15 @@ it('keeps verified CSL updates when the other model index is stale', async () =>
     xplanePath: '/xplane',
     mode: 'full',
   } as DoctorCheckContext).find((item) => item.id === 'csl_updates')!
-  expect(await check.run()).toEqual([
-    expect.objectContaining({
-      id: 'updates.csl',
-      outcome: 'unavailable',
-      params: { count: 1, checked: 1 },
-      evidence: [
-        expect.objectContaining({ value: 'X-CSL · Test models: 2 files' }),
-        expect.objectContaining({ value: 'ALTITUDE: Using cached index' }),
-      ],
-    }),
-  ])
+  const [result] = await check.run()
+  expect(result).toMatchObject({
+    id: 'updates.csl',
+    outcome: 'unavailable',
+    params: { count: 25, checked: 25 },
+  })
+  expect(result.evidence?.[0]?.value).toBe('ALTITUDE: Using cached index')
+  expect(result.evidence?.[1]?.value).toBe('X-CSL · Model 1: 2 files')
+  expect(result.evidence).toHaveLength(20)
 })
 
 function report(overrides: Partial<DoctorNavdataReport> = {}): DoctorNavdataReport {

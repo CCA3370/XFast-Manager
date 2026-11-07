@@ -1534,7 +1534,7 @@ function createCslUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinitio
           errors.length ? 'unavailable' : count ? 'info' : installed ? 'pass' : 'notApplicable',
           {
             params: { count, checked: installed },
-            evidence: evidence([...updates, ...errors]),
+            evidence: evidence([...errors, ...updates]),
             remediation: count
               ? { id: 'manage_csl', kind: 'navigate', risk: 'safe', route: '/csl' }
               : undefined,
