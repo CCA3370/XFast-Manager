@@ -15,7 +15,7 @@
             v-if="store.isLoadingInstalled"
             class="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"
           ></div>
-          {{ store.isLoadingInstalled ? $t('common.loading') : $t('map.gateway.refresh') }}
+          {{ store.isLoadingInstalled ? $t('common.loading') : $t('gatewayManager.refresh') }}
         </button>
         <button
           class="text-sm px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
@@ -223,7 +223,7 @@
               </div>
               <div>
                 {{
-                  $t('map.gateway.submissions', { count: airport.sceneryCount ?? 0 })
+                  $t('gatewayManager.submissions', { count: airport.sceneryCount ?? 0 })
                     .replace((airport.sceneryCount ?? 0).toString(), '')
                     .trim()
                 }}
@@ -285,7 +285,7 @@
                       v-if="store.airportDetail.recommendedSceneryId"
                       class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
                     >
-                      {{ $t('map.gateway.recommended') }} #{{
+                      {{ $t('gatewayManager.recommended') }} #{{
                         store.airportDetail.recommendedSceneryId
                       }}
                     </span>
@@ -337,7 +337,7 @@
                     class="px-3 pb-2 text-[11px] font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider border-b border-gray-200 dark:border-gray-600 mb-1.5"
                   >
                     {{
-                      $t('map.gateway.submissions', {
+                      $t('gatewayManager.submissions', {
                         count:
                           store.airportDetail.sceneryCount ?? store.airportDetail.sceneries.length,
                       })
@@ -481,7 +481,7 @@
                             class="rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5"
                           >
                             <div class="text-[11px] text-gray-700 dark:text-gray-300">
-                              {{ $t('map.gateway.artist') }}
+                              {{ $t('gatewayManager.artist') }}
                             </div>
                             <div class="font-medium text-gray-900 dark:text-white mt-1">
                               {{ store.sceneryDetail.artist || $t('common.unknown') }}
@@ -491,7 +491,7 @@
                             class="rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5"
                           >
                             <div class="text-[11px] text-gray-700 dark:text-gray-300">
-                              {{ $t('map.gateway.acceptedAt') }}
+                              {{ $t('gatewayManager.acceptedAt') }}
                             </div>
                             <div class="font-medium text-gray-900 dark:text-white mt-1">
                               {{
@@ -505,7 +505,7 @@
                             class="rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5"
                           >
                             <div class="text-[11px] text-gray-700 dark:text-gray-300">
-                              {{ $t('map.gateway.status') }}
+                              {{ $t('gatewayManager.status') }}
                             </div>
                             <div class="font-medium text-gray-900 dark:text-white mt-1">
                               {{ store.sceneryDetail.status || $t('common.unknown') }}
@@ -643,7 +643,7 @@
                         <div
                           class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-700 dark:text-gray-300 mb-2"
                         >
-                          {{ $t('map.gateway.features') }}
+                          {{ $t('gatewayManager.features') }}
                         </div>
                         <div class="flex flex-wrap gap-1.5">
                           <span
@@ -663,7 +663,7 @@
                         <div
                           class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-700 dark:text-gray-300 mb-2"
                         >
-                          {{ $t('map.gateway.comments') }}
+                          {{ $t('gatewayManager.comments') }}
                         </div>
                         <div
                           class="rounded-xl bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 px-3 py-2 text-[12px] text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto"
