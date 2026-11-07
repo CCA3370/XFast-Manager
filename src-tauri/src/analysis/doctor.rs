@@ -481,7 +481,7 @@ pub async fn doctor_apply_repair(
     xplane_path: String,
     repair: String,
 ) -> Result<repairs::RepairBackup, String> {
-    if super::is_xplane_running().await {
+    if super::is_xplane_running().await? {
         return Err("Close X-Plane before applying Health repairs".into());
     }
     tokio::task::spawn_blocking(move || {
@@ -495,7 +495,7 @@ pub async fn doctor_apply_repair(
 
 #[tauri::command]
 pub async fn doctor_restore_backup(xplane_path: String, backup_id: String) -> Result<(), String> {
-    if super::is_xplane_running().await {
+    if super::is_xplane_running().await? {
         return Err("Close X-Plane before restoring Health backups".into());
     }
     tokio::task::spawn_blocking(move || {

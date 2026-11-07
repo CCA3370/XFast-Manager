@@ -75,17 +75,18 @@ interface DeepCrashAnalysis {
 }
 
 interface CleanupReport {
-  totalBytes: number
-  totalFiles: number
+  items: Array<{
+    relativePath: string
+    level: string
+    recognized: boolean
+    sizeBytes: number
+    fileCount: number
+  }>
 }
 
 interface ActivityLogPage {
-  entries: Array<{
-    timestamp: number
-    operation: string
-    itemName: string
-    success: boolean
-  }>
+  entries: Array<{ operation: string; itemName: string }>
+  totalCount: number
 }
 
 export interface DoctorCheckContext {
@@ -94,7 +95,7 @@ export interface DoctorCheckContext {
   crashAnalysisDmpEnabled: boolean
   crashAnalysisIgnoreDateCheck: boolean
   installationId: string
-  xplaneRunning: boolean
+  xplaneRunning: boolean | null
   environment: DoctorEnvironmentReport | null
   xfast: DoctorXfastHealthReport | null
   log: XPlaneLogAnalysis | null
@@ -781,7 +782,7 @@ function createLogCheck(context: DoctorCheckContext): DoctorCheckDefinition {
     section: 'stability',
     phase: 'local',
     modes: ['quick', 'full'],
-    timeoutMs: context.mode === 'full' ? 45_000 : 15_000,
+    timeoutMs: 15_000,
     async run() {
       let log: XPlaneLogAnalysis
       try {
@@ -813,9 +814,10 @@ function createLogCheck(context: DoctorCheckContext): DoctorCheckDefinition {
         context.system.gpuDriver = log.system_info.gpu_driver
       }
 
-      const canEvaluateSessionEnd = !context.xplaneRunning
+      const canEvaluateSessionEnd = context.xplaneRunning === false
       const sessionEnd = log.session_end ?? 'unknown'
       const checks: DoctorCheckResult[] = [
+        result('stability.log_available', 'stability', 'pass'),
         result(
           'stability.last_session',
           'stability',
@@ -825,9 +827,18 @@ function createLogCheck(context: DoctorCheckContext): DoctorCheckDefinition {
               : sessionEnd === 'normal'
                 ? 'pass'
                 : 'info'
-            : 'notApplicable',
+            : context.xplaneRunning === true
+              ? 'notApplicable'
+              : 'unavailable',
           {
-            params: { sessionEnd: canEvaluateSessionEnd ? sessionEnd : 'running' },
+            params: {
+              sessionEnd:
+                context.xplaneRunning === true
+                  ? 'running'
+                  : canEvaluateSessionEnd
+                    ? sessionEnd
+                    : 'unknown',
+            },
             evidence:
               canEvaluateSessionEnd && (log.crash_info || log.log_tail)
                 ? evidence((log.crash_info || log.log_tail).split('\n').slice(-20), 'log')
@@ -856,52 +867,73 @@ function createLogCheck(context: DoctorCheckContext): DoctorCheckDefinition {
         )
       }
 
-      if (canEvaluateSessionEnd && sessionEnd === 'crash' && context.mode === 'full') {
-        if (!context.crashAnalysisDmpEnabled) {
-          checks.push(
-            result('stability.crash_dump', 'stability', 'notApplicable', {
-              remediation: {
-                id: 'enable_dmp_analysis',
-                kind: 'navigate',
-                risk: 'safe',
-                route: '/settings',
-              },
-            }),
-          )
-        } else {
-          const crash = await invoke<DeepCrashAnalysis | null>('analyze_crash_report', {
-            xplanePath: context.xplanePath,
-            logIssues: log.issues,
-            skipDateCheck: context.crashAnalysisIgnoreDateCheck,
-          })
-          if (!crash) {
-            checks.push(result('stability.crash_dump', 'stability', 'notApplicable'))
-          } else {
-            const top = crash.crash_causes[0]
-            checks.push(
-              result('stability.crash_dump', 'stability', top ? 'critical' : 'warning', {
-                params: {
-                  cause: top?.cause_key ?? 'unknown',
-                  confidence: top ? Math.round(top.score) : 0,
-                  module: top?.blamed_module ?? '',
-                },
-                evidence: evidence(
-                  [
-                    ...crash.crash_causes.flatMap((cause) => [
-                      `${cause.cause_key}: ${Math.round(cause.score)}%${cause.blamed_module ? ` (${cause.blamed_module})` : ''}`,
-                      ...cause.evidence,
-                    ]),
-                    ...crash.loaded_plugins.map((plugin) => `plugin: ${plugin}`),
-                  ].slice(0, 20),
-                  'log',
-                ),
-              }),
-            )
-          }
-        }
-      }
-
       return checks
+    },
+  }
+}
+
+function createCrashDumpCheck(context: DoctorCheckContext): DoctorCheckDefinition {
+  return {
+    id: 'crash_dump',
+    section: 'stability',
+    phase: 'local',
+    modes: ['full'],
+    timeoutMs: 30_000,
+    async run() {
+      const checkId = 'stability.crash_dump'
+      if (
+        context.xplaneRunning !== false ||
+        !context.log?.is_xplane_log ||
+        context.log.session_end !== 'crash'
+      ) {
+        return [result(checkId, 'stability', 'notApplicable')]
+      }
+      if (!context.crashAnalysisDmpEnabled) {
+        return [
+          result(checkId, 'stability', 'notApplicable', {
+            remediation: {
+              id: 'enable_dmp_analysis',
+              kind: 'navigate',
+              risk: 'safe',
+              route: '/settings',
+            },
+          }),
+        ]
+      }
+      const crash = await invoke<DeepCrashAnalysis | null>('analyze_crash_report', {
+        xplanePath: context.xplanePath,
+        logIssues: context.log.issues,
+        skipDateCheck: context.crashAnalysisIgnoreDateCheck,
+      })
+      if (!crash) return [result(checkId, 'stability', 'notApplicable')]
+      if (!crash.parse_success) {
+        return [
+          result(checkId, 'stability', 'unavailable', {
+            evidence: evidence([crash.report_info.file_name], 'path'),
+          }),
+        ]
+      }
+      const top = crash.crash_causes[0]
+      return [
+        result(checkId, 'stability', top ? 'warning' : 'info', {
+          params: {
+            cause: top?.cause_key ?? 'unknown',
+            confidence: top ? Math.round(top.score) : 0,
+            module: top?.blamed_module ?? '',
+          },
+          evidence: evidence(
+            [
+              crash.report_info.file_name,
+              ...crash.crash_causes.flatMap((cause) => [
+                `${cause.cause_key}: ${Math.round(cause.score)}%${cause.blamed_module ? ` (${cause.blamed_module})` : ''}`,
+                ...cause.evidence,
+              ]),
+              ...crash.loaded_plugins.map((plugin) => `plugin: ${plugin}`),
+            ],
+            'log',
+          ),
+        }),
+      ]
     },
   }
 }
@@ -1093,23 +1125,22 @@ function createActivityCheck(): DoctorCheckDefinition {
     modes: ['quick', 'full'],
     timeoutMs: 10_000,
     async run() {
-      const page = await invoke<ActivityLogPage>('get_activity_log', { limit: 100, offset: 0 })
-      const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60
-      const failures = page.entries.filter(
-        (entry) =>
-          entry.timestamp >= sevenDaysAgo &&
-          !entry.success &&
-          (entry.operation === 'install' || entry.operation === 'update'),
-      )
+      const since = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60
+      const page = await invoke<ActivityLogPage>('get_activity_log', {
+        limit: 10,
+        offset: 0,
+        since,
+        failedInstallsAndUpdates: true,
+      })
+      const count = page.totalCount
       return [
-        result('xfast.recent_failures', 'xfast', failures.length ? 'info' : 'pass', {
-          params: { count: failures.length },
-          evidence: evidence(
-            failures.slice(0, 10).map((entry) => `${entry.operation} · ${entry.itemName}`),
-          ),
-          remediation: failures.length
-            ? { id: 'open_activity', kind: 'navigate', risk: 'safe', route: '/activity' }
-            : undefined,
+        result('xfast.recent_failures', 'xfast', count > 0 ? 'info' : 'pass', {
+          params: { count },
+          evidence: evidence(page.entries.map((entry) => `${entry.operation} · ${entry.itemName}`)),
+          remediation:
+            count > 0
+              ? { id: 'open_activity', kind: 'navigate', risk: 'safe', route: '/activity' }
+              : undefined,
         }),
       ]
     },
@@ -1127,24 +1158,28 @@ function createCleanupCheck(context: DoctorCheckContext): DoctorCheckDefinition 
       const cleanup = await invoke<CleanupReport>('scan_output_cleanup_items', {
         xplanePath: context.xplanePath,
       })
+      const candidates = cleanup.items
+        .filter((item) => item.recognized && item.level === 'recommended' && item.sizeBytes > 0)
+        .sort((a, b) => b.sizeBytes - a.sizeBytes)
+      const bytes = candidates.reduce((total, item) => total + item.sizeBytes, 0)
+      const files = candidates.reduce((total, item) => total + item.fileCount, 0)
       return [
-        result(
-          'storage.cleanable',
-          'storage',
-          cleanup.totalBytes >= CLEANABLE_WARNING_BYTES ? 'info' : 'pass',
-          {
-            params: { size: formatBytes(cleanup.totalBytes), files: cleanup.totalFiles },
-            remediation:
-              cleanup.totalBytes > 0
-                ? {
-                    id: 'open_cleanup',
-                    kind: 'navigate',
-                    risk: 'safe',
-                    route: '/disk-usage/output-cleanup',
-                  }
-                : undefined,
-          },
-        ),
+        result('storage.cleanable', 'storage', bytes >= CLEANABLE_WARNING_BYTES ? 'info' : 'pass', {
+          params: { size: formatBytes(bytes), files },
+          evidence: evidence(
+            candidates.map((item) => `${item.relativePath}: ${formatBytes(item.sizeBytes)}`),
+            'path',
+          ),
+          remediation:
+            bytes > 0
+              ? {
+                  id: 'open_cleanup',
+                  kind: 'navigate',
+                  risk: 'safe',
+                  route: '/disk-usage/output-cleanup',
+                }
+              : undefined,
+        }),
       ]
     },
   }
@@ -1430,7 +1465,7 @@ function createCslUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinitio
       ])
       const serverBaseUrl = activeServer || DEFAULT_CSL_SERVER
       const requestId = `health-${Date.now().toString(36)}`
-      const [csl, altitude] = await Promise.all([
+      const scans = await Promise.allSettled([
         invoke<CslScanResult>('csl_scan_packages', {
           xplanePath: context.xplanePath,
           customPaths: customPaths ?? [],
@@ -1444,22 +1479,42 @@ function createCslUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinitio
           requestId: `${requestId}-altitude`,
         }),
       ])
-      const cslUpdates = csl.packages.filter((item) => item.status === 'needs_update').length
-      const altitudeUpdates = altitude.packages.filter(
-        (item) => item.status === 'needs_update',
-      ).length
-      const count = cslUpdates + altitudeUpdates
-      const warnings = [csl.index_warning, altitude.index_warning].filter(
-        (warning): warning is string => Boolean(warning),
-      )
+      let installed = 0
+      let count = 0
+      const errors: string[] = []
+      const updates: string[] = []
+      for (const [index, scan] of scans.entries()) {
+        const label = index === 0 ? 'X-CSL' : 'ALTITUDE'
+        if (scan.status === 'rejected') {
+          errors.push(`${label}: ${String(scan.reason)}`)
+          continue
+        }
+        if (scan.value.index_warning) {
+          errors.push(`${label}: ${scan.value.index_warning}`)
+          continue
+        }
+        for (const item of scan.value.packages) {
+          if (item.status === 'needs_update') {
+            count++
+            updates.push(`${label} · ${item.name}: ${item.files_to_update} files`)
+          }
+          if (item.status === 'needs_update' || item.status === 'up_to_date') installed++
+          if (item.status === 'checking') errors.push(`${label} · ${item.name}: still unverified`)
+        }
+      }
       return [
-        result('updates.csl', 'updates', count ? 'info' : warnings.length ? 'info' : 'pass', {
-          params: { count, csl: cslUpdates, altitude: altitudeUpdates },
-          evidence: evidence(warnings),
-          remediation: count
-            ? { id: 'manage_csl', kind: 'navigate', risk: 'safe', route: '/csl' }
-            : undefined,
-        }),
+        result(
+          'updates.csl',
+          'updates',
+          errors.length ? 'unavailable' : count ? 'info' : installed ? 'pass' : 'notApplicable',
+          {
+            params: { count, checked: installed },
+            evidence: evidence([...updates, ...errors]),
+            remediation: count
+              ? { id: 'manage_csl', kind: 'navigate', risk: 'safe', route: '/csl' }
+              : undefined,
+          },
+        ),
       ]
     },
   }
@@ -1472,6 +1527,7 @@ export function createDoctorCheckDefinitions(context: DoctorCheckContext): Docto
     createInspectionCheck(context),
     createXfastCheck(context),
     createLogCheck(context),
+    createCrashDumpCheck(context),
     createSceneryCheck(context),
     createFlattenCheck(context),
     createNavdataCheck(context),

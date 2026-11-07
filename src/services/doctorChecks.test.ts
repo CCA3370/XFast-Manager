@@ -25,7 +25,7 @@ function navdataCheck() {
   return createDoctorCheckDefinitions(context).find((check) => check.id === 'navdata')!
 }
 
-function logCheck(xplaneRunning: boolean) {
+function logCheck(xplaneRunning: boolean | null) {
   const context: DoctorCheckContext = {
     xplanePath: '/xplane',
     mode: 'full',
@@ -152,6 +152,33 @@ describe('add-on update diagnostics', () => {
   })
 })
 
+it('keeps verified CSL updates when the other model index is stale', async () => {
+  tauri.invoke.mockReset().mockImplementation(async (command: string) => {
+    if (command === 'csl_scan_packages') {
+      return { packages: [{ name: 'Test models', status: 'needs_update', files_to_update: 2 }] }
+    }
+    if (command === 'altitude_scan_packages') {
+      return { packages: [], index_warning: 'Using cached index' }
+    }
+    throw new Error(command)
+  })
+  const check = createDoctorCheckDefinitions({
+    xplanePath: '/xplane',
+    mode: 'full',
+  } as DoctorCheckContext).find((item) => item.id === 'csl_updates')!
+  expect(await check.run()).toEqual([
+    expect.objectContaining({
+      id: 'updates.csl',
+      outcome: 'unavailable',
+      params: { count: 1, checked: 1 },
+      evidence: [
+        expect.objectContaining({ value: 'X-CSL · Test models: 2 files' }),
+        expect.objectContaining({ value: 'ALTITUDE: Using cached index' }),
+      ],
+    }),
+  ])
+})
+
 function report(overrides: Partial<DoctorNavdataReport> = {}): DoctorNavdataReport {
   const absent = { present: false, problems: [], errors: [], headers: [] }
   return {
@@ -213,6 +240,22 @@ describe('navdata diagnostics', () => {
 
 describe('live-session stability diagnostics', () => {
   beforeEach(() => vi.clearAllMocks())
+
+  it('does not interpret the last session when the live process state is unknown', async () => {
+    tauri.invoke.mockResolvedValue({
+      log_path: '/xplane/Log.txt',
+      is_xplane_log: true,
+      session_end: 'crash',
+      crash_info: 'This application has crashed',
+      issues: [],
+      system_info: { xplane_version: '12.4.4', gpu_model: null, gpu_driver: null },
+    })
+    const checks = await logCheck(null).run()
+    expect(checks.find((check) => check.id === 'stability.last_session')).toMatchObject({
+      outcome: 'unavailable',
+      evidence: undefined,
+    })
+  })
 
   it('keeps an unfinished log inconclusive rather than reporting a crash', async () => {
     tauri.invoke.mockResolvedValue({

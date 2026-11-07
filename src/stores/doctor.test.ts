@@ -216,7 +216,7 @@ async function healthyResponse(command: string): Promise<unknown> {
     case 'get_activity_log':
       return { entries: [], totalCount: 0 }
     case 'scan_output_cleanup_items':
-      return { totalBytes: 0, totalFiles: 0 }
+      return { items: [] }
     case 'get_platform':
       return 'linux'
     case 'scan_aircraft':
@@ -373,6 +373,29 @@ describe('Health diagnostic store', () => {
         expect.objectContaining({ id: 'scenery.dependencies', outcome: 'pass' }),
         expect.objectContaining({ id: 'scenery.overlaps', outcome: 'pass' }),
         expect.objectContaining({ id: 'diagnostic.scenery_flatten', outcome: 'unavailable' }),
+      ]),
+    )
+  })
+
+  it('keeps a confirmed simulator crash when the independent dump inspection fails', async () => {
+    useAppStore().crashAnalysisDmpEnabled = true
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'analyze_xplane_log') {
+        return {
+          ...((await healthyResponse(command)) as object),
+          session_end: 'crash',
+          crash_info: 'This application has crashed',
+        }
+      }
+      if (command === 'analyze_crash_report') throw new Error('Dump could not be parsed')
+      return healthyResponse(command)
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('full')
+    expect(store.currentRun?.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'stability.last_session', outcome: 'critical' }),
+        expect.objectContaining({ id: 'diagnostic.crash_dump', outcome: 'unavailable' }),
       ]),
     )
   })
@@ -641,7 +664,7 @@ describe('Health diagnostic store', () => {
         expect.objectContaining({ id: 'addons.inventory', outcome: 'pass' }),
         expect.objectContaining({ id: 'storage.cleanable', outcome: 'pass' }),
         expect.objectContaining({ id: 'updates.app', outcome: 'pass' }),
-        expect.objectContaining({ id: 'updates.csl', outcome: 'pass' }),
+        expect.objectContaining({ id: 'updates.csl', outcome: 'notApplicable' }),
       ]),
     )
   })

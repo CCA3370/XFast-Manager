@@ -525,7 +525,7 @@ export const useDoctorStore = defineStore('doctor', () => {
       crashAnalysisDmpEnabled: appStore.crashAnalysisDmpEnabled,
       crashAnalysisIgnoreDateCheck: appStore.crashAnalysisIgnoreDateCheck,
       installationId: '',
-      xplaneRunning: false,
+      xplaneRunning: null,
       environment: null,
       xfast: null,
       log: null,
@@ -564,11 +564,17 @@ export const useDoctorStore = defineStore('doctor', () => {
       (definition) =>
         definition.phase === 'local' &&
         definition.id !== 'environment' &&
-        definition.id !== 'runtime',
+        definition.id !== 'runtime' &&
+        definition.id !== 'crash_dump',
     )
     await runBounded(localDefinitions, LOCAL_CONCURRENCY, async (definition) => {
       updateRunChecks(runToken, await executeDefinition(definition, runToken))
     })
+
+    const crashDump = definitions.find((definition) => definition.id === 'crash_dump')
+    if (crashDump) {
+      updateRunChecks(runToken, await executeDefinition(crashDump, runToken))
+    }
 
     const networkDefinitions = definitions.filter((definition) => definition.phase === 'network')
     if (networkDefinitions.length && activeRunToken === runToken) phase.value = 'network'

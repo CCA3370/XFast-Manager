@@ -1407,40 +1407,39 @@ fn extract_system_info(lines: &[String]) -> SystemInfo {
     info
 }
 
-#[tauri::command]
-fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> {
+fn has_simulator_log_header(text: &str) -> bool {
+    text.lines().take(100).any(|line| {
+        let line = line.trim_start_matches('\u{feff}').trim_start();
+        line.strip_prefix("Log.txt for X-Plane ")
+            .and_then(|tail| tail.bytes().next())
+            .is_some_and(|byte| byte.is_ascii_digit())
+    })
+}
+
+fn analyze_xplane_log_file(xplane_path: &str) -> Result<XPlaneLogAnalysis, String> {
     use std::fs::File;
-    use std::io::{BufRead, BufReader};
+    use std::io::Read;
 
-    let log_path = std::path::PathBuf::from(&xplane_path).join("Log.txt");
+    const MAX_LOG_BYTES: u64 = 64 * 1024 * 1024;
+    let log_path = std::path::Path::new(xplane_path).join("Log.txt");
     let log_path_str = log_path.to_string_lossy().to_string();
-
-    let file = File::open(&log_path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
+    let file = File::open(&log_path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
             "Log.txt not found".to_string()
         } else {
-            format!("Cannot open Log.txt: {e}")
+            format!("Cannot open Log.txt: {error}")
         }
     })?;
-    let reader = BufReader::new(file);
-    let lines: Vec<String> = reader
-        .lines()
-        .map(|l| l.map_err(|e| format!("Read error: {e}")))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    // Check if it's an X-Plane log (first 100 lines)
-    let xplane_indicators = [
-        "X-Plane",
-        "X-System folder",
-        "Vulkan Device",
-        "OpenGL Render",
-        "Fetching plugins for",
-        "Laminar Research",
-    ];
-    let is_xplane_log = lines
-        .iter()
-        .take(100)
-        .any(|line| xplane_indicators.iter().any(|ind| line.contains(ind)));
+    let mut bytes = Vec::new();
+    file.take(MAX_LOG_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("Cannot read Log.txt: {error}"))?;
+    if bytes.len() as u64 > MAX_LOG_BYTES {
+        return Err("Log.txt exceeds the 64 MiB diagnostic read limit".into());
+    }
+    let text = String::from_utf8_lossy(&bytes);
+    let is_xplane_log = has_simulator_log_header(&text);
+    let lines: Vec<String> = text.lines().map(str::to_owned).collect();
 
     let system_info = extract_system_info(&lines);
 
@@ -1528,6 +1527,13 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
 }
 
 #[tauri::command]
+async fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> {
+    tokio::task::spawn_blocking(move || analyze_xplane_log_file(&xplane_path))
+        .await
+        .map_err(|error| format!("Log inspection task failed: {error}"))?
+}
+
+#[tauri::command]
 async fn analyze_crash_report(
     xplane_path: String,
     log_issues: Vec<LogIssue>,
@@ -1545,8 +1551,17 @@ mod log_analysis_tests {
         std::fs::write(temp.path().join("Log.txt"), lines.join("\n"))
             .expect("failed to write Log.txt");
 
-        analyze_xplane_log(temp.path().to_string_lossy().to_string())
-            .expect("failed to analyze Log.txt")
+        analyze_xplane_log_file(&temp.path().to_string_lossy()).expect("failed to analyze Log.txt")
+    }
+
+    #[test]
+    fn identifies_the_simulator_header_without_accepting_an_installer_log() {
+        assert!(has_simulator_log_header(
+            "\u{feff}Log.txt for X-Plane 12.4.4\n"
+        ));
+        assert!(!has_simulator_log_header(
+            "Installer Log.txt for X-Plane Installer 5.10\nX-Plane"
+        ));
     }
 
     #[test]
@@ -1858,6 +1873,31 @@ fn check_path_exists(path: String) -> bool {
     std::path::Path::new(&path).exists()
 }
 
+fn is_xplane_simulator_name(name: &std::ffi::OsStr) -> bool {
+    let lower = name.to_string_lossy().to_ascii_lowercase();
+    #[cfg(windows)]
+    let Some(name) = lower.strip_suffix(".exe") else {
+        return false;
+    };
+    #[cfg(not(windows))]
+    let name = lower.as_str();
+    let Some(suffix) = name.strip_prefix("x-plane") else {
+        return false;
+    };
+    if suffix.is_empty() || matches!(suffix, "-x86_64" | "-aarch64") {
+        return true;
+    }
+    // Accept versioned simulator filenames such as X-Plane12.exe. Installers,
+    // updaters and auxiliary executables have no simulator version suffix.
+    suffix
+        .trim_start_matches([' ', '-', '_'])
+        .bytes()
+        .next()
+        .is_some_and(|byte| byte.is_ascii_digit())
+        && !suffix.contains("installer")
+        && !suffix.contains("updater")
+}
+
 #[cfg(target_os = "windows")]
 fn find_xplane_executable_in_root(path: &std::path::Path) -> Option<std::path::PathBuf> {
     let exact = path.join("X-Plane.exe");
@@ -1870,11 +1910,7 @@ fn find_xplane_executable_in_root(path: &std::path::Path) -> Option<std::path::P
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
         .filter(|entry_path| {
-            entry_path.is_file()
-                && entry_path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("X-Plane") && name.ends_with(".exe"))
+            entry_path.is_file() && entry_path.file_name().is_some_and(is_xplane_simulator_name)
         })
         .collect();
 
@@ -1895,11 +1931,7 @@ fn find_xplane_executable_in_root(path: &std::path::Path) -> Option<std::path::P
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
         .filter(|entry_path| {
-            entry_path.is_file()
-                && entry_path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("X-Plane"))
+            entry_path.is_file() && entry_path.file_name().is_some_and(is_xplane_simulator_name)
         })
         .collect();
 
@@ -1982,83 +2014,41 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
 }
 
 /// Run a command in a blocking task and check if the process was found
-async fn check_process_running(
-    command: &'static str,
-    args: &'static [&'static str],
-    check_output: fn(&std::process::Output) -> bool,
-) -> bool {
-    let result = tokio::task::spawn_blocking(move || {
-        let mut cmd = std::process::Command::new(command);
-        cmd.args(args);
-        #[cfg(target_os = "windows")]
+#[tauri::command]
+async fn is_xplane_running() -> Result<bool, String> {
+    let state = tokio::task::spawn_blocking(|| {
+        use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+        let mut system = System::new();
+        if system.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing(),
+        ) == 0
         {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-            cmd.creation_flags(CREATE_NO_WINDOW);
+            return Err("Could not enumerate processes".to_string());
         }
-        cmd.output()
+        Ok(system
+            .processes()
+            .values()
+            .any(|process| is_xplane_simulator_name(process.name())))
     })
-    .await;
-
-    match result {
-        Ok(Ok(output)) => {
-            let is_running = check_output(&output);
-            let state = if is_running {
+    .await
+    .map_err(|error| format!("Process inspection task failed: {error}"))
+    .and_then(|state| state);
+    match &state {
+        Ok(running) => log_xplane_running_state_once(
+            if *running {
                 XPLANE_RUNNING_STATE_RUNNING
             } else {
                 XPLANE_RUNNING_STATE_NOT_RUNNING
-            };
-            log_xplane_running_state_once(state, format!("X-Plane running check: {}", is_running));
-            is_running
-        }
-        Ok(Err(e)) => {
-            log_xplane_running_state_once(
-                XPLANE_RUNNING_STATE_CHECK_FAILED,
-                format!("Failed to run {}: {}", command, e),
-            );
-            false
-        }
-        Err(e) => {
-            log_xplane_running_state_once(
-                XPLANE_RUNNING_STATE_CHECK_FAILED,
-                format!("Task join error: {}", e),
-            );
-            false
-        }
-    }
-}
-
-#[tauri::command]
-async fn is_xplane_running() -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        check_process_running(
-            "tasklist",
-            &["/FI", "IMAGENAME eq X-Plane.exe", "/NH"],
-            |output| {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                stdout.contains("X-Plane.exe")
             },
-        )
-        .await
+            format!("X-Plane running check: {running}"),
+        ),
+        Err(error) => {
+            log_xplane_running_state_once(XPLANE_RUNNING_STATE_CHECK_FAILED, error.clone())
+        }
     }
-
-    #[cfg(target_os = "macos")]
-    {
-        check_process_running("pgrep", &["-x", "X-Plane"], |output| {
-            output.status.success()
-        })
-        .await
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // Linux executable is X-Plane-*, use pattern match instead of exact match
-        check_process_running("pgrep", &["-f", "X-Plane"], |output| {
-            output.status.success()
-        })
-        .await
-    }
+    state
 }
 
 #[tauri::command]
@@ -2129,6 +2119,16 @@ mod launch_tests {
 
         let error = validate_xplane_root_path(temp.path()).unwrap_err();
         assert!(error.contains("X-Plane executable not found"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn installer_executables_do_not_satisfy_the_simulator_check() {
+        let temp = tempfile::tempdir().unwrap();
+        for name in ["X-Plane Installer.exe", "X-Plane 12 Installer.exe"] {
+            std::fs::write(temp.path().join(name), b"").unwrap();
+        }
+        assert!(find_xplane_executable_in_root(temp.path()).is_none());
     }
 }
 
@@ -3446,6 +3446,8 @@ async fn get_activity_log(
     limit: Option<u64>,
     offset: Option<u64>,
     item_type: Option<String>,
+    since: Option<i64>,
+    failed_installs_and_updates: Option<bool>,
 ) -> Result<ActivityLogPage, String> {
     use database::entities::activity_log;
     use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
@@ -3454,10 +3456,21 @@ async fn get_activity_log(
     let limit = limit.unwrap_or(50);
     let offset = offset.unwrap_or(0);
 
-    let mut query = activity_log::Entity::find().order_by_desc(activity_log::Column::Timestamp);
+    let mut query = activity_log::Entity::find()
+        .order_by_desc(activity_log::Column::Timestamp)
+        .order_by_desc(activity_log::Column::Id);
 
     if let Some(ref it) = item_type {
         query = query.filter(activity_log::Column::ItemType.eq(it.as_str()));
+    }
+
+    if let Some(since) = since {
+        query = query.filter(activity_log::Column::Timestamp.gte(since));
+    }
+    if failed_installs_and_updates == Some(true) {
+        query = query
+            .filter(activity_log::Column::Success.eq(false))
+            .filter(activity_log::Column::Operation.is_in(["install", "update"]));
     }
 
     let total_count = query
@@ -4047,7 +4060,7 @@ async fn clean_output_items(
     xplane_path: String,
     targets: Vec<output_cleanup::OutputCleanupTarget>,
 ) -> Result<output_cleanup::OutputCleanupResult, String> {
-    if is_xplane_running().await {
+    if is_xplane_running().await? {
         return Err("X-Plane is running. Close X-Plane before cleaning Output files.".to_string());
     }
 
@@ -4061,7 +4074,7 @@ async fn change_output_cleanup_item_state(
     xplane_path: String,
     change: output_cleanup::OutputCleanupStateChange,
 ) -> Result<(), String> {
-    if is_xplane_running().await {
+    if is_xplane_running().await? {
         return Err("xplane_running".into());
     }
     tokio::task::spawn_blocking(move || {
