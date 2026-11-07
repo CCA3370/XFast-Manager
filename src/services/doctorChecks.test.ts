@@ -4,6 +4,10 @@ import { createDoctorCheckDefinitions, type DoctorCheckContext } from './doctorC
 
 const tauri = vi.hoisted(() => ({ invoke: vi.fn() }))
 vi.mock('@tauri-apps/api/core', () => ({ invoke: tauri.invoke }))
+vi.mock('@/services/storage', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/storage')>()),
+  getItem: vi.fn().mockResolvedValue(null),
+}))
 
 function navdataCheck() {
   const context: DoctorCheckContext = {
@@ -51,9 +55,14 @@ describe('Gateway diagnostics', () => {
   })
 
   it('reports partial upstream failures separately rather than passing unchecked airports', async () => {
-    tauri.invoke.mockResolvedValueOnce([{}, {}]).mockResolvedValueOnce([
-      { airportIcao: 'ZBAA', updateAvailable: null },
-      { airportIcao: 'ZSPD', updateAvailable: false },
+    const installed = [
+      { id: 1, airportIcao: 'ZBAA', sceneryId: 12 },
+      { id: 2, airportIcao: 'ZSPD', sceneryId: 13 },
+      { id: 3, airportIcao: 'ZGGG', sceneryId: 14 },
+    ]
+    tauri.invoke.mockResolvedValueOnce(installed).mockResolvedValueOnce([
+      { ...installed[0], updateAvailable: null },
+      { ...installed[1], updateAvailable: true, latestSceneryId: 20 },
     ])
     const check = createDoctorCheckDefinitions({
       xplanePath: '/xplane',
@@ -61,9 +70,85 @@ describe('Gateway diagnostics', () => {
     } as DoctorCheckContext).find((item) => item.id === 'gateway_updates')!
     expect(await check.run()).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: 'updates.gateway_unavailable', outcome: 'unavailable' }),
+        expect.objectContaining({
+          id: 'updates.gateway_unavailable',
+          outcome: 'unavailable',
+          params: { count: 2 },
+        }),
+        expect.objectContaining({
+          id: 'updates.gateway',
+          outcome: 'info',
+          params: { installed: 3, checked: 1, count: 1 },
+        }),
       ]),
     )
+  })
+})
+
+describe('add-on update diagnostics', () => {
+  function check() {
+    return createDoctorCheckDefinitions({
+      xplanePath: '/xplane',
+      mode: 'full',
+    } as DoctorCheckContext).find((item) => item.id === 'addon_updates')!
+  }
+
+  it('does not query external updaters or report them as up to date', async () => {
+    tauri.invoke.mockReset().mockResolvedValue({
+      entries: [{ folderName: 'External', updateUrl: 'x-updater:External' }],
+    })
+    expect(await check().run()).toEqual([
+      expect.objectContaining({
+        outcome: 'notApplicable',
+        params: { count: 0, installed: 0, checked: 0, external: 3 },
+      }),
+    ])
+    expect(tauri.invoke.mock.calls.map(([command]) => command)).toEqual([
+      'scan_aircraft',
+      'scan_plugins',
+      'get_scenery_manager_data',
+    ])
+  })
+
+  it('retains confirmed updates when another provider or inventory cannot be checked', async () => {
+    const item = (folderName: string) => ({
+      folderName,
+      updateUrl: 'https://example.test',
+      version: '1',
+    })
+    tauri.invoke.mockImplementation(async (command: string) => {
+      switch (command) {
+        case 'scan_aircraft':
+          return { entries: [item('Current'), item('Update'), item('Offline'), item('Omitted')] }
+        case 'scan_plugins':
+          throw new Error('plugin inventory unavailable')
+        case 'get_scenery_manager_data':
+          return { entries: [] }
+        case 'check_aircraft_updates':
+          return [
+            { ...item('Current'), latestVersion: '1', hasUpdate: false },
+            { ...item('Update'), latestVersion: '2', hasUpdate: true },
+            { ...item('Offline'), latestVersion: null, hasUpdate: false },
+          ]
+        default:
+          throw new Error(command)
+      }
+    })
+    expect(await check().run()).toEqual([
+      expect.objectContaining({
+        outcome: 'unavailable',
+        params: { installed: 4, checked: 2, count: 1, external: 0 },
+        evidence: expect.arrayContaining([
+          expect.objectContaining({ value: expect.stringContaining('Update') }),
+          expect.objectContaining({ value: expect.stringContaining('Offline') }),
+          expect.objectContaining({ value: expect.stringContaining('Omitted') }),
+          expect.objectContaining({
+            value: expect.stringContaining('plugin inventory unavailable'),
+          }),
+        ]),
+        remediation: expect.objectContaining({ id: 'manage_updates' }),
+      }),
+    ])
   })
 })
 

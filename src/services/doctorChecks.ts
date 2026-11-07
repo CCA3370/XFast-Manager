@@ -22,6 +22,8 @@ import type {
 import { getItem, STORAGE_KEYS } from '@/services/storage'
 import {
   hasAddonUpdateBetaPreference,
+  getUpdateProvider,
+  usesRemoteUpdateCheck,
   normalizeAddonUpdateItemBetaPreferences,
   type AddonUpdateItemBetaPreferences,
 } from '@/utils/addonUpdatePreferences'
@@ -978,65 +980,126 @@ function createAddonUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinit
     modes: ['full'],
     timeoutMs: 60_000,
     async run() {
-      let total = 0
-      const details: string[] = []
       const betaPreferences = normalizeAddonUpdateItemBetaPreferences(
         await getItem<unknown>(STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES),
       )
+      const xplanePath = context.xplanePath
+      const sources = [
+        {
+          type: 'aircraft',
+          scan: 'scan_aircraft',
+          command: 'check_aircraft_updates',
+          argument: 'aircraft',
+        },
+        {
+          type: 'plugin',
+          scan: 'scan_plugins',
+          command: 'check_plugins_updates',
+          argument: 'plugins',
+        },
+        {
+          type: 'scenery',
+          scan: 'get_scenery_manager_data',
+          command: 'check_scenery_updates',
+          argument: 'scenery',
+        },
+      ] as const
 
-      const aircraft = await invoke<{ entries: AircraftInfo[] }>('scan_aircraft', {
-        xplanePath: context.xplanePath,
-      })
-      const aircraftCandidates = aircraft.entries.filter((item) => item.updateUrl)
-      if (aircraftCandidates.length) {
-        const checked = await invoke<AircraftInfo[]>('check_aircraft_updates', {
-          xplanePath: context.xplanePath,
-          aircraft: aircraftCandidates,
-          betaFolders: betaFoldersFor(betaPreferences, 'aircraft', aircraftCandidates),
-        })
-        const count = checked.filter((item) => item.hasUpdate).length
-        total += count
-        if (count) details.push(`aircraft: ${count}`)
-      }
+      const groups = await Promise.allSettled(
+        sources.map(async ({ type, scan, command, argument }) => {
+          type Addon = AircraftInfo | PluginInfo | SceneryManagerEntry
+          const { entries } = await invoke<{ entries: Addon[] }>(scan, { xplanePath })
+          const candidates = entries.filter(usesRemoteUpdateCheck)
+          const external = entries.filter(
+            (item) => getUpdateProvider(item) && !usesRemoteUpdateCheck(item),
+          )
+          const details = external.map((item) => `${item.folderName} · ${getUpdateProvider(item)}`)
+          if (!candidates.length) {
+            return { candidates: 0, checked: 0, updates: 0, external: external.length, details }
+          }
 
-      const plugins = await invoke<{ entries: PluginInfo[] }>('scan_plugins', {
-        xplanePath: context.xplanePath,
-      })
-      const pluginCandidates = plugins.entries.filter((item) => item.updateUrl)
-      if (pluginCandidates.length) {
-        const checked = await invoke<PluginInfo[]>('check_plugins_updates', {
-          xplanePath: context.xplanePath,
-          plugins: pluginCandidates,
-          betaFolders: betaFoldersFor(betaPreferences, 'plugin', pluginCandidates),
-        })
-        const count = checked.filter((item) => item.hasUpdate).length
-        total += count
-        if (count) details.push(`plugins: ${count}`)
-      }
+          let responses: Addon[]
+          try {
+            responses = await invoke<Addon[]>(command, {
+              xplanePath,
+              [argument]: candidates,
+              betaFolders: betaFoldersFor(betaPreferences, type, candidates),
+            })
+          } catch (error) {
+            return {
+              candidates: candidates.length,
+              checked: 0,
+              updates: 0,
+              external: external.length,
+              details: [...details, ...candidates.map((item) => item.folderName), String(error)],
+            }
+          }
 
-      const scenery = await invoke<SceneryManagerData>('get_scenery_manager_data', {
-        xplanePath: context.xplanePath,
-      })
-      const sceneryCandidates = scenery.entries.filter((item) => item.updateUrl)
-      if (sceneryCandidates.length) {
-        const checked = await invoke<SceneryManagerEntry[]>('check_scenery_updates', {
-          xplanePath: context.xplanePath,
-          scenery: sceneryCandidates,
-          betaFolders: betaFoldersFor(betaPreferences, 'scenery', sceneryCandidates),
-        })
-        const count = checked.filter((item) => item.hasUpdate).length
-        total += count
-        if (count) details.push(`scenery: ${count}`)
-      }
-
-      return [
-        result('updates.addons', 'updates', total ? 'info' : 'pass', {
-          params: { count: total },
-          evidence: evidence(details),
-          remediation: total
-            ? { id: 'manage_updates', kind: 'navigate', risk: 'safe', route: '/management' }
-            : undefined,
+          const byFolder = new Map(responses.map((item) => [item.folderName, item]))
+          let checked = 0
+          let updates = 0
+          for (const item of candidates) {
+            const response = byFolder.get(item.folderName)
+            const provider = getUpdateProvider(item)
+            if (!response?.latestVersion?.trim()) {
+              details.push(`${item.folderName} · ${provider} · no remote version`)
+              continue
+            }
+            if (!item.version?.trim()) {
+              details.push(`${item.folderName} · ${provider} · installed version unknown`)
+              continue
+            }
+            checked++
+            if (response.hasUpdate) {
+              updates++
+              details.push(
+                `${item.folderName} · ${provider} · ${item.version} → ${response.latestVersion}`,
+              )
+            }
+          }
+          return {
+            candidates: candidates.length,
+            checked,
+            updates,
+            external: external.length,
+            details,
+          }
         }),
+      )
+
+      let candidates = 0
+      let checked = 0
+      let updates = 0
+      let external = 0
+      let failedSources = 0
+      const details: string[] = []
+      groups.forEach((group, index) => {
+        const source = sources[index]!.type
+        if (group.status === 'rejected') {
+          failedSources++
+          details.push(`${source}: ${String(group.reason)}`)
+          return
+        }
+        candidates += group.value.candidates
+        checked += group.value.checked
+        updates += group.value.updates
+        external += group.value.external
+        details.push(...group.value.details.map((detail) => `${source}: ${detail}`))
+      })
+      const incomplete = failedSources > 0 || checked < candidates
+      return [
+        result(
+          'updates.addons',
+          'updates',
+          incomplete ? 'unavailable' : updates ? 'info' : checked ? 'pass' : 'notApplicable',
+          {
+            params: { count: updates, installed: candidates, checked, external },
+            evidence: evidence(details),
+            remediation: updates
+              ? { id: 'manage_updates', kind: 'navigate', risk: 'safe', route: '/management' }
+              : undefined,
+          },
+        ),
       ]
     },
   }
@@ -1057,8 +1120,23 @@ function createGatewayUpdateCheck(context: DoctorCheckContext): DoctorCheckDefin
       const checked = await invoke<GatewayInstalledAirport[]>('gateway_check_updates', {
         xplanePath: context.xplanePath,
       })
-      const count = checked.filter((item) => item.updateAvailable === true).length
-      const unavailable = checked.filter((item) => item.updateAvailable == null)
+      const byInstallation = new Map(checked.map((item) => [item.id, item]))
+      const verified: GatewayInstalledAirport[] = []
+      const unavailable: GatewayInstalledAirport[] = []
+      for (const item of installed) {
+        const response = byInstallation.get(item.id)
+        if (
+          response?.updateAvailable == null ||
+          response.airportIcao !== item.airportIcao ||
+          response.sceneryId !== item.sceneryId
+        ) {
+          unavailable.push(item)
+        } else {
+          verified.push(response)
+        }
+      }
+      const updates = verified.filter((item) => item.updateAvailable)
+      const count = updates.length
       return [
         ...(unavailable.length
           ? [
@@ -1071,17 +1149,17 @@ function createGatewayUpdateCheck(context: DoctorCheckContext): DoctorCheckDefin
         result(
           'updates.gateway',
           'updates',
-          unavailable.length === checked.length ? 'unavailable' : count ? 'info' : 'pass',
+          verified.length === 0 ? 'unavailable' : count ? 'info' : 'pass',
           {
             params: {
               count,
               installed: installed.length,
-              checked: checked.length - unavailable.length,
+              checked: verified.length,
             },
             evidence: evidence(
-              checked
-                .filter((item) => item.updateAvailable === true)
-                .map((item) => `${item.airportIcao}: ${item.sceneryId} -> ${item.latestSceneryId}`),
+              updates.map(
+                (item) => `${item.airportIcao}: ${item.sceneryId} -> ${item.latestSceneryId}`,
+              ),
             ),
             remediation: count
               ? { id: 'manage_gateway', kind: 'navigate', risk: 'safe', route: '/gateway' }

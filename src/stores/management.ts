@@ -28,6 +28,8 @@ import { validateXPlanePath } from '@/utils/validation'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
 import {
   addonUpdateItemKey,
+  getUpdateProvider,
+  usesRemoteUpdateCheck,
   hasAddonUpdateBetaPreference,
   normalizeAddonUpdateItemBetaPreferences,
   type AddonUpdateItemBetaPreferences,
@@ -83,24 +85,6 @@ interface BatchDeleteResult {
 
 // Update cache: key is updateUrl, value is cache entry
 const updateCache = new Map<string, UpdateCacheEntry>()
-
-function isXUpdaterTaggedUrl(url: string): boolean {
-  return url.trim().toLowerCase().startsWith('x-updater:')
-}
-
-function getUpdateProvider(item: { updateProvider?: string; updateUrl?: string }): string | null {
-  const provider = item.updateProvider?.trim()
-  if (provider) return provider
-
-  const updateUrl = item.updateUrl?.trim()
-  if (!updateUrl) return null
-  return isXUpdaterTaggedUrl(updateUrl) ? 'x-updater' : 'skunkcrafts'
-}
-
-function usesRemoteUpdateCheck(item: { updateProvider?: string; updateUrl?: string }): boolean {
-  const provider = getUpdateProvider(item)
-  return provider === 'skunkcrafts' || provider === 'zibo'
-}
 
 function getUpdateCacheKey(
   item: {

@@ -25,3 +25,27 @@ export function hasAddonUpdateBetaPreference(
 ): boolean {
   return preferences[addonUpdateItemKey(itemType, folderName)] === true
 }
+
+function isXUpdaterTaggedUrl(url: string): boolean {
+  return url.trim().toLowerCase().startsWith('x-updater:')
+}
+
+export function getUpdateProvider(item: {
+  updateProvider?: string
+  updateUrl?: string
+}): string | null {
+  const provider = item.updateProvider?.trim()
+  if (provider) return provider
+
+  const updateUrl = item.updateUrl?.trim()
+  if (!updateUrl) return null
+  return isXUpdaterTaggedUrl(updateUrl) ? 'x-updater' : 'skunkcrafts'
+}
+
+export function usesRemoteUpdateCheck(item: {
+  updateProvider?: string
+  updateUrl?: string
+}): boolean {
+  const provider = getUpdateProvider(item)
+  return provider === 'skunkcrafts' || provider === 'zibo'
+}
