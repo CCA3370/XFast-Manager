@@ -64,6 +64,7 @@ export function buildPatchInstallTasks(params: {
   aircraftFolder: string
   mappings: PatchMappingInput[]
   backupOverwritten: boolean
+  expectedPlanId: string
 }): Promise<InstallTask[]> {
   return invokeCommand<InstallTask[]>('build_patch_install_tasks', {
     archivePath: params.archivePath,
@@ -72,10 +73,15 @@ export function buildPatchInstallTasks(params: {
     aircraftFolder: params.aircraftFolder,
     mappings: params.mappings,
     backupOverwritten: params.backupOverwritten,
+    expectedPlanId: params.expectedPlanId,
   })
 }
 
 /** Restore a patch backup session, undoing the overwritten files. */
-export function revertPatch(backupSessionDir: string): Promise<number> {
-  return invokeCommand<number>('revert_patch', { backupSessionDir })
+export function revertPatch(
+  xplanePath: string,
+  aircraftFolder: string,
+  backupSessionDir: string,
+): Promise<number> {
+  return invokeCommand<number>('revert_patch', { xplanePath, aircraftFolder, backupSessionDir })
 }

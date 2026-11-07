@@ -390,6 +390,7 @@ const mappingsFolder = ref('')
 // Install summary (what will happen) — kept current via summarizePatchInstall.
 const totalFiles = ref(0)
 const overwriteCount = ref(0)
+const planId = ref('')
 
 const backupEnabled = ref(true)
 // The raw mapping editor is power-user surface area, hidden unless it's needed.
@@ -409,6 +410,7 @@ const canInstall = computed(
     mappingsFolder.value === selectedFolder.value &&
     mappings.value.length > 0 &&
     totalFiles.value > 0 &&
+    !!planId.value &&
     !summarizing.value &&
     !building.value &&
     !inferring.value,
@@ -443,7 +445,7 @@ async function runDetect() {
     const preset = props.presetAircraftFolder?.replaceAll('\\', '/')
     if (preset && candidates.value.some((c) => c.folderName === preset)) {
       selectedFolder.value = preset
-    } else if (recommendedFolder.value) {
+    } else if (!preset && recommendedFolder.value) {
       selectedFolder.value = recommendedFolder.value
     }
 
@@ -461,6 +463,7 @@ async function runInfer(folder: string) {
   const request = ++inferenceRequest
   const isCurrent = () => mounted && request === inferenceRequest && folder === selectedFolder.value
   mappingsFolder.value = ''
+  backupEnabled.value = true
   inferring.value = true
   mappings.value = []
   archiveTree.value = []
@@ -521,6 +524,7 @@ function invalidateSummary() {
   summarizeTimer = null
   totalFiles.value = 0
   overwriteCount.value = 0
+  planId.value = ''
   summarizing.value = false
 }
 
@@ -537,6 +541,7 @@ function scheduleSummarize() {
   }
   // Invalidate in-flight previews immediately, including during the debounce.
   const request = summaryRequest
+  errorMsg.value = ''
   summarizing.value = true
   summarizeTimer = setTimeout(() => {
     summarizeTimer = null
@@ -559,6 +564,7 @@ async function runSummarize(request: number) {
     if (!isCurrent()) return
     totalFiles.value = summary.totalFiles
     overwriteCount.value = summary.overwriteCount
+    planId.value = summary.planId
   } catch (e) {
     if (isCurrent()) errorMsg.value = getErrorMessage(e)
   } finally {
@@ -617,11 +623,15 @@ async function confirmInstall() {
       aircraftFolder: selectedFolder.value,
       mappings: mappingInputs(),
       backupOverwritten: backupEnabled.value,
+      expectedPlanId: planId.value,
     })
     if (mounted) emit('install', tasks)
   } catch (e) {
-    errorMsg.value = getErrorMessage(e)
-    building.value = false
+    if (mounted) {
+      building.value = false
+      scheduleSummarize()
+      errorMsg.value = getErrorMessage(e)
+    }
   }
 }
 

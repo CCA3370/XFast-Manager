@@ -24,6 +24,17 @@ pub(super) fn path_key(path: &str) -> String {
     }
 }
 
+// XFast disables an ACF by renaming it to XFMA. Match the variant by name,
+// while the install planner preserves the actual disabled destination.
+fn aircraft_file_key(path: &str) -> String {
+    let mut key = path_key(path);
+    if key.to_ascii_lowercase().ends_with(".xfma") {
+        key.truncate(key.len() - ".xfma".len());
+        key.push_str(".acf");
+    }
+    key
+}
+
 fn include_entry(entry: &walkdir::DirEntry) -> bool {
     if entry.depth() == 0 {
         return true;
@@ -33,6 +44,7 @@ fn include_entry(entry: &walkdir::DirEntry) -> bool {
         && !name.eq_ignore_ascii_case("__MACOSX")
         && !name.eq_ignore_ascii_case(".git")
         && !name.eq_ignore_ascii_case(".DS_Store")
+        && !name.starts_with(".xfast-patch-rollback-")
 }
 
 /// Discover every aircraft, including disabled aircraft and arbitrarily nested
@@ -85,14 +97,12 @@ pub(super) fn discover(xplane_path: &str) -> Result<Vec<ProbeTarget>> {
 
 pub(super) fn file_tree(dir: &Path) -> Result<HashSet<String>> {
     let mut tree = HashSet::new();
-    for entry in WalkDir::new(dir)
-        .follow_links(true)
-        .into_iter()
-        .filter_entry(include_entry)
-    {
+    for entry in WalkDir::new(dir).into_iter().filter_entry(include_entry) {
         let entry = entry.with_context(|| format!("Cannot inspect aircraft {}", dir.display()))?;
         if entry.file_type().is_file() {
-            tree.insert(path_key(&entry.path().strip_prefix(dir)?.to_string_lossy()));
+            tree.insert(aircraft_file_key(
+                &entry.path().strip_prefix(dir)?.to_string_lossy(),
+            ));
         }
     }
     Ok(tree)
@@ -158,7 +168,7 @@ pub(super) fn rank_candidates(
     let queries: HashSet<String> = catalogue
         .values()
         .flatten()
-        .map(|path| path_key(path))
+        .map(|path| aircraft_file_key(path))
         .collect();
     // Index installed files by the relative suffixes present in the patch. This
     // also finds a patch whose root is itself an aircraft subdirectory, without
@@ -206,7 +216,7 @@ pub(super) fn rank_candidates(
         for (offset, paths) in &catalogue {
             let mut destinations: BTreeMap<&str, AlignmentScore> = BTreeMap::new();
             for path in paths {
-                let key = path_key(path);
+                let key = aircraft_file_key(path);
                 let Some(matches) = index.get(key.as_str()) else {
                     continue;
                 };

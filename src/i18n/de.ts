@@ -159,6 +159,10 @@ export default {
     Patch: 'Patch',
   },
   patch: {
+    restoreBackup: 'Patch-Sicherung wiederherstellen…',
+    restoreConfirm:
+      'Dateien aus {backup} für {aircraft} wiederherstellen? Vom Patch hinzugefügte Dateien bleiben erhalten.',
+    restoreSuccess: '{count} gesicherte Dateien wiederhergestellt',
     selectAircraft: 'Flugzeug auswählen',
     noReliableMatch: 'Keine eindeutige Übereinstimmung. Wähle das Flugzeug für diesen Patch aus.',
     matchingFiles: '{matched}/{total} übereinstimmende Dateien',

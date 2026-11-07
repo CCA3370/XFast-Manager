@@ -158,6 +158,10 @@ export default {
     Patch: 'Патч',
   },
   patch: {
+    restoreBackup: 'Восстановить резервную копию патча…',
+    restoreConfirm:
+      'Восстановить файлы из {backup} для {aircraft}? Файлы, добавленные патчем, сохранятся.',
+    restoreSuccess: 'Восстановлено файлов: {count}',
     selectAircraft: 'Выберите самолёт',
     noReliableMatch:
       'Нет однозначного совпадения. Выберите самолёт, для которого предназначен патч.',

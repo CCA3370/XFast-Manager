@@ -159,6 +159,10 @@ export default {
     Patch: 'Parche',
   },
   patch: {
+    restoreBackup: 'Restaurar copia del parche…',
+    restoreConfirm:
+      '¿Restaurar los archivos de {backup} para {aircraft}? Se conservarán los archivos añadidos por el parche.',
+    restoreSuccess: '{count} archivos restaurados desde la copia',
     selectAircraft: 'Elige un avión',
     noReliableMatch:
       'No hay una coincidencia clara. Selecciona el avión al que va destinado este parche.',

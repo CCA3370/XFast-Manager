@@ -1447,7 +1447,11 @@ impl Installer {
                     }
 
                     // Check for skip request after installation but before verification
-                    if self.task_control.is_skip_requested() {
+                    if task.addon_type == AddonType::Patch {
+                        // The patch is already committed. A late skip must not
+                        // mark a successful overlay as skipped or clean it up.
+                        self.task_control.reset_skip();
+                    } else if self.task_control.is_skip_requested() {
                         logger::log_info(
                             &format!("Task skipped by user: {}", task.display_name),
                             Some("installer"),
@@ -2211,23 +2215,8 @@ impl Installer {
             } else if source.is_dir() {
                 task_size += self.get_directory_size(source)?;
             } else if source.is_file() {
-                // Exact patch-file mappings stage the containing directory;
-                // count those extraction bytes so progress is never zero/NaN.
-                let exact_file = if task.addon_type == AddonType::Patch {
-                    task.archive_internal_root.as_deref().and_then(|prefix| {
-                        crate::patch::list_archive_files(source)
-                            .ok()
-                            .and_then(|files| files.into_iter().find(|file| file == prefix))
-                    })
-                } else {
-                    None
-                };
-                let prefix = if let Some(ref file) = exact_file {
-                    file.rsplit_once('/').map(|(parent, _)| parent)
-                } else {
-                    task.archive_internal_root.as_deref()
-                };
-                task_size += self.get_archive_size(source, prefix)?;
+                task_size +=
+                    self.get_archive_size(source, task.archive_internal_root.as_deref())?;
             }
 
             task_sizes.push(task_size);
@@ -2612,6 +2601,8 @@ mod tests {
             livery_aircraft_found: true,
             flywithlua_installed: true,
             companion_paths: Vec::new(),
+            patch_files: Vec::new(),
+            patch_plan_id: None,
             patch_backup: false,
             patch_backup_dir: None,
             patch_aircraft_root: None,

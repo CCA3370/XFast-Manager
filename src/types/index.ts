@@ -376,6 +376,8 @@ export interface PatchInstallSummary {
   totalFiles: number
   /** How many of those already exist at their destination (overwritten). */
   overwriteCount: number
+  /** Confirms that installation still matches the preview. */
+  planId: string
 }
 
 export type InstallPhase = 'calculating' | 'installing' | 'verifying' | 'finalizing'

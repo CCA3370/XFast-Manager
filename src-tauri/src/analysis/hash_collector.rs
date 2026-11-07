@@ -294,6 +294,8 @@ mod tests {
             livery_aircraft_found: false,
             flywithlua_installed: false,
             companion_paths: vec![],
+            patch_files: Vec::new(),
+            patch_plan_id: None,
             patch_backup: false,
             patch_backup_dir: None,
             patch_aircraft_root: None,

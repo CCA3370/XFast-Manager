@@ -160,6 +160,10 @@ export default {
     Patch: 'Correctif',
   },
   patch: {
+    restoreBackup: 'Restaurer la sauvegarde du correctif…',
+    restoreConfirm:
+      'Restaurer les fichiers de {backup} pour {aircraft} ? Les fichiers ajoutés par le correctif seront conservés.',
+    restoreSuccess: '{count} fichiers sauvegardés restaurés',
     selectAircraft: 'Choisir un avion',
     noReliableMatch:
       'Aucune correspondance claire. Sélectionnez l’avion auquel ce correctif est destiné.',

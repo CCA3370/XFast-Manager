@@ -158,6 +158,10 @@ export default {
     Patch: 'パッチ',
   },
   patch: {
+    restoreBackup: 'パッチのバックアップを復元…',
+    restoreConfirm:
+      '{aircraft} の {backup} にあるバックアップを復元しますか？パッチが追加したファイルは残ります。',
+    restoreSuccess: '{count} 件のバックアップファイルを復元しました',
     selectAircraft: '機体を選択',
     noReliableMatch: '一致する機体を特定できません。このパッチの対象機体を選んでください。',
     matchingFiles: '{matched}/{total} ファイルが一致',

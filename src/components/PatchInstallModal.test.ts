@@ -67,7 +67,11 @@ beforeEach(() => {
     recommendedFolder: 'A',
   })
   api.inferPatchMappings.mockResolvedValue(plan('A'))
-  api.summarizePatchInstall.mockResolvedValue({ totalFiles: 1, overwriteCount: 1 })
+  api.summarizePatchInstall.mockResolvedValue({
+    totalFiles: 1,
+    overwriteCount: 1,
+    planId: 'preview',
+  })
   api.buildPatchInstallTasks.mockResolvedValue([])
 })
 afterEach(() => {
@@ -83,7 +87,7 @@ describe('patch installation confirmation', () => {
     await preview()
     expect(installButton().attributes('disabled')).toBeDefined()
     expect(api.buildPatchInstallTasks).not.toHaveBeenCalled()
-    pending.resolve({ totalFiles: 1, overwriteCount: 1 })
+    pending.resolve({ totalFiles: 1, overwriteCount: 1, planId: 'preview' })
     await flushPromises()
     await installButton().trigger('click')
     expect(api.buildPatchInstallTasks).toHaveBeenCalledWith(
@@ -190,11 +194,11 @@ describe('patch installation confirmation', () => {
     await wrapper.get('select').setValue('B')
     await flushPromises()
     await preview()
-    oldSummary.resolve({ totalFiles: 900, overwriteCount: 900 })
+    oldSummary.resolve({ totalFiles: 900, overwriteCount: 900, planId: 'preview' })
     await flushPromises()
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('patch.inferring')
-    newSummary.resolve({ totalFiles: 2, overwriteCount: 0 })
+    newSummary.resolve({ totalFiles: 2, overwriteCount: 0, planId: 'preview' })
     await flushPromises()
     expect(wrapper.text()).not.toContain('patch.filesOverwritten')
     await installButton().trigger('click')
@@ -212,7 +216,7 @@ describe('patch installation confirmation', () => {
     await open()
     await preview()
     await wrapper.get('input[list="patch-dest-dirs"]').setValue('new-destination')
-    oldSummary.resolve({ totalFiles: 900, overwriteCount: 900 })
+    oldSummary.resolve({ totalFiles: 900, overwriteCount: 900, planId: 'preview' })
     await flushPromises()
     expect(wrapper.text()).toContain('patch.inferring')
     expect(installButton().attributes('disabled')).toBeDefined()

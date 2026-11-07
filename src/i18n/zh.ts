@@ -154,6 +154,9 @@ export default {
     Patch: '补丁',
   },
   patch: {
+    restoreBackup: '恢复补丁备份…',
+    restoreConfirm: '要为 {aircraft} 恢复 {backup} 中的文件吗？补丁新增的文件会保留。',
+    restoreSuccess: '已恢复 {count} 个备份文件',
     selectAircraft: '请选择机模',
     noReliableMatch: '没有足够证据自动选择，请手动选择此补丁适用的机模。',
     matchingFiles: '{matched}/{total} 个文件匹配',

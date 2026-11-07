@@ -155,6 +155,10 @@ export default {
     Patch: 'تصحيح',
   },
   patch: {
+    restoreBackup: 'استعادة نسخة التصحيح الاحتياطية…',
+    restoreConfirm:
+      'هل تريد استعادة ملفات {backup} للطائرة {aircraft}؟ ستبقى الملفات التي أضافها التصحيح.',
+    restoreSuccess: 'تمت استعادة {count} من الملفات الاحتياطية',
     selectAircraft: 'اختر طائرة',
     noReliableMatch: 'لا توجد مطابقة واضحة. اختر الطائرة المخصصة لهذا التصحيح.',
     matchingFiles: '{matched}/{total} من الملفات المطابقة',

@@ -188,16 +188,28 @@ pub struct InstallTask {
     /// For LuaScript: companion files/folders referenced by SCRIPT_DIRECTORY
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub companion_paths: Vec<String>,
+    /// Files selected by the confirmed patch plan, relative to the archive and aircraft roots.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub patch_files: Vec<PatchFileWrite>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch_plan_id: Option<String>,
     /// For Patch: back up files that will be overwritten before merging (revertable).
     #[serde(default)]
     pub patch_backup: bool,
-    /// For Patch: shared backup session directory used by every task of one patch
-    /// install, so a single revert restores all overwritten files at once.
+    /// For Patch: backup session directory for the complete patch install.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub patch_backup_dir: Option<String>,
     /// Selected aircraft boundary, rechecked before a patch writes any files.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub patch_aircraft_root: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchFileWrite {
+    pub archive_path: String,
+    pub destination: String,
+    pub overwrite: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

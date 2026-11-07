@@ -640,7 +640,9 @@ impl Installer {
         if task.addon_type == AddonType::Patch {
             if task.extraction_chain.is_some()
                 || !task.should_overwrite
-                || (!source.is_dir() && !Self::is_supported_archive_file(source))
+                || task.archive_internal_root.is_some()
+                || task.patch_files.is_empty()
+                || !Self::is_supported_archive_file(source)
             {
                 return Err(anyhow::anyhow!("Invalid patch installation task"));
             }
@@ -694,12 +696,10 @@ impl Installer {
                 );
                 self.install_content_with_extraction_chain(source, target, chain, ctx, password)?;
             }
-        } else if (atomic_install_enabled || task.addon_type == AddonType::Patch)
+        } else if atomic_install_enabled
             && (source.is_dir() || Self::is_supported_archive_file(source))
         {
             // Atomic installation mode.
-            // Patches are always forced through this path so their pre-merge
-            // backup (snapshot of files about to be overwritten) can run.
             crate::log_debug!(
                 "[TIMING] Using atomic installation mode",
                 "installer_timing"
@@ -2244,6 +2244,11 @@ impl Installer {
     /// Cleanup a task by removing its target directory
     /// Used when a task is cancelled or skipped
     pub(super) fn cleanup_task(&self, task: &InstallTask) -> Result<()> {
+        // A patch target is an existing aircraft, never a disposable install
+        // directory. Patch writes are rolled back by their own transaction.
+        if task.addon_type == AddonType::Patch {
+            return Ok(());
+        }
         let target = Path::new(&task.target_path);
 
         logger::log_info(
@@ -2311,31 +2316,12 @@ impl Installer {
                 anyhow::anyhow!("Patch task is missing its selected aircraft boundary")
             })?;
             let root = Path::new(root);
-            crate::patch::validate_destination(root, target)?;
+            if root != target || fs::canonicalize(root)? != root {
+                return Err(anyhow::anyhow!("The selected patch aircraft has moved"));
+            }
             Some(root)
         } else {
             None
-        };
-        // A file mapping extracts its parent, then keeps only the exact file.
-        // Reusing directory extraction retains its existing archive safeguards.
-        let exact_file = if patch_root.is_some() {
-            if let Some(prefix) = task.archive_internal_root.as_deref() {
-                crate::patch::list_archive_files(source)?
-                    .into_iter()
-                    .find(|entry| entry == prefix)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-        let extraction_root = exact_file
-            .as_deref()
-            .and_then(|entry| entry.rsplit_once('/').map(|(parent, _)| parent));
-        let extraction_root = if exact_file.is_some() {
-            extraction_root
-        } else {
-            task.archive_internal_root.as_deref()
         };
 
         // Use X-Plane root path directly from settings
@@ -2392,34 +2378,18 @@ impl Installer {
         self.install_content_with_progress(
             source,
             atomic.temp_dir(),
-            extraction_root,
+            task.archive_internal_root.as_deref(),
             ctx,
             password,
         )?;
 
-        if let Some(ref entry) = exact_file {
-            let basename = entry.rsplit('/').next().unwrap_or(entry);
-            crate::patch::retain_exact_file(atomic.temp_dir(), basename)?;
-        }
         if let Some(root) = patch_root {
-            crate::patch::validate_staged_destinations(atomic.temp_dir(), target, root)?;
-        }
-
-        // Patch backup: snapshot the existing files that the upcoming merge is
-        // about to overwrite, so the patch can be reverted later.
-        if matches!(task.addon_type, AddonType::Patch) && task.patch_backup && target.exists() {
-            if let Some(ref backup_dir) = task.patch_backup_dir {
-                crate::patch::backup_overwritten_files(
-                    atomic.temp_dir(),
-                    target,
-                    Path::new(backup_dir),
-                    &task.id,
-                )?;
-            }
-        }
-
-        if let Some(root) = patch_root {
-            crate::patch::validate_staged_destinations(atomic.temp_dir(), target, root)?;
+            return crate::patch::apply_staged_patch(
+                atomic.temp_dir(),
+                root,
+                task,
+                &self.task_control,
+            );
         }
 
         // Step 2: Perform atomic installation based on scenario

@@ -156,6 +156,10 @@ export default {
     Patch: 'पैच',
   },
   patch: {
+    restoreBackup: 'पैच बैकअप बहाल करें…',
+    restoreConfirm:
+      '{aircraft} के लिए {backup} में बैकअप की गई फ़ाइलें बहाल करें? पैच द्वारा जोड़ी गई फ़ाइलें बनी रहेंगी।',
+    restoreSuccess: 'बैकअप की गई {count} फ़ाइलें बहाल की गईं',
     selectAircraft: 'विमान चुनें',
     noReliableMatch: 'कोई स्पष्ट मिलान नहीं मिला। इस पैच के लिए विमान चुनें।',
     matchingFiles: '{matched}/{total} मेल खाने वाली फ़ाइलें',

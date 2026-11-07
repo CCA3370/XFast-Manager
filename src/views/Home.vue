@@ -283,6 +283,13 @@
       />
       <PatchInstallModal
         v-if="patchStore.isModalOpen"
+        :key="
+          JSON.stringify([
+            store.xplanePath,
+            patchStore.archivePath,
+            patchStore.presetAircraftFolder,
+          ])
+        "
         :archive-path="patchStore.archivePath"
         :preset-aircraft-folder="patchStore.presetAircraftFolder"
         @close="patchStore.close()"
@@ -1044,8 +1051,7 @@ async function handleInstall() {
   })
 }
 
-// Install a patch: the modal already produced final overlay tasks. Patches are
-// never source-deleted and run serially (mappings write into one aircraft tree).
+// The modal submits one validated overlay task for the whole patch.
 async function handlePatchInstall(tasks: InstallTask[]) {
   patchStore.close()
   await executeInstall(tasks, { deleteSource: false, parallel: false })

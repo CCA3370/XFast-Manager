@@ -863,6 +863,7 @@ async fn build_patch_install_tasks(
     aircraft_folder: String,
     mappings: Vec<patch::PatchMappingInput>,
     backup_overwritten: bool,
+    expected_plan_id: String,
 ) -> Result<Vec<InstallTask>, String> {
     tokio::task::spawn_blocking(move || {
         patch::build_install_tasks(
@@ -872,6 +873,7 @@ async fn build_patch_install_tasks(
             &aircraft_folder,
             mappings,
             backup_overwritten,
+            Some(&expected_plan_id),
         )
     })
     .await
@@ -881,11 +883,21 @@ async fn build_patch_install_tasks(
 
 /// Restore a patch backup session, undoing the overwritten files.
 #[tauri::command]
-async fn revert_patch(backup_session_dir: String) -> Result<usize, String> {
-    tokio::task::spawn_blocking(move || patch::revert_patch(&backup_session_dir))
-        .await
-        .map_err(|e| format!("Task join error: {}", e))?
-        .map_err(|e| format!("Failed to revert patch: {}", e))
+async fn revert_patch(
+    xplane_path: String,
+    aircraft_folder: String,
+    backup_session_dir: String,
+) -> Result<usize, String> {
+    tokio::task::spawn_blocking(move || {
+        patch::restore_aircraft_backup(
+            &xplane_path,
+            &aircraft_folder,
+            std::path::Path::new(&backup_session_dir),
+        )
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Failed to revert patch: {}", e))
 }
 
 // ============================================================================

@@ -158,6 +158,10 @@ export default {
     Patch: '패치',
   },
   patch: {
+    restoreBackup: '패치 백업 복원…',
+    restoreConfirm:
+      '{aircraft}의 {backup}에 백업된 파일을 복원하시겠습니까? 패치로 추가한 파일은 유지됩니다.',
+    restoreSuccess: '백업 파일 {count}개를 복원했습니다',
     selectAircraft: '항공기 선택',
     noReliableMatch: '일치하는 항공기를 확인할 수 없습니다. 이 패치를 적용할 항공기를 선택하세요.',
     matchingFiles: '일치하는 파일 {matched}/{total}개',

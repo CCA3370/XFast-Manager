@@ -156,6 +156,10 @@ export default {
     Patch: 'Patch',
   },
   patch: {
+    restoreBackup: 'Restore patch backup…',
+    restoreConfirm:
+      'Restore files backed up in {backup} for {aircraft}? Files added by the patch will remain.',
+    restoreSuccess: 'Restored {count} backed-up files',
     selectAircraft: 'Choose an aircraft',
     noReliableMatch: 'No clear match. Select the aircraft that this patch is for.',
     matchingFiles: '{matched}/{total} matching files',
