@@ -46,6 +46,26 @@ function reportRun(): DoctorRun {
 }
 
 describe('doctor report export', () => {
+  it.each(['json', 'markdown'] as const)(
+    'includes redacted sources and scan scope in %s',
+    (format) => {
+      const run = reportRun()
+      run.checks = [
+        {
+          id: 'navdata.bundled',
+          section: 'navdata',
+          outcome: 'pass',
+          sources: ['D:/X-Plane/Resources/default data/CIFP'],
+          durationMs: 1,
+        },
+      ]
+      const output = buildDoctorReport(run, format, { xplanePath: 'D:/X-Plane' })
+      expect(output).toContain('<XPLANE_ROOT>/Resources/default data/CIFP')
+      expect(output).toContain('each CIFP procedure file')
+      expect(output).not.toContain('D:/X-Plane')
+    },
+  )
+
   it('redacts installation, app data, and user paths by default', () => {
     const result = buildDoctorReport(reportRun(), 'json', {
       xplanePath: 'C:\\Users\\alex\\X-Plane 12',

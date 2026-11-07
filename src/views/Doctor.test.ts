@@ -146,6 +146,30 @@ describe('Health page', () => {
     i18n.global.locale.value = 'en'
   })
 
+  it('shows searchable data sources and the scope of a passing navigation check', async () => {
+    const { wrapper, doctorStore } = await mountDoctor('/xplane')
+    doctorStore.currentRun = runFixture('completed', [
+      {
+        id: 'navdata.bundled',
+        section: 'navdata',
+        outcome: 'pass',
+        sources: ['Resources/default data/CIFP'],
+        durationMs: 1,
+      },
+    ])
+    await nextTick()
+    await wrapper.get('[data-testid="health-search"]').setValue('default data')
+    const scope = () => wrapper.get('[data-testid="health-check-scope"]').text()
+    expect(scope()).toContain('Resources/default data/CIFP')
+    expect(scope()).toContain('one readable CIFP')
+    doctorStore.currentRun.mode = 'full'
+    i18n.global.locale.value = 'zh'
+    await nextTick()
+    expect(scope()).toContain('检测范围')
+    expect(scope()).toContain('逐个检查 CIFP')
+    wrapper.unmount()
+  })
+
   it('localizes AIRAC conclusions and statistics without exposing internal parameter keys', async () => {
     const { wrapper, doctorStore } = await mountDoctor('/xplane')
     doctorStore.currentRun = runFixture('completed', [

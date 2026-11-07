@@ -543,6 +543,27 @@
                   {{ checkDescription(selectedCheck) }}
                 </p>
 
+                <dl
+                  v-if="selectedCheck.sources?.length"
+                  data-testid="health-check-scope"
+                  class="space-y-2 border-t border-gray-100 pt-3 text-xs dark:border-gray-800"
+                >
+                  <div>
+                    <dt class="font-medium text-gray-500 dark:text-gray-400">
+                      {{ t('healthDetails.coverage.sources') }}
+                    </dt>
+                    <dd class="mt-0.5 break-words text-gray-700 dark:text-gray-200">
+                      {{ selectedCheck.sources.join(' · ') }}
+                    </dd>
+                  </div>
+                  <div v-if="selectedScope">
+                    <dt class="font-medium text-gray-500 dark:text-gray-400">
+                      {{ t('healthDetails.coverage.scope') }}
+                    </dt>
+                    <dd class="mt-0.5 text-gray-700 dark:text-gray-200">{{ selectedScope }}</dd>
+                  </div>
+                </dl>
+
                 <div
                   v-if="checkSuggestion(selectedCheck)"
                   class="flex gap-2 rounded-md bg-blue-50 px-2.5 py-2 text-gray-700 dark:bg-blue-950/25 dark:text-blue-100"
@@ -840,7 +861,11 @@ import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import { logError } from '@/services/logger'
 import { DOCTOR_SECTION_ORDER, isDoctorRunStale } from '@/utils/doctor'
-import { describeDoctorCheck, formatDoctorDuration } from '@/utils/doctorPresentation'
+import {
+  describeDoctorCheck,
+  describeDoctorScope,
+  formatDoctorDuration,
+} from '@/utils/doctorPresentation'
 import { CHECK_NAME_KEYS, LEGACY_TEXT_ROOTS } from '@/utils/doctorCatalog'
 import type { DoctorReportFormat } from '@/utils/doctorReport'
 import type {
@@ -906,7 +931,11 @@ const checkGroups = computed(() =>
     const sectionChecks = run.value?.checks.filter((check) => check.section === section) ?? []
     const filtered = searchQuery.value.trim()
       ? sectionChecks.filter((check) =>
-          [checkLabel(check), ...(check.evidence?.map((item) => item.value) ?? [])]
+          [
+            checkLabel(check),
+            ...(check.sources ?? []),
+            ...(check.evidence?.map((item) => item.value) ?? []),
+          ]
             .join(' ')
             .toLocaleLowerCase()
             .includes(searchQuery.value.trim().toLocaleLowerCase()),
@@ -931,6 +960,11 @@ const selectedCheck = computed(() => {
     checks.find(isProblemCheck) ?? checks.find((check) => check.outcome === 'info') ?? checks[0]
   )
 })
+const selectedScope = computed(() =>
+  selectedCheck.value && run.value
+    ? describeDoctorScope(selectedCheck.value, run.value.mode, locale.value)
+    : '',
+)
 const selectedParams = computed(() =>
   Object.fromEntries(
     Object.entries(selectedCheck.value?.params ?? {})
@@ -1095,15 +1129,13 @@ function checkDescription(check: DoctorCheckResult): string {
       `healthDetails.sessions.${['crash', 'normal', 'unknown', 'running'].includes(state) ? state : 'unknown'}`,
     )
   }
+  if (check.id === 'updates.addons' && check.params && 'checked' in check.params)
+    return t('healthDetails.coverage.addonUpdates', check.params)
   if (['unavailable', 'cancelled', 'notApplicable'].includes(check.outcome))
     return t(`doctor.center.checkDescriptions.${check.outcome}`)
   if (check.id === 'navdata.cycles') {
     const p = check.params ?? {}
-    if (Number(p.future) > 0) {
-      return locale.value === 'zh'
-        ? '部分导航数据包尚未生效，请核对列出的生效日期与当前日期。'
-        : 'Some navigation packages are not yet effective. Review their effective dates.'
-    }
+    if (Number(p.future) > 0) return t('healthDetails.coverage.navFuture')
     const state =
       Number(p.expired) > 0
         ? 'expired'
@@ -1126,6 +1158,11 @@ function checkDescription(check: DoctorCheckResult): string {
   const root = legacyTextRoot(check)
   if (check.outcome !== 'pass' && root && te(`${root}.description`))
     return t(`${root}.description`, check.params ?? {})
+  if (
+    check.outcome === 'pass' &&
+    describeDoctorScope(check, run.value?.mode ?? 'quick', locale.value)
+  )
+    return t('doctor.center.checkDescriptions.pass')
   const purpose = `healthDetails.purposes.${check.id.replaceAll('.', '_')}`
   if (te(purpose)) return t(purpose)
   return t(`healthDetails.scope.${check.section}`)

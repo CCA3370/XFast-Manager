@@ -53,6 +53,7 @@ export interface DoctorCheckResult {
   section: DoctorSection
   outcome: DoctorCheckOutcome
   params?: Record<string, string | number>
+  sources?: string[]
   evidence?: DoctorEvidence[]
   remediation?: DoctorRemediation
   durationMs: number

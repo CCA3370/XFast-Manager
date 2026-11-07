@@ -20,6 +20,7 @@ import type {
   DoctorSystemSnapshot,
 } from '@/types/doctor'
 import { getItem, STORAGE_KEYS } from '@/services/storage'
+import { DOCTOR_CHECK_SOURCES } from '@/utils/doctorCatalog'
 import {
   hasAddonUpdateBetaPreference,
   getUpdateProvider,
@@ -119,7 +120,8 @@ function result(
   outcome: DoctorCheckResult['outcome'],
   options: Omit<DoctorCheckResult, 'id' | 'section' | 'outcome' | 'durationMs'> = {},
 ): DoctorCheckResult {
-  return { id, section, outcome, durationMs: 0, ...options }
+  const sources = DOCTOR_CHECK_SOURCES[id] ?? (id.startsWith('log.') ? ['Log.txt'] : undefined)
+  return { id, section, outcome, durationMs: 0, sources, ...options }
 }
 
 function formatBytes(bytes: number): string {

@@ -1,5 +1,19 @@
 export const healthDetailMessages = {
   en: {
+    coverage: {
+      sources: 'Data sources',
+      scope: 'Check scope',
+      navQuick: 'Core file headers and AIRAC agreement, plus one readable CIFP procedure file.',
+      navFull:
+        'Core file headers and AIRAC agreement, plus readability and size of each CIFP procedure file.',
+      navSupplemental: 'Checks whether the optional files are readable and nonempty.',
+      navCycles:
+        'Reads AIRAC metadata from Custom Data and its add-on folders, up to 10 levels deep. Backups are excluded.',
+      addonUpdates:
+        'Compared {checked} of {installed} supported add-ons. Updates found: {count}. External updater: {external}.',
+      navFuture:
+        'Some installed navigation packages are not yet effective. Review the listed dates.',
+    },
     fields: {
       count: 'Affected items',
       installed: 'Installed airports',
@@ -189,6 +203,17 @@ export const healthDetailMessages = {
     },
   },
   zh: {
+    coverage: {
+      sources: '数据来源',
+      scope: '检测范围',
+      navQuick: '检查核心文件头、AIRAC 周期是否一致，以及是否至少有一个可读的 CIFP 程序文件。',
+      navFull: '检查核心文件头、AIRAC 周期是否一致，并逐个检查 CIFP 程序文件的可读性和大小。',
+      navSupplemental: '检查已安装的可选文件是否可读、是否为空。',
+      navCycles: '读取 Custom Data 及扩展目录内最多 10 层的 AIRAC 元数据，跳过备份目录。',
+      addonUpdates:
+        '已比对 {checked}/{installed} 个受支持的扩展，发现 {count} 个更新，{external} 个需使用外部更新器。',
+      navFuture: '部分导航数据包尚未生效，请核对列出的生效日期。',
+    },
     fields: {
       count: '涉及条目',
       installed: '已安装机场',
@@ -352,6 +377,19 @@ export const healthDetailMessages = {
     },
   },
   de: {
+    coverage: {
+      sources: 'Datenquellen',
+      scope: 'Prüfumfang',
+      navQuick: 'Dateiköpfe, AIRAC-Abgleich und eine lesbare CIFP-Prozedurdatei.',
+      navFull: 'Dateiköpfe, AIRAC-Abgleich sowie Lesbarkeit und Größe aller CIFP-Prozedurdateien.',
+      navSupplemental: 'Prüft, ob die optionalen Dateien lesbar und nicht leer sind.',
+      navCycles:
+        'Liest AIRAC-Metadaten in Custom Data bis zu 10 Ebenen tief. Sicherungen werden übersprungen.',
+      addonUpdates:
+        '{checked} von {installed} unterstützten Add-ons verglichen. Updates: {count}. Externe Aktualisierung: {external}.',
+      navFuture:
+        'Einige installierte Navigationspakete sind noch nicht gültig. Prüfe die angegebenen Daten.',
+    },
     fields: {
       count: 'Betroffene Einträge',
       installed: 'Installierte Flughäfen',
@@ -515,6 +553,21 @@ export const healthDetailMessages = {
     },
   },
   fr: {
+    coverage: {
+      sources: 'Sources de données',
+      scope: 'Périmètre du contrôle',
+      navQuick:
+        'En-têtes des fichiers principaux, cohérence AIRAC et un fichier de procédures CIFP lisible.',
+      navFull:
+        'En-têtes des fichiers principaux, cohérence AIRAC, lisibilité et taille de chaque fichier CIFP.',
+      navSupplemental: 'Vérifie que les fichiers facultatifs sont lisibles et non vides.',
+      navCycles:
+        'Lit les métadonnées AIRAC dans Custom Data sur 10 niveaux au maximum, hors sauvegardes.',
+      addonUpdates:
+        '{checked} extensions comparées sur {installed} prises en charge. Mises à jour : {count}. Outil externe : {external}.',
+      navFuture:
+        'Certaines données de navigation installées ne sont pas encore valides. Vérifiez les dates indiquées.',
+    },
     fields: {
       count: 'Éléments concernés',
       installed: 'Aéroports installés',
@@ -675,6 +728,21 @@ export const healthDetailMessages = {
     },
   },
   es: {
+    coverage: {
+      sources: 'Fuentes de datos',
+      scope: 'Alcance de la comprobación',
+      navQuick:
+        'Cabeceras principales, coincidencia AIRAC y un archivo de procedimientos CIFP legible.',
+      navFull:
+        'Cabeceras principales, coincidencia AIRAC, legibilidad y tamaño de cada archivo CIFP.',
+      navSupplemental: 'Comprueba que los archivos opcionales sean legibles y no estén vacíos.',
+      navCycles:
+        'Lee los metadatos AIRAC de Custom Data hasta 10 niveles, omitiendo las copias de seguridad.',
+      addonUpdates:
+        '{checked} de {installed} complementos compatibles comparados. Actualizaciones: {count}. Actualizador externo: {external}.',
+      navFuture:
+        'Algunos paquetes de navegación instalados aún no están vigentes. Revisa las fechas indicadas.',
+    },
     fields: {
       count: 'Elementos afectados',
       installed: 'Aeropuertos instalados',
@@ -834,6 +902,19 @@ export const healthDetailMessages = {
     },
   },
   pt: {
+    coverage: {
+      sources: 'Fontes de dados',
+      scope: 'Âmbito da verificação',
+      navQuick: 'Cabeçalhos principais, correspondência AIRAC e um ficheiro CIFP legível.',
+      navFull:
+        'Cabeçalhos principais, correspondência AIRAC, legibilidade e tamanho de cada ficheiro CIFP.',
+      navSupplemental: 'Verifica se os ficheiros opcionais são legíveis e não estão vazios.',
+      navCycles: 'Lê metadados AIRAC em Custom Data até 10 níveis, excluindo cópias de segurança.',
+      addonUpdates:
+        '{checked} de {installed} extensões suportadas comparadas. Atualizações: {count}. Atualizador externo: {external}.',
+      navFuture:
+        'Alguns pacotes de navegação instalados ainda não estão em vigor. Verifique as datas indicadas.',
+    },
     fields: {
       count: 'Itens afetados',
       installed: 'Aeroportos instalados',
@@ -992,6 +1073,21 @@ export const healthDetailMessages = {
     },
   },
   ja: {
+    coverage: {
+      sources: 'データソース',
+      scope: '検査範囲',
+      navQuick:
+        '主要ファイルのヘッダー、AIRAC の一致、および読み取り可能な CIFP 手順ファイルを 1 件確認します。',
+      navFull:
+        '主要ファイルのヘッダーと AIRAC の一致を確認し、各 CIFP 手順ファイルの読み取り可否とサイズを検査します。',
+      navSupplemental: 'オプションのファイルが読み取り可能で、空でないことを確認します。',
+      navCycles:
+        'Custom Data 内の AIRAC メタデータを最大 10 階層まで読み取ります。バックアップは除外します。',
+      addonUpdates:
+        '対応アドオン {installed} 件中 {checked} 件を比較しました。更新 {count} 件、外部アップデーター {external} 件。',
+      navFuture:
+        '一部のナビゲーションパッケージはまだ有効ではありません。表示された日付を確認してください。',
+    },
     fields: {
       count: '対象項目',
       installed: '導入済み空港',
@@ -1152,6 +1248,17 @@ export const healthDetailMessages = {
     },
   },
   ko: {
+    coverage: {
+      sources: '데이터 출처',
+      scope: '검사 범위',
+      navQuick: '핵심 파일 헤더, AIRAC 일치 여부와 읽을 수 있는 CIFP 절차 파일 하나를 확인합니다.',
+      navFull: '핵심 파일 헤더, AIRAC 일치 여부와 각 CIFP 절차 파일의 접근 및 크기를 확인합니다.',
+      navSupplemental: '선택 파일을 읽을 수 있는지, 비어 있는지 확인합니다.',
+      navCycles: 'Custom Data 안의 AIRAC 메타데이터를 최대 10단계까지 읽습니다. 백업은 제외합니다.',
+      addonUpdates:
+        '지원 애드온 {installed}개 중 {checked}개 비교. 업데이트 {count}개, 외부 업데이트 도구 {external}개.',
+      navFuture: '설치된 일부 항법 패키지가 아직 유효하지 않습니다. 표시된 날짜를 확인하세요.',
+    },
     fields: {
       count: '대상 항목',
       installed: '설치된 공항',
@@ -1308,6 +1415,20 @@ export const healthDetailMessages = {
     },
   },
   ru: {
+    coverage: {
+      sources: 'Источники данных',
+      scope: 'Область проверки',
+      navQuick: 'Заголовки основных файлов, совпадение AIRAC и один доступный файл процедур CIFP.',
+      navFull:
+        'Заголовки основных файлов, совпадение AIRAC, доступность и размер каждого файла CIFP.',
+      navSupplemental: 'Проверяет, что дополнительные файлы доступны для чтения и не пусты.',
+      navCycles:
+        'Читает метаданные AIRAC в Custom Data на глубине до 10 уровней, исключая резервные копии.',
+      addonUpdates:
+        'Сопоставлено {checked} из {installed} поддерживаемых дополнений. Обновления: {count}. Внешняя программа: {external}.',
+      navFuture:
+        'Некоторые установленные навигационные пакеты ещё не вступили в силу. Проверьте указанные даты.',
+    },
     fields: {
       count: 'Затронутые элементы',
       installed: 'Установленные аэропорты',
@@ -1466,6 +1587,17 @@ export const healthDetailMessages = {
     },
   },
   ar: {
+    coverage: {
+      sources: 'مصادر البيانات',
+      scope: 'نطاق الفحص',
+      navQuick: 'فحص رؤوس الملفات الأساسية وتطابق AIRAC وملف إجراءات CIFP واحد قابل للقراءة.',
+      navFull: 'فحص رؤوس الملفات الأساسية وتطابق AIRAC وقابلية القراءة وحجم كل ملف إجراءات CIFP.',
+      navSupplemental: 'يتحقق من قابلية قراءة الملفات الاختيارية ومن أنها ليست فارغة.',
+      navCycles: 'يقرأ بيانات AIRAC في Custom Data حتى عمق 10 مستويات مع استثناء النسخ الاحتياطية.',
+      addonUpdates:
+        'تمت مقارنة {checked} من {installed} إضافة مدعومة. التحديثات: {count}. أداة تحديث خارجية: {external}.',
+      navFuture: 'بعض حزم الملاحة المثبتة لم تدخل حيز التنفيذ بعد. راجع التواريخ المذكورة.',
+    },
     fields: {
       count: 'العناصر المتأثرة',
       installed: 'المطارات المثبتة',
@@ -1621,6 +1753,18 @@ export const healthDetailMessages = {
     },
   },
   hi: {
+    coverage: {
+      sources: 'डेटा स्रोत',
+      scope: 'जाँच का दायरा',
+      navQuick: 'मुख्य फ़ाइल हेडर, AIRAC का मिलान और एक पठनीय CIFP प्रक्रिया फ़ाइल की जाँच।',
+      navFull:
+        'मुख्य फ़ाइल हेडर, AIRAC का मिलान और हर CIFP प्रक्रिया फ़ाइल की पठनीयता व आकार की जाँच।',
+      navSupplemental: 'जाँचता है कि वैकल्पिक फ़ाइलें पठनीय हैं और खाली नहीं हैं।',
+      navCycles: 'Custom Data में 10 स्तर तक AIRAC मेटाडेटा पढ़ता है। बैकअप शामिल नहीं हैं।',
+      addonUpdates:
+        '{installed} समर्थित ऐड-ऑन में से {checked} की तुलना हुई। अपडेट: {count}। बाहरी अपडेटर: {external}।',
+      navFuture: 'कुछ स्थापित नेविगेशन पैकेज अभी प्रभावी नहीं हैं। सूचीबद्ध तिथियाँ जाँचें।',
+    },
     fields: {
       count: 'प्रभावित मदें',
       installed: 'स्थापित हवाई अड्डे',
