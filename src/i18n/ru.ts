@@ -158,6 +158,10 @@ export default {
     Patch: 'Патч',
   },
   patch: {
+    selectAircraft: 'Выберите самолёт',
+    noReliableMatch:
+      'Нет однозначного совпадения. Выберите самолёт, для которого предназначен патч.',
+    matchingFiles: 'Совпало файлов: {matched}/{total}',
     title: 'Установить патч самолёта',
     targetAircraft: 'Целевой самолёт',
     detecting: 'Поиск подходящего самолёта…',

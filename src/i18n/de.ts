@@ -159,6 +159,9 @@ export default {
     Patch: 'Patch',
   },
   patch: {
+    selectAircraft: 'Flugzeug auswählen',
+    noReliableMatch: 'Keine eindeutige Übereinstimmung. Wähle das Flugzeug für diesen Patch aus.',
+    matchingFiles: '{matched}/{total} übereinstimmende Dateien',
     title: 'Flugzeug-Patch installieren',
     targetAircraft: 'Zielflugzeug',
     detecting: 'Passendes Flugzeug wird erkannt…',

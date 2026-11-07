@@ -326,13 +326,16 @@ export interface ConflictInfo {
 
 export type PatchConfidence = 'high' | 'medium' | 'low'
 
-/** A candidate target aircraft, ranked by how many patch files align with it. */
+/** A candidate target aircraft, ranked by file tree evidence. */
 export interface PatchAircraftCandidate {
   folderName: string
   displayName: string
   matchedCount: number
-  sampleSize: number
+  fileCount: number
+  matchScore: number
   bestOffset: string
+  bestDestination: string
+  ambiguousMapping: boolean
   confidence: PatchConfidence
 }
 

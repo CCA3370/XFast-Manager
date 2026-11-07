@@ -158,6 +158,10 @@ export default {
     Patch: 'Correção',
   },
   patch: {
+    selectAircraft: 'Escolha uma aeronave',
+    noReliableMatch:
+      'Não há correspondência clara. Selecione a aeronave à qual esta correção se destina.',
+    matchingFiles: '{matched}/{total} arquivos correspondentes',
     title: 'Instalar correção de aeronave',
     targetAircraft: 'Aeronave de destino',
     detecting: 'Detectando aeronave correspondente…',

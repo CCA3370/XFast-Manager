@@ -52,8 +52,10 @@
                   class="w-full px-3 py-2 bg-white dark:bg-gray-900/70 border border-gray-200 dark:border-gray-700/50 rounded-lg text-gray-900 dark:text-white text-sm focus:border-orange-400 focus:ring-2 focus:ring-orange-500/30 transition-all"
                   @change="onAircraftChange"
                 >
+                  <option value="" disabled>{{ $t('patch.selectAircraft') }}</option>
                   <option v-for="c in candidates" :key="c.folderName" :value="c.folderName">
-                    {{ c.displayName }}
+                    {{ c.displayName }} ·
+                    {{ $t('patch.matchingFiles', { matched: c.matchedCount, total: c.fileCount }) }}
                   </option>
                 </select>
                 <p
@@ -69,6 +71,12 @@
                     />
                   </svg>
                   {{ $t('patch.autoRecommended') }}
+                </p>
+                <p
+                  v-else-if="!selectedFolder"
+                  class="text-xs text-amber-600 dark:text-amber-400 mt-1.5"
+                >
+                  {{ $t('patch.noReliableMatch') }}
                 </p>
               </template>
               <div v-else class="text-xs text-amber-600 dark:text-amber-400 py-2">
@@ -88,7 +96,7 @@
                 {{ $t('patch.inferring') }}
               </div>
               <div
-                v-else
+                v-else-if="totalFiles > 0"
                 class="bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/50 rounded-lg p-3 space-y-2"
               >
                 <div class="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-200">
@@ -400,6 +408,8 @@ const canInstall = computed(
     !!selectedFolder.value &&
     mappingsFolder.value === selectedFolder.value &&
     mappings.value.length > 0 &&
+    totalFiles.value > 0 &&
+    !summarizing.value &&
     !building.value &&
     !inferring.value,
 )
@@ -428,14 +438,13 @@ async function runDetect() {
     candidates.value = result.candidates
     recommendedFolder.value = result.recommendedFolder ?? null
 
-    // Pre-select: explicit preset > recommended > best candidate.
-    const preset = props.presetAircraftFolder
+    // The aircraft management entry is an explicit target. Otherwise only
+    // preselect when the comparison identified a clear winner.
+    const preset = props.presetAircraftFolder?.replaceAll('\\', '/')
     if (preset && candidates.value.some((c) => c.folderName === preset)) {
       selectedFolder.value = preset
     } else if (recommendedFolder.value) {
       selectedFolder.value = recommendedFolder.value
-    } else if (candidates.value.length) {
-      selectedFolder.value = candidates.value[0].folderName
     }
 
     if (selectedFolder.value) {
@@ -550,8 +559,8 @@ async function runSummarize(request: number) {
     if (!isCurrent()) return
     totalFiles.value = summary.totalFiles
     overwriteCount.value = summary.overwriteCount
-  } catch {
-    // Preview is informational. Unknown counts must never disable backups.
+  } catch (e) {
+    if (isCurrent()) errorMsg.value = getErrorMessage(e)
   } finally {
     if (isCurrent()) summarizing.value = false
   }
@@ -607,7 +616,6 @@ async function confirmInstall() {
       xplanePath: store.xplanePath,
       aircraftFolder: selectedFolder.value,
       mappings: mappingInputs(),
-      // The backend determines actual overwrites; preview counts are informational.
       backupOverwritten: backupEnabled.value,
     })
     if (mounted) emit('install', tasks)

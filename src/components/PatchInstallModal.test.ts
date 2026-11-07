@@ -76,28 +76,44 @@ afterEach(() => {
 })
 
 describe('patch installation confirmation', () => {
-  it('keeps backup enabled when installed before the preview completes', async () => {
-    api.summarizePatchInstall.mockReturnValue(deferred<PatchInstallSummary>().promise)
+  it('blocks installation until the preview completes', async () => {
+    const pending = deferred<PatchInstallSummary>()
+    api.summarizePatchInstall.mockReturnValue(pending.promise)
     await open()
+    await preview()
+    expect(installButton().attributes('disabled')).toBeDefined()
+    expect(api.buildPatchInstallTasks).not.toHaveBeenCalled()
+    pending.resolve({ totalFiles: 1, overwriteCount: 1 })
+    await flushPromises()
     await installButton().trigger('click')
     expect(api.buildPatchInstallTasks).toHaveBeenCalledWith(
-      expect.objectContaining({
-        aircraftFolder: 'A',
-        backupOverwritten: true,
-      }),
+      expect.objectContaining({ aircraftFolder: 'A', backupOverwritten: true }),
     )
   })
 
-  it('keeps backup enabled when preview fails', async () => {
+  it('blocks installation and displays the preview error', async () => {
     api.summarizePatchInstall.mockRejectedValue(new Error('preview unavailable'))
     await open()
     await preview()
-    await installButton().trigger('click')
-    expect(api.buildPatchInstallTasks).toHaveBeenCalledWith(
-      expect.objectContaining({
-        backupOverwritten: true,
-      }),
-    )
+    expect(installButton().attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('preview unavailable')
+    expect(api.buildPatchInstallTasks).not.toHaveBeenCalled()
+  })
+
+  it('requires an explicit aircraft choice when there is no clear match', async () => {
+    api.detectPatchTargetAircraft.mockResolvedValue({
+      candidates: ['A', 'B'].map((folderName) => ({ folderName, displayName: folderName })),
+      recommendedFolder: null,
+    })
+    await open()
+    expect(wrapper.get('select').element.value).toBe('')
+    expect(wrapper.text()).toContain('patch.noReliableMatch')
+    expect(api.inferPatchMappings).not.toHaveBeenCalled()
+    expect(installButton().attributes('disabled')).toBeDefined()
+    await wrapper.get('select').setValue('A')
+    await flushPromises()
+    await preview()
+    expect(installButton().attributes('disabled')).toBeUndefined()
   })
 
   it('honors an explicit choice to disable backups', async () => {
@@ -125,6 +141,7 @@ describe('patch installation confirmation', () => {
     expect(wrapper.findAll('input[list="patch-archive-dirs"]')).toHaveLength(0)
     latest.resolve(plan('latest-A'))
     await flushPromises()
+    await preview()
     await installButton().trigger('click')
     expect(api.buildPatchInstallTasks).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -145,6 +162,7 @@ describe('patch installation confirmation', () => {
     await flushPromises()
     older.reject(new Error('old B error'))
     await flushPromises()
+    await preview()
     expect(wrapper.text()).not.toContain('old B error')
     expect(installButton().attributes('disabled')).toBeUndefined()
   })
@@ -197,6 +215,8 @@ describe('patch installation confirmation', () => {
     oldSummary.resolve({ totalFiles: 900, overwriteCount: 900 })
     await flushPromises()
     expect(wrapper.text()).toContain('patch.inferring')
+    expect(installButton().attributes('disabled')).toBeDefined()
+    await preview()
     await installButton().trigger('click')
     expect(api.buildPatchInstallTasks).toHaveBeenCalledWith(
       expect.objectContaining({

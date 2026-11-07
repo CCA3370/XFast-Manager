@@ -156,6 +156,9 @@ export default {
     Patch: 'पैच',
   },
   patch: {
+    selectAircraft: 'विमान चुनें',
+    noReliableMatch: 'कोई स्पष्ट मिलान नहीं मिला। इस पैच के लिए विमान चुनें।',
+    matchingFiles: '{matched}/{total} मेल खाने वाली फ़ाइलें',
     title: 'विमान पैच इंस्टॉल करें',
     targetAircraft: 'लक्ष्य विमान',
     detecting: 'मिलान करने वाला विमान खोजा जा रहा है…',

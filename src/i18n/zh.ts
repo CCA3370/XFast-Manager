@@ -154,6 +154,9 @@ export default {
     Patch: '补丁',
   },
   patch: {
+    selectAircraft: '请选择机模',
+    noReliableMatch: '没有足够证据自动选择，请手动选择此补丁适用的机模。',
+    matchingFiles: '{matched}/{total} 个文件匹配',
     title: '安装机模补丁',
     targetAircraft: '目标机型',
     detecting: '正在识别匹配的机型…',

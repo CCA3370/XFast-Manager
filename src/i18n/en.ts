@@ -156,6 +156,9 @@ export default {
     Patch: 'Patch',
   },
   patch: {
+    selectAircraft: 'Choose an aircraft',
+    noReliableMatch: 'No clear match. Select the aircraft that this patch is for.',
+    matchingFiles: '{matched}/{total} matching files',
     title: 'Install aircraft patch',
     targetAircraft: 'Target aircraft',
     detecting: 'Detecting matching aircraft…',

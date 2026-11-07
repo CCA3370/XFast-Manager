@@ -160,6 +160,10 @@ export default {
     Patch: 'Correctif',
   },
   patch: {
+    selectAircraft: 'Choisir un avion',
+    noReliableMatch:
+      'Aucune correspondance claire. Sélectionnez l’avion auquel ce correctif est destiné.',
+    matchingFiles: '{matched}/{total} fichiers correspondants',
     title: 'Installer un correctif d’avion',
     targetAircraft: 'Avion cible',
     detecting: 'Détection de l’avion correspondant…',

@@ -1,63 +1,26 @@
-//! Aircraft model "patch" support.
-//!
-//! A patch is an archive whose contents are overlaid (merged, overwriting
-//! existing files) into an already-installed aircraft folder. Patches are not
-//! signature-detectable (they vary wildly in internal structure and often
-//! contain `.xpl`/`.lua`/`.acf`-adjacent files that the scanner would
-//! mis-classify), so they are entirely user-directed.
-//!
-//! Because the user picks (or we auto-detect) a target aircraft that already
-//! exists on disk, we can align the patch against the *real* aircraft file tree
-//! — far more reliable than guessing from folder names. This module provides:
-//!
-//! * Level 1 — [`detect_target_aircraft`]: align the patch against every
-//!   installed aircraft and recommend the best match (most aligned files).
-//! * Level 2 — [`infer_mappings`]: for the chosen aircraft, infer how each part
-//!   of the archive maps into the aircraft folder (root overlay, liveries, …).
-//!
-//! Both levels score using cheap existence-probes (the patch's own paths used
-//! as queries against the aircraft via `stat`) rather than walking the
-//! aircraft's (potentially huge) file tree.
+//! Aircraft patch planning, validated overlays, snapshots and restoration.
+//! Matching compares every archive path against every installed aircraft tree.
 
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
-use crate::models::{AddonType, AircraftInfo, InstallTask};
+use crate::models::{AddonType, InstallTask};
 use crate::scanner::Scanner;
 
-/// Directory names that, when found directly inside a folder, mark that folder
-/// as an X-Plane aircraft "root" (i.e. a candidate overlay target). Deliberately
-/// excludes `liveries` — liveries are handled as a separate, additive mapping
-/// and a lone `liveries/` child must not make a wrapper folder look like a root.
-const STRONG_LANDMARK_DIRS: &[&str] = &[
-    "objects",
-    "cockpit",
-    "cockpit_3d",
-    "sounds",
-    "fmod",
-    "plugins",
-    "airfoils",
-    "systems",
-];
+#[path = "patch_matching.rs"]
+mod matching;
+#[cfg(test)]
+use matching::ProbeTarget;
+use matching::{discover, rank_candidates};
 
-const MAX_SAMPLE: usize = 200;
-const MAX_OFFSET_DEPTH: usize = 3;
-const MAX_TREE: usize = 400;
-/// Minimum aligned files (and ratio) before a single overlay *mapping* is shown
-/// as a confident match (used by [`confidence_for`] in Level 2).
 const MIN_RECOMMEND_MATCH: usize = 3;
 const MIN_RECOMMEND_RATIO: f64 = 0.25;
-/// The top aircraft must out-score the runner-up by at least this factor before
-/// we auto-recommend it; otherwise the field is too close to call and we let the
-/// user choose. Keeps near-ties from silently picking the wrong aircraft.
-const RECOMMEND_LEAD: f64 = 1.5;
 
 // --------------------------------------------------------------------------
 // Serializable results (camelCase for the frontend)
@@ -76,9 +39,13 @@ pub enum Confidence {
 pub struct AircraftCandidate {
     pub folder_name: String,
     pub display_name: String,
-    /// Number of sampled patch paths that already exist in this aircraft.
+    /// Number of complete patch-tree paths that already exist in this aircraft.
     pub matched_count: usize,
-    pub sample_size: usize,
+    /// Rarity-weighted identity evidence across the entire aircraft library.
+    pub match_score: f64,
+    pub file_count: usize,
+    pub best_destination: String,
+    pub ambiguous_mapping: bool,
     /// Archive prefix that aligned best ("" = archive root).
     pub best_offset: String,
     pub confidence: Confidence,
@@ -131,197 +98,10 @@ pub struct PatchInstallSummary {
 // Level 1 — detect the target aircraft
 // --------------------------------------------------------------------------
 
-/// Align the patch against every installed aircraft and rank them by how well
-/// their *discriminative* files overlap (see [`rank_candidates`]). Cheap:
-/// per-aircraft existence probes of a bounded sample, run in parallel.
+/// Compare the complete patch file tree to every installed aircraft.
 pub fn detect_target_aircraft(archive_path: &Path, xplane_path: &str) -> Result<TargetDetection> {
-    let aircraft = crate::management_index::scan_aircraft(Path::new(xplane_path))?.entries;
-    let files = list_archive_files(archive_path).unwrap_or_default();
-
-    // Resolve each scanned aircraft to its real folder up front. Unresolvable
-    // ones are kept (dir = None) so the user can still pick them manually; they
-    // simply score zero.
-    let targets: Vec<ProbeTarget> = aircraft
-        .into_iter()
-        .map(|ac| {
-            let dir = resolve_aircraft_dir(xplane_path, &ac);
-            ProbeTarget {
-                folder_name: ac.folder_name,
-                display_name: ac.display_name,
-                dir,
-            }
-        })
-        .collect();
-
-    Ok(rank_candidates(&files, &targets))
-}
-
-/// A candidate aircraft to align the patch against: its identity plus the real
-/// on-disk folder (`None` if it could not be resolved).
-struct ProbeTarget {
-    folder_name: String,
-    display_name: String,
-    dir: Option<PathBuf>,
-}
-
-/// Pure target-ranking core (filesystem probes only, no archive I/O beyond the
-/// pre-listed `files`): align the patch against each candidate aircraft and rank
-/// by a *discriminative*, rarity-weighted overlap score. Split out so it can be
-/// unit-tested directly against temp aircraft folders.
-///
-/// Two facts make a naive "count files that already exist" score pick the wrong
-/// aircraft, so we correct for both:
-///
-/// * **Shared runtimes carry no identity.** The `plugins/` tree (xlua, SASL, …)
-///   ships byte-identical with most aircraft, so a sound/model patch overlapping
-///   it says nothing about which aircraft it targets. [`build_sample`] therefore
-///   drops that subtree from the score entirely.
-/// * **Common files are weak; rare files are strong.** A path present in *every*
-///   installed aircraft (`Master Bank.bank`, `GUIDs.txt`) is worthless for
-///   disambiguation, while a path unique to one aircraft (`a321.snd`) is decisive.
-///   We weight each match by inverse document frequency across the library, so
-///   universal files contribute ~zero and model-specific files dominate.
-fn rank_candidates(files: &[String], targets: &[ProbeTarget]) -> TargetDetection {
-    // Helper: every aircraft offered with no score (manual pick still possible).
-    let zero_candidates = || -> Vec<AircraftCandidate> {
-        targets
-            .iter()
-            .map(|t| AircraftCandidate {
-                folder_name: t.folder_name.clone(),
-                display_name: t.display_name.clone(),
-                matched_count: 0,
-                sample_size: 0,
-                best_offset: String::new(),
-                confidence: Confidence::Low,
-            })
-            .collect()
-    };
-
-    if files.is_empty() || targets.is_empty() {
-        return TargetDetection {
-            candidates: zero_candidates(),
-            recommended_folder: None,
-        };
-    }
-
-    let dirs = derive_dirs(files);
-    let offsets = candidate_offsets(files, &dirs);
-    // One identical (discriminative-only) sample per offset so scores compare
-    // fairly across aircraft. Offsets whose entire sample is shared-runtime noise
-    // drop out here.
-    let samples: Vec<(String, Vec<String>)> = offsets
-        .iter()
-        .map(|off| (off.clone(), build_sample(files, off)))
-        .filter(|(_, sample)| !sample.is_empty())
-        .collect();
-
-    if samples.is_empty() {
-        // Nothing discriminative to score on (e.g. a plugins-only archive).
-        return TargetDetection {
-            candidates: zero_candidates(),
-            recommended_folder: None,
-        };
-    }
-
-    let n = targets.len();
-
-    // Probe matrix: for each aircraft, for each offset, which sample indices
-    // exist on disk. Same number of stat() probes as a plain count would do.
-    let matched: Vec<Vec<Vec<usize>>> = targets
-        .par_iter()
-        .map(|t| {
-            samples
-                .iter()
-                .map(|(_, sample)| match &t.dir {
-                    Some(dir) => sample
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, rel)| dir.join(rel).exists())
-                        .map(|(i, _)| i)
-                        .collect(),
-                    None => Vec::new(),
-                })
-                .collect()
-        })
-        .collect();
-
-    // Document frequency per (offset, path): how many aircraft contain it.
-    let mut df: Vec<Vec<usize>> = samples.iter().map(|(_, s)| vec![0usize; s.len()]).collect();
-    for per_ac in &matched {
-        for (oi, idxs) in per_ac.iter().enumerate() {
-            for &i in idxs {
-                df[oi][i] += 1;
-            }
-        }
-    }
-
-    // Score each aircraft at its best-aligning offset = Σ idf(matched paths).
-    let mut scored: Vec<(f64, AircraftCandidate)> = targets
-        .iter()
-        .enumerate()
-        .map(|(ai, t)| {
-            let mut best_score = 0.0f64;
-            let mut best_offset = String::new();
-            let mut best_matched = 0usize;
-            let mut best_sample = samples.first().map(|(_, s)| s.len()).unwrap_or(0);
-            let mut chosen = false;
-            for (oi, (off, sample)) in samples.iter().enumerate() {
-                let idxs = &matched[ai][oi];
-                let score: f64 = idxs.iter().map(|&i| idf(n, df[oi][i])).sum();
-                // Prefer the higher-scoring offset; break score ties by raw
-                // match count so an aligned subtree still wins over the root.
-                if !chosen
-                    || score > best_score
-                    || (score == best_score && idxs.len() > best_matched)
-                {
-                    chosen = true;
-                    best_score = score;
-                    best_offset = off.clone();
-                    best_matched = idxs.len();
-                    best_sample = sample.len();
-                }
-            }
-            (
-                best_score,
-                AircraftCandidate {
-                    folder_name: t.folder_name.clone(),
-                    display_name: t.display_name.clone(),
-                    matched_count: best_matched,
-                    sample_size: best_sample,
-                    best_offset,
-                    confidence: confidence_for_score(best_score, n),
-                },
-            )
-        })
-        .collect();
-
-    // Rank by weighted score (desc); stable tie-break by display name.
-    scored.sort_by(|a, b| {
-        b.0.partial_cmp(&a.0)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| {
-                a.1.display_name
-                    .to_lowercase()
-                    .cmp(&b.1.display_name.to_lowercase())
-            })
-    });
-
-    // Recommend the top aircraft only when it has real discriminative overlap
-    // (score > 0) AND a clear lead over the runner-up. A runner-up score of zero
-    // means the top matched files no other aircraft has — recommend it.
-    let recommended_folder = scored.first().and_then(|(top_score, top)| {
-        let runner = scored.get(1).map(|(s, _)| *s).unwrap_or(0.0);
-        if *top_score > 0.0 && (runner <= 0.0 || *top_score >= runner * RECOMMEND_LEAD) {
-            Some(top.folder_name.clone())
-        } else {
-            None
-        }
-    });
-
-    TargetDetection {
-        candidates: scored.into_iter().map(|(_, c)| c).collect(),
-        recommended_folder,
-    }
+    let files = list_archive_files(archive_path)?;
+    rank_candidates(&files, &discover(xplane_path)?)
 }
 
 // --------------------------------------------------------------------------
@@ -339,28 +119,31 @@ pub fn infer_mappings(
     let aircraft_dir = resolve_aircraft_dir_by_name(xplane_path, aircraft_folder)
         .ok_or_else(|| anyhow!("Aircraft folder not found: {}", aircraft_folder))?;
 
-    let files = list_archive_files(archive_path).unwrap_or_default();
+    let files = list_archive_files(archive_path)?;
     let dirs = derive_dirs(&files);
-    let archive_tree: Vec<String> = dirs.iter().take(MAX_TREE).cloned().collect();
+    let archive_tree: Vec<String> = dirs.iter().chain(&files).cloned().collect();
     let aircraft_subdirs = immediate_subdirs(&aircraft_dir);
 
-    if files.is_empty() {
-        // No listing available — fall back to a single low-confidence root overlay.
-        return Ok(PatchPlan {
-            archive_tree,
-            suggested_mappings: vec![PatchMapping {
-                archive_subpath: String::new(),
-                dest_subpath: String::new(),
-                file_count: 0,
-                confidence: Confidence::Low,
-                reason: "couldNotInspectArchive".to_string(),
-            }],
-            unmapped: Vec::new(),
-            aircraft_subdirs,
-        });
-    }
-
-    let (suggested_mappings, unmapped) = plan_mappings(&files, &dirs, &aircraft_dir);
+    // Use exactly the same library-wide evidence as target detection, so the
+    // recommended wrapper cannot change when the user opens the preview.
+    let detection = rank_candidates(&files, &discover(xplane_path)?)?;
+    let candidate = detection
+        .candidates
+        .iter()
+        .find(|candidate| candidate.folder_name == aircraft_folder.replace('\\', "/"))
+        .ok_or_else(|| anyhow!("Aircraft folder not found: {}", aircraft_folder))?;
+    let (suggested_mappings, unmapped) =
+        if candidate.ambiguous_mapping || candidate.matched_count == 0 {
+            (Vec::new(), matching::uncovered(&files, &[]))
+        } else {
+            plan_at_offset(
+                &files,
+                &dirs,
+                &candidate.best_offset,
+                &candidate.best_destination,
+                candidate.matched_count,
+            )
+        };
 
     Ok(PatchPlan {
         archive_tree,
@@ -370,93 +153,103 @@ pub fn infer_mappings(
     })
 }
 
-/// Pure mapping core (no archive I/O): given the archive's file list and the
-/// real aircraft directory, decide the root-overlay mapping plus any liveries
-/// mapping, and report leftovers. Split out so it can be unit-tested directly.
+#[cfg(test)]
 fn plan_mappings(
     files: &[String],
     dirs: &BTreeSet<String>,
     aircraft_dir: &Path,
 ) -> (Vec<PatchMapping>, Vec<String>) {
-    // 1. Choose the best root-overlay offset by probe score against this aircraft.
-    let offsets = candidate_offsets(files, dirs);
-    let mut root_offset = String::new();
-    let mut root_matched = 0usize;
-    let mut root_sample = 0usize;
-    for off in &offsets {
-        let sample = build_sample(files, off);
-        if sample.is_empty() {
-            continue;
-        }
-        let matched = sample
-            .iter()
-            .filter(|rel| aircraft_dir.join(rel).exists())
-            .count();
-        if matched > root_matched {
-            root_matched = matched;
-            root_offset = off.clone();
-            root_sample = sample.len();
-        }
-    }
+    let detection = rank_candidates(
+        files,
+        &[ProbeTarget {
+            folder_name: "test".into(),
+            display_name: "test".into(),
+            dir: aircraft_dir.to_path_buf(),
+        }],
+    )
+    .unwrap();
+    let candidate = &detection.candidates[0];
+    plan_at_offset(
+        files,
+        dirs,
+        &candidate.best_offset,
+        &candidate.best_destination,
+        candidate.matched_count,
+    )
+}
 
-    let mut mappings: Vec<PatchMapping> = Vec::new();
-
-    // Always emit a root mapping: either an aligned subtree or, failing that,
-    // the archive root (so plain overlays still install).
-    let (root_confidence, root_reason) = if root_matched > 0 {
-        (
-            confidence_for(root_matched, root_sample.max(1)),
-            format!("matchedExisting:{}", root_matched),
-        )
-    } else {
-        (Confidence::Low, "noAnchorDefaultRoot".to_string())
-    };
-    mappings.push(PatchMapping {
-        archive_subpath: root_offset.clone(),
-        dest_subpath: String::new(),
-        file_count: count_under(files, &root_offset),
-        confidence: root_confidence,
-        reason: root_reason,
-    });
-    let covered_prefix = root_offset;
-
-    // 2. Anything not covered by the root overlay: liveries folders map into
-    //    `<aircraft>/liveries`; everything else is reported for the user. A file
-    //    is "covered" when it sits under the chosen root-overlay prefix, so an
-    //    ancestor wrapper folder (fully covered) is correctly skipped.
-    let mut unmapped: Vec<String> = Vec::new();
-    for group in top_level_dirs(dirs) {
-        let group_prefix = format!("{}/", group);
-        let uncovered = files
-            .iter()
-            .filter(|f| f.starts_with(&group_prefix))
-            .filter(|f| strip_offset(f, &covered_prefix).is_none())
-            .count();
-        if uncovered == 0 {
-            continue; // fully covered by the root overlay (e.g. a wrapper folder)
-        }
-        if is_livery_group(&group, files) {
+fn plan_at_offset(
+    files: &[String],
+    dirs: &BTreeSet<String>,
+    offset: &str,
+    destination: &str,
+    matched: usize,
+) -> (Vec<PatchMapping>, Vec<String>) {
+    let count = count_under(files, offset);
+    let mut mappings = vec![PatchMapping {
+        archive_subpath: offset.to_string(),
+        dest_subpath: destination.to_string(),
+        file_count: count,
+        confidence: confidence_for(matched, count),
+        reason: if matched > 0 {
+            format!("matchedExisting:{}", matched)
+        } else {
+            "noAnchorDefaultRoot".to_string()
+        },
+    }];
+    // Recognize separate liveries at any wrapper depth. Never map an ancestor
+    // of the selected root (that would duplicate already mapped files).
+    for dir in dirs {
+        if dir
+            .rsplit('/')
+            .next()
+            .is_some_and(|name| name.eq_ignore_ascii_case("liveries"))
+            && !mappings.iter().any(|mapping| {
+                strip_offset(dir, &mapping.archive_subpath).is_some()
+                    || dir == &mapping.archive_subpath
+                    || strip_offset(&mapping.archive_subpath, dir).is_some()
+            })
+        {
             mappings.push(PatchMapping {
-                archive_subpath: group.clone(),
+                archive_subpath: dir.clone(),
                 dest_subpath: "liveries".to_string(),
-                file_count: uncovered,
+                file_count: count_under(files, dir),
                 confidence: Confidence::Medium,
                 reason: "liveryFolder".to_string(),
             });
-        } else {
-            unmapped.push(group);
         }
     }
-
-    // Loose files at the archive root not covered by a non-root overlay.
-    if !covered_prefix.is_empty() {
-        for f in files {
-            if !f.contains('/') {
-                unmapped.push(f.clone());
-            }
+    let livery_roots: BTreeSet<String> = files
+        .iter()
+        .filter_map(|file| {
+            let (_, root) = crate::livery_patterns::check_livery_pattern(file)?;
+            (!root.is_empty() && dirs.contains(&root)).then_some(root)
+        })
+        .collect();
+    for root in livery_roots {
+        if mappings.iter().any(|mapping| {
+            root == mapping.archive_subpath
+                || strip_offset(&root, &mapping.archive_subpath).is_some()
+                || strip_offset(&mapping.archive_subpath, &root).is_some()
+        }) {
+            continue;
         }
+        let Some(name) = root.rsplit('/').next() else {
+            continue;
+        };
+        mappings.push(PatchMapping {
+            archive_subpath: root.clone(),
+            dest_subpath: format!("liveries/{name}"),
+            file_count: count_under(files, &root),
+            confidence: Confidence::Medium,
+            reason: "liveryFolder".to_string(),
+        });
     }
-
+    let prefixes = mappings
+        .iter()
+        .map(|mapping| mapping.archive_subpath.clone())
+        .collect::<Vec<_>>();
+    let unmapped = matching::uncovered(files, &prefixes);
     (mappings, unmapped)
 }
 
@@ -485,7 +278,11 @@ fn count_install_dests(
     aircraft_dir: &Path,
     mappings: &[PatchMappingInput],
 ) -> Result<PatchInstallSummary> {
+    if mappings.is_empty() {
+        return Err(anyhow!("No patch mappings provided"));
+    }
     let mut dests: BTreeSet<PathBuf> = BTreeSet::new();
+    let mut keys = BTreeSet::new();
     for m in mappings {
         let archive_sub = safe_relative_subpath(&m.archive_subpath)?;
         let dest_sub = safe_relative_subpath(&m.dest_subpath)?;
@@ -497,12 +294,38 @@ fn count_install_dests(
                 let rel = safe_relative_subpath(rel)?;
                 let dest = base.join(rel);
                 validate_destination(aircraft_dir, &dest)?;
+                if dest.is_dir() {
+                    return Err(anyhow!(
+                        "Patch file conflicts with a directory: {}",
+                        dest.display()
+                    ));
+                }
+                if !keys.insert(matching::path_key(&dest.to_string_lossy())) {
+                    return Err(anyhow!(
+                        "Patch mappings write the same destination: {}",
+                        dest.display()
+                    ));
+                }
                 dests.insert(dest);
                 matched = true;
             }
         }
         if !matched {
             return Err(anyhow!("Patch mapping contains no files: {}", archive_sub));
+        }
+    }
+    for dest in &dests {
+        for parent in dest
+            .ancestors()
+            .skip(1)
+            .take_while(|parent| parent.starts_with(aircraft_dir))
+        {
+            if parent.is_file() || dests.contains(parent) {
+                return Err(anyhow!(
+                    "Patch file conflicts with a parent file: {}",
+                    dest.display()
+                ));
+            }
         }
     }
     let overwrite_count = dests.iter().filter(|p| p.is_file()).count();
@@ -528,7 +351,9 @@ fn safe_relative_subpath(value: &str) -> Result<String> {
     let normalized = value.replace('\\', "/");
     if normalized.starts_with('/')
         || normalized.contains(':')
-        || normalized.contains('\0')
+        || normalized
+            .chars()
+            .any(|c| c.is_control() || "<>\"|?*".contains(c))
         || normalized
             .split('/')
             .any(|s| s == ".." || s == "." || s.ends_with('.') || s.ends_with(' '))
@@ -539,6 +364,18 @@ fn safe_relative_subpath(value: &str) -> Result<String> {
         ));
     }
     let normalized = normalized.trim_end_matches('/').to_string();
+    if !normalized.is_empty()
+        && normalized.split('/').any(|segment| {
+            let stem = segment.split('.').next().unwrap_or("").to_ascii_uppercase();
+            segment.is_empty()
+                || matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+                || (stem.len() == 4
+                    && (stem.starts_with("COM") || stem.starts_with("LPT"))
+                    && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+        })
+    {
+        return Err(anyhow!("Invalid patch path: {}", value));
+    }
     if normalized
         .split('/')
         .any(|s| s.eq_ignore_ascii_case("_xfast_patch_backups"))
@@ -984,12 +821,31 @@ fn sanitize_component(s: &str) -> String {
 pub(crate) fn list_archive_files(archive_path: &Path) -> Result<Vec<String>> {
     let scanner = Scanner::new();
     let entries = scanner.list_archive_entries(archive_path)?;
-    Ok(entries
-        .into_iter()
-        .map(|e| e.replace('\\', "/"))
-        .map(|e| e.strip_prefix("./").unwrap_or(&e).to_string())
-        .filter(|e| !e.is_empty() && !e.ends_with('/'))
-        .collect())
+    let mut files = Vec::new();
+    let mut seen = BTreeSet::new();
+    for entry in entries {
+        let entry = entry.replace('\\', "/");
+        let entry = entry.strip_prefix("./").unwrap_or(&entry);
+        if entry.is_empty()
+            || entry.ends_with('/')
+            || crate::package_artifacts::is_ignored_package_artifact_archive_path(entry)
+        {
+            continue;
+        }
+        let normalized = safe_relative_subpath(entry)?;
+        if normalized != entry || normalized.split('/').any(str::is_empty) {
+            return Err(anyhow!("Ambiguous archive path: {}", entry));
+        }
+        if !seen.insert(matching::path_key(&normalized)) {
+            return Err(anyhow!("Duplicate archive file: {}", entry));
+        }
+        files.push(normalized);
+    }
+    if files.is_empty() {
+        return Err(anyhow!("Patch archive contains no files"));
+    }
+    files.sort();
+    Ok(files)
 }
 
 /// Every directory path implied by the file list.
@@ -1010,89 +866,6 @@ fn derive_dirs(files: &[String]) -> BTreeSet<String> {
     dirs
 }
 
-fn depth(path: &str) -> usize {
-    if path.is_empty() {
-        0
-    } else {
-        path.matches('/').count() + 1
-    }
-}
-
-/// Candidate overlay roots: the archive root plus any directory (up to a depth
-/// cap) that directly contains an aircraft landmark (a `.acf`/`.xfma` file or a
-/// strong landmark sub-directory). Scoring later decides which actually aligns.
-fn candidate_offsets(files: &[String], dirs: &BTreeSet<String>) -> Vec<String> {
-    let mut offsets = vec![String::new()];
-    if is_content_root(files, dirs, "") {
-        // "" already in offsets
-    }
-    for d in dirs {
-        if depth(d) > MAX_OFFSET_DEPTH {
-            continue;
-        }
-        if is_content_root(files, dirs, d) {
-            offsets.push(d.clone());
-        }
-    }
-    offsets
-}
-
-/// True if `dir` looks like an aircraft root (overlay target).
-fn is_content_root(files: &[String], dirs: &BTreeSet<String>, dir: &str) -> bool {
-    let prefix = if dir.is_empty() {
-        String::new()
-    } else {
-        format!("{}/", dir)
-    };
-
-    // A direct .acf/.xfma child is the strongest possible signal.
-    let has_acf = files.iter().any(|f| {
-        f.strip_prefix(&prefix).is_some_and(|rest| {
-            !rest.contains('/') && {
-                let l = rest.to_lowercase();
-                l.ends_with(".acf") || l.ends_with(".xfma")
-            }
-        })
-    });
-    if has_acf {
-        return true;
-    }
-
-    // Otherwise: a direct child directory whose name is a strong landmark.
-    for child in dirs {
-        if let Some(rest) = child.strip_prefix(&prefix) {
-            if !rest.is_empty() && !rest.contains('/') {
-                let l = rest.to_lowercase();
-                if STRONG_LANDMARK_DIRS.contains(&l.as_str()) {
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
-
-/// Build a bounded, distinctive, deterministic sample of *discriminative* paths
-/// under `offset` (prefix stripped). Shared-runtime files ([`is_identity_noise`])
-/// are dropped — they ship with most aircraft and only mislead alignment scoring.
-/// Distinctive paths (`.acf`, landmark subtrees) sort first so truncation keeps
-/// the informative ones.
-fn build_sample(files: &[String], offset: &str) -> Vec<String> {
-    let mut rels: Vec<String> = files
-        .iter()
-        .filter_map(|f| strip_offset(f, offset))
-        .filter(|s| !is_identity_noise(s))
-        .map(|s| s.to_string())
-        .collect();
-    rels.sort_by(|a, b| {
-        is_distinctive(b)
-            .cmp(&is_distinctive(a))
-            .then_with(|| a.cmp(b))
-    });
-    rels.truncate(MAX_SAMPLE);
-    rels
-}
-
 fn strip_offset<'a>(path: &'a str, offset: &str) -> Option<&'a str> {
     if offset.is_empty() {
         Some(path)
@@ -1101,45 +874,11 @@ fn strip_offset<'a>(path: &'a str, offset: &str) -> Option<&'a str> {
     }
 }
 
-fn is_distinctive(rel: &str) -> bool {
-    let l = rel.to_lowercase();
-    if l.ends_with(".acf") || l.ends_with(".xfma") {
-        return true;
-    }
-    STRONG_LANDMARK_DIRS
-        .iter()
-        .any(|d| l.starts_with(&format!("{}/", d)))
-}
-
 fn count_under(files: &[String], prefix: &str) -> usize {
     files
         .iter()
         .filter(|f| strip_offset(f, prefix).is_some())
         .count()
-}
-
-/// The distinct first path-segments of every directory (archive top level).
-fn top_level_dirs(dirs: &BTreeSet<String>) -> Vec<String> {
-    let mut tops: BTreeSet<String> = BTreeSet::new();
-    for d in dirs {
-        let top = d.split('/').next().unwrap_or(d);
-        tops.insert(top.to_string());
-    }
-    tops.into_iter().collect()
-}
-
-/// A group is a liveries folder if its leaf name is "liveries", or any file
-/// under it matches a known livery pattern.
-fn is_livery_group(group: &str, files: &[String]) -> bool {
-    let leaf = group.rsplit('/').next().unwrap_or(group).to_lowercase();
-    if leaf == "liveries" {
-        return true;
-    }
-    let prefix = format!("{}/", group);
-    files
-        .iter()
-        .filter(|f| f.starts_with(&prefix))
-        .any(|f| crate::livery_patterns::check_livery_pattern(f).is_some())
 }
 
 fn confidence_for(matched: usize, sample: usize) -> Confidence {
@@ -1150,45 +889,6 @@ fn confidence_for(matched: usize, sample: usize) -> Confidence {
     if matched >= 5 && ratio >= 0.6 {
         Confidence::High
     } else if matched >= MIN_RECOMMEND_MATCH && ratio >= MIN_RECOMMEND_RATIO {
-        Confidence::Medium
-    } else {
-        Confidence::Low
-    }
-}
-
-/// Relative paths (within an overlay offset) that never identify *which*
-/// aircraft a patch targets. The `plugins/` tree holds shared runtimes — xlua,
-/// SASL and friends ship byte-identical with most aircraft, and a stale aircraft
-/// may even keep a legacy copy no one else has (so rarity alone can be fooled by
-/// them). Excluding the whole subtree from the *identity score* is the robust
-/// fix. The files are still installed; this only affects scoring.
-fn is_identity_noise(rel: &str) -> bool {
-    let l = rel.to_ascii_lowercase();
-    l == "plugins" || l.starts_with("plugins/")
-}
-
-/// Inverse document frequency of a matched path across the `n` installed
-/// aircraft: a path present in *every* aircraft (`df == n`) carries no signal
-/// (weight 0); a path unique to one aircraft (`df == 1`) carries the most
-/// (`ln n`). Clamped at 0 so universal files can never tip a recommendation.
-fn idf(n: usize, df: usize) -> f64 {
-    if n == 0 || df == 0 {
-        return 0.0;
-    }
-    (n as f64 / df as f64).ln().max(0.0)
-}
-
-/// Confidence for a target candidate from its weighted overlap `score`, scaled
-/// by `ln n` (the worth of a single aircraft-unique match) so thresholds adapt
-/// to library size rather than being absolute.
-fn confidence_for_score(score: f64, n: usize) -> Confidence {
-    if score <= 0.0 {
-        return Confidence::Low;
-    }
-    let unit = (n as f64).ln().max(1.0);
-    if score >= unit * 1.5 {
-        Confidence::High
-    } else if score >= unit * 0.5 {
         Confidence::Medium
     } else {
         Confidence::Low
@@ -1217,52 +917,24 @@ fn immediate_subdirs(dir: &Path) -> Vec<String> {
     subs
 }
 
-/// Resolve an aircraft entry to its absolute folder. `folder_name` is only the
-/// immediate folder name, so for nested aircraft we fall back to a bounded
-/// recursive search matching name (and `.acf` file when available).
-fn resolve_aircraft_dir(xplane_path: &str, ac: &AircraftInfo) -> Option<PathBuf> {
-    let base = Path::new(xplane_path).join("Aircraft");
-    let direct = base.join(&ac.folder_name);
-    if direct.is_dir() {
-        return Some(direct);
-    }
-    find_named_dir(&base, &ac.folder_name, 0, 4)
-}
-
+/// Targets are exact library-relative identifiers, never a first basename match.
 fn resolve_aircraft_dir_by_name(xplane_path: &str, folder_name: &str) -> Option<PathBuf> {
-    let base = Path::new(xplane_path).join("Aircraft");
-    let folder_name = safe_relative_subpath(folder_name).ok()?;
-    if folder_name.is_empty() {
+    let relative = safe_relative_subpath(folder_name).ok()?;
+    if relative.is_empty() {
         return None;
     }
-    let direct = base.join(&folder_name);
-    if direct.is_dir() {
-        return Some(direct);
-    }
-    find_named_dir(&base, &folder_name, 0, 4)
-}
-
-fn find_named_dir(dir: &Path, name: &str, depth: usize, max_depth: usize) -> Option<PathBuf> {
-    if depth > max_depth {
+    let direct = Path::new(xplane_path).join("Aircraft").join(relative);
+    if !direct.is_dir() {
         return None;
     }
-    let rd = std::fs::read_dir(dir).ok()?;
-    let mut subdirs = Vec::new();
-    for entry in rd.flatten() {
-        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            let path = entry.path();
-            if path.file_name().and_then(|s| s.to_str()) == Some(name) {
-                return Some(path);
-            }
-            subdirs.push(path);
-        }
-    }
-    for sub in subdirs {
-        if let Some(found) = find_named_dir(&sub, name, depth + 1, max_depth) {
-            return Some(found);
-        }
-    }
-    None
+    let has_aircraft = fs::read_dir(&direct).ok()?.any(|entry| {
+        entry.ok().is_some_and(|entry| {
+            entry.path().extension().is_some_and(|ext| {
+                ext.eq_ignore_ascii_case("acf") || ext.eq_ignore_ascii_case("xfma")
+            }) && entry.path().is_file()
+        })
+    });
+    has_aircraft.then_some(direct)
 }
 
 #[cfg(test)]
@@ -1282,58 +954,6 @@ mod tests {
         assert!(dirs.contains("A"));
         assert!(dirs.contains("A/B"));
         assert_eq!(dirs.len(), 2);
-    }
-
-    #[test]
-    fn content_root_detects_acf_and_landmarks() {
-        // PW-MOD-style: content lives under a two-level wrapper.
-        let (files, dirs) = dirs_of(&[
-            "Toliss321 Base Folder/Base Folder/A321.acf",
-            "Toliss321 Base Folder/Base Folder/objects/a.obj",
-            "Toliss321 Base Folder/Base Folder/systems/s.txt",
-            "Liveries/Cool Livery/objects/x.obj",
-        ]);
-        // The base folder is a content root (has .acf); the wrapper and root are not.
-        assert!(is_content_root(
-            &files,
-            &dirs,
-            "Toliss321 Base Folder/Base Folder"
-        ));
-        assert!(!is_content_root(&files, &dirs, "Toliss321 Base Folder"));
-        assert!(!is_content_root(&files, &dirs, ""));
-        // Offsets include the base folder so scoring can align it.
-        let offsets = candidate_offsets(&files, &dirs);
-        assert!(offsets.contains(&"Toliss321 Base Folder/Base Folder".to_string()));
-    }
-
-    #[test]
-    fn content_root_detects_fmod_only() {
-        // FMOD-style: content at root with sound landmark dirs.
-        let (files, dirs) = dirs_of(&["sounds/x.wav", "fmod/y.bank"]);
-        assert!(is_content_root(&files, &dirs, ""));
-    }
-
-    #[test]
-    fn livery_group_by_name() {
-        let (files, _dirs) = dirs_of(&["Liveries/My Livery/object.obj"]);
-        assert!(is_livery_group("Liveries", &files));
-        assert!(!is_livery_group("Base Folder", &files));
-    }
-
-    #[test]
-    fn sample_prefers_distinctive_paths() {
-        let files: Vec<String> = vec![
-            "readme.txt".to_string(),
-            "objects/a.obj".to_string(),
-            "A321.acf".to_string(),
-        ];
-        let sample = build_sample(&files, "");
-        // .acf / objects sort ahead of readme.txt
-        assert_eq!(sample[0], "A321.acf");
-        assert!(
-            sample.iter().position(|s| s == "objects/a.obj").unwrap()
-                < sample.iter().position(|s| s == "readme.txt").unwrap()
-        );
     }
 
     /// Build a minimal on-disk aircraft folder with the given relative files.
@@ -1450,7 +1070,7 @@ mod tests {
         let mk = |folder: &str, dir: &Path| ProbeTarget {
             folder_name: folder.to_string(),
             display_name: folder.to_string(),
-            dir: Some(dir.to_path_buf()),
+            dir: dir.to_path_buf(),
         };
         let targets = vec![
             // 737 listed first so an unstable sort can't accidentally favour the A321.
@@ -1460,7 +1080,7 @@ mod tests {
             mk("GenericB", g2.path()),
         ];
 
-        let det = rank_candidates(&files, &targets);
+        let det = rank_candidates(&files, &targets).unwrap();
 
         // The A321 — fewer raw matches (5) but the only *discriminative* ones —
         // must win and be recommended; the 737 (9 raw matches, all noise) must not.
@@ -1486,11 +1106,134 @@ mod tests {
         let mk = |folder: &str, dir: &Path| ProbeTarget {
             folder_name: folder.to_string(),
             display_name: folder.to_string(),
-            dir: Some(dir.to_path_buf()),
+            dir: dir.to_path_buf(),
         };
-        let det = rank_candidates(&files, &[mk("A", a.path()), mk("B", b.path())]);
+        let det = rank_candidates(&files, &[mk("A", a.path()), mk("B", b.path())]).unwrap();
         // Universal files (df == n) score zero, so we must decline to guess.
         assert_eq!(det.recommended_folder, None);
+    }
+
+    fn target(name: &str, dir: &Path) -> ProbeTarget {
+        ProbeTarget {
+            folder_name: name.into(),
+            display_name: name.into(),
+            dir: dir.to_path_buf(),
+        }
+    }
+
+    #[test]
+    fn full_tree_uses_evidence_beyond_first_200_files() {
+        let names: Vec<String> = (0..350)
+            .map(|index| format!("objects/{index:03}.obj"))
+            .collect();
+        let mut patch = names.clone();
+        patch.push("systems/z-identity.lua".into());
+        let generic = make_aircraft(&names.iter().map(String::as_str).collect::<Vec<_>>());
+        let correct = make_aircraft(&patch.iter().map(String::as_str).collect::<Vec<_>>());
+        let detected = rank_candidates(
+            &patch,
+            &[target("A", generic.path()), target("B", correct.path())],
+        )
+        .unwrap();
+        assert_eq!(detected.recommended_folder.as_deref(), Some("B"));
+        assert_eq!(detected.candidates[0].matched_count, 351);
+        assert_eq!(detected.candidates[0].file_count, 351);
+    }
+
+    #[test]
+    fn deep_non_landmark_wrappers_and_plugin_scripts_match() {
+        let a = make_aircraft(&["plugins/custom/data/model321.lua"]);
+        let b = make_aircraft(&["plugins/custom/data/model737.lua"]);
+        let files = to_owned(&["one/two/three/four/five/plugins/custom/data/model321.lua"]);
+        let detected =
+            rank_candidates(&files, &[target("A", a.path()), target("B", b.path())]).unwrap();
+        assert_eq!(detected.recommended_folder.as_deref(), Some("A"));
+        assert_eq!(
+            detected.candidates[0].best_offset,
+            "one/two/three/four/five"
+        );
+    }
+
+    #[test]
+    fn single_aircraft_is_recommended_but_zero_overlap_and_ties_are_not() {
+        let a = make_aircraft(&["custom/identity.dat"]);
+        let files = to_owned(&["wrapper/custom/identity.dat"]);
+        assert_eq!(
+            rank_candidates(&files, &[target("A", a.path())])
+                .unwrap()
+                .recommended_folder
+                .as_deref(),
+            Some("A")
+        );
+        assert!(
+            rank_candidates(&files, &[target("A", a.path()), target("B", a.path())])
+                .unwrap()
+                .recommended_folder
+                .is_none()
+        );
+        assert!(
+            rank_candidates(&to_owned(&["unrelated.dat"]), &[target("A", a.path())])
+                .unwrap()
+                .recommended_folder
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn directories_are_not_file_matches_and_backups_supply_no_evidence() {
+        let a = make_aircraft(&["_xfast_patch_backups/session/files/only.dat"]);
+        fs::create_dir(a.path().join("fake.acf")).unwrap();
+        let files = to_owned(&["fake.acf", "only.dat"]);
+        let detected = rank_candidates(&files, &[target("A", a.path())]).unwrap();
+        assert_eq!(detected.candidates[0].matched_count, 0);
+    }
+
+    #[test]
+    fn a_flat_sound_pack_maps_into_the_existing_sound_directory() {
+        let correct = make_aircraft(&["fmod/A321.snd", "fmod/A321_HD.snd"]);
+        let other = make_aircraft(&["other/A321.snd"]);
+        let files = to_owned(&["A321.snd", "A321_HD.snd", "new.bank"]);
+        let detected = rank_candidates(
+            &files,
+            &[target("B", other.path()), target("A", correct.path())],
+        )
+        .unwrap();
+        assert_eq!(detected.recommended_folder.as_deref(), Some("A"));
+        assert_eq!(detected.candidates[0].best_destination, "fmod");
+        assert_eq!(detected.candidates[0].matched_count, 2);
+        let (mappings, _) = plan_mappings(&files, &derive_dirs(&files), correct.path());
+        assert_eq!(mappings[0].dest_subpath, "fmod");
+        assert_eq!(mappings[0].file_count, 3);
+    }
+
+    #[test]
+    fn discovery_preserves_nested_identity_and_has_no_depth_limit() {
+        let sim = tempfile::tempdir().unwrap();
+        for relative in ["VendorA/Demo", "one/two/three/four/VendorB/Demo"] {
+            let dir = sim.path().join("Aircraft").join(relative);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("disabled.xfma"), b"x").unwrap();
+        }
+        let targets = discover(sim.path().to_str().unwrap()).unwrap();
+        assert_eq!(targets.len(), 2);
+        assert_ne!(targets[0].folder_name, targets[1].folder_name);
+        assert!(resolve_aircraft_dir_by_name(sim.path().to_str().unwrap(), "Demo").is_none());
+        assert!(resolve_aircraft_dir_by_name(sim.path().to_str().unwrap(), "VendorA").is_none());
+    }
+
+    #[test]
+    fn nested_liveries_and_uncovered_siblings_remain_visible() {
+        let files = to_owned(&[
+            "wrapper/base/plane.acf",
+            "wrapper/Liveries/Paint/objects/body.obj",
+            "wrapper/manual.pdf",
+            "readme.txt",
+        ]);
+        let (mappings, unmapped) =
+            plan_at_offset(&files, &derive_dirs(&files), "wrapper/base", "", 1);
+        assert_eq!(mappings.len(), 2);
+        assert_eq!(mappings[1].archive_subpath, "wrapper/Liveries");
+        assert_eq!(unmapped, to_owned(&["readme.txt", "wrapper/manual.pdf"]));
     }
 
     #[test]

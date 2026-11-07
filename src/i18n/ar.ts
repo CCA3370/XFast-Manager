@@ -155,6 +155,9 @@ export default {
     Patch: 'تصحيح',
   },
   patch: {
+    selectAircraft: 'اختر طائرة',
+    noReliableMatch: 'لا توجد مطابقة واضحة. اختر الطائرة المخصصة لهذا التصحيح.',
+    matchingFiles: '{matched}/{total} من الملفات المطابقة',
     title: 'تثبيت تصحيح الطائرة',
     targetAircraft: 'الطائرة المستهدفة',
     detecting: 'جارٍ اكتشاف الطائرة المطابقة…',

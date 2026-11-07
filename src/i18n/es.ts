@@ -159,6 +159,10 @@ export default {
     Patch: 'Parche',
   },
   patch: {
+    selectAircraft: 'Elige un avión',
+    noReliableMatch:
+      'No hay una coincidencia clara. Selecciona el avión al que va destinado este parche.',
+    matchingFiles: '{matched}/{total} archivos coincidentes',
     title: 'Instalar parche de avión',
     targetAircraft: 'Avión de destino',
     detecting: 'Detectando avión coincidente…',

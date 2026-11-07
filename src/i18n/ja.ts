@@ -158,6 +158,9 @@ export default {
     Patch: 'パッチ',
   },
   patch: {
+    selectAircraft: '機体を選択',
+    noReliableMatch: '一致する機体を特定できません。このパッチの対象機体を選んでください。',
+    matchingFiles: '{matched}/{total} ファイルが一致',
     title: '機体パッチをインストール',
     targetAircraft: '対象の機体',
     detecting: '一致する機体を検出しています…',

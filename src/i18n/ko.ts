@@ -158,6 +158,9 @@ export default {
     Patch: '패치',
   },
   patch: {
+    selectAircraft: '항공기 선택',
+    noReliableMatch: '일치하는 항공기를 확인할 수 없습니다. 이 패치를 적용할 항공기를 선택하세요.',
+    matchingFiles: '일치하는 파일 {matched}/{total}개',
     title: '항공기 패치 설치',
     targetAircraft: '대상 항공기',
     detecting: '일치하는 항공기를 감지하는 중…',
