@@ -15,6 +15,7 @@ export const DOCTOR_FINDINGS: Record<string, { en: [string, string]; zh: [string
         'installation_write_access',
         'installation_permission_access',
         'system_vulkan_runtime',
+        'scenery_files',
       ] as const
     ).map((key) => {
       const en = healthDetailMessages.en.findings[key]

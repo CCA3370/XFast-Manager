@@ -125,15 +125,18 @@ export interface DoctorHistoryFile {
 export interface DoctorInspectionReport {
   sceneryRegistration: 'missing' | 'readable' | 'unavailable'
   sceneryRegistrationError: string | null
+  globalAirportsEnabled: boolean | null
   sceneryPathErrors: string[]
   sceneryLinkErrors: string[]
   invalidSceneryEntries: string[]
   missingSceneryPaths: string[]
   duplicateSceneryPaths: string[]
   brokenSceneryLinks: string[]
+  sceneryFiles: { checked: number; problems: string[]; errors: string[] } | null
   plugins: {
     checked: number
     problems: string[]
+    incompatible: string[]
     errors: string[]
     capped: boolean
   } | null

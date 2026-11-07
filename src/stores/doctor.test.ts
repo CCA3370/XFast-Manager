@@ -156,13 +156,15 @@ async function healthyResponse(command: string): Promise<unknown> {
       return {
         sceneryRegistration: 'readable',
         sceneryRegistrationError: null,
+        globalAirportsEnabled: true,
         sceneryPathErrors: [],
         sceneryLinkErrors: [],
         invalidSceneryEntries: [],
         missingSceneryPaths: [],
         duplicateSceneryPaths: [],
         brokenSceneryLinks: [],
-        plugins: { checked: 0, problems: [], errors: [], capped: false },
+        sceneryFiles: null,
+        plugins: { checked: 0, problems: [], incompatible: [], errors: [], capped: false },
         shaderCachePresent: true,
         preferencesPresent: true,
         logAgeDays: 0,
@@ -335,6 +337,46 @@ describe('Health diagnostic store', () => {
     )
   })
 
+  it('reports the live Global Airports registration and excludes disabled scenery conflicts', async () => {
+    tauri.invoke.mockImplementation(async (command) => {
+      const response = await healthyResponse(command)
+      if (command === 'doctor_inspect_installation') {
+        return { ...(response as object), globalAirportsEnabled: false }
+      }
+      if (command === 'get_scenery_manager_data') {
+        return {
+          ...(response as object),
+          entries: [
+            {
+              folderName: 'Enabled',
+              enabled: true,
+              duplicateTiles: ['+01+002'],
+              missingLibraries: [],
+            },
+            {
+              folderName: 'Disabled',
+              enabled: false,
+              duplicateTiles: ['+01+002'],
+              missingLibraries: ['Unused'],
+            },
+          ],
+        }
+      }
+      if (command === 'airport_flatten_list_overrides') throw new Error('Flatten inspection failed')
+      return response
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+    expect(store.currentRun?.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'scenery.global_airports', outcome: 'critical' }),
+        expect.objectContaining({ id: 'scenery.dependencies', outcome: 'pass' }),
+        expect.objectContaining({ id: 'scenery.overlaps', outcome: 'pass' }),
+        expect.objectContaining({ id: 'diagnostic.scenery_flatten', outcome: 'unavailable' }),
+      ]),
+    )
+  })
+
   it('keeps unreadable scenery registrations separate from readable link inventory', async () => {
     tauri.invoke.mockImplementation(async (command) => {
       const response = await healthyResponse(command)
@@ -392,6 +434,7 @@ describe('Health diagnostic store', () => {
         plugins: {
           checked: 1,
           problems: scenario.problems,
+          incompatible: [],
           errors: scenario.pluginErrors,
           capped: false,
         },
@@ -966,6 +1009,18 @@ describe('Health diagnostic store', () => {
       return null
     })
     tauri.invoke.mockImplementation(async (command, args) => {
+      if (command === 'doctor_inspect_installation') {
+        return {
+          ...((await healthyResponse(command)) as object),
+          plugins: {
+            checked: 1,
+            problems: [],
+            incompatible: ['Resources/plugins/Beta Plugin/win_x64/Beta Plugin.xpl'],
+            errors: [],
+            capped: false,
+          },
+        }
+      }
       if (command === 'scan_aircraft') {
         return {
           entries: [

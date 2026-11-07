@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 
 #[path = "doctor_plugins.rs"]
 mod plugins;
+#[path = "doctor_scenery_files.rs"]
+mod scenery_files;
 
 pub(super) fn host_binary_problem(path: &Path) -> io::Result<Option<&'static str>> {
     plugins::host_binary_problem(path)
@@ -30,12 +32,14 @@ pub enum SceneryRegistration {
 pub struct InspectionReport {
     pub scenery_registration: SceneryRegistration,
     pub scenery_registration_error: Option<String>,
+    pub global_airports_enabled: Option<bool>,
     pub scenery_path_errors: Vec<String>,
     pub scenery_link_errors: Vec<String>,
     pub invalid_scenery_entries: Vec<String>,
     pub missing_scenery_paths: Vec<String>,
     pub duplicate_scenery_paths: Vec<String>,
     pub broken_scenery_links: Vec<String>,
+    scenery_files: Option<scenery_files::SceneryFiles>,
     plugins: Option<plugins::PluginInspection>,
     pub shader_cache_present: bool,
     pub preferences_present: bool,
@@ -106,6 +110,14 @@ fn inspect_scenery_registration(
     for (index, line) in body.trim_start_matches('\u{feff}').lines().enumerate() {
         let line_number = index + 1;
         let line = line.trim();
+        if line
+            .strip_prefix("SCENERY_PACK_DISABLED")
+            .filter(|tail| tail.starts_with(char::is_whitespace))
+            .is_some_and(|tail| tail.trim() == "*GLOBAL_AIRPORTS*")
+        {
+            report.global_airports_enabled = Some(false);
+            continue;
+        }
         if line == "SCENERY_PACK" {
             report
                 .invalid_scenery_entries
@@ -119,6 +131,9 @@ fn inspect_scenery_registration(
             continue;
         };
         let path = path.trim();
+        if path == "*GLOBAL_AIRPORTS*" && report.global_airports_enabled.is_none() {
+            report.global_airports_enabled = Some(true);
+        }
         let target =
             (path != "*GLOBAL_AIRPORTS*").then(|| scenery_target(root, path, resolve_shortcut));
         let key = match &target {
@@ -254,6 +269,9 @@ pub fn inspect_installation(
         .and_then(|time| time.elapsed().ok())
         .map(|age| age.as_secs() / 86_400);
     if full {
+        report.scenery_files = scenery
+            .as_deref()
+            .map(|paths| scenery_files::inspect(root, paths));
         let mut plugins = plugins::inspect(root, scenery.as_deref());
         plugins
             .errors

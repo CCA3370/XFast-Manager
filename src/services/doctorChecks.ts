@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   AircraftInfo,
+  AirportFlattenOverride,
   AddonUpdatableItemType,
   CslScanResult,
   DoctorEnvironmentReport,
@@ -500,6 +501,7 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
       })
       context.inspection = report
       const plugins = report.plugins
+      const files = report.sceneryFiles
       const registrationErrors = report.sceneryRegistrationError
         ? [report.sceneryRegistrationError]
         : []
@@ -509,6 +511,7 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
           ...report.sceneryPathErrors,
           ...report.sceneryLinkErrors,
           ...(plugins?.errors ?? []),
+          ...(files?.errors ?? []),
         ]),
       ]
       const registrationOutcome = {
@@ -530,6 +533,27 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
               ? { id: 'sync_scenery_file', kind: 'automatic', risk: 'confirm' }
               : undefined,
         }),
+        result(
+          'scenery.global_airports',
+          'scenery',
+          report.globalAirportsEnabled === false
+            ? 'critical'
+            : report.globalAirportsEnabled === true
+              ? 'pass'
+              : registeredCheck === 'unavailable'
+                ? 'unavailable'
+                : 'notApplicable',
+          {
+            evidence:
+              report.globalAirportsEnabled === false
+                ? evidence(['SCENERY_PACK_DISABLED *GLOBAL_AIRPORTS*'], 'text')
+                : evidence(registrationErrors, 'path'),
+            remediation:
+              report.globalAirportsEnabled === false
+                ? { id: 'enable_global_airports', kind: 'automatic', risk: 'safe' }
+                : undefined,
+          },
+        ),
         ...(
           [
             [
@@ -590,6 +614,58 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
         ),
       ]
       if (context.mode === 'full') {
+        const incompatible = plugins?.incompatible ?? []
+        checks.push(
+          result(
+            'scenery.files',
+            'scenery',
+            files?.problems.length
+              ? 'warning'
+              : files?.errors.length || report.sceneryRegistration === 'unavailable'
+                ? 'unavailable'
+                : files?.checked
+                  ? 'pass'
+                  : 'notApplicable',
+            {
+              params: { checked: files?.checked ?? 0, count: files?.problems.length ?? 0 },
+              evidence: evidence(
+                [...(files?.problems ?? []), ...(files?.errors ?? []), ...registrationErrors],
+                'path',
+              ),
+              remediation: files?.problems.length
+                ? {
+                    id: 'manage_scenery',
+                    kind: 'navigate',
+                    risk: 'safe',
+                    route: '/management?tab=scenery',
+                  }
+                : undefined,
+            },
+          ),
+          result(
+            'addons.platform',
+            'addons',
+            incompatible.length
+              ? 'warning'
+              : !plugins || plugins.capped || plugins.errors.length
+                ? 'unavailable'
+                : plugins.checked
+                  ? 'pass'
+                  : 'notApplicable',
+            {
+              params: { count: incompatible.length },
+              evidence: evidence(incompatible, 'path'),
+              remediation: incompatible.length
+                ? {
+                    id: 'manage_plugins',
+                    kind: 'navigate',
+                    risk: 'safe',
+                    route: '/management?tab=plugin',
+                  }
+                : undefined,
+            },
+          ),
+        )
         checks.push(
           result(
             'addons.binary_integrity',
@@ -841,75 +917,93 @@ function createSceneryCheck(context: DoctorCheckContext): DoctorCheckDefinition 
       const data = await invoke<SceneryManagerData>('get_scenery_manager_data', {
         xplanePath: context.xplanePath,
       })
-      const globalAirports = data.entries.find((entry) => entry.folderName === '*GLOBAL_AIRPORTS*')
-      const missingLibraries = new Set<string>()
-      for (const entry of data.entries) {
-        for (const library of entry.missingLibraries ?? []) missingLibraries.add(library)
+      const enabled = data.entries.filter((entry) => entry.enabled)
+      const dependencies = enabled.filter((entry) => entry.missingLibraries?.length > 0)
+      const conflicts = (field: 'duplicateTiles' | 'duplicateAirports') => {
+        const byId = new Map<string, Set<string>>()
+        for (const entry of enabled) {
+          for (const id of entry[field] ?? []) {
+            const packages = byId.get(id) ?? new Set()
+            packages.add(entry.folderName)
+            byId.set(id, packages)
+          }
+        }
+        return [...byId]
+          .filter(([, packages]) => packages.size > 1)
+          .map(([id, packages]) => `${id}: ${[...packages].join(', ')}`)
       }
-      const overrides = await invoke<{ status: string; sourcePath?: string }[]>(
-        'airport_flatten_list_overrides',
-        { xplanePath: context.xplanePath },
-      )
-      const drifted = overrides.filter((item) => item.status === 'drifted')
-
+      const overlaps = conflicts('duplicateTiles')
+      const airports = conflicts('duplicateAirports')
+      const manageScenery = {
+        id: 'manage_scenery',
+        kind: 'navigate',
+        risk: 'safe',
+        route: '/management?tab=scenery',
+      } as const
       return [
-        result(
-          'scenery.global_airports',
-          'scenery',
-          globalAirports && !globalAirports.enabled ? 'critical' : 'pass',
-          {
-            remediation:
-              globalAirports && !globalAirports.enabled
-                ? { id: 'enable_global_airports', kind: 'automatic', risk: 'safe' }
-                : undefined,
-          },
-        ),
         result('scenery.load_order', 'scenery', data.needsSync ? 'warning' : 'pass', {
           remediation: data.needsSync
             ? { id: 'sort_scenery', kind: 'automatic', risk: 'safe' }
             : undefined,
         }),
-        result('scenery.dependencies', 'scenery', data.missingDepsCount > 0 ? 'warning' : 'pass', {
-          params: { count: data.missingDepsCount },
-          evidence: evidence([...missingLibraries]),
-          remediation:
-            data.missingDepsCount > 0
-              ? {
-                  id: 'manage_scenery',
-                  kind: 'navigate',
-                  risk: 'safe',
-                  route: '/management?tab=scenery',
-                }
-              : undefined,
-        }),
-        result('scenery.overlaps', 'scenery', data.duplicateTilesCount > 0 ? 'warning' : 'pass', {
-          params: { count: data.duplicateTilesCount },
-          remediation:
-            data.duplicateTilesCount > 0
-              ? {
-                  id: 'manage_scenery',
-                  kind: 'navigate',
-                  risk: 'safe',
-                  route: '/management?tab=scenery',
-                }
-              : undefined,
-        }),
-        result(
-          'scenery.duplicate_airports',
-          'scenery',
-          data.duplicateAirportsCount > 0 ? 'info' : 'pass',
-          { params: { count: data.duplicateAirportsCount } },
-        ),
-        result('scenery.flatten', 'scenery', drifted.length ? 'warning' : 'pass', {
-          params: { count: drifted.length },
+        result('scenery.dependencies', 'scenery', dependencies.length ? 'warning' : 'pass', {
+          params: { count: dependencies.length },
           evidence: evidence(
-            drifted.flatMap((item) => (item.sourcePath ? [item.sourcePath] : [])),
-            'path',
+            dependencies.map(
+              (entry) => `${entry.folderName}: ${entry.missingLibraries.join(', ')}`,
+            ),
           ),
-          remediation: drifted.length
-            ? { id: 'apply_flatten', kind: 'automatic', risk: 'safe' }
-            : undefined,
+          remediation: dependencies.length ? manageScenery : undefined,
         }),
+        result('scenery.overlaps', 'scenery', overlaps.length ? 'warning' : 'pass', {
+          params: { count: overlaps.length },
+          evidence: evidence(overlaps),
+          remediation: overlaps.length ? manageScenery : undefined,
+        }),
+        result('scenery.duplicate_airports', 'scenery', airports.length ? 'info' : 'pass', {
+          params: { count: airports.length },
+          evidence: evidence(airports),
+        }),
+      ]
+    },
+  }
+}
+
+function createFlattenCheck(context: DoctorCheckContext): DoctorCheckDefinition {
+  return {
+    id: 'scenery_flatten',
+    section: 'scenery',
+    phase: 'local',
+    modes: ['quick', 'full'],
+    timeoutMs: 15_000,
+    async run() {
+      const overrides = await invoke<AirportFlattenOverride[]>('airport_flatten_list_overrides', {
+        xplanePath: context.xplanePath,
+      })
+      const drifted = overrides.filter((item) => item.status === 'drifted')
+      const missing = overrides.filter((item) => item.status === 'sourceMissing')
+      return [
+        result(
+          'scenery.flatten',
+          'scenery',
+          drifted.length || missing.length
+            ? 'warning'
+            : overrides.length
+              ? 'pass'
+              : 'notApplicable',
+          {
+            params: { count: drifted.length + missing.length },
+            evidence: evidence(
+              [...drifted, ...missing].map(
+                (item) => `${item.icao}: ${item.sourcePath} (${item.status})`,
+              ),
+              'path',
+            ),
+            remediation: drifted.length
+              ? { id: 'apply_flatten', kind: 'automatic', risk: 'safe' }
+              : undefined,
+          },
+        ),
       ]
     },
   }
@@ -1064,34 +1158,28 @@ function createAddonCheck(context: DoctorCheckContext): DoctorCheckDefinition {
     modes: ['full'],
     timeoutMs: 30_000,
     async run() {
-      const [platform, aircraft, plugins] = await Promise.all([
-        invoke<string>('get_platform'),
+      const [aircraft, plugins] = await Promise.allSettled([
         invoke<{ entries: AircraftInfo[] }>('scan_aircraft', { xplanePath: context.xplanePath }),
         invoke<{ entries: PluginInfo[] }>('scan_plugins', { xplanePath: context.xplanePath }),
       ])
-      const expectedPlatform = platform === 'windows' ? 'win' : platform === 'macos' ? 'mac' : 'lin'
-      const incompatible = plugins.entries.filter(
-        (plugin) =>
-          plugin.enabled &&
-          plugin.platform !== 'multi' &&
-          plugin.platform !== 'unknown' &&
-          plugin.platform !== expectedPlatform,
-      )
+      const params: Record<string, number> = {}
+      const errors: string[] = []
+      for (const [name, inventory] of [
+        ['aircraft', aircraft],
+        ['plugins', plugins],
+      ] as const) {
+        if (inventory.status === 'fulfilled') {
+          params[name] = inventory.value.entries.length
+          params[name === 'aircraft' ? 'enabledAircraft' : 'enabledPlugins'] =
+            inventory.value.entries.filter((item) => item.enabled).length
+        } else {
+          errors.push(`${name}: ${String(inventory.reason)}`)
+        }
+      }
       return [
-        result('addons.inventory', 'addons', 'pass', {
-          params: { aircraft: aircraft.entries.length, plugins: plugins.entries.length },
-        }),
-        result('addons.platform', 'addons', incompatible.length ? 'warning' : 'pass', {
-          params: { count: incompatible.length, platform },
-          evidence: evidence(incompatible.map((plugin) => plugin.displayName)),
-          remediation: incompatible.length
-            ? {
-                id: 'manage_plugins',
-                kind: 'navigate',
-                risk: 'safe',
-                route: '/management?tab=plugin',
-              }
-            : undefined,
+        result('addons.inventory', 'addons', errors.length ? 'unavailable' : 'pass', {
+          params,
+          evidence: evidence(errors, 'path'),
         }),
       ]
     },
@@ -1385,6 +1473,7 @@ export function createDoctorCheckDefinitions(context: DoctorCheckContext): Docto
     createXfastCheck(context),
     createLogCheck(context),
     createSceneryCheck(context),
+    createFlattenCheck(context),
     createNavdataCheck(context),
     createActivityCheck(),
     createCleanupCheck(context),

@@ -75,22 +75,24 @@ const DEFINITION_RESULT_IDS: Record<string, string[]> = {
   ],
   inspection: [
     'scenery.registration',
+    'scenery.global_airports',
     'scenery.invalid_entries',
     'scenery.missing_paths',
     'scenery.duplicate_paths',
     'scenery.broken_links',
+    'scenery.files',
     'stability.log_freshness',
     'installation.scan_access',
     'addons.binary_integrity',
+    'addons.platform',
   ],
   scenery: [
-    'scenery.global_airports',
     'scenery.load_order',
     'scenery.dependencies',
     'scenery.overlaps',
     'scenery.duplicate_airports',
-    'scenery.flatten',
   ],
+  scenery_flatten: ['scenery.flatten'],
   xfast: ['storage.app_data_space', 'xfast.app_data', 'xfast.database', 'xfast.scenery_index'],
 }
 
@@ -678,11 +680,8 @@ export const useDoctorStore = defineStore('doctor', () => {
   function remediationDefinitionId(remediationId: string): string | null {
     if (['disable_injectors', 'rebuild_shader_cache', 'reset_preferences'].includes(remediationId))
       return 'environment'
-    if (
-      ['sync_scenery_file', 'sort_scenery', 'enable_global_airports', 'apply_flatten'].includes(
-        remediationId,
-      )
-    ) {
+    if (remediationId === 'apply_flatten') return 'scenery_flatten'
+    if (['sync_scenery_file', 'sort_scenery', 'enable_global_airports'].includes(remediationId)) {
       return 'scenery'
     }
     if (['refresh_scenery_index', 'rebuild_scenery_index'].includes(remediationId)) return 'xfast'

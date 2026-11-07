@@ -64,6 +64,11 @@ export const healthDetailMessages = {
     yes: 'Yes',
     no: 'No',
     findings: {
+      scenery_files: {
+        title: 'Enabled scenery files',
+        description:
+          'Some enabled packages contain unreadable, empty, or invalid scenery files. Review the listed files.',
+      },
       installation_write_access: {
         title: 'Installation write access',
         description:
@@ -290,6 +295,10 @@ export const healthDetailMessages = {
     yes: '是',
     no: '否',
     findings: {
+      scenery_files: {
+        title: '已启用地景文件',
+        description: '部分已启用地景包含不可读、为空或格式无效的文件，请核对列出的项目。',
+      },
       installation_write_access: {
         title: '安装目录写入权限',
         description: '无法在列出的目录中新增文件，请检查权限和卷状态。',
@@ -487,6 +496,11 @@ export const healthDetailMessages = {
     yes: 'Ja',
     no: 'Nein',
     findings: {
+      scenery_files: {
+        title: 'Aktive Szeneriedateien',
+        description:
+          'Einige aktive Pakete enthalten nicht lesbare, leere oder ungültige Dateien. Prüfe die aufgeführten Dateien.',
+      },
       installation_write_access: {
         title: 'Schreibzugriff auf die Installation',
         description:
@@ -688,6 +702,11 @@ export const healthDetailMessages = {
     yes: 'Oui',
     no: 'Non',
     findings: {
+      scenery_files: {
+        title: 'Fichiers des scènes actives',
+        description:
+          'Certaines scènes actives contiennent des fichiers illisibles, vides ou non valides. Consultez la liste.',
+      },
       installation_write_access: {
         title: 'Accès en écriture à l’installation',
         description:
@@ -887,6 +906,11 @@ export const healthDetailMessages = {
     yes: 'Sí',
     no: 'No',
     findings: {
+      scenery_files: {
+        title: 'Archivos de escenarios activos',
+        description:
+          'Algunos paquetes activos contienen archivos ilegibles, vacíos o no válidos. Revisa los archivos indicados.',
+      },
       installation_write_access: {
         title: 'Acceso de escritura a la instalación',
         description:
@@ -1083,6 +1107,11 @@ export const healthDetailMessages = {
     yes: 'Sim',
     no: 'Não',
     findings: {
+      scenery_files: {
+        title: 'Ficheiros de cenários ativos',
+        description:
+          'Alguns pacotes ativos contêm ficheiros ilegíveis, vazios ou inválidos. Verifique os ficheiros indicados.',
+      },
       installation_write_access: {
         title: 'Acesso de escrita à instalação',
         description:
@@ -1279,6 +1308,11 @@ export const healthDetailMessages = {
     yes: 'はい',
     no: 'いいえ',
     findings: {
+      scenery_files: {
+        title: '有効なシーナリーファイル',
+        description:
+          '有効なパッケージに読み取れない、空、または形式が無効なファイルがあります。表示された項目を確認してください。',
+      },
       installation_write_access: {
         title: 'インストール先への書き込み',
         description:
@@ -1476,6 +1510,11 @@ export const healthDetailMessages = {
     yes: '예',
     no: '아니요',
     findings: {
+      scenery_files: {
+        title: '활성 시너리 파일',
+        description:
+          '활성 패키지에 읽을 수 없거나 비어 있거나 잘못된 파일이 있습니다. 표시된 파일을 확인하세요.',
+      },
       installation_write_access: {
         title: '설치 폴더 쓰기 권한',
         description: '표시된 폴더에 파일을 만들 수 없습니다. 권한과 볼륨 상태를 확인하세요.',
@@ -1668,6 +1707,11 @@ export const healthDetailMessages = {
     yes: 'Да',
     no: 'Нет',
     findings: {
+      scenery_files: {
+        title: 'Файлы активных сценариев',
+        description:
+          'Некоторые активные пакеты содержат нечитаемые, пустые или некорректные файлы. Проверьте список.',
+      },
       installation_write_access: {
         title: 'Доступ на запись в папки установки',
         description:
@@ -1862,6 +1906,11 @@ export const healthDetailMessages = {
     yes: 'نعم',
     no: 'لا',
     findings: {
+      scenery_files: {
+        title: 'ملفات المشاهد المفعّلة',
+        description:
+          'تحتوي بعض الحزم المفعّلة على ملفات غير قابلة للقراءة أو فارغة أو غير صالحة. راجع القائمة.',
+      },
       installation_write_access: {
         title: 'إذن الكتابة في مجلدات التثبيت',
         description: 'تعذّر إنشاء ملفات في المجلدات المذكورة. راجع الأذونات وحالة وحدة التخزين.',
@@ -2050,6 +2099,11 @@ export const healthDetailMessages = {
     yes: 'हाँ',
     no: 'नहीं',
     findings: {
+      scenery_files: {
+        title: 'सक्रिय सीनरी फ़ाइलें',
+        description:
+          'कुछ सक्रिय पैकेज में अपठनीय, खाली या अमान्य फ़ाइलें हैं। सूचीबद्ध फ़ाइलें जाँचें।',
+      },
       installation_write_access: {
         title: 'इंस्टॉलेशन में लिखने की अनुमति',
         description:

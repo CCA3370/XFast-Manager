@@ -11,11 +11,12 @@ const ENTRY_LIMIT: usize = 60_000;
 pub(super) struct PluginInspection {
     pub(super) checked: usize,
     pub(super) problems: Vec<String>,
+    pub(super) incompatible: Vec<String>,
     pub(super) errors: Vec<String>,
     pub(super) capped: bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Platform {
     Windows,
     Linux,
@@ -84,6 +85,7 @@ fn scan(
         }
     }
     scanner.result.problems.sort();
+    scanner.result.incompatible.sort();
     scanner.result.errors.sort();
     scanner.result
 }
@@ -183,7 +185,7 @@ impl Scanner<'_> {
         // XPLM looks for the bundle's own name in the platform directory first.
         // Other .xpl files beside it can be auxiliary or alternate binaries.
         for candidate in [
-            path.join(platform_dir).join(binary_name),
+            path.join(platform_dir).join(&binary_name),
             path.join("64").join(legacy_name),
             path.join(legacy_name),
         ] {
@@ -199,6 +201,33 @@ impl Scanner<'_> {
                     }
                 }
                 Err(error) => return self.error(&candidate, error),
+            }
+        }
+
+        for platform in [Platform::Windows, Platform::Linux, Platform::Mac] {
+            if platform == self.platform {
+                continue;
+            }
+            let (other_dir, other_legacy) = platform.layout();
+            for candidate in [
+                path.join(other_dir).join(&binary_name),
+                path.join("64").join(other_legacy),
+                path.join(other_legacy),
+            ] {
+                match fs::metadata(&candidate) {
+                    Ok(meta) if meta.is_file() => {
+                        self.result
+                            .incompatible
+                            .push(self.describe(&candidate, "no entry for the current platform"));
+                        return;
+                    }
+                    Ok(_) => {}
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    Err(error) => {
+                        self.error(&candidate, error);
+                        return;
+                    }
+                }
             }
         }
     }
@@ -445,6 +474,8 @@ mod tests {
             .any(|problem| problem.contains("loose.xpl")));
         assert_eq!(result.errors.len(), 1);
         assert!(result.errors[0].contains("Unreadable.xpl"));
+        assert_eq!(result.incompatible.len(), 1);
+        assert!(result.incompatible[0].contains("Other.xpl"));
     }
 
     #[test]

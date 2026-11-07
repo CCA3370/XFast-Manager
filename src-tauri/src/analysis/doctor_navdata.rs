@@ -2,7 +2,7 @@
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
-use std::io::{self, Read};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -262,22 +262,24 @@ fn open_data_file(
     }
 }
 
-fn header_cycle(file: File) -> io::Result<Option<Option<String>>> {
+fn navdata_file(mut file: File, full: bool) -> io::Result<Result<Option<String>, &'static str>> {
+    const BLOCK: u64 = 4096;
+    let size = file.metadata()?.len();
     let mut bytes = Vec::new();
-    file.take(4096).read_to_end(&mut bytes)?;
+    file.by_ref().take(BLOCK).read_to_end(&mut bytes)?;
     let text = String::from_utf8_lossy(&bytes);
     let mut lines = text.trim_start_matches('\u{feff}').lines();
     if !matches!(lines.next().map(str::trim), Some("I" | "A")) {
-        return Ok(None);
+        return Ok(Err("invalid X-Plane data header"));
     }
     let Some(version) = lines.next() else {
-        return Ok(None);
+        return Ok(Err("invalid X-Plane data header"));
     };
     let mut tokens = version.split_whitespace();
     if !matches!(tokens.next(), Some(value) if value.parse::<u16>().is_ok())
         || !matches!(tokens.next(), Some(value) if value.eq_ignore_ascii_case("version"))
     {
-        return Ok(None);
+        return Ok(Err("invalid X-Plane data header"));
     }
     let lower = version.to_ascii_lowercase();
     let cycle = lower.split_once("data cycle ").and_then(|(_, rest)| {
@@ -287,7 +289,29 @@ fn header_cycle(file: File) -> io::Result<Option<Option<String>>> {
             .next()?;
         (token.len() == 4).then(|| token.to_owned())
     });
-    Ok(Some(cycle))
+    if size <= BLOCK
+        && !lines
+            .map(str::trim)
+            .any(|line| !line.is_empty() && !line.starts_with('#') && line != "99")
+    {
+        return Ok(Err("navigation data file has no records"));
+    }
+    if full {
+        file.seek(SeekFrom::End(-(size.min(BLOCK) as i64)))?;
+        bytes.clear();
+        file.take(BLOCK).read_to_end(&mut bytes)?;
+        let tail = String::from_utf8_lossy(&bytes);
+        if tail
+            .lines()
+            .rev()
+            .map(str::trim)
+            .find(|line| !line.is_empty() && !line.starts_with('#'))
+            != Some("99")
+        {
+            return Ok(Err("missing final 99 record; file may be truncated"));
+        }
+    }
+    Ok(Ok(cycle))
 }
 
 fn inspect_procedures(root: &Path, dir: &Path, full: bool, layer: &mut NavdataLayer) {
@@ -346,32 +370,34 @@ fn inspect_base(root: &Path, dir: &Path, full: bool) -> NavdataLayer {
         ..Default::default()
     };
     let mut cycles = BTreeSet::new();
-    for name in CORE_FILES {
+    for (name, required) in CORE_FILES
+        .iter()
+        .map(|name| (*name, true))
+        .chain(EXTRA_FILES.iter().map(|name| (*name, false)))
+    {
         let path = dir.join(name);
-        let Some(file) = open_data_file(root, &path, &mut layer, true) else {
+        let Some(file) = open_data_file(root, &path, &mut layer, required) else {
             continue;
         };
+        if !name.ends_with(".dat") {
+            continue;
+        }
         let name = relative(root, &path);
-        match header_cycle(file) {
-            Ok(Some(Some(cycle))) => {
+        match navdata_file(file, full) {
+            Ok(Ok(Some(cycle))) => {
                 layer.headers.push(format!("{name}: AIRAC {cycle}"));
                 cycles.insert(cycle);
             }
-            Ok(Some(None)) => layer.headers.push(format!("{name}: AIRAC not stated")),
-            Ok(None) => layer
-                .problems
-                .push(format!("{name}: invalid X-Plane data header")),
+            Ok(Ok(None)) => {}
+            Ok(Err(problem)) => layer.problems.push(format!("{name}: {problem}")),
             Err(error) => layer.errors.push(format!("{name}: {error}")),
         }
     }
     if cycles.len() > 1 {
         layer.problems.push(format!(
-            "{}: conflicting AIRAC cycles in core data headers",
+            "{}: conflicting AIRAC cycles in navigation data headers",
             relative(root, dir)
         ));
-    }
-    for name in EXTRA_FILES {
-        open_data_file(root, &dir.join(name), &mut layer, false);
     }
     inspect_procedures(root, dir, full, &mut layer);
     layer.problems.sort();
@@ -579,18 +605,39 @@ mod tests {
     }
 
     #[test]
+    fn full_navdata_check_catches_a_truncated_file_with_a_valid_header() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let relative = "Resources/default data/earth_nav.dat";
+        write(
+            root,
+            relative,
+            "I\n1200 Version - data cycle 2611\n3 valid start of record\n",
+        );
+        assert!(
+            navdata_file(File::open(root.join(relative)).unwrap(), false)
+                .unwrap()
+                .is_ok()
+        );
+        assert_eq!(
+            navdata_file(File::open(root.join(relative)).unwrap(), true).unwrap(),
+            Err("missing final 99 record; file may be truncated")
+        );
+    }
+
+    #[test]
     fn checks_bundled_headers_and_procedures_independently_of_optional_data() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
         write(
             root,
             "Resources/default data/earth_fix.dat",
-            "I\n1200 Version - data cycle 2512, build 20251101\n",
+            "I\n1200 Version - data cycle 2512, build 20251101\n1 sample record\n99\n",
         );
         write(
             root,
             "Resources/default data/earth_awy.dat",
-            "A\n1100 Version - data cycle 2511, build 20251001\n",
+            "A\n1100 Version - data cycle 2511, build 20251001\n1 sample record\n99\n",
         );
         write(
             root,
