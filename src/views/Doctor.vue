@@ -337,13 +337,7 @@
                     @click="issuesOnly = true"
                   >
                     {{ t('doctor.center.filters.issues') }}
-                    <span class="ml-0.5 text-gray-400">{{
-                      run.summary.info +
-                      run.summary.warning +
-                      run.summary.critical +
-                      run.summary.unavailable +
-                      run.summary.cancelled
-                    }}</span>
+                    <span class="ml-0.5 text-gray-400">{{ issueCount }}</span>
                   </button>
                 </div>
 
@@ -902,6 +896,11 @@ const safeFixCount = computed(
         .map((check) => check.remediation?.id) ?? [],
     ).size,
 )
+function isProblemCheck(check: DoctorCheckResult): boolean {
+  return ['warning', 'critical', 'unavailable', 'cancelled'].includes(check.outcome)
+}
+
+const issueCount = computed(() => run.value?.checks.filter(isProblemCheck).length ?? 0)
 const checkGroups = computed(() =>
   DOCTOR_SECTION_ORDER.flatMap((section) => {
     const sectionChecks = run.value?.checks.filter((check) => check.section === section) ?? []
@@ -913,11 +912,7 @@ const checkGroups = computed(() =>
             .includes(searchQuery.value.trim().toLocaleLowerCase()),
         )
       : sectionChecks
-    const checks = issuesOnly.value
-      ? filtered.filter((check) =>
-          ['info', 'warning', 'critical', 'unavailable', 'cancelled'].includes(check.outcome),
-        )
-      : filtered
+    const checks = issuesOnly.value ? filtered.filter(isProblemCheck) : filtered
     if (!checks.length) return []
     return [{ section, checks, totalCount: sectionChecks.length }]
   }),
@@ -933,9 +928,7 @@ const selectedCheck = computed(() => {
     : null
   if (explicit) return explicit
   return (
-    checks.find((check) =>
-      ['critical', 'warning', 'unavailable', 'info'].includes(check.outcome),
-    ) ?? checks[0]
+    checks.find(isProblemCheck) ?? checks.find((check) => check.outcome === 'info') ?? checks[0]
   )
 })
 const selectedParams = computed(() =>

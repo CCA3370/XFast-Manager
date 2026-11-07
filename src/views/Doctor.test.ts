@@ -285,6 +285,12 @@ describe('Health page', () => {
     const { wrapper, doctorStore } = await mountDoctor('/xplane')
     doctorStore.currentRun = runFixture('completed', [
       {
+        id: 'installation.xplane_running',
+        section: 'installation',
+        outcome: 'info',
+        durationMs: 1,
+      },
+      {
         id: 'installation.structure',
         section: 'installation',
         outcome: 'warning',
@@ -307,7 +313,8 @@ describe('Health page', () => {
       '@3xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)]',
     )
     expect(wrapper.get('[data-testid="health-filter-all"]').attributes('aria-pressed')).toBe('true')
-    expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(2)
+    expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(3)
+    expect(wrapper.get('[data-testid="health-filter-issues"] span').text()).toBe('1')
     expect(wrapper.get('[data-testid="health-detail-panel"]').text()).toContain(
       'X-Plane installation structure',
     )
@@ -332,7 +339,8 @@ describe('Health page', () => {
       'X-Plane installation structure',
     )
     await wrapper.get('[data-testid="health-filter-all"]').trigger('click')
-    expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(2)
+    expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(3)
+    expect(wrapper.get('[data-check-id="installation.xplane_running"]').text()).toContain('Info')
   })
 
   it('starts evidence collapsed and resets it when the selected check or report changes', async () => {
@@ -369,7 +377,7 @@ describe('Health page', () => {
     )
   })
 
-  it('shows a useful empty state when the issues filter has no matches', async () => {
+  it('shows no issues when the run only contains passes and information', async () => {
     const { wrapper, doctorStore } = await mountDoctor('/xplane')
     doctorStore.currentRun = runFixture('completed', [
       {
@@ -378,12 +386,20 @@ describe('Health page', () => {
         outcome: 'pass',
         durationMs: 7,
       },
+      {
+        id: 'stability.log_freshness',
+        section: 'stability',
+        outcome: 'info',
+        durationMs: 2,
+        params: { days: 8 },
+      },
     ])
     doctorStore.currentRunIsLive = true
     await nextTick()
 
     await wrapper.get('[data-testid="health-filter-issues"]').trigger('click')
 
+    expect(wrapper.get('[data-testid="health-filter-issues"] span').text()).toBe('0')
     expect(wrapper.findAll('[data-testid="health-check-row"]')).toHaveLength(0)
     expect(wrapper.get('[data-testid="health-no-issues"]').text()).toContain('No issues found')
     expect(wrapper.find('[data-testid="health-detail-panel"]').exists()).toBe(false)
