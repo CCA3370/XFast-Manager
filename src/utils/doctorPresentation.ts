@@ -76,6 +76,13 @@ export function describeDoctorCheck(check: DoctorCheckResult, locale = 'en') {
       suggestion: '',
     }
   }
+  if (check.id === 'navdata.cycles' && Number(params.conflicts) > 0) {
+    return {
+      title,
+      description: message(locale, 'healthDetails.coverage.navConflict'),
+      suggestion: '',
+    }
+  }
   if (check.id === 'installation.scan_access' && check.outcome === 'unavailable' && finding) {
     return { title, description: finding[1], suggestion: '' }
   }

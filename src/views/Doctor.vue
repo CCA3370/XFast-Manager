@@ -1104,6 +1104,8 @@ function checkDescription(check: DoctorCheckResult): string {
   if (check.id === 'navdata.cycles') {
     const p = check.params ?? {}
     if (Number(p.future) > 0) return t('healthDetails.coverage.navFuture')
+    if (Number(p.conflicts) > 0 && !Number(p.expired))
+      return t('healthDetails.coverage.navConflict')
     const state =
       Number(p.expired) > 0
         ? 'expired'

@@ -1033,6 +1033,7 @@ export interface NavdataCycleReport {
   expiryDate: string | null
   daysRemaining: number | null
   status: NavdataStatus
+  metadataConflict?: string | null
   source: string
 }
 

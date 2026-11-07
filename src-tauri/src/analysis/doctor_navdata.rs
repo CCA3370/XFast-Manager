@@ -32,6 +32,7 @@ pub struct NavdataCycleReport {
     /// Days remaining until expiry (negative if already expired). None if unknown.
     pub days_remaining: Option<i64>,
     pub status: NavdataStatus,
+    pub metadata_conflict: Option<String>,
     /// Metadata files found for this package.
     pub source: String,
 }
@@ -181,6 +182,8 @@ pub struct NavdataLayer {
     problems: Vec<String>,
     errors: Vec<String>,
     headers: Vec<String>,
+    #[serde(skip)]
+    consistent_cycle: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -398,6 +401,8 @@ fn inspect_base(root: &Path, dir: &Path, full: bool) -> NavdataLayer {
             "{}: conflicting AIRAC cycles in navigation data headers",
             relative(root, dir)
         ));
+    } else {
+        layer.consistent_cycle = cycles.into_iter().next();
     }
     inspect_procedures(root, dir, full, &mut layer);
     layer.problems.sort();
@@ -432,6 +437,7 @@ fn cycle_metadata(
     root: &Path,
     custom: &Path,
     today: i64,
+    simulator_cycle: Option<&str>,
 ) -> (Vec<NavdataCycleReport>, Vec<String>) {
     let mut files = BTreeMap::<PathBuf, CycleFiles>::new();
     let mut errors = Vec::new();
@@ -501,46 +507,73 @@ fn cycle_metadata(
         if json.is_none() && info.is_none() {
             continue;
         }
-        let (provider_name, mut cycle, airac) = json.unwrap_or_default();
-        if cycle.is_none() {
-            cycle = info.as_deref().and_then(|body| {
-                body.lines()
-                    .filter_map(|line| line.split_once(':'))
-                    .find_map(|(key, value)| {
-                        let value = value.trim();
-                        (key.trim().eq_ignore_ascii_case("AIRAC cycle")
-                            && value.len() == 4
-                            && value.bytes().all(|byte| byte.is_ascii_digit()))
-                        .then(|| value.to_owned())
+        let (provider_name, json_cycle, airac) = json.unwrap_or_default();
+        let json_cycle = airac.as_deref().or(json_cycle.as_deref());
+        let info_cycle = info.as_deref().and_then(|body| {
+            body.lines()
+                .filter_map(|line| line.split_once(':'))
+                .find_map(|(key, value)| {
+                    let value = value.trim();
+                    (key.trim().eq_ignore_ascii_case("AIRAC cycle")
+                        && value.len() == 4
+                        && value.bytes().all(|byte| byte.is_ascii_digit()))
+                    .then_some(value)
+                })
+        });
+        let data_cycle = simulator_cycle.filter(|_| folder == custom);
+        let cycle = data_cycle.or(info_cycle).or(json_cycle);
+        let claims = [
+            ("data headers", data_cycle),
+            ("cycle_info.txt", info_cycle),
+            ("cycle.json", json_cycle),
+        ];
+        let metadata_conflict = claims
+            .iter()
+            .any(|(_, claim)| claim.is_some() && *claim != cycle)
+            .then(|| {
+                let details = claims
+                    .into_iter()
+                    .filter_map(|(label, claim)| {
+                        claim.map(|claim| format!("{label} AIRAC {claim}"))
                     })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "{}: conflicting AIRAC metadata ({details})",
+                    relative(root, &folder)
+                )
             });
-        }
-        let (effective_date, expiry_date, days_remaining, status) =
-            match info.as_deref().and_then(parse_validity_range) {
-                Some((from, to)) => {
-                    let (status, days) = if from > today {
-                        (NavdataStatus::NotYetEffective, to - today)
-                    } else {
-                        status_for(to, today)
-                    };
-                    (
-                        Some(epoch_day_to_ymd_string(from)),
-                        Some(epoch_day_to_ymd_string(to)),
-                        Some(days),
-                        status,
-                    )
-                }
-                None => (None, None, None, NavdataStatus::Unknown),
-            };
+        let validity = info.as_deref().and_then(parse_validity_range).filter(|_| {
+            info_cycle
+                .or(json_cycle)
+                .is_none_or(|dated_cycle| Some(dated_cycle) == cycle)
+        });
+        let (effective_date, expiry_date, days_remaining, status) = match validity {
+            Some((from, to)) => {
+                let (status, days) = if from > today {
+                    (NavdataStatus::NotYetEffective, to - today)
+                } else {
+                    status_for(to, today)
+                };
+                (
+                    Some(epoch_day_to_ymd_string(from)),
+                    Some(epoch_day_to_ymd_string(to)),
+                    Some(days),
+                    status,
+                )
+            }
+            None => (None, None, None, NavdataStatus::Unknown),
+        };
         cycles.push(NavdataCycleReport {
             folder_name: relative(root, &folder),
             provider_name: provider_name.unwrap_or_else(|| "Unknown".into()),
-            cycle,
+            cycle: cycle.map(str::to_owned),
             airac,
             effective_date,
             expiry_date,
             days_remaining,
             status,
+            metadata_conflict,
             source: [files.json, files.info]
                 .into_iter()
                 .flatten()
@@ -584,7 +617,12 @@ pub fn inspect(root: &Path, full: bool) -> DoctorNavdataReport {
             override_data = inspect_base(root, &custom, full);
         }
     }
-    let (cycles, metadata_errors) = cycle_metadata(root, &custom, today_epoch_day());
+    let (cycles, metadata_errors) = cycle_metadata(
+        root,
+        &custom,
+        today_epoch_day(),
+        override_data.consistent_cycle.as_deref(),
+    );
     DoctorNavdataReport {
         bundled,
         override_data,
@@ -715,6 +753,7 @@ mod tests {
             root,
             &root.join("Custom Data"),
             ymd_to_epoch_day(2026, 5, 1),
+            None,
         );
         assert_eq!(cycles.len(), 1);
         assert_eq!(cycles[0].cycle.as_deref(), Some("2605"));
@@ -722,6 +761,35 @@ mod tests {
         assert_eq!(cycles[0].status, NavdataStatus::NotYetEffective);
         assert_eq!(errors.len(), 1);
         assert!(errors[0].starts_with("Custom Data/Other/cycle.json:"));
+    }
+
+    #[test]
+    fn associates_dates_with_the_cycle_in_the_data_headers() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        write(root, "Custom Data/cycle.json", r#"{"cycle":"2408"}"#);
+        write(
+            root,
+            "Custom Data/cycle_info.txt",
+            "AIRAC cycle: 2608\nValid (from/to): 06/AUG/2026 - 03/SEP/2026\n",
+        );
+        let today = ymd_to_epoch_day(2026, 11, 7);
+        let custom = root.join("Custom Data");
+        let (cycles, errors) = cycle_metadata(root, &custom, today, Some("2608"));
+        assert!(errors.is_empty());
+        assert_eq!(cycles[0].cycle.as_deref(), Some("2608"));
+        assert_eq!(cycles[0].expiry_date.as_deref(), Some("2026-09-03"));
+        assert_eq!(cycles[0].status, NavdataStatus::Expired);
+        assert!(cycles[0]
+            .metadata_conflict
+            .as_deref()
+            .unwrap()
+            .contains("cycle.json AIRAC 2408"));
+
+        let (cycles, _) = cycle_metadata(root, &custom, today, Some("2611"));
+        assert_eq!(cycles[0].cycle.as_deref(), Some("2611"));
+        assert!(cycles[0].expiry_date.is_none());
+        assert_eq!(cycles[0].status, NavdataStatus::Unknown);
     }
 
     #[test]

@@ -240,6 +240,34 @@ describe('navdata diagnostics', () => {
       ],
     })
   })
+
+  it('warns about conflicting AIRAC numbers even when the installed cycle is current', async () => {
+    const conflict = 'Custom Data: data headers AIRAC 2608, cycle.json AIRAC 2408'
+    tauri.invoke.mockResolvedValue(
+      report({
+        cycles: [
+          {
+            folderName: 'Custom Data',
+            providerName: 'Navigraph',
+            cycle: '2608',
+            airac: null,
+            effectiveDate: '2026-08-06',
+            expiryDate: '2026-09-03',
+            daysRemaining: 21,
+            status: 'ok',
+            metadataConflict: conflict,
+            source: 'Custom Data/cycle_info.txt',
+          },
+        ],
+      }),
+    )
+    const checks = await navdataCheck().run()
+    expect(checks.find((check) => check.id === 'navdata.cycles')).toMatchObject({
+      outcome: 'warning',
+      params: { expired: 0, conflicts: 1 },
+      evidence: [{ value: conflict }, { value: expect.stringContaining('AIRAC 2608') }],
+    })
+  })
 })
 
 describe('live-session stability diagnostics', () => {

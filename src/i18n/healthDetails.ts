@@ -1,6 +1,7 @@
 export const healthDetailMessages = {
   en: {
     coverage: {
+      navConflict: 'Some AIRAC cycle numbers disagree. Review the listed differences.',
       addonUpdates:
         'Compared {checked} of {installed} supported add-ons. Updates found: {count}. External updater: {external}.',
       navFuture:
@@ -234,6 +235,7 @@ export const healthDetailMessages = {
   },
   zh: {
     coverage: {
+      navConflict: '部分 AIRAC 周期编号不一致，请查看证据中的差异。',
       addonUpdates:
         '已比对 {checked}/{installed} 个受支持的扩展，发现 {count} 个更新，{external} 个需使用外部更新器。',
       navFuture: '部分导航数据包尚未生效，请核对列出的生效日期。',
@@ -433,6 +435,8 @@ export const healthDetailMessages = {
   },
   de: {
     coverage: {
+      navConflict:
+        'Einige AIRAC-Zyklusnummern stimmen nicht überein. Prüfe die aufgeführten Abweichungen.',
       addonUpdates:
         '{checked} von {installed} unterstützten Add-ons verglichen. Updates: {count}. Externe Aktualisierung: {external}.',
       navFuture:
@@ -641,6 +645,7 @@ export const healthDetailMessages = {
   },
   fr: {
     coverage: {
+      navConflict: 'Certains numéros de cycle AIRAC diffèrent. Consultez les écarts indiqués.',
       addonUpdates:
         '{checked} extensions comparées sur {installed} prises en charge. Mises à jour : {count}. Outil externe : {external}.',
       navFuture:
@@ -846,6 +851,7 @@ export const healthDetailMessages = {
   },
   es: {
     coverage: {
+      navConflict: 'Algunos números de ciclo AIRAC no coinciden. Revisa las diferencias indicadas.',
       addonUpdates:
         '{checked} de {installed} complementos compatibles comparados. Actualizaciones: {count}. Actualizador externo: {external}.',
       navFuture:
@@ -1048,6 +1054,8 @@ export const healthDetailMessages = {
   },
   pt: {
     coverage: {
+      navConflict:
+        'Alguns números de ciclo AIRAC não coincidem. Verifique as diferenças indicadas.',
       addonUpdates:
         '{checked} de {installed} extensões suportadas comparadas. Atualizações: {count}. Atualizador externo: {external}.',
       navFuture:
@@ -1250,6 +1258,7 @@ export const healthDetailMessages = {
   },
   ja: {
     coverage: {
+      navConflict: '一部の AIRAC サイクル番号が一致しません。表示された相違を確認してください。',
       addonUpdates:
         '対応アドオン {installed} 件中 {checked} 件を比較しました。更新 {count} 件、外部アップデーター {external} 件。',
       navFuture:
@@ -1454,6 +1463,7 @@ export const healthDetailMessages = {
   },
   ko: {
     coverage: {
+      navConflict: '일부 AIRAC 주기 번호가 일치하지 않습니다. 표시된 차이를 확인하세요.',
       addonUpdates:
         '지원 애드온 {installed}개 중 {checked}개 비교. 업데이트 {count}개, 외부 업데이트 도구 {external}개.',
       navFuture: '설치된 일부 항법 패키지가 아직 유효하지 않습니다. 표시된 날짜를 확인하세요.',
@@ -1650,6 +1660,7 @@ export const healthDetailMessages = {
   },
   ru: {
     coverage: {
+      navConflict: 'Некоторые номера циклов AIRAC не совпадают. Проверьте указанные различия.',
       addonUpdates:
         'Сопоставлено {checked} из {installed} поддерживаемых дополнений. Обновления: {count}. Внешняя программа: {external}.',
       navFuture:
@@ -1850,6 +1861,7 @@ export const healthDetailMessages = {
   },
   ar: {
     coverage: {
+      navConflict: 'بعض أرقام دورات AIRAC غير متطابقة. راجع الاختلافات المذكورة.',
       addonUpdates:
         'تمت مقارنة {checked} من {installed} إضافة مدعومة. التحديثات: {count}. أداة تحديث خارجية: {external}.',
       navFuture: 'بعض حزم الملاحة المثبتة لم تدخل حيز التنفيذ بعد. راجع التواريخ المذكورة.',
@@ -2043,6 +2055,7 @@ export const healthDetailMessages = {
   },
   hi: {
     coverage: {
+      navConflict: 'कुछ AIRAC चक्र संख्याएँ मेल नहीं खातीं। सूचीबद्ध अंतर जाँचें।',
       addonUpdates:
         '{installed} समर्थित ऐड-ऑन में से {checked} की तुलना हुई। अपडेट: {count}। बाहरी अपडेटर: {external}।',
       navFuture: 'कुछ स्थापित नेविगेशन पैकेज अभी प्रभावी नहीं हैं। सूचीबद्ध तिथियाँ जाँचें।',

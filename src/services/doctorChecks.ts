@@ -1108,11 +1108,14 @@ function createNavdataCheck(context: DoctorCheckContext): DoctorCheckDefinition 
       const expiring = report.cycles.filter((cycle) => cycle.status === 'expiring_soon').length
       const future = report.cycles.filter((cycle) => cycle.status === 'not_yet_effective').length
       const unknown = report.cycles.filter((cycle) => cycle.status === 'unknown').length
+      const conflicts = report.cycles.flatMap((cycle) =>
+        cycle.metadataConflict ? [cycle.metadataConflict] : [],
+      )
       checks.push(
         result(
           'navdata.cycles',
           'navdata',
-          expired || future
+          expired || future || conflicts.length
             ? 'warning'
             : expiring || unknown
               ? 'info'
@@ -1122,12 +1125,15 @@ function createNavdataCheck(context: DoctorCheckContext): DoctorCheckDefinition 
                   ? 'pass'
                   : 'notApplicable',
           {
-            params: { expired, expiring, future, unknown },
+            params: { expired, expiring, future, unknown, conflicts: conflicts.length },
             evidence: evidence(
-              report.cycles.map(
-                (cycle) =>
-                  `${cycle.source} · ${cycle.providerName} · AIRAC ${cycle.cycle ?? cycle.airac ?? '?'} · ${cycle.effectiveDate ?? '?'} to ${cycle.expiryDate ?? '?'}`,
-              ),
+              [
+                ...conflicts,
+                ...report.cycles.map(
+                  (cycle) =>
+                    `${cycle.source} · ${cycle.providerName} · AIRAC ${cycle.cycle ?? cycle.airac ?? '?'} · ${cycle.effectiveDate ?? '?'} to ${cycle.expiryDate ?? '?'}`,
+                ),
+              ],
               'path',
             ),
           },
