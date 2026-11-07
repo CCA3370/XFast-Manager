@@ -1548,6 +1548,19 @@ export default {
       levelCleanable: 'साफ़ किया जा सकता है',
       levelCautious: 'सावधानी से सफ़ाई',
       levelUnknown: 'अज्ञात',
+      disabledItems: 'अक्षम आइटम',
+      disable: 'अक्षम करें',
+      disableTitle: 'क्या {name} को अक्षम करें?',
+      disableMessage:
+        'समस्या की जाँच के लिए डेटा अलग रखा जाएगा। X-Plane या ऐडऑन नई कॉपी बना सकता है।',
+      disableSuccess: 'आइटम अक्षम किया गया। आपका डेटा सुरक्षित है।',
+      restore: 'बहाल करें',
+      restoreTitle: 'क्या {name} को बहाल करें?',
+      restoreMessage:
+        'सहेजा गया डेटा अपनी मूल जगह पर लौटेगा। कोई मौजूदा कॉपी होगी तो उसे एक और अक्षम आइटम के रूप में रखा जाएगा।',
+      restoreSuccess: 'आइटम बहाल कर दिया गया।',
+      closeXPlane: 'Output आइटम अक्षम या बहाल करने से पहले X-Plane बंद करें।',
+      stateChangeFailed: 'Output आइटम में बदलाव नहीं हो सका। {reason}',
       addonDataDescription:
         'विमान या प्लगइन द्वारा सहेजा गया डेटा या कैश। इसमें महत्वपूर्ण फ़ाइलें हो सकती हैं। समस्या की जाँच के लिए इसे अक्षम करके देखें।',
       warnings: {

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Output Cleanup** - Recognizes more aircraft and plugin data folders and lets you temporarily disable and restore Output items for troubleshooting.
+
 ## [1.3.0] - 2026-10-02
 
 ### Added

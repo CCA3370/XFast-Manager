@@ -1598,6 +1598,19 @@ export default {
       levelCleanable: 'Bereinigbar',
       levelCautious: 'Vorsichtige Bereinigung',
       levelUnknown: 'Nicht erkannt',
+      disabledItems: 'Deaktivierte Elemente',
+      disable: 'Deaktivieren',
+      disableTitle: '{name} deaktivieren?',
+      disableMessage:
+        'Die Daten werden zur Fehlersuche verschoben. X-Plane oder das Add-on kann eine neue Kopie erstellen.',
+      disableSuccess: 'Element deaktiviert. Die Daten bleiben erhalten.',
+      restore: 'Wiederherstellen',
+      restoreTitle: '{name} wiederherstellen?',
+      restoreMessage:
+        'Die gespeicherten Daten kehren an ihren ursprünglichen Ort zurück. Eine vorhandene Kopie bleibt als weiteres deaktiviertes Element erhalten.',
+      restoreSuccess: 'Element wiederhergestellt.',
+      closeXPlane: 'Schließe X-Plane, bevor du Output-Elemente deaktivierst oder wiederherstellst.',
+      stateChangeFailed: 'Das Output-Element konnte nicht geändert werden. {reason}',
       addonDataDescription:
         'Von einem Flugzeug oder Plugin gespeicherte Daten oder Cache-Dateien. Sie können wichtige Dateien enthalten. Zur Fehlersuche kann der Ordner deaktiviert werden.',
       warnings: {

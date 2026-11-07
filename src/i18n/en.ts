@@ -1541,6 +1541,19 @@ export default {
       levelCleanable: 'Cleanable',
       levelCautious: 'Cautious cleanup',
       levelUnknown: 'Unrecognized',
+      disabledItems: 'Disabled items',
+      disable: 'Disable',
+      disableTitle: 'Disable {name}?',
+      disableMessage:
+        'The data will be moved aside for troubleshooting. X-Plane or the add-on may create a new copy.',
+      disableSuccess: 'Item disabled. Your data was preserved.',
+      restore: 'Restore',
+      restoreTitle: 'Restore {name}?',
+      restoreMessage:
+        'The saved data will return to its original location. Any current copy will be kept as another disabled item.',
+      restoreSuccess: 'Item restored.',
+      closeXPlane: 'Close X-Plane before disabling or restoring Output items.',
+      stateChangeFailed: 'Could not change the Output item. {reason}',
       addonDataDescription:
         'Data or cache saved by an aircraft or plugin. It may contain important files. Try disabling it when troubleshooting.',
       warnings: {

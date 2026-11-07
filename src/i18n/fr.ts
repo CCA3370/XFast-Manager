@@ -1599,6 +1599,19 @@ export default {
       levelCleanable: 'Nettoyable',
       levelCautious: 'Nettoyage prudent',
       levelUnknown: 'Non reconnu',
+      disabledItems: 'Éléments désactivés',
+      disable: 'Désactiver',
+      disableTitle: 'Désactiver {name} ?',
+      disableMessage:
+        'Les données seront mises de côté pour le diagnostic. X-Plane ou l’extension peut créer une nouvelle copie.',
+      disableSuccess: 'Élément désactivé. Les données ont été conservées.',
+      restore: 'Restaurer',
+      restoreTitle: 'Restaurer {name} ?',
+      restoreMessage:
+        'Les données sauvegardées seront remises à leur emplacement d’origine. Toute copie existante sera conservée comme autre élément désactivé.',
+      restoreSuccess: 'Élément restauré.',
+      closeXPlane: 'Fermez X-Plane avant de désactiver ou de restaurer des éléments d’Output.',
+      stateChangeFailed: 'Impossible de modifier l’élément d’Output. {reason}',
       addonDataDescription:
         'Données ou cache enregistrés par un avion ou une extension. Ce dossier peut contenir des fichiers importants. Essayez de le désactiver pour diagnostiquer un problème.',
       warnings: {

@@ -1462,6 +1462,18 @@ export default {
       levelCleanable: '可清理',
       levelCautious: '谨慎清理',
       levelUnknown: '未识别',
+      disabledItems: '已禁用项目',
+      disable: '禁用',
+      disableTitle: '禁用 {name}？',
+      disableMessage: '数据将暂时移到隔离区，方便排查故障。X-Plane 或插件可能会生成一份新数据。',
+      disableSuccess: '已禁用，原数据已保留。',
+      restore: '恢复',
+      restoreTitle: '恢复 {name}？',
+      restoreMessage:
+        '保存的数据将回到原位置。如果那里已有新数据，会将新数据保留为另一份禁用项目。',
+      restoreSuccess: '已恢复。',
+      closeXPlane: '请先关闭 X-Plane，再禁用或恢复 Output 项目。',
+      stateChangeFailed: '无法更改 Output 项目。{reason}',
       addonDataDescription:
         '机模或插件保存的数据或缓存，可能包含重要文件。如果发生故障，可以尝试禁用此项进行排查。',
       warnings: {

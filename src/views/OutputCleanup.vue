@@ -29,7 +29,7 @@
       <div class="flex items-center gap-2 pt-6">
         <button
           class="text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-white/10 transition-colors disabled:opacity-50"
-          :disabled="store.isCleanupScanning || store.isCleanupRefreshing"
+          :disabled="cleanupActionsBusy || store.isCleanupRefreshing"
           @click="refreshCleanup"
         >
           {{
@@ -46,7 +46,7 @@
         </button>
         <button
           class="text-xs px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition-colors disabled:opacity-50"
-          :disabled="selectedCleanupItems.length === 0 || store.isCleaning"
+          :disabled="selectedCleanupItems.length === 0 || cleanupActionsBusy"
           @click="confirmCleanSelected"
         >
           {{
@@ -114,13 +114,45 @@
       </div>
 
       <div
-        v-else-if="groupedCleanupItems.length === 0"
+        v-else-if="groupedCleanupItems.length === 0 && disabledItems.length === 0"
         class="px-4 py-6 text-sm text-slate-500 dark:text-slate-400"
       >
         {{ $t('diskUsage.outputCleanup.empty') }}
       </div>
 
       <div v-else class="flex-1 overflow-y-auto p-3 space-y-3">
+        <div v-if="disabledItems.length" class="space-y-2" data-testid="output-disabled-items">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            {{ t('diskUsage.outputCleanup.disabledItems') }}
+          </h3>
+          <div
+            v-for="item in disabledItems"
+            :key="item.id"
+            class="flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2 dark:border-white/10"
+          >
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-medium text-slate-900 dark:text-white">
+                {{ item.relativePath }}
+              </div>
+              <p class="mt-0.5 break-all font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                {{ item.savedPath }}
+              </p>
+              <p class="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                {{ formatDisabledDate(item.savedAt) }} · {{ formatSize(item.sizeBytes) }} ·
+                {{ item.fileCount }} {{ t('diskUsage.outputCleanup.files') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              data-testid="output-restore"
+              :class="cleanupActionClass"
+              :disabled="cleanupActionsBusy"
+              @click="confirmStateChange({ action: 'restore', id: item.id }, item.relativePath)"
+            >
+              {{ t('diskUsage.outputCleanup.restore') }}
+            </button>
+          </div>
+        </div>
         <div v-for="group in groupedCleanupItems" :key="group.level" class="space-y-1.5">
           <div class="flex items-center justify-between">
             <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -132,82 +164,98 @@
           </div>
 
           <div class="grid gap-2">
-            <label
+            <div
               v-for="item in group.items"
               :key="item.id"
-              class="group relative flex items-start gap-2.5 rounded-xl border px-3 py-2 transition-colors cursor-pointer"
+              class="group relative flex flex-wrap items-start gap-2.5 rounded-xl border px-3 py-2 transition-colors"
               :class="cleanupItemClass(item)"
             >
-              <input
-                type="checkbox"
-                class="peer sr-only"
-                :checked="selectedCleanupIds.has(item.id)"
-                @change="toggleCleanupSelected(item.id, $event)"
-              />
-              <span
-                class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-lg border transition-all peer-focus-visible:ring-2 peer-focus-visible:ring-blue-400 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-white dark:peer-focus-visible:ring-offset-slate-900"
-                :class="cleanupCheckboxClass(item)"
-                aria-hidden="true"
-              >
-                <svg
-                  v-if="selectedCleanupIds.has(item.id)"
-                  class="h-3.5 w-3.5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+              <label class="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  class="peer sr-only"
+                  :checked="selectedCleanupIds.has(item.id)"
+                  @change="toggleCleanupSelected(item.id, $event)"
+                />
+                <span
+                  class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-lg border transition-all peer-focus-visible:ring-2 peer-focus-visible:ring-blue-400 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-white dark:peer-focus-visible:ring-offset-slate-900"
+                  :class="cleanupCheckboxClass(item)"
+                  aria-hidden="true"
                 >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="3"
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </span>
-              <div class="min-w-0 flex-1">
-                <div class="flex flex-wrap items-center gap-2">
-                  <span class="text-sm font-medium text-slate-900 dark:text-white">
-                    {{ cleanupItemName(item) }}
-                  </span>
-                  <span
-                    class="text-[11px] px-1.5 py-0.5 rounded-md"
-                    :class="cleanupLevelBadgeClass(item.level)"
+                  <svg
+                    v-if="selectedCleanupIds.has(item.id)"
+                    class="h-3.5 w-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    {{ cleanupLevelLabel(item.level) }}
-                  </span>
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="3"
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-sm font-medium text-slate-900 dark:text-white">
+                      {{ cleanupItemName(item) }}
+                    </span>
+                    <span
+                      class="text-[11px] px-1.5 py-0.5 rounded-md"
+                      :class="cleanupLevelBadgeClass(item.level)"
+                    >
+                      {{ cleanupLevelLabel(item.level) }}
+                    </span>
+                  </div>
+                  <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400 leading-snug">
+                    {{ cleanupItemDescription(item) }}
+                  </p>
+                  <p
+                    v-if="item.warningKey !== 'addon_data' && cleanupWarningText(item)"
+                    class="mt-1 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg px-2 py-1"
+                  >
+                    {{ cleanupWarningText(item) }}
+                  </p>
+                  <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span class="font-mono text-slate-500 dark:text-slate-400">
+                      {{ item.relativePath }}
+                    </span>
+                    <span class="text-slate-400">·</span>
+                    <span class="font-mono text-slate-600 dark:text-slate-300">
+                      {{ formatSize(item.sizeBytes) }}
+                    </span>
+                    <span class="text-slate-400">·</span>
+                    <span class="text-slate-500 dark:text-slate-400">
+                      {{ item.fileCount }} {{ $t('diskUsage.outputCleanup.files') }}
+                    </span>
+                  </div>
                 </div>
-                <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400 leading-snug">
-                  {{ cleanupItemDescription(item) }}
-                </p>
-                <p
-                  v-if="item.warningKey !== 'addon_data' && cleanupWarningText(item)"
-                  class="mt-1 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg px-2 py-1"
-                >
-                  {{ cleanupWarningText(item) }}
-                </p>
-                <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-                  <span class="font-mono text-slate-500 dark:text-slate-400">
-                    {{ item.relativePath }}
-                  </span>
-                  <span class="text-slate-400">·</span>
-                  <span class="font-mono text-slate-600 dark:text-slate-300">
-                    {{ formatSize(item.sizeBytes) }}
-                  </span>
-                  <span class="text-slate-400">·</span>
-                  <span class="text-slate-500 dark:text-slate-400">
-                    {{ item.fileCount }} {{ $t('diskUsage.outputCleanup.files') }}
-                  </span>
-                </div>
-              </div>
+              </label>
+              <button
+                type="button"
+                data-testid="output-disable"
+                :class="cleanupActionClass"
+                :disabled="cleanupActionsBusy"
+                @click="
+                  confirmStateChange(
+                    { action: 'disable', target: { id: item.id, relativePath: item.relativePath } },
+                    item.relativePath,
+                  )
+                "
+              >
+                {{ t('diskUsage.outputCleanup.disable') }}
+              </button>
               <button
                 v-if="!item.recognized"
                 type="button"
-                class="text-xs px-2.5 py-1 rounded-lg border border-slate-200 dark:border-white/10 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
-                @click.prevent="openUnknownSubmission(item)"
+                :class="cleanupActionClass"
+                @click="openUnknownSubmission(item)"
               >
                 {{ $t('diskUsage.outputCleanup.submitUnknown') }}
               </button>
-            </label>
+            </div>
           </div>
         </div>
       </div>
@@ -284,20 +332,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   useDiskUsageStore,
   type OutputCleanupItem,
   type OutputCleanupLevel,
+  type OutputCleanupStateChange,
   type OutputCleanupSubmissionLevel,
+  type OutputCleanupTarget,
 } from '@/stores/diskUsage'
 import { useAppStore } from '@/stores/app'
 import { useToastStore } from '@/stores/toast'
 import { useModalStore } from '@/stores/modal'
 import { useIssueTrackerStore } from '@/stores/issueTracker'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const store = useDiskUsageStore()
 const appStore = useAppStore()
@@ -314,6 +364,19 @@ const unknownSubmissionDescription = ref('')
 const submittingUnknown = ref(false)
 
 const CLEANUP_LEVELS: OutputCleanupLevel[] = ['recommended', 'cleanable', 'cautious', 'unknown']
+const cleanupActionClass =
+  'shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-blue-600 transition-colors hover:bg-blue-50 disabled:opacity-50 dark:border-white/10 dark:text-blue-300 dark:hover:bg-blue-500/10'
+const cleanupActionsBusy = computed(() => store.isCleanupScanning || cleanupMutationBusy.value)
+const cleanupMutationBusy = computed(() => store.isCleaning || store.isChangingCleanupState)
+const disabledItems = computed(() => store.outputCleanupReport?.disabledItems ?? [])
+
+function formatDisabledDate(timestamp: number): string {
+  const date = new Date(timestamp)
+  if (!Number.isFinite(date.getTime())) return ''
+  return new Intl.DateTimeFormat(locale.value, { dateStyle: 'short', timeStyle: 'short' }).format(
+    date,
+  )
+}
 
 function isCleanupItemVisible(item: OutputCleanupItem): boolean {
   return item.exists && item.sizeBytes > 0
@@ -462,9 +525,8 @@ function resetCleanupSelectionToDefaults() {
 }
 
 async function scanCleanup(resetToEmbedded = false) {
-  if (!appStore.xplanePath) return
   await store.scanOutputCleanup(resetToEmbedded)
-  void store.refreshOutputCleanupItems()
+  if (appStore.xplanePath) void store.refreshOutputCleanupItems()
 }
 
 async function refreshCleanup() {
@@ -477,9 +539,9 @@ function confirmCleanSelected() {
     return
   }
 
-  const warnings = selectedCleanupItems.value
-    .map((item) => cleanupWarningText(item))
-    .filter((warning) => warning.trim().length > 0)
+  const xplanePath = appStore.xplanePath
+  const targets = selectedCleanupItems.value.map(({ id, relativePath }) => ({ id, relativePath }))
+  const warnings = [...new Set(selectedCleanupItems.value.map(cleanupWarningText).filter(Boolean))]
 
   modal.showConfirm({
     title: t('diskUsage.outputCleanup.confirmTitle'),
@@ -492,20 +554,17 @@ function confirmCleanSelected() {
     cancelText: t('common.cancel'),
     type: 'danger',
     onConfirm: () => {
-      void cleanSelected()
+      if (xplanePath === appStore.xplanePath && !cleanupMutationBusy.value) {
+        void cleanSelected(xplanePath, targets)
+      }
     },
     onCancel: () => {},
   })
 }
 
-async function cleanSelected() {
+async function cleanSelected(xplanePath: string, targets: OutputCleanupTarget[]) {
   try {
-    const result = await store.cleanOutputItems(
-      selectedCleanupItems.value.map((item) => ({
-        id: item.id,
-        relativePath: item.relativePath,
-      })),
-    )
+    const result = await store.cleanOutputItems(xplanePath, targets)
     toast.success(
       t('diskUsage.outputCleanup.cleanSuccess', {
         size: formatSize(result.totalDeletedBytes),
@@ -518,6 +577,45 @@ async function cleanSelected() {
     void store.refreshOutputCleanupItems()
   } catch (e) {
     toast.error(String(e))
+  }
+}
+
+function confirmStateChange(change: OutputCleanupStateChange, name: string) {
+  const xplanePath = appStore.xplanePath
+  const action = `diskUsage.outputCleanup.${change.action}`
+  modal.showConfirm({
+    title: t(`${action}Title`, { name }),
+    message: t(`${action}Message`),
+    confirmText: t(action),
+    cancelText: t('common.cancel'),
+    type: 'warning',
+    onConfirm: () => {
+      if (xplanePath === appStore.xplanePath && !cleanupMutationBusy.value) {
+        void changeItemState(xplanePath, change, action)
+      }
+    },
+    onCancel: () => {},
+  })
+}
+
+async function changeItemState(
+  xplanePath: string,
+  change: OutputCleanupStateChange,
+  action: string,
+) {
+  try {
+    await store.changeOutputCleanupItemState(xplanePath, change)
+    if (change.action === 'disable') setCleanupSelected(change.target.id, false)
+    toast.success(t(`${action}Success`))
+  } catch (error) {
+    const reason = String(error)
+    toast.error(
+      reason === 'xplane_running'
+        ? t('diskUsage.outputCleanup.closeXPlane')
+        : t('diskUsage.outputCleanup.stateChangeFailed', { reason }),
+    )
+  } finally {
+    await store.scanOutputCleanup()
   }
 }
 
@@ -568,7 +666,9 @@ async function submitUnknownItem() {
   }
 }
 
-onMounted(() => {
-  void scanCleanup(true)
-})
+watch(
+  () => appStore.xplanePath,
+  () => void scanCleanup(true),
+  { immediate: true },
+)
 </script>

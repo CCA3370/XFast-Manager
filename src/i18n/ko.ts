@@ -1529,6 +1529,19 @@ export default {
       levelCleanable: '정리 가능',
       levelCautious: '주의해서 정리',
       levelUnknown: '알 수 없음',
+      disabledItems: '비활성화된 항목',
+      disable: '비활성화',
+      disableTitle: '{name}을(를) 비활성화할까요?',
+      disableMessage:
+        '문제를 진단할 수 있도록 데이터를 따로 보관합니다. X-Plane이나 애드온이 새 데이터를 만들 수 있습니다.',
+      disableSuccess: '항목을 비활성화했습니다. 원본 데이터는 보존했습니다.',
+      restore: '복원',
+      restoreTitle: '{name}을(를) 복원할까요?',
+      restoreMessage:
+        '저장된 데이터를 원래 위치로 되돌립니다. 현재 데이터가 있으면 별도의 비활성화 항목으로 보존합니다.',
+      restoreSuccess: '항목을 복원했습니다.',
+      closeXPlane: 'Output 항목을 비활성화하거나 복원하기 전에 X-Plane을 종료하세요.',
+      stateChangeFailed: 'Output 항목을 변경하지 못했습니다. {reason}',
       addonDataDescription:
         '항공기나 플러그인이 저장한 데이터 또는 캐시입니다. 중요한 파일이 포함될 수 있습니다. 문제를 진단할 때 이 항목을 비활성화해 보세요.',
       warnings: {

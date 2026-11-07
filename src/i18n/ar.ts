@@ -1515,6 +1515,19 @@ export default {
       levelCleanable: 'قابل للتنظيف',
       levelCautious: 'تنظيف بحذر',
       levelUnknown: 'غير معروف',
+      disabledItems: 'العناصر المعطلة',
+      disable: 'تعطيل',
+      disableTitle: 'هل تريد تعطيل {name}؟',
+      disableMessage:
+        'ستُنقل البيانات جانبًا لاستكشاف الخلل. قد ينشئ X-Plane أو المكوّن الإضافي نسخة جديدة.',
+      disableSuccess: 'تم تعطيل العنصر والاحتفاظ ببياناتك.',
+      restore: 'استعادة',
+      restoreTitle: 'هل تريد استعادة {name}؟',
+      restoreMessage:
+        'ستعود البيانات المحفوظة إلى موقعها الأصلي. سيُحتفظ بأي نسخة حالية كعنصر معطّل آخر.',
+      restoreSuccess: 'تمت استعادة العنصر.',
+      closeXPlane: 'أغلق X-Plane قبل تعطيل عناصر Output أو استعادتها.',
+      stateChangeFailed: 'تعذّر تغيير عنصر Output. {reason}',
       addonDataDescription:
         'بيانات أو ذاكرة مؤقتة حفظتها طائرة أو إضافة. قد تتضمن ملفات مهمة. جرّب تعطيل هذا العنصر عند استكشاف الأعطال.',
       warnings: {

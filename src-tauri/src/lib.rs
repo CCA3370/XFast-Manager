@@ -4057,6 +4057,22 @@ async fn clean_output_items(
 }
 
 #[tauri::command]
+async fn change_output_cleanup_item_state(
+    xplane_path: String,
+    change: output_cleanup::OutputCleanupStateChange,
+) -> Result<(), String> {
+    if is_xplane_running().await {
+        return Err("xplane_running".into());
+    }
+    tokio::task::spawn_blocking(move || {
+        validate_xplane_root_path(Path::new(&xplane_path))?;
+        output_cleanup::change_output_cleanup_item_state(&xplane_path, change)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn submit_unknown_output_cleanup_item(
     folder_name: String,
     relative_path: String,
@@ -4252,6 +4268,7 @@ pub fn run() {
             refresh_output_cleanup_items,
             reset_output_cleanup_items_to_embedded,
             clean_output_items,
+            change_output_cleanup_item_state,
             submit_unknown_output_cleanup_item,
             // Doctor diagnostics
             doctor::doctor_export_report,

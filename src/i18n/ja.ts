@@ -1544,6 +1544,19 @@ export default {
       levelCleanable: '削除可能',
       levelCautious: '慎重に削除',
       levelUnknown: '未識別',
+      disabledItems: '無効化した項目',
+      disable: '無効化',
+      disableTitle: '{name} を無効にしますか？',
+      disableMessage:
+        '問題を切り分けるためデータを退避します。X-Plane やアドオンが新しいデータを作成する場合があります。',
+      disableSuccess: '項目を無効にし、元のデータを保存しました。',
+      restore: '復元',
+      restoreTitle: '{name} を復元しますか？',
+      restoreMessage:
+        '保存したデータを元の場所に戻します。現在のデータがあれば、別の無効化項目として保存します。',
+      restoreSuccess: '項目を復元しました。',
+      closeXPlane: 'Output の項目を無効化または復元する前に X-Plane を終了してください。',
+      stateChangeFailed: 'Output の項目を変更できませんでした。{reason}',
       addonDataDescription:
         '機体やプラグインが保存したデータまたはキャッシュです。重要なファイルが含まれる場合があります。不具合の切り分けには、この項目を無効にしてみてください。',
       warnings: {
