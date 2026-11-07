@@ -8,6 +8,10 @@ use std::path::{Path, PathBuf};
 #[path = "doctor_plugins.rs"]
 mod plugins;
 
+pub(super) fn host_binary_problem(path: &Path) -> io::Result<Option<&'static str>> {
+    plugins::host_binary_problem(path)
+}
+
 const SCENERY_INI: &str = "Custom Scenery/scenery_packs.ini";
 const SCENERY_INI_BYTE_LIMIT: u64 = 4 * 1024 * 1024;
 const SCENERY_LINK_ENTRY_LIMIT: usize = 60_000;

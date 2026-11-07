@@ -42,7 +42,6 @@ interface DoctorRunTiming {
 const LOCAL_CONCURRENCY = 4
 const NETWORK_CONCURRENCY = 3
 const APP_VERSION_TIMEOUT_MS = 5_000
-const PATH_VALIDATION_TIMEOUT_MS = 10_000
 
 const FILESYSTEM_REMEDIATIONS = new Set([
   'disable_injectors',
@@ -60,6 +59,9 @@ const FILESYSTEM_REMEDIATIONS = new Set([
 const DEFINITION_RESULT_IDS: Record<string, string[]> = {
   environment: [
     'installation.structure',
+    'installation.stock_aircraft',
+    'installation.airfoils',
+    'installation.asset_access',
     'storage.xplane_space',
     'installation.location',
     'installation.readonly',
@@ -512,45 +514,6 @@ export const useDoctorStore = defineStore('doctor', () => {
 
     if (activeRunToken !== runToken || currentRunPath.value !== xplanePath) return
 
-    try {
-      const valid = await runWithTimeout(
-        invoke<boolean>('validate_xplane_path', { path: xplanePath }),
-        'path_validation',
-        PATH_VALIDATION_TIMEOUT_MS,
-        activeCancellation,
-      )
-      if (!valid) {
-        updateRunChecks(runToken, [
-          {
-            id: 'installation.structure',
-            section: 'installation',
-            outcome: 'critical',
-            durationMs: 0,
-            remediation: {
-              id: 'configure_xplane_path',
-              kind: 'navigate',
-              risk: 'safe',
-              route: '/settings',
-            },
-          },
-        ])
-        await finishRun(runToken, 'completed', xplanePath)
-        return
-      }
-    } catch (reason) {
-      if (
-        reason instanceof DoctorCancelledError ||
-        cancelRequested ||
-        activeRunToken !== runToken
-      ) {
-        await finishRun(runToken, 'cancelled', xplanePath)
-        return
-      }
-      logError(`Health: path validation unavailable: ${reason}`, 'doctor')
-    }
-
-    if (activeRunToken !== runToken || currentRunPath.value !== xplanePath) return
-
     const context: DoctorCheckContext = {
       xplanePath,
       mode,
@@ -577,6 +540,11 @@ export const useDoctorStore = defineStore('doctor', () => {
     const environment = definitions.find((definition) => definition.id === 'environment')
     if (environment) {
       updateRunChecks(runToken, await executeDefinition(environment, runToken))
+    }
+
+    if (context.environment?.installation.rootUsable === false) {
+      await finishRun(runToken, 'completed', xplanePath)
+      return
     }
 
     // Runtime state is a prerequisite for interpreting Log.txt. A live X-Plane

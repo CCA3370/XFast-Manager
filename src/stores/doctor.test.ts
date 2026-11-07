@@ -88,14 +88,16 @@ function historyRun(id: string, installationId: string): DoctorRun {
 function environment(): DoctorEnvironmentReport {
   return {
     installationId: 'installation-1',
-    rootExists: true,
-    executablePresent: true,
-    logPresent: true,
+    installation: {
+      rootUsable: true,
+      core: { problems: [], errors: [] },
+      aircraft: { problems: [], errors: [] },
+      airfoils: { problems: [], errors: [] },
+    },
     freeBytes: 50 * 1024 * 1024 * 1024,
     totalBytes: 500 * 1024 * 1024 * 1024,
     inProgramFiles: false,
     isSteamInstall: false,
-    missingCoreDirs: [],
     readonlyCount: 0,
     readonlyScanCapped: false,
     readonlyScanPerformed: false,
@@ -235,6 +237,41 @@ describe('Health diagnostic store', () => {
     installHealthyMocks()
     const appStore = useAppStore()
     appStore.xplanePath = '/xplane'
+  })
+
+  it('continues checking a readable installation when the executable is missing', async () => {
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command !== 'doctor_scan_environment') return healthyResponse(command)
+      const env = environment()
+      env.installation.core.problems = ['X-Plane executable: missing']
+      env.installation.aircraft.problems = ['Aircraft/**/Cirrus SR22.acf: missing']
+      return env
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('quick')
+    expect(store.currentRun?.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'installation.structure', outcome: 'critical' }),
+        expect.objectContaining({ id: 'installation.stock_aircraft', outcome: 'warning' }),
+        expect.objectContaining({ id: 'navdata.bundled', outcome: 'pass' }),
+      ]),
+    )
+  })
+
+  it('stops installation-dependent probes when the selected root cannot be opened', async () => {
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command !== 'doctor_scan_environment') return healthyResponse(command)
+      const env = environment()
+      env.installation.rootUsable = false
+      env.installation.core.errors = ['Access denied']
+      return env
+    })
+    const store = useDoctorStore()
+    await store.runDiagnostics('full')
+    expect(store.currentRun?.checks).toEqual([
+      expect.objectContaining({ id: 'installation.structure', outcome: 'unavailable' }),
+    ])
+    expect(tauri.invoke).not.toHaveBeenCalledWith('doctor_navdata_status', expect.anything())
   })
 
   it('keeps unreadable scenery registrations separate from readable link inventory', async () => {

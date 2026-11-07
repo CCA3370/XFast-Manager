@@ -285,11 +285,15 @@ fn read_at<const N: usize>(file: &mut File, offset: u64) -> io::Result<[u8; N]> 
     Ok(header)
 }
 
+pub(super) fn host_binary_problem(path: &Path) -> io::Result<Option<&'static str>> {
+    binary_problem(path, Platform::current())
+}
+
 fn binary_problem(path: &Path, platform: Platform) -> io::Result<Option<&'static str>> {
     let mut file = File::open(path)?;
     let size = file.metadata()?.len();
     if size == 0 {
-        return Ok(Some("empty plugin binary"));
+        return Ok(Some("empty executable binary"));
     }
     let result = match platform {
         Platform::Windows => pe_problem(&mut file, size),

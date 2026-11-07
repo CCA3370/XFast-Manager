@@ -64,6 +64,25 @@ export const healthDetailMessages = {
     yes: 'Yes',
     no: 'No',
     findings: {
+      installation_structure: {
+        title: 'X-Plane installation structure',
+        description:
+          'Restore the listed startup files with the X-Plane installer or Steam file verification.',
+      },
+      installation_stock_aircraft: {
+        title: 'Stock aircraft',
+        description:
+          'The listed aircraft files are missing from the installation. Restore the affected stock aircraft.',
+      },
+      installation_airfoils: {
+        title: 'Airfoils',
+        description:
+          'The listed shared or aircraft airfoils are missing or damaged. Restore the affected files.',
+      },
+      installation_asset_access: {
+        title: 'Installation file access',
+        description: 'Some installation files could not be verified. Review the listed errors.',
+      },
       navdata_bundled: {
         title: 'Bundled navigation data',
         description: 'Repair the X-Plane installation to restore the listed bundled files.',
@@ -257,6 +276,22 @@ export const healthDetailMessages = {
     yes: '是',
     no: '否',
     findings: {
+      installation_structure: {
+        title: 'X-Plane 安装结构',
+        description: '请使用 X-Plane 安装器或 Steam 文件验证恢复列出的启动文件。',
+      },
+      installation_stock_aircraft: {
+        title: '原厂机模',
+        description: '缺少列出的机模文件，请恢复对应的原厂机模。',
+      },
+      installation_airfoils: {
+        title: '翼型文件',
+        description: '列出的共享或机模专用翼型缺失或损坏，请恢复相应文件。',
+      },
+      installation_asset_access: {
+        title: '安装文件访问',
+        description: '部分安装文件无法核实，请查看列出的错误。',
+      },
       navdata_bundled: {
         title: '原厂导航数据',
         description: '请修复 X-Plane 安装，以恢复列出的原厂数据文件。',
@@ -426,6 +461,25 @@ export const healthDetailMessages = {
     yes: 'Ja',
     no: 'Nein',
     findings: {
+      installation_structure: {
+        title: 'X-Plane-Installation',
+        description:
+          'Stelle die aufgeführten Startdateien mit dem X-Plane-Installer oder der Steam-Dateiprüfung wieder her.',
+      },
+      installation_stock_aircraft: {
+        title: 'Standardflugzeuge',
+        description:
+          'Die aufgeführten Flugzeugdateien fehlen. Stelle die betroffenen Flugzeuge wieder her.',
+      },
+      installation_airfoils: {
+        title: 'Tragflächenprofile',
+        description:
+          'Die aufgeführten Profile fehlen oder sind beschädigt. Stelle die betroffenen Dateien wieder her.',
+      },
+      installation_asset_access: {
+        title: 'Zugriff auf Installationsdateien',
+        description: 'Einige Dateien konnten nicht geprüft werden. Siehe die aufgeführten Fehler.',
+      },
       navdata_bundled: {
         title: 'Mitgelieferte Navigationsdaten',
         description:
@@ -594,6 +648,25 @@ export const healthDetailMessages = {
     yes: 'Oui',
     no: 'Non',
     findings: {
+      installation_structure: {
+        title: 'Installation de X-Plane',
+        description:
+          'Restaurez les fichiers de démarrage indiqués via le programme X-Plane ou la vérification Steam.',
+      },
+      installation_stock_aircraft: {
+        title: 'Avions inclus',
+        description: 'Les fichiers indiqués sont absents. Restaurez les avions concernés.',
+      },
+      installation_airfoils: {
+        title: 'Profils aérodynamiques',
+        description:
+          'Des profils indiqués sont manquants ou endommagés. Restaurez les fichiers concernés.',
+      },
+      installation_asset_access: {
+        title: 'Accès aux fichiers de X-Plane',
+        description:
+          'Certains fichiers ne peuvent pas être vérifiés. Consultez les erreurs indiquées.',
+      },
       navdata_bundled: {
         title: 'Données de navigation intégrées',
         description: 'Réparez l’installation de X-Plane pour restaurer les fichiers indiqués.',
@@ -760,6 +833,23 @@ export const healthDetailMessages = {
     yes: 'Sí',
     no: 'No',
     findings: {
+      installation_structure: {
+        title: 'Instalación de X-Plane',
+        description:
+          'Restaura los archivos de inicio indicados con el instalador de X-Plane o la verificación de Steam.',
+      },
+      installation_stock_aircraft: {
+        title: 'Aviones incluidos',
+        description: 'Faltan los archivos indicados. Restaura los aviones afectados.',
+      },
+      installation_airfoils: {
+        title: 'Perfiles aerodinámicos',
+        description: 'Los perfiles indicados faltan o están dañados. Restaura esos archivos.',
+      },
+      installation_asset_access: {
+        title: 'Acceso a archivos de instalación',
+        description: 'No se pudieron verificar algunos archivos. Revisa los errores indicados.',
+      },
       navdata_bundled: {
         title: 'Datos de navegación incluidos',
         description: 'Repara la instalación de X-Plane para restaurar los archivos indicados.',
@@ -925,6 +1015,24 @@ export const healthDetailMessages = {
     yes: 'Sim',
     no: 'Não',
     findings: {
+      installation_structure: {
+        title: 'Instalação do X-Plane',
+        description:
+          'Recupere os ficheiros de arranque indicados com o instalador do X-Plane ou a verificação do Steam.',
+      },
+      installation_stock_aircraft: {
+        title: 'Aeronaves incluídas',
+        description: 'Os ficheiros indicados estão em falta. Recupere as aeronaves afetadas.',
+      },
+      installation_airfoils: {
+        title: 'Perfis aerodinâmicos',
+        description:
+          'Os perfis indicados estão ausentes ou danificados. Recupere os ficheiros afetados.',
+      },
+      installation_asset_access: {
+        title: 'Acesso aos ficheiros do X-Plane',
+        description: 'Não foi possível verificar alguns ficheiros. Consulte os erros indicados.',
+      },
       navdata_bundled: {
         title: 'Dados de navegação incluídos',
         description: 'Repare a instalação do X-Plane para recuperar os ficheiros indicados.',
@@ -1089,6 +1197,24 @@ export const healthDetailMessages = {
     yes: 'はい',
     no: 'いいえ',
     findings: {
+      installation_structure: {
+        title: 'X-Plane インストール',
+        description:
+          'X-Plane インストーラーまたは Steam の整合性確認で起動ファイルを復元してください。',
+      },
+      installation_stock_aircraft: {
+        title: '標準機体',
+        description: '表示された機体ファイルが見つかりません。該当する標準機体を復元してください。',
+      },
+      installation_airfoils: {
+        title: '翼型ファイル',
+        description:
+          '表示された翼型が欠落または破損しています。該当するファイルを復元してください。',
+      },
+      installation_asset_access: {
+        title: 'インストールファイルへのアクセス',
+        description: '一部のファイルを確認できませんでした。表示されたエラーを確認してください。',
+      },
       navdata_bundled: {
         title: '標準ナビゲーションデータ',
         description: 'X-Plane のインストールを修復し、表示された標準ファイルを復元してください。',
@@ -1254,6 +1380,23 @@ export const healthDetailMessages = {
     yes: '예',
     no: '아니요',
     findings: {
+      installation_structure: {
+        title: 'X-Plane 설치 구조',
+        description:
+          'X-Plane 설치 프로그램 또는 Steam 파일 확인으로 표시된 시작 파일을 복구하세요.',
+      },
+      installation_stock_aircraft: {
+        title: '기본 항공기',
+        description: '표시된 항공기 파일이 누락되었습니다. 해당 기본 항공기를 복구하세요.',
+      },
+      installation_airfoils: {
+        title: '익형 파일',
+        description: '표시된 익형 파일이 없거나 손상되었습니다. 해당 파일을 복구하세요.',
+      },
+      installation_asset_access: {
+        title: '설치 파일 접근',
+        description: '일부 파일을 확인할 수 없습니다. 표시된 오류를 확인하세요.',
+      },
       navdata_bundled: {
         title: '기본 항법 데이터',
         description: 'X-Plane 설치를 복구하여 표시된 기본 파일을 복원하세요.',
@@ -1416,6 +1559,23 @@ export const healthDetailMessages = {
     yes: 'Да',
     no: 'Нет',
     findings: {
+      installation_structure: {
+        title: 'Установка X-Plane',
+        description:
+          'Восстановите указанные файлы запуска с помощью установщика X-Plane или проверки файлов Steam.',
+      },
+      installation_stock_aircraft: {
+        title: 'Штатные самолёты',
+        description: 'Указанные файлы отсутствуют. Восстановите соответствующие самолёты.',
+      },
+      installation_airfoils: {
+        title: 'Файлы профилей крыла',
+        description: 'Указанные файлы отсутствуют или повреждены. Восстановите их.',
+      },
+      installation_asset_access: {
+        title: 'Доступ к файлам установки',
+        description: 'Не удалось проверить часть файлов. См. указанные ошибки.',
+      },
       navdata_bundled: {
         title: 'Встроенные навигационные данные',
         description: 'Восстановите установку X-Plane, чтобы вернуть указанные файлы.',
@@ -1579,6 +1739,22 @@ export const healthDetailMessages = {
     yes: 'نعم',
     no: 'لا',
     findings: {
+      installation_structure: {
+        title: 'تثبيت X-Plane',
+        description: 'استعد ملفات التشغيل المذكورة عبر مثبت X-Plane أو التحقق من الملفات في Steam.',
+      },
+      installation_stock_aircraft: {
+        title: 'الطائرات المضمّنة',
+        description: 'ملفات الطائرات المذكورة مفقودة. استعد الطائرات المعنية.',
+      },
+      installation_airfoils: {
+        title: 'ملفات المقاطع الهوائية',
+        description: 'المقاطع المذكورة مفقودة أو تالفة. استعد الملفات المعنية.',
+      },
+      installation_asset_access: {
+        title: 'الوصول إلى ملفات التثبيت',
+        description: 'تعذّر التحقق من بعض الملفات. راجع الأخطاء المذكورة.',
+      },
       navdata_bundled: {
         title: 'بيانات الملاحة المضمّنة',
         description: 'أصلح تثبيت X-Plane لاستعادة الملفات المذكورة.',
@@ -1739,6 +1915,23 @@ export const healthDetailMessages = {
     yes: 'हाँ',
     no: 'नहीं',
     findings: {
+      installation_structure: {
+        title: 'X-Plane इंस्टॉलेशन',
+        description:
+          'X-Plane इंस्टॉलर या Steam फ़ाइल सत्यापन से सूचीबद्ध स्टार्टअप फ़ाइलें वापस लाएँ।',
+      },
+      installation_stock_aircraft: {
+        title: 'मूल विमान',
+        description: 'सूचीबद्ध विमान फ़ाइलें गुम हैं। प्रभावित विमान वापस लाएँ।',
+      },
+      installation_airfoils: {
+        title: 'एयरफ़ॉइल फ़ाइलें',
+        description: 'सूचीबद्ध एयरफ़ॉइल गुम या क्षतिग्रस्त हैं। प्रभावित फ़ाइलें वापस लाएँ।',
+      },
+      installation_asset_access: {
+        title: 'इंस्टॉलेशन फ़ाइलों तक पहुँच',
+        description: 'कुछ फ़ाइलों का सत्यापन नहीं हुआ। सूचीबद्ध त्रुटियाँ देखें।',
+      },
       navdata_bundled: {
         title: 'अंतर्निहित नेविगेशन डेटा',
         description: 'सूचीबद्ध फ़ाइलें वापस पाने के लिए X-Plane इंस्टॉलेशन की मरम्मत करें।',

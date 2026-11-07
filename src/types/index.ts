@@ -954,16 +954,23 @@ export interface CompetingOrganizer {
   evidence: string
 }
 
+export interface DoctorFileFindings {
+  problems: string[]
+  errors: string[]
+}
+
 export interface DoctorEnvironmentReport {
   installationId: string
-  rootExists: boolean
-  executablePresent: boolean
-  logPresent: boolean
+  installation: {
+    rootUsable: boolean
+    core: DoctorFileFindings
+    aircraft: DoctorFileFindings
+    airfoils: DoctorFileFindings
+  }
   freeBytes: number
   totalBytes: number
   inProgramFiles: boolean
   isSteamInstall: boolean
-  missingCoreDirs: string[]
   readonlyCount: number
   readonlyScanCapped: boolean
   readonlyScanPerformed: boolean

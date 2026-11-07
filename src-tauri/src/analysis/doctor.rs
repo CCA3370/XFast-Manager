@@ -18,6 +18,8 @@ use crate::{app_dirs, database, logger};
 
 #[path = "doctor_inspection.rs"]
 mod inspection;
+#[path = "doctor_installation.rs"]
+mod installation;
 #[path = "doctor_navdata.rs"]
 mod navdata;
 #[path = "doctor_repairs.rs"]
@@ -55,9 +57,7 @@ pub struct CompetingOrganizer {
 pub struct DoctorEnvironmentReport {
     /// Stable, non-reversible identifier for this X-Plane installation.
     pub installation_id: String,
-    pub root_exists: bool,
-    pub executable_present: bool,
-    pub log_present: bool,
+    pub installation: installation::InstallationInspection,
     /// Free bytes on the volume hosting the X-Plane install.
     pub free_bytes: u64,
     /// Total bytes on that volume.
@@ -66,8 +66,6 @@ pub struct DoctorEnvironmentReport {
     pub in_program_files: bool,
     /// Whether this looks like a Steam install (steam_api dll / steamapps path).
     pub is_steam_install: bool,
-    /// Core top-level directories that are expected but missing (broken install).
-    pub missing_core_dirs: Vec<String>,
     /// Count of read-only files found under the addon directories (capped scan).
     /// A high count can block installs/updates on Windows.
     pub readonly_count: usize,
@@ -117,10 +115,6 @@ pub struct DoctorXfastHealthReport {
     pub schema_compatible: bool,
     pub scenery_index: DoctorSceneryIndexHealth,
 }
-
-/// Top-level directories X-Plane needs to run. Their absence indicates a broken
-/// or wrongly-pointed install.
-const CORE_DIRS: &[&str] = &["Resources", "Aircraft", "Custom Scenery", "Global Scenery"];
 
 /// Cap the read-only scan so a huge install does not stall the Doctor.
 const READONLY_SCAN_FILE_CAP: usize = 60_000;
@@ -244,11 +238,9 @@ pub fn scan_environment_with_depth(xplane_path: &str, full: bool) -> DoctorEnvir
     let free_bytes = fs2::available_space(root).unwrap_or(0);
     let total_bytes = fs2::total_space(root).unwrap_or(0);
 
-    let missing_core_dirs: Vec<String> = CORE_DIRS
-        .iter()
-        .filter(|d| !root.join(d).is_dir())
-        .map(|d| d.to_string())
-        .collect();
+    let launcher = super::find_xplane_executable_in_root(root);
+    let installation =
+        installation::inspect(root, launcher.as_deref(), inspection::host_binary_problem);
 
     let (readonly_count, readonly_scan_capped) = if full {
         count_readonly_files(root)
@@ -258,14 +250,11 @@ pub fn scan_environment_with_depth(xplane_path: &str, full: bool) -> DoctorEnvir
 
     let report = DoctorEnvironmentReport {
         installation_id: installation_id(root),
-        root_exists: root.is_dir(),
-        executable_present: super::find_xplane_executable_in_root(root).is_some(),
-        log_present: root.join("Log.txt").is_file(),
+        installation,
         free_bytes,
         total_bytes,
         in_program_files: path_is_in_program_files(root),
         is_steam_install: detect_steam_install(root),
-        missing_core_dirs,
         readonly_count,
         readonly_scan_capped,
         readonly_scan_performed: full,
@@ -276,12 +265,12 @@ pub fn scan_environment_with_depth(xplane_path: &str, full: bool) -> DoctorEnvir
 
     logger::log_info(
         &format!(
-            "Environment scan: free={}GB injectors={} organizers={} readonly={} missingCore={}",
+            "Environment scan: free={}GB injectors={} organizers={} readonly={} startupProblems={}",
             report.free_bytes / 1_073_741_824,
             report.injectors.len(),
             report.competing_organizers.len(),
             report.readonly_count,
-            report.missing_core_dirs.len()
+            report.installation.core.problems.len()
         ),
         Some(LOG_CTX),
     );

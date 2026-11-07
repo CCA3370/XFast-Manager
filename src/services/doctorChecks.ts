@@ -221,18 +221,54 @@ function createEnvironmentCheck(context: DoctorCheckContext): DoctorCheckDefinit
         appDataTotalBytes: context.system?.appDataTotalBytes ?? null,
       }
 
-      const checks: DoctorCheckResult[] = []
-      const missing = [...env.missingCoreDirs]
-      if (!env.executablePresent) missing.unshift('X-Plane executable')
-      checks.push(
-        result('installation.structure', 'installation', missing.length ? 'critical' : 'pass', {
-          params: { count: missing.length },
-          evidence: evidence(missing),
-          remediation: missing.length
-            ? { id: 'configure_xplane_path', kind: 'navigate', risk: 'safe', route: '/settings' }
-            : undefined,
-        }),
-      )
+      const { rootUsable, core, aircraft, airfoils } = env.installation
+      const checks: DoctorCheckResult[] = [
+        result(
+          'installation.structure',
+          'installation',
+          core.problems.length ? 'critical' : core.errors.length ? 'unavailable' : 'pass',
+          {
+            params: { count: core.problems.length },
+            evidence: evidence([...core.problems, ...core.errors], 'path'),
+            remediation:
+              !rootUsable && core.problems.length
+                ? {
+                    id: 'configure_xplane_path',
+                    kind: 'navigate',
+                    risk: 'safe',
+                    route: '/settings',
+                  }
+                : undefined,
+          },
+        ),
+      ]
+      if (!rootUsable) return checks
+      for (const [id, finding] of [
+        ['installation.stock_aircraft', aircraft],
+        ['installation.airfoils', airfoils],
+      ] as const) {
+        checks.push(
+          result(
+            id,
+            'installation',
+            finding.problems.length ? 'warning' : finding.errors.length ? 'unavailable' : 'pass',
+            {
+              params: { count: finding.problems.length },
+              evidence: evidence([...finding.problems, ...finding.errors], 'path'),
+            },
+          ),
+        )
+      }
+      const assetErrors = [core, aircraft, airfoils]
+        .filter((finding) => finding.problems.length > 0)
+        .flatMap((finding) => finding.errors)
+      if (assetErrors.length) {
+        checks.push(
+          result('installation.asset_access', 'installation', 'unavailable', {
+            evidence: evidence(assetErrors, 'path'),
+          }),
+        )
+      }
 
       checks.push(
         result(

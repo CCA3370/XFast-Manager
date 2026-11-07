@@ -21,9 +21,9 @@ uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
 walkdir = "2"
 `)
-const modules = ['doctor_inspection', 'doctor_navdata', 'doctor_repairs'].map((name) =>
+const modules = ['doctor_inspection', 'doctor_installation', 'doctor_navdata', 'doctor_repairs'].map((name) =>
   `#[path = ${JSON.stringify(path.join(root, 'src-tauri', 'src', 'analysis', `${name}.rs`))}]
-mod ${name};`,
+mod ${name.replace('doctor_', '')};`,
 )
 await fs.writeFile(path.join(harness, 'src', 'lib.rs'), '#![allow(dead_code)]\n' + modules.join('\n'))
 const result = spawnSync('cargo', ['test', '--offline', '--manifest-path', path.join(harness, 'Cargo.toml')], {
