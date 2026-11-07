@@ -241,11 +241,30 @@ export function sanitizeDoctorHistory(value: unknown): DoctorHistoryFile {
         return true
       })
       .slice(0, DOCTOR_HISTORY_LIMIT)
-      .map((run) => ({
-        ...run,
-        checks: sortDoctorChecks(run.checks),
-        summary: summarizeDoctorRun(run.checks, run.state),
-      }))
+      .map((run) => {
+        const checks = run.checks.map((check): DoctorCheckResult => {
+          if (
+            check.id !== 'addons.binary_integrity' ||
+            check.params?.loaderScoped === 1 ||
+            check.outcome === 'unavailable' ||
+            check.outcome === 'cancelled'
+          ) {
+            return check
+          }
+          return {
+            id: check.id,
+            section: check.section,
+            outcome: 'unavailable',
+            durationMs: check.durationMs,
+            params: { requiresRescan: 1 },
+          }
+        })
+        return {
+          ...run,
+          checks: sortDoctorChecks(checks),
+          summary: summarizeDoctorRun(checks, run.state),
+        }
+      })
     if (runs.length) runsByInstallation[installationId] = runs
   }
 

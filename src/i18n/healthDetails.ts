@@ -86,7 +86,11 @@ export const healthDetailMessages = {
       addons_binary_integrity: {
         title: 'Plugin binary headers and architecture',
         description:
-          'Host-platform plugin files are empty, have an invalid executable header, or have an incompatible architecture. Reinstall the matching 64-bit plugin. This scan does not validate dependencies, signatures or every binary section.',
+          'An entry selected for this platform is empty or has an invalid or unsupported executable header. Review the file and the reason listed in the evidence.',
+        scope:
+          'The scan checks executable headers of global, aircraft and enabled registered scenery plugin entries. Dependencies and actual loading are outside this check.',
+        outdated:
+          'This saved result predates platform entry selection. Run a new full scan to verify the plugin files.',
       },
       installation_scan_access: {
         title: 'Inspection access and limits',
@@ -249,7 +253,10 @@ export const healthDetailMessages = {
       addons_binary_integrity: {
         title: '插件二进制头与架构',
         description:
-          '当前平台的插件文件为空、可执行文件头无效或架构不符。请重新安装对应的 64 位插件；本项不验证依赖库、签名或所有二进制节区。',
+          '当前平台选中的插件入口为空，或文件头无效、架构不受支持。请查看证据中列出的文件和原因。',
+        scope:
+          '已检查全局插件、飞机插件和已启用的注册地景插件的入口文件头。依赖库和实际加载情况需要另行验证。',
+        outdated: '此记录来自旧版插件检查。请重新运行全面检查，以验证 X-Plane 会选择的插件入口。',
       },
       installation_scan_access: {
         title: '扫描可读性与范围',
@@ -390,7 +397,12 @@ export const healthDetailMessages = {
       },
       addons_binary_integrity: {
         title: 'Plugin-Dateien und Architektur',
-        description: 'Addons und Kompatibilität wurden geprüft.',
+        description:
+          'Ein für diese Plattform ausgewählter Plugin-Einstieg ist leer oder hat einen ungültigen oder nicht unterstützten Dateikopf. Datei und Grund stehen in den Details.',
+        scope:
+          'Geprüft wurden die Dateiköpfe globaler Plugins sowie der Plugins von Flugzeugen und aktivierten registrierten Szenerien. Abhängigkeiten und tatsächliches Laden werden separat geprüft.',
+        outdated:
+          'Dieses Ergebnis stammt aus der früheren Plugin-Prüfung. Bitte eine neue vollständige Prüfung starten.',
       },
       installation_scan_access: {
         title: 'Scan-Zugriff und Grenzen',
@@ -528,7 +540,12 @@ export const healthDetailMessages = {
       },
       addons_binary_integrity: {
         title: 'Fichiers et architecture des extensions',
-        description: 'Extensions et compatibilité vérifiées.',
+        description:
+          'Un fichier de plugin sélectionné pour cette plateforme est vide ou possède un en-tête invalide ou non pris en charge. Consultez le fichier et la raison dans les détails.',
+        scope:
+          'Le contrôle examine les en-têtes des plugins globaux, des avions et des scènes enregistrées et activées. Les dépendances et le chargement réel nécessitent une vérification distincte.',
+        outdated:
+          'Ce résultat provient de l’ancienne vérification des plugins. Lancez une nouvelle analyse complète.',
       },
       installation_scan_access: {
         title: 'Accès et limites du contrôle',
@@ -665,7 +682,12 @@ export const healthDetailMessages = {
       },
       addons_binary_integrity: {
         title: 'Archivos y arquitectura de complementos',
-        description: 'Se revisaron los complementos y su compatibilidad.',
+        description:
+          'Un archivo de complemento seleccionado para esta plataforma está vacío o tiene una cabecera inválida o incompatible. Consulta el archivo y el motivo en los detalles.',
+        scope:
+          'Se revisan las cabeceras de los complementos globales, de aeronaves y de escenarios registrados y activados. Las dependencias y la carga real requieren otra comprobación.',
+        outdated:
+          'Este resultado procede de la revisión anterior. Ejecuta un nuevo análisis completo.',
       },
       installation_scan_access: {
         title: 'Acceso y límites de revisión',
@@ -801,7 +823,11 @@ export const healthDetailMessages = {
       },
       addons_binary_integrity: {
         title: 'Arquivos e arquitetura dos plugins',
-        description: 'Addons e compatibilidade verificados.',
+        description:
+          'Um arquivo de plugin selecionado para esta plataforma está vazio ou tem um cabeçalho inválido ou incompatível. Consulte o arquivo e o motivo nos detalhes.',
+        scope:
+          'A verificação abrange os cabeçalhos dos plugins globais, de aeronaves e dos cenários registrados e ativados. As dependências e o carregamento real exigem uma verificação separada.',
+        outdated: 'Este resultado é da verificação anterior. Execute uma nova análise completa.',
       },
       installation_scan_access: {
         title: 'Acesso e limites da verificação',
@@ -937,7 +963,12 @@ export const healthDetailMessages = {
       },
       addons_binary_integrity: {
         title: 'プラグインの形式とアーキテクチャ',
-        description: 'アドオンと互換性を確認しました。',
+        description:
+          'このプラットフォーム向けのプラグイン入口が空か、実行形式のヘッダーが無効または非対応です。詳細で対象ファイルと理由を確認してください。',
+        scope:
+          'グローバル、機体、および登録済みで有効なシーナリーのプラグインのヘッダーを確認しました。依存関係と実際の読み込みは別途確認が必要です。',
+        outdated:
+          '以前のプラグイン検査で保存された結果です。再度、完全スキャンを実行してください。',
       },
       installation_scan_access: {
         title: '走査のアクセスと制限',
@@ -1073,7 +1104,11 @@ export const healthDetailMessages = {
       },
       addons_binary_integrity: {
         title: '플러그인 파일과 아키텍처',
-        description: '애드온과 호환성을 확인했습니다.',
+        description:
+          '이 플랫폼용으로 선택된 플러그인 파일이 비어 있거나 실행 파일 헤더가 잘못되었거나 지원되지 않습니다. 세부 정보에서 파일과 원인을 확인하세요.',
+        scope:
+          '전역, 항공기 및 등록되어 활성화된 시너리 플러그인의 헤더를 검사했습니다. 종속성과 실제 로드는 별도 확인이 필요합니다.',
+        outdated: '이 결과는 이전 플러그인 검사에서 저장되었습니다. 전체 검사를 다시 실행하세요.',
       },
       installation_scan_access: {
         title: '검사 접근 및 한도',
@@ -1208,7 +1243,12 @@ export const healthDetailMessages = {
       },
       addons_binary_integrity: {
         title: 'Файлы и архитектура плагинов',
-        description: 'Проверены дополнения и совместимость.',
+        description:
+          'Файл плагина, выбранный для этой платформы, пуст либо имеет неверный или неподдерживаемый заголовок. Файл и причина указаны в подробностях.',
+        scope:
+          'Проверены заголовки глобальных плагинов, плагинов самолётов и зарегистрированных включённых сценариев. Зависимости и фактическую загрузку нужно проверять отдельно.',
+        outdated:
+          'Результат получен при старой проверке плагинов. Запустите новое полное сканирование.',
       },
       installation_scan_access: {
         title: 'Доступ и пределы проверки',
@@ -1343,7 +1383,11 @@ export const healthDetailMessages = {
       },
       addons_binary_integrity: {
         title: 'ملفات الإضافات وبنيتها',
-        description: 'تم فحص الإضافات والتوافق.',
+        description:
+          'ملف الإضافة المحدد لهذه المنصة فارغ أو يحمل ترويسة تنفيذية غير صالحة أو غير مدعومة. راجع الملف والسبب في التفاصيل.',
+        scope:
+          'يفحص هذا الإجراء ترويسات الإضافات العامة وإضافات الطائرات والمشاهد المسجلة والمفعلة. يتطلب التحقق من التبعيات والتحميل الفعلي فحصًا منفصلًا.',
+        outdated: 'حُفظت هذه النتيجة بواسطة فحص الإضافات القديم. أعد إجراء الفحص الشامل.',
       },
       installation_scan_access: {
         title: 'الوصول وحدود الفحص',
@@ -1478,7 +1522,11 @@ export const healthDetailMessages = {
       },
       addons_binary_integrity: {
         title: 'प्लगइन फ़ाइल और आर्किटेक्चर',
-        description: 'ऐडऑन और संगतता जाँची गई।',
+        description:
+          'इस प्लेटफ़ॉर्म के लिए चुनी गई प्लगइन फ़ाइल खाली है या उसका निष्पादन हेडर अमान्य या असमर्थित है। विवरण में फ़ाइल और कारण देखें।',
+        scope:
+          'वैश्विक, विमान और पंजीकृत सक्रिय दृश्यों के प्लगइन हेडर जाँचे गए। निर्भरताओं और वास्तविक लोडिंग की अलग जाँच आवश्यक है।',
+        outdated: 'यह परिणाम पुराने प्लगइन स्कैन से है। फिर से पूर्ण स्कैन चलाएँ।',
       },
       installation_scan_access: {
         title: 'स्कैन पहुँच और सीमाएँ',

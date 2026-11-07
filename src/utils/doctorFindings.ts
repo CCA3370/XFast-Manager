@@ -1,3 +1,8 @@
+import { healthDetailMessages } from '@/i18n/healthDetails'
+
+const enPlugin = healthDetailMessages.en.findings.addons_binary_integrity
+const zhPlugin = healthDetailMessages.zh.findings.addons_binary_integrity
+
 // Check-specific wording shared by the UI and English exports.
 export const DOCTOR_FINDINGS: Record<string, { en: [string, string]; zh: [string, string] }> = {
   'scenery.registration': {
@@ -48,14 +53,8 @@ export const DOCTOR_FINDINGS: Record<string, { en: [string, string]; zh: [string
     ],
   },
   'addons.binary_integrity': {
-    en: [
-      'Plugin binary headers and architecture',
-      'Host-platform plugin files are empty, have an invalid executable header, or have an incompatible architecture. Reinstall the matching 64-bit plugin. This scan does not validate dependencies, signatures or every binary section.',
-    ],
-    zh: [
-      '插件二进制头与架构',
-      '当前平台的插件文件为空、可执行文件头无效或架构不符。请重新安装对应的 64 位插件；本项不验证依赖库、签名或所有二进制节区。',
-    ],
+    en: [enPlugin.title, enPlugin.description],
+    zh: [zhPlugin.title, zhPlugin.description],
   },
   'installation.scan_access': {
     en: [

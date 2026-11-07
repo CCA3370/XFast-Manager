@@ -309,7 +309,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       empty: 'No saved health checks yet.',
       backToCurrent: 'Back to current result',
       quick: 'Quick',
-      full: 'Full',
+      full: 'Full scan',
     },
     privacy: {
       title: 'Report privacy',
@@ -477,7 +477,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       empty: '还没有保存的健康检查。',
       backToCurrent: '返回当前结果',
       quick: '快速',
-      full: '完整',
+      full: '全面检查',
     },
     privacy: {
       title: '报告隐私',
@@ -653,7 +653,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       empty: 'Todavía no hay comprobaciones guardadas.',
       backToCurrent: 'Volver al resultado actual',
       quick: 'Rápida',
-      full: 'Completa',
+      full: 'Análisis completo',
     },
     privacy: {
       title: 'Privacidad del informe',
@@ -832,7 +832,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       empty: 'Aucun bilan enregistré.',
       backToCurrent: 'Revenir au résultat actuel',
       quick: 'Rapide',
-      full: 'Complet',
+      full: 'Analyse complète',
     },
     privacy: {
       title: 'Confidentialité du rapport',
@@ -1011,7 +1011,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       empty: 'Noch keine gespeicherten Prüfungen.',
       backToCurrent: 'Zurück zum aktuellen Ergebnis',
       quick: 'Schnell',
-      full: 'Vollständig',
+      full: 'Vollständiger Scan',
     },
     privacy: {
       title: 'Berichtsdatenschutz',
@@ -1187,7 +1187,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       empty: '保存済みのヘルスチェックはありません。',
       backToCurrent: '現在の結果に戻る',
       quick: 'クイック',
-      full: '完全',
+      full: '完全スキャン',
     },
     privacy: {
       title: 'レポートのプライバシー',
@@ -1362,7 +1362,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       empty: 'Ainda não há verificações salvas.',
       backToCurrent: 'Voltar ao resultado atual',
       quick: 'Rápida',
-      full: 'Completa',
+      full: 'Análise completa',
     },
     privacy: {
       title: 'Privacidade do relatório',
@@ -1536,7 +1536,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       empty: 'अभी कोई सहेजी हुई जाँच नहीं है।',
       backToCurrent: 'वर्तमान परिणाम पर लौटें',
       quick: 'त्वरित',
-      full: 'पूर्ण',
+      full: 'पूर्ण स्कैन',
     },
     privacy: {
       title: 'रिपोर्ट गोपनीयता',
@@ -1708,7 +1708,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       empty: 'لا توجد فحوصات محفوظة بعد.',
       backToCurrent: 'العودة إلى النتيجة الحالية',
       quick: 'سريع',
-      full: 'كامل',
+      full: 'فحص شامل',
     },
     privacy: {
       title: 'خصوصية التقرير',
@@ -1883,7 +1883,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       empty: 'Сохранённых проверок пока нет.',
       backToCurrent: 'Вернуться к текущему результату',
       quick: 'Быстрая',
-      full: 'Полная',
+      full: 'Полное сканирование',
     },
     privacy: {
       title: 'Конфиденциальность отчёта',
@@ -2058,7 +2058,7 @@ export const doctorCenterMessages: Record<DoctorCenterLocale, DoctorCenterMessag
       empty: '저장된 상태 점검이 없습니다.',
       backToCurrent: '현재 결과로 돌아가기',
       quick: '빠른',
-      full: '전체',
+      full: '전체 검사',
     },
     privacy: {
       title: '보고서 개인정보',

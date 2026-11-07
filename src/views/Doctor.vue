@@ -1082,6 +1082,11 @@ function legacyTextRoot(check: DoctorCheckResult): string | null {
 }
 
 function checkDescription(check: DoctorCheckResult): string {
+  if (check.id === 'addons.binary_integrity') {
+    const root = 'healthDetails.findings.addons_binary_integrity'
+    if (check.params?.requiresRescan) return t(`${root}.outdated`)
+    if (check.outcome === 'pass') return t(`${root}.scope`)
+  }
   if (check.id === 'stability.last_session') {
     const state = String(check.params?.sessionEnd ?? 'unknown')
     return t(

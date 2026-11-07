@@ -48,9 +48,10 @@ fn inspect_scenery(
     root: &Path,
     report: &mut InspectionReport,
     _resolve_shortcut: ShortcutResolver,
-) -> Option<Vec<PathBuf>> {
+) -> (Option<Vec<PathBuf>>, Vec<String>) {
     let ini = root.join("Custom Scenery/scenery_packs.ini");
     let mut enabled_packs = None;
+    let mut inaccessible_packs = Vec::new();
     match fs::metadata(&ini) {
         Ok(meta) if meta.is_file() => {
             report.scenery_ini_exists = true;
@@ -93,7 +94,7 @@ fn inspect_scenery(
                             Err(error) if error.kind() == std::io::ErrorKind::NotFound => report
                                 .missing_scenery_paths
                                 .push(format!("line {}: {path}", index + 1)),
-                            Err(error) => report.scan_errors.push(format!("{path}: {error}")),
+                            Err(error) => inaccessible_packs.push(format!("{path}: {error}")),
                         }
                     }
                     enabled_packs = Some(packs);
@@ -146,7 +147,7 @@ fn inspect_scenery(
         }
         Err(error) => report.scan_errors.push(format!("Custom Scenery: {error}")),
     }
-    enabled_packs
+    (enabled_packs, inaccessible_packs)
 }
 
 pub fn inspect_installation(
@@ -155,7 +156,7 @@ pub fn inspect_installation(
     resolve_shortcut: ShortcutResolver,
 ) -> InspectionReport {
     let mut report = InspectionReport::default();
-    let scenery = inspect_scenery(root, &mut report, resolve_shortcut);
+    let (scenery, inaccessible_packs) = inspect_scenery(root, &mut report, resolve_shortcut);
     for name in [
         "earth_nav.dat",
         "earth_fix.dat",
@@ -182,7 +183,11 @@ pub fn inspect_installation(
         .and_then(|time| time.elapsed().ok())
         .map(|age| age.as_secs() / 86_400);
     if full {
-        report.plugins = Some(plugins::inspect(root, scenery.as_deref()));
+        let mut plugins = plugins::inspect(root, scenery.as_deref());
+        plugins.errors.extend(inaccessible_packs);
+        report.plugins = Some(plugins);
+    } else {
+        report.scan_errors.extend(inaccessible_packs);
     }
     report
 }

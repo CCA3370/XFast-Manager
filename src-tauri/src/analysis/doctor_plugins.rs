@@ -72,11 +72,16 @@ fn scan(
             }
             scanner.container(&pack.join("plugins"), false);
         }
-    } else if root.join("Custom Scenery").is_dir() {
-        scanner.result.errors.push(
-            "Custom Scenery/scenery_packs.ini: enabled scenery plugin folders could not be determined"
-                .into(),
-        );
+    } else {
+        let scenery = root.join("Custom Scenery");
+        match fs::metadata(&scenery) {
+            Ok(_) => scanner.error(
+                &scenery.join("scenery_packs.ini"),
+                "enabled scenery plugin folders could not be determined",
+            ),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => scanner.error(&scenery, error),
+        }
     }
     scanner.result.problems.sort();
     scanner.result.errors.sort();
@@ -102,8 +107,7 @@ impl Scanner<'_> {
         self.result.errors.push(self.describe(path, error));
     }
 
-    // An optional folder can be absent. Read failures and truncated listings leave
-    // candidate selection inconclusive, so callers must not fall back in those cases.
+    // A truncated listing cannot establish which entries belong to this container.
     fn entries(&mut self, path: &Path) -> Option<Vec<fs::DirEntry>> {
         if self.result.capped {
             return None;
@@ -171,39 +175,30 @@ impl Scanner<'_> {
 
     fn bundle(&mut self, path: &Path) {
         let (platform_dir, legacy_name) = self.platform.layout();
-        let modern = path.join(platform_dir);
-        let Some(entries) = self.entries(&modern) else {
+        let Some(name) = path.file_name() else {
             return;
         };
-        let mut candidates = Vec::new();
-        for entry in entries.into_iter().filter(visible) {
-            let path = entry.path();
-            if has_extension(&path, "xpl") {
-                match self.entry_type(&entry) {
-                    Some(kind) if kind.is_file() => candidates.push(path),
-                    Some(_) => {}
-                    None => return,
+        let mut binary_name = name.to_os_string();
+        binary_name.push(".xpl");
+        // XPLM looks for the bundle's own name in the platform directory first.
+        // Other .xpl files beside it can be auxiliary or alternate binaries.
+        for candidate in [
+            path.join(platform_dir).join(binary_name),
+            path.join("64").join(legacy_name),
+            path.join(legacy_name),
+        ] {
+            match fs::metadata(&candidate) {
+                Ok(meta) if meta.is_file() => return self.check(&candidate),
+                Ok(_) => return self.error(&candidate, "plugin entry is not a regular file"),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                    if fs::symlink_metadata(&candidate)
+                        .is_ok_and(|meta| meta.file_type().is_symlink())
+                    {
+                        return self
+                            .error(&candidate, "plugin entry link target could not be read");
+                    }
                 }
-            }
-        }
-        // XPLM 3.0 platform folders take precedence over XPLM 2.x entries.
-        match candidates.as_slice() {
-            [candidate] => return self.check(candidate),
-            [] => {}
-            _ => {
-                self.error(
-                    &modern,
-                    "multiple .xpl entries; cannot identify the selected binary",
-                );
-                return;
-            }
-        }
-        for legacy in [path.join("64").join(legacy_name), path.join(legacy_name)] {
-            match fs::metadata(&legacy) {
-                Ok(meta) if meta.is_file() => return self.check(&legacy),
-                Ok(_) => {}
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                Err(error) => return self.error(&legacy, error),
+                Err(error) => return self.error(&candidate, error),
             }
         }
     }
@@ -231,24 +226,30 @@ impl Scanner<'_> {
             };
             let mut has_aircraft = false;
             let mut enabled = false;
-            let mut subdirs = Vec::new();
-            for entry in entries.into_iter().filter(visible) {
-                let Some(kind) = self.entry_type(&entry) else {
-                    continue;
-                };
+            for entry in entries.iter().filter(|entry| visible(entry)) {
                 let path = entry.path();
-                if kind.is_dir() && !entry.file_name().eq_ignore_ascii_case("plugins") {
-                    subdirs.push(path);
-                } else if kind.is_file() {
-                    let acf = has_extension(&path, "acf");
-                    enabled |= acf;
-                    has_aircraft |= acf || has_extension(&path, "xfma");
+                let acf = has_extension(&path, "acf");
+                if (acf || has_extension(&path, "xfma"))
+                    && self.entry_type(entry).is_some_and(|kind| kind.is_file())
+                {
+                    has_aircraft = true;
+                    if acf {
+                        enabled = true;
+                        break;
+                    }
                 }
             }
             if enabled {
                 self.container(&path.join("plugins"), false);
             } else if !has_aircraft {
-                pending.extend(subdirs);
+                pending.extend(entries.into_iter().filter(visible).filter_map(|entry| {
+                    if entry.file_name().eq_ignore_ascii_case("plugins") {
+                        return None;
+                    }
+                    self.entry_type(&entry)
+                        .filter(|kind| kind.is_dir())
+                        .map(|_| entry.path())
+                }));
             }
         }
     }
@@ -402,7 +403,7 @@ mod tests {
     }
 
     #[test]
-    fn reports_confirmed_corruption_and_keeps_ambiguous_bundles_separate() {
+    fn checks_the_named_entry_and_ignores_alternate_binaries() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
         put(root, "Resources/plugins/loose.xpl", b"");
@@ -411,9 +412,14 @@ mod tests {
             "Resources/plugins/Selected/win_x64/Selected.xpl",
             b"bad",
         );
-        put(root, "Resources/plugins/Ambiguous/win_x64/First.xpl", b"");
-        put(root, "Resources/plugins/Ambiguous/win_x64/Second.xpl", b"");
-        put(root, "Resources/plugins/Ambiguous/64/win.xpl", b"");
+        put(
+            root,
+            "Resources/plugins/Selected/win_x64/Selected.alt.xpl",
+            b"",
+        );
+        fs::create_dir_all(root.join("Resources/plugins/Unreadable/win_x64/Unreadable.xpl"))
+            .unwrap();
+        put(root, "Resources/plugins/Unreadable/64/win.xpl", b"");
         put(root, "Resources/plugins/Other/lin_x64/Other.xpl", b"");
         put(root, "Resources/plugins/Old/32/win.xpl", b"");
         put(
@@ -434,16 +440,16 @@ mod tests {
             .iter()
             .any(|problem| problem.contains("loose.xpl")));
         assert_eq!(result.errors.len(), 1);
-        assert!(result.errors[0].contains("Ambiguous"));
+        assert!(result.errors[0].contains("Unreadable.xpl"));
     }
 
     #[test]
-    fn an_incomplete_modern_listing_does_not_validate_the_legacy_fallback() {
+    fn a_capped_inventory_does_not_claim_that_entries_were_checked() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
         put(root, "Resources/plugins/Test/win_x64/Test.xpl", b"");
         put(root, "Resources/plugins/Test/64/win.xpl", b"");
-        let result = scan(root, Some(&[]), Platform::Windows, 1);
+        let result = scan(root, Some(&[]), Platform::Windows, 0);
         assert!(result.capped);
         assert_eq!(result.checked, 0);
         assert!(result.problems.is_empty());

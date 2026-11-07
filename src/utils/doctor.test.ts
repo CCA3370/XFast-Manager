@@ -95,6 +95,34 @@ function run(id: string, installationId = 'install'): DoctorRun {
 }
 
 describe('doctor history', () => {
+  it('marks only older plugin header conclusions as requiring a new scan', () => {
+    const legacy = run('run-1')
+    legacy.checks.push({
+      ...check('addons.binary_integrity', 'critical'),
+      section: 'addons',
+      evidence: [{ kind: 'path', value: 'blu_fx/32/win.xpl' }],
+    })
+    const current = run('run-2')
+    current.checks.push({
+      ...check('addons.binary_integrity', 'warning'),
+      section: 'addons',
+      params: { loaderScoped: 1 },
+    })
+    let history = addDoctorHistoryRun(emptyDoctorHistory(), '/xplane', legacy)
+    history = addDoctorHistoryRun(history, '/xplane', current)
+
+    const [latest, older] = getDoctorHistoryForPath(sanitizeDoctorHistory(history), '/xplane')
+    expect(latest?.summary.warning).toBe(1)
+    expect(older?.summary).toMatchObject({ critical: 0, pass: 1, completeness: 'partial' })
+    expect(older?.checks.find(({ id }) => id === 'addons.binary_integrity')).toEqual({
+      id: 'addons.binary_integrity',
+      section: 'addons',
+      outcome: 'unavailable',
+      durationMs: 1,
+      params: { requiresRescan: 1 },
+    })
+  })
+
   it('keeps histories isolated by installation and trims old runs', () => {
     let history = emptyDoctorHistory()
     for (let index = 1; index <= 22; index++) {

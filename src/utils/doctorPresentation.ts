@@ -33,6 +33,13 @@ export function describeDoctorCheck(check: DoctorCheckResult, locale = 'en') {
     (root && message(locale, `${root}.title`, params)) ||
     check.id
   const generic = message(locale, `doctor.center.checkDescriptions.${check.outcome}`)
+  if (check.id === 'addons.binary_integrity') {
+    const root = 'healthDetails.findings.addons_binary_integrity'
+    if (params.requiresRescan || check.outcome === 'pass') {
+      const key = params.requiresRescan ? 'outdated' : 'scope'
+      return { title, description: message(locale, `${root}.${key}`), suggestion: '' }
+    }
+  }
   if (check.id === 'stability.last_session') {
     const descriptions: Record<string, string> = chinese
       ? {
