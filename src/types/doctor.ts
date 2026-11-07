@@ -128,10 +128,13 @@ export interface DoctorInspectionReport {
   duplicateSceneryPaths: string[]
   brokenSceneryLinks: string[]
   emptyNavdataFiles: string[]
-  pluginBinaryProblems: string[]
   scanErrors: string[]
-  scanCapped: boolean
-  pluginBinariesChecked: number
+  plugins: {
+    checked: number
+    problems: string[]
+    errors: string[]
+    capped: boolean
+  } | null
   shaderCachePresent: boolean
   preferencesPresent: boolean
   logAgeDays: number | null

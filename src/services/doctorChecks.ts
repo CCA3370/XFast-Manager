@@ -366,6 +366,8 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
         depth: context.mode,
       })
       context.inspection = report
+      const plugins = report.plugins
+      const scanErrors = [...report.scanErrors, ...(plugins?.errors ?? [])]
       const checks: DoctorCheckResult[] = [
         result('scenery.registration', 'scenery', report.sceneryIniExists ? 'pass' : 'info', {
           remediation: report.sceneryIniExists
@@ -405,10 +407,10 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
         result(
           'installation.scan_access',
           'installation',
-          report.scanErrors.length || report.scanCapped ? 'unavailable' : 'pass',
+          scanErrors.length || plugins?.capped ? 'unavailable' : 'pass',
           {
-            params: { errors: report.scanErrors.length, capped: Number(report.scanCapped) },
-            evidence: evidence(report.scanErrors),
+            params: { errors: scanErrors.length, capped: Number(Boolean(plugins?.capped)) },
+            evidence: evidence(scanErrors, 'path'),
           },
         ),
       ]
@@ -417,20 +419,24 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
           result(
             'addons.binary_integrity',
             'addons',
-            report.pluginBinaryProblems.length
-              ? 'critical'
-              : report.scanCapped || report.scanErrors.length
+            plugins?.problems.length
+              ? 'warning'
+              : !plugins || plugins.capped || plugins.errors.length
                 ? 'unavailable'
-                : report.pluginBinariesChecked
+                : plugins.checked
                   ? 'pass'
                   : 'notApplicable',
             {
               params: {
-                checked: report.pluginBinariesChecked,
-                count: report.pluginBinaryProblems.length,
+                checked: plugins?.checked ?? 0,
+                count: plugins?.problems.length ?? 0,
+                loaderScoped: 1,
               },
-              evidence: evidence(report.pluginBinaryProblems, 'path'),
-              remediation: report.pluginBinaryProblems.length
+              evidence: evidence(
+                plugins?.problems.length ? plugins.problems : (plugins?.errors ?? []),
+                'path',
+              ),
+              remediation: plugins?.problems.length
                 ? {
                     id: 'manage_plugins',
                     kind: 'navigate',

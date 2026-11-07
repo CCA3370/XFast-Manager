@@ -146,10 +146,8 @@ async function healthyResponse(command: string): Promise<unknown> {
         duplicateSceneryPaths: [],
         brokenSceneryLinks: [],
         emptyNavdataFiles: [],
-        pluginBinaryProblems: [],
         scanErrors: [],
-        scanCapped: false,
-        pluginBinariesChecked: 0,
+        plugins: { checked: 0, problems: [], errors: [], capped: false },
         shaderCachePresent: true,
         preferencesPresent: true,
         logAgeDays: 0,
@@ -235,6 +233,45 @@ describe('Health diagnostic store', () => {
     installHealthyMocks()
     const appStore = useAppStore()
     appStore.xplanePath = '/xplane'
+  })
+
+  it.each([
+    { problems: [], pluginErrors: [], scanErrors: ['Custom Data: denied'], expected: 'pass' },
+    { problems: [], pluginErrors: ['plugins: denied'], scanErrors: [], expected: 'unavailable' },
+    {
+      problems: ['Test.xpl: invalid PE signature'],
+      pluginErrors: ['plugins: denied'],
+      scanErrors: [],
+      expected: 'warning',
+    },
+  ])('reports plugin integrity as $expected based on plugin evidence', async (scenario) => {
+    tauri.invoke.mockImplementation(async (command) => {
+      const response = await healthyResponse(command)
+      if (command !== 'doctor_inspect_installation') return response
+      return {
+        ...(response as object),
+        scanErrors: scenario.scanErrors,
+        plugins: {
+          checked: 1,
+          problems: scenario.problems,
+          errors: scenario.pluginErrors,
+          capped: false,
+        },
+      }
+    })
+
+    const store = useDoctorStore()
+    await store.runDiagnostics('full')
+    const run = store.currentRun
+    const pluginCheck = run?.checks.find((check) => check.id === 'addons.binary_integrity')
+    expect(pluginCheck?.outcome).toBe(scenario.expected)
+    expect(pluginCheck?.remediation?.id).toBe(
+      scenario.problems.length ? 'manage_plugins' : undefined,
+    )
+    expect(run?.checks.find((check) => check.id === 'installation.scan_access')?.outcome).toBe(
+      'unavailable',
+    )
+    expect(run?.summary.completeness).toBe('partial')
   })
 
   it.each(['disable_injectors', 'rebuild_shader_cache', 'reset_preferences'])(

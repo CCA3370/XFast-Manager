@@ -2,13 +2,10 @@
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
-use std::io::Read;
-#[cfg(windows)]
-use std::io::{Seek, SeekFrom};
-use std::path::Path;
-use walkdir::WalkDir;
+use std::path::{Path, PathBuf};
 
-const ENTRY_LIMIT: usize = 60_000;
+#[path = "doctor_plugins.rs"]
+mod plugins;
 
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,10 +15,8 @@ pub struct InspectionReport {
     pub duplicate_scenery_paths: Vec<String>,
     pub broken_scenery_links: Vec<String>,
     pub empty_navdata_files: Vec<String>,
-    pub plugin_binary_problems: Vec<String>,
     pub scan_errors: Vec<String>,
-    pub scan_capped: bool,
-    pub plugin_binaries_checked: usize,
+    plugins: Option<plugins::PluginInspection>,
     pub shader_cache_present: bool,
     pub preferences_present: bool,
     pub log_age_days: Option<u64>,
@@ -53,51 +48,68 @@ fn inspect_scenery(
     root: &Path,
     report: &mut InspectionReport,
     _resolve_shortcut: ShortcutResolver,
-) {
+) -> Option<Vec<PathBuf>> {
     let ini = root.join("Custom Scenery/scenery_packs.ini");
-    report.scenery_ini_exists = ini.is_file();
-    if report.scenery_ini_exists {
-        match fs::read_to_string(&ini) {
-            Ok(body) => {
-                let mut seen = HashMap::new();
-                for (index, line) in body.lines().enumerate() {
-                    let Some(path) = line.trim().strip_prefix("SCENERY_PACK ") else {
-                        continue; // Disabled scenery is intentionally not loaded.
-                    };
-                    let path = path.trim();
-                    if path == "*GLOBAL_AIRPORTS*" {
-                        continue;
+    let mut enabled_packs = None;
+    match fs::metadata(&ini) {
+        Ok(meta) if meta.is_file() => {
+            report.scenery_ini_exists = true;
+            match fs::read_to_string(&ini) {
+                Ok(body) => {
+                    let mut seen = HashMap::new();
+                    let mut packs = Vec::new();
+                    for (index, line) in body.lines().enumerate() {
+                        let Some(path) = line.trim().strip_prefix("SCENERY_PACK ") else {
+                            continue; // Disabled scenery is intentionally not loaded.
+                        };
+                        let path = path.trim();
+                        if path.is_empty() || path == "*GLOBAL_AIRPORTS*" {
+                            continue;
+                        }
+                        let target = scenery_target(root, path, _resolve_shortcut);
+                        let mut key = target
+                            .canonicalize()
+                            .unwrap_or_else(|_| target.clone())
+                            .to_string_lossy()
+                            .replace('\\', "/");
+                        if cfg!(windows) {
+                            key.make_ascii_lowercase();
+                        }
+                        let duplicate = seen.insert(key, index + 1);
+                        if let Some(first) = duplicate {
+                            report
+                                .duplicate_scenery_paths
+                                .push(format!("lines {first}, {}: {path}", index + 1));
+                        }
+                        match fs::metadata(&target) {
+                            Ok(meta) if meta.is_dir() => {
+                                if duplicate.is_none() {
+                                    packs.push(target);
+                                }
+                            }
+                            Ok(_) => report
+                                .missing_scenery_paths
+                                .push(format!("line {}: {path} (not a directory)", index + 1)),
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => report
+                                .missing_scenery_paths
+                                .push(format!("line {}: {path}", index + 1)),
+                            Err(error) => report.scan_errors.push(format!("{path}: {error}")),
+                        }
                     }
-                    let target = scenery_target(root, path, _resolve_shortcut);
-                    let mut key = target
-                        .canonicalize()
-                        .unwrap_or_else(|_| target.clone())
-                        .to_string_lossy()
-                        .replace('\\', "/");
-                    if cfg!(windows) {
-                        key.make_ascii_lowercase();
-                    }
-                    if let Some(first) = seen.insert(key, index + 1) {
-                        report
-                            .duplicate_scenery_paths
-                            .push(format!("lines {first}, {}: {path}", index + 1));
-                    }
-                    match fs::metadata(&target) {
-                        Ok(meta) if meta.is_dir() => {}
-                        Ok(_) => report
-                            .missing_scenery_paths
-                            .push(format!("line {}: {path} (not a directory)", index + 1)),
-                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => report
-                            .missing_scenery_paths
-                            .push(format!("line {}: {path}", index + 1)),
-                        Err(error) => report.scan_errors.push(format!("{path}: {error}")),
-                    }
+                    enabled_packs = Some(packs);
                 }
+                Err(error) => report
+                    .scan_errors
+                    .push(format!("Custom Scenery/scenery_packs.ini: {error}")),
             }
-            Err(error) => report
-                .scan_errors
-                .push(format!("Custom Scenery/scenery_packs.ini: {error}")),
         }
+        Ok(_) => report
+            .scan_errors
+            .push("Custom Scenery/scenery_packs.ini: not a file".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => report
+            .scan_errors
+            .push(format!("Custom Scenery/scenery_packs.ini: {error}")),
     }
     match fs::read_dir(root.join("Custom Scenery")) {
         Ok(entries) => {
@@ -134,121 +146,7 @@ fn inspect_scenery(
         }
         Err(error) => report.scan_errors.push(format!("Custom Scenery: {error}")),
     }
-}
-
-/// Validate only binaries intended for this host, leaving other-platform files alone.
-fn binary_problem(path: &Path) -> Result<Option<&'static str>, std::io::Error> {
-    let mut file = fs::File::open(path)?;
-    let mut header = [0u8; 64];
-    let length = file.read(&mut header)?;
-    if length == 0 {
-        return Ok(Some("empty plugin binary"));
-    }
-    #[cfg(windows)]
-    {
-        if length < 64 || &header[..2] != b"MZ" {
-            return Ok(Some("invalid PE header"));
-        }
-        let offset = u32::from_le_bytes(header[60..64].try_into().unwrap());
-        file.seek(SeekFrom::Start(offset as u64))?;
-        let mut pe = [0u8; 6];
-        if file.read_exact(&mut pe).is_err() || &pe[..4] != b"PE\0\0" {
-            return Ok(Some("truncated or invalid PE header"));
-        }
-        let machine = u16::from_le_bytes([pe[4], pe[5]]);
-        if machine == 0x014c {
-            return Ok(Some("32-bit plugin; X-Plane requires 64-bit"));
-        }
-        #[cfg(target_arch = "x86_64")]
-        if machine != 0x8664 {
-            return Ok(Some("plugin architecture does not match x86-64 host"));
-        }
-    }
-    #[cfg(target_os = "linux")]
-    {
-        if length < 20 || &header[..4] != b"\x7fELF" {
-            return Ok(Some("invalid ELF header"));
-        }
-        if header[4] != 2 {
-            return Ok(Some("plugin is not 64-bit ELF"));
-        }
-    }
-    #[cfg(target_os = "macos")]
-    {
-        if length < 4
-            || !matches!(
-                &header[..4],
-                [0xcf, 0xfa, 0xed, 0xfe]
-                    | [0xfe, 0xed, 0xfa, 0xcf]
-                    | [0xca, 0xfe, 0xba, 0xbe]
-                    | [0xca, 0xfe, 0xba, 0xbf]
-            )
-        {
-            return Ok(Some("invalid 64-bit or universal Mach-O header"));
-        }
-    }
-    Ok(None)
-}
-
-fn inspect_plugins(root: &Path, report: &mut InspectionReport) {
-    let host_name = if cfg!(windows) {
-        "win.xpl"
-    } else if cfg!(target_os = "macos") {
-        "mac.xpl"
-    } else {
-        "lin.xpl"
-    };
-    let mut visited = 0;
-    for directory in ["Resources/plugins", "Aircraft"] {
-        let path = root.join(directory);
-        if !path.is_dir() {
-            continue;
-        }
-        for entry in WalkDir::new(path)
-            .follow_links(false)
-            .max_depth(12)
-            .into_iter()
-            .filter_entry(|entry| {
-                !entry
-                    .file_name()
-                    .to_string_lossy()
-                    .to_ascii_lowercase()
-                    .contains(".disabled")
-            })
-        {
-            visited += 1;
-            if visited > ENTRY_LIMIT {
-                report.scan_capped = true;
-                return;
-            }
-            match entry {
-                Ok(entry)
-                    if entry.file_type().is_file()
-                        && entry
-                            .file_name()
-                            .to_string_lossy()
-                            .eq_ignore_ascii_case(host_name) =>
-                {
-                    report.plugin_binaries_checked += 1;
-                    let relative = entry
-                        .path()
-                        .strip_prefix(root)
-                        .unwrap_or(entry.path())
-                        .display()
-                        .to_string();
-                    match binary_problem(entry.path()) {
-                        Ok(Some(reason)) => report
-                            .plugin_binary_problems
-                            .push(format!("{relative}: {reason}")),
-                        Err(error) => report.scan_errors.push(format!("{relative}: {error}")),
-                        _ => {}
-                    }
-                }
-                Err(error) => report.scan_errors.push(error.to_string()),
-                _ => {}
-            }
-        }
-    }
+    enabled_packs
 }
 
 pub fn inspect_installation(
@@ -257,7 +155,7 @@ pub fn inspect_installation(
     resolve_shortcut: ShortcutResolver,
 ) -> InspectionReport {
     let mut report = InspectionReport::default();
-    inspect_scenery(root, &mut report, resolve_shortcut);
+    let scenery = inspect_scenery(root, &mut report, resolve_shortcut);
     for name in [
         "earth_nav.dat",
         "earth_fix.dat",
@@ -284,7 +182,7 @@ pub fn inspect_installation(
         .and_then(|time| time.elapsed().ok())
         .map(|age| age.as_secs() / 86_400);
     if full {
-        inspect_plugins(root, &mut report);
+        report.plugins = Some(plugins::inspect(root, scenery.as_deref()));
     }
     report
 }
@@ -333,11 +231,81 @@ mod tests {
         }
         let report = inspect_installation(temp.path(), true, |_| None);
         assert_eq!(report.empty_navdata_files.len(), 1);
-        assert_eq!(report.plugin_binaries_checked, 1);
-        assert_eq!(report.plugin_binary_problems.len(), 1);
-        assert_eq!(
-            inspect_installation(temp.path(), false, |_| None).plugin_binaries_checked,
-            0
-        );
+        let plugins = report.plugins.unwrap();
+        assert_eq!(plugins.checked, 1);
+        assert_eq!(plugins.problems.len(), 1);
+        assert!(inspect_installation(temp.path(), false, |_| None)
+            .plugins
+            .is_none());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn skips_legacy_32_bit_variants_and_prefers_the_modern_entry() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        for relative in [
+            "Resources/plugins/Modern/32/win.xpl",
+            "Resources/plugins/Modern/64/win.xpl",
+            "Resources/plugins/Modern/win_x64/Modern.xpl",
+            "Resources/plugins/Legacy/32/win.xpl",
+            "Resources/plugins/Legacy/64/win.xpl",
+        ] {
+            let path = root.join(relative);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let mut data = vec![0; 64 + 24 + 112];
+            data[..2].copy_from_slice(b"MZ");
+            data[60..64].copy_from_slice(&64u32.to_le_bytes());
+            data[64..68].copy_from_slice(b"PE\0\0");
+            data[68..70].copy_from_slice(&0x8664u16.to_le_bytes());
+            data[84..86].copy_from_slice(&112u16.to_le_bytes());
+            data[88..90].copy_from_slice(&0x20bu16.to_le_bytes());
+            fs::write(
+                path,
+                if relative.contains("/32/") || relative.contains("Modern/64/") {
+                    &[][..]
+                } else {
+                    &data
+                },
+            )
+            .unwrap();
+        }
+        let report = inspect_installation(root, true, |_| None);
+        let plugins = report.plugins.unwrap();
+        assert_eq!(plugins.checked, 2);
+        assert!(plugins.problems.is_empty(), "{:?}", plugins.problems);
+    }
+
+    #[test]
+    fn checks_aircraft_and_registered_scenery_entries_only() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let (_, host) = plugins::test_layout();
+        for path in [
+            "Aircraft/Vendor/Active/plugins/Test/64",
+            "Aircraft/Vendor/Disabled/plugins/Test/64",
+            "Aircraft/Vendor/Active/objects/backup/plugins/Test/64",
+            "Custom Scenery/Enabled/plugins/Test/64",
+            "Custom Scenery/Disabled/plugins/Test/64",
+            "Custom Scenery/Unregistered/plugins/Test/64",
+        ] {
+            let path = root.join(path);
+            fs::create_dir_all(&path).unwrap();
+            fs::write(path.join(host), "").unwrap();
+        }
+        fs::write(root.join("Aircraft/Vendor/Active/Active.acf"), "").unwrap();
+        fs::write(root.join("Aircraft/Vendor/Disabled/Disabled.xfma"), "").unwrap();
+        fs::write(
+            root.join("Custom Scenery/scenery_packs.ini"),
+            "I\n1000 Version\nSCENERY\nSCENERY_PACK Custom Scenery/Enabled/\nSCENERY_PACK_DISABLED Custom Scenery/Disabled/\n",
+        )
+        .unwrap();
+        let plugins = inspect_installation(root, true, |_| None).plugins.unwrap();
+        assert_eq!(plugins.checked, 2);
+        assert_eq!(plugins.problems.len(), 2);
+        let paths = plugins.problems.join("\n").replace('\\', "/");
+        assert!(paths.contains("Aircraft/Vendor/Active/plugins/Test/64"));
+        assert!(paths.contains("Custom Scenery/Enabled/plugins/Test/64"));
+        assert!(plugins.errors.is_empty());
     }
 }
