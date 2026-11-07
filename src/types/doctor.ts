@@ -131,8 +131,6 @@ export interface DoctorInspectionReport {
   missingSceneryPaths: string[]
   duplicateSceneryPaths: string[]
   brokenSceneryLinks: string[]
-  emptyNavdataFiles: string[]
-  scanErrors: string[]
   plugins: {
     checked: number
     problems: string[]

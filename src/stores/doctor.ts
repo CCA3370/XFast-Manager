@@ -74,7 +74,6 @@ const DEFINITION_RESULT_IDS: Record<string, string[]> = {
     'scenery.missing_paths',
     'scenery.duplicate_paths',
     'scenery.broken_links',
-    'navdata.empty_files',
     'stability.log_freshness',
     'installation.scan_access',
     'addons.binary_integrity',

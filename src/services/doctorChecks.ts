@@ -4,6 +4,7 @@ import type {
   AddonUpdatableItemType,
   CslScanResult,
   DoctorEnvironmentReport,
+  DoctorNavdataLayer,
   DoctorNavdataReport,
   DoctorXfastHealthReport,
   GatewayInstalledAirport,
@@ -375,7 +376,6 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
           ...registrationErrors,
           ...report.sceneryPathErrors,
           ...report.sceneryLinkErrors,
-          ...report.scanErrors,
           ...(plugins?.errors ?? []),
         ]),
       ]
@@ -438,19 +438,6 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
                 : undefined,
             },
           ),
-        ),
-        result(
-          'navdata.empty_files',
-          'navdata',
-          report.emptyNavdataFiles.length
-            ? 'warning'
-            : report.scanErrors.length
-              ? 'unavailable'
-              : 'pass',
-          {
-            params: { count: report.emptyNavdataFiles.length },
-            evidence: evidence([...report.emptyNavdataFiles, ...report.scanErrors], 'path'),
-          },
         ),
         result(
           'stability.log_freshness',
@@ -810,63 +797,68 @@ function createNavdataCheck(context: DoctorCheckContext): DoctorCheckDefinition 
     async run() {
       const report = await invoke<DoctorNavdataReport>('doctor_navdata_status', {
         xplanePath: context.xplanePath,
+        depth: context.mode,
       })
-      if (
-        !report.customDataExists ||
-        (!report.simulatorOverridePresent && report.cycles.length === 0)
-      ) {
-        return [result('navdata.custom_data', 'navdata', 'notApplicable')]
-      }
-
-      const expired = report.cycles.filter((cycle) => cycle.status === 'expired')
-      const expiring = report.cycles.filter((cycle) => cycle.status === 'expiring_soon')
-      const unknown = report.cycles.filter((cycle) => cycle.status === 'unknown')
-      const distinctCycles = new Set(report.cycles.map((cycle) => cycle.cycle).filter(Boolean))
-      const cycleOutcome = expired.length
-        ? 'warning'
-        : expiring.length || unknown.length || report.cycles.length === 0
-          ? 'info'
-          : 'pass'
-
-      return [
-        result('navdata.cycles', 'navdata', cycleOutcome, {
-          params: {
-            expired: expired.length,
-            expiring: expiring.length,
-            unknown: unknown.length || (report.cycles.length === 0 ? 1 : 0),
-          },
-          evidence: evidence(
-            [...expired, ...expiring, ...unknown].map(
-              (cycle) =>
-                `${cycle.providerName} ${cycle.cycle ?? '?'} · ${cycle.status} · ${cycle.expiryDate ?? '?'}`,
-            ),
-          ),
-        }),
+      const layers = [
+        ['navdata.bundled', report.bundled],
+        ['navdata.integrity', report.overrideData],
+        ['navdata.supplemental', report.supplemental],
+      ] satisfies [string, DoctorNavdataLayer][]
+      const checks = layers.map(([id, layer]) =>
         result(
-          'navdata.cifp',
+          id,
           'navdata',
-          report.simulatorOverridePresent
-            ? report.cifpPresent
-              ? 'pass'
-              : 'warning'
-            : 'notApplicable',
-        ),
-        result(
-          'navdata.integrity',
-          'navdata',
-          report.simulatorOverridePresent
-            ? report.earthDatMissing.length
-              ? 'warning'
-              : 'pass'
-            : 'notApplicable',
+          layer.problems.length
+            ? 'warning'
+            : layer.errors.length
+              ? 'unavailable'
+              : layer.present
+                ? 'pass'
+                : 'notApplicable',
           {
-            evidence: evidence(report.earthDatMissing, 'path'),
+            params: { count: layer.problems.length },
+            evidence: evidence([...layer.problems, ...layer.errors, ...layer.headers], 'path'),
           },
         ),
-        result('navdata.consistency', 'navdata', distinctCycles.size > 1 ? 'info' : 'pass', {
-          params: { cycles: [...distinctCycles].join(', ') },
-        }),
-      ]
+      )
+      const expired = report.cycles.filter((cycle) => cycle.status === 'expired').length
+      const expiring = report.cycles.filter((cycle) => cycle.status === 'expiring_soon').length
+      const future = report.cycles.filter((cycle) => cycle.status === 'not_yet_effective').length
+      const unknown = report.cycles.filter((cycle) => cycle.status === 'unknown').length
+      checks.push(
+        result(
+          'navdata.cycles',
+          'navdata',
+          expired || future
+            ? 'warning'
+            : expiring || unknown
+              ? 'info'
+              : report.metadataErrors.length
+                ? 'unavailable'
+                : report.cycles.length
+                  ? 'pass'
+                  : 'notApplicable',
+          {
+            params: { expired, expiring, future, unknown },
+            evidence: evidence(
+              report.cycles.map(
+                (cycle) =>
+                  `${cycle.source} · ${cycle.providerName} · AIRAC ${cycle.cycle ?? cycle.airac ?? '?'} · ${cycle.effectiveDate ?? '?'} to ${cycle.expiryDate ?? '?'}`,
+              ),
+              'path',
+            ),
+          },
+        ),
+      )
+      const errors = [...layers.flatMap(([, layer]) => layer.errors), ...report.metadataErrors]
+      if (errors.length) {
+        checks.push(
+          result('navdata.scan_access', 'navdata', 'unavailable', {
+            evidence: evidence(errors, 'path'),
+          }),
+        )
+      }
+      return checks
     },
   }
 }

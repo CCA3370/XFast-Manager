@@ -32,8 +32,6 @@ pub struct InspectionReport {
     pub missing_scenery_paths: Vec<String>,
     pub duplicate_scenery_paths: Vec<String>,
     pub broken_scenery_links: Vec<String>,
-    pub empty_navdata_files: Vec<String>,
-    pub scan_errors: Vec<String>,
     plugins: Option<plugins::PluginInspection>,
     pub shader_cache_present: bool,
     pub preferences_present: bool,
@@ -244,24 +242,6 @@ pub fn inspect_installation(
     let mut report = InspectionReport::default();
     let scenery = inspect_scenery_registration(root, &mut report, resolve_shortcut);
     inspect_scenery_links(root, &mut report, resolve_shortcut);
-    for name in [
-        "earth_nav.dat",
-        "earth_fix.dat",
-        "earth_awy.dat",
-        "earth_hold.dat",
-        "earth_mora.dat",
-    ] {
-        let path = root.join("Custom Data").join(name);
-        match fs::metadata(&path) {
-            Ok(meta) if meta.is_file() && meta.len() == 0 => report
-                .empty_navdata_files
-                .push(format!("Custom Data/{name}")),
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => report
-                .scan_errors
-                .push(format!("Custom Data/{name}: {error}")),
-            _ => {}
-        }
-    }
     report.shader_cache_present = root.join("Output/shadercache").is_dir();
     report.preferences_present = root.join("Output/preferences").is_dir();
     report.log_age_days = fs::metadata(root.join("Log.txt"))
@@ -366,17 +346,14 @@ mod tests {
     }
 
     #[test]
-    fn finds_empty_navdata_and_corrupt_host_plugin_without_reading_other_platforms() {
+    fn finds_corrupt_host_plugin_without_reading_other_platforms() {
         let temp = tempfile::tempdir().unwrap();
-        fs::create_dir_all(temp.path().join("Custom Data")).unwrap();
-        fs::write(temp.path().join("Custom Data/earth_nav.dat"), "").unwrap();
         let plugin = temp.path().join("Resources/plugins/Test/64");
         fs::create_dir_all(&plugin).unwrap();
         for name in ["win.xpl", "mac.xpl", "lin.xpl"] {
             fs::write(plugin.join(name), "").unwrap();
         }
         let report = inspect_installation(temp.path(), true, |_| None);
-        assert_eq!(report.empty_navdata_files.len(), 1);
         let plugins = report.plugins.unwrap();
         assert_eq!(plugins.checked, 1);
         assert_eq!(plugins.problems.len(), 1);

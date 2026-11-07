@@ -58,6 +58,19 @@ export const healthDetailMessages = {
     yes: 'Yes',
     no: 'No',
     findings: {
+      navdata_bundled: {
+        title: 'Bundled navigation data',
+        description: 'Repair the X-Plane installation to restore the listed bundled files.',
+      },
+      navdata_supplemental: {
+        title: 'Supplemental navigation files',
+        description: 'Review the listed ARINC 424, FAA procedure, or user navigation files.',
+      },
+      navdata_scan_access: {
+        title: 'Navigation data access',
+        description:
+          'Some navigation data or cycle metadata could not be inspected. Review the listed errors.',
+      },
       scenery_registration: {
         title: 'Scenery registration file',
         description:
@@ -233,6 +246,18 @@ export const healthDetailMessages = {
     yes: '是',
     no: '否',
     findings: {
+      navdata_bundled: {
+        title: '原厂导航数据',
+        description: '请修复 X-Plane 安装，以恢复列出的原厂数据文件。',
+      },
+      navdata_supplemental: {
+        title: '补充导航数据',
+        description: '请核对列出的 ARINC 424、FAA 程序或用户自定义导航文件。',
+      },
+      navdata_scan_access: {
+        title: '导航数据读取范围',
+        description: '部分导航数据或周期资料无法检查，请查看列出的错误。',
+      },
       scenery_registration: {
         title: '地景注册文件',
         description: 'scenery_packs.ini 不存在，可能尚未由 X-Plane 生成。可同步地景列表来创建。',
@@ -384,6 +409,25 @@ export const healthDetailMessages = {
     yes: 'Ja',
     no: 'Nein',
     findings: {
+      navdata_bundled: {
+        title: 'Mitgelieferte Navigationsdaten',
+        description:
+          'Repariere die X-Plane-Installation, um die aufgeführten Dateien wiederherzustellen.',
+      },
+      navdata_supplemental: {
+        title: 'Ergänzende Navigationsdaten',
+        description: 'Prüfe die aufgeführten ARINC-424-, FAA- oder Benutzernavigationsdateien.',
+      },
+      navdata_scan_access: {
+        title: 'Zugriff auf Navigationsdaten',
+        description:
+          'Einige Navigationsdaten oder Zyklusinformationen konnten nicht geprüft werden. Siehe die aufgeführten Fehler.',
+      },
+      scenery_invalid_entries: {
+        title: 'Ungültige Szenerieeinträge',
+        description:
+          'Bei aktivierten Einträgen in scenery_packs.ini fehlt ein Pfad. Prüfe die aufgeführten Zeilen.',
+      },
       scenery_registration: {
         title: 'Szenerieregistrierung',
         description: 'Szenerieeinträge, Abhängigkeiten und Ladekonsistenz wurden geprüft.',
@@ -527,6 +571,24 @@ export const healthDetailMessages = {
     yes: 'Oui',
     no: 'Non',
     findings: {
+      navdata_bundled: {
+        title: 'Données de navigation intégrées',
+        description: 'Réparez l’installation de X-Plane pour restaurer les fichiers indiqués.',
+      },
+      navdata_supplemental: {
+        title: 'Données de navigation complémentaires',
+        description: 'Vérifiez les fichiers ARINC 424, FAA ou utilisateur indiqués.',
+      },
+      navdata_scan_access: {
+        title: 'Accès aux données de navigation',
+        description:
+          'Certaines données ou métadonnées de cycle n’ont pas pu être vérifiées. Consultez les erreurs indiquées.',
+      },
+      scenery_invalid_entries: {
+        title: 'Entrées de scènes non valides',
+        description:
+          'Des entrées actives dans scenery_packs.ini n’ont pas de chemin. Vérifiez les lignes indiquées.',
+      },
       scenery_registration: {
         title: 'Enregistrement des scènes',
         description: 'Scènes, dépendances et cohérence du chargement vérifiées.',
@@ -669,6 +731,24 @@ export const healthDetailMessages = {
     yes: 'Sí',
     no: 'No',
     findings: {
+      navdata_bundled: {
+        title: 'Datos de navegación incluidos',
+        description: 'Repara la instalación de X-Plane para restaurar los archivos indicados.',
+      },
+      navdata_supplemental: {
+        title: 'Datos de navegación adicionales',
+        description: 'Revisa los archivos ARINC 424, FAA o de usuario indicados.',
+      },
+      navdata_scan_access: {
+        title: 'Acceso a datos de navegación',
+        description:
+          'No se pudieron comprobar algunos datos o metadatos de ciclo. Revisa los errores indicados.',
+      },
+      scenery_invalid_entries: {
+        title: 'Registros de escenarios no válidos',
+        description:
+          'Algunas entradas activas de scenery_packs.ini no tienen ruta. Revisa las líneas indicadas.',
+      },
       scenery_registration: {
         title: 'Registro de escenarios',
         description: 'Se revisaron escenarios, dependencias y carga.',
@@ -810,6 +890,24 @@ export const healthDetailMessages = {
     yes: 'Sim',
     no: 'Não',
     findings: {
+      navdata_bundled: {
+        title: 'Dados de navegação incluídos',
+        description: 'Repare a instalação do X-Plane para recuperar os ficheiros indicados.',
+      },
+      navdata_supplemental: {
+        title: 'Dados de navegação complementares',
+        description: 'Verifique os ficheiros ARINC 424, FAA ou do utilizador indicados.',
+      },
+      navdata_scan_access: {
+        title: 'Acesso aos dados de navegação',
+        description:
+          'Não foi possível verificar alguns dados ou metadados de ciclo. Consulte os erros indicados.',
+      },
+      scenery_invalid_entries: {
+        title: 'Registos de cenários inválidos',
+        description:
+          'Algumas entradas ativas em scenery_packs.ini não têm caminho. Verifique as linhas indicadas.',
+      },
       scenery_registration: {
         title: 'Registro de cenários',
         description: 'Cenários, dependências e carregamento verificados.',
@@ -950,6 +1048,25 @@ export const healthDetailMessages = {
     yes: 'はい',
     no: 'いいえ',
     findings: {
+      navdata_bundled: {
+        title: '標準ナビゲーションデータ',
+        description: 'X-Plane のインストールを修復し、表示された標準ファイルを復元してください。',
+      },
+      navdata_supplemental: {
+        title: '補足ナビゲーションデータ',
+        description:
+          '表示された ARINC 424、FAA またはユーザーのナビゲーションファイルを確認してください。',
+      },
+      navdata_scan_access: {
+        title: 'ナビゲーションデータへのアクセス',
+        description:
+          '一部のデータまたはサイクル情報を確認できませんでした。表示されたエラーを確認してください。',
+      },
+      scenery_invalid_entries: {
+        title: '無効なシーナリー登録',
+        description:
+          'scenery_packs.ini の有効な項目にパスがありません。表示された行を確認してください。',
+      },
       scenery_registration: {
         title: 'シーナリー登録',
         description: 'シーナリー登録、依存関係、読み込みの整合性を確認しました。',
@@ -1091,6 +1208,23 @@ export const healthDetailMessages = {
     yes: '예',
     no: '아니요',
     findings: {
+      navdata_bundled: {
+        title: '기본 항법 데이터',
+        description: 'X-Plane 설치를 복구하여 표시된 기본 파일을 복원하세요.',
+      },
+      navdata_supplemental: {
+        title: '추가 항법 데이터',
+        description: '표시된 ARINC 424, FAA 또는 사용자 항법 파일을 확인하세요.',
+      },
+      navdata_scan_access: {
+        title: '항법 데이터 접근',
+        description:
+          '일부 항법 데이터 또는 주기 정보를 확인할 수 없습니다. 표시된 오류를 확인하세요.',
+      },
+      scenery_invalid_entries: {
+        title: '잘못된 시너리 등록',
+        description: 'scenery_packs.ini의 활성 항목에 경로가 없습니다. 표시된 줄을 확인하세요.',
+      },
       scenery_registration: {
         title: '시너리 등록',
         description: '시너리 등록, 종속성 및 로딩 일관성을 확인했습니다.',
@@ -1230,6 +1364,24 @@ export const healthDetailMessages = {
     yes: 'Да',
     no: 'Нет',
     findings: {
+      navdata_bundled: {
+        title: 'Встроенные навигационные данные',
+        description: 'Восстановите установку X-Plane, чтобы вернуть указанные файлы.',
+      },
+      navdata_supplemental: {
+        title: 'Дополнительные навигационные данные',
+        description: 'Проверьте указанные файлы ARINC 424, FAA или пользователя.',
+      },
+      navdata_scan_access: {
+        title: 'Доступ к навигационным данным',
+        description:
+          'Часть данных или сведений о циклах не удалось проверить. См. указанные ошибки.',
+      },
+      scenery_invalid_entries: {
+        title: 'Недопустимые записи сценариев',
+        description:
+          'В активных записях scenery_packs.ini отсутствуют пути. Проверьте указанные строки.',
+      },
       scenery_registration: {
         title: 'Регистрация сценариев',
         description: 'Проверены сценарии, зависимости и загрузка.',
@@ -1370,6 +1522,22 @@ export const healthDetailMessages = {
     yes: 'نعم',
     no: 'لا',
     findings: {
+      navdata_bundled: {
+        title: 'بيانات الملاحة المضمّنة',
+        description: 'أصلح تثبيت X-Plane لاستعادة الملفات المذكورة.',
+      },
+      navdata_supplemental: {
+        title: 'بيانات الملاحة التكميلية',
+        description: 'راجع ملفات ARINC 424 أو FAA أو ملفات الملاحة المخصصة المذكورة.',
+      },
+      navdata_scan_access: {
+        title: 'الوصول إلى بيانات الملاحة',
+        description: 'تعذّر فحص بعض بيانات الملاحة أو بيانات الدورات. راجع الأخطاء المذكورة.',
+      },
+      scenery_invalid_entries: {
+        title: 'تسجيلات مشاهد غير صالحة',
+        description: 'بعض الإدخالات المفعّلة في scenery_packs.ini بلا مسار. راجع الأسطر المذكورة.',
+      },
       scenery_registration: {
         title: 'تسجيل المشاهد',
         description: 'تم فحص المشاهد والتبعيات واتساق التحميل.',
@@ -1509,6 +1677,23 @@ export const healthDetailMessages = {
     yes: 'हाँ',
     no: 'नहीं',
     findings: {
+      navdata_bundled: {
+        title: 'अंतर्निहित नेविगेशन डेटा',
+        description: 'सूचीबद्ध फ़ाइलें वापस पाने के लिए X-Plane इंस्टॉलेशन की मरम्मत करें।',
+      },
+      navdata_supplemental: {
+        title: 'पूरक नेविगेशन डेटा',
+        description: 'सूचीबद्ध ARINC 424, FAA या उपयोगकर्ता नेविगेशन फ़ाइलें जाँचें।',
+      },
+      navdata_scan_access: {
+        title: 'नेविगेशन डेटा तक पहुँच',
+        description: 'कुछ डेटा या चक्र की जानकारी की जाँच नहीं हो सकी। सूचीबद्ध त्रुटियाँ देखें।',
+      },
+      scenery_invalid_entries: {
+        title: 'अमान्य सीनरी प्रविष्टियाँ',
+        description:
+          'scenery_packs.ini में कुछ सक्रिय प्रविष्टियों का पथ नहीं है। सूचीबद्ध पंक्तियाँ देखें।',
+      },
       scenery_registration: {
         title: 'दृश्य पंजीकरण',
         description: 'दृश्य पंजीकरण, निर्भरताएँ और लोडिंग जाँची गई।',

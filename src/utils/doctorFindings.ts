@@ -5,6 +5,36 @@ const zhPlugin = healthDetailMessages.zh.findings.addons_binary_integrity
 
 // Check-specific wording shared by the UI and English exports.
 export const DOCTOR_FINDINGS: Record<string, { en: [string, string]; zh: [string, string] }> = {
+  'navdata.bundled': {
+    en: [
+      healthDetailMessages.en.findings.navdata_bundled.title,
+      healthDetailMessages.en.findings.navdata_bundled.description,
+    ],
+    zh: [
+      healthDetailMessages.zh.findings.navdata_bundled.title,
+      healthDetailMessages.zh.findings.navdata_bundled.description,
+    ],
+  },
+  'navdata.supplemental': {
+    en: [
+      healthDetailMessages.en.findings.navdata_supplemental.title,
+      healthDetailMessages.en.findings.navdata_supplemental.description,
+    ],
+    zh: [
+      healthDetailMessages.zh.findings.navdata_supplemental.title,
+      healthDetailMessages.zh.findings.navdata_supplemental.description,
+    ],
+  },
+  'navdata.scan_access': {
+    en: [
+      healthDetailMessages.en.findings.navdata_scan_access.title,
+      healthDetailMessages.en.findings.navdata_scan_access.description,
+    ],
+    zh: [
+      healthDetailMessages.zh.findings.navdata_scan_access.title,
+      healthDetailMessages.zh.findings.navdata_scan_access.description,
+    ],
+  },
   'scenery.registration': {
     en: [
       'Scenery registration file',

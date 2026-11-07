@@ -68,65 +68,61 @@ describe('Gateway diagnostics', () => {
 })
 
 function report(overrides: Partial<DoctorNavdataReport> = {}): DoctorNavdataReport {
+  const absent = { present: false, problems: [], errors: [], headers: [] }
   return {
-    customDataExists: true,
-    simulatorOverridePresent: false,
-    cifpPresent: false,
-    earthDatMissing: [],
+    bundled: { ...absent, present: true },
+    overrideData: absent,
+    supplemental: absent,
     cycles: [],
+    metadataErrors: [],
     ...overrides,
   }
 }
 
-describe('navdata diagnostic applicability', () => {
+describe('navdata diagnostics', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('does not demand simulator CIFP for independently installed add-on data', async () => {
+  it('checks bundled files even with no custom data', async () => {
     tauri.invoke.mockResolvedValue(
       report({
-        cycles: [
-          {
-            folderName: 'GNS430/navdata',
-            providerName: 'Navigraph',
-            cycle: '2610',
-            airac: null,
-            effectiveDate: null,
-            expiryDate: null,
-            daysRemaining: null,
-            status: 'ok',
-            source: 'none',
-          },
-        ],
+        bundled: {
+          present: true,
+          problems: ['Resources/default data/earth_fix.dat: missing'],
+          errors: [],
+          headers: [],
+        },
       }),
     )
     const checks = await navdataCheck().run()
-    expect(checks.find((check) => check.id === 'navdata.cycles')?.outcome).toBe('pass')
-    expect(checks.find((check) => check.id === 'navdata.cifp')?.outcome).toBe('notApplicable')
-    expect(checks.find((check) => check.id === 'navdata.integrity')?.outcome).toBe('notApplicable')
-    expect(checks.some((check) => check.outcome === 'warning')).toBe(false)
-  })
-
-  it('reports incomplete simulator overrides even without readable cycle metadata', async () => {
-    tauri.invoke.mockResolvedValue(
-      report({
-        simulatorOverridePresent: true,
-        earthDatMissing: ['earth_fix.dat'],
-      }),
-    )
-    const checks = await navdataCheck().run()
-    expect(checks.find((check) => check.id === 'navdata.cycles')?.outcome).toBe('info')
-    expect(checks.find((check) => check.id === 'navdata.cifp')?.outcome).toBe('warning')
-    expect(checks.find((check) => check.id === 'navdata.integrity')).toMatchObject({
+    expect(checks.find((check) => check.id === 'navdata.bundled')).toMatchObject({
       outcome: 'warning',
-      evidence: [{ kind: 'path', value: 'earth_fix.dat', sensitive: true }],
+      evidence: [{ kind: 'path', value: 'Resources/default data/earth_fix.dat: missing' }],
     })
+    expect(checks.find((check) => check.id === 'navdata.integrity')?.outcome).toBe('notApplicable')
   })
 
-  it('keeps an empty Custom Data directory not applicable', async () => {
-    tauri.invoke.mockResolvedValue(report())
-    expect(await navdataCheck().run()).toEqual([
-      expect.objectContaining({ id: 'navdata.custom_data', outcome: 'notApplicable' }),
-    ])
+  it('reports confirmed defects alongside incomplete reads', async () => {
+    tauri.invoke.mockResolvedValue(
+      report({
+        overrideData: {
+          present: true,
+          problems: ['Custom Data/earth_nav.dat: empty file'],
+          errors: ['Custom Data/earth_fix.dat: access denied'],
+          headers: [],
+        },
+        metadataErrors: ['Custom Data/cycle.json: malformed JSON'],
+      }),
+    )
+    const checks = await navdataCheck().run()
+    expect(checks.find((check) => check.id === 'navdata.integrity')?.outcome).toBe('warning')
+    expect(checks.find((check) => check.id === 'navdata.cycles')?.outcome).toBe('unavailable')
+    expect(checks.find((check) => check.id === 'navdata.scan_access')).toMatchObject({
+      outcome: 'unavailable',
+      evidence: [
+        { value: 'Custom Data/earth_fix.dat: access denied' },
+        { value: 'Custom Data/cycle.json: malformed JSON' },
+      ],
+    })
   })
 })
 

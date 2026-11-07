@@ -21,7 +21,7 @@ uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
 walkdir = "2"
 `)
-const modules = ['doctor_inspection', 'doctor_repairs'].map((name) =>
+const modules = ['doctor_inspection', 'doctor_navdata', 'doctor_repairs'].map((name) =>
   `#[path = ${JSON.stringify(path.join(root, 'src-tauri', 'src', 'analysis', `${name}.rs`))}]
 mod ${name};`,
 )

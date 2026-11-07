@@ -1002,7 +1002,7 @@ export interface DoctorXfastHealthReport {
   sceneryIndex: DoctorSceneryIndexHealth
 }
 
-export type NavdataStatus = 'expired' | 'expiring_soon' | 'ok' | 'unknown'
+export type NavdataStatus = 'expired' | 'expiring_soon' | 'not_yet_effective' | 'ok' | 'unknown'
 
 export interface NavdataCycleReport {
   folderName: string
@@ -1016,10 +1016,17 @@ export interface NavdataCycleReport {
   source: string
 }
 
+export interface DoctorNavdataLayer {
+  present: boolean
+  problems: string[]
+  errors: string[]
+  headers: string[]
+}
+
 export interface DoctorNavdataReport {
+  bundled: DoctorNavdataLayer
+  overrideData: DoctorNavdataLayer
+  supplemental: DoctorNavdataLayer
   cycles: NavdataCycleReport[]
-  customDataExists: boolean
-  simulatorOverridePresent: boolean
-  cifpPresent: boolean
-  earthDatMissing: string[]
+  metadataErrors: string[]
 }

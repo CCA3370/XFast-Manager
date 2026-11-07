@@ -149,8 +149,6 @@ async function healthyResponse(command: string): Promise<unknown> {
         missingSceneryPaths: [],
         duplicateSceneryPaths: [],
         brokenSceneryLinks: [],
-        emptyNavdataFiles: [],
-        scanErrors: [],
         plugins: { checked: 0, problems: [], errors: [], capped: false },
         shaderCachePresent: true,
         preferencesPresent: true,
@@ -194,11 +192,11 @@ async function healthyResponse(command: string): Promise<unknown> {
       return []
     case 'doctor_navdata_status':
       return {
+        bundled: { present: true, problems: [], errors: [], headers: [] },
+        overrideData: { present: false, problems: [], errors: [], headers: [] },
+        supplemental: { present: false, problems: [], errors: [], headers: [] },
         cycles: [],
-        customDataExists: false,
-        simulatorOverridePresent: false,
-        cifpPresent: false,
-        earthDatMissing: [],
+        metadataErrors: [],
       }
     case 'get_activity_log':
       return { entries: [], totalCount: 0 }
@@ -268,12 +266,22 @@ describe('Health diagnostic store', () => {
   })
 
   it.each([
-    { problems: [], pluginErrors: [], scanErrors: ['Custom Data: denied'], expected: 'pass' },
-    { problems: [], pluginErrors: ['plugins: denied'], scanErrors: [], expected: 'unavailable' },
+    {
+      problems: [],
+      pluginErrors: [],
+      sceneryLinkErrors: ['Custom Scenery: denied'],
+      expected: 'pass',
+    },
+    {
+      problems: [],
+      pluginErrors: ['plugins: denied'],
+      sceneryLinkErrors: [],
+      expected: 'unavailable',
+    },
     {
       problems: ['Test.xpl: invalid PE signature'],
       pluginErrors: ['plugins: denied'],
-      scanErrors: [],
+      sceneryLinkErrors: [],
       expected: 'warning',
     },
   ])('reports plugin integrity as $expected based on plugin evidence', async (scenario) => {
@@ -282,7 +290,7 @@ describe('Health diagnostic store', () => {
       if (command !== 'doctor_inspect_installation') return response
       return {
         ...(response as object),
-        scanErrors: scenario.scanErrors,
+        sceneryLinkErrors: scenario.sceneryLinkErrors,
         plugins: {
           checked: 1,
           problems: scenario.problems,

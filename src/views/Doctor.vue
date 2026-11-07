@@ -1058,8 +1058,10 @@ function sectionIcon(section: DoctorSection): string {
 }
 
 function checkLabel(check: DoctorCheckResult): string {
-  if (DOCTOR_FINDINGS[check.id])
-    return t(`healthDetails.findings.${check.id.replaceAll('.', '_')}.title`)
+  if (DOCTOR_FINDINGS[check.id]) {
+    const key = `healthDetails.findings.${check.id.replaceAll('.', '_')}.title`
+    return te(key) ? t(key) : describeDoctorCheck(check, locale.value).title
+  }
   const key = CHECK_NAME_KEYS[check.id]
   if (key) return t(`doctor.center.checks.${key}`, check.params ?? {})
   if (check.id.startsWith('log.')) {
@@ -1097,6 +1099,11 @@ function checkDescription(check: DoctorCheckResult): string {
     return t(`doctor.center.checkDescriptions.${check.outcome}`)
   if (check.id === 'navdata.cycles') {
     const p = check.params ?? {}
+    if (Number(p.future) > 0) {
+      return locale.value === 'zh'
+        ? '部分导航数据包尚未生效，请核对列出的生效日期与当前日期。'
+        : 'Some navigation packages are not yet effective. Review their effective dates.'
+    }
     const state =
       Number(p.expired) > 0
         ? 'expired'
@@ -1112,8 +1119,10 @@ function checkDescription(check: DoctorCheckResult): string {
     ['en', 'zh'].includes(locale.value)
   )
     return describeDoctorCheck(check, locale.value).description
-  if (DOCTOR_FINDINGS[check.id] && check.outcome !== 'pass')
-    return t(`healthDetails.findings.${check.id.replaceAll('.', '_')}.description`)
+  if (DOCTOR_FINDINGS[check.id] && check.outcome !== 'pass') {
+    const key = `healthDetails.findings.${check.id.replaceAll('.', '_')}.description`
+    return te(key) ? t(key) : describeDoctorCheck(check, locale.value).description
+  }
   const root = legacyTextRoot(check)
   if (check.outcome !== 'pass' && root && te(`${root}.description`))
     return t(`${root}.description`, check.params ?? {})
