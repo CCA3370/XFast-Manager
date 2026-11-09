@@ -1,3 +1,8 @@
+import { canAutoReport, rejectOperationalReport } from '../bug-report-policy.js'
+
+const AUTO_REPORT_BODY =
+  /^### Bug Report \(Auto-submitted\)\r?\n\r?\n\*\*Error Message\*\*\r?\n```\r?\n([\s\S]+?)\r?\n```(?:\r?\n|$)/
+
 function buildIssueNewUrl({ owner, repo, template, labels, title, body }) {
   const issueUrl = new URL(`https://github.com/${owner}/${repo}/issues/new`)
   if (template) {
@@ -30,6 +35,18 @@ export default function handler(req, res) {
   const mode = String(req.query.mode || '')
     .trim()
     .toLowerCase()
+
+  // Older desktop clients open this fallback even when the submission API rejects a report.
+  const autoReport = template === 'bug_report.yml' ? body.match(AUTO_REPORT_BODY) : null
+  if (autoReport) {
+    const errorMessage = autoReport[1]
+    const summary = title.replace(/^\[Bug\]: /, '')
+    const errorTitle = summary === errorMessage.slice(0, 80) ? '' : summary
+    const logs = body.slice(autoReport[0].length)
+    if (!canAutoReport({ errorTitle, errorMessage, logs })) {
+      return rejectOperationalReport(res)
+    }
+  }
 
   const url = buildIssueNewUrl({
     owner,

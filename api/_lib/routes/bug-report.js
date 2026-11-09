@@ -1,8 +1,6 @@
 import { createHash } from 'node:crypto'
-import {
-  isReportableError,
-  normalizeErrorFingerprintInput,
-} from '../../../shared/error-report-policy.js'
+import { normalizeErrorFingerprintInput } from '../../../shared/error-report-policy.js'
+import { canAutoReport, rejectOperationalReport } from '../bug-report-policy.js'
 
 const AUTO_REPORTED_LABEL = 'auto-reported'
 const MAX_DEDUP_PAGES = 3
@@ -87,19 +85,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'errorMessage is required' })
   }
 
-  if (
-    !isReportableError({
-      code: errorCode,
-      origin: errorOrigin,
-      operation: errorOperation,
-      message: errorMessage,
-      reportable,
-    })
-  ) {
-    return res.status(422).json({
-      code: 'bug_report_not_allowed',
-      error: 'This operational error is not eligible for automatic bug reporting.',
-    })
+  if (!canAutoReport({ errorTitle, errorMessage, errorCode, reportable, logs })) {
+    return rejectOperationalReport(res)
   }
 
   const token = process.env.XFAST_GITHUB_TOKEN

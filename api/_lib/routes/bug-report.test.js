@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import handler, { createErrorFingerprint } from './bug-report.js'
+import draftHandler from './issue-draft.js'
 
 function makeResponse() {
   return {
@@ -22,6 +23,46 @@ function makeRequest(body) {
     body,
     headers: { host: 'example.test' },
   }
+}
+
+function errorLog(context, message) {
+  return `[2026-11-07 23:12:01] [ERROR] [${context}] ${message}`
+}
+
+const deleteDenied = {
+  errorMessage: 'Fehler beim Löschen: Erlaubnis verweigert',
+  logs: [
+    errorLog(
+      'scenery',
+      'Failed to delete scenery entry [permission_denied]: Could not delete EGLC. Last error: Zugriff verweigert (os error 5)',
+    ),
+    errorLog('ui', '[Modal] Fehler beim Löschen: Erlaubnis verweigert'),
+  ].join('\n'),
+}
+
+const verificationBlocked = {
+  errorTitle: 'Aircraft',
+  errorMessage: 'Verification failed: Verification failed: 1 files still failing after retries',
+  logs: [
+    errorLog(
+      'verifier',
+      'Failed to compute hash for plugins/example.xpl: Access blocked (os error 225)',
+    ),
+    errorLog('installer', 'Verification failed: 1 files'),
+    errorLog(
+      'installer',
+      'Failed to install Aircraft: Verification failed: Verification failed: 1 files still failing after retries',
+    ),
+    errorLog('installation', 'All installation tasks failed'),
+    errorLog(
+      'installation',
+      'Aircraft: Verification failed: Verification failed: 1 files still failing after retries',
+    ),
+    errorLog(
+      'ui',
+      '[Modal] Aircraft: Verification failed: Verification failed: 1 files still failing after retries',
+    ),
+  ].join('\n'),
 }
 
 describe('bug report route', () => {
@@ -67,6 +108,77 @@ describe('bug report route', () => {
     expect(response.statusCode).toBe(422)
     expect(response.payload.code).toBe('bug_report_not_allowed')
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([deleteDenied, verificationBlocked])(
+    'rejects older operational reports with matching error logs: $errorMessage',
+    async (report) => {
+      const fetchMock = vi.fn()
+      vi.stubGlobal('fetch', fetchMock)
+      const response = makeResponse()
+
+      await handler(makeRequest(report), response)
+
+      expect(response.statusCode).toBe(422)
+      expect(response.payload.code).toBe('bug_report_not_allowed')
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  it('does not suppress a later verification failure based on a previous blocked file', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] })
+    vi.stubGlobal('fetch', fetchMock)
+    const response = makeResponse()
+    const { errorTitle, errorMessage, logs } = verificationBlocked
+
+    await handler(
+      makeRequest({
+        errorTitle,
+        errorMessage,
+        logs: [
+          logs,
+          errorLog('verifier', 'Hash mismatch for aircraft.acf'),
+          errorLog('installer', 'Verification failed: 1 files'),
+          errorLog('installer', `Failed to install ${errorTitle}: ${errorMessage}`),
+          errorLog('installation', `${errorTitle}: ${errorMessage}`),
+          errorLog('ui', `[Modal] ${errorTitle}: ${errorMessage}`),
+        ].join('\n'),
+      }),
+      response,
+    )
+
+    expect(response.statusCode).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects an automatic draft when its error was an operational failure', () => {
+    const response = makeResponse()
+    const { errorMessage, logs } = deleteDenied
+    draftHandler(
+      {
+        method: 'GET',
+        query: {
+          mode: 'json',
+          template: 'bug_report.yml',
+          title: `[Bug]: ${errorMessage}`,
+          body: [
+            '### Bug Report (Auto-submitted)',
+            '',
+            '**Error Message**',
+            '```',
+            errorMessage,
+            '```',
+            '',
+            '**Logs**',
+            logs,
+          ].join('\n'),
+        },
+      },
+      response,
+    )
+
+    expect(response.statusCode).toBe(422)
+    expect(response.payload.code).toBe('bug_report_not_allowed')
   })
 
   it('returns an existing open issue with the same fingerprint', async () => {
