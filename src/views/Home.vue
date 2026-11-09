@@ -415,7 +415,7 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useToastStore } from '@/stores/toast'
-import { useModalStore } from '@/stores/modal'
+import { useModalStore, type ConfirmOptions } from '@/stores/modal'
 import { useProgressStore } from '@/stores/progress'
 import { useUpdateStore } from '@/stores/update'
 import { useSceneryStore } from '@/stores/scenery'
@@ -1067,6 +1067,7 @@ async function offerPatchInstall(paths: string[]) {
       confirmText: t('patch.installAsPatch'),
       cancelText: t('common.cancel'),
       type: 'warning',
+      closeOnBackdrop: false,
     })
     if (usePatch) {
       patchStore.open(archive)
@@ -1230,22 +1231,12 @@ async function handleCancelInstallation() {
 }
 
 // Show confirm dialog helper
-function showConfirmDialog(options: {
-  title: string
-  message: string
-  warning?: string
-  confirmText: string
-  cancelText: string
-  type: 'warning' | 'danger'
-}): Promise<boolean> {
+function showConfirmDialog(
+  options: Omit<ConfirmOptions, 'onConfirm' | 'onCancel'>,
+): Promise<boolean> {
   return new Promise((resolve) => {
     modal.showConfirm({
-      title: options.title,
-      message: options.message,
-      warning: options.warning,
-      confirmText: options.confirmText,
-      cancelText: options.cancelText,
-      type: options.type,
+      ...options,
       onConfirm: () => resolve(true),
       onCancel: () => resolve(false),
     })
