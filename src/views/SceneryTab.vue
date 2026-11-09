@@ -18,6 +18,7 @@ import { useIssueTrackerStore } from '@/stores/issueTracker'
 import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import { useLockStore } from '@/stores/lock'
 import { invoke } from '@tauri-apps/api/core'
+import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { logError } from '@/services/logger'
 import { airportFlattenSetState, sceneryGetFlattenTarget } from '@/services/airport-flatten-api'
 import { buildVercelApiUrl } from '@/services/vercelApi'
@@ -1401,28 +1402,30 @@ function handleShowDeleteConfirm(entry: SceneryManagerEntry) {
   showDeleteConfirmModal.value = true
 }
 
+async function copyLibraryNames(text: string, successMessage: string) {
+  try {
+    await writeText(text)
+    toastStore.success(successMessage)
+  } catch (error) {
+    logError(`Could not copy scenery library names: ${getErrorMessage(error)}`, 'scenery')
+    modalStore.showError(
+      `${t('sceneryManager.copyLibraryManually')}\n\n${text}`,
+      t('copy.copyFailed'),
+      {
+        hideReport: true,
+      },
+    )
+  }
+}
+
 function handleCopyMissingLibs() {
   if (!selectedModalEntry.value) return
   const libNames = selectedModalEntry.value.missingLibraries.join('\n')
-  navigator.clipboard
-    .writeText(libNames)
-    .then(() => {
-      toastStore.success(t('sceneryManager.missingLibsCopied'))
-    })
-    .catch(() => {
-      modalStore.showError(t('copy.copyFailed'))
-    })
+  return copyLibraryNames(libNames, t('sceneryManager.missingLibsCopied'))
 }
 
 function handleCopySingleLib(libName: string) {
-  navigator.clipboard
-    .writeText(libName)
-    .then(() => {
-      toastStore.success(t('sceneryManager.libNameCopied'))
-    })
-    .catch(() => {
-      modalStore.showError(t('copy.copyFailed'))
-    })
+  return copyLibraryNames(libName, t('sceneryManager.libNameCopied'))
 }
 
 async function handleDirectDownload(url: string) {
@@ -1572,7 +1575,7 @@ async function handleDeleteEntryConfirm() {
     toastStore.success(t('sceneryManager.deleteSuccess'))
     showDeleteConfirmModal.value = false
   } catch (error) {
-      modalStore.showError(error, t('sceneryManager.deleteFailed'))
+    modalStore.showError(error, t('sceneryManager.deleteFailed'))
   } finally {
     isDeletingEntry.value = false
   }
@@ -3703,7 +3706,7 @@ onBeforeUnmount(() => {
                   <!-- Copy -->
                   <button
                     class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                    :title="t('sceneryManager.copyAllLibNames')"
+                    :title="t('copy.copy')"
                     @click="handleCopySingleLib(lib)"
                   >
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

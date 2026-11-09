@@ -645,6 +645,8 @@ export default {
       '라이브러리 링크 제출이 진행 중입니다. 성공하거나 시간 초과될 때까지 기다려 주세요.',
     invalidContributionUrl: '유효한 http/https 주소를 입력하세요',
     libNameCopied: '라이브러리 이름이 복사되었습니다',
+    copyLibraryManually:
+      '클립보드를 사용할 수 없습니다. 아래 라이브러리 이름을 선택해 직접 복사할 수 있습니다.',
     reset: '초기화',
     resetConfirm: '모든 변경 사항을 초기화하시겠습니까?',
     noXplanePath: '먼저 설정에서 X-Plane 경로를 지정하세요',

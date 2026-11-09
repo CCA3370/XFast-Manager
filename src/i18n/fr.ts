@@ -672,6 +672,8 @@ export default {
       "La soumission du lien vers la bibliothèque est en cours. Veuillez attendre le succès ou le retour du délai d'attente.",
     invalidContributionUrl: 'Veuillez saisir une URL http/https valide',
     libNameCopied: 'Nom de la bibliothèque copié',
+    copyLibraryManually:
+      'Le presse-papiers est indisponible. Vous pouvez sélectionner et copier manuellement les noms de bibliothèques ci-dessous.',
     reset: 'Réinitialiser',
     resetConfirm: 'Êtes-vous sûr de vouloir réinitialiser toutes les modifications ?',
     noXplanePath: "Veuillez d'abord définir le chemin X-Plane",

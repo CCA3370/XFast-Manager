@@ -18,6 +18,7 @@
     "core:event:allow-emit",
     "dialog:allow-open",
     "dialog:default",
+    "clipboard-manager:allow-write-text",
     "store:default",
     "updater:default",
     "process:allow-restart"

@@ -668,6 +668,8 @@ export default {
       'O envio do link da biblioteca está em andamento. Aguarde a conclusão ou o tempo limite.',
     invalidContributionUrl: 'Insira uma URL http/https válida',
     libNameCopied: 'Nome da biblioteca copiado',
+    copyLibraryManually:
+      'A área de transferência está indisponível. Você pode selecionar e copiar manualmente os nomes das bibliotecas abaixo.',
     reset: 'Redefinir',
     resetConfirm: 'Tem certeza de que deseja redefinir todas as alterações?',
     noXplanePath: 'Configure primeiro o caminho do X-Plane',

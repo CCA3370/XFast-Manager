@@ -650,6 +650,8 @@ export default {
       'Library link submission is in progress. Please wait for success or timeout fallback.',
     invalidContributionUrl: 'Please enter a valid http/https URL',
     libNameCopied: 'Library name copied',
+    copyLibraryManually:
+      'The clipboard is unavailable. You can select and copy the library names below manually.',
     reset: 'Reset',
     resetConfirm: 'Are you sure you want to reset all changes?',
     noXplanePath: 'Please set X-Plane path first',

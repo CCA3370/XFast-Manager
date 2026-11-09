@@ -604,6 +604,7 @@ export default {
     submissionInProgressCloseBlocked: '库链接提交进行中，请等待提交成功或超时后自动跳转提交页面。',
     invalidContributionUrl: '请输入有效的 http/https 链接',
     libNameCopied: '库名已复制',
+    copyLibraryManually: '暂时无法使用剪贴板。你可以选中下方的库名并手动复制。',
     reset: '重置',
     resetConfirm: '确定要重置所有更改吗？',
     noXplanePath: '请先设置 X-Plane 路径',

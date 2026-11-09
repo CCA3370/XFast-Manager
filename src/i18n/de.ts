@@ -665,6 +665,8 @@ export default {
       'Die Übermittlung des Bibliothekslinks ist in Bearbeitung. Bitte warten Sie auf Erfolg oder Timeout-Fallback.',
     invalidContributionUrl: 'Bitte geben Sie eine gültige http/https-URL ein',
     libNameCopied: 'Bibliotheksname kopiert',
+    copyLibraryManually:
+      'Die Zwischenablage ist nicht verfügbar. Sie können die Bibliotheksnamen unten auswählen und manuell kopieren.',
     reset: 'Zurücksetzen',
     resetConfirm: 'Sind Sie sicher, dass Sie alle Änderungen zurücksetzen möchten?',
     noXplanePath: 'Bitte legen Sie zuerst den X-Plane-Pfad fest',

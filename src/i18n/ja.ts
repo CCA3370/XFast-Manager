@@ -640,6 +640,8 @@ export default {
       'ライブラリリンクの送信が進行中です。成功するかタイムアウトになるまでお待ちください。',
     invalidContributionUrl: '有効な http/https URL を入力してください',
     libNameCopied: 'ライブラリ名がコピーされました',
+    copyLibraryManually:
+      'クリップボードを利用できません。以下のライブラリ名を選択して手動でコピーできます。',
     reset: 'リセット',
     resetConfirm: 'すべての変更をリセットしてもよろしいですか?',
     noXplanePath: '最初に X-Plane パスを設定してください',

@@ -661,6 +661,8 @@ export default {
       'El envío del enlace de la biblioteca está en curso. Espere hasta que se complete correctamente o se agote el tiempo de espera.',
     invalidContributionUrl: 'Por favor ingrese una URL http/https válida',
     libNameCopied: 'Nombre de la biblioteca copiado',
+    copyLibraryManually:
+      'El portapapeles no está disponible. Puedes seleccionar y copiar manualmente los nombres de las bibliotecas de abajo.',
     reset: 'Reiniciar',
     resetConfirm: '¿Está seguro de que desea restablecer todos los cambios?',
     noXplanePath: 'Primero configure la ruta de X-Plane',
