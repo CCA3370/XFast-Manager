@@ -7,11 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- **Output Cleanup** - Recognizes more aircraft and plugin data folders and lets you temporarily disable and restore Output items for troubleshooting.
-
-## [1.3.0] - 2026-10-02
+## [1.3.0] - 2026-11-09
 
 ### Added
 
@@ -25,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Output Cleanup** - Recognizes more aircraft and plugin data folders and lets you temporarily disable and restore Output items for troubleshooting.
 - **Scenery Sorting Preference** - Turning off automatic sorting keeps scenery management and manual ordering available, while installation and other automatic operations preserve the existing load order.
 - **Desktop Text Selection** - Repeated clicks no longer select page labels. Text fields, errors, logs and diagnostic evidence remain selectable.
 - **Custom Airport Priority** - Auto Sort places custom airports above Aerosoft airports and Global Airports.
