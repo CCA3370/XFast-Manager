@@ -47,8 +47,10 @@ jobs:
       - name: Check if fast build
         id: check_fast
         shell: bash
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          if [[ "${{ github.event.head_commit.message }}" == *"dbuild"* ]]; then
+          if [[ "$HEAD_COMMIT_MESSAGE" == *"dbuild"* ]]; then
             echo "is_fast=true" >> $GITHUB_OUTPUT
             echo "🚀 Fast build mode enabled (optimized for speed)"
           else
@@ -226,8 +228,10 @@ jobs:
       - name: Check if fast build
         id: check_fast_arch
         shell: bash
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          if [[ "${{ github.event.head_commit.message }}" == *"dbuild"* ]]; then
+          if [[ "$HEAD_COMMIT_MESSAGE" == *"dbuild"* ]]; then
             echo "is_fast=true" >> $GITHUB_OUTPUT
             echo "🚀 Fast build mode enabled (optimized for speed)"
           else
@@ -351,8 +355,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           RUST_LOG: tauri_bundler=trace
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          if [[ "${{ github.event.head_commit.message }}" != *"archappimage"* ]]; then
+          if [[ "$HEAD_COMMIT_MESSAGE" != *"archappimage"* ]]; then
             echo "Skipping experimental Arch AppImage build. Add 'archappimage' to the commit message to enable it."
             exit 0
           fi
