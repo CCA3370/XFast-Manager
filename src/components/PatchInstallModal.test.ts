@@ -23,6 +23,7 @@ vi.mock('@/services/storage', () => ({
   },
 }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ xplanePath: '/sim' }) }))
+vi.mock('@/stores/toast', () => ({ useToastStore: () => ({ warning: vi.fn() }) }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
 import PatchInstallModal from './PatchInstallModal.vue'
@@ -107,6 +108,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   wrapper?.unmount()
+  vi.restoreAllMocks()
   vi.useRealTimers()
 })
 
@@ -227,7 +229,7 @@ describe('patch installation confirmation', () => {
     await preview()
     oldSummary.resolve(summary({ totalFiles: 900, overwriteCount: 900 }))
     await flushPromises()
-    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
+    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('patch.inferring')
     newSummary.resolve(summary({ totalFiles: 2, overwriteCount: 0 }))
     await flushPromises()
@@ -244,8 +246,9 @@ describe('patch installation confirmation', () => {
 
   it('invalidates in-flight preview counts as soon as mappings change', async () => {
     const oldSummary = deferred<PatchInstallSummary>()
-    api.summarizePatchInstall.mockReturnValueOnce(oldSummary.promise)
     await open()
+    api.summarizePatchInstall.mockReturnValueOnce(oldSummary.promise)
+    await destinationInputs()[0]!.setValue('earlier-destination')
     await preview()
     await destinationInputs()[0]!.setValue('new-destination')
     oldSummary.resolve(summary({ totalFiles: 900, overwriteCount: 900 }))
@@ -306,7 +309,7 @@ describe('patch installation confirmation', () => {
     expect(wrapper.text()).toContain('custom/deep/new · patch.mappingNewFolder')
   })
 
-  it('remembers edits to source and destination, additions and deletions, and resets on request', async () => {
+  it('remembers the confirmed mappings and clears them when automatic mappings are installed', async () => {
     await open()
     await preview()
     await button('+ patch.addMapping').trigger('click')
@@ -316,12 +319,15 @@ describe('patch installation confirmation', () => {
     await search.trigger('keydown.enter')
     await destinationInputs()[1]!.setValue('custom/deep/folder')
     await preview()
-    expect(savedMappings.get('patch.A')).toEqual([
-      { archiveSubpath: 'A', destSubpath: 'A-dest' },
-      { archiveSubpath: 'extras/deep/a.obj', destSubpath: 'custom/deep/folder' },
-    ])
+    expect(savedMappings.has('patch.A')).toBe(false)
     await wrapper.findAll('button[title="common.delete"]')[0]!.trigger('click')
     await preview()
+    expect(savedMappings.has('patch.A')).toBe(false)
+    await installButton().trigger('click')
+    await flushPromises()
+    expect(savedMappings.get('patch.A')).toEqual([
+      { archiveSubpath: 'extras/deep/a.obj', destSubpath: 'custom/deep/folder' },
+    ])
     wrapper.unmount()
 
     await open()
@@ -331,27 +337,71 @@ describe('patch installation confirmation', () => {
     expect(wrapper.text()).toContain('patch.rememberedMappings')
     await button('patch.resetMappings').trigger('click')
     await preview()
-    expect(savedMappings.has('patch.A')).toBe(false)
+    expect(savedMappings.has('patch.A')).toBe(true)
     expect(destinationInputs().map(({ element }) => element.value)).toEqual(['A-dest'])
+    await installButton().trigger('click')
+    await flushPromises()
+    expect(savedMappings.has('patch.A')).toBe(false)
   })
 
-  it('keeps the last validated mapping when a later edit fails validation', async () => {
+  it('keeps the saved mapping when edits are cancelled or installation validation fails', async () => {
+    const previous = [{ archiveSubpath: 'A', destSubpath: 'custom/good' }]
+    savedMappings.set('patch.A', previous)
     await open()
     await preview()
-    await destinationInputs()[0]!.setValue('custom/good')
+    await destinationInputs()[0]!.setValue('custom/draft')
+    await preview()
+    await button('common.cancel').trigger('click')
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    expect(savedMappings.get('patch.A')).toEqual(previous)
+    wrapper.unmount()
+
+    await open()
     await preview()
     api.summarizePatchInstall.mockRejectedValueOnce(new Error('invalid destination'))
     await destinationInputs()[0]!.setValue('../outside')
     await preview()
     expect(wrapper.text()).toContain('patch.mappingUnavailable')
     expect(installButton().attributes('disabled')).toBeDefined()
-    expect(savedMappings.get('patch.A')).toEqual([
-      { archiveSubpath: 'A', destSubpath: 'custom/good' },
-    ])
+    expect(savedMappings.get('patch.A')).toEqual(previous)
+
+    await destinationInputs()[0]!.setValue('custom/another')
+    await preview()
+    api.buildPatchInstallTasks.mockRejectedValueOnce(new Error('patch changed'))
+    await installButton().trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('install')).toBeUndefined()
+    expect(savedMappings.get('patch.A')).toEqual(previous)
+  })
+
+  it('measures the initial preview once and keeps the summary card mounted while refreshing', async () => {
+    const bounds = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    bounds.mockReturnValue(new DOMRect(0, 0, 500, 340))
+    const firstPreview = deferred<PatchInstallSummary>()
+    api.summarizePatchInstall.mockReturnValueOnce(firstPreview.promise)
+    await open()
+    const dialog = wrapper.get<HTMLElement>('.modal-content')
+    expect(dialog.classes()).toContain('invisible')
+    firstPreview.resolve(summary())
+    await flushPromises()
+    expect(dialog.classes()).not.toContain('invisible')
+    expect(dialog.element.style.height).toBe('340px')
+    const card = wrapper.get('[aria-busy="false"]').element
+    const checkbox = wrapper.get('input[type="checkbox"]').element
+
+    bounds.mockReturnValue(new DOMRect(0, 0, 500, 640))
+    await destinationInputs()[0]!.setValue('custom/folder')
+    expect(wrapper.get('[aria-busy="true"]').element).toBe(card)
+    expect(wrapper.get('input[type="checkbox"]').element).toBe(checkbox)
+    await preview()
+    expect(wrapper.get('[aria-busy="false"]').element).toBe(card)
+    expect(dialog.element.style.height).toBe('340px')
   })
 
   it('cancels deferred preview work when the modal unmounts', async () => {
     await open()
+    api.summarizePatchInstall.mockClear()
+    await destinationInputs()[0]!.setValue('custom/folder')
     wrapper.unmount()
     await preview()
     expect(api.summarizePatchInstall).not.toHaveBeenCalled()

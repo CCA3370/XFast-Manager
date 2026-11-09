@@ -2,7 +2,26 @@
   <Teleport to="body">
     <transition name="modal">
       <div class="modal-overlay" @click="handleCancel">
-        <div class="modal-content" @click.stop>
+        <div v-if="initialHeight === null" class="absolute flex flex-col items-center gap-2">
+          <p role="status" class="text-sm font-medium text-white">
+            {{ $t(detecting ? 'patch.detecting' : 'patch.inferring') }}
+          </p>
+          <button
+            type="button"
+            class="rounded-md px-2 py-1 text-xs text-white hover:bg-white/15"
+            @click.stop="handleCancel"
+          >
+            {{ $t('common.cancel') }}
+          </button>
+        </div>
+        <div
+          ref="dialog"
+          class="modal-content"
+          :class="{ invisible: initialHeight === null }"
+          :style="initialHeight === null ? undefined : { height: `${initialHeight}px` }"
+          :inert="initialHeight === null"
+          @click.stop
+        >
           <!-- Header -->
           <div class="flex shrink-0 items-center space-x-2 mb-4">
             <div class="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center">
@@ -85,18 +104,12 @@
             </section>
 
             <!-- What will happen -->
-            <section v-if="selectedFolder" class="min-h-36">
+            <section v-if="selectedFolder">
               <label class="block text-xs font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
                 {{ $t('patch.summaryTitle') }}
               </label>
               <div
-                v-if="inferring || summarizing"
-                class="text-xs text-gray-500 dark:text-gray-400 py-2"
-              >
-                {{ $t('patch.inferring') }}
-              </div>
-              <div
-                v-else-if="totalFiles > 0"
+                :aria-busy="inferring || summarizing"
                 class="bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/50 rounded-lg p-3 space-y-2"
               >
                 <div class="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-200">
@@ -113,16 +126,20 @@
                       d="M12 4v16m8-8H4"
                     />
                   </svg>
-                  <span>{{
-                    $t('patch.filesApplied', { count: totalFiles, aircraft: selectedDisplayName })
-                  }}</span>
+                  <span v-if="inferring || summarizing" class="text-gray-500 dark:text-gray-400">
+                    {{ $t('patch.inferring') }}
+                  </span>
+                  <span v-else-if="totalFiles > 0" class="truncate" :title="filesAppliedText">
+                    {{ filesAppliedText }}
+                  </span>
+                  <span v-else aria-hidden="true">—</span>
                 </div>
                 <div
-                  v-if="overwriteCount > 0"
-                  class="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300"
+                  class="flex min-h-4 items-center gap-2 text-xs text-amber-700 dark:text-amber-300"
                 >
                   <svg
-                    class="w-4 h-4 flex-shrink-0 mt-px"
+                    v-if="overwriteCount > 0"
+                    class="w-4 h-4 flex-shrink-0"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -134,12 +151,15 @@
                       d="M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.75L13.74 4a2 2 0 00-3.48 0L3.16 16.25A2 2 0 005 19z"
                     />
                   </svg>
-                  <span>{{ $t('patch.filesOverwritten', { count: overwriteCount }) }}</span>
+                  <span v-if="overwriteCount > 0" class="truncate">
+                    {{ $t('patch.filesOverwritten', { count: overwriteCount }) }}
+                  </span>
                 </div>
                 <label class="flex items-center gap-2 cursor-pointer pt-1">
                   <input
                     v-model="backupEnabled"
                     type="checkbox"
+                    :disabled="building"
                     class="w-4 h-4 accent-orange-600"
                   />
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-200">
@@ -182,7 +202,7 @@
               <div v-show="advancedOpen" class="mt-2">
                 <div class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 mb-1.5">
                   <button
-                    v-if="hasRememberedMappings"
+                    v-if="!usesAutomaticMappings"
                     type="button"
                     class="text-xs text-gray-600 hover:underline dark:text-gray-300"
                     :disabled="inferring || building"
@@ -203,7 +223,7 @@
                   {{ $t('patch.mappingMemoryError') }}
                 </p>
                 <p
-                  v-else-if="hasRememberedMappings"
+                  v-else-if="usesRememberedMappings"
                   class="mb-1.5 text-[11px] text-gray-500 dark:text-gray-400"
                 >
                   {{ $t('patch.rememberedMappings') }}
@@ -338,6 +358,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { useToastStore } from '@/stores/toast'
 import PatchSourcePicker from './PatchSourcePicker.vue'
 import PatchDestinationInput from './PatchDestinationInput.vue'
 import {
@@ -367,6 +388,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const store = useAppStore()
+const toast = useToastStore()
 
 interface EditableMapping extends PatchMappingInput {
   id: number
@@ -377,6 +399,8 @@ const inferring = ref(false)
 const summarizing = ref(false)
 const building = ref(false)
 const errorMsg = ref('')
+const dialog = ref<HTMLElement | null>(null)
+const initialHeight = ref<number | null>(null)
 
 const candidates = ref<PatchAircraftCandidate[]>([])
 const recommendedFolder = ref<string | null>(null)
@@ -388,7 +412,8 @@ const unmapped = ref<string[]>([])
 const mappings = ref<EditableMapping[]>([])
 const mappingsFolder = ref('')
 const mappingPreviews = ref<PatchMappingPreview[]>([])
-const hasRememberedMappings = ref(false)
+const automaticMappings = ref<PatchMappingInput[]>([])
+const rememberedMappings = ref<PatchMappingInput[] | null>(null)
 const memoryError = ref(false)
 
 // Install summary (what will happen) — kept current via summarizePatchInstall.
@@ -406,6 +431,19 @@ const selectedDisplayName = computed(
   () =>
     candidates.value.find((c) => c.folderName === selectedFolder.value)?.displayName ||
     selectedFolder.value,
+)
+const filesAppliedText = computed(() =>
+  t('patch.filesApplied', { count: totalFiles.value, aircraft: selectedDisplayName.value }),
+)
+const mappingInputs = computed(() =>
+  mappings.value.map(({ archiveSubpath, destSubpath }) => ({ archiveSubpath, destSubpath })),
+)
+const mappingSnapshot = computed(() => JSON.stringify(mappingInputs.value))
+const usesAutomaticMappings = computed(
+  () => mappingSnapshot.value === JSON.stringify(automaticMappings.value),
+)
+const usesRememberedMappings = computed(
+  () => mappingSnapshot.value === JSON.stringify(rememberedMappings.value),
 )
 
 const canInstall = computed(
@@ -426,10 +464,6 @@ let inferenceRequest = 0
 let summaryRequest = 0
 let nextMappingId = 0
 let mappingKey = ''
-let automaticMappings: PatchMappingInput[] = []
-let queuedMemorySnapshot: string | undefined
-let memoryRequest = 0
-
 onMounted(runDetect)
 onUnmounted(() => {
   mounted = false
@@ -439,6 +473,21 @@ onUnmounted(() => {
 
 // Any change to the mappings (re-inference or manual edit) re-previews the summary.
 watch(mappings, scheduleSummarize, { deep: true, flush: 'sync' })
+watch(
+  [detecting, inferring, summarizing],
+  ([isDetecting, isInferring, isSummarizing]) => {
+    if (
+      initialHeight.value === null &&
+      !isDetecting &&
+      !isInferring &&
+      !isSummarizing &&
+      dialog.value
+    ) {
+      initialHeight.value = Math.ceil(dialog.value.getBoundingClientRect().height)
+    }
+  },
+  { flush: 'post' },
+)
 
 async function runDetect() {
   detecting.value = true
@@ -473,7 +522,8 @@ async function runInfer(folder: string) {
   const isCurrent = () => mounted && request === inferenceRequest && folder === selectedFolder.value
   mappingsFolder.value = ''
   mappingKey = ''
-  hasRememberedMappings.value = false
+  automaticMappings.value = []
+  rememberedMappings.value = null
   memoryError.value = false
   backupEnabled.value = true
   inferring.value = true
@@ -500,9 +550,8 @@ async function runInfer(folder: string) {
     if (!isCurrent()) return
     mappingKey = canRemember ? plan.mappingKey : ''
     memoryError.value = !canRemember
-    queuedMemorySnapshot = JSON.stringify(remembered)
-    hasRememberedMappings.value = remembered !== null
-    automaticMappings = plan.suggestedMappings.map(({ archiveSubpath, destSubpath }) => ({
+    rememberedMappings.value = remembered
+    automaticMappings.value = plan.suggestedMappings.map(({ archiveSubpath, destSubpath }) => ({
       archiveSubpath,
       destSubpath,
     }))
@@ -510,7 +559,7 @@ async function runInfer(folder: string) {
     aircraftDirectories.value = plan.aircraftDirectories
     mappingsFolder.value = folder
     inferring.value = false
-    setMappings(remembered ?? automaticMappings)
+    setMappings(remembered ?? automaticMappings.value)
     // Surface the editor automatically when the plan needs a human decision.
     advancedOpen.value =
       remembered !== null ||
@@ -529,41 +578,12 @@ function onAircraftChange() {
   if (!building.value) runInfer(selectedFolder.value)
 }
 
-function mappingInputs(): PatchMappingInput[] {
-  return mappings.value.map(({ archiveSubpath, destSubpath }) => ({ archiveSubpath, destSubpath }))
-}
-
 function setMappings(inputs: PatchMappingInput[]) {
   mappings.value = inputs.map((input) => ({ ...input, id: nextMappingId++ }))
 }
 
-async function rememberMappings(inputs: PatchMappingInput[] | null) {
-  const key = mappingKey
-  if (!key) return
-  const snapshot = JSON.stringify(inputs)
-  if (snapshot === queuedMemorySnapshot) return
-  if (queuedMemorySnapshot === 'null' && snapshot === JSON.stringify(automaticMappings)) return
-  queuedMemorySnapshot = snapshot
-  const request = ++memoryRequest
-  const inference = inferenceRequest
-  const isCurrent = () => mounted && request === memoryRequest && inference === inferenceRequest
-  try {
-    await savePatchMappings(key, inputs)
-    if (isCurrent()) {
-      hasRememberedMappings.value = inputs !== null
-      memoryError.value = false
-    }
-  } catch {
-    if (isCurrent()) {
-      queuedMemorySnapshot = undefined
-      memoryError.value = true
-    }
-  }
-}
-
 function resetMappings() {
-  void rememberMappings(null)
-  setMappings(automaticMappings)
+  setMappings(automaticMappings.value)
 }
 
 function invalidateSummary() {
@@ -593,10 +613,13 @@ function scheduleSummarize() {
   errorMsg.value = ''
   if (!mappings.value.length) {
     unmapped.value = [...new Set(archiveTree.value.map((path) => path.split('/')[0]!))]
-    void rememberMappings([])
     return
   }
   summarizing.value = true
+  if (initialHeight.value === null) {
+    void runSummarize(request)
+    return
+  }
   summarizeTimer = setTimeout(() => {
     summarizeTimer = null
     void runSummarize(request)
@@ -605,7 +628,7 @@ function scheduleSummarize() {
 
 async function runSummarize(request: number) {
   const folder = selectedFolder.value
-  const inputs = mappingInputs()
+  const inputs = mappingInputs.value
   const isCurrent = () => mounted && request === summaryRequest && folder === selectedFolder.value
   if (!isCurrent() || !folder || !inputs.length) return
   try {
@@ -621,7 +644,6 @@ async function runSummarize(request: number) {
     planId.value = summary.planId
     mappingPreviews.value = summary.mappingPreviews
     unmapped.value = summary.unmapped
-    void rememberMappings(inputs)
   } catch (e) {
     if (isCurrent()) errorMsg.value = getErrorMessage(e)
   } finally {
@@ -653,15 +675,25 @@ async function confirmInstall() {
   if (!canInstall.value) return
   building.value = true
   errorMsg.value = ''
+  const inputs = mappingInputs.value
+  const memory = usesAutomaticMappings.value ? null : inputs
   try {
     const tasks = await buildPatchInstallTasks({
       archivePath: props.archivePath,
       xplanePath: store.xplanePath,
       aircraftFolder: selectedFolder.value,
-      mappings: mappingInputs(),
+      mappings: inputs,
       backupOverwritten: backupEnabled.value,
       expectedPlanId: planId.value,
     })
+    if (!mounted) return
+    if (mappingKey && JSON.stringify(memory) !== JSON.stringify(rememberedMappings.value)) {
+      try {
+        await savePatchMappings(mappingKey, memory)
+      } catch {
+        if (mounted) toast.warning(t('patch.mappingMemoryError'))
+      }
+    }
     if (mounted) emit('install', tasks)
   } catch (e) {
     if (mounted) {
@@ -700,7 +732,7 @@ function handleCancel() {
 .modal-content {
   display: flex;
   flex-direction: column;
-  height: min(40rem, calc(100% - 2rem));
+  max-height: min(40rem, calc(100% - 2rem));
   background: white;
   border-radius: 1.25rem;
   padding: 1.75rem;
