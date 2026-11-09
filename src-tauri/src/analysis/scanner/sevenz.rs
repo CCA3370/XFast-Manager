@@ -47,6 +47,7 @@ impl Scanner {
 
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut aircraft_dirs: HashSet<String> = HashSet::new();
+        let mut sound_packs = AircraftSoundPacks::default();
         let mut marker_files: Vec<(String, &str)> = Vec::new();
         let mut nested_archives: Vec<String> = Vec::new();
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
@@ -55,6 +56,9 @@ impl Scanner {
         for entry in &archive.files {
             let file_path = entry.name().to_string();
             let normalized = file_path.replace('\\', "/");
+            if !entry.is_directory() {
+                sound_packs.record_file(&normalized);
+            }
 
             if !entry.is_directory() && entry.has_stream() {
                 archive_entries.push(normalized.clone());
@@ -168,6 +172,10 @@ impl Scanner {
             if (marker_type == "acf" || Self::is_scenery_marker_type(marker_type))
                 && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
             {
+                continue;
+            }
+
+            if sound_packs.contains_plugin_marker(&file_path, marker_type) {
                 continue;
             }
 
@@ -696,12 +704,16 @@ impl Scanner {
         // Collect file paths and identify markers in a single pass
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut aircraft_dirs: HashSet<String> = HashSet::new();
+        let mut sound_packs = AircraftSoundPacks::default();
         let mut marker_files: Vec<(String, &str)> = Vec::new(); // (path, marker_type)
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
 
         for entry in &archive.files {
             let file_path = entry.name().to_string();
             let normalized = file_path.replace('\\', "/");
+            if !entry.is_directory() {
+                sound_packs.record_file(&normalized);
+            }
 
             // Skip ignored paths
             if Self::should_ignore_archive_path(&normalized) {
@@ -789,6 +801,10 @@ impl Scanner {
             if (marker_type == "acf" || Self::is_scenery_marker_type(marker_type))
                 && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
             {
+                continue;
+            }
+
+            if sound_packs.contains_plugin_marker(&file_path, marker_type) {
                 continue;
             }
 

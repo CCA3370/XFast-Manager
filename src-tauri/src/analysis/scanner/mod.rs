@@ -129,6 +129,67 @@ struct NestedZipScanParams<'a> {
     is_encrypted: bool,
 }
 
+#[derive(Default)]
+struct AircraftSoundPacks {
+    roots: HashMap<PathBuf, FmodFiles>,
+}
+
+#[derive(Default)]
+struct FmodFiles {
+    sound_definition: bool,
+    bank: bool,
+}
+
+impl AircraftSoundPacks {
+    fn record_file(&mut self, file_path: &str) {
+        let path = Path::new(file_path);
+        let Some(extension) = path.extension().and_then(|name| name.to_str()) else {
+            return;
+        };
+        let is_sound_definition = extension.eq_ignore_ascii_case("snd");
+        if !is_sound_definition && !extension.eq_ignore_ascii_case("bank") {
+            return;
+        }
+
+        let Some(fmod) = path.parent().filter(|parent| {
+            parent
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case("fmod"))
+        }) else {
+            return;
+        };
+        if Scanner::should_ignore_archive_path(file_path) {
+            return;
+        }
+        if let Some(root) = fmod.parent() {
+            let files = self.roots.entry(root.to_path_buf()).or_default();
+            if is_sound_definition {
+                files.sound_definition = true;
+            } else {
+                files.bank = true;
+            }
+        }
+    }
+
+    // An aircraft FMOD overlay can ship xLua or other plugins beside its sound
+    // files. Reserve that plugins subtree for the aircraft patch installer.
+    fn contains_plugin_marker(&self, file_path: &str, marker_type: &str) -> bool {
+        if self.roots.is_empty() || !matches!(marker_type, "xpl" | "lua") {
+            return false;
+        }
+        Path::new(file_path).ancestors().skip(1).any(|dir| {
+            dir.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case("plugins"))
+                && dir
+                    .parent()
+                    .and_then(|root| self.roots.get(root))
+                    .is_some_and(|files| files.sound_definition && files.bank)
+        })
+    }
+}
+
 /// Check if a filename is an archive file
 fn is_archive_file(filename: &str) -> bool {
     detect_archive_format(Path::new(filename)).is_some()
@@ -2546,7 +2607,7 @@ impl Scanner {
 mod tests {
     use super::{
         infer_version_from_name, plan_version_file_reads, resolve_nested_display_name, AddonType,
-        Scanner, VersionFileReadPlan,
+        AircraftSoundPacks, Scanner, VersionFileReadPlan,
     };
     use std::fs;
     use std::io::{Cursor, Write};
@@ -2711,6 +2772,49 @@ mod tests {
             .expect("lua script should be detected");
 
         assert_eq!(lua.companion_paths, vec!["SimLoadManager".to_string()]);
+    }
+
+    #[test]
+    fn zip_sound_pack_keeps_aircraft_plugin_files_out_of_standalone_installs() {
+        let temp = tempdir().unwrap();
+        let archive_path = temp.path().join("sound-pack.zip");
+        let mut writer = zip::ZipWriter::new(fs::File::create(&archive_path).unwrap());
+        for name in [
+            "Sound Pack/fmod/a321.snd",
+            "Sound Pack/fmod/Master Bank.bank",
+            "Sound Pack/plugins/xlua/init.lua",
+            "Sound Pack/plugins/xlua/64/win.xpl",
+            "Sound Pack/plugins/xlua/scripts/SBS.gear/SBS.gear.lua",
+        ] {
+            writer
+                .start_file(name, zip::write::FileOptions::<()>::default())
+                .unwrap();
+            writer.write_all(b"test").unwrap();
+        }
+        writer.finish().unwrap();
+
+        let items = Scanner::new().scan_path(&archive_path, None).unwrap();
+        assert!(items.is_empty(), "unexpected standalone add-ons: {items:?}");
+    }
+
+    #[test]
+    fn sound_pack_requires_fmod_files_beside_the_plugins_directory() {
+        let mut packs = AircraftSoundPacks::default();
+        let plugin = "Variant/PLUGINS/xlua/64/win.xpl";
+        packs.record_file("Variant/FMOD/a321.SND");
+        packs.record_file("Variant/other/Master Bank.bank");
+        packs.record_file("Alternate/fmod/Master Bank.bank");
+        packs.record_file("Variant/FMOD/._Master Bank.bank");
+        assert!(!packs.contains_plugin_marker(plugin, "xpl"));
+
+        packs.record_file("Variant/FMOD/Master Bank.BANK");
+        assert!(packs.contains_plugin_marker(plugin, "xpl"));
+        assert!(!packs.contains_plugin_marker("Variant/plugins-extra/tool.lua", "lua"));
+        assert!(!packs.contains_plugin_marker("Alternate/plugins/tool/64/win.xpl", "xpl"));
+
+        packs.record_file("fmod/a321.snd");
+        packs.record_file("fmod/Master Bank.bank");
+        assert!(packs.contains_plugin_marker("plugins/xlua/init.lua", "lua"));
     }
 
     #[test]

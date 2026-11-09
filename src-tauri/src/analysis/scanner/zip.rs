@@ -154,6 +154,7 @@ impl Scanner {
 
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut aircraft_dirs: HashSet<String> = HashSet::new();
+        let mut sound_packs = AircraftSoundPacks::default();
         let mut marker_files: Vec<(usize, String, bool, &str)> = Vec::new(); // (index, path, encrypted, marker_type)
         let mut nested_archives: Vec<(usize, String, bool)> = Vec::new(); // (index, path, encrypted)
         let mut has_encrypted = false;
@@ -190,6 +191,9 @@ impl Scanner {
             }
 
             let file_path = file.name().replace('\\', "/");
+            if !file.is_dir() {
+                sound_packs.record_file(&file_path);
+            }
 
             // Skip ignored paths
             if Self::should_ignore_archive_path(&file_path) {
@@ -362,6 +366,10 @@ impl Scanner {
             if (marker_type == "acf" || Self::is_scenery_marker_type(marker_type))
                 && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
             {
+                continue;
+            }
+
+            if sound_packs.contains_plugin_marker(&file_path, marker_type) {
                 continue;
             }
 
@@ -775,6 +783,7 @@ impl Scanner {
         // First pass: collect all file paths and identify directories/markers
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut aircraft_dirs: HashSet<String> = HashSet::new();
+        let mut sound_packs = AircraftSoundPacks::default();
         let mut marker_files: Vec<(usize, String, &str)> = Vec::new(); // (index, path, marker_type)
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
         let mut has_encrypted = false;
@@ -786,6 +795,9 @@ impl Scanner {
                 has_encrypted = true;
             }
             let file_path = file.name().replace('\\', "/");
+            if !file.is_dir() {
+                sound_packs.record_file(&file_path);
+            }
 
             // Skip ignored paths
             if Self::should_ignore_archive_path(&file_path) {
@@ -887,6 +899,10 @@ impl Scanner {
             if (marker_type == "acf" || Self::is_scenery_marker_type(marker_type))
                 && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
             {
+                continue;
+            }
+
+            if sound_packs.contains_plugin_marker(&file_path, marker_type) {
                 continue;
             }
 
@@ -1015,6 +1031,7 @@ impl Scanner {
         let enumerate_start = std::time::Instant::now();
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut aircraft_dirs: HashSet<String> = HashSet::new();
+        let mut sound_packs = AircraftSoundPacks::default();
         let mut marker_files: Vec<(usize, String, bool, &str)> = Vec::new(); // (index, path, encrypted, marker_type)
         let mut has_encrypted = false;
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
@@ -1050,6 +1067,9 @@ impl Scanner {
             }
 
             let file_path = file.name().replace('\\', "/");
+            if !file.is_dir() {
+                sound_packs.record_file(&file_path);
+            }
 
             // Skip ignored paths
             if Self::should_ignore_archive_path(&file_path) {
@@ -1199,6 +1219,10 @@ impl Scanner {
             if (marker_type == "acf" || Self::is_scenery_marker_type(marker_type))
                 && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
             {
+                continue;
+            }
+
+            if sound_packs.contains_plugin_marker(&file_path, marker_type) {
                 continue;
             }
 

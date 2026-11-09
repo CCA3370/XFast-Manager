@@ -374,11 +374,16 @@ impl Scanner {
         );
 
         let mut files: Vec<String> = Vec::new();
+        let mut sound_packs = AircraftSoundPacks::default();
 
         // Collect all file paths
         let enumerate_start = std::time::Instant::now();
         for e in archive.flatten() {
-            files.push(e.filename.to_string_lossy().to_string().replace('\\', "/"));
+            let file_path = e.filename.to_string_lossy().replace('\\', "/");
+            if !e.is_directory() {
+                sound_packs.record_file(&file_path);
+            }
+            files.push(file_path);
         }
 
         crate::log_debug!(
@@ -519,6 +524,10 @@ impl Scanner {
             if (marker_type == "acf" || Self::is_scenery_marker_type(marker_type))
                 && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
             {
+                continue;
+            }
+
+            if sound_packs.contains_plugin_marker(&file_path, marker_type) {
                 continue;
             }
 
