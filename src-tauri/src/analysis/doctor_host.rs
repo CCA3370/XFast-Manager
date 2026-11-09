@@ -36,6 +36,7 @@ pub struct DirectoryAccess {
 
 pub fn directory_access(root: &Path) -> DirectoryAccess {
     let mut report = DirectoryAccess::default();
+    let mut output_is_directory = false;
     for name in [
         "",
         "Output",
@@ -45,6 +46,9 @@ pub fn directory_access(root: &Path) -> DirectoryAccess {
         "Aircraft",
         "Resources/plugins",
     ] {
+        if name == "Output/preferences" && !output_is_directory {
+            continue;
+        }
         let path = root.join(name);
         let label = if name.is_empty() {
             "X-Plane root"
@@ -56,6 +60,7 @@ pub fn directory_access(root: &Path) -> DirectoryAccess {
                 report.blocked.push(format!("{label}: not a directory"));
                 continue;
             }
+            Ok(_) if name == "Output" => output_is_directory = true,
             Ok(_) => {}
             Err(error) if error.kind() == io::ErrorKind::NotFound && !name.is_empty() => continue,
             Err(error) => {
@@ -234,8 +239,21 @@ mod tests {
         fs::write(temp.path().join("Output"), "file instead of a directory").unwrap();
         let result = directory_access(temp.path());
         assert_eq!(result.blocked, ["Output: not a directory"]);
-        assert!(result.errors.is_empty());
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
         assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn permission_probe_checks_preferences_when_output_is_a_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let output = temp.path().join("Output");
+        fs::create_dir(&output).unwrap();
+        fs::write(output.join("preferences"), "file instead of a directory").unwrap();
+
+        let result = directory_access(temp.path());
+        assert_eq!(result.blocked, ["Output/preferences: not a directory"]);
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        assert_eq!(fs::read_dir(&output).unwrap().count(), 1);
     }
 
     #[cfg(any(windows, target_os = "linux"))]
