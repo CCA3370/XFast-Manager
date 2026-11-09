@@ -1704,31 +1704,38 @@ fn relax_scenery_delete_permissions_recursive(path: &Path) {
     }
 }
 
-fn scenery_delete_permission_message(folder_name: &str, error: &std::io::Error) -> String {
-    format!(
-        "Could not delete {}. The folder may still be in use by X-Plane, a file manager, antivirus, or another process, or your account may not have permission to modify it. Close anything using the folder, check folder permissions, then try again. Last error: {}",
-        folder_name, error
-    )
+fn is_scenery_delete_access_error(cause: &std::io::Error) -> bool {
+    cause.kind() == ErrorKind::PermissionDenied || error::is_windows_file_lock(cause)
+}
+
+fn scenery_delete_error(folder_name: &str, cause: std::io::Error) -> error::ApiError {
+    let message = if error::is_windows_file_lock(&cause) {
+        format!(
+            "Could not delete {folder_name} because a file is in use. Close X-Plane and any other program using the folder, then try again. Last error: {cause}"
+        )
+    } else if cause.kind() == ErrorKind::PermissionDenied {
+        format!(
+            "Could not delete {folder_name}. Close any program using the folder, check that you have permission to modify it, then try again. Last error: {cause}"
+        )
+    } else {
+        format!("Could not delete {folder_name}: {cause}")
+    };
+
+    let mut api_error = error::ApiError::from(cause);
+    api_error.message = message;
+    api_error
 }
 
 fn remove_scenery_file_with_permission_fix(path: &Path, folder_name: &str) -> error::ApiResult<()> {
     match fs::remove_file(path) {
-        Ok(()) => Ok(()),
         Err(e) if e.kind() == ErrorKind::PermissionDenied => {
             let _ = clear_scenery_readonly_attribute(path);
             let _ = add_scenery_write_permission(path);
-            fs::remove_file(path).map_err(|e2| {
-                error::ApiError::permission_denied(scenery_delete_permission_message(
-                    folder_name,
-                    &e2,
-                ))
-            })
+            fs::remove_file(path)
         }
-        Err(e) => Err(error::ApiError::internal(format!(
-            "Failed to delete scenery file: {}",
-            e
-        ))),
+        result => result,
     }
+    .map_err(|cause| scenery_delete_error(folder_name, cause))
 }
 
 fn remove_scenery_dir_all_with_permission_fix(
@@ -1736,21 +1743,13 @@ fn remove_scenery_dir_all_with_permission_fix(
     folder_name: &str,
 ) -> error::ApiResult<()> {
     match fs::remove_dir_all(path) {
-        Ok(()) => Ok(()),
         Err(e) if e.kind() == ErrorKind::PermissionDenied => {
             relax_scenery_delete_permissions_recursive(path);
-            fs::remove_dir_all(path).map_err(|e2| {
-                error::ApiError::permission_denied(scenery_delete_permission_message(
-                    folder_name,
-                    &e2,
-                ))
-            })
+            fs::remove_dir_all(path)
         }
-        Err(e) => Err(error::ApiError::internal(format!(
-            "Failed to delete scenery folder: {}",
-            e
-        ))),
+        result => result,
     }
+    .map_err(|cause| scenery_delete_error(folder_name, cause))
 }
 
 fn remove_scenery_symlink_with_permission_hint(
@@ -1762,12 +1761,11 @@ fn remove_scenery_symlink_with_permission_hint(
         Err(file_error) => match fs::remove_dir(path) {
             Ok(()) => Ok(()),
             Err(dir_error) => {
-                if file_error.kind() == ErrorKind::PermissionDenied
-                    || dir_error.kind() == ErrorKind::PermissionDenied
-                {
-                    return Err(error::ApiError::permission_denied(
-                        scenery_delete_permission_message(folder_name, &dir_error),
-                    ));
+                if is_scenery_delete_access_error(&dir_error) {
+                    return Err(scenery_delete_error(folder_name, dir_error));
+                }
+                if is_scenery_delete_access_error(&file_error) {
+                    return Err(scenery_delete_error(folder_name, file_error));
                 }
                 Err(error::ApiError::internal(format!(
                     "Failed to delete scenery link: {} ({}; {})",
@@ -1775,6 +1773,37 @@ fn remove_scenery_symlink_with_permission_hint(
                 )))
             }
         },
+    }
+}
+
+#[cfg(all(test, windows))]
+mod scenery_delete_tests {
+    use super::*;
+    use std::os::windows::fs::OpenOptionsExt;
+
+    #[test]
+    fn locked_scenery_folder_can_be_retried_without_reporting_a_bug() {
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().join("Test Scenery");
+        let scenery_file = folder.join("library.txt");
+        fs::create_dir(&folder).unwrap();
+        fs::write(&scenery_file, b"test scenery").unwrap();
+        let lock = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&scenery_file)
+            .unwrap();
+
+        let error =
+            remove_scenery_dir_all_with_permission_fix(&folder, "Test Scenery").unwrap_err();
+        assert_eq!(error.code, error::ApiErrorCode::EnvironmentError);
+        assert!(!error.reportable);
+        assert!(error.message.contains("Close X-Plane"));
+        assert!(scenery_file.is_file());
+
+        drop(lock);
+        remove_scenery_dir_all_with_permission_fix(&folder, "Test Scenery").unwrap();
+        assert!(!folder.exists());
     }
 }
 

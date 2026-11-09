@@ -275,13 +275,11 @@ fn format_install_error_for_display(error: &anyhow::Error) -> String {
     let raw = format!("{:#}", error);
     let lower = raw.to_ascii_lowercase();
 
-    if cfg!(windows)
-        && error.chain().any(|cause| {
-            cause
-                .downcast_ref::<std::io::Error>()
-                .is_some_and(|io_error| matches!(io_error.raw_os_error(), Some(32 | 33)))
-        })
-    {
+    if error.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(crate::error::is_windows_file_lock)
+    }) {
         return format!(
             "A file needed for this installation is in use. Close X-Plane and any other program using the file, then try installing again.\n{}",
             raw

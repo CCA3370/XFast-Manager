@@ -276,6 +276,10 @@ fn classify_windows_raw_os_error(code: i32) -> Option<ApiErrorCode> {
     }
 }
 
+pub(crate) fn is_windows_file_lock(error: &io::Error) -> bool {
+    cfg!(windows) && matches!(error.raw_os_error(), Some(32 | 33))
+}
+
 fn api_error_from_io(err: &io::Error) -> ApiError {
     let windows_code = if cfg!(target_os = "windows") {
         err.raw_os_error().and_then(classify_windows_raw_os_error)
