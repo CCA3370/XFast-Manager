@@ -180,7 +180,6 @@ export default {
     selectAircraft: 'Выберите самолёт',
     noReliableMatch:
       'Нет однозначного совпадения. Выберите самолёт, для которого предназначен патч.',
-    matchingFiles: 'Совпало файлов: {matched}/{total}',
     title: 'Установить патч самолёта',
     targetAircraft: 'Целевой самолёт',
     detecting: 'Поиск подходящего самолёта…',
@@ -195,6 +194,18 @@ export default {
     addMapping: 'Добавить сопоставление',
     inferring: 'Анализ содержимого патча…',
     archiveRootPlaceholder: '(корень архива)',
+    sourcePath: 'Исходный путь',
+    destinationPath: 'Папка назначения',
+    searchArchive: 'Поиск путей в архиве',
+    noSourceResults: 'Пути не найдены.',
+    mappingChecking: 'Проверка сопоставления…',
+    mappingUnavailable: 'Предпросмотр недоступен. Проверьте указанные пути.',
+    mappingExistingFolder: 'Существующая папка · перезаписать {overwrite} · добавить {added}',
+    mappingNewFolder: 'Новая папка · перезаписать {overwrite} · добавить {added}',
+    rememberedMappings:
+      'Пользовательские сопоставления сохранены для этого самолёта и структуры архива.',
+    resetMappings: 'Восстановить автоматическое сопоставление',
+    mappingMemoryError: 'Не удалось получить доступ к сохранённым сопоставлениям.',
     destRootPlaceholder: '(корень самолёта)',
     archiveRoot: 'корень архива',
     aircraftRoot: 'корень самолёта',
@@ -212,16 +223,6 @@ export default {
     maybePatchMessage:
       'Этот архив не является распознанным дополнением. Установить его как патч для существующего самолёта?',
     noArchive: 'Нет доступного архива патча.',
-    reasonMatched: 'совпадает с {count} существующими файлами',
-    reasonLayout: 'Совпадает структура папок самолёта',
-    reasonLivery: 'папка ливрей',
-    reasonNoAnchor: 'нет привязки — по умолчанию корень самолёта',
-    reasonNoListing: 'не удалось проверить архив',
-    confidence: {
-      high: 'Высокая',
-      medium: 'Средняя',
-      low: 'Низкая',
-    },
   },
   luaCompanion: {
     companions: 'Сопутствующие файлы',

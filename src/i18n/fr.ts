@@ -184,7 +184,6 @@ export default {
     selectAircraft: 'Choisir un avion',
     noReliableMatch:
       'Aucune correspondance claire. Sélectionnez l’avion auquel ce correctif est destiné.',
-    matchingFiles: '{matched}/{total} fichiers correspondants',
     title: 'Installer un correctif d’avion',
     targetAircraft: 'Avion cible',
     detecting: 'Détection de l’avion correspondant…',
@@ -199,6 +198,18 @@ export default {
     addMapping: 'Ajouter une affectation',
     inferring: 'Analyse du contenu du correctif…',
     archiveRootPlaceholder: '(racine de l’archive)',
+    sourcePath: 'Chemin source',
+    destinationPath: 'Dossier de destination',
+    searchArchive: 'Rechercher dans les chemins de l’archive',
+    noSourceResults: 'Aucun chemin trouvé.',
+    mappingChecking: 'Vérification de la correspondance…',
+    mappingUnavailable: 'Aperçu indisponible. Vérifiez les chemins ci-dessus.',
+    mappingExistingFolder: 'Dossier existant · {overwrite} remplacés · {added} ajoutés',
+    mappingNewFolder: 'Nouveau dossier · {overwrite} remplacés · {added} ajoutés',
+    rememberedMappings:
+      'Les correspondances personnalisées sont mémorisées pour cet appareil et cette structure d’archive.',
+    resetMappings: 'Rétablir les correspondances automatiques',
+    mappingMemoryError: 'Impossible d’accéder aux correspondances enregistrées.',
     destRootPlaceholder: '(racine de l’avion)',
     archiveRoot: 'racine de l’archive',
     aircraftRoot: 'racine de l’avion',
@@ -216,16 +227,6 @@ export default {
     maybePatchMessage:
       'Cette archive n’est pas un module reconnu. L’installer comme correctif pour un avion existant ?',
     noArchive: 'Aucune archive de correctif disponible.',
-    reasonMatched: 'correspond à {count} fichiers existants',
-    reasonLayout: 'La structure des dossiers de l’avion correspond',
-    reasonLivery: 'dossier de livrées',
-    reasonNoAnchor: 'aucun point d’ancrage — racine de l’avion par défaut',
-    reasonNoListing: 'impossible d’inspecter l’archive',
-    confidence: {
-      high: 'Élevée',
-      medium: 'Moyenne',
-      low: 'Faible',
-    },
   },
   luaCompanion: {
     companions: 'Fichiers compagnon',

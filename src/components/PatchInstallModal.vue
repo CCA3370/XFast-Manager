@@ -54,12 +54,7 @@
                 >
                   <option value="" disabled>{{ $t('patch.selectAircraft') }}</option>
                   <option v-for="c in candidates" :key="c.folderName" :value="c.folderName">
-                    {{ c.displayName }} ·
-                    {{
-                      c.matchedCount === 0 && c.matchScore > 0
-                        ? $t('patch.reasonLayout')
-                        : $t('patch.matchingFiles', { matched: c.matchedCount, total: c.fileCount })
-                    }}
+                    {{ c.displayName }}
                   </option>
                 </select>
                 <p
@@ -184,7 +179,16 @@
               </button>
 
               <div v-show="advancedOpen" class="mt-2">
-                <div class="flex items-center justify-end mb-1.5">
+                <div class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 mb-1.5">
+                  <button
+                    v-if="hasRememberedMappings"
+                    type="button"
+                    class="text-xs text-gray-600 hover:underline dark:text-gray-300"
+                    :disabled="inferring || building"
+                    @click="resetMappings"
+                  >
+                    {{ $t('patch.resetMappings') }}
+                  </button>
                   <button
                     type="button"
                     class="text-xs text-orange-600 dark:text-orange-400 hover:underline"
@@ -194,6 +198,15 @@
                     + {{ $t('patch.addMapping') }}
                   </button>
                 </div>
+                <p v-if="memoryError" class="mb-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+                  {{ $t('patch.mappingMemoryError') }}
+                </p>
+                <p
+                  v-else-if="hasRememberedMappings"
+                  class="mb-1.5 text-[11px] text-gray-500 dark:text-gray-400"
+                >
+                  {{ $t('patch.rememberedMappings') }}
+                </p>
 
                 <div v-if="inferring" class="text-xs text-gray-500 dark:text-gray-400 py-2">
                   {{ $t('patch.inferring') }}
@@ -202,18 +215,19 @@
                 <div v-else class="space-y-2">
                   <div
                     v-for="(m, i) in mappings"
-                    :key="i"
+                    :key="m.id"
                     class="bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/50 rounded-lg p-2.5"
                   >
-                    <div class="flex items-center gap-2">
-                      <input
+                    <div
+                      class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-start gap-2"
+                    >
+                      <PatchSourcePicker
                         v-model="m.archiveSubpath"
-                        list="patch-archive-dirs"
-                        :placeholder="$t('patch.archiveRootPlaceholder')"
-                        class="flex-1 min-w-0 px-2 py-1.5 bg-white dark:bg-gray-900/70 border border-gray-200 dark:border-gray-700/50 rounded text-gray-900 dark:text-white text-xs"
+                        :paths="archiveTree"
+                        :disabled="building"
                       />
                       <svg
-                        class="w-4 h-4 text-gray-400 flex-shrink-0"
+                        class="w-4 h-4 mt-1.5 text-gray-400"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -225,15 +239,15 @@
                           d="M14 5l7 7m0 0l-7 7m7-7H3"
                         />
                       </svg>
-                      <input
+                      <PatchDestinationInput
                         v-model="m.destSubpath"
-                        list="patch-dest-dirs"
-                        :placeholder="$t('patch.destRootPlaceholder')"
-                        class="flex-1 min-w-0 px-2 py-1.5 bg-white dark:bg-gray-900/70 border border-gray-200 dark:border-gray-700/50 rounded text-gray-900 dark:text-white text-xs"
+                        :directories="aircraftDirectories"
+                        :disabled="building"
                       />
                       <button
                         type="button"
-                        class="text-gray-400 hover:text-red-500 flex-shrink-0"
+                        class="mt-1.5 text-gray-400 hover:text-red-500 disabled:opacity-50"
+                        :disabled="building"
                         :title="$t('common.delete')"
                         @click="removeMapping(i)"
                       >
@@ -247,18 +261,11 @@
                         </svg>
                       </button>
                     </div>
-                    <div class="flex items-center gap-2 mt-1.5 pl-0.5">
-                      <span
-                        v-if="m.confidence"
-                        class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                        :class="confidenceClass(m.confidence)"
-                      >
-                        {{ $t('patch.confidence.' + m.confidence) }}
-                      </span>
-                      <span class="text-[11px] text-gray-500 dark:text-gray-400 truncate">
-                        {{ describeMapping(m) }}
-                      </span>
-                    </div>
+                    <p class="mt-1.5 break-all text-[11px] text-gray-500 dark:text-gray-400">
+                      {{ m.archiveSubpath || $t('patch.archiveRoot') }} →
+                      {{ m.destSubpath || $t('patch.aircraftRoot') }} ·
+                      {{ describeMapping(mappingPreviews[i]) }}
+                    </p>
                   </div>
                 </div>
 
@@ -285,15 +292,6 @@
               </div>
             </section>
           </div>
-
-          <!-- Shared datalists -->
-          <datalist id="patch-archive-dirs">
-            <option v-for="d in archiveTree" :key="d" :value="d"></option>
-          </datalist>
-          <datalist id="patch-dest-dirs">
-            <option value="liveries"></option>
-            <option v-for="d in aircraftSubdirs" :key="d" :value="d"></option>
-          </datalist>
 
           <!-- Actions -->
           <div class="flex justify-end gap-2 pt-4">
@@ -334,18 +332,21 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import PatchSourcePicker from './PatchSourcePicker.vue'
+import PatchDestinationInput from './PatchDestinationInput.vue'
 import {
   buildPatchInstallTasks,
   detectPatchTargetAircraft,
   inferPatchMappings,
   summarizePatchInstall,
 } from '@/services/patch-api'
+import { loadPatchMappings, savePatchMappings } from '@/services/patch-mapping-memory'
 import { getErrorMessage } from '@/types'
 import type {
   InstallTask,
   PatchAircraftCandidate,
-  PatchConfidence,
   PatchMappingInput,
+  PatchMappingPreview,
 } from '@/types'
 
 const props = defineProps<{
@@ -361,12 +362,8 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const store = useAppStore()
 
-interface EditableMapping {
-  archiveSubpath: string
-  destSubpath: string
-  confidence?: PatchConfidence
-  reason?: string
-  fileCount?: number
+interface EditableMapping extends PatchMappingInput {
+  id: number
 }
 
 const detecting = ref(true)
@@ -380,10 +377,13 @@ const recommendedFolder = ref<string | null>(null)
 const selectedFolder = ref('')
 
 const archiveTree = ref<string[]>([])
-const aircraftSubdirs = ref<string[]>([])
+const aircraftDirectories = ref<string[]>([])
 const unmapped = ref<string[]>([])
 const mappings = ref<EditableMapping[]>([])
 const mappingsFolder = ref('')
+const mappingPreviews = ref<PatchMappingPreview[]>([])
+const hasRememberedMappings = ref(false)
+const memoryError = ref(false)
 
 // Install summary (what will happen) — kept current via summarizePatchInstall.
 const totalFiles = ref(0)
@@ -418,6 +418,11 @@ let summarizeTimer: ReturnType<typeof setTimeout> | null = null
 let mounted = true
 let inferenceRequest = 0
 let summaryRequest = 0
+let nextMappingId = 0
+let mappingKey = ''
+let automaticMappings: PatchMappingInput[] = []
+let queuedMemorySnapshot: string | undefined
+let memoryRequest = 0
 
 onMounted(runDetect)
 onUnmounted(() => {
@@ -461,11 +466,14 @@ async function runInfer(folder: string) {
   const request = ++inferenceRequest
   const isCurrent = () => mounted && request === inferenceRequest && folder === selectedFolder.value
   mappingsFolder.value = ''
+  mappingKey = ''
+  hasRememberedMappings.value = false
+  memoryError.value = false
   backupEnabled.value = true
   inferring.value = true
   mappings.value = []
   archiveTree.value = []
-  aircraftSubdirs.value = []
+  aircraftDirectories.value = []
   unmapped.value = []
   invalidateSummary()
   if (!folder) {
@@ -476,22 +484,34 @@ async function runInfer(folder: string) {
   try {
     const plan = await inferPatchMappings(props.archivePath, store.xplanePath, folder)
     if (!isCurrent()) return
+    let remembered: PatchMappingInput[] | null = null
+    let canRemember = true
+    try {
+      remembered = await loadPatchMappings(plan.mappingKey)
+    } catch {
+      canRemember = false
+    }
+    if (!isCurrent()) return
+    mappingKey = canRemember ? plan.mappingKey : ''
+    memoryError.value = !canRemember
+    queuedMemorySnapshot = JSON.stringify(remembered)
+    hasRememberedMappings.value = remembered !== null
+    automaticMappings = plan.suggestedMappings.map(({ archiveSubpath, destSubpath }) => ({
+      archiveSubpath,
+      destSubpath,
+    }))
     archiveTree.value = plan.archiveTree
-    aircraftSubdirs.value = plan.aircraftSubdirs
-    unmapped.value = plan.unmapped
+    aircraftDirectories.value = plan.aircraftDirectories
     mappingsFolder.value = folder
     inferring.value = false
-    mappings.value = plan.suggestedMappings.map((m) => ({
-      archiveSubpath: m.archiveSubpath,
-      destSubpath: m.destSubpath,
-      confidence: m.confidence,
-      reason: m.reason,
-      fileCount: m.fileCount,
-    }))
+    setMappings(remembered ?? automaticMappings)
     // Surface the editor automatically when the plan needs a human decision.
     advancedOpen.value =
-      unmapped.value.length > 0 ||
-      mappings.value.some((m) => m.reason === 'noAnchorDefaultRoot' || m.confidence === 'low')
+      remembered !== null ||
+      plan.unmapped.length > 0 ||
+      plan.suggestedMappings.some(
+        (m) => m.reason === 'noAnchorDefaultRoot' || m.confidence === 'low',
+      )
   } catch (e) {
     if (isCurrent()) errorMsg.value = getErrorMessage(e)
   } finally {
@@ -503,17 +523,41 @@ function onAircraftChange() {
   if (!building.value) runInfer(selectedFolder.value)
 }
 
-/** De-duplicated mapping inputs for the backend (shared by summary + install). */
 function mappingInputs(): PatchMappingInput[] {
-  const seen = new Set<string>()
-  return mappings.value
-    .map((m) => ({ archiveSubpath: m.archiveSubpath.trim(), destSubpath: m.destSubpath.trim() }))
-    .filter((m) => {
-      const key = `${m.archiveSubpath}|${m.destSubpath}`
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
+  return mappings.value.map(({ archiveSubpath, destSubpath }) => ({ archiveSubpath, destSubpath }))
+}
+
+function setMappings(inputs: PatchMappingInput[]) {
+  mappings.value = inputs.map((input) => ({ ...input, id: nextMappingId++ }))
+}
+
+async function rememberMappings(inputs: PatchMappingInput[] | null) {
+  const key = mappingKey
+  if (!key) return
+  const snapshot = JSON.stringify(inputs)
+  if (snapshot === queuedMemorySnapshot) return
+  if (queuedMemorySnapshot === 'null' && snapshot === JSON.stringify(automaticMappings)) return
+  queuedMemorySnapshot = snapshot
+  const request = ++memoryRequest
+  const inference = inferenceRequest
+  const isCurrent = () => mounted && request === memoryRequest && inference === inferenceRequest
+  try {
+    await savePatchMappings(key, inputs)
+    if (isCurrent()) {
+      hasRememberedMappings.value = inputs !== null
+      memoryError.value = false
+    }
+  } catch {
+    if (isCurrent()) {
+      queuedMemorySnapshot = undefined
+      memoryError.value = true
+    }
+  }
+}
+
+function resetMappings() {
+  void rememberMappings(null)
+  setMappings(automaticMappings)
 }
 
 function invalidateSummary() {
@@ -523,6 +567,8 @@ function invalidateSummary() {
   totalFiles.value = 0
   overwriteCount.value = 0
   planId.value = ''
+  mappingPreviews.value = []
+  unmapped.value = []
   summarizing.value = false
 }
 
@@ -532,14 +578,18 @@ function scheduleSummarize() {
     !mounted ||
     inferring.value ||
     mappingsFolder.value !== selectedFolder.value ||
-    !selectedFolder.value ||
-    !mappings.value.length
+    !selectedFolder.value
   ) {
     return
   }
   // Invalidate in-flight previews immediately, including during the debounce.
   const request = summaryRequest
   errorMsg.value = ''
+  if (!mappings.value.length) {
+    unmapped.value = [...new Set(archiveTree.value.map((path) => path.split('/')[0]!))]
+    void rememberMappings([])
+    return
+  }
   summarizing.value = true
   summarizeTimer = setTimeout(() => {
     summarizeTimer = null
@@ -563,6 +613,9 @@ async function runSummarize(request: number) {
     totalFiles.value = summary.totalFiles
     overwriteCount.value = summary.overwriteCount
     planId.value = summary.planId
+    mappingPreviews.value = summary.mappingPreviews
+    unmapped.value = summary.unmapped
+    void rememberMappings(inputs)
   } catch (e) {
     if (isCurrent()) errorMsg.value = getErrorMessage(e)
   } finally {
@@ -574,42 +627,20 @@ function addMapping(archiveSubpath = '') {
   if (inferring.value || building.value || mappingsFolder.value !== selectedFolder.value) return
   // Suggest liveries as the destination when the source folder looks like one.
   const dest = /(^|\/)liveries$/i.test(archiveSubpath) ? 'liveries' : ''
-  mappings.value.push({ archiveSubpath, destSubpath: dest })
-  // Once an unmapped entry is added as a mapping, drop it from the hint list.
-  unmapped.value = unmapped.value.filter((u) => u !== archiveSubpath)
+  mappings.value.push({ archiveSubpath, destSubpath: dest, id: nextMappingId++ })
 }
 
 function removeMapping(i: number) {
   mappings.value.splice(i, 1)
 }
 
-function confidenceClass(c: PatchConfidence): string {
-  switch (c) {
-    case 'high':
-      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
-    case 'medium':
-      return 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
-    default:
-      return 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-  }
-}
-
-function describeMapping(m: EditableMapping): string {
-  const from = m.archiveSubpath || t('patch.archiveRoot')
-  const to = m.destSubpath || t('patch.aircraftRoot')
-  let reason = ''
-  if (m.reason?.startsWith('matchedExisting:')) {
-    reason = ' · ' + t('patch.reasonMatched', { count: Number(m.reason.split(':')[1]) || 0 })
-  } else if (m.reason === 'matchedLayout') {
-    reason = ' · ' + t('patch.reasonLayout')
-  } else if (m.reason === 'liveryFolder') {
-    reason = ' · ' + t('patch.reasonLivery')
-  } else if (m.reason === 'noAnchorDefaultRoot') {
-    reason = ' · ' + t('patch.reasonNoAnchor')
-  } else if (m.reason === 'couldNotInspectArchive') {
-    reason = ' · ' + t('patch.reasonNoListing')
-  }
-  return `${from} → ${to}${reason}`
+function describeMapping(preview: PatchMappingPreview | undefined): string {
+  if (summarizing.value) return t('patch.mappingChecking')
+  if (!preview) return t('patch.mappingUnavailable')
+  return t(preview.destinationExists ? 'patch.mappingExistingFolder' : 'patch.mappingNewFolder', {
+    overwrite: preview.overwriteCount,
+    added: preview.fileCount - preview.overwriteCount,
+  })
 }
 
 async function confirmInstall() {

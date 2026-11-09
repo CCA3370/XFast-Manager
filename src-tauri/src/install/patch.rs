@@ -79,8 +79,18 @@ pub struct PatchPlan {
     pub suggested_mappings: Vec<PatchMapping>,
     /// Archive top-level entries not covered by any suggested mapping.
     pub unmapped: Vec<String>,
-    /// Immediate sub-directories of the target aircraft (for the dest dropdown).
-    pub aircraft_subdirs: Vec<String>,
+    /// Existing destination directories, relative to the aircraft root.
+    pub aircraft_directories: Vec<String>,
+    /// Local memory key for this aircraft and archive layout.
+    pub mapping_key: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchMappingPreview {
+    pub file_count: usize,
+    pub overwrite_count: usize,
+    pub destination_exists: bool,
 }
 
 /// Plain-language preview of what an install will do, for the confirmation UI.
@@ -93,6 +103,8 @@ pub struct PatchInstallSummary {
     /// overwritten — the rest are newly added).
     pub overwrite_count: usize,
     pub plan_id: String,
+    pub mapping_previews: Vec<PatchMappingPreview>,
+    pub unmapped: Vec<String>,
 }
 
 // --------------------------------------------------------------------------
@@ -135,12 +147,21 @@ pub fn infer_mappings(
         .ok_or_else(|| anyhow!("Aircraft folder not found: {}", aircraft_folder))?;
     let (suggested_mappings, unmapped) =
         build_mapping_plan(&files, &dirs, candidate, &aircraft_subdirs);
+    let aircraft_root = fs::canonicalize(aircraft_dir)?;
+    let mut hash = Sha256::new();
+    hash.update(serde_json::to_vec(&(
+        fs::canonicalize(xplane_path)?,
+        &aircraft_root,
+        &candidate.folder_name,
+        &files,
+    ))?);
 
     Ok(PatchPlan {
         archive_tree,
         suggested_mappings,
         unmapped,
-        aircraft_subdirs,
+        aircraft_directories: matching::directory_tree(&aircraft_root)?,
+        mapping_key: format!("{:x}", hash.finalize()),
     })
 }
 
@@ -319,8 +340,12 @@ pub fn summarize_install(
     let aircraft_dir = resolve_aircraft_dir_by_name(xplane_path, aircraft_folder)
         .ok_or_else(|| anyhow!("Aircraft folder not found: {}", aircraft_folder))?;
     let aircraft_dir = fs::canonicalize(aircraft_dir)?;
-    let writes = plan_install_files(&list_archive_files(archive_path)?, &aircraft_dir, mappings)?;
-    install_summary(archive_path, &aircraft_dir, &writes)
+    let files = list_archive_files(archive_path)?;
+    let planned = plan_patch(&files, &aircraft_dir, mappings)?;
+    let mut summary = install_summary(archive_path, &aircraft_dir, &planned.writes)?;
+    summary.mapping_previews = planned.previews;
+    summary.unmapped = matching::uncovered(&files, &planned.archive_prefixes);
+    Ok(summary)
 }
 
 fn install_summary(
@@ -341,6 +366,8 @@ fn install_summary(
         total_files: writes.len(),
         overwrite_count: writes.iter().filter(|file| file.overwrite).count(),
         plan_id: format!("{:x}", hash.finalize()),
+        mapping_previews: Vec::new(),
+        unmapped: Vec::new(),
     })
 }
 
@@ -349,10 +376,26 @@ fn plan_install_files(
     root: &Path,
     mappings: &[PatchMappingInput],
 ) -> Result<Vec<PatchFileWrite>> {
+    Ok(plan_patch(files, root, mappings)?.writes)
+}
+
+struct PlannedPatch {
+    writes: Vec<PatchFileWrite>,
+    previews: Vec<PatchMappingPreview>,
+    archive_prefixes: Vec<String>,
+}
+
+fn plan_patch(
+    files: &[String],
+    root: &Path,
+    mappings: &[PatchMappingInput],
+) -> Result<PlannedPatch> {
     if mappings.is_empty() {
         return Err(anyhow!("No patch mappings provided"));
     }
     let mut writes = Vec::new();
+    let mut previews = Vec::with_capacity(mappings.len());
+    let mut archive_prefixes = Vec::with_capacity(mappings.len());
     for mapping in mappings {
         let archive_sub = safe_relative_subpath(&mapping.archive_subpath)?;
         let dest_sub = safe_relative_subpath(&mapping.dest_subpath)?;
@@ -391,10 +434,23 @@ fn plan_install_files(
         if writes.len() == start {
             return Err(anyhow!("Patch mapping contains no files: {}", archive_sub));
         }
+        previews.push(PatchMappingPreview {
+            file_count: writes.len() - start,
+            overwrite_count: writes[start..]
+                .iter()
+                .filter(|write| write.overwrite)
+                .count(),
+            destination_exists: root.join(dest_sub).is_dir(),
+        });
+        archive_prefixes.push(archive_sub);
     }
     writes.sort_by(|a, b| a.destination.cmp(&b.destination));
     validate_write_set(root, &writes)?;
-    Ok(writes)
+    Ok(PlannedPatch {
+        writes,
+        previews,
+        archive_prefixes,
+    })
 }
 
 fn validate_write_set(root: &Path, writes: &[PatchFileWrite]) -> Result<()> {
@@ -522,14 +578,7 @@ fn validate_destination_inner(
         probe.push(component.as_os_str());
         match fs::symlink_metadata(&probe) {
             Ok(metadata) => {
-                #[cfg(windows)]
-                let is_link = {
-                    use std::os::windows::fs::MetadataExt;
-                    metadata.file_attributes() & 0x400 != 0 // FILE_ATTRIBUTE_REPARSE_POINT
-                };
-                #[cfg(not(windows))]
-                let is_link = metadata.file_type().is_symlink();
-                if is_link {
+                if is_filesystem_link(&metadata) {
                     return Err(anyhow!(
                         "Patch path contains a filesystem link: {}",
                         probe.display()
@@ -541,6 +590,18 @@ fn validate_destination_inner(
         }
     }
     Ok(())
+}
+
+fn is_filesystem_link(metadata: &fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        metadata.file_attributes() & 0x400 != 0 // FILE_ATTRIBUTE_REPARSE_POINT
+    }
+    #[cfg(not(windows))]
+    {
+        metadata.file_type().is_symlink()
+    }
 }
 
 // --------------------------------------------------------------------------
@@ -1355,7 +1416,7 @@ fn confidence_for(matched: usize, sample: usize) -> Confidence {
 // Aircraft path resolution
 // --------------------------------------------------------------------------
 
-/// Immediate sub-directory names of `dir` (for the destination dropdown).
+/// Immediate sub-directory names used to infer the automatic mappings.
 fn immediate_subdirs(dir: &Path) -> Vec<String> {
     let mut subs = Vec::new();
     if let Ok(rd) = std::fs::read_dir(dir) {
@@ -1935,6 +1996,87 @@ mod tests {
         .unwrap();
         assert_eq!(writes[0].destination, "plane.xfma");
         assert!(writes[0].overwrite);
+    }
+
+    #[test]
+    fn preview_reflects_the_selected_destination_for_each_mapping() {
+        let ac = make_aircraft(&["objects/deep/v2/panel.obj", "objects/deep/v2/old.obj"]);
+        let files = to_owned(&["base/panel.obj", "base/new.obj", "extras/readme.txt"]);
+        let planned = plan_patch(
+            &files,
+            ac.path(),
+            &[
+                PatchMappingInput {
+                    archive_subpath: "base".into(),
+                    dest_subpath: "objects/deep/v2".into(),
+                },
+                PatchMappingInput {
+                    archive_subpath: "extras/readme.txt".into(),
+                    dest_subpath: "custom/another/deep/folder".into(),
+                },
+            ],
+        )
+        .unwrap();
+        assert_eq!(planned.writes.len(), 3);
+        assert_eq!(planned.previews[0].file_count, 2);
+        assert_eq!(planned.previews[0].overwrite_count, 1);
+        assert!(planned.previews[0].destination_exists);
+        assert_eq!(planned.previews[1].file_count, 1);
+        assert_eq!(planned.previews[1].overwrite_count, 0);
+        assert!(!planned.previews[1].destination_exists);
+        assert!(matching::uncovered(&files, &planned.archive_prefixes).is_empty());
+    }
+
+    #[test]
+    fn mapping_memory_keys_follow_archive_layout_and_aircraft() {
+        use std::io::Write;
+
+        let fixture = tempfile::tempdir().unwrap();
+        let xplane = fixture.path().to_str().unwrap();
+        for folder in ["A321", "A321-copy"] {
+            let aircraft = fixture.path().join("Aircraft").join(folder);
+            for relative in ["objects/nested/two/three", "_xfast_patch_backups/session"] {
+                fs::create_dir_all(aircraft.join(relative)).unwrap();
+            }
+            fs::write(aircraft.join("A321.acf"), b"acf").unwrap();
+        }
+        let archive = |name: &str, entry: &str| {
+            let path = fixture.path().join(name);
+            let mut writer = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+            writer
+                .start_file(entry, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(name.as_bytes()).unwrap();
+            writer.finish().unwrap();
+            path
+        };
+        let first = archive("first.zip", "base/patch.obj");
+        let copy = archive("copy.zip", "base/patch.obj");
+        let changed = archive("changed.zip", "base/other.obj");
+        let plan = infer_mappings(&first, xplane, "A321").unwrap();
+        assert!(plan
+            .aircraft_directories
+            .contains(&"objects/nested/two/three".to_string()));
+        assert!(plan
+            .aircraft_directories
+            .iter()
+            .all(|dir| !dir.starts_with("_xfast_patch_backups")));
+        assert_eq!(
+            plan.mapping_key,
+            infer_mappings(&copy, xplane, "A321").unwrap().mapping_key
+        );
+        assert_ne!(
+            plan.mapping_key,
+            infer_mappings(&changed, xplane, "A321")
+                .unwrap()
+                .mapping_key
+        );
+        assert_ne!(
+            plan.mapping_key,
+            infer_mappings(&first, xplane, "A321-copy")
+                .unwrap()
+                .mapping_key
+        );
     }
 
     #[test]

@@ -181,7 +181,6 @@ export default {
     selectAircraft: 'Elige un avión',
     noReliableMatch:
       'No hay una coincidencia clara. Selecciona el avión al que va destinado este parche.',
-    matchingFiles: '{matched}/{total} archivos coincidentes',
     title: 'Instalar parche de avión',
     targetAircraft: 'Avión de destino',
     detecting: 'Detectando avión coincidente…',
@@ -196,6 +195,18 @@ export default {
     addMapping: 'Añadir asignación',
     inferring: 'Analizando el contenido del parche…',
     archiveRootPlaceholder: '(raíz del comprimido)',
+    sourcePath: 'Ruta de origen',
+    destinationPath: 'Carpeta de destino',
+    searchArchive: 'Buscar rutas en el archivo',
+    noSourceResults: 'No se encontraron rutas.',
+    mappingChecking: 'Comprobando la asignación…',
+    mappingUnavailable: 'Vista previa no disponible. Comprueba las rutas anteriores.',
+    mappingExistingFolder: 'Carpeta existente · {overwrite} reemplazados · {added} añadidos',
+    mappingNewFolder: 'Carpeta nueva · {overwrite} reemplazados · {added} añadidos',
+    rememberedMappings:
+      'Se han guardado las asignaciones personalizadas para esta aeronave y esta estructura de archivo.',
+    resetMappings: 'Restaurar asignaciones automáticas',
+    mappingMemoryError: 'No se pudo acceder a las asignaciones guardadas.',
     destRootPlaceholder: '(raíz del avión)',
     archiveRoot: 'raíz del comprimido',
     aircraftRoot: 'raíz del avión',
@@ -212,16 +223,6 @@ export default {
     maybePatchMessage:
       'Este comprimido no es un complemento reconocido. ¿Instalarlo como parche para un avión existente?',
     noArchive: 'No hay ningún comprimido de parche disponible.',
-    reasonMatched: 'coincide con {count} archivos existentes',
-    reasonLayout: 'Coincide la estructura de carpetas del avión',
-    reasonLivery: 'carpeta de libreas',
-    reasonNoAnchor: 'sin ancla: se usa la raíz del avión',
-    reasonNoListing: 'no se pudo inspeccionar el comprimido',
-    confidence: {
-      high: 'Alta',
-      medium: 'Media',
-      low: 'Baja',
-    },
   },
   luaCompanion: {
     companions: 'Archivos complementarios',

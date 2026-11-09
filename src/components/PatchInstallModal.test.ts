@@ -2,7 +2,7 @@
 
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { PatchPlan, PatchInstallSummary } from '@/types'
+import type { PatchPlan, PatchInstallSummary, PatchMappingInput } from '@/types'
 
 const api = vi.hoisted(() => ({
   detectPatchTargetAircraft: vi.fn(),
@@ -11,6 +11,17 @@ const api = vi.hoisted(() => ({
   buildPatchInstallTasks: vi.fn(),
 }))
 vi.mock('@/services/patch-api', () => api)
+const savedMappings = vi.hoisted(() => new Map<string, PatchMappingInput[]>())
+vi.mock('@/services/storage', () => ({
+  STORAGE_KEYS: { PATCH_MAPPING_PREFIX: 'patch.' },
+  getItem: async (key: string) => savedMappings.get(key) ?? null,
+  setItem: async (key: string, value: PatchMappingInput[]) => {
+    savedMappings.set(key, value)
+  },
+  removeItem: async (key: string) => {
+    savedMappings.delete(key)
+  },
+}))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ xplanePath: '/sim' }) }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
@@ -28,8 +39,14 @@ function deferred<T>() {
 
 function plan(name: string): PatchPlan {
   return {
-    archiveTree: [name],
-    aircraftSubdirs: [`${name}-dest`],
+    archiveTree: [name, 'extras', 'extras/deep', 'extras/deep/a.obj'],
+    aircraftDirectories: [
+      `${name}-dest`,
+      'objects/deep/parts/left',
+      'objects/deep/parts/right',
+      'objects/deep/parts/center',
+    ],
+    mappingKey: name,
     unmapped: [],
     suggestedMappings: [
       {
@@ -43,9 +60,26 @@ function plan(name: string): PatchPlan {
   }
 }
 
+function summary(overrides: Partial<PatchInstallSummary> = {}): PatchInstallSummary {
+  return {
+    totalFiles: 1,
+    overwriteCount: 1,
+    planId: 'preview',
+    mappingPreviews: [{ fileCount: 1, overwriteCount: 1, destinationExists: true }],
+    unmapped: [],
+    ...overrides,
+  }
+}
+
 let wrapper: VueWrapper
 function installButton() {
   return wrapper.findAll('button').find((button) => button.text() === 'patch.install')!
+}
+function destinationInputs() {
+  return wrapper.findAll<HTMLInputElement>('input[aria-label="patch.destinationPath"]')
+}
+function button(label: string) {
+  return wrapper.findAll('button').find((candidate) => candidate.text() === label)!
 }
 async function open() {
   wrapper = mount(PatchInstallModal, {
@@ -62,16 +96,13 @@ async function preview() {
 beforeEach(() => {
   vi.useFakeTimers()
   vi.resetAllMocks()
+  savedMappings.clear()
   api.detectPatchTargetAircraft.mockResolvedValue({
     candidates: ['A', 'B'].map((folderName) => ({ folderName, displayName: folderName })),
     recommendedFolder: 'A',
   })
   api.inferPatchMappings.mockResolvedValue(plan('A'))
-  api.summarizePatchInstall.mockResolvedValue({
-    totalFiles: 1,
-    overwriteCount: 1,
-    planId: 'preview',
-  })
+  api.summarizePatchInstall.mockResolvedValue(summary())
   api.buildPatchInstallTasks.mockResolvedValue([])
 })
 afterEach(() => {
@@ -87,7 +118,7 @@ describe('patch installation confirmation', () => {
     await preview()
     expect(installButton().attributes('disabled')).toBeDefined()
     expect(api.buildPatchInstallTasks).not.toHaveBeenCalled()
-    pending.resolve({ totalFiles: 1, overwriteCount: 1, planId: 'preview' })
+    pending.resolve(summary())
     await flushPromises()
     await installButton().trigger('click')
     expect(api.buildPatchInstallTasks).toHaveBeenCalledWith(
@@ -138,11 +169,11 @@ describe('patch installation confirmation', () => {
     await wrapper.get('select').setValue('B')
     await wrapper.get('select').setValue('A')
     expect(installButton().attributes('disabled')).toBeDefined()
-    expect(wrapper.findAll('input[list="patch-archive-dirs"]')).toHaveLength(0)
+    expect(destinationInputs()).toHaveLength(0)
     older.resolve(plan('stale-B'))
     await flushPromises()
     expect(installButton().attributes('disabled')).toBeDefined()
-    expect(wrapper.findAll('input[list="patch-archive-dirs"]')).toHaveLength(0)
+    expect(destinationInputs()).toHaveLength(0)
     latest.resolve(plan('latest-A'))
     await flushPromises()
     await preview()
@@ -178,7 +209,7 @@ describe('patch installation confirmation', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('B unavailable')
     expect(installButton().attributes('disabled')).toBeDefined()
-    expect(wrapper.findAll('input[list="patch-archive-dirs"]')).toHaveLength(0)
+    expect(destinationInputs()).toHaveLength(0)
     expect(api.buildPatchInstallTasks).not.toHaveBeenCalled()
   })
 
@@ -194,11 +225,11 @@ describe('patch installation confirmation', () => {
     await wrapper.get('select').setValue('B')
     await flushPromises()
     await preview()
-    oldSummary.resolve({ totalFiles: 900, overwriteCount: 900, planId: 'preview' })
+    oldSummary.resolve(summary({ totalFiles: 900, overwriteCount: 900 }))
     await flushPromises()
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('patch.inferring')
-    newSummary.resolve({ totalFiles: 2, overwriteCount: 0, planId: 'preview' })
+    newSummary.resolve(summary({ totalFiles: 2, overwriteCount: 0 }))
     await flushPromises()
     expect(wrapper.text()).not.toContain('patch.filesOverwritten')
     expect(wrapper.get<HTMLInputElement>('input[type=checkbox]').element.checked).toBe(true)
@@ -216,8 +247,8 @@ describe('patch installation confirmation', () => {
     api.summarizePatchInstall.mockReturnValueOnce(oldSummary.promise)
     await open()
     await preview()
-    await wrapper.get('input[list="patch-dest-dirs"]').setValue('new-destination')
-    oldSummary.resolve({ totalFiles: 900, overwriteCount: 900, planId: 'preview' })
+    await destinationInputs()[0]!.setValue('new-destination')
+    oldSummary.resolve(summary({ totalFiles: 900, overwriteCount: 900 }))
     await flushPromises()
     expect(wrapper.text()).toContain('patch.inferring')
     expect(installButton().attributes('disabled')).toBeDefined()
@@ -240,6 +271,77 @@ describe('patch installation confirmation', () => {
     await flushPromises()
     await preview()
     expect(api.summarizePatchInstall).not.toHaveBeenCalled()
+  })
+
+  it('suggests two deep destinations and replaces the row preview as the path changes', async () => {
+    await open()
+    await preview()
+    expect(wrapper.get('select').text()).not.toContain('patch.matchingFiles')
+    expect(wrapper.text()).toContain('patch.mappingExistingFolder')
+    const destination = destinationInputs()[0]!
+    await destination.setValue('objects/deep/parts/')
+    const suggestions = destination.element.parentElement!.querySelectorAll('ul button')
+    expect([...suggestions].map((option) => option.textContent)).toEqual([
+      'objects/deep/parts/left',
+      'objects/deep/parts/right',
+    ])
+    await button('objects/deep/parts/left').trigger('click')
+    expect(destination.element.value).toBe('objects/deep/parts/left')
+    await destination.setValue('custom/deep/new')
+    expect(wrapper.text()).toContain('custom/deep/new · patch.mappingChecking')
+    expect(wrapper.text()).not.toContain('patch.mappingExistingFolder')
+    api.summarizePatchInstall.mockResolvedValueOnce(
+      summary({
+        overwriteCount: 0,
+        mappingPreviews: [{ fileCount: 1, overwriteCount: 0, destinationExists: false }],
+      }),
+    )
+    await preview()
+    expect(wrapper.text()).toContain('custom/deep/new · patch.mappingNewFolder')
+  })
+
+  it('remembers edits to source and destination, additions and deletions, and resets on request', async () => {
+    await open()
+    await preview()
+    await button('+ patch.addMapping').trigger('click')
+    await wrapper.findAll('button[aria-expanded]')[1]!.trigger('click')
+    const search = wrapper.get('input[type="search"]')
+    await search.setValue('deep/a.obj')
+    await search.trigger('keydown.enter')
+    await destinationInputs()[1]!.setValue('custom/deep/folder')
+    await preview()
+    expect(savedMappings.get('patch.A')).toEqual([
+      { archiveSubpath: 'A', destSubpath: 'A-dest' },
+      { archiveSubpath: 'extras/deep/a.obj', destSubpath: 'custom/deep/folder' },
+    ])
+    await wrapper.findAll('button[title="common.delete"]')[0]!.trigger('click')
+    await preview()
+    wrapper.unmount()
+
+    await open()
+    await preview()
+    expect(destinationInputs().map(({ element }) => element.value)).toEqual(['custom/deep/folder'])
+    expect(wrapper.text()).toContain('extras/deep/a.obj')
+    expect(wrapper.text()).toContain('patch.rememberedMappings')
+    await button('patch.resetMappings').trigger('click')
+    await preview()
+    expect(savedMappings.has('patch.A')).toBe(false)
+    expect(destinationInputs().map(({ element }) => element.value)).toEqual(['A-dest'])
+  })
+
+  it('keeps the last validated mapping when a later edit fails validation', async () => {
+    await open()
+    await preview()
+    await destinationInputs()[0]!.setValue('custom/good')
+    await preview()
+    api.summarizePatchInstall.mockRejectedValueOnce(new Error('invalid destination'))
+    await destinationInputs()[0]!.setValue('../outside')
+    await preview()
+    expect(wrapper.text()).toContain('patch.mappingUnavailable')
+    expect(installButton().attributes('disabled')).toBeDefined()
+    expect(savedMappings.get('patch.A')).toEqual([
+      { archiveSubpath: 'A', destSubpath: 'custom/good' },
+    ])
   })
 
   it('cancels deferred preview work when the modal unmounts', async () => {

@@ -180,7 +180,6 @@ export default {
     selectAircraft: 'Escolha uma aeronave',
     noReliableMatch:
       'Não há correspondência clara. Selecione a aeronave à qual esta correção se destina.',
-    matchingFiles: '{matched}/{total} arquivos correspondentes',
     title: 'Instalar correção de aeronave',
     targetAircraft: 'Aeronave de destino',
     detecting: 'Detectando aeronave correspondente…',
@@ -195,6 +194,18 @@ export default {
     addMapping: 'Adicionar mapeamento',
     inferring: 'Analisando o conteúdo da correção…',
     archiveRootPlaceholder: '(raiz do arquivo)',
+    sourcePath: 'Caminho de origem',
+    destinationPath: 'Pasta de destino',
+    searchArchive: 'Buscar caminhos no arquivo',
+    noSourceResults: 'Nenhum caminho encontrado.',
+    mappingChecking: 'Verificando o mapeamento…',
+    mappingUnavailable: 'Prévia indisponível. Confira os caminhos acima.',
+    mappingExistingFolder: 'Pasta existente · {overwrite} sobrescritos · {added} adicionados',
+    mappingNewFolder: 'Nova pasta · {overwrite} sobrescritos · {added} adicionados',
+    rememberedMappings:
+      'Mapeamentos personalizados lembrados para esta aeronave e estrutura do arquivo.',
+    resetMappings: 'Restaurar mapeamentos automáticos',
+    mappingMemoryError: 'Não foi possível acessar os mapeamentos salvos.',
     destRootPlaceholder: '(raiz da aeronave)',
     archiveRoot: 'raiz do arquivo',
     aircraftRoot: 'raiz da aeronave',
@@ -211,16 +222,6 @@ export default {
     maybePatchMessage:
       'Este arquivo não é um complemento reconhecido. Instalá-lo como correção para uma aeronave existente?',
     noArchive: 'Nenhum arquivo de correção disponível.',
-    reasonMatched: 'corresponde a {count} arquivos existentes',
-    reasonLayout: 'A estrutura de pastas da aeronave corresponde',
-    reasonLivery: 'pasta de pinturas',
-    reasonNoAnchor: 'sem âncora — raiz da aeronave por padrão',
-    reasonNoListing: 'não foi possível inspecionar o arquivo',
-    confidence: {
-      high: 'Alta',
-      medium: 'Média',
-      low: 'Baixa',
-    },
   },
   luaCompanion: {
     companions: 'Arquivos complementares',

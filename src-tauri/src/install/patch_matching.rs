@@ -110,6 +110,29 @@ pub(super) fn file_tree(dir: &Path) -> Result<HashSet<String>> {
     Ok(tree)
 }
 
+pub(super) fn directory_tree(root: &Path) -> Result<Vec<String>> {
+    let mut dirs = Vec::new();
+    let mut walk = WalkDir::new(root).min_depth(1).into_iter();
+    while let Some(entry) = walk.next() {
+        let entry = entry.context("Cannot inspect aircraft directories")?;
+        if !entry.file_type().is_dir() {
+            continue;
+        }
+        let relative = entry.path().strip_prefix(root)?.to_str();
+        if let Some(relative) = relative.filter(|_| include_entry(&entry)) {
+            if let Ok(path) = super::safe_relative_subpath(relative) {
+                if !super::is_filesystem_link(&entry.metadata()?) {
+                    dirs.push(path);
+                    continue;
+                }
+            }
+        }
+        walk.skip_current_dir();
+    }
+    dirs.sort_by_cached_key(|path| path.to_lowercase());
+    Ok(dirs)
+}
+
 /// Every possible wrapper is evaluated, without truncating the archive or
 /// imposing a depth/landmark limit. Building the catalogue visits each file once
 /// per ancestor rather than scanning all files for each directory.

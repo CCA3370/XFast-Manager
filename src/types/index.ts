@@ -357,19 +357,27 @@ export interface PatchMapping {
 }
 
 export interface PatchPlan {
-  /** Directory paths inside the archive, for manual mapping edits. */
+  /** Directory and file paths inside the archive, for manual mapping edits. */
   archiveTree: string[]
   suggestedMappings: PatchMapping[]
   /** Archive top-level entries not covered by any suggested mapping. */
   unmapped: string[]
-  /** Immediate sub-directories of the target aircraft (for the dest dropdown). */
-  aircraftSubdirs: string[]
+  /** Existing directories at any depth under the target aircraft. */
+  aircraftDirectories: string[]
+  /** Local memory key for this aircraft and archive layout. */
+  mappingKey: string
 }
 
 /** A user-confirmed mapping sent back to the backend to build install tasks. */
 export interface PatchMappingInput {
   archiveSubpath: string
   destSubpath: string
+}
+
+export interface PatchMappingPreview {
+  fileCount: number
+  overwriteCount: number
+  destinationExists: boolean
 }
 
 /** Plain-language preview of what a patch install will do. */
@@ -380,6 +388,8 @@ export interface PatchInstallSummary {
   overwriteCount: number
   /** Confirms that installation still matches the preview. */
   planId: string
+  mappingPreviews: PatchMappingPreview[]
+  unmapped: string[]
 }
 
 export interface PatchBackupSession {
