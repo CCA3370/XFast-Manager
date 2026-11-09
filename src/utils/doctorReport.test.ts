@@ -113,6 +113,22 @@ describe('doctor report export', () => {
     }
   })
 
+  it('uses the same run’s installation channel for repair guidance in an export', () => {
+    const run = reportRun()
+    run.checks = [
+      { id: 'installation.structure', section: 'installation', outcome: 'critical', durationMs: 1 },
+      {
+        id: 'installation.location',
+        section: 'installation',
+        outcome: 'pass',
+        params: { steam: 1 },
+        durationMs: 1,
+      },
+    ]
+    const output = buildDoctorReport(run, 'markdown', { xplanePath: '/xplane' })
+    expect(output).toContain('Suggested action: Close X-Plane and use Steam’s Verify')
+  })
+
   it('does not replace similarly prefixed paths or remove log explanations', () => {
     const output = redactDoctorText('C:/X-Plane Backup/plugins/foo.xpl: file not found', {
       xplanePath: 'C:/X-Plane',

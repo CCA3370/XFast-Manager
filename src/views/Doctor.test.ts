@@ -186,6 +186,28 @@ describe('Health page', () => {
     const panel = wrapper.get('[data-testid="health-detail-panel"]')
     expect(panel.text()).toContain('文件检查未完成')
     expect(panel.findAll('dd').map((value) => value.text())).toEqual(['0', '是'])
+    expect(wrapper.get('[data-testid="health-suggestion"]').text()).toContain('只扫描了部分文件')
+    wrapper.unmount()
+  })
+
+  it('offers manual scenery guidance when automatic sorting is turned off', async () => {
+    const { wrapper, appStore, doctorStore } = await mountDoctor('/xplane')
+    appStore.autoSortScenery = true
+    doctorStore.currentRun = runFixture('completed', [
+      {
+        id: 'scenery.load_order',
+        section: 'scenery',
+        outcome: 'warning',
+        durationMs: 1,
+        remediation: { id: 'sort_scenery', kind: 'automatic', risk: 'safe' },
+      },
+    ])
+    await nextTick()
+    expect(wrapper.get('[data-testid="health-suggestion"]').text()).toContain('before sorting')
+    appStore.autoSortScenery = false
+    await nextTick()
+    expect(wrapper.get('[data-testid="health-suggestion"]').text()).toContain('Scenery Management')
+    expect(wrapper.get('[data-testid="health-detail-panel"]').find('button').exists()).toBe(false)
     wrapper.unmount()
   })
 

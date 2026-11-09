@@ -518,10 +518,14 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
       const registrationErrors = report.sceneryRegistrationError
         ? [report.sceneryRegistrationError]
         : []
+      const linksLimit = report.sceneryLinksCapped
+        ? 'Custom Scenery links: inspection limit reached'
+        : null
+      const pluginLimit = plugins?.capped ? 'Plugin files: inspection limit reached' : null
       const limits = [
-        ...(report.sceneryLinksCapped ? ['Custom Scenery links: inspection limit reached'] : []),
+        ...(linksLimit ? [linksLimit] : []),
         ...(sceneryLimit ? [sceneryLimit] : []),
-        ...(plugins?.capped ? ['Plugin files: inspection limit reached'] : []),
+        ...(pluginLimit ? [pluginLimit] : []),
       ]
       const scanErrors = [
         ...new Set([
@@ -599,14 +603,18 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
               report.sceneryLinksCapped ? 'unavailable' : 'pass',
             ],
           ] as const
-        ).map(([id, paths, errors, fallback]) =>
-          result(
+        ).map(([id, paths, errors, fallback]) => {
+          const limit = id === 'scenery.broken_links' ? linksLimit : null
+          return result(
             id,
             'scenery',
             paths.length ? 'warning' : errors.length ? 'unavailable' : fallback,
             {
-              params: { count: paths.length },
-              evidence: evidence([...paths, ...errors], 'path'),
+              params: {
+                count: paths.length,
+                ...(limit ? { capped: 1, errors: errors.length } : {}),
+              },
+              evidence: evidence([...paths, ...errors, ...(limit ? [limit] : [])], 'path'),
               remediation: paths.length
                 ? {
                     id: 'manage_scenery',
@@ -616,8 +624,8 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
                   }
                 : undefined,
             },
-          ),
-        ),
+          )
+        }),
         result(
           'stability.log_freshness',
           'stability',
@@ -637,6 +645,11 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
       }
       if (context.mode === 'full') {
         const incompatible = plugins?.incompatible ?? []
+        const pluginErrors = plugins?.errors ?? []
+        const pluginCoverage: Record<string, number> = pluginLimit
+          ? { capped: 1, errors: pluginErrors.length }
+          : {}
+        const pluginAccessEvidence = [...pluginErrors, ...(pluginLimit ? [pluginLimit] : [])]
         checks.push(
           result(
             'scenery.files',
@@ -652,7 +665,7 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
               params: {
                 checked: files?.checked ?? 0,
                 count: files?.problems.length ?? 0,
-                ...(sceneryLimit ? { capped: 1 } : {}),
+                ...(sceneryLimit ? { capped: 1, errors: files?.errors.length ?? 0 } : {}),
               },
               evidence: evidence(
                 [
@@ -684,8 +697,8 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
                   ? 'pass'
                   : 'notApplicable',
             {
-              params: { count: incompatible.length },
-              evidence: evidence(incompatible, 'path'),
+              params: { count: incompatible.length, ...pluginCoverage },
+              evidence: evidence([...incompatible, ...pluginAccessEvidence], 'path'),
               remediation: incompatible.length
                 ? {
                     id: 'manage_plugins',
@@ -713,11 +726,9 @@ function createInspectionCheck(context: DoctorCheckContext): DoctorCheckDefiniti
                 checked: plugins?.checked ?? 0,
                 count: plugins?.problems.length ?? 0,
                 loaderScoped: 1,
+                ...pluginCoverage,
               },
-              evidence: evidence(
-                plugins?.problems.length ? plugins.problems : (plugins?.errors ?? []),
-                'path',
-              ),
+              evidence: evidence([...(plugins?.problems ?? []), ...pluginAccessEvidence], 'path'),
               remediation: plugins?.problems.length
                 ? {
                     id: 'manage_plugins',
@@ -1054,7 +1065,7 @@ function createFlattenCheck(context: DoctorCheckContext): DoctorCheckDefinition 
               ? 'pass'
               : 'notApplicable',
           {
-            params: { count: drifted.length + missing.length },
+            params: { count: drifted.length + missing.length, sourceMissing: missing.length },
             evidence: evidence(
               [...drifted, ...missing].map(
                 (item) => `${item.icao}: ${item.sourcePath} (${item.status})`,
