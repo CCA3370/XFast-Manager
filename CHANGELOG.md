@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Install Drop Zone** - Keeps its side margins when dragging files into a wide window.
+- **Install Drop Zone** - Expands slightly when dragging files in and stays clear of the edges, even in wide windows.
 
 ## [1.3.0] - 2026-11-09
 

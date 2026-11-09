@@ -1427,6 +1427,7 @@ function handleCompletionConfirm() {
 }
 
 .drop-zone-card.drag-over {
+  margin: -6px;
   border-color: #3b82f6;
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(147, 51, 234, 0.1));
   box-shadow: inset 0 0 40px rgba(59, 130, 246, 0.2);
