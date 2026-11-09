@@ -10,27 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <div class="changelog-important">
   <p class="changelog-important-label">IMPORTANT FOR USERS</p>
   <p class="changelog-important-title">About Scenery Auto Sorting</p>
-  <p class="changelog-important-body">The automatic scenery sorting feature has not yet been significantly improved. However, you can now manually manage the scenery order even when automatic sorting is disabled in Settings. Previously, disabling automatic sorting also prevented manual sorting.</p>
+  <p class="changelog-important-body">Automatic scenery sorting still has limitations. When you turn it off in Settings, you can still manage and reorder scenery by hand. Installations and other automatic operations preserve your existing load order.</p>
 </div>
 
 ### Added
 
 - **Aircraft Patches** - Install aircraft patches with a preview of affected files, optional backups and restoration.
-- **Flight Plan Management** - Import FMS and SimBrief plans from Install, skip duplicates, resolve filename conflicts, and filter by airports or navigation-data cycle.
-- **Flight Plan Details** - View route maps, altitude profiles, leg distances, waypoints and original files, with automatic navigation-data lookup and cached maps for offline use.
-- **Health Checks** - Run automatic quick checks or full diagnostics for X-Plane, scenery, plugins and navigation data, with searchable results and expandable evidence.
-- **Health History and Reports** - Review up to 20 checks per installation and export English reports with diagnostic evidence and private paths hidden by default.
-- **Health Repairs and Recovery** - Repair common scenery, graphics and settings problems, with backups that can be restored from Health.
+- **Flight Plan Management** - Import FMS and SimBrief plans from Install, skip duplicates, resolve filename conflicts, and filter by airport or navigation-data cycle. Open a plan to see its route map, altitude profile, leg distances, waypoints and original file. Navigation data is detected automatically, and previously viewed maps are available offline.
+- **X-Plane Health** - Run automatic quick checks or full diagnostics for X-Plane, scenery, plugins and navigation data. Search results, expand the evidence, and review up to 20 checks per installation. Export English diagnostic reports that hide private paths by default. Repair common scenery, graphics and settings problems and restore backups from Health.
 - **Screenshot Preview Navigation** - Move between screenshots without closing the preview.
 
 ### Changed
 
 - **Output Cleanup** - Recognizes more aircraft and plugin data folders and lets you temporarily disable and restore Output items for troubleshooting.
-- **Scenery Sorting Preference** - Turning off automatic sorting keeps scenery management and manual ordering available, while installation and other automatic operations preserve the existing load order.
 - **Desktop Text Selection** - Repeated clicks no longer select page labels. Text fields, errors, logs and diagnostic evidence remain selectable.
 - **Custom Airport Priority** - Auto Sort places custom airports above Aerosoft airports and Global Airports.
 - **Map and SimBrief Removed** - Removed the retired Map page and its SimBrief setting.
-- **Clearer Error Guidance** - Error dialogs distinguish app failures from setup, file and network problems, with appropriate guidance.
+- **Clearer Error Guidance** - Error dialogs distinguish app failures from setup, file and network problems. Incomplete split archives list the missing parts without prompting for a bug report. Installation and scenery deletion errors explain how to handle files in use, denied access or security software blocks.
 - **Duplicate Bug Reports** - Repeated reports for the same failure reuse the existing issue.
 
 ### Fixed
@@ -39,17 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Complete Disk Usage** - Storage totals now include X-Plane resources, settings and other files alongside add-ons.
 - **Airport Flattening** - Flattening now targets the correct airport when its identifiers differ between data sources.
 - **Library Detection** - Ordinary scenery folders are no longer mistaken for libraries because of unrelated files.
-- **Missing Archive Volumes** - Incomplete split downloads explain which parts are missing without suggesting an app bug report.
 - **Resilient Add-on Updates** - Updates automatically retry temporary network and server failures.
 - **Installation Verification** - Installation checks ignore harmless system files and explain genuine failures.
 - **Batch FlyWithLua Installs** - Scripts from the same package install together without deleting one another's files.
 - **Management State Changes** - Aircraft and plugin controls recover when files change outside the app.
-- **Gateway Install Selection** - Installs keep the selected airport and submission, prevent duplicate starts, and refresh the list after success.
-- **2D Gateway Airports** - Gateway airports without 3D scenery can now be installed.
+- **Gateway Installation** - Install 2D and 3D airports. The app keeps the selected airport and submission, prevents duplicate starts, and refreshes the list after installation.
 - **Windows Folder Names** - Add-ons with unsupported folder-name characters now install successfully.
 - **Scenery Load Order** - SimHeaven and X-WORLD layers sort correctly, and unrecognized scenery can be categorized manually.
 - **Missing Scenery Libraries** - Copy a single library name or the full list to the system clipboard. If the clipboard is unavailable, the names are shown for manual copying.
-- **File Access Guidance** - Installation and scenery deletion errors explain how to recover when a file is in use, access is denied, or security software blocks an add-on.
 
 ## [1.2.5] - 2026-05-31
 
