@@ -1134,6 +1134,7 @@ impl Analyzer {
             livery_aircraft_type: item.livery_aircraft_type,
             livery_aircraft_found,
             flywithlua_installed,
+            is_xlua_runtime: item.is_xlua_runtime,
             companion_paths: item.companion_paths,
             patch_files: Vec::new(),
             patch_plan_id: None,
@@ -1470,6 +1471,7 @@ mod tests {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }
     }
@@ -1529,6 +1531,7 @@ mod tests {
             livery_aircraft_type: None,
             livery_aircraft_found: false,
             flywithlua_installed: true,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
             patch_files: Vec::new(),
             patch_plan_id: None,
@@ -1621,6 +1624,7 @@ mod tests {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths: vec!["assets".to_string()],
         };
 

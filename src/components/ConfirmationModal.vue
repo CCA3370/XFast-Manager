@@ -121,6 +121,14 @@
           <!-- Tasks List -->
           <TaskListSection />
 
+          <p
+            v-if="installingXlua"
+            role="alert"
+            class="p-2 text-xs leading-tight text-amber-800 dark:text-amber-100 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg flex-shrink-0"
+          >
+            {{ $t('modal.xluaInstallWarning') }}
+          </p>
+
           <!-- Actions -->
           <div class="flex items-center justify-between gap-1.5 flex-shrink-0 pt-1.5">
             <button
@@ -176,7 +184,9 @@
                   ></path>
                 </svg>
                 <span
-                  ><AnimatedText>{{ $t('modal.startInstallation') }}</AnimatedText></span
+                  ><AnimatedText>{{
+                    $t(installingXlua ? 'modal.installAnyway' : 'modal.startInstallation')
+                  }}</AnimatedText></span
                 >
               </button>
             </div>
@@ -196,6 +206,10 @@ import TaskListSection from '@/components/confirmation/TaskListSection.vue'
 const store = useAppStore()
 
 defineEmits(['close', 'confirm', 'install-as-patch'])
+
+const installingXlua = computed(() =>
+  store.currentTasks.some((task) => task.isXluaRuntime && store.getTaskEnabled(task.id)),
+)
 
 // Check if install button should be disabled
 const installDisabled = computed(() => {

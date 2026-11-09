@@ -382,6 +382,9 @@ export default {
     fileExists: '対象ファイルはすでに存在します',
     errorInfo: 'エラーの詳細',
     startInstallation: 'インストールの開始',
+    installAnyway: 'それでもインストール',
+    xluaInstallWarning:
+      'XLua は通常、機体に同梱されています。アドオンの手順で明示されている場合にのみ、Resources/plugins に個別にインストールしてください。',
     cleanInstall: 'クリーンインストール',
     directOverwrite: '直接上書き',
     installModeLabel: 'インストールモード',

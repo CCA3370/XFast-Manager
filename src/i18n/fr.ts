@@ -406,6 +406,9 @@ export default {
     fileExists: 'Le fichier cible existe déjà',
     errorInfo: "Détails de l'erreur",
     startInstallation: "Démarrer l'installation",
+    installAnyway: 'Installer quand même',
+    xluaInstallWarning:
+      'XLua est généralement fourni avec l’appareil. Installez-le séparément dans Resources/plugins uniquement si les instructions de l’extension le demandent explicitement.',
     cleanInstall: 'Installation propre',
     directOverwrite: 'Écrasement direct',
     installModeLabel: "Mode d'installation",

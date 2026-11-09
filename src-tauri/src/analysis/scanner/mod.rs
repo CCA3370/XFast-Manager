@@ -190,6 +190,118 @@ impl AircraftSoundPacks {
     }
 }
 
+const PLUGIN_PLATFORM_DIRS: &[&str] = &[
+    "32", "64", "win", "lin", "mac", "win_x64", "mac_x64", "lin_x64",
+];
+
+fn is_plugin_platform_dir(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| PLUGIN_PLATFORM_DIRS.contains(&name))
+}
+
+fn plugin_root(binary: &Path) -> Option<&Path> {
+    let parent = binary.parent()?;
+    Some(if is_plugin_platform_dir(parent) {
+        parent.parent().unwrap_or(parent)
+    } else {
+        parent
+    })
+}
+
+fn is_xlua_init(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|name| name.eq_ignore_ascii_case("init.lua"))
+}
+
+fn xlua_binary(binary: &Path) -> Option<(&Path, &'static str)> {
+    let root = plugin_root(binary)?;
+    let name = binary.file_name()?.to_str()?;
+    let runtime = ["xlua", "xlua2"].into_iter().find(|runtime| {
+        let named_binary = name
+            .strip_suffix(".xpl")
+            .is_some_and(|stem| stem.eq_ignore_ascii_case(runtime));
+        // Legacy fat plugins use platform names shared by many other plugins.
+        let legacy_binary = matches!(name, "win.xpl" | "lin.xpl" | "mac.xpl")
+            && root
+                .file_name()
+                .is_some_and(|folder| folder.eq_ignore_ascii_case(runtime));
+        named_binary || legacy_binary
+    })?;
+    Some((root, runtime))
+}
+
+#[derive(Default)]
+struct XluaRuntimeRoots {
+    roots: HashMap<PathBuf, &'static str>,
+}
+
+impl XluaRuntimeRoots {
+    fn from_archive_markers<'a>(markers: impl Iterator<Item = (&'a str, &'a str)>) -> Self {
+        let mut bootstraps = HashSet::new();
+        let mut roots = HashMap::new();
+        for (name, marker_type) in markers {
+            let path = Path::new(name);
+            if marker_type == "lua" && is_xlua_init(path) {
+                bootstraps.extend(path.parent());
+            } else if marker_type == "xpl" {
+                if let Some((root, runtime)) = xlua_binary(path) {
+                    roots.insert(root.to_path_buf(), runtime);
+                }
+            }
+        }
+        roots.retain(|root, _| bootstraps.contains(root.as_path()));
+        Self { roots }
+    }
+
+    fn record_directory(&mut self, dir: &Path, files: &[PathBuf], subdirs: &[PathBuf]) {
+        if !files.iter().any(|file| is_xlua_init(file)) {
+            return;
+        }
+        let identify = |file: &Path| {
+            xlua_binary(file).and_then(|(root, runtime)| (root == dir).then_some(runtime))
+        };
+        let runtime = files.iter().find_map(|file| identify(file)).or_else(|| {
+            subdirs
+                .iter()
+                .filter(|path| is_plugin_platform_dir(path))
+                .filter_map(|path| fs::read_dir(path).ok())
+                .flatten()
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .find_map(|file| identify(&file).filter(|_| file.is_file()))
+        });
+        if let Some(runtime) = runtime {
+            self.roots.insert(dir.to_path_buf(), runtime);
+        }
+    }
+
+    fn contains(&self, file: &Path) -> bool {
+        !self.roots.is_empty()
+            && file
+                .ancestors()
+                .skip(1)
+                .any(|root| self.roots.contains_key(root))
+    }
+
+    fn annotate_plugin(&self, item: &mut DetectedItem, is_archive: bool) {
+        if item.addon_type != AddonType::Plugin {
+            return;
+        }
+        let root = if is_archive {
+            item.archive_internal_root.as_deref().unwrap_or_default()
+        } else {
+            &item.path
+        };
+        if let Some(runtime) = self.roots.get(Path::new(root)) {
+            item.is_xlua_runtime = true;
+            if root.is_empty() {
+                item.display_name = (*runtime).to_string();
+            }
+        }
+    }
+}
+
 /// Check if a filename is an archive file
 fn is_archive_file(filename: &str) -> bool {
     detect_archive_format(Path::new(filename)).is_some()
@@ -625,6 +737,7 @@ impl Scanner {
         let mut plugin_dirs: HashSet<PathBuf> = HashSet::new();
         let mut aircraft_dirs: HashSet<PathBuf> = HashSet::new();
         let mut skip_dirs: HashSet<PathBuf> = HashSet::new();
+        let mut xlua_roots = XluaRuntimeRoots::default();
         // Track directories where Lua scripts were found, so subdirectories' .lua files are skipped
         let mut lua_dirs: HashSet<PathBuf> = HashSet::new();
 
@@ -674,25 +787,15 @@ impl Scanner {
                 }
             }
 
+            xlua_roots.record_directory(&current_dir, &files, &subdirs);
+
             // First pass on files: identify plugin directories and aircraft directories
             for file_path in &files {
                 let file_ext = file_path.extension().and_then(|s| s.to_str());
 
                 if file_ext == Some("xpl") {
-                    if let Some(parent) = file_path.parent() {
-                        let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
-
-                        // Check if parent is platform-specific folder
-                        let plugin_root = if matches!(
-                            parent_name,
-                            "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
-                        ) {
-                            parent.parent().unwrap_or(parent).to_path_buf()
-                        } else {
-                            parent.to_path_buf()
-                        };
-
-                        plugin_dirs.insert(plugin_root);
+                    if let Some(root) = plugin_root(file_path) {
+                        plugin_dirs.insert(root.to_path_buf());
                     }
                 } else if file_ext == Some("acf") {
                     // Track aircraft directories to skip embedded plugins
@@ -747,7 +850,8 @@ impl Scanner {
                     continue;
                 }
 
-                if let Some(item) = self.check_plugin(file_path, dir)? {
+                if let Some(mut item) = self.check_plugin(file_path, dir)? {
+                    xlua_roots.annotate_plugin(&mut item, false);
                     let root = PathBuf::from(&item.path);
                     skip_dirs.insert(root);
                     detected.push(item);
@@ -770,7 +874,9 @@ impl Scanner {
 
                 // Lua script detection (lowest priority - only standalone .lua files)
                 // Skip if a parent directory already has .lua files detected
-                if !Self::is_path_inside_dirs(file_path, &lua_dirs) {
+                if !Self::is_path_inside_dirs(file_path, &lua_dirs)
+                    && !xlua_roots.contains(file_path)
+                {
                     if let Some(item) = self.check_lua_script(file_path, dir)? {
                         // Record this directory so subdirectories' .lua files are skipped
                         if let Some(parent) = file_path.parent() {
@@ -857,6 +963,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -953,6 +1060,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -998,6 +1106,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -1026,6 +1135,7 @@ impl Scanner {
                 navdata_info: None,
                 livery_aircraft_type: None,
                 version_info: None,
+                is_xlua_runtime: false,
                 companion_paths: Vec::new(),
             }))
         } else {
@@ -1112,6 +1222,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -1162,6 +1273,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -1202,22 +1314,8 @@ impl Scanner {
             return Ok(None);
         }
 
-        let parent = file_path
-            .parent()
+        let install_path = plugin_root(file_path)
             .ok_or_else(|| anyhow::anyhow!("Failed to get parent directory"))?;
-
-        let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
-
-        // Check if parent is a platform-specific folder
-        let install_path = if matches!(
-            parent_name,
-            "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
-        ) {
-            // Go up one more level
-            parent.parent().unwrap_or(parent).to_path_buf()
-        } else {
-            parent.to_path_buf()
-        };
 
         let display_name = install_path
             .file_name()
@@ -1226,7 +1324,7 @@ impl Scanner {
             .to_string();
 
         // Read version info from the install folder
-        let (version, _, _) = crate::management_index::read_version_info_with_url(&install_path);
+        let (version, _, _) = crate::management_index::read_version_info_with_url(install_path);
         let version_info = version.map(|v| crate::models::VersionInfo { version: Some(v) });
 
         Ok(Some(DetectedItem {
@@ -1239,6 +1337,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -1265,44 +1364,23 @@ impl Scanner {
         archive_path: &Path,
         include_version: bool,
     ) -> Result<Option<DetectedItem>> {
-        let path = PathBuf::from(file_path);
-        let parent = path.parent();
-
-        let (display_name, internal_root) = if let Some(p) = parent {
-            let parent_name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
-
-            // Check if parent is platform-specific
-            let plugin_root = if matches!(
-                parent_name,
-                "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
-            ) {
-                // Go up one more level
-                p.parent()
-            } else {
-                Some(p)
-            };
-
-            if let Some(root) = plugin_root {
-                if root.as_os_str().is_empty() {
-                    (
-                        archive_path
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("Unknown Plugin")
-                            .to_string(),
-                        None,
-                    )
-                } else {
-                    let root_str = root.to_string_lossy().to_string();
-                    let name = root
-                        .file_name()
+        let (display_name, internal_root) = if let Some(root) = plugin_root(Path::new(file_path)) {
+            if root.as_os_str().is_empty() {
+                (
+                    archive_path
+                        .file_stem()
                         .and_then(|s| s.to_str())
                         .unwrap_or("Unknown Plugin")
-                        .to_string();
-                    (name, Some(root_str))
-                }
+                        .to_string(),
+                    None,
+                )
             } else {
-                ("Unknown Plugin".to_string(), None)
+                let name = root
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Unknown Plugin")
+                    .to_string();
+                (name, Some(root.to_string_lossy().into_owned()))
             }
         } else {
             ("Unknown Plugin".to_string(), None)
@@ -1324,6 +1402,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -1389,6 +1468,7 @@ impl Scanner {
             navdata_info: Some(navdata_info),
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -1456,6 +1536,7 @@ impl Scanner {
             navdata_info: Some(navdata_info),
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -1494,6 +1575,7 @@ impl Scanner {
                 navdata_info: None,
                 livery_aircraft_type: Some(aircraft_type_id.clone()),
                 version_info: None,
+                is_xlua_runtime: false,
                 companion_paths: Vec::new(),
             }))
         } else {
@@ -1544,6 +1626,7 @@ impl Scanner {
                 navdata_info: None,
                 livery_aircraft_type: Some(aircraft_type_id.clone()),
                 version_info: None,
+                is_xlua_runtime: false,
                 companion_paths: Vec::new(),
             }))
         } else {
@@ -1648,6 +1731,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths,
         }))
     }
@@ -1737,6 +1821,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths,
         }))
     }
@@ -2772,6 +2857,77 @@ mod tests {
             .expect("lua script should be detected");
 
         assert_eq!(lua.companion_paths, vec!["SimLoadManager".to_string()]);
+    }
+
+    #[test]
+    fn nested_xlua_release_keeps_the_runtime_together_as_one_plugin() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("release.zip");
+        let options = zip::write::FileOptions::<()>::default();
+        let mut inner = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        for file in [
+            "xlua2/init.lua",
+            "xlua2/include/XPLMPlugin.lua",
+            "xlua2/win_x64/xlua2.xpl",
+        ] {
+            inner.start_file(file, options).unwrap();
+            inner.write_all(b"fixture").unwrap();
+        }
+        let mut outer = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+        outer.start_file("xlua2.zip", options).unwrap();
+        outer
+            .write_all(&inner.finish().unwrap().into_inner())
+            .unwrap();
+        outer.finish().unwrap();
+
+        let items = Scanner::new().scan_path(&path, None).unwrap();
+        assert_eq!(items.len(), 1, "{items:?}");
+        let item = &items[0];
+        assert_eq!(item.addon_type, AddonType::Plugin);
+        assert!(item.is_xlua_runtime);
+        assert_eq!(item.display_name, "xlua2");
+        let chain = item.extraction_chain.as_ref().unwrap();
+        assert_eq!(chain.archives[0].internal_path, "xlua2.zip");
+        assert_eq!(chain.final_internal_root.as_deref(), Some("xlua2"));
+
+        let xplane = temp.path().join("X-Plane");
+        let analysis = crate::analyzer::Analyzer::new().analyze(
+            vec![path.to_string_lossy().into_owned()],
+            xplane.to_str().unwrap(),
+            None,
+            None,
+        );
+        assert!(analysis.errors.is_empty(), "{:?}", analysis.errors);
+        assert_eq!(analysis.tasks.len(), 1);
+        let task = &analysis.tasks[0];
+        assert!(task.is_xlua_runtime);
+        assert_eq!(
+            std::path::Path::new(&task.target_path),
+            xplane.join("Resources/plugins/xlua2"),
+        );
+    }
+
+    #[test]
+    fn xlua_is_flagged_only_when_the_aircraft_is_absent() {
+        let temp = tempdir().unwrap();
+        let aircraft = temp.path().join("A321");
+        let xlua = aircraft.join("plugins/xlua");
+        for file in ["init.lua", "64/win.xpl", "scripts/gear/gear.lua"] {
+            let path = xlua.join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, b"fixture").unwrap();
+        }
+        let scanner = Scanner::new();
+        let runtime = scanner.scan_path(&xlua, None).unwrap();
+        assert_eq!(runtime.len(), 1, "{runtime:?}");
+        assert_eq!(runtime[0].addon_type, AddonType::Plugin);
+        assert!(runtime[0].is_xlua_runtime);
+
+        fs::write(aircraft.join("a321.acf"), b"fixture").unwrap();
+        let installed_with = scanner.scan_path(&aircraft, None).unwrap();
+        assert_eq!(installed_with.len(), 1, "{installed_with:?}");
+        assert_eq!(installed_with[0].addon_type, AddonType::Aircraft);
+        assert!(!installed_with[0].is_xlua_runtime);
     }
 
     #[test]

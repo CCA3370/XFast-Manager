@@ -394,6 +394,9 @@ export default {
     fileExists: 'Целевой файл уже существует',
     errorInfo: 'Подробности ошибки',
     startInstallation: 'Начать установку',
+    installAnyway: 'Всё равно установить',
+    xluaInstallWarning:
+      'XLua обычно поставляется вместе с самолётом. Устанавливайте его отдельно в Resources/plugins, только если это прямо указано в инструкции к дополнению.',
     cleanInstall: 'Чистая установка',
     directOverwrite: 'Прямая перезапись',
     installModeLabel: 'Режим установки',

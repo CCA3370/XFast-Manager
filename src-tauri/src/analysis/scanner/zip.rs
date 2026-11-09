@@ -215,22 +215,8 @@ impl Scanner {
 
             // Identify plugin directories, aircraft directories, and marker files
             if file_path.ends_with(".xpl") {
-                if let Some(parent) = Path::new(&file_path).parent() {
-                    let parent_str = parent.to_string_lossy();
-                    let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
-
-                    let plugin_root = if matches!(
-                        parent_name,
-                        "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
-                    ) {
-                        parent
-                            .parent()
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or(parent_str.to_string())
-                    } else {
-                        parent_str.to_string()
-                    };
-                    plugin_dirs.insert(plugin_root);
+                if let Some(root) = plugin_root(Path::new(&file_path)) {
+                    plugin_dirs.insert(root.to_string_lossy().into_owned());
                 }
                 marker_files.push((i, file_path, is_encrypted, "xpl"));
             } else if file_path.ends_with(".acf") {
@@ -353,7 +339,16 @@ impl Scanner {
             "scanner_timing"
         );
 
+        let xlua_roots = XluaRuntimeRoots::from_archive_markers(
+            marker_files
+                .iter()
+                .map(|(_, name, _, kind)| (name.as_str(), *kind)),
+        );
         for (i, file_path, is_encrypted, marker_type) in marker_files {
+            if marker_type == "lua" && xlua_roots.contains(Path::new(&file_path)) {
+                continue;
+            }
+
             // Check if inside a skip prefix (already detected addon)
             let should_skip = skip_prefixes
                 .iter()
@@ -430,7 +425,8 @@ impl Scanner {
                 _ => None,
             };
 
-            if let Some(item) = item {
+            if let Some(mut item) = item {
+                xlua_roots.annotate_plugin(&mut item, true);
                 // Add to skip prefixes
                 if let Some(ref internal_root) = item.archive_internal_root {
                     let prefix: String = if internal_root.ends_with('/') {
@@ -814,22 +810,8 @@ impl Scanner {
 
             // Identify plugin directories, aircraft directories, and marker files
             if file_path.ends_with(".xpl") {
-                if let Some(parent) = Path::new(&file_path).parent() {
-                    let parent_str = parent.to_string_lossy();
-                    let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
-
-                    let plugin_root = if matches!(
-                        parent_name,
-                        "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
-                    ) {
-                        parent
-                            .parent()
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or(parent_str.to_string())
-                    } else {
-                        parent_str.to_string()
-                    };
-                    plugin_dirs.insert(plugin_root);
+                if let Some(root) = plugin_root(Path::new(&file_path)) {
+                    plugin_dirs.insert(root.to_string_lossy().into_owned());
                 }
                 marker_files.push((i, file_path, "xpl"));
             } else if file_path.ends_with(".acf") {
@@ -886,7 +868,16 @@ impl Scanner {
 
         // Process marker files
         let read_archive_versions = !ctx.is_nested_archive_scan();
+        let xlua_roots = XluaRuntimeRoots::from_archive_markers(
+            marker_files
+                .iter()
+                .map(|(_, name, kind)| (name.as_str(), *kind)),
+        );
         for (file_index, file_path, marker_type) in marker_files {
+            if marker_type == "lua" && xlua_roots.contains(Path::new(&file_path)) {
+                continue;
+            }
+
             // Check if inside a skip prefix (already detected addon)
             let should_skip = skip_prefixes
                 .iter()
@@ -949,7 +940,8 @@ impl Scanner {
                 _ => None,
             };
 
-            if let Some(item) = item {
+            if let Some(mut item) = item {
+                xlua_roots.annotate_plugin(&mut item, true);
                 // Add to skip prefixes
                 if let Some(ref internal_root) = item.archive_internal_root {
                     let prefix: String = if internal_root.ends_with('/') {
@@ -1086,22 +1078,8 @@ impl Scanner {
 
             // Identify plugin directories, aircraft directories, and marker files
             if file_path.ends_with(".xpl") {
-                if let Some(parent) = Path::new(&file_path).parent() {
-                    let parent_str = parent.to_string_lossy();
-                    let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
-
-                    let plugin_root = if matches!(
-                        parent_name,
-                        "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
-                    ) {
-                        parent
-                            .parent()
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or(parent_str.to_string())
-                    } else {
-                        parent_str.to_string()
-                    };
-                    plugin_dirs.insert(plugin_root);
+                if let Some(root) = plugin_root(Path::new(&file_path)) {
+                    plugin_dirs.insert(root.to_string_lossy().into_owned());
                 }
                 marker_files.push((i, file_path, is_encrypted, "xpl"));
             } else if file_path.ends_with(".acf") {
@@ -1206,7 +1184,16 @@ impl Scanner {
         let mut skip_prefixes: Vec<String> = Vec::new();
 
         // Process marker files
+        let xlua_roots = XluaRuntimeRoots::from_archive_markers(
+            marker_files
+                .iter()
+                .map(|(_, name, _, kind)| (name.as_str(), *kind)),
+        );
         for (i, file_path, is_encrypted, marker_type) in marker_files {
+            if marker_type == "lua" && xlua_roots.contains(Path::new(&file_path)) {
+                continue;
+            }
+
             // Check if inside a skip prefix (already detected addon)
             let should_skip = skip_prefixes
                 .iter()
@@ -1272,7 +1259,8 @@ impl Scanner {
                 _ => None,
             };
 
-            if let Some(item) = item {
+            if let Some(mut item) = item {
+                xlua_roots.annotate_plugin(&mut item, true);
                 // Add to skip prefixes
                 if let Some(ref internal_root) = item.archive_internal_root {
                     let prefix: String = if internal_root.ends_with('/') {

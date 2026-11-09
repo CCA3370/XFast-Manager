@@ -185,6 +185,9 @@ pub struct InstallTask {
     /// For LuaScript: whether FlyWithLua plugin is installed
     #[serde(default = "default_true")]
     pub flywithlua_installed: bool,
+    /// Whether this standalone plugin is an XLua runtime.
+    #[serde(default)]
+    pub is_xlua_runtime: bool,
     /// For LuaScript: companion files/folders referenced by SCRIPT_DIRECTORY
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub companion_paths: Vec<String>,
@@ -253,6 +256,7 @@ pub struct DetectedItem {
     pub livery_aircraft_type: Option<String>,
     /// For Aircraft/Plugin: version info from the addon to be installed
     pub version_info: Option<VersionInfo>,
+    pub is_xlua_runtime: bool,
     /// For LuaScript: companion files/folders referenced by SCRIPT_DIRECTORY
     pub companion_paths: Vec<String>,
 }

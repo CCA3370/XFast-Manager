@@ -382,6 +382,9 @@ export default {
     fileExists: '대상 파일이 이미 존재합니다',
     errorInfo: '오류 세부정보',
     startInstallation: '설치 시작',
+    installAnyway: '그래도 설치',
+    xluaInstallWarning:
+      'XLua는 보통 항공기에 포함되어 있습니다. 애드온 설치 안내에 명시된 경우에만 Resources/plugins에 별도로 설치하세요.',
     cleanInstall: '새로 설치',
     directOverwrite: '덮어쓰기',
     installModeLabel: '설치 모드',

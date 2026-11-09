@@ -386,6 +386,9 @@ export default {
     fileExists: 'लक्ष्य फ़ाइल पहले से मौजूद है',
     errorInfo: 'त्रुटि विवरण',
     startInstallation: 'स्थापना शुरू करें',
+    installAnyway: 'फिर भी इंस्टॉल करें',
+    xluaInstallWarning:
+      'XLua आम तौर पर विमान के साथ आता है। इसे Resources/plugins में अलग से तभी इंस्टॉल करें जब ऐड-ऑन के निर्देशों में ऐसा करने को स्पष्ट रूप से कहा गया हो।',
     cleanInstall: 'साफ़ स्थापना',
     directOverwrite: 'सीधा अधिलेखन',
     installModeLabel: 'स्थापना मोड',

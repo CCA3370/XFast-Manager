@@ -293,6 +293,7 @@ mod tests {
             livery_aircraft_type: None,
             livery_aircraft_found: false,
             flywithlua_installed: false,
+            is_xlua_runtime: false,
             companion_paths: vec![],
             patch_files: Vec::new(),
             patch_plan_id: None,

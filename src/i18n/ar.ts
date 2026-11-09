@@ -377,6 +377,9 @@ export default {
     fileExists: 'ملف الهدف موجود بالفعل',
     errorInfo: 'تفاصيل الخطأ',
     startInstallation: 'بدء التثبيت',
+    installAnyway: 'التثبيت على أي حال',
+    xluaInstallWarning:
+      'يأتي XLua عادةً مرفقًا مع الطائرة. ثبّته بشكل منفصل في Resources/plugins فقط إذا نصّت تعليمات الإضافة على ذلك صراحةً.',
     cleanInstall: 'تثبيت نظيف',
     directOverwrite: 'استبدال مباشر',
     installModeLabel: 'وضع التثبيت',

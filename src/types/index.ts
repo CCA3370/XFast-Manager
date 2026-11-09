@@ -251,6 +251,8 @@ export interface VersionInfo {
 }
 
 export interface InstallTask {
+  /** Standalone XLua runtime requiring a warning before global installation. */
+  isXluaRuntime?: boolean
   id: string
   type: AddonType
   sourcePath: string

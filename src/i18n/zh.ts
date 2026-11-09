@@ -362,6 +362,9 @@ export default {
     fileExists: '目标文件已存在',
     errorInfo: '错误信息',
     startInstallation: '开始安装',
+    installAnyway: '仍要安装',
+    xluaInstallWarning:
+      'xLua 通常由机模自带。只有插件的安装说明明确要求时，才需要将它单独安装到 Resources/plugins。',
     cleanInstall: '干净安装',
     directOverwrite: '直接覆盖',
     installModeLabel: '安装模式',

@@ -398,6 +398,9 @@ export default {
     fileExists: 'Zieldatei existiert bereits',
     errorInfo: 'Fehlerdetails',
     startInstallation: 'Starten Sie die Installation',
+    installAnyway: 'Trotzdem installieren',
+    xluaInstallWarning:
+      'XLua wird normalerweise mit dem Flugzeug mitgeliefert. Installieren Sie es nur separat unter Resources/plugins, wenn die Anleitung des Add-ons dies ausdrücklich verlangt.',
     cleanInstall: 'Saubere Installation',
     directOverwrite: 'Direktes Überschreiben',
     installModeLabel: 'Installationsmodus',
