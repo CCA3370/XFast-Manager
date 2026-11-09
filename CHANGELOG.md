@@ -5,14 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Fixed
-
-- **Install Drop Zone** - Expands slightly when dragging files in and stays clear of the edges, even in wide windows.
-- **Missing Scenery Libraries** - Copy a single library name or the full list to the system clipboard. If the clipboard is unavailable, the names are shown for manual copying.
-- **File Access Guidance** - Installation and scenery deletion errors explain how to recover when a file is in use, access is denied, or security software blocks an add-on.
-
 ## [1.3.0] - 2026-11-09
 
 <div class="changelog-important">
@@ -56,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **2D Gateway Airports** - Gateway airports without 3D scenery can now be installed.
 - **Windows Folder Names** - Add-ons with unsupported folder-name characters now install successfully.
 - **Scenery Load Order** - SimHeaven and X-WORLD layers sort correctly, and unrecognized scenery can be categorized manually.
+- **Missing Scenery Libraries** - Copy a single library name or the full list to the system clipboard. If the clipboard is unavailable, the names are shown for manual copying.
+- **File Access Guidance** - Installation and scenery deletion errors explain how to recover when a file is in use, access is denied, or security software blocks an add-on.
 
 ## [1.2.5] - 2026-05-31
 
