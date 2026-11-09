@@ -77,7 +77,7 @@
       <div
         class="flex-1 min-h-0 bg-white/60 dark:bg-gray-800/40 backdrop-blur-xl border-2 border-dashed border-gray-300 dark:border-gray-600/50 rounded-2xl p-6 text-center transition-all duration-500 hover:border-blue-400 dark:hover:border-blue-500/50 hover:bg-white/80 dark:hover:bg-gray-800/60 shadow-sm dark:shadow-none flex flex-col items-center justify-center relative drop-zone-card"
         :class="{
-          'drag-over ring-4 ring-4-blue-500/20 border-blue-500 scale-[1.02]': isDragging,
+          'drag-over': isDragging,
           'animate-pulse border-blue-400': store.isAnalyzing,
           'debug-drop': debugDropFlash,
         }"
@@ -272,6 +272,7 @@
         v-if="showConfirmation"
         @close="showConfirmation = false"
         @confirm="handleInstall"
+        @install-as-patch="openPatchFromConfirmation"
       />
       <PasswordModal
         v-if="showPasswordModal"
@@ -279,6 +280,20 @@
         :error-message="passwordErrorMessage"
         @confirm="handlePasswordSubmit"
         @cancel="handlePasswordCancel"
+      />
+      <PatchInstallModal
+        v-if="patchStore.isModalOpen"
+        :key="
+          JSON.stringify([
+            store.xplanePath,
+            patchStore.archivePath,
+            patchStore.presetAircraftFolder,
+          ])
+        "
+        :archive-path="patchStore.archivePath"
+        :preset-aircraft-folder="patchStore.presetAircraftFolder"
+        @close="patchStore.close()"
+        @install="handlePatchInstall"
       />
 
       <!-- Launch X-Plane Confirmation Dialog -->
@@ -392,6 +407,7 @@
         </div>
       </transition>
     </div>
+    <FlightPlanConflictModal :conflict="flightPlanConflict" @resolve="resolveFlightPlanConflict" />
   </div>
 </template>
 
@@ -399,11 +415,12 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useToastStore } from '@/stores/toast'
-import { useModalStore } from '@/stores/modal'
+import { useModalStore, type ConfirmOptions } from '@/stores/modal'
 import { useProgressStore } from '@/stores/progress'
 import { useUpdateStore } from '@/stores/update'
 import { useSceneryStore } from '@/stores/scenery'
 import { useLockStore } from '@/stores/lock'
+import { usePatchStore } from '@/stores/patch'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -411,12 +428,15 @@ import { listen } from '@tauri-apps/api/event'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import ConfirmationModal from '@/components/ConfirmationModal.vue'
+import FlightPlanConflictModal from '@/components/FlightPlanConflictModal.vue'
+import { useFlightPlanImport } from '@/composables/useFlightPlanImport'
 import PasswordModal from '@/components/PasswordModal.vue'
+import PatchInstallModal from '@/components/PatchInstallModal.vue'
 import AnimatedText from '@/components/AnimatedText.vue'
 import UpdateBanner from '@/components/UpdateBanner.vue'
 import InstallProgressOverlay from '@/components/InstallProgressOverlay.vue'
 import AnalyzingOverlay from '@/components/AnalyzingOverlay.vue'
-import type { AnalysisResult, InstallProgress, InstallResult } from '@/types'
+import type { AnalysisResult, InstallProgress, InstallResult, InstallTask } from '@/types'
 import { AddonType } from '@/types'
 import { getErrorMessage } from '@/types'
 import { logOperation, logError, logDebug, logBasic } from '@/services/logger'
@@ -431,8 +451,14 @@ const updateStore = useUpdateStore()
 const progressStore = useProgressStore()
 const sceneryStore = useSceneryStore()
 const lockStore = useLockStore()
+const patchStore = usePatchStore()
 const isDragging = ref(false)
 const showConfirmation = ref(false)
+const {
+  conflict: flightPlanConflict,
+  importPlan,
+  resolveConflict: resolveFlightPlanConflict,
+} = useFlightPlanImport()
 const showLaunchConfirmDialog = ref(false)
 const isLaunchingXPlane = ref(false)
 const isXPlaneRunning = ref(false)
@@ -440,8 +466,8 @@ let xplaneCheckInterval: number | null = null
 const debugDropFlash = ref(false)
 
 // Sync confirmation modal state with store for exit confirmation
-watch(showConfirmation, (value) => {
-  store.setConfirmationOpen(value)
+watch([showConfirmation, flightPlanConflict], ([show, conflict]) => {
+  store.setConfirmationOpen(show || conflict !== null)
 })
 
 // Password modal state
@@ -571,7 +597,7 @@ async function handleDropZoneClick() {
       filters: [
         {
           name: 'Addon Files',
-          extensions: ['zip', '7z', 'rar', 'lua'],
+          extensions: ['zip', '7z', 'rar', 'lua', 'fms', 'xml'],
         },
         {
           name: 'All Files',
@@ -605,9 +631,9 @@ onMounted(async () => {
     unlistenDragDrop = await webview.onDragDropEvent(async (event) => {
       logDebug(`Tauri drag-drop event: ${event.payload.type}`, 'drag-drop')
 
-      // Ignore all drag-drop events when installing
-      if (store.isInstalling) {
-        logDebug('Ignoring drag-drop event (installing)', 'drag-drop')
+      // Do not start another drop while an import or conflict decision is pending.
+      if (store.isInstalling || store.isAnalyzing) {
+        logDebug('Ignoring drag-drop event (busy)', 'drag-drop')
         return
       }
 
@@ -702,6 +728,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  store.setConfirmationOpen(false)
   window.removeEventListener('dragover', onWindowDragOver)
   window.removeEventListener('dragleave', onWindowDragLeave)
   window.removeEventListener('drop', onWindowDrop)
@@ -750,6 +777,34 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
   logDebug(`Starting analysis with X-Plane path: ${store.xplanePath}`, 'analysis')
 
   try {
+    const flightPlans = paths.filter((path) => /\.(fms|xml)$/i.test(path))
+    const planRoot = store.xplanePath
+    let importedPlans = 0
+    for (const source of flightPlans) {
+      try {
+        const result = await importPlan(planRoot, source)
+        if (result.status === 'imported') {
+          importedPlans++
+          if (result.renamed)
+            toast.info(
+              t('flightPlans.renamed', {
+                source: source.split(/[\\/]/).pop() ?? source,
+                name: result.name,
+              }),
+            )
+          else if (result.replaced) toast.success(t('flightPlans.replaced', { name: result.name }))
+        } else if (result.status === 'duplicate') {
+          toast.info(t('flightPlans.duplicateSkipped', { name: result.name }))
+        }
+        if (result.preferenceSaveFailed) toast.warning(t('flightPlans.preferenceNotSaved'))
+      } catch (error) {
+        modal.showError(error, '', { hideReport: true })
+      }
+    }
+    if (importedPlans) toast.success(t('flightPlans.imported', { count: importedPlans }))
+    paths = paths.filter((path) => !/\.(fms|xml)$/i.test(path))
+    if (paths.length === 0) return
+
     logDebug(`Paths to analyze: ${paths.join(', ')}`, 'analysis')
 
     const result = await invoke<AnalysisResult>('analyze_addons', {
@@ -887,7 +942,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
       }
     } else {
       logDebug('No valid addons detected in analysis', 'analysis')
-      toast.warning(t('home.noValidAddons'))
+      await offerPatchInstall(paths)
     }
   } catch (error) {
     // Non-blocking log call (also prints to console.error internally)
@@ -986,15 +1041,81 @@ async function handleInstall() {
     return
   }
 
+  // Prepare enabled tasks with overwrite, size confirmation and backup settings.
+  const allTasksWithSettings = store.getTasksWithOverwrite()
+  const tasksWithOverwrite = allTasksWithSettings.filter((task) => store.getTaskEnabled(task.id))
+
+  await executeInstall(tasksWithOverwrite, {
+    deleteSource: store.deleteSourceAfterInstall,
+    parallel: store.parallelInstallEnabled,
+  })
+}
+
+// The modal submits one validated overlay task for the whole patch.
+async function handlePatchInstall(tasks: InstallTask[]) {
+  patchStore.close()
+  await executeInstall(tasks, { deleteSource: false, parallel: false })
+}
+
+// When nothing is detected, an archive may still be an aircraft patch — offer it.
+async function offerPatchInstall(paths: string[]) {
+  const archive = firstArchivePath(paths)
+  if (archive) {
+    const usePatch = await showConfirmDialog({
+      title: t('patch.maybePatchTitle'),
+      message: t('patch.maybePatchMessage'),
+      confirmText: t('patch.installAsPatch'),
+      cancelText: t('common.cancel'),
+      type: 'warning',
+      closeOnBackdrop: false,
+    })
+    if (usePatch) {
+      patchStore.open(archive)
+      return
+    }
+  }
+  toast.warning(t('home.noValidAddons'))
+}
+
+// First archive among dropped paths (patches must come from an archive).
+function firstArchivePath(paths: string[]): string | undefined {
+  return paths.find((p) => /\.(zip|7z|rar)$/i.test(p))
+}
+
+// Escape hatch from the confirmation modal: the user says the (possibly
+// mis-detected) archive is actually an aircraft patch. Discard the detected
+// tasks and route the original archive into the patch flow.
+function openPatchFromConfirmation() {
+  const task = store.currentTasks[0]
+  const archive = task?.originalInputPath || task?.sourcePath
+  if (!archive) {
+    toast.warning(t('patch.noArchive'))
+    return
+  }
+  showConfirmation.value = false
+  store.clearTasks()
+  patchStore.open(archive)
+}
+
+// Shared install runner used by both the normal confirm flow and patch installs.
+async function executeInstall(
+  finalTasks: InstallTask[],
+  opts?: { deleteSource?: boolean; parallel?: boolean },
+) {
+  if (finalTasks.length === 0) {
+    toast.warning(t('home.noTasksEnabled'))
+    return
+  }
+
   // Store the tasks being installed for the progress overlay
-  store.setInstallingTasks(enabledTasks)
+  store.setInstallingTasks(finalTasks)
 
   store.isInstalling = true
   // Non-blocking log call
   logBasic('Installation started', 'installation')
-  logOperation('Installation started', `${enabledTasks.length} task(s) ready`)
+  logOperation('Installation started', `${finalTasks.length} task(s) ready`)
   logDebug(
-    `Installing ${enabledTasks.length} tasks: ${enabledTasks.map((t) => t.displayName).join(', ')}`,
+    `Installing ${finalTasks.length} tasks: ${finalTasks.map((t) => t.displayName).join(', ')}`,
     'installation',
   )
 
@@ -1003,23 +1124,19 @@ async function handleInstall() {
       await lockStore.initStore()
     }
 
-    // Prepare enabled tasks with overwrite and backup settings
-    const allTasksWithSettings = store.getTasksWithOverwrite()
-    const tasksWithOverwrite = allTasksWithSettings.filter((task) => store.getTaskEnabled(task.id))
-
-    const overwriteCount = tasksWithOverwrite.filter((t) => t.shouldOverwrite).length
+    const overwriteCount = finalTasks.filter((t) => t.shouldOverwrite).length
     if (overwriteCount > 0) {
       logDebug(`${overwriteCount} tasks will overwrite existing files`, 'installation')
     }
 
     const result = await invoke<InstallResult>('install_addons', {
-      tasks: tasksWithOverwrite,
+      tasks: finalTasks,
       atomicInstallEnabled: store.atomicInstallEnabled,
       xplanePath: store.xplanePath,
-      deleteSourceAfterInstall: store.deleteSourceAfterInstall,
+      deleteSourceAfterInstall: opts?.deleteSource ?? store.deleteSourceAfterInstall,
       autoSortScenery: store.autoSortScenery,
       lockedSceneryFolderNames: lockStore.getLockedItems('scenery'),
-      parallelEnabled: store.parallelInstallEnabled,
+      parallelEnabled: opts?.parallel ?? store.parallelInstallEnabled,
       maxParallel: store.maxParallelTasks,
     })
 
@@ -1114,22 +1231,12 @@ async function handleCancelInstallation() {
 }
 
 // Show confirm dialog helper
-function showConfirmDialog(options: {
-  title: string
-  message: string
-  warning?: string
-  confirmText: string
-  cancelText: string
-  type: 'warning' | 'danger'
-}): Promise<boolean> {
+function showConfirmDialog(
+  options: Omit<ConfirmOptions, 'onConfirm' | 'onCancel'>,
+): Promise<boolean> {
   return new Promise((resolve) => {
     modal.showConfirm({
-      title: options.title,
-      message: options.message,
-      warning: options.warning,
-      confirmText: options.confirmText,
-      cancelText: options.cancelText,
-      type: options.type,
+      ...options,
       onConfirm: () => resolve(true),
       onCancel: () => resolve(false),
     })
@@ -1320,10 +1427,10 @@ function handleCompletionConfirm() {
 }
 
 .drop-zone-card.drag-over {
+  margin: -6px;
   border-color: #3b82f6;
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(147, 51, 234, 0.1));
-  transform: scale(1.02);
-  box-shadow: 0 0 40px rgba(59, 130, 246, 0.3);
+  box-shadow: inset 0 0 40px rgba(59, 130, 246, 0.2);
 }
 
 .icon-container {

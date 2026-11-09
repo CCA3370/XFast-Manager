@@ -5,7 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] - 2026-11-09
+
+<div class="changelog-important">
+  <p class="changelog-important-label">IMPORTANT FOR USERS</p>
+  <p class="changelog-important-title">About Scenery Auto Sorting</p>
+  <p class="changelog-important-body">Automatic scenery sorting still has limitations. When you turn it off in Settings, you can still manage and reorder scenery by hand. Installations and other automatic operations preserve your existing load order.</p>
+</div>
+
+### Added
+
+- **Aircraft Patches** - Install aircraft patches with a preview of affected files, optional backups and restoration.
+- **Flight Plan Management** - Import FMS and SimBrief plans from Install, skip duplicates, resolve filename conflicts, and filter by airport or navigation-data cycle. Open a plan to see its route map, altitude profile, leg distances, waypoints and original file. Navigation data is detected automatically, and previously viewed maps are available offline.
+- **X-Plane Health** - Run automatic quick checks or full diagnostics for X-Plane, scenery, plugins and navigation data. Search results, expand the evidence, and review up to 20 checks per installation. Export English diagnostic reports that hide private paths by default. Repair common scenery, graphics and settings problems and restore backups from Health.
+- **Screenshot Preview Navigation** - Move between screenshots without closing the preview.
+
+### Changed
+
+- **Output Cleanup** - Recognizes more aircraft and plugin data folders and lets you temporarily disable and restore Output items for troubleshooting.
+- **Desktop Text Selection** - Repeated clicks no longer select page labels. Text fields, errors, logs and diagnostic evidence remain selectable.
+- **Custom Airport Priority** - Auto Sort places custom airports above Aerosoft airports and Global Airports.
+- **Map and SimBrief Removed** - Removed the retired Map page and its SimBrief setting.
+- **Clearer Error Guidance** - Error dialogs distinguish app failures from setup, file and network problems. Incomplete split archives list the missing parts without prompting for a bug report. Installation and scenery deletion errors explain how to handle files in use, denied access or security software blocks.
+- **Duplicate Bug Reports** - Repeated reports for the same failure reuse the existing issue.
+
+### Fixed
+
+- **Moved Scenery Notices** - Moved or deleted scenery refreshes the list and shows clear guidance instead of a bug-report prompt.
+- **Complete Disk Usage** - Storage totals now include X-Plane resources, settings and other files alongside add-ons.
+- **Airport Flattening** - Flattening now targets the correct airport when its identifiers differ between data sources.
+- **Library Detection** - Ordinary scenery folders are no longer mistaken for libraries because of unrelated files.
+- **Resilient Add-on Updates** - Updates automatically retry temporary network and server failures.
+- **Installation Verification** - Installation checks ignore harmless system files and explain genuine failures.
+- **Batch FlyWithLua Installs** - Scripts from the same package install together without deleting one another's files.
+- **Management State Changes** - Aircraft and plugin controls recover when files change outside the app.
+- **Gateway Installation** - Install 2D and 3D airports. The app keeps the selected airport and submission, prevents duplicate starts, and refreshes the list after installation.
+- **Windows Folder Names** - Add-ons with unsupported folder-name characters now install successfully.
+- **Scenery Load Order** - SimHeaven and X-WORLD layers sort correctly, and unrecognized scenery can be categorized manually.
+- **Missing Scenery Libraries** - Copy a single library name or the full list to the system clipboard. If the clipboard is unavailable, the names are shown for manual copying.
 
 ## [1.2.5] - 2026-05-31
 
@@ -19,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Bundled Library Links** - Added a download link for the Tico Sim Library so the app can point you to it when a scenery package needs that library.
 - **Clearer Model Index Errors** - When an X-CSL or ALTITUDE scan cannot reach the server and no saved copy is available, the error now explains the specific network or server problem instead of showing a generic failure message.
-- **Fewer Unnecessary Bug Report Prompts** - Failures caused by blocked or denied file access, antivirus quarantine, corrupted or unreadable archives, or missing X-Plane folders no longer prompt you to submit a bug report, since these are environment issues rather than problems with the app.
+- **Bug Report Prompts** - File-access, archive and installation-path problems now show guidance instead of prompting a bug report.
 
 ## [1.2.4] - 2026-05-17
 
@@ -87,7 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **CSL and ALTITUDE Model Management** - Dedicated page to scan, search, install, update, and uninstall multiplayer model packages, with custom path support and queued/cancellable installs.
-- **Gateway Airport Management** - New Gateway browser to search airports, inspect submission history and details, view Gateway feature tags and installed-folder state, install official Gateway sceneries, uninstall installed Gateway airports, and check for updates. Each result now shows whether it's already in your current X-Plane release (with `XP` tags or `Not in current X-Plane` indicators) and surfaces the matched baseline scenery details (version/artist/date) when available. Conflicting non-Gateway airports are flagged with an ignore-and-continue option.
+- **Gateway Airports** - Search airports, compare submissions, install or remove scenery, and check for updates. Results show whether an airport is included in your X-Plane version and warn about conflicting custom scenery.
 - **Built-in Zibo Updater** - Version-aware Zibo update support with torrent downloads, manual download fallback for major-version packages, and preserve options for liveries and config files during major updates.
 - **Airport Flatten Manager** - New page to search airports by ICAO or name and toggle their flatten setting on each scenery source. Every change is remembered, and a one-click action can re-apply all saved settings whenever the underlying scenery files no longer match.
 - **Configuration Presets** - Save and apply preset workflows for aircraft, plugins, scenery, Lua scripts, and lock states, with full import/export support.
@@ -102,12 +139,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Navigation and Quick Access** - Refreshed the top navigation and home/dashboard layout, with a new command palette and keyboard shortcuts for faster page switching.
-- **Addon Update Workflow** - Update tasks now show clearer plan details, including file-level add/replace/delete previews and more transparent download information. Install/update option controls are also disabled while addon updates are running to prevent conflicting changes mid-task.
-- **Screenshot Editor Slider Preview** - Drag previews now update accurately in real time and match the final saved result. Releasing a slider no longer flashes the original image, and the color temperature slider previews a true warm/cool shift instead of a magenta/green tint.
+- **Add-on Updates** - Preview file changes and download details before updating. Installation options stay locked while an update runs.
+- **Screenshot Previews** - Slider previews match the saved result without flashing the original image. Color temperature now produces the correct warm or cool effect.
 - **Screenshot Editor Slider Feel** - Exposure, saturation, and denoise respond more gently across their range so subtle tweaks no longer overshoot.
 - **Scenery Manager Airport Entries** - Scenery Manager now shows `*GLOBAL_AIRPORTS*` as a real indexed entry and keeps `DarkBlue-` airport mesh/overlay packages directly below their corresponding airport packages.
-- **Nested Archive Handling** - Analysis and installation verification are faster for large wrapped addon packages, especially ZIP files that contain a 7z aircraft archive. The task list can also fall back to the nested archive filename to show a version label when direct version-file reading is skipped.
-- **Update Check Behavior** - App update checks are no longer skipped by an internal cache-expiry gate, so checks run immediately when requested.
+- **Nested Archives** - Faster scanning and verification for wrapped packages, with more reliable version labels.
+- **Update Checks** - Manual update checks now start immediately.
 - **Install / Extract Reliability** - Clearer error messages during addon extraction and installation, and missing target folders are now created automatically instead of causing silent failures.
 - **Stable Feature Defaults** - Parallel Installation, Multi-Threaded Download, and DMP Crash Analysis are now enabled by default and no longer labeled as experimental in Settings.
 - **Bundled Library Links** - Added new community-contributed entries to the bundled library link list.
@@ -121,7 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windows Archive Filename Compatibility** - Archive entries with Windows-invalid filenames are now sanitized during install instead of failing.
 - **Incomplete Aircraft Package Scanning** - Archives missing an expected `Aircraft` folder no longer abort addon analysis as a fatal error.
 - **Scenery Misclassification for SAM Libraries** - Libraries with nested demo airport content are less likely to be misclassified as airports.
-- **Navdata Deletion Safety** - Deleting root navdata now removes only root navdata files while preserving backups, user custom files, and nested provider navdata folders. The right-click delete option is also hidden for navdata items in the management list to prevent accidental removal.
+- **Navigation Data Safety** - Deletion preserves backups, custom files and other providers. Removed the right-click delete shortcut to reduce accidental removal.
 - **Log Text Consistency** - Activity and app log entries were standardized to avoid locale-related garbled text in runtime logs.
 
 ## [1.1.2] - 2026-03-06
@@ -130,10 +167,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **SkunkCrafts Update Integration** - Added integrated SkunkCrafts update workflow in Addon Update, including per-item update entry points and task-based update execution.
 - **Parallel Download Support for Addon Update** - Added parallel/multi-thread download support in the update workflow to improve large addon update speed.
-- **Deep Crash Dump Analysis (Experimental)** - Log Analysis can now parse `.dmp` crash reports and show probable causes, exception/stack details (including exception flags and controlled exits), and loaded plugin modules.
+- **Crash Report Analysis (Experimental)** - Inspect crash reports for probable causes and involved plugins.
 - **Feedback Center** - Added in-app feedback submission with issue tracking, issue detail view, and comment replies.
 - **Screenshot Manager** - Added a dedicated page for browsing `Output/screenshots` images and clips with search/filter/sort, preview, copy/save/delete, and Reddit sharing.
-- **Built-in Screenshot Editor** - Added image editing tools (crop, rotate, exposure, contrast, saturation, temperature, highlights, shadows, sharpness, denoise) with worker-based preview processing.
+- **Screenshot Editor** - Crop, rotate and adjust images, with live previews and sharpening or noise reduction.
 
 ### Changed
 
@@ -149,7 +186,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Lua Companion Bundle Support** - Lua scripts now detect `SCRIPT_DIRECTORY` companion files/folders and install them together; companion items are shown in the confirmation list with expandable details.
+- **Lua Companion Files** - Install scripts with their supporting files and folders, shown together before confirmation.
 - **Lua Lock Controls in Scripts Page** - Lua entries now support lock/unlock directly in the Lua management page.
 - **Batch Mode for Aircraft/Plugin Management** - Added multi-select with full-row "Select All" behavior and batch enable/disable actions.
 - **Drop-Zone File Picker** - Clicking the drag-and-drop area now opens a file picker for manual file selection.
@@ -158,7 +195,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **7z Analysis and Install Performance** - Improved 7z scanning speed (including nested archive handling) and password/encryption detection responsiveness.
-- **7z Size Estimation Accuracy** - Installation size display for 7z sources is now based on archive metadata instead of rough multipliers.
+- **7z Size Estimates** - Show more accurate installation sizes for 7z packages.
 - **Scenery Priority Ordering** - `Lines3D` is now kept at the top of fixed high-priority scenery libraries.
 
 ### Fixed
@@ -194,8 +231,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Linux File Manager** - Fixed `open_in_explorer` on Linux opening folders in a browser instead of the file manager; now tries common file managers (nautilus, dolphin, thunar, nemo, pcmanfm) before falling back to xdg-open
-- **Linux X-Plane Detection** - Path validation, executable launch, and process detection now use `X-Plane*` glob matching instead of a hardcoded `X-Plane` filename
+- **Linux File Manager** - Open folders in a file manager instead of a web browser.
+- **Linux X-Plane Detection** - Recognize X-Plane installations with versioned executable names.
 
 ### Changed
 
@@ -209,35 +246,24 @@ This is the first official public release of XFast Manager.
 ### Fixed
 
 - **Toggle-Enabled Event Propagation** - Fixed the enable/disable toggle button in management cards triggering unintended parent click events
-- **Auto-Lock Sync on Disable/Enable** - Disabling an aircraft or plugin now immediately locks it in the UI and syncs to `skunkcrafts_updater.cfg`; re-enabling auto-unlocks it (manual locks are preserved)
+- **Updater Lock Sync** - Disabling aircraft or plugins also locks them against updates; re-enabling unlocks them while preserving manual locks.
 
 ### Changed
 
-- **Livery Pattern Detection** - Refined detection rules for Felis B742 Classic and B742 Freighter
-  - More precise file patterns to reduce false positives
-  - Fixed typo in wing texture pattern (`mings_main` → `wings_main`)
+- **Felis B742 Liveries** - More accurate livery recognition for the Classic and Freighter variants.
 - **Update Download URL** - "Download" button now links to GitHub Releases
 
 ## [0.9.2] - 2026-02-23
 
 ### Added
 
-- **Archive Version Detection** - Aircraft and plugin versions are now detected directly from archive files during analysis
-  - No longer requires extraction to read version information
-  - Supports ZIP, 7z, and RAR archives
-  - Reads `skunkcrafts_updater.cfg` and version files within archives
-- **Per-Task Progress Details** - Installation progress overlay now shows per-task size information
-  - Active task displays real-time processed/total MB
-  - Completed and pending tasks show estimated size
+- **Archive Version Detection** - Show aircraft and plugin versions directly from ZIP, 7z and RAR packages before installation.
+- **Per-Task Progress Details** - Show the size and progress of each installation task.
 
 ### Changed
 
-- **Faster Installation** - Significantly reduced installation time through inline verification
-  - ZIP archives: CRC32 hash is computed while writing files, eliminating the separate verification re-read pass
-  - 7z archives: SHA256 hash is computed while extracting, enabling verification without re-reading all files
-  - RAR archives: Direct extraction to target directory when no internal root stripping is needed, removing the temp directory copy step
-  - Larger I/O buffer (4 MB → 8 MB) for faster file operations
-- **Per-Task Progress Bar** - The progress bar for the current task now shows task-specific percentage instead of overall percentage
+- **Faster Installation** - Faster installation of ZIP, 7z and RAR packages.
+- **Per-Task Progress Bar** - Each task's progress bar now shows its own completion percentage.
 
 ## [0.9.1] - 2026-02-23
 
@@ -258,57 +284,24 @@ This is the first official public release of XFast Manager.
 
 ### Added
 
-- **Bug Report Submission** - New integrated bug reporting feature
-  - Submit bug reports directly from the app with system information automatically included
-  - Accessible from Settings page
-  - Streamlined issue creation workflow
-- **Sponsor Modal** - New donation support interface
-  - WeChat and Alipay QR codes for supporting development
-  - Accessible from the app menu
-- **Enhanced Livery Pattern Detection** - Improved aircraft livery recognition
-  - Added support for X-Crafts aircraft (E-Jets family, ERJ family)
-  - Added Felis B742 variants (Classic and Freighter)
-  - Remote livery pattern loading with automatic updates on startup
-  - Wildcard pattern support for more flexible matching
-- **Airport Duplicate Detection** - Identifies scenery packages with overlapping airports
-  - Automatically detects duplicate airport IDs across packages
-  - Helps identify potential conflicts in scenery library
-- **Task List Component** - Enhanced installation confirmation interface
-  - Dedicated TaskListSection component for better task visualization
-  - Improved layout and user experience during installation confirmation
+- **Bug Reports** - Submit reports from Settings with system information included.
+- **Sponsor Dialog** - Support development through WeChat or Alipay.
+- **Livery Detection** - Added X-Crafts and Felis B742 support, with recognition rules refreshed automatically.
+- **Duplicate Airports** - Identify scenery packages containing the same airport to help find conflicts.
+- **Installation Confirmation** - Improved the task list and confirmation layout.
 
 ### Changed
 
-- **Performance Optimizations** - Enhanced UI responsiveness
-  - Optimized transitions across multiple components
-  - Improved component loading and rendering performance
-- **Code Architecture** - Major backend refactoring for maintainability
-  - Reorganized Rust modules into logical groups (analysis, core, data, install, management, scenery, services)
-  - Split large files into focused modules (scanner split into zip/rar/sevenz handlers)
-  - Enhanced database structure with new entity models
-  - Improved separation of concerns across the codebase
-- **Scenery Packs Manager** - Enhanced scenery_packs.ini management
-  - Better change tracking with detailed modification logs
-  - Improved UI feedback for scenery index operations
-- **Library Link Management** - Improved missing library workflow
-  - Force refresh option for library link lookup
-  - Enhanced error handling in approval workflow
-  - Updated library links database
+- **Responsiveness** - Smoother navigation and faster page loading.
+- **Scenery Management** - Clearer feedback for index changes and load-order edits.
+- **Library Links** - Refresh missing-library download links and show clearer submission errors.
 
 ### Fixed
 
-- **Context Menu Display** - Fixed context menus appearing outside viewport boundaries
-- **Log Rotation** - Fixed unnecessary log rotation on first log entry
-- **Disk Space Calculation** - Fixed type casting issues on macOS for available disk space checks
-- **Error Handling** - Improved lock error handling and X-Plane path validation
-
-### Technical
-
-- Added ESLint configuration for better code quality
-- Added Prettier configuration for consistent code formatting
-- Enhanced database schema with new migration system
-- Improved geo-region detection with binary continent map
-- Added build workflow for automated CI/CD
+- **Context Menus** - Menus stay within the window.
+- **Logs** - Opening the app no longer rotates logs unnecessarily.
+- **macOS Disk Space** - Corrected available-space calculations.
+- **Error Guidance** - Clearer messages for locked files and invalid X-Plane paths.
 
 ## [0.8.11] - 2026-02-13
 
@@ -321,9 +314,7 @@ This is the first official public release of XFast Manager.
 ### Added
 
 - **Missing Library Download Links** - Missing library dialog now supports direct download links for many common libraries.
-- **Link Contribution Flow** - You can now submit missing library download links directly from the Missing Libraries dialog.
-  - Added a contribution form with copy/search helpers for the selected library name.
-  - Added automatic review pipeline integration for submitted links.
+- **Library Link Contributions** - Submit download links from the Missing Libraries dialog, with search and copy shortcuts.
 
 ### Changed
 
@@ -332,44 +323,23 @@ This is the first official public release of XFast Manager.
 ### Fixed
 
 - **Missing Library False Positives** - Improved library matching logic to handle case differences.
-- **Library Export Parsing Reliability** - Improved `library.txt` parsing for non-UTF8 files so installed libraries are less likely to be incorrectly marked as missing.
-- **Incremental Scenery Scan Accuracy** - Entering Scenery Manager now better re-evaluates library packages with incomplete cached export data.
+- **Library Recognition** - Fewer false missing-library warnings for files saved in different text encodings.
+- **Scenery Refresh** - Opening Scenery Manager refreshes incomplete library information more reliably.
 
 ## [0.8.9] - 2026-02-09
 
 ### Added
 
-- **Aircraft Livery Management** - Browse and manage aircraft liveries
-  - View all liveries for each aircraft with thumbnail icons
-  - Preview livery images with zoom and pan controls
-  - Open livery folders in file explorer
-  - Delete individual liveries
-- **Lua Script Management** - Manage FlyWithLua scripts
-  - View all installed FlyWithLua scripts with enable/disable status
-  - Toggle scripts between enabled (.lua) and disabled (.xfml) states
-  - Delete scripts directly from the manager
-  - Right-click context menu support for quick actions
-- **DSF Tile Overlap Detection** - Identify conflicting scenery packages
-  - Automatically detect packages with overlapping terrain tiles
-  - Show conflicting packages in detail view
-  - New filter to show only packages with conflicts
-  - XPME-aware conflict detection (respects XPME load order)
-- **Enhanced Filtering System** - More control over scenery display
-  - New filter dropdown with checkbox-based controls
-  - Filter by enabled/disabled status
-  - Improved filter UX with visual indicators
+- **Aircraft Liveries** - Browse, preview, open and delete individual liveries.
+- **Lua Scripts** - View, enable, disable and delete FlyWithLua scripts, with right-click shortcuts.
+- **Scenery Conflicts** - Find overlapping terrain tiles and filter affected packages, including XPME load-order handling.
+- **Scenery Filters** - Filter packages by enabled or disabled state.
 
 ### Changed
 
-- **Release Artifacts** - All platform installers now packaged as .zip files for consistency
-- **README** - Updated tagline to "The Modern X-Plane Addon Installer & Manager"
-- **Plugin Display** - Show script count for FlyWithLua plugin
-
-### Technical
-
-- Database schema updated to v4 with original_category tracking for better package classification
-- Improved asset protocol support for local file access
-- Optimized CI/CD artifacts handling with compression
+- **Downloads** - All platform installers are distributed as ZIP files.
+- **Project Description** - Updated the tagline to "The Modern X-Plane Addon Installer & Manager".
+- **Plugin Display** - Show the number of FlyWithLua scripts.
 
 ## [0.8.8] - 2026-02-05
 
@@ -449,9 +419,7 @@ This is the first official public release of XFast Manager.
 
 ### Changed
 
-- **Faster Page Navigation** - Improved transition speed when switching to Management page
-  - Views are preloaded in the background after app startup
-  - Heavy components loaded asynchronously to reduce initial render time
+- **Faster Navigation** - The Management page opens more quickly.
 
 ## [0.8.3] - 2026-02-01
 
@@ -469,7 +437,7 @@ This is the first official public release of XFast Manager.
 
 ### Changed
 
-- **Data Storage Location** - All app data (logs, database, cache) now stored alongside Tauri store
+- **App Data Location** - Logs, settings and scenery data now share a common app-data folder.
   - Linux: `~/.local/share/com.xfastmanager.tool/` (or `$XDG_DATA_HOME`)
 - **Progress Bar Gradient Effect** - Installation progress bar now displays a smooth gradient animation
   - Gradient moves through blue to green as progress increases
@@ -480,8 +448,7 @@ This is the first official public release of XFast Manager.
 
 ### Fixed
 
-- **Linux Rendering Freeze** - Fixed app freezing on startup with certain GPU configurations
-  - Automatically disables DMA-BUF renderer on Linux to prevent WebKitGTK rendering hangs
+- **Linux Startup** - Fixed startup freezes with certain graphics configurations.
 - **Long Text Truncation** - Fixed display issues with long addon names in confirmation modal
   - Names are now properly truncated with ellipsis
   - Prevents layout breaking with very long navdata provider names
@@ -504,19 +471,11 @@ This is the first official public release of XFast Manager.
 
 ### Added
 
-#### Lock System Integration
-- **Config File Synchronization** - Lock state now syncs with `skunkcrafts_updater.cfg` files for aircraft and plugins
-  - When scanning, items with `disabled|true` in their config file are automatically locked
-  - When toggling lock state, the `disabled|` field is updated in the config file (if it exists)
-  - Provides seamless integration with external updater tools
+- **Updater Lock Sync** - Aircraft and plugin locks now stay in sync with SkunkCrafts updater settings.
 
 ### Changed
 
-#### Data Storage
-- **Tauri Store Migration** - All persistent data now uses Tauri's secure store plugin instead of localStorage
-  - More reliable data persistence across app updates
-  - Better cross-platform compatibility
-  - Improved data security
+- **Saved Settings** - Improved the reliability of saved preferences across updates and platforms.
 
 ## [0.8.0] - 2026-01-28
 
@@ -527,13 +486,7 @@ This is the first official public release of XFast Manager.
   - Fewer tasks (1-3): Larger, more prominent display
   - Medium count (4-6): Standard size
   - Many tasks (7+): Compact view to fit more items
-- **Professional Icons** - Replaced emoji icons with professional SVG icons for each addon type
-  - Aircraft: Plane icon
-  - Scenery: Globe icon
-  - Scenery Library: Layers icon
-  - Plugin: Lightning bolt icon
-  - Navdata: Map icon
-  - Livery: Palette icon
+- **Add-on Icons** - Replaced emoji with a consistent set of icons for each add-on type.
 
 #### Management View
 - **Update & Outdated Filters** - New filter buttons to quickly find addons with available updates or outdated navdata
@@ -584,16 +537,8 @@ This is the first official public release of XFast Manager.
 
 ### Changed
 
-#### Scenery Index Performance
-- **Faster Scenery Index** - Significantly improved performance for large scenery libraries (1000+ packages)
-  - Faster loading and saving of scenery index data
-  - Reduced memory usage when managing scenery
-  - Smoother experience when browsing and editing scenery order
-
-#### Data Storage
-- **New Index Location** - Scenery index now stored in `scenery.db` instead of `scenery_index.json`
-  - Existing users will need to rebuild their scenery index once after updating
-  - Click "Rebuild Index" in Settings or wait for automatic rebuild on first launch
+- **Large Scenery Libraries** - Faster loading and saving, lower memory use, and smoother browsing and ordering.
+- **Scenery Index Upgrade** - Rebuild the scenery index once after updating, from Settings or through the automatic first-launch rebuild.
 
 ## [0.7.5] - 2026-01-25
 
@@ -620,203 +565,49 @@ This is the first official public release of XFast Manager.
 
 ### Added
 
-#### Unified Management Page
-- **Integrated Management Interface** - New unified page for managing aircraft, plugins, navdata, and scenery
-  - Tab-based navigation with sliding indicator animation
-  - Page transitions adapt to navigation direction
-  - Shared search functionality across all tabs
-
-#### Aircraft Management
-- **Aircraft Overview** - View and manage all installed aircraft
-  - Display aircraft name, version, and livery count
-  - Enable/disable aircraft
-  - Delete aircraft with confirmation dialog
-  - Open aircraft folder in file explorer
-  - Search and filter aircraft list
-
-#### Plugin Management
-- **Plugin Overview** - View and manage all installed plugins
-  - Display plugin name, version, and platform compatibility (Win/Mac/Lin/Multi)
-  - Enable/disable plugins
-  - Delete plugins with confirmation dialog
-  - Open plugin folder in file explorer
-  - Search and filter plugin list
-
-#### Navdata Management
-- **Navdata Overview** - View installed navigation data providers
-  - Display provider name and AIRAC cycle information
-  - Cycle status indicators: current (green), outdated (red), unknown (gray)
-  - Smart AIRAC cycle detection
-  - Filter to show only outdated navdata
-  - Delete navdata with confirmation dialog
-  - Open navdata folder in file explorer
-
-#### Update Checking
-- **Automatic Update Detection** - Check for aircraft and plugin updates
-  - Detect versions and update URLs from skunkcrafts_updater.cfg
-  - Parallel update checking for all supported addons
-  - Visual update indicators on addon cards (current → latest version)
-  - Update count badges in management tabs
-  - 1-hour cache to avoid redundant checks
-  - System proxy support
-
-#### Livery Detection
-- **Smart Livery Recognition** - Improved livery folder detection
-  - Accurate livery count display for each aircraft
+- **Unified Management** - Browse and search aircraft, plugins, navigation data and scenery from one page.
+- **Aircraft and Plugins** - View versions, enable or disable items, delete them, and open their folders. Aircraft show livery counts; plugins show supported platforms.
+- **Navigation Data** - View providers and AIRAC cycles, filter outdated data, delete packages, and open their folders.
+- **Update Checks** - Check supported aircraft and plugins for updates, with current and latest versions shown on each card.
+- **Livery Recognition** - More accurate aircraft livery counts.
 
 ### Changed
 
-- **Page Transitions** - Animation direction adapts to navigation direction
-- **Tab Switching** - Smooth tab transition animations without loading state blocking
-- **Scenery Manager** - Integrated into unified management page as "Scenery" tab (requires auto-sort enabled)
+- **Navigation** - Smoother page and tab transitions.
+- **Scenery Management** - Moved into the Scenery tab on the unified management page; automatic scenery sorting must be enabled to access it in this version.
 
 ## [0.6.0] - 2026-01-22
 
 ### Added
 
-#### First-Time User Onboarding
-- **Guided Setup Wizard** - New onboarding experience for first-time users
-  - Step-by-step configuration of X-Plane path
-  - Installation preferences setup (addon type toggles)
-  - Context menu registration option (Windows)
-  - Auto-sort scenery preference
-  - Delete source after install preference
-  - Worry-Free installation mode preference
-  - Clean, modern UI with smooth transitions
-
-#### Scenery Index Improvements
-- **Index Status Detection** - Automatically detects if scenery index needs to be created
-  - Shows prompt when index doesn't exist
-  - One-click index creation from home page
-  - Progress feedback during index building
+- **Guided Setup** - Configure the X-Plane path, installation preferences, Windows integration and scenery sorting on first launch.
+- **Scenery Index Setup** - A first-time prompt helps create the scenery index and shows progress.
 
 ### Changed
 
-- **Project Rebranding** - Renamed from "XFastInstall" to "XFast Manager"
-  - Updated all references throughout the application
-  - New application identifier: com.xfastmanager.app
-  - Updated window title and descriptions
-
-- **Dependency Upgrades**
-  - Upgraded sevenz-rust2 from 0.10 to 0.20 for improved 7z archive handling with safer Rust implementation
-  - Upgraded unrar from 0.5 to 0.5.8 for bug fixes and improved RAR archive handling
-
-- **Code Quality Improvements**
-  - Refactored scenery packs manager for better maintainability
-  - Streamlined entry management and sorting mechanism
-  - Enhanced error handling in updater and task control
-  - Performance optimizations in multiple components
+- **Project Name** - Renamed XFastInstall to XFast Manager.
+- **Archive Handling** - Improved 7z and RAR support.
+- **Reliability** - Improved error handling and responsiveness during installation and scenery management.
 
 ## [0.5.0] - 2026-01-21
 
 ### Added
 
-#### Scenery Manager
-- **Complete Scenery Management Interface** - New dedicated page for managing X-Plane scenery packages
-  - Visual interface for viewing and organizing all scenery in Custom Scenery folder
-  - Real-time sync with scenery_packs.ini file
-  - Enable/disable scenery packages with toggle switches
-  - Drag-and-drop reordering within and across categories
-  - Search functionality to quickly find scenery packages
-  - Collapsible category groups with entry counts (e.g., "机场 (162)")
-  - Missing library dependency warnings with visual indicators
-  - Apply changes button to save modifications to scenery_packs.ini
-  - Automatic backup creation before applying changes
-
-#### Scenery Auto-Sorting System
-- **Intelligent Scenery Classification** - Automatically categorizes scenery packages
-  - Analyzes DSF file headers and folder structure
-  - 8 classification categories with priority-based sorting:
-    1. FixedHighPriority - SAM libraries (SAM_Library, openSAM, etc.)
-    2. Airport - Scenery with apt.dat files
-    3. DefaultAirport - X-Plane's *GLOBAL_AIRPORTS* marker
-    4. Library - Packages with library.txt but no Earth nav data
-    5. Other - Unclassified scenery
-    6. Overlay - Scenery with sim/overlay property
-    7. Orthophotos - Ortho4XP imagery (detected by creation agent)
-    8. Mesh - Terrain mesh packages
-  - Parses DSF PROP section for sim/overlay, sim/creation_agent, sim/filter/aptid
-  - Detects terrain references (TRET) vs object references (OBJT)
-  - Recursive apt.dat search with depth limits for performance
-  - Plugin detection for "Other" category classification
-
-- **Persistent Scenery Index** - Fast caching system for scenery metadata
-  - Stored at %LOCALAPPDATA%/XFast Manager/scenery_index.json (Windows)
-  - Automatic cache invalidation based on directory modification time
-  - Parallel scanning with rayon for large scenery collections
-  - Tracks: category, sub-priority, file counts, library dependencies, tile coverage
-  - Manual rebuild index button in settings
-
-- **Earth Nav Tile Coverage Sorting** - Sorts scenery by geographic coverage
-  - Counts 10-degree tile folders under Earth nav data (e.g., "+30+110")
-  - Scenery with more tiles sorted before scenery with fewer tiles
-  - Ensures large coverage areas load before small regional scenery
-
-- **Alphabetical Sorting Within Categories** - Consistent ordering
-  - After category priority, entries sorted by folder name (case-insensitive)
-  - Provides predictable, organized scenery list
-
-- **Auto-Sort After Installation** - Optional automatic sorting
-  - Toggle in settings to enable/disable auto-sorting after scenery installation
-  - Smart insertion: only inserts newly installed scenery at correct position
-  - Preserves user's manual ordering of existing scenery
-  - Marked as experimental feature in settings UI
-
-- **Manual Sort Button** - Sort all scenery on demand
-  - "Sort All Scenery Now" button in settings
-  - Creates timestamped backup before modifying scenery_packs.ini
-  - Atomic file write (temp file + rename) for safety
-
-#### Enhanced Scenery Detection
-- **SAM Library Priority** - SAM libraries automatically promoted to highest priority
-  - Enhanced pattern matching: "SAM_Library", "open_SAM_library", "openSAM", "mySAM"
-  - Correctly excludes airport codes (e.g., "ZSAM") and unrelated words (e.g., "sample")
-  - Ensures SAM libraries load first for proper airport animations
-
-- **Windows Shortcut Support** - Full support for .lnk files in Custom Scenery
-  - Automatically resolves shortcuts to target directories
-  - Shortcut target folder name used for sorting and classification
-  - Works alongside symbolic links (mklink) for maximum compatibility
-  - Proper handling in index updates and sorting operations
-
-- **Symbolic Link Support** - Enhanced symlink handling
-  - All file system traversal explicitly follows symbolic links
-  - Applies to: apt.dat search, DSF file search, texture counting, validation
-  - Debug logging shows symlink targets for troubleshooting
-
-#### UI/UX Improvements
-- **Enhanced Theme Transitions** - Smoother theme switching experience
-  - Improved animation timing and easing
-  - Better visual feedback during theme changes
-
-- **Search Functionality** - Quick scenery filtering
-  - Real-time search across all scenery packages
-  - Automatically expands collapsed groups when search matches found
-  - Clear search button for quick reset
-
-- **Grouped Display** - Organized category view
-  - 8 collapsible category groups with rotating chevron icons
-  - Group collapse state persists to localStorage
-  - Smooth expand/collapse animations
-  - Visual separation between categories
-
-#### Performance Optimizations
-- **Runtime Log Level Control** - Dynamic logging configuration
-  - New set_log_level command (Debug/Info/Error)
-  - Parallel processing enabled when not in debug mode
-  - Sequential processing only for debug builds (ordered logs)
-  - Significantly faster indexing in production
-
-- **Scenery Classification Performance** - Major speed improvements
-  - Only scans first DSF file found (not all DSF files)
-  - apt.dat search limited to Earth nav data folder with max depth 5
-  - Texture counting stops after finding 5 files (sufficient for classification)
-  - Dramatically faster indexing for large scenery packages (Ortho4XP, etc.)
+- **Scenery Management** - Browse, search, enable, disable and reorder scenery, with collapsible groups, dependency warnings and backups before applying changes.
+- **Scenery Classification** - Recognize airports, libraries, overlays, orthophotos and terrain meshes, with appropriate loading priorities.
+- **Scenery Index** - Faster repeat scans, automatic refresh of changed packages, and a rebuild option in Settings.
+- **Scenery Ordering** - Sort by type, geographic coverage and name, with SAM libraries given priority.
+- **Automatic Sorting (Experimental)** - Optionally place newly installed scenery while preserving existing manual order.
+- **Sort on Demand** - Sort scenery from Settings, with a backup before changes.
+- **Linked Scenery** - Recognize scenery reached through Windows shortcuts and symbolic links.
+- **Scenery Search** - Search expands matching groups; group collapse states are remembered.
+- **Themes** - Smoother switching between light and dark themes.
+- **Large Scenery Packages** - Faster indexing, including Ortho4XP collections.
+- **Log Detail** - Adjust the level of logging while the app is running.
 
 ### Changed
-- **Scenery Installation Flow** - Optional auto-sorting integration
-  - install_addons command now accepts auto_sort_scenery parameter
-  - Newly installed scenery automatically sorted if enabled in settings
+
+- **Scenery Installation** - Installation now follows the automatic scenery sorting preference.
 
 ## [0.4.1] - 2026-01-17
 
@@ -826,517 +617,76 @@ This is the first official public release of XFast Manager.
 ## [0.4.0] - 2026-01-17
 
 ### Added
-- **Automatic Update Check** - GitHub-based version checking with 24-hour cache
-  - Auto-check on app startup (can be disabled in settings)
-  - Manual check button in settings page
-  - Support for stable releases and pre-releases (Beta/RC)
-  - Update notification banner on home page with download link
-- **Update Settings** - Comprehensive update configuration in settings page
-  - Toggle auto-check on startup
-  - Toggle pre-release inclusion
-  - View last check time
-  - Expandable section with feature explanation
+
+- **App Updates** - Check for updates automatically at startup or manually from Settings, with download notifications on the home page.
+- **Update Preferences** - Choose whether to check at startup and include pre-releases, and view the last check time.
 
 ### Changed
-- **Settings Layout** - Moved auto update check section above logs section
-- **Update Banner Design** - Unified styling with other notification banners
-- **Button Labels** - Changed "View Details" to "Download" for clarity
+
+- **Settings Layout** - Update settings appear above logs.
+- **Update Banner** - Consistent styling and a clearer Download button.
 
 ### Fixed
-- **Compilation Warnings** - Resolved all Rust compiler warnings
-- **Update Check Errors** - Graceful handling when no stable releases exist
 
-### Dependencies
-- Added `semver`, `reqwest`, `opener`, `tauri-plugin-http`
+- **Update Checks** - Handle cases where no stable release is available.
 
 ## [0.3.0] - 2026-01-17
 
-### ⚡ Performance Improvements
+### Changed
 
-#### 🚀 Backend Optimizations (Phase 1 - High Priority)
-- **Deduplication Algorithm** - Optimized from O(n²) to O(n log n) complexity
-  - Sorts items by path depth before processing
-  - Uses single-pass algorithm with efficient path checking
-  - Significant speedup for large addon collections (30-50% faster for large collections)
-- **Directory Skip Checking** - Improved from O(n*m) to O(d) average case
-  - Uses path ancestors with HashSet lookups
-  - Reduces redundant string comparisons during directory traversal
-- **Plugin Directory Detection** - Optimized 7 locations with O(n*m) complexity
-  - Added helper functions for efficient path checking
-  - Uses ancestor-based lookups instead of iteration
-- **Reduced String Cloning** - Minimized unnecessary heap allocations
-  - Uses references and helper functions where possible
-  - Lower memory pressure during scanning
+- **Faster Analysis** - Improved detection and scanning for large add-on collections.
+- **Installation Speed** - Faster archive handling and aircraft backups; disabling verification now skips unnecessary file checks.
+- **Installation Results** - A clearer completion view separates failed tasks and their error details.
+- **Password Entry** - Clearer feedback and a more compact password dialog.
+- **Error Messages** - More specific explanations in English and Chinese.
+- **Platform Support** - Interface options better reflect the current operating system.
 
-#### 🗄️ Caching Enhancements (Phase 2 - Medium Priority)
-- **Directory Size Caching** - Avoid repeated directory traversals
-  - Thread-safe cache with 5-minute TTL
-  - Validates cache using directory modification time
-  - Significantly faster for repeated size checks
-- **Extended Archive Metadata Cache** - Store file count alongside size
-  - Enhanced ArchiveMetadata structure
-  - Better cache utilization for archive analysis
-- **Pre-compiled Glob Patterns** - Eliminate repeated pattern compilation
-  - CompiledPatterns struct for efficient reuse
-  - Patterns compiled once per operation instead of per file
-  - Faster config file matching during backup/restore
+### Added
 
-#### 📊 Monitoring & Observability (Phase 3 - Optional)
-- **Enhanced Performance Metrics** - Comprehensive operation tracking
-  - Cache hit/miss rates with atomic counters
-  - Files scanned and archives processed counters
-  - Bytes processed tracking
-  - PerformanceStats structure for statistics export
-- **Operation Timing** - Built-in timer for performance profiling
-  - OperationTimer with automatic logging
-  - Duration tracking for debugging
-  - Optional auto-logging in debug builds
+- **RAR Retry** - Retry files that fail verification, including password-protected packages.
 
-#### 🔍 Hash Verification Optimization
-- **Smart Hash Collection** - Verification preferences now truly control hash operations
-  - When verification is disabled for a file type, hash collection is completely skipped
-  - No file reading or hash computation for disabled types
-  - Significant time savings for large files and directories
-  - Clear logging to indicate when hash collection is skipped
-- **Optimized Verification Flow** - Removed unnecessary hash computation for 7z archives
-  - Simplified logic when verification is disabled
-  - No hash computation attempts when verification is turned off
-  - Better performance for installations with verification disabled
+### Fixed
 
-**Expected Impact**: 30-50% faster addon analysis for large collections, reduced I/O overhead, better observability, significant time savings when verification is disabled
-
-### ✨ Added
-
-#### 🔧 Feature Completions
-- **RAR Single-File Retry** - Implemented file verification retry for RAR archives
-  - Full re-extraction to temp directory when verification fails
-  - Password support for encrypted RAR files
-  - Proper internal_root handling
-  - Automatic cleanup of temporary files
-
-#### 🎨 UI/UX Improvements
-- **Failed Tasks Modal** - New dedicated modal for viewing failed installation tasks
-  - Detailed error information for each failed task
-  - Categorized error messages with icons
-  - Expandable error details
-  - Better error message categorization (20+ error types)
-  - Smooth animations and transitions
-- **Improved Completion View** - Redesigned installation completion interface
-  - Cleaner layout with better visual hierarchy
-  - "View Details" button for failed tasks instead of inline list
-  - More compact and professional appearance
-  - Better handling of partial failures
-- **Password Modal Refinement** - Improved password input interface
-  - More compact design with better spacing
-  - Improved visual feedback
-  - Better button states and interactions
-  - Cleaner typography and layout
-- **Platform Detection** - Automatic platform detection at app startup
-  - Detects Windows/macOS/Linux
-  - Checks context menu registration status (Windows only)
-  - Stores platform state in app store
-  - Better conditional UI rendering
-
-#### 🌐 Internationalization
-- **Enhanced Error Messages** - Expanded error message translations
-  - 20+ categorized error types in both English and Chinese
-  - More specific error reasons (password, path traversal, corruption, etc.)
-  - Better user understanding of failure causes
-
-### 🐛 Fixed
-
-#### 🔧 Bug Fixes
-- **Event Listener Cleanup** - Fixed memory leak in Home.vue
-  - Properly unregister all event listeners on component unmount
-  - Added cleanup for source-deletion-skipped listener
-  - Prevents memory leaks during navigation
-
-### 🧹 Maintenance
-- **Documentation Cleanup** - Removed outdated documentation files
-  - Removed DEVELOPER_GUIDE.md (content moved to CLAUDE.md)
-  - Removed IMPLEMENTATION_STATUS.md (completed features)
-  - Removed PLAN.md (completed tasks)
-  - Removed USER_GUIDE.md (will be replaced with online documentation)
-  - Streamlined project documentation structure
-- **Test Code Refactoring** - Improved test code maintainability
-  - Added helper functions for creating test objects
-  - Reduced code duplication in tests
-  - Cleaner and more readable test cases
+- **Navigation Stability** - Reduced memory use when switching pages.
 
 ## [0.2.0] - 2026-01-16
 
-### ✨ Added
+### Added
 
-#### 🗑️ Delete Source After Install
-- **Automatic Source Cleanup** - New option to automatically delete source files after successful installation
-  - Only deletes files from successfully completed tasks
-  - Only deletes files where addons were detected
-  - Files/folders with no detected addons are preserved
-  - Failed installation tasks won't trigger deletion
-- **Smart Parent Directory Detection** - Prevents deletion when detected addon root is a parent of the input path
-  - Example: Dragging `PLUGIN/win_x64` but detecting `PLUGIN` as root won't delete the directory
-  - Shows notification when deletion is skipped for safety
-- **Settings UI** - New expandable section in Settings with detailed feature explanation
-  - Toggle switch to enable/disable the feature
-  - Four-point feature explanation with benefits
-  - Only visible on Windows systems
+- **Source Cleanup** - Optionally delete source files after successful installation. Failed or unrecognized sources are kept, and overlapping source folders are protected.
+- **Disk Root Protection** - Prevent accidental installation from an entire drive.
+- **Settings Help** - Expand installation and Windows integration options for explanations.
+- **App Version** - Settings now displays the current app version accurately.
 
-#### 🛡️ Enhanced Safety Features
-- **Disk Root Protection** - Automatically ignores and filters out addons detected at disk root directories
-  - Prevents accidental installation from `C:\`, `D:\`, `/`, etc.
-  - Logs warning and adds to error list
-  - Cross-platform support (Windows and Unix/Linux)
+### Fixed
 
-#### 📋 Windows Integration Improvements
-- **Expandable Details** - Windows Integration section now shows detailed feature explanation
-  - Click to expand/collapse
-  - Four-point benefit list
-  - Better user understanding of the feature
+- **Task Controls** - Skip and Cancel buttons respond correctly.
 
-#### 🔧 UI/UX Improvements
-- **Dynamic Version Display** - Settings page now shows app version from `Cargo.toml`
-  - Automatically synced with build version
-  - No more hardcoded version numbers
-- **Better Installation Mode Description** - Clarified installation modes in CHANGELOG
-  - Separated "New Installation" from existing target scenarios
-  - Clear distinction between Clean Install and Direct Overwrite
+### Changed
 
-### 🐛 Fixed
-- **Button Click Issues** - Fixed skip and cancel task buttons not responding
-  - Corrected variable names (`toastStore` → `toast`, `modalStore` → `modal`)
-  - Proper toast notification methods (`toast.info()`, `toast.error()`)
-- **TypeScript Warnings** - Resolved all TypeScript type warnings
-  - Fixed `import.meta.env` type issues by adding `vite-env.d.ts`
-  - Removed unused variables in `ConfirmModal.vue`
-  - Fixed drag-drop event type checking in `Home.vue`
-  - Fixed unused imports in `Settings.vue`
-  - Fixed log level type assertion
-
-### 🔄 Changed
-- **Production Environment Check** - Updated from `import.meta.env.PROD` to `import.meta.env.MODE === 'production'`
-- **Atomic Installation Position** - Moved atomic installation toggle below Windows Integration section for better organization
-
-### 🏗️ Technical
-- **Backend Architecture**:
-  - Added `original_input_path` field to `InstallTask` and `DetectedItem` models
-  - Implemented `delete_source_file()` method in installer with parent directory checking
-  - Added `is_disk_root()` helper function in analyzer
-  - Enhanced `install_addons` command to accept `delete_source_after_install` parameter
-- **Frontend Architecture**:
-  - Added `deleteSourceAfterInstall` state to app store with localStorage persistence
-  - Implemented event listener for `source-deletion-skipped` notifications
-  - Added internationalization support for new features (English and Chinese)
-- **Type Safety**:
-  - Created `vite-env.d.ts` for proper Vite type definitions
-  - Fixed all TypeScript compilation warnings
+- **Installation Guidance** - Clearer descriptions of new installation, clean installation and direct overwrite.
+- **Settings Layout** - Moved atomic installation below Windows integration.
 
 ## [0.1.1] - 2026-01-16
 
-### 🎉 Initial Release
+### Initial Release
 
-XFast Manager is a modern, intelligent X-Plane Addon Auto Manager that makes installing aircraft, scenery, plugins, and navigation data effortless.
+XFast Manager installs and manages X-Plane aircraft, scenery, plugins and navigation data on Windows, macOS and Linux.
 
----
+### Added
 
-### ✨ Core Features
-
-#### 🎯 Smart Addon Detection
-Automatically identifies and categorizes X-Plane addons:
-- **Aircraft** - Detects `.acf` files
-- **Scenery** - Recognizes `library.txt` or `.dsf` files with proper Earth nav data structure
-- **Plugins** - Finds `.xpl` files with platform-specific subdirectory support (win_x64, mac_x64, lin_x64, etc.)
-- **Navigation Data** - Identifies `cycle.json` files with GNS430 detection
-- **Intelligent Deduplication** - Automatically removes nested duplicates (e.g., plugin inside aircraft folder)
-
-#### 📦 Drag & Drop Installation
-- **Simple Interface** - Just drag files or folders into the window
-- **Batch Processing** - Install multiple addons at once
-- **Archive Support** - Works with `.zip`, `.7z`, and `.rar` files
-- **Folder Support** - Directly install from uncompressed folders
-- **Windows Context Menu** - Right-click any file/folder and select "Install to X-Plane" (Windows only)
-- **Command Line Support** - Launch with file paths as arguments
-
-#### 🔐 Password-Protected Archives
-- **Full Encryption Support**:
-  - ZIP: Both ZipCrypto and AES encryption
-  - 7z: Full password support
-  - RAR: Full password support
-- **Unified Password Mode** - Use one password for all archives
-- **Individual Passwords** - Set different passwords for each archive
-- **Smart Retry** - Automatically retry with correct password
-
----
-
-### 🛠️ Installation Options
-
-#### 📋 Installation Modes
-
-**New Installation** (Target doesn't exist)
-- Direct installation to target directory
-- No conflicts or overwrites
-- Fastest installation method
-- Automatically selected when target folder doesn't exist
-
-**When Target Already Exists** - Choose how to handle existing addons:
-
-**Clean Install** (Recommended)
-- Deletes old folder and installs fresh copy
-- **Aircraft Backup Features**:
-  - Automatic livery backup and restoration
-  - Configuration file backup with customizable patterns (e.g., `*_prefs.txt`, `*.cfg`)
-  - Skips existing liveries to preserve new ones
-  - Pattern-based config file matching with glob support
-
-**Direct Overwrite**
-- Keeps existing files
-- Only overwrites matching files
-- Preserves files not in the new addon
-
-#### ⚛️ Atomic Installation Mode
-Advanced installation mode for maximum safety:
-- **Three Scenarios**:
-  - Fresh Install: Direct atomic move to target
-  - Clean Install: Backup → Move → Restore → Cleanup
-  - Overwrite Install: File-by-file atomic merge
-- **Safety Features**:
-  - Temporary staging directory on same drive
-  - Automatic rollback on failure
-  - Disk space validation (minimum 1GB required)
-  - Symbolic link preservation (Unix and Windows)
-  - Automatic cleanup of temporary files
-- **Progress Reporting**: Real-time updates for each phase (backup, move, restore, cleanup)
-
-#### 🎛️ Addon Type Filtering
-- **Selective Installation** - Choose which addon types to auto-install
-- **Type Toggles** - Enable/disable Aircraft, Scenery, Plugins, Navdata individually
-- **Quick Toggle** - Enable/disable all types at once
-- **Persistent Settings** - Preferences saved between sessions
-
----
-
-### 🔍 Intelligence & Safety
-
-#### 🛡️ Security Features
-- **Path Traversal Protection** - Prevents malicious archives from extracting outside target directory
-- **Compression Bomb Detection**:
-  - Maximum extraction size: 20GB per archive
-  - Maximum compression ratio: 100:1
-  - Warning dialog for suspicious archives
-- **Size Validation** - Alerts for unusually large archives
-- **Safe Extraction** - All paths sanitized before extraction
-
-#### ✅ File Integrity Verification
-Post-installation verification ensures files are correctly installed:
-- **Multiple Hash Algorithms**: MD5, SHA-1, SHA-256, CRC32
-- **Configurable by Format**:
-  - ZIP archives verification
-  - 7z archives verification
-  - RAR archives verification (note: not supported due to library limitation)
-  - Directory verification
-- **Smart Retry** - Automatically retries failed files
-- **Detailed Statistics** - Shows verification progress and results
-- **Progress Tracking** - Real-time verification progress (0-100%)
-
-#### ⚠️ Conflict Detection
-- **Existing Installation Warnings** - Alerts when target folder already exists
-- **Navdata Cycle Display** - Shows existing and new cycle information
-- **Size Warnings** - Displays estimated extraction size
-- **Confirmation Required** - User must confirm before overwriting
-
----
-
-### 📊 Progress & Monitoring
-
-#### 📈 Real-Time Progress Tracking
-Comprehensive progress information during installation:
-- **Overall Progress** - Percentage complete (0-100%)
-- **Current File** - Name of file being processed
-- **Bytes Processed** - Data transfer progress
-- **Installation Phases**:
-  - Calculating: Analyzing files and preparing tasks
-  - Installing: Copying/extracting files
-  - Verifying: Checking file integrity (with sub-progress 0-100%)
-  - Finalizing: Completing installation
-- **Task Counter** - Current task number and total tasks
-- **Atomic Installation Phases** - Detailed progress for backup, move, restore, cleanup
-
-#### 🎮 Task Control
-Full control over the installation process:
-- **Cancel All Tasks** - Stop entire installation process
-- **Skip Current Task** - Skip problematic addon and continue with next
-- **Automatic Cleanup** - Removes partially installed files when cancelled/skipped
-- **Confirmation Dialogs** - Warns about data loss before cancelling/skipping
-- **Clean Install Warning** - Special warning when original files may be lost
-
-#### 📉 Performance Metrics
-Monitor installation performance:
-- **Installation Speed** - MB/s throughput
-- **Cache Hit Rate** - Archive metadata cache efficiency
-- **Files Processed** - Total number of files installed
-- **Time Elapsed** - Installation duration
-
----
-
-### 🎨 User Interface
-
-#### 🌍 Multi-Language Support
-- **Languages**: English and Chinese
-- **Auto-Detection** - Automatically detects system language
-- **Manual Switch** - Change language anytime via language switcher
-- **Bilingual Logs** - Log messages in selected language
-
-#### 🌓 Theme Support
-- **Light Theme** - Clean, bright interface
-- **Dark Theme** - Easy on the eyes
-- **Persistent** - Theme preference saved between sessions
-- **Smooth Transitions** - Animated theme switching
-
-#### 💬 Notifications & Dialogs
-- **Toast Notifications** - Non-intrusive status messages
-- **Confirmation Modals** - For critical operations (install, cancel, skip)
-- **Error Modals** - Detailed error information with copy button
-- **Password Modals** - Secure password input for encrypted archives
-- **Completion View** - Summary of successful and failed installations
-
-#### 📋 Task List Display
-Comprehensive task information before installation:
-- **Addon Type** - Visual icon and label
-- **Addon Name** - Display name
-- **Source Path** - Original file/folder location
-- **Target Path** - Installation destination
-- **File Size** - Estimated size after extraction
-- **Conflict Warnings** - Existing installation alerts
-- **Navdata Cycle Info** - Shows existing and new cycle numbers
-- **Enable/Disable Toggle** - Skip individual tasks
-- **Install Mode Selection** - Choose Clean Install or Direct Overwrite per task
-- **Backup Options** - Configure livery and config file backup (for aircraft)
-
----
-
-### 📝 Logging & Debugging
-
-#### 📄 Comprehensive Logging System
-- **Thread-Safe Logging** - Concurrent logging from multiple threads
-- **Automatic Rotation** - Logs rotate at 3MB, trim to 2MB
-- **Bilingual Messages** - Logs in English or Chinese based on setting
-- **Log Levels**:
-  - Basic: Errors and warnings only
-  - Full: Includes info messages
-  - Debug: Verbose debugging information
-- **Log Location**: `%LOCALAPPDATA%/XFast Manager/logs/xfastmanager.log` (Windows)
-- **Frontend Integration** - Frontend logs sent to backend
-
-#### 🔧 Log Management
-- **View Recent Logs** - Display last 50 log entries in UI
-- **Refresh Logs** - Update log display
-- **Copy Logs** - Copy all logs to clipboard
-- **Open Log Folder** - Open log directory in file explorer
-- **Export All Logs** - Get complete log file content
-- **Log Path Display** - Shows current log file location
-
----
-
-### ⚡ Performance Optimizations
-
-#### 🚀 Speed Enhancements
-- **Archive Metadata Caching**:
-  - Thread-safe DashMap cache
-  - 5-minute TTL (Time To Live)
-  - Caches uncompressed sizes
-  - Automatic cleanup of expired entries
-  - Tracks cache hit/miss rates
-- **Parallel Processing**:
-  - Multi-threaded ZIP extraction (each thread has own ZipArchive instance)
-  - Parallel file copying using rayon (for 7z/RAR and directories)
-  - Parallel path scanning during analysis
-  - Concurrent addon detection
-- **Optimized File I/O**:
-  - 4MB buffer size for maximum throughput
-  - Memory-efficient streaming
-- **Async Command Execution**:
-  - All Tauri commands run in background thread pool via tokio
-  - Non-blocking UI during long operations
-  - Uses `tokio::task::spawn_blocking` for CPU-intensive tasks
-- **Smart Scanning**:
-  - Maximum directory depth: 15 levels
-  - Prevents excessive recursion
-  - Early termination for invalid paths
-
----
-
-### 🖥️ Platform Support
-
-#### 🌐 Cross-Platform
-- **Windows** - Full support with context menu integration
-- **macOS** - Full support with native file dialogs
-- **Linux** - Full support with GTK integration
-
-#### 🔧 Platform-Specific Features
-
-**Windows**
-- Context menu registration (uses HKEY_CURRENT_USER, no admin required)
-- GetDiskFreeSpaceExW API for accurate disk space check
-- Windows-specific symlink handling (file vs directory)
-
-**Unix/Linux/macOS**
-- statvfs-based disk space check
-- Unix file permission preservation
-- Unix symlink handling
-- Native file dialogs
-
----
-
-### 🏗️ Technical Architecture
-
-#### 📐 Three-Layer Architecture
-1. **Rust Backend** - File system operations, addon detection, installation
-2. **Tauri Bridge** - Command-based RPC between Rust and JavaScript
-3. **Vue 3 Frontend** - UI layer with Pinia state management
-
-#### 🛠️ Technology Stack
-- **Backend**: Rust with Tauri 2 framework
-- **Frontend**: Vue 3 with Composition API
-- **State Management**: Pinia stores
-- **Internationalization**: vue-i18n
-- **Styling**: Tailwind CSS v4
-- **Build System**: Vite (frontend), Cargo (backend)
-
-#### 📦 Key Dependencies
-- **Archive Handling**: zip, sevenz-rust2, unrar
-- **Parallel Processing**: rayon, tokio
-- **Caching**: DashMap
-- **Logging**: Custom logger with rotation
-- **File Operations**: walkdir, tempfile
-- **Hashing**: crc32fast, sha2
-
----
-
-### 🔒 Security
-
-- **Path Traversal Protection** - Sanitizes all file paths during extraction
-- **Compression Bomb Detection** - Validates extraction size (20GB max) and compression ratio (100:1 max)
-- **Safe Archive Extraction** - Prevents extraction outside target directory
-- **Input Validation** - All user inputs validated before processing
-- **Error Handling** - Comprehensive error handling with user-friendly messages
-
----
-
-### 📚 Documentation
-
-- **In-App Help** - Tooltips and descriptions throughout the UI
-- **Pattern Help** - Glob pattern examples for config file backup
-- **Mode Descriptions** - Clear explanations of Clean Install vs Direct Overwrite
-- **Atomic Install Explanation** - Detailed benefits and notes
-- **Error Messages** - Clear, actionable error descriptions
-
----
-
-### 🎯 User Experience
-
-- **Intuitive Interface** - Clean, modern design
-- **Minimal Configuration** - Works out of the box with sensible defaults
-- **Smart Defaults** - Recommended settings pre-selected
-- **Visual Feedback** - Animated text, progress bars, status indicators
-- **Responsive Design** - Adapts to different window sizes
-- **Keyboard Shortcuts** - Quick access to common actions
-- **Persistent Settings** - All preferences saved automatically
+- **Add-on Detection** - Identify supported add-on types and avoid duplicate detection of components bundled inside other add-ons.
+- **Batch Installation** - Drag in archives or folders, pass paths from the command line, or use the Windows right-click menu. Supports ZIP, 7z and RAR.
+- **Encrypted Archives** - Open password-protected ZIP, 7z and RAR packages with shared or individual passwords and retry when needed.
+- **Installation Modes** - Install new packages, replace an existing installation, or overwrite matching files while keeping other content.
+- **Aircraft Backups** - Preserve liveries and selected configuration files during clean installation.
+- **Atomic Installation** - Use temporary installation and rollback to recover from failures, with progress and automatic cleanup. Requires at least 1 GB of free space.
+- **Installation Preferences** - Choose which add-on types to install and remember the selection.
+- **Archive Safety** - Protect against unsafe extraction paths and unusually large archives, with a 20 GB size limit and a 100:1 compression-ratio limit.
+- **Installation Verification** - Check installed files, retry failures and choose which source formats to verify. RAR verification is not supported in this version.
+- **Conflict Warnings** - Review existing installations, navigation-data cycles, source and target paths, and estimated sizes before confirming.
+- **Progress and Task Controls** - Track each installation phase, speed and elapsed time; skip a task or cancel all tasks with cleanup and warnings about possible data loss.
+- **Interface Options** - English and Chinese, light and dark themes, keyboard shortcuts and saved preferences.
+- **Logs and Error Details** - View, refresh, copy or export logs, open the log folder, and choose the level of detail.
+- **Performance** - Faster scanning, extraction and copying, with a responsive interface during long operations.
+- **Help** - In-app guidance explains installation modes, backups, passwords and common errors.

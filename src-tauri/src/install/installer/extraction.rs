@@ -121,6 +121,11 @@ impl Installer {
         let entries: Vec<_> = walkdir::WalkDir::new(source)
             .follow_links(false)
             .into_iter()
+            .filter_entry(|entry| {
+                entry.path().strip_prefix(source).map_or(true, |relative| {
+                    !crate::package_artifacts::is_ignored_package_artifact_path(relative)
+                })
+            })
             .filter_map(|e| e.ok())
             .collect();
 
@@ -376,6 +381,10 @@ impl Installer {
                     }
                 };
 
+                if crate::package_artifacts::is_ignored_package_artifact_path(&relative_path) {
+                    return None;
+                }
+
                 Some((i, relative_path, is_dir, is_encrypted, size))
             })
             .collect();
@@ -501,7 +510,13 @@ impl Installer {
         // After all chunks complete, check if ALL expected files were verified inline
         if let Some(ref hashes) = expected_hashes_arc {
             let verified = ctx.inline_verified_count.load(Ordering::SeqCst) as usize;
-            if verified == hashes.len() {
+            let expected_count = hashes
+                .keys()
+                .filter(|path| {
+                    !crate::package_artifacts::is_ignored_package_artifact_archive_path(path)
+                })
+                .count();
+            if verified == expected_count {
                 ctx.inline_verified
                     .store(true, std::sync::atomic::Ordering::SeqCst);
             }
@@ -574,6 +589,11 @@ impl Installer {
 
                 // Skip empty paths
                 if relative_path.is_empty() {
+                    return Ok(true);
+                }
+
+                if crate::package_artifacts::is_ignored_package_artifact_archive_path(relative_path)
+                {
                     return Ok(true);
                 }
 
@@ -830,6 +850,9 @@ impl Installer {
 
             let path = entry.path();
             let relative = path.strip_prefix(target_dir)?;
+            if crate::package_artifacts::is_ignored_package_artifact_path(relative) {
+                continue;
+            }
             let relative_str = relative.to_string_lossy().replace('\\', "/");
 
             // Compute SHA256
@@ -896,7 +919,14 @@ impl Installer {
                 .read_header()
                 .map_err(|e| anyhow::anyhow!("Failed to read RAR header: {:?}", e))?
             {
-                arch = if header.entry().is_file() {
+                let is_ignored = crate::package_artifacts::is_ignored_package_artifact_archive_path(
+                    &header.entry().filename.to_string_lossy(),
+                );
+                arch = if is_ignored {
+                    header
+                        .skip()
+                        .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
+                } else if header.entry().is_file() {
                     let size = header.entry().unpacked_size;
                     let result = header
                         .extract_with_base(target)
@@ -938,7 +968,14 @@ impl Installer {
             .read_header()
             .map_err(|e| anyhow::anyhow!("Failed to read RAR header: {:?}", e))?
         {
-            arch = if header.entry().is_file() {
+            let is_ignored = crate::package_artifacts::is_ignored_package_artifact_archive_path(
+                &header.entry().filename.to_string_lossy(),
+            );
+            arch = if is_ignored {
+                header
+                    .skip()
+                    .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
+            } else if header.entry().is_file() {
                 header
                     .extract_with_base(temp_dir.path())
                     .map_err(|e| anyhow::anyhow!("Failed to extract RAR entry: {:?}", e))?

@@ -16,6 +16,10 @@ pub enum AddonType {
     Livery,
     /// FlyWithLua Lua script
     LuaScript,
+    /// Aircraft model patch — overlaid (merged) into an existing aircraft folder.
+    /// User-directed (never auto-detected); placement is decided by the patch
+    /// mapping inference engine rather than signature detection.
+    Patch,
 }
 
 /// Represents a nested archive within another archive
@@ -181,9 +185,34 @@ pub struct InstallTask {
     /// For LuaScript: whether FlyWithLua plugin is installed
     #[serde(default = "default_true")]
     pub flywithlua_installed: bool,
+    /// Whether this standalone plugin is an XLua runtime.
+    #[serde(default)]
+    pub is_xlua_runtime: bool,
     /// For LuaScript: companion files/folders referenced by SCRIPT_DIRECTORY
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub companion_paths: Vec<String>,
+    /// Files selected by the confirmed patch plan, relative to the archive and aircraft roots.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub patch_files: Vec<PatchFileWrite>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch_plan_id: Option<String>,
+    /// For Patch: back up files that will be overwritten before merging (revertable).
+    #[serde(default)]
+    pub patch_backup: bool,
+    /// For Patch: backup session directory for the complete patch install.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patch_backup_dir: Option<String>,
+    /// Selected aircraft boundary, rechecked before a patch writes any files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch_aircraft_root: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchFileWrite {
+    pub archive_path: String,
+    pub destination: String,
+    pub overwrite: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -227,6 +256,7 @@ pub struct DetectedItem {
     pub livery_aircraft_type: Option<String>,
     /// For Aircraft/Plugin: version info from the addon to be installed
     pub version_info: Option<VersionInfo>,
+    pub is_xlua_runtime: bool,
     /// For LuaScript: companion files/folders referenced by SCRIPT_DIRECTORY
     pub companion_paths: Vec<String>,
 }
@@ -381,6 +411,8 @@ pub enum SceneryCategory {
     Airport,
     /// Default X-Plane airports (*GLOBAL_AIRPORTS*)
     DefaultAirport,
+    /// Regional overlay packages with an author-defined layer order (e.g., SimHeaven X-WORLD)
+    RegionalOverlay,
     /// Library scenery (library.txt without Earth nav data)
     Library,
     /// Overlay scenery (modifies default terrain/objects)
@@ -402,12 +434,13 @@ impl SceneryCategory {
             SceneryCategory::FixedHighPriority => 0,
             SceneryCategory::Airport => 1,
             SceneryCategory::DefaultAirport => 2,
-            SceneryCategory::Library => 3,
-            SceneryCategory::Other => 4,
-            SceneryCategory::Overlay => 5,
-            SceneryCategory::AirportMesh => 6, // Between Overlay and regular Mesh
-            SceneryCategory::Mesh => 7,
-            SceneryCategory::Unrecognized => 8, // Lowest priority, always at bottom
+            SceneryCategory::Other => 3,
+            SceneryCategory::RegionalOverlay => 4,
+            SceneryCategory::Library => 5,
+            SceneryCategory::Overlay => 6,
+            SceneryCategory::AirportMesh => 7, // Between Overlay and regular Mesh
+            SceneryCategory::Mesh => 8,
+            SceneryCategory::Unrecognized => 9, // Lowest priority, always at bottom
         }
     }
 }
@@ -627,6 +660,8 @@ pub struct SceneryManagerEntry {
     /// Latest version fetched from remote (populated by check_scenery_updates)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual_update_url: Option<String>,
     /// True when latest_version differs from local version (set by check_scenery_updates)
     #[serde(default)]
     pub has_update: bool,
@@ -661,6 +696,8 @@ pub struct SceneryEntryUpdate {
     pub folder_name: String,
     pub enabled: bool,
     pub sort_order: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<SceneryCategory>,
 }
 
 /// Data for scenery manager UI
@@ -744,6 +781,8 @@ pub struct PluginInfo {
     pub update_provider: Option<String>,
     /// Latest version from remote server (populated by check_plugins_updates)
     pub latest_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual_update_url: Option<String>,
     /// Whether an update is available
     pub has_update: bool,
     /// Whether disabled in skunkcrafts_updater.cfg (disabled|true)
@@ -1005,9 +1044,10 @@ mod tests {
             SceneryCategory::FixedHighPriority.priority() < SceneryCategory::Airport.priority()
         );
         assert!(SceneryCategory::Airport.priority() < SceneryCategory::DefaultAirport.priority());
-        assert!(SceneryCategory::DefaultAirport.priority() < SceneryCategory::Library.priority());
-        assert!(SceneryCategory::Library.priority() < SceneryCategory::Other.priority());
-        assert!(SceneryCategory::Other.priority() < SceneryCategory::Overlay.priority());
+        assert!(SceneryCategory::DefaultAirport.priority() < SceneryCategory::Other.priority());
+        assert!(SceneryCategory::Other.priority() < SceneryCategory::RegionalOverlay.priority());
+        assert!(SceneryCategory::RegionalOverlay.priority() < SceneryCategory::Library.priority());
+        assert!(SceneryCategory::Library.priority() < SceneryCategory::Overlay.priority());
         assert!(SceneryCategory::Overlay.priority() < SceneryCategory::AirportMesh.priority());
         assert!(SceneryCategory::AirportMesh.priority() < SceneryCategory::Mesh.priority());
         assert!(SceneryCategory::Mesh.priority() < SceneryCategory::Unrecognized.priority());
@@ -1166,6 +1206,7 @@ mod tests {
             update_provider: Some("skunkcrafts".to_string()),
             version: Some("1.0".to_string()),
             latest_version: None,
+            manual_update_url: None,
             has_update: false,
             missing_libraries: vec![],
             required_libraries: vec!["opensceneryx".to_string()],
@@ -1220,6 +1261,7 @@ mod tests {
             folder_name: "test_scenery".to_string(),
             enabled: false,
             sort_order: 42,
+            category: Some(SceneryCategory::RegionalOverlay),
         };
 
         let json = serde_json::to_string(&update).unwrap();
@@ -1228,5 +1270,6 @@ mod tests {
         assert_eq!(parsed.folder_name, "test_scenery");
         assert!(!parsed.enabled);
         assert_eq!(parsed.sort_order, 42);
+        assert_eq!(parsed.category, Some(SceneryCategory::RegionalOverlay));
     }
 }

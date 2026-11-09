@@ -9,12 +9,16 @@ mod cache;
 mod error;
 #[path = "core/logger.rs"]
 mod logger;
+#[path = "core/package_artifacts.rs"]
+mod package_artifacts;
 #[path = "core/path_utils.rs"]
 mod path_utils;
 #[path = "core/performance.rs"]
 mod performance;
 #[path = "core/registry.rs"]
 mod registry;
+#[path = "core/startup_migrations.rs"]
+mod startup_migrations;
 #[path = "core/task_control.rs"]
 mod task_control;
 #[path = "core/vercel_api.rs"]
@@ -45,6 +49,8 @@ mod scanner;
 mod atomic_installer;
 #[path = "install/installer/mod.rs"]
 mod installer;
+#[path = "install/patch.rs"]
+mod patch;
 #[path = "install/verifier.rs"]
 mod verifier;
 
@@ -55,6 +61,8 @@ mod addon_updater;
 mod airport_flatten;
 #[path = "management/csl_index.rs"]
 mod csl_index;
+#[path = "management/flight_plans.rs"]
+mod flight_plans;
 #[path = "management/gateway.rs"]
 mod gateway;
 #[path = "management/management_index.rs"]
@@ -70,10 +78,6 @@ mod zibo_updater;
 #[path = "screenshot/mod.rs"]
 mod screenshot;
 
-// Map
-#[path = "map/mod.rs"]
-mod map;
-
 // Scenery
 #[path = "scenery/geo_regions.rs"]
 mod geo_regions;
@@ -83,6 +87,10 @@ mod scenery_classifier;
 mod scenery_index;
 #[path = "scenery/scenery_packs_manager.rs"]
 mod scenery_packs_manager;
+#[path = "scenery/scenery_sort_strategy.rs"]
+mod scenery_sort_strategy;
+#[path = "scenery/scenery_sorting.rs"]
+mod scenery_sorting;
 
 // Services (remote/data)
 #[path = "services/library_links.rs"]
@@ -97,6 +105,10 @@ mod activity;
 // Disk usage analysis
 #[path = "analysis/disk_usage.rs"]
 mod disk_usage;
+
+// Doctor — aggregated health diagnostics
+#[path = "analysis/doctor.rs"]
+mod doctor;
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -269,6 +281,7 @@ async fn create_library_link_issue(
 struct BugReportResult {
     issue_url: String,
     issue_number: u64,
+    deduplicated: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -284,6 +297,10 @@ async fn create_bug_report_issue(
     error_message: String,
     logs: Option<String>,
     category: Option<String>,
+    error_code: Option<String>,
+    error_origin: Option<String>,
+    error_operation: Option<String>,
+    reportable: Option<bool>,
 ) -> Result<BugReportResult, String> {
     let app_version = env!("CARGO_PKG_VERSION").to_string();
     let os = std::env::consts::OS.to_string();
@@ -308,7 +325,11 @@ async fn create_bug_report_issue(
             "errorTitle": error_title.trim(),
             "errorMessage": error_message.trim(),
             "logs": logs.as_deref().unwrap_or(""),
-            "category": category.as_deref().unwrap_or("Other")
+            "category": category.as_deref().unwrap_or("Other"),
+            "errorCode": error_code,
+            "errorOrigin": error_origin,
+            "errorOperation": error_operation,
+            "reportable": reportable
         }))
         .send()
         .await
@@ -317,6 +338,12 @@ async fn create_bug_report_issue(
     if !response.status().is_success() {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
+        if error_text.contains("bug_report_not_allowed") {
+            return Err("BUG_REPORT_NOT_ALLOWED".to_string());
+        }
+        if error_text.contains("bug_report_dedup_check_failed") {
+            return Err("BUG_REPORT_DEDUP_CHECK_FAILED".to_string());
+        }
         return Err(format!("Bug report API error {}: {}", status, error_text));
     }
 
@@ -339,6 +366,10 @@ async fn create_bug_report_issue(
         .get("issueNumber")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
+    let deduplicated = response_json
+        .get("deduplicated")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     // Fallback: if the server didn't return issueNumber, extract it from URL query or tail.
     let issue_number = if issue_number == 0 {
@@ -350,7 +381,7 @@ async fn create_bug_report_issue(
                     .and_then(|(_, v)| v.parse::<u64>().ok())
                     .or_else(|| {
                         url.path_segments()
-                            .and_then(|segments| segments.last())
+                            .and_then(|mut segments| segments.next_back())
                             .and_then(|s| s.parse::<u64>().ok())
                     })
             })
@@ -362,6 +393,7 @@ async fn create_bug_report_issue(
     Ok(BugReportResult {
         issue_url,
         issue_number,
+        deduplicated,
     })
 }
 
@@ -443,7 +475,7 @@ async fn create_feedback_issue(
                     .and_then(|(_, v)| v.parse::<u64>().ok())
                     .or_else(|| {
                         url.path_segments()
-                            .and_then(|segments| segments.last())
+                            .and_then(|mut segments| segments.next_back())
                             .and_then(|s| s.parse::<u64>().ok())
                     })
             })
@@ -671,6 +703,7 @@ async fn analyze_addons(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri exposes these installation options as command fields.
 async fn install_addons(
     app_handle: tauri::AppHandle,
     db: State<'_, DatabaseState>,
@@ -758,6 +791,129 @@ async fn install_addons(
     }
 
     result
+}
+
+// ============================================================================
+// Patch Install Commands
+// ============================================================================
+
+/// Level 1 — align a patch archive against every installed aircraft and
+/// recommend the best-matching one as the install target.
+#[tauri::command]
+async fn detect_patch_target_aircraft(
+    archive_path: String,
+    xplane_path: String,
+) -> Result<patch::TargetDetection, String> {
+    tokio::task::spawn_blocking(move || {
+        patch::detect_target_aircraft(std::path::Path::new(&archive_path), &xplane_path)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Patch target detection failed: {}", e))
+}
+
+/// Level 2 — for a chosen aircraft, infer the archive → aircraft subpath mappings.
+#[tauri::command]
+async fn infer_patch_mappings(
+    archive_path: String,
+    xplane_path: String,
+    aircraft_folder: String,
+) -> Result<patch::PatchPlan, String> {
+    tokio::task::spawn_blocking(move || {
+        patch::infer_mappings(
+            std::path::Path::new(&archive_path),
+            &xplane_path,
+            &aircraft_folder,
+        )
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Patch mapping inference failed: {}", e))
+}
+
+/// Read-only preview of what a patch install will do (total files written and
+/// how many existing files get overwritten) for the chosen aircraft + mappings.
+#[tauri::command]
+async fn summarize_patch_install(
+    archive_path: String,
+    xplane_path: String,
+    aircraft_folder: String,
+    mappings: Vec<patch::PatchMappingInput>,
+) -> Result<patch::PatchInstallSummary, String> {
+    tokio::task::spawn_blocking(move || {
+        patch::summarize_install(
+            std::path::Path::new(&archive_path),
+            &xplane_path,
+            &aircraft_folder,
+            &mappings,
+        )
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Patch summary failed: {}", e))
+}
+
+/// Build overlay install tasks from user-confirmed patch mappings. The returned
+/// tasks are fed to `install_addons` like any other install.
+#[tauri::command]
+async fn build_patch_install_tasks(
+    archive_path: String,
+    password: Option<String>,
+    xplane_path: String,
+    aircraft_folder: String,
+    mappings: Vec<patch::PatchMappingInput>,
+    backup_overwritten: bool,
+    expected_plan_id: String,
+) -> Result<Vec<InstallTask>, String> {
+    tokio::task::spawn_blocking(move || {
+        patch::build_install_tasks(
+            &archive_path,
+            password,
+            &xplane_path,
+            &aircraft_folder,
+            mappings,
+            backup_overwritten,
+            Some(&expected_plan_id),
+        )
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Failed to build patch tasks: {}", e))
+}
+
+/// List the backup sessions for a selected aircraft without changing any files.
+#[tauri::command]
+async fn list_patch_backups(
+    xplane_path: String,
+    aircraft_folder: String,
+) -> Result<Vec<patch::PatchBackupSession>, String> {
+    tokio::task::spawn_blocking(move || {
+        patch::list_aircraft_backups(&xplane_path, &aircraft_folder)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {e}"))?
+    .map_err(|e| format!("Failed to list patch backups: {e:#}"))
+}
+
+/// Restore the overwritten files from a session listed for this aircraft.
+#[tauri::command]
+async fn revert_patch(
+    xplane_path: String,
+    aircraft_folder: String,
+    session_id: String,
+    remove_added_files: Option<bool>,
+) -> Result<patch::PatchRestoreResult, String> {
+    tokio::task::spawn_blocking(move || {
+        patch::restore_aircraft_backup(
+            &xplane_path,
+            &aircraft_folder,
+            &session_id,
+            remove_added_files.unwrap_or(false),
+        )
+    })
+    .await
+    .map_err(|e| format!("Task join error: {e}"))?
+    .map_err(|e| format!("Failed to revert patch: {e:#}"))
 }
 
 // ============================================================================
@@ -867,6 +1023,8 @@ struct XPlaneLogAnalysis {
     log_path: String,
     is_xplane_log: bool,
     crash_detected: bool,
+    session_end: String,
+    log_tail: String,
     crash_info: Option<String>,
     issues: Vec<LogIssue>,
     system_info: SystemInfo,
@@ -1249,34 +1407,39 @@ fn extract_system_info(lines: &[String]) -> SystemInfo {
     info
 }
 
-#[tauri::command]
-fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> {
+fn has_simulator_log_header(text: &str) -> bool {
+    text.lines().take(100).any(|line| {
+        let line = line.trim_start_matches('\u{feff}').trim_start();
+        line.strip_prefix("Log.txt for X-Plane ")
+            .and_then(|tail| tail.bytes().next())
+            .is_some_and(|byte| byte.is_ascii_digit())
+    })
+}
+
+fn analyze_xplane_log_file(xplane_path: &str) -> Result<XPlaneLogAnalysis, String> {
     use std::fs::File;
-    use std::io::{BufRead, BufReader};
+    use std::io::Read;
 
-    let log_path = std::path::PathBuf::from(&xplane_path).join("Log.txt");
+    const MAX_LOG_BYTES: u64 = 64 * 1024 * 1024;
+    let log_path = std::path::Path::new(xplane_path).join("Log.txt");
     let log_path_str = log_path.to_string_lossy().to_string();
-
-    let file = File::open(&log_path).map_err(|e| format!("Cannot open Log.txt: {e}"))?;
-    let reader = BufReader::new(file);
-    let lines: Vec<String> = reader
-        .lines()
-        .map(|l| l.map_err(|e| format!("Read error: {e}")))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    // Check if it's an X-Plane log (first 100 lines)
-    let xplane_indicators = [
-        "X-Plane",
-        "X-System folder",
-        "Vulkan Device",
-        "OpenGL Render",
-        "Fetching plugins for",
-        "Laminar Research",
-    ];
-    let is_xplane_log = lines
-        .iter()
-        .take(100)
-        .any(|line| xplane_indicators.iter().any(|ind| line.contains(ind)));
+    let file = File::open(&log_path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            "Log.txt not found".to_string()
+        } else {
+            format!("Cannot open Log.txt: {error}")
+        }
+    })?;
+    let mut bytes = Vec::new();
+    file.take(MAX_LOG_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("Cannot read Log.txt: {error}"))?;
+    if bytes.len() as u64 > MAX_LOG_BYTES {
+        return Err("Log.txt exceeds the 64 MiB diagnostic read limit".into());
+    }
+    let text = String::from_utf8_lossy(&bytes);
+    let is_xplane_log = has_simulator_log_header(&text);
+    let lines: Vec<String> = text.lines().map(str::to_owned).collect();
 
     let system_info = extract_system_info(&lines);
 
@@ -1314,39 +1477,19 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
         }
     }
 
-    let missing_log_ending =
-        is_xplane_log && first_crash_marker_idx.is_none() && !has_normal_shutdown_ending(&lines);
-    let crash_detected = first_crash_marker_idx.is_some() || missing_log_ending;
-    let crash_info = first_crash_marker_idx
-        .map(|idx| extract_crash_context(&lines, idx))
-        .or_else(|| {
-            if missing_log_ending {
-                let context = extract_log_tail_context(&lines);
-                if context.is_empty() {
-                    None
-                } else {
-                    Some(context)
-                }
-            } else {
-                None
-            }
-        });
-
-    if missing_log_ending {
-        let line_number = last_non_empty_line_index(&lines)
-            .map(|idx| idx + 1)
-            .unwrap_or(1);
-        let sample_line = extract_log_tail_context(&lines);
-        let entry = issue_map
-            .entry("crash")
-            .or_insert(("high", Vec::new(), String::new()));
-        if entry.1.len() < 5 {
-            entry.1.push(line_number);
-        }
-        if entry.2.is_empty() {
-            entry.2 = sample_line;
-        }
+    // Absence of a shutdown marker cannot distinguish a live, truncated or
+    // interrupted log. Only an explicit X-Plane crash marker confirms a crash.
+    let crash_detected = first_crash_marker_idx.is_some();
+    let session_end = if crash_detected {
+        "crash"
+    } else if has_normal_shutdown_ending(&lines) {
+        "normal"
+    } else {
+        "unknown"
     }
+    .to_string();
+    let log_tail = extract_log_tail_context(&lines);
+    let crash_info = first_crash_marker_idx.map(|idx| extract_crash_context(&lines, idx));
 
     let sev_order = |s: &str| match s {
         "high" => 0u8,
@@ -1372,6 +1515,8 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
         log_path: log_path_str,
         is_xplane_log,
         crash_detected,
+        session_end,
+        log_tail,
         crash_info,
         issues,
         system_info,
@@ -1379,6 +1524,13 @@ fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> 
         total_medium,
         total_low,
     })
+}
+
+#[tauri::command]
+async fn analyze_xplane_log(xplane_path: String) -> Result<XPlaneLogAnalysis, String> {
+    tokio::task::spawn_blocking(move || analyze_xplane_log_file(&xplane_path))
+        .await
+        .map_err(|error| format!("Log inspection task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -1399,30 +1551,31 @@ mod log_analysis_tests {
         std::fs::write(temp.path().join("Log.txt"), lines.join("\n"))
             .expect("failed to write Log.txt");
 
-        analyze_xplane_log(temp.path().to_string_lossy().to_string())
-            .expect("failed to analyze Log.txt")
+        analyze_xplane_log_file(&temp.path().to_string_lossy()).expect("failed to analyze Log.txt")
     }
 
     #[test]
-    fn unfinished_xplane_log_is_detected_as_crash() {
+    fn identifies_the_simulator_header_without_accepting_an_installer_log() {
+        assert!(has_simulator_log_header(
+            "\u{feff}Log.txt for X-Plane 12.4.4\n"
+        ));
+        assert!(!has_simulator_log_header(
+            "Installer Log.txt for X-Plane Installer 5.10\nX-Plane"
+        ));
+    }
+
+    #[test]
+    fn unfinished_xplane_log_is_inconclusive() {
         let result = analyze_log_lines(&[
             "Log.txt for X-Plane 12.4.0",
-            "X-System folder:'C:\\X-Plane 12', case sensitive=0",
-            "0:00:01.000 I/FLT: Init flight",
-            "0:00:02.000 I/SCN: Loading scenery",
+            "[NSC] [INFO] UiService initialized",
         ]);
-
         assert!(result.is_xplane_log);
-        assert!(result.crash_detected);
-        assert!(result
-            .crash_info
-            .as_deref()
-            .unwrap_or("")
-            .contains("Loading scenery"));
-        assert!(result
-            .issues
-            .iter()
-            .any(|issue| issue.category == "crash" && issue.severity == "high"));
+        assert!(!result.crash_detected);
+        assert_eq!(result.session_end, "unknown");
+        assert!(result.crash_info.is_none());
+        assert!(result.log_tail.contains("UiService initialized"));
+        assert!(result.issues.iter().all(|issue| issue.category != "crash"));
     }
 
     #[test]
@@ -1551,31 +1704,38 @@ fn relax_scenery_delete_permissions_recursive(path: &Path) {
     }
 }
 
-fn scenery_delete_permission_message(folder_name: &str, error: &std::io::Error) -> String {
-    format!(
-        "Could not delete {}. The folder may still be in use by X-Plane, a file manager, antivirus, or another process, or your account may not have permission to modify it. Close anything using the folder, check folder permissions, then try again. Last error: {}",
-        folder_name, error
-    )
+fn is_scenery_delete_access_error(cause: &std::io::Error) -> bool {
+    cause.kind() == ErrorKind::PermissionDenied || error::is_windows_file_lock(cause)
+}
+
+fn scenery_delete_error(folder_name: &str, cause: std::io::Error) -> error::ApiError {
+    let message = if error::is_windows_file_lock(&cause) {
+        format!(
+            "Could not delete {folder_name} because a file is in use. Close X-Plane and any other program using the folder, then try again. Last error: {cause}"
+        )
+    } else if cause.kind() == ErrorKind::PermissionDenied {
+        format!(
+            "Could not delete {folder_name}. Close any program using the folder, check that you have permission to modify it, then try again. Last error: {cause}"
+        )
+    } else {
+        format!("Could not delete {folder_name}: {cause}")
+    };
+
+    let mut api_error = error::ApiError::from(cause);
+    api_error.message = message;
+    api_error
 }
 
 fn remove_scenery_file_with_permission_fix(path: &Path, folder_name: &str) -> error::ApiResult<()> {
     match fs::remove_file(path) {
-        Ok(()) => Ok(()),
         Err(e) if e.kind() == ErrorKind::PermissionDenied => {
             let _ = clear_scenery_readonly_attribute(path);
             let _ = add_scenery_write_permission(path);
-            fs::remove_file(path).map_err(|e2| {
-                error::ApiError::permission_denied(scenery_delete_permission_message(
-                    folder_name,
-                    &e2,
-                ))
-            })
+            fs::remove_file(path)
         }
-        Err(e) => Err(error::ApiError::internal(format!(
-            "Failed to delete scenery file: {}",
-            e
-        ))),
+        result => result,
     }
+    .map_err(|cause| scenery_delete_error(folder_name, cause))
 }
 
 fn remove_scenery_dir_all_with_permission_fix(
@@ -1583,21 +1743,13 @@ fn remove_scenery_dir_all_with_permission_fix(
     folder_name: &str,
 ) -> error::ApiResult<()> {
     match fs::remove_dir_all(path) {
-        Ok(()) => Ok(()),
         Err(e) if e.kind() == ErrorKind::PermissionDenied => {
             relax_scenery_delete_permissions_recursive(path);
-            fs::remove_dir_all(path).map_err(|e2| {
-                error::ApiError::permission_denied(scenery_delete_permission_message(
-                    folder_name,
-                    &e2,
-                ))
-            })
+            fs::remove_dir_all(path)
         }
-        Err(e) => Err(error::ApiError::internal(format!(
-            "Failed to delete scenery folder: {}",
-            e
-        ))),
+        result => result,
     }
+    .map_err(|cause| scenery_delete_error(folder_name, cause))
 }
 
 fn remove_scenery_symlink_with_permission_hint(
@@ -1609,12 +1761,11 @@ fn remove_scenery_symlink_with_permission_hint(
         Err(file_error) => match fs::remove_dir(path) {
             Ok(()) => Ok(()),
             Err(dir_error) => {
-                if file_error.kind() == ErrorKind::PermissionDenied
-                    || dir_error.kind() == ErrorKind::PermissionDenied
-                {
-                    return Err(error::ApiError::permission_denied(
-                        scenery_delete_permission_message(folder_name, &dir_error),
-                    ));
+                if is_scenery_delete_access_error(&dir_error) {
+                    return Err(scenery_delete_error(folder_name, dir_error));
+                }
+                if is_scenery_delete_access_error(&file_error) {
+                    return Err(scenery_delete_error(folder_name, file_error));
                 }
                 Err(error::ApiError::internal(format!(
                     "Failed to delete scenery link: {} ({}; {})",
@@ -1622,6 +1773,37 @@ fn remove_scenery_symlink_with_permission_hint(
                 )))
             }
         },
+    }
+}
+
+#[cfg(all(test, windows))]
+mod scenery_delete_tests {
+    use super::*;
+    use std::os::windows::fs::OpenOptionsExt;
+
+    #[test]
+    fn locked_scenery_folder_can_be_retried_without_reporting_a_bug() {
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().join("Test Scenery");
+        let scenery_file = folder.join("library.txt");
+        fs::create_dir(&folder).unwrap();
+        fs::write(&scenery_file, b"test scenery").unwrap();
+        let lock = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&scenery_file)
+            .unwrap();
+
+        let error =
+            remove_scenery_dir_all_with_permission_fix(&folder, "Test Scenery").unwrap_err();
+        assert_eq!(error.code, error::ApiErrorCode::EnvironmentError);
+        assert!(!error.reportable);
+        assert!(error.message.contains("Close X-Plane"));
+        assert!(scenery_file.is_file());
+
+        drop(lock);
+        remove_scenery_dir_all_with_permission_fix(&folder, "Test Scenery").unwrap();
+        assert!(!folder.exists());
     }
 }
 
@@ -1668,21 +1850,23 @@ async fn delete_scenery_folder(
         remove_scenery_dir_all_with_permission_fix(&canonical_path, &folder_name)?;
     }
 
+    // Remove only this registration; deleting a package must not reorder other entries.
+    let packs_manager = scenery_packs_manager::SceneryPacksManager::new(
+        std::path::Path::new(&xplane_path),
+        db.get(),
+    );
+    if let Err(e) = packs_manager.remove_entry_from_ini(&folder_name).await {
+        logger::log_error(
+            &format!("Failed to remove scenery registration: {}", e),
+            Some("scenery"),
+        );
+    }
+
     // Remove from scenery index if it exists
     if let Err(e) = scenery_index::remove_scenery_entry(&db.get(), &xplane_path, &folder_name).await
     {
         logger::log_error(
             &format!("Failed to remove scenery from index: {}", e),
-            Some("scenery"),
-        );
-    }
-
-    // Update scenery_packs.ini to remove the deleted entry
-    let xplane_path = std::path::Path::new(&xplane_path);
-    let packs_manager = scenery_packs_manager::SceneryPacksManager::new(xplane_path, db.get());
-    if let Err(e) = packs_manager.apply_from_index().await {
-        logger::log_error(
-            &format!("Failed to update scenery_packs.ini after deletion: {}", e),
             Some("scenery"),
         );
     }
@@ -1718,6 +1902,31 @@ fn check_path_exists(path: String) -> bool {
     std::path::Path::new(&path).exists()
 }
 
+fn is_xplane_simulator_name(name: &std::ffi::OsStr) -> bool {
+    let lower = name.to_string_lossy().to_ascii_lowercase();
+    #[cfg(windows)]
+    let Some(name) = lower.strip_suffix(".exe") else {
+        return false;
+    };
+    #[cfg(not(windows))]
+    let name = lower.as_str();
+    let Some(suffix) = name.strip_prefix("x-plane") else {
+        return false;
+    };
+    if suffix.is_empty() || matches!(suffix, "-x86_64" | "-aarch64") {
+        return true;
+    }
+    // Accept versioned simulator filenames such as X-Plane12.exe. Installers,
+    // updaters and auxiliary executables have no simulator version suffix.
+    suffix
+        .trim_start_matches([' ', '-', '_'])
+        .bytes()
+        .next()
+        .is_some_and(|byte| byte.is_ascii_digit())
+        && !suffix.contains("installer")
+        && !suffix.contains("updater")
+}
+
 #[cfg(target_os = "windows")]
 fn find_xplane_executable_in_root(path: &std::path::Path) -> Option<std::path::PathBuf> {
     let exact = path.join("X-Plane.exe");
@@ -1730,11 +1939,7 @@ fn find_xplane_executable_in_root(path: &std::path::Path) -> Option<std::path::P
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
         .filter(|entry_path| {
-            entry_path.is_file()
-                && entry_path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("X-Plane") && name.ends_with(".exe"))
+            entry_path.is_file() && entry_path.file_name().is_some_and(is_xplane_simulator_name)
         })
         .collect();
 
@@ -1755,11 +1960,7 @@ fn find_xplane_executable_in_root(path: &std::path::Path) -> Option<std::path::P
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
         .filter(|entry_path| {
-            entry_path.is_file()
-                && entry_path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("X-Plane"))
+            entry_path.is_file() && entry_path.file_name().is_some_and(is_xplane_simulator_name)
         })
         .collect();
 
@@ -1842,83 +2043,41 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
 }
 
 /// Run a command in a blocking task and check if the process was found
-async fn check_process_running(
-    command: &'static str,
-    args: &'static [&'static str],
-    check_output: fn(&std::process::Output) -> bool,
-) -> bool {
-    let result = tokio::task::spawn_blocking(move || {
-        let mut cmd = std::process::Command::new(command);
-        cmd.args(args);
-        #[cfg(target_os = "windows")]
+#[tauri::command]
+async fn is_xplane_running() -> Result<bool, String> {
+    let state = tokio::task::spawn_blocking(|| {
+        use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+        let mut system = System::new();
+        if system.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing(),
+        ) == 0
         {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-            cmd.creation_flags(CREATE_NO_WINDOW);
+            return Err("Could not enumerate processes".to_string());
         }
-        cmd.output()
+        Ok(system
+            .processes()
+            .values()
+            .any(|process| is_xplane_simulator_name(process.name())))
     })
-    .await;
-
-    match result {
-        Ok(Ok(output)) => {
-            let is_running = check_output(&output);
-            let state = if is_running {
+    .await
+    .map_err(|error| format!("Process inspection task failed: {error}"))
+    .and_then(|state| state);
+    match &state {
+        Ok(running) => log_xplane_running_state_once(
+            if *running {
                 XPLANE_RUNNING_STATE_RUNNING
             } else {
                 XPLANE_RUNNING_STATE_NOT_RUNNING
-            };
-            log_xplane_running_state_once(state, format!("X-Plane running check: {}", is_running));
-            is_running
-        }
-        Ok(Err(e)) => {
-            log_xplane_running_state_once(
-                XPLANE_RUNNING_STATE_CHECK_FAILED,
-                format!("Failed to run {}: {}", command, e),
-            );
-            false
-        }
-        Err(e) => {
-            log_xplane_running_state_once(
-                XPLANE_RUNNING_STATE_CHECK_FAILED,
-                format!("Task join error: {}", e),
-            );
-            false
-        }
-    }
-}
-
-#[tauri::command]
-async fn is_xplane_running() -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        check_process_running(
-            "tasklist",
-            &["/FI", "IMAGENAME eq X-Plane.exe", "/NH"],
-            |output| {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                stdout.contains("X-Plane.exe")
             },
-        )
-        .await
+            format!("X-Plane running check: {running}"),
+        ),
+        Err(error) => {
+            log_xplane_running_state_once(XPLANE_RUNNING_STATE_CHECK_FAILED, error.clone())
+        }
     }
-
-    #[cfg(target_os = "macos")]
-    {
-        check_process_running("pgrep", &["-x", "X-Plane"], |output| {
-            output.status.success()
-        })
-        .await
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // Linux executable is X-Plane-*, use pattern match instead of exact match
-        check_process_running("pgrep", &["-f", "X-Plane"], |output| {
-            output.status.success()
-        })
-        .await
-    }
+    state
 }
 
 #[tauri::command]
@@ -1966,6 +2125,7 @@ fn validate_xplane_root_path(path: &std::path::Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod launch_tests {
+    #[cfg(target_os = "windows")]
     use super::*;
 
     #[cfg(target_os = "windows")]
@@ -1988,6 +2148,16 @@ mod launch_tests {
 
         let error = validate_xplane_root_path(temp.path()).unwrap_err();
         assert!(error.contains("X-Plane executable not found"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn installer_executables_do_not_satisfy_the_simulator_check() {
+        let temp = tempfile::tempdir().unwrap();
+        for name in ["X-Plane Installer.exe", "X-Plane 12 Installer.exe"] {
+            std::fs::write(temp.path().join(name), b"").unwrap();
+        }
+        assert!(find_xplane_executable_in_root(temp.path()).is_none());
     }
 }
 
@@ -2027,6 +2197,11 @@ async fn lookup_library_links_remote(
 // ========== Scenery Auto-Sorting Commands ==========
 
 #[tauri::command]
+fn set_scenery_auto_sort(enabled: bool) {
+    scenery_sorting::set_auto_sort_enabled(enabled);
+}
+
+#[tauri::command]
 async fn get_scenery_classification(
     db: State<'_, DatabaseState>,
     xplane_path: String,
@@ -2056,6 +2231,9 @@ async fn sort_scenery_packs(
     xplane_path: String,
     locked_folder_names: Option<Vec<String>>,
 ) -> Result<bool, String> {
+    if !scenery_sorting::auto_sort_enabled() {
+        return Err("Scenery auto-sorting is disabled in Settings".to_string());
+    }
     let db = db.get();
     let db_for_log = db.clone();
     let xplane_path = std::path::Path::new(&xplane_path);
@@ -2329,6 +2507,7 @@ async fn apply_scenery_changes(
     db: State<'_, DatabaseState>,
     xplane_path: String,
     entries: Vec<models::SceneryEntryUpdate>,
+    reorder: Option<bool>,
 ) -> Result<(), String> {
     let db = db.get();
     let xplane_path = std::path::Path::new(&xplane_path);
@@ -2339,12 +2518,14 @@ async fn apply_scenery_changes(
 
     let mut global_airports_enabled: Option<bool> = None;
     let mut global_airports_sort_order: Option<u32> = None;
+    let mut global_airports_category: Option<models::SceneryCategory> = None;
     let index_updates: Vec<models::SceneryEntryUpdate> = entries
         .into_iter()
         .filter_map(|entry| {
             if entry.folder_name == GLOBAL_AIRPORTS_ENTRY_NAME {
                 global_airports_enabled = Some(entry.enabled);
                 global_airports_sort_order = Some(entry.sort_order);
+                global_airports_category = entry.category;
                 None
             } else {
                 Some(entry)
@@ -2373,10 +2554,18 @@ async fn apply_scenery_changes(
             .await
             .map_err(|e| format!("Failed to update Global Airports position: {}", e))?;
     }
-    packs_manager
-        .apply_from_index()
-        .await
-        .map_err(|e| format!("Failed to apply scenery changes: {}", e))?;
+    if let Some(category) = global_airports_category {
+        packs_manager
+            .set_global_airports_category(&category)
+            .await
+            .map_err(|e| format!("Failed to update Global Airports category: {}", e))?;
+    }
+    let apply_result = if reorder.unwrap_or(false) {
+        packs_manager.apply_order_from_index().await
+    } else {
+        packs_manager.apply_from_index().await
+    };
+    apply_result.map_err(|e| format!("Failed to apply scenery changes: {}", e))?;
 
     logger::log_info("Scenery changes applied successfully", Some("scenery"));
 
@@ -2468,7 +2657,7 @@ fn is_xupdater_disabled_target(xplane_path: &str, item_type: &str, folder_name: 
 fn blocked_addon_update_error(item_type: &str, folder_name: &str) -> String {
     let mut checksum: u32 = 0x6D2B_79F5;
     for byte in item_type.bytes().chain(folder_name.bytes()) {
-        checksum = checksum.rotate_left(5) ^ ((byte as u32).wrapping_mul(0x45D9_F3B));
+        checksum = checksum.rotate_left(5) ^ ((byte as u32).wrapping_mul(0x045D_9F3B));
         checksum = checksum.wrapping_add(0x27D4_EB2D);
     }
     let token = format!("{:08X}", checksum ^ 0xA1C3_0F71);
@@ -2531,11 +2720,17 @@ async fn check_plugins_updates(
     xplane_path: String,
     mut plugins: Vec<PluginInfo>,
     beta_folders: Option<Vec<String>>,
+    check_migrations: Option<bool>,
 ) -> Result<Vec<PluginInfo>, String> {
     let beta_folder_set: HashSet<String> = beta_folders.unwrap_or_default().into_iter().collect();
     let xplane_path = PathBuf::from(xplane_path);
-    management_index::check_plugins_updates(xplane_path.as_path(), &mut plugins, &beta_folder_set)
-        .await;
+    management_index::check_plugins_updates(
+        xplane_path.as_path(),
+        &mut plugins,
+        &beta_folder_set,
+        check_migrations.unwrap_or(false),
+    )
+    .await;
     Ok(plugins)
 }
 
@@ -2544,11 +2739,17 @@ async fn check_scenery_updates(
     xplane_path: String,
     mut scenery: Vec<SceneryManagerEntry>,
     beta_folders: Option<Vec<String>>,
+    check_migrations: Option<bool>,
 ) -> Result<Vec<SceneryManagerEntry>, String> {
     let beta_folder_set: HashSet<String> = beta_folders.unwrap_or_default().into_iter().collect();
     let xplane_path = PathBuf::from(xplane_path);
-    management_index::check_scenery_updates(xplane_path.as_path(), &mut scenery, &beta_folder_set)
-        .await;
+    management_index::check_scenery_updates(
+        xplane_path.as_path(),
+        &mut scenery,
+        &beta_folder_set,
+        check_migrations.unwrap_or(false),
+    )
+    .await;
     Ok(scenery)
 }
 
@@ -3098,6 +3299,50 @@ async fn delete_lua_script(
 }
 
 #[tauri::command]
+async fn list_flight_plans(xplane_path: String) -> Result<Vec<flight_plans::FlightPlan>, String> {
+    tokio::task::spawn_blocking(move || flight_plans::list(&xplane_path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn import_flight_plan(
+    xplane_path: String,
+    source: String,
+    conflict_action: Option<flight_plans::ConflictAction>,
+) -> Result<flight_plans::ImportResult, String> {
+    tokio::task::spawn_blocking(move || {
+        flight_plans::import(&xplane_path, &source, conflict_action)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn read_flight_plan(xplane_path: String, name: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || flight_plans::read(&xplane_path, &name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn lookup_flight_plan_navigation(
+    xplane_path: String,
+    identifiers: Vec<String>,
+) -> Result<flight_plans::NavLookup, String> {
+    tokio::task::spawn_blocking(move || flight_plans::navigation(&xplane_path, identifiers))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn delete_flight_plan(xplane_path: String, name: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || flight_plans::delete(&xplane_path, &name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn list_screenshot_media(xplane_path: String) -> Result<Vec<ScreenshotMediaItem>, String> {
     tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
@@ -3242,6 +3487,8 @@ async fn get_activity_log(
     limit: Option<u64>,
     offset: Option<u64>,
     item_type: Option<String>,
+    since: Option<i64>,
+    failed_installs_and_updates: Option<bool>,
 ) -> Result<ActivityLogPage, String> {
     use database::entities::activity_log;
     use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
@@ -3250,10 +3497,21 @@ async fn get_activity_log(
     let limit = limit.unwrap_or(50);
     let offset = offset.unwrap_or(0);
 
-    let mut query = activity_log::Entity::find().order_by_desc(activity_log::Column::Timestamp);
+    let mut query = activity_log::Entity::find()
+        .order_by_desc(activity_log::Column::Timestamp)
+        .order_by_desc(activity_log::Column::Id);
 
     if let Some(ref it) = item_type {
         query = query.filter(activity_log::Column::ItemType.eq(it.as_str()));
+    }
+
+    if let Some(since) = since {
+        query = query.filter(activity_log::Column::Timestamp.gte(since));
+    }
+    if failed_installs_and_updates == Some(true) {
+        query = query
+            .filter(activity_log::Column::Success.eq(false))
+            .filter(activity_log::Column::Operation.is_in(["install", "update"]));
     }
 
     let total_count = query
@@ -3671,6 +3929,7 @@ async fn apply_preset(
                                 folder_name: entry.folder_name.clone(),
                                 enabled: desired,
                                 sort_order: entry.sort_order,
+                                category: None,
                             });
                         }
                     }
@@ -3842,13 +4101,29 @@ async fn clean_output_items(
     xplane_path: String,
     targets: Vec<output_cleanup::OutputCleanupTarget>,
 ) -> Result<output_cleanup::OutputCleanupResult, String> {
-    if is_xplane_running().await {
+    if is_xplane_running().await? {
         return Err("X-Plane is running. Close X-Plane before cleaning Output files.".to_string());
     }
 
     tokio::task::spawn_blocking(move || output_cleanup::clean_output_items(&xplane_path, targets))
         .await
         .map_err(|e| format!("Task join error: {}", e))?
+}
+
+#[tauri::command]
+async fn change_output_cleanup_item_state(
+    xplane_path: String,
+    change: output_cleanup::OutputCleanupStateChange,
+) -> Result<(), String> {
+    if is_xplane_running().await? {
+        return Err("xplane_running".into());
+    }
+    tokio::task::spawn_blocking(move || {
+        validate_xplane_root_path(Path::new(&xplane_path))?;
+        output_cleanup::change_output_cleanup_item_state(&xplane_path, change)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -3879,6 +4154,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // When a second instance is launched, this callback is triggered
             // args[0] is the executable path, args[1..] are the actual arguments
@@ -3921,6 +4197,12 @@ pub fn run() {
             get_issue_detail,
             analyze_addons,
             install_addons,
+            detect_patch_target_aircraft,
+            infer_patch_mappings,
+            summarize_patch_install,
+            build_patch_install_tasks,
+            list_patch_backups,
+            revert_patch,
             cancel_installation,
             skip_current_task,
             register_context_menu,
@@ -3949,6 +4231,7 @@ pub fn run() {
             lookup_library_links_remote,
             // Scenery auto-sorting commands
             get_scenery_classification,
+            set_scenery_auto_sort,
             sort_scenery_packs,
             rebuild_scenery_index,
             reset_scenery_database,
@@ -3958,33 +4241,6 @@ pub fn run() {
             get_scenery_index_status,
             quick_scan_scenery_index,
             sync_scenery_packs_with_folder,
-            // Map commands
-            map::map_prepare_data_index,
-            map::map_get_data_status,
-            map::map_search_airports,
-            map::map_get_airports_in_bounds,
-            map::map_get_airport_detail,
-            map::map_get_airport_procedures,
-            map::map_get_nav_snapshot,
-            map::map_fetch_metar,
-            map::map_fetch_taf,
-            map::map_fetch_vatsim_data,
-            map::map_fetch_vatsim_events,
-            map::map_fetch_vatsim_metar,
-            map::map_fetch_rainviewer_manifest,
-            map::map_fetch_simbrief_latest,
-            map::map_fetch_gateway_airport,
-            map::map_fetch_gateway_scenery,
-            map::map_start_plane_stream,
-            map::map_stop_plane_stream,
-            map::map_get_plane_stream_status,
-            map::xplane_is_api_available,
-            map::xplane_get_dataref,
-            map::xplane_set_dataref,
-            map::xplane_activate_command,
-            map::map_scan_aircraft,
-            map::map_get_aircraft_image,
-            map::map_launch_flight,
             gateway::gateway_resolve_release_context,
             gateway::gateway_search_airports,
             gateway::gateway_get_airport,
@@ -4035,6 +4291,11 @@ pub fn run() {
             get_lua_scripts,
             toggle_lua_script,
             delete_lua_script,
+            list_flight_plans,
+            read_flight_plan,
+            lookup_flight_plan_navigation,
+            import_flight_plan,
+            delete_flight_plan,
             list_screenshot_media,
             delete_screenshot_media,
             save_screenshot_media_as,
@@ -4062,7 +4323,17 @@ pub fn run() {
             refresh_output_cleanup_items,
             reset_output_cleanup_items_to_embedded,
             clean_output_items,
+            change_output_cleanup_item_state,
             submit_unknown_output_cleanup_item,
+            // Doctor diagnostics
+            doctor::doctor_export_report,
+            doctor::doctor_inspect_installation,
+            doctor::doctor_list_backups,
+            doctor::doctor_apply_repair,
+            doctor::doctor_restore_backup,
+            doctor::doctor_scan_environment,
+            doctor::doctor_scan_xfast_health,
+            doctor::doctor_navdata_status,
             // CSL management commands
             csl_index::csl_fetch_package_descriptions,
             csl_index::csl_scan_packages,
@@ -4081,6 +4352,22 @@ pub fn run() {
             // Initialize TaskControl state
             app.manage(TaskControl::new());
             app.manage(csl_index::CslDownloadControl::new());
+
+            match startup_migrations::run(app) {
+                Ok(outcome) if outcome.applied => logger::log_debug(
+                    &format!(
+                        "Settings migration completed: removed {} retired setting(s), temporary flight file removed: {}",
+                        outcome.settings_removed, outcome.temp_file_removed
+                    ),
+                    Some("storage"),
+                    Some("startup_migrations.rs"),
+                ),
+                Ok(_) => {}
+                Err(error) => logger::log_error(
+                    &format!("Settings migration failed and will be retried: {error}"),
+                    Some("storage"),
+                ),
+            }
 
             // Initialize database connection and run migrations once on startup
             let db = tauri::async_runtime::block_on(async {

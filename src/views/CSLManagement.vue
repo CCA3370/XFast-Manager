@@ -97,9 +97,7 @@
           />
         </svg>
         {{ $t('csl.cslPaths') }}
-        <span class="text-xs text-gray-400 dark:text-gray-500"
-          >({{ store.allPaths.length }})</span
-        >
+        <span class="text-xs text-gray-400 dark:text-gray-500">({{ store.allPaths.length }})</span>
       </button>
     </div>
 
@@ -597,7 +595,9 @@
 
           <div class="px-5 py-4 space-y-4">
             <div class="space-y-2">
-              <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+              <div
+                class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400"
+              >
                 <span>{{ $t('csl.syncProgressFiles') }}</span>
                 <span>{{ linkSyncProcessedText }}</span>
               </div>
@@ -611,13 +611,17 @@
 
             <div class="grid grid-cols-2 gap-3 text-xs">
               <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 px-3 py-2">
-                <div class="text-gray-500 dark:text-gray-400">{{ $t('csl.syncProgressPaths') }}</div>
+                <div class="text-gray-500 dark:text-gray-400">
+                  {{ $t('csl.syncProgressPaths') }}
+                </div>
                 <div class="mt-1 font-medium text-gray-900 dark:text-white">
                   {{ linkSyncTargetProgressText }}
                 </div>
               </div>
               <div class="rounded-xl bg-gray-50 dark:bg-gray-800/60 px-3 py-2">
-                <div class="text-gray-500 dark:text-gray-400">{{ $t('csl.syncCurrentPackage') }}</div>
+                <div class="text-gray-500 dark:text-gray-400">
+                  {{ $t('csl.syncCurrentPackage') }}
+                </div>
                 <div class="mt-1 font-medium text-gray-900 dark:text-white truncate">
                   {{ linkSyncCurrentPackage || $t('csl.syncPreparing') }}
                 </div>
@@ -909,9 +913,7 @@ const linkSyncCurrentTarget = computed(
 const linkSyncCurrentPackage = computed(
   () => store.linkSyncProgress?.current_package_name?.trim() || '',
 )
-const linkSyncCurrentFile = computed(
-  () => store.linkSyncProgress?.current_file_name?.trim() || '',
-)
+const linkSyncCurrentFile = computed(() => store.linkSyncProgress?.current_file_name?.trim() || '')
 const linkSyncNotice = computed(() => {
   const rawNotice = store.linkSyncNotice.trim()
   if (!rawNotice) {

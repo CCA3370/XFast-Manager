@@ -47,6 +47,7 @@ impl Scanner {
 
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut aircraft_dirs: HashSet<String> = HashSet::new();
+        let mut sound_packs = AircraftSoundPacks::default();
         let mut marker_files: Vec<(String, &str)> = Vec::new();
         let mut nested_archives: Vec<String> = Vec::new();
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
@@ -55,6 +56,9 @@ impl Scanner {
         for entry in &archive.files {
             let file_path = entry.name().to_string();
             let normalized = file_path.replace('\\', "/");
+            if !entry.is_directory() {
+                sound_packs.record_file(&normalized);
+            }
 
             if !entry.is_directory() && entry.has_stream() {
                 archive_entries.push(normalized.clone());
@@ -76,22 +80,8 @@ impl Scanner {
             }
 
             if normalized.ends_with(".xpl") {
-                if let Some(parent) = Path::new(&normalized).parent() {
-                    let parent_str = parent.to_string_lossy();
-                    let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
-
-                    let plugin_root = if matches!(
-                        parent_name,
-                        "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
-                    ) {
-                        parent
-                            .parent()
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or(parent_str.to_string())
-                    } else {
-                        parent_str.to_string()
-                    };
-                    plugin_dirs.insert(plugin_root);
+                if let Some(root) = plugin_root(Path::new(&normalized)) {
+                    plugin_dirs.insert(root.to_string_lossy().into_owned());
                 }
                 marker_files.push((normalized, "xpl"));
             } else if normalized.ends_with(".acf") {
@@ -102,10 +92,12 @@ impl Scanner {
                     }
                 }
                 marker_files.push((normalized, "acf"));
-            } else if normalized.ends_with("library.txt") {
+            } else if Self::is_library_archive_path(&normalized) {
                 marker_files.push((normalized, "library"));
             } else if normalized.ends_with(".dsf") {
                 marker_files.push((normalized, "dsf"));
+            } else if Self::is_apt_dat_archive_path(&normalized) {
+                marker_files.push((normalized, "apt"));
             } else if normalized.ends_with("cycle.json") {
                 marker_files.push((normalized, "navdata"));
             } else if normalized.ends_with(".lua") {
@@ -155,7 +147,16 @@ impl Scanner {
             "scanner_timing"
         );
 
+        let xlua_roots = XluaRuntimeRoots::from_archive_markers(
+            marker_files
+                .iter()
+                .map(|(name, kind)| (name.as_str(), *kind)),
+        );
         for (file_path, marker_type) in marker_files {
+            if marker_type == "lua" && xlua_roots.contains(Path::new(&file_path)) {
+                continue;
+            }
+
             let should_skip = skip_prefixes
                 .iter()
                 .any(|prefix| file_path.starts_with(prefix));
@@ -163,9 +164,13 @@ impl Scanner {
                 continue;
             }
 
-            if (marker_type == "acf" || marker_type == "dsf")
+            if (marker_type == "acf" || Self::is_scenery_marker_type(marker_type))
                 && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
             {
+                continue;
+            }
+
+            if sound_packs.contains_plugin_marker(&file_path, marker_type) {
                 continue;
             }
 
@@ -180,7 +185,7 @@ impl Scanner {
                     self.detect_aircraft_in_archive_without_version(&file_path, archive_path)?
                 }
                 "library" => self.detect_scenery_library(&file_path, archive_path)?,
-                "dsf" => self.detect_scenery_dsf(&file_path, archive_path)?,
+                "dsf" | "apt" => self.detect_scenery_in_archive(&file_path, archive_path)?,
                 "xpl" => self.detect_plugin_in_archive_without_version(&file_path, archive_path)?,
                 "navdata" => {
                     let content = if let Some(cached) = marker_text_cache.get(&file_path) {
@@ -229,7 +234,8 @@ impl Scanner {
                 _ => None,
             };
 
-            if let Some(item) = item {
+            if let Some(mut item) = item {
+                xlua_roots.annotate_plugin(&mut item, true);
                 if let Some(ref internal_root) = item.archive_internal_root {
                     let prefix = if internal_root.ends_with('/') {
                         internal_root.clone()
@@ -694,12 +700,16 @@ impl Scanner {
         // Collect file paths and identify markers in a single pass
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut aircraft_dirs: HashSet<String> = HashSet::new();
+        let mut sound_packs = AircraftSoundPacks::default();
         let mut marker_files: Vec<(String, &str)> = Vec::new(); // (path, marker_type)
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
 
         for entry in &archive.files {
             let file_path = entry.name().to_string();
             let normalized = file_path.replace('\\', "/");
+            if !entry.is_directory() {
+                sound_packs.record_file(&normalized);
+            }
 
             // Skip ignored paths
             if Self::should_ignore_archive_path(&normalized) {
@@ -716,22 +726,8 @@ impl Scanner {
 
             // Identify plugin directories, aircraft directories, and marker files
             if normalized.ends_with(".xpl") {
-                if let Some(parent) = Path::new(&normalized).parent() {
-                    let parent_str = parent.to_string_lossy();
-                    let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
-
-                    let plugin_root = if matches!(
-                        parent_name,
-                        "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
-                    ) {
-                        parent
-                            .parent()
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or(parent_str.to_string())
-                    } else {
-                        parent_str.to_string()
-                    };
-                    plugin_dirs.insert(plugin_root);
+                if let Some(root) = plugin_root(Path::new(&normalized)) {
+                    plugin_dirs.insert(root.to_string_lossy().into_owned());
                 }
                 marker_files.push((normalized, "xpl"));
             } else if normalized.ends_with(".acf") {
@@ -743,10 +739,12 @@ impl Scanner {
                     }
                 }
                 marker_files.push((normalized, "acf"));
-            } else if normalized.ends_with("library.txt") {
+            } else if Self::is_library_archive_path(&normalized) {
                 marker_files.push((normalized, "library"));
             } else if normalized.ends_with(".dsf") {
                 marker_files.push((normalized, "dsf"));
+            } else if Self::is_apt_dat_archive_path(&normalized) {
+                marker_files.push((normalized, "apt"));
             } else if normalized.ends_with("cycle.json") {
                 marker_files.push((normalized, "navdata"));
             } else if normalized.ends_with(".lua") {
@@ -772,7 +770,16 @@ impl Scanner {
         let mut skip_prefixes: Vec<String> = Vec::new();
 
         // Process marker files
+        let xlua_roots = XluaRuntimeRoots::from_archive_markers(
+            marker_files
+                .iter()
+                .map(|(name, kind)| (name.as_str(), *kind)),
+        );
         for (file_path, marker_type) in marker_files {
+            if marker_type == "lua" && xlua_roots.contains(Path::new(&file_path)) {
+                continue;
+            }
+
             // Check if inside a skip prefix (already detected addon)
             let should_skip = skip_prefixes
                 .iter()
@@ -781,10 +788,14 @@ impl Scanner {
                 continue;
             }
 
-            // Check if .acf/.dsf is inside a plugin directory
-            if (marker_type == "acf" || marker_type == "dsf")
+            // Skip aircraft and scenery markers inside plugin directories
+            if (marker_type == "acf" || Self::is_scenery_marker_type(marker_type))
                 && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
             {
+                continue;
+            }
+
+            if sound_packs.contains_plugin_marker(&file_path, marker_type) {
                 continue;
             }
 
@@ -799,7 +810,7 @@ impl Scanner {
             let item = match marker_type {
                 "acf" => self.detect_aircraft_in_archive(&file_path, archive_path)?,
                 "library" => self.detect_scenery_library(&file_path, archive_path)?,
-                "dsf" => self.detect_scenery_dsf(&file_path, archive_path)?,
+                "dsf" | "apt" => self.detect_scenery_in_archive(&file_path, archive_path)?,
                 "xpl" => self.detect_plugin_in_archive(&file_path, archive_path)?,
                 "navdata" => {
                     if let Ok(content) = self.read_file_from_7z(archive_path, &file_path, password)
@@ -825,7 +836,8 @@ impl Scanner {
                 _ => None,
             };
 
-            if let Some(item) = item {
+            if let Some(mut item) = item {
+                xlua_roots.annotate_plugin(&mut item, true);
                 // Add to skip prefixes
                 if let Some(ref internal_root) = item.archive_internal_root {
                     let prefix = if internal_root.ends_with('/') {

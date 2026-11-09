@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::{Arc, LazyLock, Mutex as StdMutex};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -74,8 +74,9 @@ static DESC_CACHE: std::sync::LazyLock<Mutex<HashMap<String, String>>> =
 
 /// Cached local MD5 hashes: file_path → (size, mtime_secs, md5).
 /// If size+mtime still match, the cached hash is reused (avoids re-reading the file).
-static MD5_CACHE: std::sync::LazyLock<std::sync::Mutex<HashMap<PathBuf, (u64, i64, String)>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+type Md5CacheEntry = (u64, i64, String);
+type Md5CacheMap = HashMap<PathBuf, Md5CacheEntry>;
+static MD5_CACHE: LazyLock<StdMutex<Md5CacheMap>> = LazyLock::new(|| StdMutex::new(HashMap::new()));
 
 #[derive(Clone, Debug)]
 struct RequestContext {
@@ -1600,6 +1601,7 @@ async fn scan_packages_internal(
     server: &str,
     paths: Vec<CslPath>,
     local_path_strings: Vec<String>,
+    verify_hashes: bool,
     request_ctx: &RequestContext,
 ) -> Result<CslScanResult, String> {
     csl_debug!(
@@ -1647,8 +1649,11 @@ async fn scan_packages_internal(
             async move {
                 if let Some(dir) = local_dir {
                     tokio::task::spawn_blocking(move || {
-                        let (status, files_to_update, update_size) =
-                            compare_package_quick(&pkg, &dir);
+                        let (status, files_to_update, update_size) = if verify_hashes {
+                            compare_package_exact(&pkg, &dir)
+                        } else {
+                            compare_package_quick(&pkg, &dir)
+                        };
                         build_csl_package_info(&pkg, &status, files_to_update, update_size)
                     })
                     .await
@@ -3244,7 +3249,7 @@ fn sync_package_links_internal(
     );
     tracker.emit_preparing();
 
-    let sync_result: Result<Vec<String>, String> = (|| {
+    let sync_result: Result<Vec<String>, String> = {
         let mut warnings = Vec::new();
 
         for target in &cleanup_targets {
@@ -3324,7 +3329,7 @@ fn sync_package_links_internal(
         }
 
         Ok(warnings)
-    })();
+    };
 
     match &sync_result {
         Ok(_) => tracker.complete(),
@@ -3405,7 +3410,7 @@ pub async fn csl_fetch_package_descriptions(
 ///
 /// Optimizations vs. naive approach:
 /// 1. No per-package HTTP requests for descriptions — uses package name instead
-/// 2. First pass is size-only and returns `checking` for packages awaiting exact hash verification
+/// 2. Interactive scans can defer hash verification. Health requests an exact comparison.
 /// 3. Package directory discovery is done once per scan instead of probing every package name
 /// 4. Comparison concurrency is capped to keep first-open scans responsive
 #[tauri::command]
@@ -3415,6 +3420,7 @@ pub async fn csl_scan_packages(
     install_location: Option<String>,
     server_base_url: Option<String>,
     request_id: Option<String>,
+    verify_hashes: Option<bool>,
 ) -> Result<CslScanResult, String> {
     let request_ctx = RequestContext::new("csl_scan_packages", request_id);
     let (paths, _) = collect_scan_paths(&xplane_path, &custom_paths);
@@ -3439,7 +3445,14 @@ pub async fn csl_scan_packages(
         api_base
     );
 
-    let result = scan_packages_internal(&api_base, paths, scan_paths, &request_ctx).await;
+    let result = scan_packages_internal(
+        &api_base,
+        paths,
+        scan_paths,
+        verify_hashes.unwrap_or(false),
+        &request_ctx,
+    )
+    .await;
 
     match &result {
         Ok(scan_result) => csl_debug!(
@@ -3485,15 +3498,11 @@ pub async fn csl_rescan_packages(
     );
 
     // Fetch index (hits cache if recent scan happened)
-    let index_content = fetch_remote_index_for_scan(
-        &server_base_url,
-        CSL_INDEX_PATH,
-        &request_ctx,
-        "X-CSL",
-    )
-        .await
-        .map_err(|e| e.to_string())?
-        .content;
+    let index_content =
+        fetch_remote_index_for_scan(&server_base_url, CSL_INDEX_PATH, &request_ctx, "X-CSL")
+            .await
+            .map_err(|e| e.to_string())?
+            .content;
 
     let entries = parse_index(&index_content);
     let pkg_data_list = group_into_packages(&entries);
@@ -3569,6 +3578,7 @@ pub async fn csl_rescan_packages(
 /// Downloads to the canonical path (Resources/plugins/IVAO_CSL/CSL) and then
 /// syncs the package to all other detected CSL directories.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri maps each command argument from the frontend payload.
 pub async fn csl_install_package(
     package_name: String,
     xplane_path: String,
@@ -3965,8 +3975,8 @@ pub async fn altitude_scan_packages(
         &request_ctx,
         "ALTITUDE",
     )
-        .await
-        .map_err(|e| e.to_string())?;
+    .await
+    .map_err(|e| e.to_string())?;
     let index_content = index.content;
 
     let server_version = index_content.lines().next().unwrap_or("").to_string();

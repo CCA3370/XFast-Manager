@@ -634,6 +634,21 @@ impl Installer {
             std::sync::atomic::Ordering::SeqCst,
         );
 
+        // Patch tasks must always stage, validate and back up before writing,
+        // including when the general atomic-install preference is disabled.
+        // Dispatch before creating target parents so invalid paths write nothing.
+        if task.addon_type == AddonType::Patch {
+            if task.extraction_chain.is_some()
+                || !task.should_overwrite
+                || task.archive_internal_root.is_some()
+                || task.patch_files.is_empty()
+                || !Self::is_supported_archive_file(source)
+            {
+                return Err(anyhow::anyhow!("Invalid patch installation task"));
+            }
+            return self.install_task_atomic(task, source, target, ctx, password, xplane_path);
+        }
+
         // Create parent directory if it doesn't exist
         let mkdir_start = Instant::now();
         if let Some(parent) = target.parent() {
@@ -684,7 +699,7 @@ impl Installer {
         } else if atomic_install_enabled
             && (source.is_dir() || Self::is_supported_archive_file(source))
         {
-            // Atomic installation mode
+            // Atomic installation mode.
             crate::log_debug!(
                 "[TIMING] Using atomic installation mode",
                 "installer_timing"
@@ -987,6 +1002,12 @@ impl Installer {
                 } else {
                     file_path_str.clone()
                 };
+
+                if crate::package_artifacts::is_ignored_package_artifact_archive_path(
+                    &relative_path,
+                ) {
+                    return None;
+                }
 
                 Some((i, relative_path, file.is_dir(), file.encrypted()))
             })
@@ -2223,6 +2244,11 @@ impl Installer {
     /// Cleanup a task by removing its target directory
     /// Used when a task is cancelled or skipped
     pub(super) fn cleanup_task(&self, task: &InstallTask) -> Result<()> {
+        // A patch target is an existing aircraft, never a disposable install
+        // directory. Patch writes are rolled back by their own transaction.
+        if task.addon_type == AddonType::Patch {
+            return Ok(());
+        }
         let target = Path::new(&task.target_path);
 
         logger::log_info(
@@ -2285,6 +2311,19 @@ impl Installer {
     ) -> Result<()> {
         use crate::atomic_installer::AtomicInstaller;
 
+        let patch_root = if matches!(task.addon_type, AddonType::Patch) {
+            let root = task.patch_aircraft_root.as_deref().ok_or_else(|| {
+                anyhow::anyhow!("Patch task is missing its selected aircraft boundary")
+            })?;
+            let root = Path::new(root);
+            if root != target || fs::canonicalize(root)? != root {
+                return Err(anyhow::anyhow!("The selected patch aircraft has moved"));
+            }
+            Some(root)
+        } else {
+            None
+        };
+
         // Use X-Plane root path directly from settings
         let xplane_root = Path::new(xplane_path);
 
@@ -2343,6 +2382,15 @@ impl Installer {
             ctx,
             password,
         )?;
+
+        if let Some(root) = patch_root {
+            return crate::patch::apply_staged_patch(
+                atomic.temp_dir(),
+                root,
+                task,
+                &self.task_control,
+            );
+        }
 
         // Step 2: Perform atomic installation based on scenario
         if !target.exists() {

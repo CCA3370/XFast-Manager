@@ -1,8 +1,8 @@
 # Repository Guidelines
 
 - Do not touch the existing Map implementation; this part will be removed soon.
-- Each time a task is executed, a Commit message should be written and commited once a small stage is completed (without pushing).
-- After each small stage is completed, please inform me in detail which tests I need to perform manually.
+- Each time a task is executed, a Commit message should be written and commited once a small stage is completed. Once complete all stage, push them.
+- After all stage is completed, please inform me in detail which tests I need to perform manually, and what things you did.
 - There's no need to pursue minimal changes; always ensure the current implementation is the optimal solution, stop treating compatibility as a constraint, and focus on ensuring overall optimality.
 - Update CHANGELOG.md regularly, focusing on user-centric content. Avoid describing technical information; only describe user-perceptible feature additions/changes/fixes. Pay attention to the timeline and do not include changes/fixes to features that have not yet been released (not merged into the main branch).
 

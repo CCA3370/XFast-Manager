@@ -1,0 +1,56 @@
+import { describe, expect, it } from 'vitest'
+import { getErrorReportPolicy, shouldHideBugReportForMessage } from './index'
+
+const operationalErrors = [
+  'Error performing inpage operation. (os error 999)',
+  'This scenery item may have been moved or deleted. The list has been refreshed.',
+  '[internal] No such file or directory (os error 2)',
+  'Operation not permitted (os error 1)',
+  'The device is not ready. (os error 21)',
+  'failed to fill whole buffer',
+  'Insufficient disk space for atomic installation',
+  'X-Plane executable not found in the selected folder',
+  'Cannot install an add-on from inside the X-Plane directory',
+  'Failed to scan (C:\\X-Plane 12\\Custom Scenery\\AXP_Florida_2): Cannot install from X-Plane directory. Please drag files from outside X-Plane folder',
+  'Operation did not complete successfully because the file contains a virus (os error 225)',
+  'Failed to delete existing file: "D:\\FlyWithLua\\Scripts\\example.lua": Die Datei wird von einem anderen Prozess verwendet. (os error 32)',
+  'Invalid or incomplete 7z archive',
+  'Failed to scan (/Downloads/aircraft.7z.002): Missing split archive volume for aircraft.7z.002: aircraft.7z.001',
+  'File verification failed for 1 file(s): aircraft.acf: file content does not match the downloaded package',
+]
+
+describe('error report policy', () => {
+  it.each(operationalErrors)('does not report an operational error: %s', (message) => {
+    expect(shouldHideBugReportForMessage(message)).toBe(true)
+    expect(getErrorReportPolicy(message).reportable).toBe(false)
+  })
+
+  it.each([
+    'validation_failed',
+    'permission_denied',
+    'not_found',
+    'corrupted_data',
+    'network_error',
+    'archive_error',
+    'cancelled',
+    'insufficient_space',
+    'timeout',
+  ] as const)('does not report structured %s errors', (code) => {
+    expect(getErrorReportPolicy({ code, message: 'Example failure' }).reportable).toBe(false)
+  })
+
+  it('keeps unexpected internal failures reportable', () => {
+    expect(
+      getErrorReportPolicy({
+        code: 'internal',
+        message: 'Unexpected invariant violation while building an installation task',
+      }).reportable,
+    ).toBe(true)
+  })
+
+  it('keeps an unrelated broken pipe reportable', () => {
+    expect(getErrorReportPolicy('Unexpected command stream failure (os error 32)').reportable).toBe(
+      true,
+    )
+  })
+})

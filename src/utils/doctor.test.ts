@@ -1,0 +1,203 @@
+import { describe, expect, it } from 'vitest'
+import type { DoctorCheckResult, DoctorRun } from '@/types/doctor'
+import {
+  addDoctorHistoryRun,
+  emptyDoctorHistory,
+  getDoctorHistoryForPath,
+  isDoctorRunStale,
+  normalizeDoctorHistoryPath,
+  sanitizeDoctorHistory,
+  sortDoctorChecks,
+  summarizeDoctorRun,
+} from './doctor'
+
+function check(id: string, outcome: DoctorCheckResult['outcome']): DoctorCheckResult {
+  return { id, section: 'installation', outcome, durationMs: 1 }
+}
+
+describe('doctor run summary', () => {
+  it('does not report an empty running scan as complete or fully covered', () => {
+    const summary = summarizeDoctorRun([], 'running')
+
+    expect(summary.completeness).toBe('partial')
+    expect(summary.coveragePercent).toBe(0)
+  })
+
+  it('reports zero coverage when a scan is cancelled before producing a result', () => {
+    const summary = summarizeDoctorRun([], 'cancelled')
+
+    expect(summary.completeness).toBe('cancelled')
+    expect(summary.coveragePercent).toBe(0)
+  })
+
+  it('keeps check failures separate from health severity and marks coverage partial', () => {
+    const summary = summarizeDoctorRun(
+      [check('path', 'pass'), check('network', 'unavailable')],
+      'completed',
+    )
+
+    expect(summary.severity).toBe('ok')
+    expect(summary.completeness).toBe('partial')
+    expect(summary.coveragePercent).toBe(50)
+    expect(summary.unavailable).toBe(1)
+  })
+
+  it('excludes not-applicable checks from the coverage denominator', () => {
+    const summary = summarizeDoctorRun(
+      [check('path', 'pass'), check('dmp', 'notApplicable')],
+      'completed',
+    )
+
+    expect(summary.eligible).toBe(1)
+    expect(summary.coveragePercent).toBe(100)
+    expect(summary.completeness).toBe('complete')
+  })
+
+  it('uses the highest issue severity without hiding cancellation', () => {
+    const summary = summarizeDoctorRun(
+      [check('warning', 'warning'), check('critical', 'critical'), check('late', 'cancelled')],
+      'cancelled',
+    )
+
+    expect(summary.severity).toBe('critical')
+    expect(summary.completeness).toBe('cancelled')
+  })
+})
+
+describe('doctor check ordering', () => {
+  it('places actionable failures ahead of passed checks inside a section', () => {
+    const sorted = sortDoctorChecks([
+      check('pass', 'pass'),
+      check('warning', 'warning'),
+      check('unavailable', 'unavailable'),
+    ])
+
+    expect(sorted.map((item) => item.id)).toEqual(['warning', 'unavailable', 'pass'])
+  })
+})
+
+function run(id: string, installationId = 'install'): DoctorRun {
+  const checks = [check('path', 'pass')]
+  return {
+    schemaVersion: 1,
+    id,
+    installationId,
+    mode: 'quick',
+    state: 'completed',
+    startedAt: Number(id.replace(/\D/g, '')) || 1,
+    completedAt: 1_000,
+    durationMs: 10,
+    appVersion: '1.0.0',
+    checks,
+    summary: summarizeDoctorRun(checks, 'completed'),
+    system: null,
+  }
+}
+
+describe('doctor history', () => {
+  it('corrects old scenery limits once while preserving real access errors', () => {
+    const legacy = run('run-1')
+    legacy.checks.push({
+      ...check('installation.scan_access', 'unavailable'),
+      params: { errors: 2, capped: 0 },
+      evidence: [
+        { kind: 'path', value: 'Custom Scenery: reached the scenery file inspection limit' },
+        { kind: 'path', value: 'Custom Scenery/Test: permission denied' },
+      ],
+    })
+    const history = addDoctorHistoryRun(emptyDoctorHistory(), '/xplane', legacy)
+    const normalized = sanitizeDoctorHistory(sanitizeDoctorHistory(history))
+    const result = getDoctorHistoryForPath(normalized, '/xplane')[0]?.checks.find(
+      (item) => item.id === 'installation.scan_access',
+    )
+    expect(result?.params).toEqual({ errors: 1, capped: 1 })
+    expect(result?.evidence?.map((item) => item.value)).toContain(
+      'Custom Scenery/Test: permission denied',
+    )
+  })
+
+  it('marks only older plugin header conclusions as requiring a new scan', () => {
+    const legacy = run('run-1')
+    legacy.checks.push({
+      ...check('addons.binary_integrity', 'critical'),
+      section: 'addons',
+      evidence: [{ kind: 'path', value: 'blu_fx/32/win.xpl' }],
+    })
+    const current = run('run-2')
+    current.checks.push({
+      ...check('addons.binary_integrity', 'warning'),
+      section: 'addons',
+      params: { loaderScoped: 1 },
+    })
+    let history = addDoctorHistoryRun(emptyDoctorHistory(), '/xplane', legacy)
+    history = addDoctorHistoryRun(history, '/xplane', current)
+
+    const [latest, older] = getDoctorHistoryForPath(sanitizeDoctorHistory(history), '/xplane')
+    expect(latest?.summary.warning).toBe(1)
+    expect(older?.summary).toMatchObject({ critical: 0, pass: 1, completeness: 'partial' })
+    expect(older?.checks.find(({ id }) => id === 'addons.binary_integrity')).toEqual({
+      id: 'addons.binary_integrity',
+      section: 'addons',
+      outcome: 'unavailable',
+      durationMs: 1,
+      params: { requiresRescan: 1 },
+    })
+  })
+
+  it('keeps histories isolated by installation and trims old runs', () => {
+    let history = emptyDoctorHistory()
+    for (let index = 1; index <= 22; index++) {
+      history = addDoctorHistoryRun(history, '/xplane', run(`run-${index}`))
+    }
+    history = addDoctorHistoryRun(history, '/other', run('other-1', 'other'))
+
+    expect(getDoctorHistoryForPath(history, '/xplane')).toHaveLength(20)
+    expect(getDoctorHistoryForPath(history, '/xplane')[0]?.id).toBe('run-22')
+    expect(getDoctorHistoryForPath(history, '/other').map((item) => item.id)).toEqual(['other-1'])
+  })
+
+  it('marks a result stale at 24 hours', () => {
+    const item = run('run-1')
+    item.completedAt = 1_000
+    expect(isDoctorRunStale(item, 1_000 + 24 * 60 * 60 * 1000 - 1)).toBe(false)
+    expect(isDoctorRunStale(item, 1_000 + 24 * 60 * 60 * 1000)).toBe(true)
+  })
+
+  it('matches Windows installation paths regardless of slash style and case', () => {
+    let history = emptyDoctorHistory()
+    history = addDoctorHistoryRun(history, 'C:\\X-Plane 12\\', run('run-1'))
+
+    expect(getDoctorHistoryForPath(history, 'c:/x-plane 12')).toHaveLength(1)
+  })
+
+  it('normalizes Windows UNC paths without making Unix paths case-insensitive', () => {
+    expect(normalizeDoctorHistoryPath('\\\\Server\\Share\\X-Plane 12\\')).toBe(
+      '//server/share/x-plane 12',
+    )
+    expect(normalizeDoctorHistoryPath('/Volumes/X-Plane')).toBe('/Volumes/X-Plane')
+  })
+
+  it('drops malformed, mismatched, duplicate, and non-completed stored runs', () => {
+    const valid = run('run-2', 'installation')
+    const sanitized = sanitizeDoctorHistory({
+      schemaVersion: 1,
+      installationByPath: {
+        '/xplane': 'installation',
+        '/missing': 'missing',
+      },
+      runsByInstallation: {
+        installation: [
+          valid,
+          valid,
+          { ...run('wrong-installation', 'other') },
+          { ...run('running', 'installation'), state: 'running', completedAt: null },
+          { id: 'broken' },
+        ],
+        invalid: 'not-an-array',
+      },
+    })
+
+    expect(sanitized.installationByPath).toEqual({ '/xplane': 'installation' })
+    expect(sanitized.runsByInstallation.installation?.map((item) => item.id)).toEqual(['run-2'])
+  })
+})

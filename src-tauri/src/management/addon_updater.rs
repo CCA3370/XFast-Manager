@@ -188,6 +188,7 @@ fn ensure_not_cancelled(task_control: Option<&TaskControl>, stage: &str) -> Resu
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)] // Parameters mirror the progress event payload at call sites.
 fn emit_progress_event(
     callback: &Option<AddonUpdateProgressCallback>,
     item_type: &str,
@@ -1278,7 +1279,7 @@ async fn prepare_xupdater_context(
                 );
                 let processed = scan_processed_units_clone.fetch_add(1, Ordering::Relaxed) + 1;
                 let total = scan_total_units_clone.load(Ordering::Relaxed);
-                if processed % 20 == 0 || (total > 0 && processed >= total) {
+                if processed.is_multiple_of(20) || (total > 0 && processed >= total) {
                     let elapsed = scan_started.elapsed().as_secs_f64().max(0.001);
                     let speed = processed as f64 / elapsed;
                     let pct = if total > 0 {
@@ -2340,11 +2341,10 @@ fn expand_xup_auth_candidate(host: &str, input: &str) -> Vec<String> {
                 out.push(path.to_string());
             }
 
-            if let Some(last_segment) = url.path_segments().and_then(|segments| {
-                segments
-                    .filter(|segment| !segment.trim().is_empty())
-                    .next_back()
-            }) {
+            if let Some(last_segment) = url
+                .path_segments()
+                .and_then(|mut segments| segments.rfind(|segment| !segment.trim().is_empty()))
+            {
                 let token = last_segment.trim();
                 if !token.is_empty() {
                     out.push(token.to_string());
@@ -2357,11 +2357,7 @@ fn expand_xup_auth_candidate(host: &str, input: &str) -> Vec<String> {
         if let Ok(absolute_url) = resolve_link(host, raw) {
             out.push(absolute_url);
         }
-        if let Some(last_segment) = raw
-            .split('/')
-            .filter(|segment| !segment.trim().is_empty())
-            .next_back()
-        {
+        if let Some(last_segment) = raw.split('/').rfind(|segment| !segment.trim().is_empty()) {
             let token = last_segment.trim();
             if !token.is_empty() {
                 out.push(token.to_string());
@@ -2466,7 +2462,7 @@ fn parse_bearer_token(raw: &str) -> Option<String> {
     }
 
     if raw.starts_with('/') {
-        if let Some(seg) = raw.split('/').filter(|s| !s.trim().is_empty()).next_back() {
+        if let Some(seg) = raw.split('/').rfind(|s| !s.trim().is_empty()) {
             let token = seg.trim();
             if !token.is_empty() {
                 return Some(token.to_string());
@@ -2936,9 +2932,7 @@ async fn download_xupdater_file(
         let mut stream = response.bytes_stream();
         let mut stream_failed = None;
         while let Some(next) = stream.next().await {
-            if let Err(err) = ensure_not_cancelled(task_control, "install") {
-                return Err(err);
-            }
+            ensure_not_cancelled(task_control, "install")?;
             match next {
                 Ok(chunk) => {
                     if !chunk.is_empty() {

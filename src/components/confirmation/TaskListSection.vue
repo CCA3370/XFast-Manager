@@ -650,6 +650,8 @@ function getTypeBadgeClass(type: AddonType) {
       return 'bg-pink-600'
     case AddonType.LuaScript:
       return 'bg-cyan-600'
+    case AddonType.Patch:
+      return 'bg-orange-600'
     default:
       return 'bg-gray-600'
   }

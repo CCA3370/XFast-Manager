@@ -7,15 +7,20 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::sync::{LazyLock, RwLock};
+use std::sync::{LazyLock, Mutex, RwLock};
 use std::time::Duration;
 use walkdir::WalkDir;
 
 use crate::logger;
 
+#[path = "output_isolation.rs"]
+mod isolation;
+pub use isolation::OutputCleanupStateChange;
+
 const UNKNOWN_PREFIX: &str = "unknown:";
 const PROTECTED_OUTPUT_DIRS: &[&str] = &["preferences"];
 const ALLOWED_LEVELS: &[&str] = &["recommended", "cleanable", "cautious"];
+static OUTPUT_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,6 +72,7 @@ pub struct OutputCleanupReport {
     pub total_bytes: u64,
     pub total_files: usize,
     pub items: Vec<OutputCleanupItem>,
+    disabled_items: Vec<isolation::DisabledOutputItem>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -185,6 +191,10 @@ fn normalize_catalog(catalog: &mut OutputCleanupCatalog) -> Result<(), String> {
         if !ALLOWED_LEVELS.contains(&item.level.as_str()) {
             item.level = "cleanable".to_string();
         }
+        if item.warning_key.as_deref() == Some("addon_data") {
+            item.level = "cautious".to_string();
+            item.default_selected = false;
+        }
 
         if !ids.insert(item.id.clone()) {
             return Err(format!("Duplicate output cleanup item id: {}", item.id));
@@ -230,12 +240,12 @@ fn normalize_id(raw: &str) -> String {
 }
 
 fn normalize_relative_path(raw: &str) -> Result<String, String> {
-    let trimmed = raw.trim().replace('\\', "/");
-    if trimmed.is_empty() {
+    let normalized = raw.replace('\\', "/");
+    if normalized.is_empty() {
         return Err("Relative path is empty".to_string());
     }
 
-    let path = Path::new(&trimmed);
+    let path = Path::new(&normalized);
     if path.is_absolute() {
         return Err(format!("Cleanup path must be relative: {}", raw));
     }
@@ -244,11 +254,13 @@ fn normalize_relative_path(raw: &str) -> Result<String, String> {
     for component in path.components() {
         match component {
             Component::Normal(part) => {
-                let text = part.to_string_lossy().trim().to_string();
-                if text.is_empty() {
+                let text = part.to_string_lossy();
+                if text.trim().is_empty()
+                    || (cfg!(windows) && (text.ends_with(['.', ' ']) || text.contains(':')))
+                {
                     return Err(format!("Invalid cleanup path: {}", raw));
                 }
-                parts.push(text);
+                parts.push(text.into_owned());
             }
             Component::CurDir => {}
             _ => return Err(format!("Cleanup path cannot contain parent/root: {}", raw)),
@@ -287,6 +299,9 @@ fn is_protected_output_relative_path(relative_path: &str) -> bool {
 }
 
 fn direct_output_child_relative_path(folder_name: &str) -> Result<String, String> {
+    if folder_name.contains(['/', '\\']) {
+        return Err("Output cleanup only supports direct children".into());
+    }
     let normalized = normalize_relative_path(&format!("Output/{}", folder_name))?;
     let part_count = normalized.split('/').count();
     if part_count != 2 {
@@ -351,6 +366,9 @@ pub async fn refresh_remote_catalog() -> Result<OutputCleanupConfigInfo, String>
     let mut guard = CLEANUP_CATALOG
         .write()
         .expect("output cleanup catalog lock poisoned during write");
+    if catalog.version < guard.catalog.version {
+        return Ok(config_info(&guard));
+    }
     *guard = LoadedCatalog {
         source: "remote".to_string(),
         catalog,
@@ -379,17 +397,10 @@ fn folder_size(path: &Path) -> (u64, usize) {
     let mut total = 0u64;
     let mut count = 0usize;
 
-    if path.is_file() {
-        return (path.metadata().map(|m| m.len()).unwrap_or(0), 1);
-    }
-
-    if !path.exists() {
-        return (0, 0);
-    }
-
     for entry in WalkDir::new(path)
         .follow_links(false)
         .into_iter()
+        .filter_entry(|entry| entry.metadata().is_ok_and(|meta| !is_link(&meta)))
         .filter_map(|entry| entry.ok())
     {
         if entry.file_type().is_file() {
@@ -402,8 +413,8 @@ fn folder_size(path: &Path) -> (u64, usize) {
 }
 
 fn path_from_relative(xplane_path: &Path, relative_path: &str) -> PathBuf {
-    let mut path = xplane_path.to_path_buf();
-    for part in relative_path.split('/') {
+    let mut path = xplane_path.join("Output");
+    for part in relative_path.split('/').skip(1) {
         path.push(part);
     }
     path
@@ -412,12 +423,13 @@ fn path_from_relative(xplane_path: &Path, relative_path: &str) -> PathBuf {
 fn folder_name_from_relative(relative_path: &str) -> String {
     relative_path
         .split('/')
-        .last()
+        .next_back()
         .unwrap_or(relative_path)
         .to_string()
 }
 
 pub fn scan_output_cleanup_items(xplane_path: &str) -> Result<OutputCleanupReport, String> {
+    let _guard = OUTPUT_LOCK.lock().map_err(|e| e.to_string())?;
     let loaded = current_catalog();
     let xplane = Path::new(xplane_path);
     let output_dir = xplane.join("Output");
@@ -425,7 +437,9 @@ pub fn scan_output_cleanup_items(xplane_path: &str) -> Result<OutputCleanupRepor
     let mut recognized_paths = HashSet::new();
 
     for config_item in &loaded.catalog.items {
-        let target = path_from_relative(xplane, &config_item.relative_path);
+        let Ok(target) = validate_target_path(xplane, &config_item.relative_path) else {
+            continue;
+        };
         let exists = target.exists();
         if !exists && !config_item.show_when_missing {
             continue;
@@ -449,16 +463,19 @@ pub fn scan_output_cleanup_items(xplane_path: &str) -> Result<OutputCleanupRepor
         });
     }
 
-    if output_dir.is_dir() {
+    if fs::symlink_metadata(&output_dir).is_ok_and(|meta| meta.is_dir() && !is_link(&meta)) {
         if let Ok(entries) = fs::read_dir(&output_dir) {
             for entry in entries.filter_map(|entry| entry.ok()) {
                 let path = entry.path();
-                if !path.is_dir() {
+                if !fs::symlink_metadata(&path).is_ok_and(|meta| meta.is_dir() && !is_link(&meta)) {
                     continue;
                 }
 
-                let folder_name = entry.file_name().to_string_lossy().to_string();
-                let relative_path = match direct_output_child_relative_path(&folder_name) {
+                let name = entry.file_name();
+                let Some(folder_name) = name.to_str() else {
+                    continue;
+                };
+                let relative_path = match direct_output_child_relative_path(folder_name) {
                     Ok(path) => path,
                     Err(_) => continue,
                 };
@@ -470,8 +487,8 @@ pub fn scan_output_cleanup_items(xplane_path: &str) -> Result<OutputCleanupRepor
                 items.push(OutputCleanupItem {
                     id: format!("{}{}", UNKNOWN_PREFIX, folder_name),
                     relative_path,
-                    folder_name: folder_name.clone(),
-                    display_name: folder_name,
+                    folder_name: folder_name.to_string(),
+                    display_name: folder_name.to_string(),
                     description: String::new(),
                     level: "unknown".to_string(),
                     default_selected: false,
@@ -509,6 +526,7 @@ pub fn scan_output_cleanup_items(xplane_path: &str) -> Result<OutputCleanupRepor
         total_bytes,
         total_files,
         items,
+        disabled_items: isolation::scan(xplane),
     })
 }
 
@@ -529,12 +547,15 @@ fn resolve_target(
     let by_id = catalog_by_id(catalog);
 
     if let Some(config_item) = by_id.get(&id) {
+        if normalize_relative_path(&target.relative_path)? != config_item.relative_path {
+            return Err("Output item changed. Refresh the cleanup list.".into());
+        }
         return Ok(config_item.relative_path.clone());
     }
 
-    if !target.id.starts_with(UNKNOWN_PREFIX) {
+    let Some(folder_name) = target.id.strip_prefix(UNKNOWN_PREFIX) else {
         return Err(format!("Unknown output cleanup item id: {}", target.id));
-    }
+    };
 
     let relative_path = normalize_relative_path(&target.relative_path)?;
     if !is_output_relative_path(&relative_path) {
@@ -551,6 +572,9 @@ fn resolve_target(
     }
     if is_protected_output_relative_path(&relative_path) {
         return Err(format!("Output folder is protected: {}", relative_path));
+    }
+    if direct_output_child_relative_path(folder_name)? != relative_path {
+        return Err("Output item changed. Refresh the cleanup list.".into());
     }
 
     let relative_key = relative_path.to_lowercase();
@@ -569,36 +593,60 @@ fn resolve_target(
 }
 
 fn validate_target_path(xplane: &Path, relative_path: &str) -> Result<PathBuf, String> {
-    let output_dir = xplane.join("Output");
-    let target = path_from_relative(xplane, relative_path);
-
-    if !target.exists() {
-        return Ok(target);
-    }
-
-    let output_canonical = output_dir
-        .canonicalize()
-        .map_err(|e| format!("Failed to resolve Output folder: {}", e))?;
-    let target_canonical = target
-        .canonicalize()
-        .map_err(|e| format!("Failed to resolve cleanup target: {}", e))?;
-
-    if !target_canonical.starts_with(&output_canonical) {
+    let relative_path = normalize_relative_path(relative_path)?;
+    if !is_output_relative_path(&relative_path) || is_protected_output_relative_path(&relative_path)
+    {
         return Err(format!(
-            "Cleanup target is outside Output: {}",
-            target.display()
+            "Output path is protected or invalid: {relative_path}"
         ));
     }
-
+    let target = path_from_relative(xplane, &relative_path);
+    for path in target.ancestors().take_while(|path| *path != xplane) {
+        match fs::symlink_metadata(path) {
+            Ok(meta) if is_link(&meta) => {
+                return Err(format!("Output paths cannot use links: {}", path.display()));
+            }
+            Ok(meta) if path != target && !meta.is_dir() => {
+                return Err(format!("Expected a directory at {}", path.display()));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("{}: {error}", path.display())),
+        }
+    }
+    #[cfg(windows)]
+    if target.exists() {
+        let output = xplane
+            .join("Output")
+            .canonicalize()
+            .map_err(|e| e.to_string())?;
+        let resolved = target.canonicalize().map_err(|e| e.to_string())?;
+        let tail = resolved.strip_prefix(output).map_err(|e| e.to_string())?;
+        let actual_path = format!("Output/{}", tail.display().to_string().replace('\\', "/"));
+        if is_protected_output_relative_path(&actual_path) {
+            return Err(format!("Output path is protected: {relative_path}"));
+        }
+    }
     Ok(target)
+}
+
+fn is_link(metadata: &fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        metadata.file_attributes() & 0x400 != 0
+    }
+    #[cfg(not(windows))]
+    {
+        metadata.file_type().is_symlink()
+    }
 }
 
 fn remove_child(path: &Path) -> (u64, usize, Option<String>) {
     let (bytes, files) = folder_size(path);
     let result = match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() => {
-            fs::remove_dir_all(path)
-        }
+        Ok(metadata) if metadata.is_dir() && is_link(&metadata) => fs::remove_dir(path),
+        Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(path),
         Ok(_) => fs::remove_file(path),
         Err(e) => return (0, 0, Some(format!("{}: {}", path.display(), e))),
     };
@@ -661,6 +709,7 @@ pub fn clean_output_items(
     xplane_path: &str,
     targets: Vec<OutputCleanupTarget>,
 ) -> Result<OutputCleanupResult, String> {
+    let _guard = OUTPUT_LOCK.lock().map_err(|e| e.to_string())?;
     if targets.is_empty() {
         return Err("No cleanup items selected".to_string());
     }
@@ -668,8 +717,7 @@ pub fn clean_output_items(
     let loaded = current_catalog();
     let xplane = Path::new(xplane_path);
     let mut seen_paths = HashSet::new();
-    let mut item_results = Vec::new();
-
+    let mut selected = Vec::new();
     for target in targets {
         let relative_path = resolve_target(&loaded.catalog, &target)?;
         let path_key = relative_path.to_lowercase();
@@ -677,8 +725,13 @@ pub fn clean_output_items(
             continue;
         }
 
-        item_results.push(clean_one_target(xplane, &target, relative_path)?);
+        validate_target_path(xplane, &relative_path)?;
+        selected.push((target, relative_path));
     }
+    let item_results = selected
+        .into_iter()
+        .map(|(target, relative_path)| clean_one_target(xplane, &target, relative_path))
+        .collect::<Result<Vec<_>, _>>()?;
 
     let total_deleted_bytes = item_results.iter().map(|item| item.deleted_bytes).sum();
     let total_deleted_files = item_results.iter().map(|item| item.deleted_files).sum();
@@ -688,6 +741,23 @@ pub fn clean_output_items(
         total_deleted_files,
         items: item_results,
     })
+}
+
+pub fn change_output_cleanup_item_state(
+    xplane_path: &str,
+    change: OutputCleanupStateChange,
+) -> Result<(), String> {
+    let _guard = OUTPUT_LOCK.lock().map_err(|e| e.to_string())?;
+    let xplane = Path::new(xplane_path)
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    match change {
+        OutputCleanupStateChange::Disable { target } => {
+            let relative = resolve_target(&current_catalog().catalog, &target)?;
+            isolation::disable(&xplane, &relative)
+        }
+        OutputCleanupStateChange::Restore { id } => isolation::restore(&xplane, &id),
+    }
 }
 
 pub async fn submit_unknown_output_cleanup_item(
@@ -873,10 +943,82 @@ mod tests {
     }
 
     #[test]
+    fn disabled_output_is_excluded_from_cleanup_and_restores_both_versions() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().to_str().unwrap();
+        let target = temp.path().join("Output/CL650/state.bin");
+        write_file(&target, 12);
+        let output_target = || OutputCleanupTarget {
+            id: "cl650".into(),
+            relative_path: "Output/CL650".into(),
+        };
+        change_output_cleanup_item_state(
+            root,
+            OutputCleanupStateChange::Disable {
+                target: output_target(),
+            },
+        )
+        .unwrap();
+        assert!(!target.exists());
+        let report = scan_output_cleanup_items(root).unwrap();
+        assert_eq!(report.total_bytes, 0);
+        assert_eq!(report.disabled_items.len(), 1);
+
+        // The add-on regenerates an active directory while the original is disabled.
+        write_file(&target, 24);
+        let id = report.disabled_items[0].id.clone();
+        change_output_cleanup_item_state(root, OutputCleanupStateChange::Restore { id }).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), vec![b'x'; 12]);
+        let report = scan_output_cleanup_items(root).unwrap();
+        assert_eq!(report.total_bytes, 12);
+        assert_eq!(report.disabled_items.len(), 1);
+        let saved = temp.path().join(&report.disabled_items[0].saved_path);
+        assert_eq!(fs::read(saved.join("state.bin")).unwrap(), vec![b'x'; 24]);
+
+        clean_output_items(root, vec![output_target()]).unwrap();
+        assert!(saved.join("state.bin").exists());
+    }
+
+    #[test]
+    fn rejects_isolation_of_protected_paths_and_invalid_restore_ids() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().to_str().unwrap();
+        let prefs = temp.path().join("Output/preferences/test.prf");
+        write_file(&prefs, 5);
+        for change in [
+            OutputCleanupStateChange::Disable {
+                target: OutputCleanupTarget {
+                    id: "unknown:preferences".into(),
+                    relative_path: "Output/preferences".into(),
+                },
+            },
+            OutputCleanupStateChange::Restore {
+                id: "../preferences".into(),
+            },
+        ] {
+            assert!(change_output_cleanup_item_state(root, change).is_err());
+        }
+        assert_eq!(fs::read(&prefs).unwrap(), vec![b'x'; 5]);
+    }
+
+    #[test]
     fn catalog_defaults_match_policy() {
-        let loaded = current_catalog();
+        let loaded = load_embedded_catalog();
         let by_id = catalog_by_id(&loaded.catalog);
 
+        for id in [
+            "cl650",
+            "q4xp",
+            "nss_scenery_core",
+            "taxipilot",
+            "tbm900",
+            "cl650_technical_log",
+        ] {
+            let item = &by_id[id];
+            assert_eq!(item.level, "cautious");
+            assert_eq!(item.warning_key.as_deref(), Some("addon_data"));
+            assert!(!item.default_selected);
+        }
         assert!(by_id.get("autodgs").unwrap().default_selected);
         let logbooks = by_id.get("logbooks").unwrap();
         assert!(!logbooks.default_selected);

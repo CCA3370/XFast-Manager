@@ -41,6 +41,16 @@ export interface OutputCleanupReport {
   totalBytes: number
   totalFiles: number
   items: OutputCleanupItem[]
+  disabledItems: DisabledOutputItem[]
+}
+
+export interface DisabledOutputItem {
+  id: string
+  relativePath: string
+  savedPath: string
+  savedAt: number
+  sizeBytes: number
+  fileCount: number
 }
 
 export interface OutputCleanupItem {
@@ -62,6 +72,10 @@ export interface OutputCleanupTarget {
   id: string
   relativePath: string
 }
+
+export type OutputCleanupStateChange =
+  | { action: 'disable'; target: OutputCleanupTarget }
+  | { action: 'restore'; id: string }
 
 export interface OutputCleanupResult {
   totalDeletedBytes: number
@@ -92,7 +106,10 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
   const isCleanupScanning = ref(false)
   const isCleanupRefreshing = ref(false)
   const isCleaning = ref(false)
+  const isChangingCleanupState = ref(false)
   const cleanupError = ref<string | null>(null)
+  let cleanupScanToken = 0
+  let cleanupPath = ''
 
   async function scan() {
     isScanning.value = true
@@ -123,9 +140,15 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
   }
 
   async function scanOutputCleanup(resetToEmbedded = false) {
-    const appStore = useAppStore()
-    if (!appStore.xplanePath) {
+    const { xplanePath } = useAppStore()
+    const token = ++cleanupScanToken
+    if (xplanePath !== cleanupPath) {
+      cleanupPath = xplanePath
       outputCleanupReport.value = null
+    }
+    if (!xplanePath) {
+      outputCleanupReport.value = null
+      isCleanupScanning.value = false
       return
     }
 
@@ -135,13 +158,16 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
       if (resetToEmbedded) {
         await invoke('reset_output_cleanup_items_to_embedded')
       }
-      outputCleanupReport.value = await invoke<OutputCleanupReport>('scan_output_cleanup_items', {
-        xplanePath: appStore.xplanePath,
+      const result = await invoke<OutputCleanupReport>('scan_output_cleanup_items', {
+        xplanePath,
       })
+      if (token === cleanupScanToken && xplanePath === useAppStore().xplanePath) {
+        outputCleanupReport.value = result
+      }
     } catch (e) {
-      cleanupError.value = String(e)
+      if (token === cleanupScanToken) cleanupError.value = String(e)
     } finally {
-      isCleanupScanning.value = false
+      if (token === cleanupScanToken) isCleanupScanning.value = false
     }
   }
 
@@ -157,13 +183,15 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
     }
   }
 
-  async function cleanOutputItems(targets: OutputCleanupTarget[]): Promise<OutputCleanupResult> {
-    const appStore = useAppStore()
+  async function cleanOutputItems(
+    xplanePath: string,
+    targets: OutputCleanupTarget[],
+  ): Promise<OutputCleanupResult> {
     isCleaning.value = true
     cleanupError.value = null
     try {
       const result = await invoke<OutputCleanupResult>('clean_output_items', {
-        xplanePath: appStore.xplanePath,
+        xplanePath,
         targets,
       })
       return result
@@ -172,6 +200,18 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
       throw e
     } finally {
       isCleaning.value = false
+    }
+  }
+
+  async function changeOutputCleanupItemState(
+    xplanePath: string,
+    change: OutputCleanupStateChange,
+  ) {
+    isChangingCleanupState.value = true
+    try {
+      await invoke('change_output_cleanup_item_state', { xplanePath, change })
+    } finally {
+      isChangingCleanupState.value = false
     }
   }
 
@@ -190,10 +230,12 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
   }
 
   function reset() {
+    cleanupScanToken++
     report.value = null
     error.value = null
     selectedItem.value = null
     outputCleanupReport.value = null
+    isCleanupScanning.value = false
     cleanupError.value = null
   }
 
@@ -206,12 +248,14 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
     isCleanupScanning,
     isCleanupRefreshing,
     isCleaning,
+    isChangingCleanupState,
     cleanupError,
     scan,
     scanFolder,
     scanOutputCleanup,
     refreshOutputCleanupItems,
     cleanOutputItems,
+    changeOutputCleanupItemState,
     submitUnknownOutputCleanupItem,
     reset,
   }

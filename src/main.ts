@@ -188,7 +188,6 @@ function escapeHtml(text: string): string {
 // Preload functions for lazy-loaded views
 const preloadManagement = () => import('./views/Management.vue')
 const preloadSettings = () => import('./views/Settings.vue')
-const preloadMap = () => import('./views/MapView.vue')
 const preloadGateway = () => import('./views/GatewayManagement.vue')
 
 const router = createRouter({
@@ -200,11 +199,12 @@ const router = createRouter({
     { path: '/management/liveries', component: () => import('./views/Liveries.vue') },
     { path: '/management/scripts', component: () => import('./views/Scripts.vue') },
     { path: '/presets', component: () => import('./views/Presets.vue') },
-    { path: '/map', component: preloadMap },
     { path: '/gateway', component: preloadGateway },
     { path: '/airport-flatten', component: () => import('./views/AirportFlatten.vue') },
-    { path: '/log-analysis', component: () => import('./views/LogAnalysis.vue') },
+    { path: '/doctor', component: () => import('./views/Doctor.vue') },
+    { path: '/log-analysis', redirect: '/doctor' },
     { path: '/activity', component: () => import('./views/ActivityLog.vue') },
+    { path: '/flight-plans', component: () => import('./views/FlightPlans.vue') },
     { path: '/screenshots', component: () => import('./views/ScreenshotManager.vue') },
     { path: '/disk-usage', component: () => import('./views/DiskUsage.vue') },
     { path: '/disk-usage/output-cleanup', component: () => import('./views/OutputCleanup.vue') },
@@ -223,7 +223,6 @@ function preloadViews() {
     preloadManagement()
     preloadSettings()
     preloadGateway()
-    preloadMap()
   })
 }
 

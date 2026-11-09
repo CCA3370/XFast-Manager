@@ -13,7 +13,7 @@
         <div
           ref="backdrop"
           class="modal-backdrop absolute inset-0 bg-black/50 backdrop-blur-sm"
-          @click="handleCancel"
+          @click="handleBackdropClick"
         ></div>
 
         <!-- Modal card -->
@@ -265,6 +265,11 @@ function handleCancel() {
   } else {
     modal.cancelAction()
   }
+}
+
+function handleBackdropClick() {
+  if (!isLocalMode.value && modal.confirmModal.options?.closeOnBackdrop === false) return
+  handleCancel()
 }
 
 // Animation tracking to prevent stale done() calls on rapid toggle

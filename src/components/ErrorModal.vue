@@ -207,6 +207,7 @@ async function submitBugReport() {
       errorTitle,
       errorMessage,
       category: 'Other',
+      errorPolicy: modal.errorModal.reportPolicy,
       t,
       toast,
     })

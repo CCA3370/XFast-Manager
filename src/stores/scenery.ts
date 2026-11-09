@@ -130,6 +130,7 @@ export const useSceneryStore = defineStore('scenery', () => {
 
   // Track original state for change detection
   const originalEntries = ref<SceneryManagerEntry[]>([])
+  const manualOrderChanged = ref(false)
 
   // Collapsed groups state (persisted to Tauri Store)
   // Default: all groups are expanded (false = expanded, true = collapsed)
@@ -286,6 +287,7 @@ export const useSceneryStore = defineStore('scenery', () => {
       FixedHighPriority: [],
       Airport: [],
       DefaultAirport: [],
+      RegionalOverlay: [],
       Library: [],
       Other: [],
       Overlay: [],
@@ -323,7 +325,11 @@ export const useSceneryStore = defineStore('scenery', () => {
     for (const curr of current) {
       const orig = originalMap.get(curr.folderName)
       if (!orig) return true
-      if (curr.enabled !== orig.enabled || curr.sortOrder !== orig.sortOrder) {
+      if (
+        curr.enabled !== orig.enabled ||
+        curr.sortOrder !== orig.sortOrder ||
+        curr.category !== orig.category
+      ) {
         return true
       }
     }
@@ -355,6 +361,7 @@ export const useSceneryStore = defineStore('scenery', () => {
       }
       // Store original state for change detection
       originalEntries.value = JSON.parse(JSON.stringify(data.value.entries))
+      manualOrderChanged.value = false
       // Clear any previous database reset flag on successful load
       needsDatabaseReset.value = false
       // Kick off a background SkunkCrafts update check — non-blocking so the UI
@@ -426,6 +433,7 @@ export const useSceneryStore = defineStore('scenery', () => {
             entries: applyRememberedSceneryUpdateState(result.entries),
           }
           originalEntries.value = JSON.parse(JSON.stringify(data.value.entries))
+          manualOrderChanged.value = false
         } catch (e) {
           logError(`Failed to rescan scenery: ${e}`, 'scenery')
         }
@@ -468,6 +476,7 @@ export const useSceneryStore = defineStore('scenery', () => {
       indexExists.value = false
       data.value = null
       originalEntries.value = []
+      manualOrderChanged.value = false
       return true
     } catch (e) {
       logError(`Failed to reset database: ${e}`, 'scenery')
@@ -497,27 +506,8 @@ export const useSceneryStore = defineStore('scenery', () => {
     const entry = data.value.entries.find((e) => e.folderName === folderName)
     if (!entry) return
 
-    const oldCategory = entry.category
-
-    try {
-      // Update locally first for immediate UI feedback
-      entry.category = newCategory
-
-      // Update in backend
-      await invoke('update_scenery_entry', {
-        xplanePath: appStore.xplanePath,
-        folderName,
-        enabled: null,
-        sortOrder: null,
-        category: newCategory,
-      })
-    } catch (e) {
-      // Revert on error
-      entry.category = oldCategory
-      error.value = String(e)
-      logError(`Failed to update category: ${e}`, 'scenery')
-      throw e
-    }
+    entry.category = newCategory
+    manualOrderChanged.value = true
   }
 
   // Recalculate duplicate tiles based on raw tile overlaps and current sort order.
@@ -591,6 +581,7 @@ export const useSceneryStore = defineStore('scenery', () => {
   // get entries with up-to-date duplicateTiles before syncLocalEntries copies them.
   function applyLocalOrder(newOrder: SceneryManagerEntry[]) {
     if (!data.value) return
+    manualOrderChanged.value = true
     for (let i = 0; i < newOrder.length; i++) {
       newOrder[i].sortOrder = i
     }
@@ -631,9 +622,11 @@ export const useSceneryStore = defineStore('scenery', () => {
     error.value = null
 
     try {
-      const entriesToApply = orderedEntries
-        ? orderedEntries.slice()
-        : data.value.entries.slice().sort((a, b) => a.sortOrder - b.sortOrder)
+      const reorder = appStore.autoSortScenery || manualOrderChanged.value
+      const entriesToApply =
+        orderedEntries && reorder
+          ? orderedEntries.slice()
+          : data.value.entries.slice().sort((a, b) => a.sortOrder - b.sortOrder)
 
       // Ensure sortOrder fields are aligned with the order being applied
       const normalizedEntries = entriesToApply.map((entry, index) => ({
@@ -649,15 +642,18 @@ export const useSceneryStore = defineStore('scenery', () => {
         folderName: entry.folderName,
         enabled: entry.enabled,
         sortOrder: entry.sortOrder,
+        category: entry.category,
       }))
 
       await invoke('apply_scenery_changes', {
         xplanePath: appStore.xplanePath,
         entries: updates,
+        reorder,
       })
 
       // Update original state after successful save
       originalEntries.value = JSON.parse(JSON.stringify(normalizedEntries))
+      manualOrderChanged.value = false
       // Mark as synced since we just wrote to ini
       data.value.needsSync = false
     } catch (e) {
@@ -671,6 +667,7 @@ export const useSceneryStore = defineStore('scenery', () => {
 
   // Reset to original state
   function resetChanges() {
+    manualOrderChanged.value = false
     if (originalEntries.value.length > 0 && data.value) {
       data.value.entries = JSON.parse(JSON.stringify(originalEntries.value))
       data.value.enabledCount = data.value.entries.filter((e) => e.enabled).length
@@ -767,6 +764,7 @@ export const useSceneryStore = defineStore('scenery', () => {
 
   // Clear store state
   function clear() {
+    manualOrderChanged.value = false
     data.value = null
     originalEntries.value = []
     error.value = null

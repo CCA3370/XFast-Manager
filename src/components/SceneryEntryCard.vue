@@ -84,6 +84,12 @@ const categoryConfig = computed(() => {
         color: 'text-gray-600 dark:text-gray-400',
         bgColor: 'bg-gray-100 dark:bg-gray-800/50',
       }
+    case SceneryCategory.RegionalOverlay:
+      return {
+        label: t('sceneryManager.categoryRegionalOverlay'),
+        color: 'text-indigo-700 dark:text-indigo-300',
+        bgColor: 'bg-indigo-100 dark:bg-indigo-900/30',
+      }
     case SceneryCategory.Library:
       return {
         label: t('sceneryManager.categoryLibrary'),
@@ -191,7 +197,11 @@ async function handleDoubleClick() {
     const apiError = parseApiError(error)
     if (apiError?.code === 'not_found') {
       await sceneryStore.loadData()
-      modalStore.showError(t('sceneryManager.stalePathMessage'))
+      modalStore.showError({
+        code: 'not_found',
+        message: t('sceneryManager.stalePathMessage'),
+        reportable: false,
+      })
       return
     }
     modalStore.showError(t('sceneryManager.openFolderFailed') + ': ' + getErrorMessage(error))

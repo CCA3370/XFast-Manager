@@ -1,5 +1,11 @@
 // ========== API Error Types ==========
 
+import {
+  isOperationalErrorMessage,
+  isReportableError,
+  normalizeErrorFingerprintInput,
+} from '../../shared/error-report-policy.js'
+
 /** Structured error codes matching backend ApiErrorCode */
 export type ApiErrorCode =
   | 'validation_failed'
@@ -17,13 +23,36 @@ export type ApiErrorCode =
   | 'timeout'
   | 'database_error'
   | 'migration_failed'
+  | 'environment_error'
+  | 'external_software_blocked'
   | 'internal'
+
+export type ApiErrorOrigin =
+  | 'application'
+  | 'user_input'
+  | 'environment'
+  | 'external_data'
+  | 'external_service'
+  | 'cancelled'
 
 /** Structured API error from backend */
 export interface ApiError {
   code: ApiErrorCode
   message: string
   details?: string
+  origin?: ApiErrorOrigin
+  operation?: string
+  userAction?: string
+  reportable?: boolean
+}
+
+export interface ErrorReportPolicy {
+  code?: ApiErrorCode
+  origin?: ApiErrorOrigin
+  operation?: string
+  message: string
+  reportable: boolean
+  fingerprintInput: string
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -34,12 +63,20 @@ function parseApiErrorObject(value: Record<string, unknown>): ApiError | null {
   const code = value.code
   const message = value.message
   const details = value.details
+  const origin = value.origin
+  const operation = value.operation
+  const userAction = value.userAction
+  const reportable = value.reportable
 
   if (typeof code === 'string' && typeof message === 'string') {
     return {
       code: code as ApiErrorCode,
       message,
       details: typeof details === 'string' ? details : undefined,
+      origin: typeof origin === 'string' ? (origin as ApiErrorOrigin) : undefined,
+      operation: typeof operation === 'string' ? operation : undefined,
+      userAction: typeof userAction === 'string' ? userAction : undefined,
+      reportable: typeof reportable === 'boolean' ? reportable : undefined,
     }
   }
 
@@ -134,44 +171,37 @@ export function getErrorMessage(error: unknown): string {
   return String(error)
 }
 
+export function getErrorReportPolicy(error: unknown): ErrorReportPolicy {
+  const apiError = parseApiError(error)
+  const message = apiError?.message ?? getErrorMessage(error)
+  const reportable = isReportableError({
+    code: apiError?.code,
+    origin: apiError?.origin,
+    operation: apiError?.operation,
+    message,
+    reportable: apiError?.reportable,
+  })
+
+  return {
+    code: apiError?.code,
+    origin: apiError?.origin,
+    operation: apiError?.operation,
+    message,
+    reportable,
+    fingerprintInput: normalizeErrorFingerprintInput({
+      code: apiError?.code,
+      origin: apiError?.origin,
+      operation: apiError?.operation,
+      message,
+    }),
+  }
+}
+
 /**
  * Known user/environment/data errors that should not show the bug-report CTA.
  */
 export function shouldHideBugReportForMessage(message: string): boolean {
-  const lower = message.toLowerCase()
-
-  return (
-    lower.includes('invalid or incomplete zip archive') ||
-    lower.includes('this archive appears to be incomplete') ||
-    lower.includes('this rar archive could not be extracted') ||
-    lower.includes('this 7z archive could not be extracted') ||
-    lower.includes('invalid zip archive') ||
-    lower.includes('could not find eocd') ||
-    lower.includes('not a rar archive') ||
-    lower.includes('badarchive@open') ||
-    lower.includes('ewrite@process') ||
-    lower.includes('exec format error') ||
-    lower.includes('not runnable on this system') ||
-    lower.includes('not a valid windows executable') ||
-    lower.includes('invalid airport source path') ||
-    lower.includes('airport flatten source is no longer available') ||
-    lower.includes('airport flatten source was not found') ||
-    lower.includes('apt.dat not found:') ||
-    lower.includes('source file is no longer available:') ||
-    lower.includes('source path is not a regular file or directory:') ||
-    lower.includes('source path is neither file nor directory') ||
-    lower.includes('[permission_denied]') ||
-    lower.includes('(os error 5)') ||
-    lower.includes('(os error 225)') ||
-    lower.includes('access is denied') ||
-    lower.includes('contains a virus or potentially unwanted') ||
-    lower.includes('custom scenery folder not found') ||
-    lower.includes('plugins folder not found') ||
-    lower.includes('custom data folder not found') ||
-    lower.includes('aircraft folder not found') ||
-    lower.includes('target directory does not exist') ||
-    lower.includes('failed to create target directory')
-  )
+  return isOperationalErrorMessage(message)
 }
 
 // ========== Addon Types ==========
@@ -188,6 +218,8 @@ export enum AddonType {
   Livery = 'Livery',
   /** FlyWithLua Lua script */
   LuaScript = 'LuaScript',
+  /** Aircraft model patch — overlaid into an existing aircraft folder (user-directed) */
+  Patch = 'Patch',
 }
 
 /** Represents a nested archive within another archive */
@@ -219,11 +251,15 @@ export interface VersionInfo {
 }
 
 export interface InstallTask {
+  /** Standalone XLua runtime requiring a warning before global installation. */
+  isXluaRuntime?: boolean
   id: string
   type: AddonType
   sourcePath: string
   /** Stable internal source path used when the original source may be transient. */
   resolvedSourcePath?: string
+  /** Original file or folder supplied by the user before source-path resolution. */
+  originalInputPath?: string
   targetPath: string
   displayName: string
   conflictExists?: boolean
@@ -265,6 +301,12 @@ export interface InstallTask {
   flyWithLuaInstalled?: boolean
   /** For LuaScript: companion files/folders referenced by SCRIPT_DIRECTORY */
   companionPaths?: string[]
+  /** For Patch: back up files that will be overwritten before merging (revertable) */
+  patchBackup?: boolean
+  /** For Patch: selected aircraft root that all write targets must stay inside */
+  patchAircraftRoot?: string
+  /** For Patch: shared backup session dir for all tasks of one patch install */
+  patchBackupDir?: string
 }
 
 export interface AnalysisResult {
@@ -280,6 +322,90 @@ export interface ConflictInfo {
   task: InstallTask
   existingVersion?: string
   newVersion?: string
+}
+
+// --- Aircraft model patch (overlay install) ---
+
+export type PatchConfidence = 'high' | 'medium' | 'low'
+
+/** A candidate target aircraft, ranked by file tree evidence. */
+export interface PatchAircraftCandidate {
+  folderName: string
+  displayName: string
+  matchedCount: number
+  fileCount: number
+  matchScore: number
+  bestOffset: string
+  bestDestination: string
+  ambiguousMapping: boolean
+  confidence: PatchConfidence
+}
+
+export interface PatchTargetDetection {
+  candidates: PatchAircraftCandidate[]
+  recommendedFolder?: string | null
+}
+
+/** A suggested archive-subfolder -> aircraft-subpath mapping. */
+export interface PatchMapping {
+  archiveSubpath: string
+  destSubpath: string
+  fileCount: number
+  confidence: PatchConfidence
+  /** Machine-readable reason token (e.g. "matchedExisting:142", "liveryFolder"). */
+  reason: string
+}
+
+export interface PatchPlan {
+  /** Directory and file paths inside the archive, for manual mapping edits. */
+  archiveTree: string[]
+  suggestedMappings: PatchMapping[]
+  /** Archive top-level entries not covered by any suggested mapping. */
+  unmapped: string[]
+  /** Existing directories at any depth under the target aircraft. */
+  aircraftDirectories: string[]
+  /** Local memory key for this aircraft and archive layout. */
+  mappingKey: string
+}
+
+/** A user-confirmed mapping sent back to the backend to build install tasks. */
+export interface PatchMappingInput {
+  archiveSubpath: string
+  destSubpath: string
+}
+
+export interface PatchMappingPreview {
+  fileCount: number
+  overwriteCount: number
+  destinationExists: boolean
+}
+
+/** Plain-language preview of what a patch install will do. */
+export interface PatchInstallSummary {
+  /** Distinct files that will be written across all mappings. */
+  totalFiles: number
+  /** How many of those already exist at their destination (overwritten). */
+  overwriteCount: number
+  /** Confirms that installation still matches the preview. */
+  planId: string
+  mappingPreviews: PatchMappingPreview[]
+  unmapped: string[]
+}
+
+export interface PatchBackupSession {
+  id: string
+  name: string
+  timestamp: number | null
+  files: { path: string; sizeBytes: number }[]
+  addedFiles: string[] | null
+  error: string | null
+}
+
+export interface PatchRestoreResult {
+  restoredCount: number
+  removedCount: number
+  skippedCount: number
+  backupCleanupError: string | null
 }
 
 export type InstallPhase = 'calculating' | 'installing' | 'verifying' | 'finalizing'
@@ -347,6 +473,7 @@ export enum SceneryCategory {
   FixedHighPriority = 'FixedHighPriority',
   Airport = 'Airport',
   DefaultAirport = 'DefaultAirport',
+  RegionalOverlay = 'RegionalOverlay',
   Library = 'Library',
   Overlay = 'Overlay',
   AirportMesh = 'AirportMesh',
@@ -457,6 +584,7 @@ export interface SceneryManagerEntry {
   updateProvider?: 'skunkcrafts'
   version?: string
   latestVersion?: string
+  manualUpdateUrl?: string
   hasUpdate: boolean
   missingLibraries: string[]
   requiredLibraries: string[]
@@ -521,6 +649,7 @@ export interface PluginInfo {
   updateUrl?: string
   updateProvider?: 'skunkcrafts' | 'x-updater'
   latestVersion?: string
+  manualUpdateUrl?: string
   hasUpdate: boolean
   cfgDisabled?: boolean
   hasScripts: boolean
@@ -823,4 +952,116 @@ export interface GatewayReleaseContext {
   matchedReleaseVersion: string | null
   matchedReleaseDate: string | null
   comparisonAvailable: boolean
+}
+
+// ============================================================================
+// Doctor — diagnostic reports (mirrors src-tauri/src/analysis/doctor.rs)
+// ============================================================================
+
+export interface DetectedInjector {
+  id: string
+  evidence: string
+}
+
+export interface CompetingOrganizer {
+  id: string
+  evidence: string
+}
+
+export interface DoctorFileFindings {
+  problems: string[]
+  errors: string[]
+}
+
+export interface DoctorVolumeSpace {
+  availableBytes: number | null
+  totalBytes: number | null
+  error: string | null
+}
+
+export type DoctorVulkanRuntime =
+  | { state: 'available'; version: string; meetsMinimum: boolean }
+  | { state: 'missing' | 'unavailable'; detail: string }
+
+export interface DoctorEnvironmentReport {
+  installationId: string
+  installation: {
+    rootUsable: boolean
+    core: DoctorFileFindings
+    aircraft: DoctorFileFindings
+    airfoils: DoctorFileFindings
+  }
+  diskSpace: DoctorVolumeSpace
+  directoryAccess: { blocked: string[]; errors: string[] }
+  vulkanRuntime: DoctorVulkanRuntime | null
+  inProgramFiles: boolean
+  isSteamInstall: boolean
+  readonlyCount: number
+  readonlyScanCapped: boolean
+  readonlyScanErrors: string[]
+  readonlyScanPerformed: boolean
+  injectors: DetectedInjector[]
+  competingOrganizers: CompetingOrganizer[]
+  system: DoctorHostSystemSnapshot
+}
+
+export interface DoctorHostSystemSnapshot {
+  os: string
+  osVersion: string | null
+  architecture: string
+  cpuModel: string | null
+  logicalCores: number
+  physicalCores: number | null
+  totalMemoryBytes: number
+  availableMemoryBytes: number
+}
+
+export interface DoctorSceneryIndexHealth {
+  indexExists: boolean
+  indexedCount: number
+  filesystemCount: number
+  missingFromIndex: string[]
+  missingFromDisk: string[]
+}
+
+export interface DoctorXfastHealthReport {
+  appDataDir: string
+  appDataWritable: boolean
+  appDataWriteError: string | null
+  diskSpace: DoctorVolumeSpace
+  databaseOk: boolean | null
+  databaseDetails: string[]
+  schemaCompatible: boolean | null
+  sceneryIndex: DoctorSceneryIndexHealth | null
+  sceneryIndexError: string | null
+}
+
+export type NavdataStatus = 'expired' | 'expiring_soon' | 'not_yet_effective' | 'ok' | 'unknown'
+
+export interface NavdataCycleReport {
+  folderName: string
+  providerName: string
+  cycle: string | null
+  airac: string | null
+  effectiveDate: string | null
+  expiryDate: string | null
+  daysRemaining: number | null
+  status: NavdataStatus
+  metadataConflict?: string | null
+  source: string
+}
+
+export interface DoctorNavdataLayer {
+  present: boolean
+  problems: string[]
+  errors: string[]
+  headers: string[]
+}
+
+export interface DoctorNavdataReport {
+  bundled: DoctorNavdataLayer
+  overrideData: DoctorNavdataLayer
+  supplemental: DoctorNavdataLayer
+  cycles: NavdataCycleReport[]
+  metadataErrors: string[]
 }

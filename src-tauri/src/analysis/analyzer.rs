@@ -25,6 +25,27 @@ impl Analyzer {
         }
     }
 
+    fn join_install_target_component_for_platform(
+        base: &Path,
+        component: &str,
+        apply_windows_rules: bool,
+    ) -> PathBuf {
+        base.join(
+            crate::installer::sanitize_install_target_component_for_platform(
+                component,
+                apply_windows_rules,
+            ),
+        )
+    }
+
+    fn join_install_target_component(base: &Path, component: &str) -> PathBuf {
+        Self::join_install_target_component_for_platform(
+            base,
+            component,
+            cfg!(target_os = "windows"),
+        )
+    }
+
     fn copy_path_for_staging(source: &Path, target: &Path) -> Result<()> {
         if source.is_dir() {
             fs::create_dir_all(target)
@@ -368,6 +389,13 @@ impl Analyzer {
         let raw = error.to_string();
         let lower = raw.to_ascii_lowercase();
         let prefix = format!("{} ({})", tr(LogMsg::ScanFailed), path_str);
+
+        if lower.contains("missing split archive volume") {
+            return format!(
+                "{}: {}. Place every volume from this download in the same folder, then try again.",
+                prefix, raw
+            );
+        }
 
         if lower.contains("invalid zip archive") || lower.contains("could not find eocd") {
             return format!(
@@ -910,24 +938,29 @@ impl Analyzer {
                         self.find_aircraft_for_livery(xplane_path, aircraft_type_id)
                     {
                         // Found the aircraft, install to its liveries folder
-                        let liveries_path = aircraft_folder.join("liveries").join(&livery_name);
+                        let liveries_path = Self::join_install_target_component(
+                            &aircraft_folder.join("liveries"),
+                            &livery_name,
+                        );
                         (liveries_path, true, true)
                     } else {
                         // Aircraft not found, use a placeholder path
-                        let placeholder = xplane_root
+                        let placeholder_base = xplane_root
                             .join("Aircraft")
                             .join("[Aircraft Not Found]")
-                            .join("liveries")
-                            .join(&livery_name);
+                            .join("liveries");
+                        let placeholder =
+                            Self::join_install_target_component(&placeholder_base, &livery_name);
                         (placeholder, false, true)
                     }
                 } else {
                     // No aircraft type specified, shouldn't happen but handle gracefully
-                    let placeholder = xplane_root
+                    let placeholder_base = xplane_root
                         .join("Aircraft")
                         .join("[Unknown Aircraft]")
-                        .join("liveries")
-                        .join(&livery_name);
+                        .join("liveries");
+                    let placeholder =
+                        Self::join_install_target_component(&placeholder_base, &livery_name);
                     (placeholder, false, true)
                 }
             } else if item.addon_type == AddonType::LuaScript {
@@ -938,7 +971,10 @@ impl Analyzer {
                     .join("FlyWithLua");
                 let flywithlua_exists = flywithlua_path.exists();
 
-                let target = flywithlua_path.join("Scripts").join(&item.display_name);
+                let target = Self::join_install_target_component(
+                    &flywithlua_path.join("Scripts"),
+                    &item.display_name,
+                );
 
                 (target, true, flywithlua_exists)
             } else {
@@ -975,6 +1011,7 @@ impl Analyzer {
                             .unwrap_or(custom_data)
                     }
                     AddonType::Livery | AddonType::LuaScript => unreachable!(), // Already handled above
+                    AddonType::Patch => unreachable!(), // Patches never go through signature detection
                 };
 
                 // For Navdata, install directly into target_base (don't create subfolder)
@@ -982,7 +1019,7 @@ impl Analyzer {
                 let path = if item.addon_type == AddonType::Navdata {
                     target_base
                 } else {
-                    target_base.join(&item.display_name)
+                    Self::join_install_target_component(&target_base, &item.display_name)
                 };
                 (path, true, true) // Non-livery/lua types always have aircraft_found = true and flywithlua_installed = true
             };
@@ -1097,7 +1134,13 @@ impl Analyzer {
             livery_aircraft_type: item.livery_aircraft_type,
             livery_aircraft_found,
             flywithlua_installed,
+            is_xlua_runtime: item.is_xlua_runtime,
             companion_paths: item.companion_paths,
+            patch_files: Vec::new(),
+            patch_plan_id: None,
+            patch_backup: false,
+            patch_backup_dir: None,
+            patch_aircraft_root: None,
         }
     }
 
@@ -1428,6 +1471,7 @@ mod tests {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }
     }
@@ -1487,7 +1531,13 @@ mod tests {
             livery_aircraft_type: None,
             livery_aircraft_found: false,
             flywithlua_installed: true,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            patch_files: Vec::new(),
+            patch_plan_id: None,
+            patch_backup: false,
+            patch_backup_dir: None,
+            patch_aircraft_root: None,
         }
     }
 
@@ -1504,6 +1554,28 @@ mod tests {
             analyzer.get_effective_path(&item),
             PathBuf::from("ToLissA339_V1p1p0")
         );
+    }
+
+    #[test]
+    fn windows_install_target_uses_a_safe_generated_component() {
+        let base = Path::new("C:/X-Plane 12/Aircraft/737NG/liveries");
+        let target = Analyzer::join_install_target_component_for_platform(
+            base,
+            "(80NGv2) GOL PRΓÇôGIT \"Smiles\"",
+            true,
+        );
+
+        assert_eq!(target, base.join("(80NGv2) GOL PRΓÇôGIT _Smiles_"));
+    }
+
+    #[test]
+    fn generated_install_target_cannot_escape_its_base() {
+        let base = Path::new("/opt/X-Plane 12/Custom Scenery");
+        let target =
+            Analyzer::join_install_target_component_for_platform(base, "../Outside", false);
+
+        assert_eq!(target, base.join(".._Outside"));
+        assert!(target.starts_with(base));
     }
 
     #[test]
@@ -1552,6 +1624,7 @@ mod tests {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths: vec!["assets".to_string()],
         };
 
@@ -2024,6 +2097,16 @@ mod tests {
 
         assert!(formatted.contains("Invalid or incomplete 7z archive"));
         assert!(!formatted.contains("failed to fill whole buffer"));
+    }
+
+    #[test]
+    fn missing_split_volume_preserves_filename_and_explains_recovery() {
+        let error =
+            anyhow::anyhow!("Missing split archive volume for aircraft.7z.002: aircraft.7z.001");
+        let formatted =
+            Analyzer::format_scan_error_for_display("/Downloads/aircraft.7z.002", &error);
+        assert!(formatted.contains("aircraft.7z.001"));
+        assert!(formatted.contains("Place every volume from this download in the same folder"));
     }
 
     #[test]

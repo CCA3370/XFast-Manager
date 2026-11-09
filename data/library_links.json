@@ -1,10 +1,11 @@
 {
 	"version": 1,
-	"updated": "2026-05-23",
+	"updated": "2026-11-09",
 	"libraries": {
 		"3d_people": "https://forums.x-plane.org/index.php?/files/file/26611-3d-people-library/",
 		"3d_people_library": "https://forums.x-plane.org/files/file/26611-3d-people-library/",
 		"adsparks_library": "https://forums.x-plane.org/files/file/47600-parking-stands-signs/",
+		"aircraft-static_and_animated": "https://forums.x-plane.org/files/file/17888-free-add-on-static-and-animated-aircraft-for-jeffmuellers-payware-airports-and-groundtraffic-developers",
 		"ales_dev_lib": "https://forums.x-plane.org/files/file/53427-ales-developer-library/",
 		"ar_library": "https://forums.x-plane.org/files/file/44586-ar_library-librer%C3%ADa-de-objetos-argentinos/",
 		"bs2001_objects": "https://forums.x-plane.org/files/file/28045-bs2001-object-library/",
@@ -12,6 +13,7 @@
 		"cemetery": "https://forums.x-plane.org/files/file/24521-cemetery-library/",
 		"devinci_library": "https://forums.x-plane.org/files/file/63107-devinci-library/",
 		"dinkisstyle_lib_grass": "https://forums.x-plane.org/files/file/85592-29d-grass-for-xp12-incl-demo-scenery/",
+		"dt_library": "https://forums.x-plane.org/files/file/49646-dt-library/",
 		"european_vehicles_static": "https://forums.x-plane.org/files/file/24708-library-european-vehicles-static/",
 		"faib_aircraft": "https://forums.x-plane.org/files/file/29079-the-faib-aircraft-library/",
 		"fjs_scenery_library": "https://forums.x-plane.org/files/file/28594-fjs_scenery_library/",
@@ -22,6 +24,7 @@
 		"handyobjects": "https://forums.x-plane.org/index.php?/files/file/24261-the-handy-objects-library/",
 		"hungaryvfr-library": "https://forums.x-plane.org/files/file/43436-hungaryvfr/",
 		"jb_library": "https://forums.x-plane.org/files/file/26531-jb_libraryzip/",
+		"jetsetdesigns_library": "https://forum.thresholdx.net/files/file/4037-jetset-designs-library/",
 		"madagascar_lib": "https://drive.google.com/file/d/1QB9eenzLagfkdFGKtfpIYvbMCk9VDJ2D/view?usp=drive_link",
 		"misterx_library": "https://forums.x-plane.org/index.php?/files/file/28167-misterx-library-and-static-aircraft-extension/",
 		"my_jetways": "https://github.com/hotbso/openSam.git",
@@ -41,11 +44,15 @@
 		"ruscenery": "https://ruscenery.x-air.ru/",
 		"SAM_Library": "https://d1o9n9onlv91pa.cloudfront.net/sam3/base_plugin/3.1.10/SAM.zip",
 		"sam3_library": "https://d1o9n9onlv91pa.cloudfront.net/sam3/base_plugin/3.1.10/SAM.zip",
+		"simheaven": "https://simheaven.com/package/x-europe/",
 		"spc_lib": "https://forums.x-plane.org/files/file/73800-spc_lib/",
+		"static_ga_nz": "https://forums.x-plane.org/files/file/27150-static-ga-aircraft-new-zealand/",
 		"the_handy_objects_library": "https://forums.x-plane.org/index.php?/files/file/24261-the-handy-objects-library/",
 		"ticosim_library": "https://x-plane.to/file/1466/tico-sim-library",
 		"world-models": "https://forums.x-plane.org/index.php?/files/file/32135-world-models-library/",
 		"wrecked_vehicles": "https://forums.x-plane.org/files/file/30807-wrecked-vehicles/",
+		"x-europe": "https://simheaven.com/package/x-europe/",
+		"xs_library": "https://cloud.mail.ru/public/9eL3/h5MM3QMd2?autologin=no",
 		"zdp_library": "https://forum.thresholdx.net/files/file/1987-zero-dollar-payware-library/"
 	}
 }

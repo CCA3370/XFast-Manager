@@ -129,6 +129,179 @@ struct NestedZipScanParams<'a> {
     is_encrypted: bool,
 }
 
+#[derive(Default)]
+struct AircraftSoundPacks {
+    roots: HashMap<PathBuf, FmodFiles>,
+}
+
+#[derive(Default)]
+struct FmodFiles {
+    sound_definition: bool,
+    bank: bool,
+}
+
+impl AircraftSoundPacks {
+    fn record_file(&mut self, file_path: &str) {
+        let path = Path::new(file_path);
+        let Some(extension) = path.extension().and_then(|name| name.to_str()) else {
+            return;
+        };
+        let is_sound_definition = extension.eq_ignore_ascii_case("snd");
+        if !is_sound_definition && !extension.eq_ignore_ascii_case("bank") {
+            return;
+        }
+
+        let Some(fmod) = path.parent().filter(|parent| {
+            parent
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case("fmod"))
+        }) else {
+            return;
+        };
+        if Scanner::should_ignore_archive_path(file_path) {
+            return;
+        }
+        if let Some(root) = fmod.parent() {
+            let files = self.roots.entry(root.to_path_buf()).or_default();
+            if is_sound_definition {
+                files.sound_definition = true;
+            } else {
+                files.bank = true;
+            }
+        }
+    }
+
+    // An aircraft FMOD overlay can ship xLua or other plugins beside its sound
+    // files. Reserve that plugins subtree for the aircraft patch installer.
+    fn contains_plugin_marker(&self, file_path: &str, marker_type: &str) -> bool {
+        if self.roots.is_empty() || !matches!(marker_type, "xpl" | "lua") {
+            return false;
+        }
+        Path::new(file_path).ancestors().skip(1).any(|dir| {
+            dir.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case("plugins"))
+                && dir
+                    .parent()
+                    .and_then(|root| self.roots.get(root))
+                    .is_some_and(|files| files.sound_definition && files.bank)
+        })
+    }
+}
+
+const PLUGIN_PLATFORM_DIRS: &[&str] = &[
+    "32", "64", "win", "lin", "mac", "win_x64", "mac_x64", "lin_x64",
+];
+
+fn is_plugin_platform_dir(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| PLUGIN_PLATFORM_DIRS.contains(&name))
+}
+
+fn plugin_root(binary: &Path) -> Option<&Path> {
+    let parent = binary.parent()?;
+    Some(if is_plugin_platform_dir(parent) {
+        parent.parent().unwrap_or(parent)
+    } else {
+        parent
+    })
+}
+
+fn is_xlua_init(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|name| name.eq_ignore_ascii_case("init.lua"))
+}
+
+fn xlua_binary(binary: &Path) -> Option<(&Path, &'static str)> {
+    let root = plugin_root(binary)?;
+    let name = binary.file_name()?.to_str()?;
+    let runtime = ["xlua", "xlua2"].into_iter().find(|runtime| {
+        let named_binary = name
+            .strip_suffix(".xpl")
+            .is_some_and(|stem| stem.eq_ignore_ascii_case(runtime));
+        // Legacy fat plugins use platform names shared by many other plugins.
+        let legacy_binary = matches!(name, "win.xpl" | "lin.xpl" | "mac.xpl")
+            && root
+                .file_name()
+                .is_some_and(|folder| folder.eq_ignore_ascii_case(runtime));
+        named_binary || legacy_binary
+    })?;
+    Some((root, runtime))
+}
+
+#[derive(Default)]
+struct XluaRuntimeRoots {
+    roots: HashMap<PathBuf, &'static str>,
+}
+
+impl XluaRuntimeRoots {
+    fn from_archive_markers<'a>(markers: impl Iterator<Item = (&'a str, &'a str)>) -> Self {
+        let mut bootstraps = HashSet::new();
+        let mut roots = HashMap::new();
+        for (name, marker_type) in markers {
+            let path = Path::new(name);
+            if marker_type == "lua" && is_xlua_init(path) {
+                bootstraps.extend(path.parent());
+            } else if marker_type == "xpl" {
+                if let Some((root, runtime)) = xlua_binary(path) {
+                    roots.insert(root.to_path_buf(), runtime);
+                }
+            }
+        }
+        roots.retain(|root, _| bootstraps.contains(root.as_path()));
+        Self { roots }
+    }
+
+    fn record_directory(&mut self, dir: &Path, files: &[PathBuf], subdirs: &[PathBuf]) {
+        if !files.iter().any(|file| is_xlua_init(file)) {
+            return;
+        }
+        let identify = |file: &Path| {
+            xlua_binary(file).and_then(|(root, runtime)| (root == dir).then_some(runtime))
+        };
+        let runtime = files.iter().find_map(|file| identify(file)).or_else(|| {
+            subdirs
+                .iter()
+                .filter(|path| is_plugin_platform_dir(path))
+                .filter_map(|path| fs::read_dir(path).ok())
+                .flatten()
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .find_map(|file| identify(&file).filter(|_| file.is_file()))
+        });
+        if let Some(runtime) = runtime {
+            self.roots.insert(dir.to_path_buf(), runtime);
+        }
+    }
+
+    fn contains(&self, file: &Path) -> bool {
+        !self.roots.is_empty()
+            && file
+                .ancestors()
+                .skip(1)
+                .any(|root| self.roots.contains_key(root))
+    }
+
+    fn annotate_plugin(&self, item: &mut DetectedItem, is_archive: bool) {
+        if item.addon_type != AddonType::Plugin {
+            return;
+        }
+        let root = if is_archive {
+            item.archive_internal_root.as_deref().unwrap_or_default()
+        } else {
+            &item.path
+        };
+        if let Some(runtime) = self.roots.get(Path::new(root)) {
+            item.is_xlua_runtime = true;
+            if root.is_empty() {
+                item.display_name = (*runtime).to_string();
+            }
+        }
+    }
+}
+
 /// Check if a filename is an archive file
 fn is_archive_file(filename: &str) -> bool {
     detect_archive_format(Path::new(filename)).is_some()
@@ -298,37 +471,18 @@ impl Scanner {
 
     /// Check if a path should be ignored during scanning
     fn should_ignore_path(path: &Path) -> bool {
-        // Check each component of the path
-        for component in path.components() {
-            if let Some(name) = component.as_os_str().to_str() {
-                // Ignore __MACOSX folders (macOS metadata)
-                if name == "__MACOSX" {
-                    return true;
-                }
-                // Ignore .DS_Store files (macOS metadata)
-                if name == ".DS_Store" {
-                    return true;
-                }
-                // Ignore Thumbs.db (Windows thumbnail cache)
-                if name == "Thumbs.db" {
-                    return true;
-                }
-                // Ignore desktop.ini (Windows folder settings)
-                if name == "desktop.ini" {
-                    return true;
-                }
-            }
-        }
-        false
+        crate::package_artifacts::is_ignored_package_artifact_path(path)
     }
 
     /// Fast check for archive paths (string-based, avoids Path allocation)
     #[inline]
     fn should_ignore_archive_path(path: &str) -> bool {
-        path.contains("__MACOSX")
-            || path.contains(".DS_Store")
-            || path.ends_with("Thumbs.db")
-            || path.ends_with("desktop.ini")
+        crate::package_artifacts::is_ignored_package_artifact_archive_path(path)
+    }
+
+    /// Match the marker filename, not arbitrary names ending with it.
+    fn is_library_archive_path(path: &str) -> bool {
+        path.rsplit(['/', '\\']).next() == Some("library.txt")
     }
 
     /// Check if a path should be skipped based on skip_dirs
@@ -427,15 +581,37 @@ impl Scanner {
     #[inline]
     fn marker_type_priority(marker_type: &str) -> u8 {
         match marker_type {
-            "acf" => 0,     // Aircraft - highest priority
-            "library" => 1, // Scenery library
-            "dsf" => 2,     // Scenery DSF
-            "navdata" => 3, // Navigation data
-            "xpl" => 4,     // Plugin
-            "livery" => 5,  // Livery
-            "lua" => 6,     // Lua script - lowest priority
+            "acf" => 0,         // Aircraft - highest priority
+            "library" => 1,     // Scenery library
+            "dsf" | "apt" => 2, // Scenery content
+            "navdata" => 3,     // Navigation data
+            "xpl" => 4,         // Plugin
+            "livery" => 5,      // Livery
+            "lua" => 6,         // Lua script - lowest priority
             _ => 7,
         }
+    }
+
+    #[inline]
+    fn is_scenery_marker_type(marker_type: &str) -> bool {
+        matches!(marker_type, "dsf" | "apt")
+    }
+
+    fn is_apt_dat_archive_path(file_path: &str) -> bool {
+        let normalized = file_path.replace('\\', "/");
+        let path = Path::new(&normalized);
+        let is_apt_dat = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.eq_ignore_ascii_case("apt.dat"));
+
+        is_apt_dat
+            && path.ancestors().skip(1).any(|ancestor| {
+                ancestor
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.eq_ignore_ascii_case("Earth nav data"))
+            })
     }
 
     /// Scan a path (file or directory) and detect all addon types
@@ -561,6 +737,7 @@ impl Scanner {
         let mut plugin_dirs: HashSet<PathBuf> = HashSet::new();
         let mut aircraft_dirs: HashSet<PathBuf> = HashSet::new();
         let mut skip_dirs: HashSet<PathBuf> = HashSet::new();
+        let mut xlua_roots = XluaRuntimeRoots::default();
         // Track directories where Lua scripts were found, so subdirectories' .lua files are skipped
         let mut lua_dirs: HashSet<PathBuf> = HashSet::new();
 
@@ -610,25 +787,15 @@ impl Scanner {
                 }
             }
 
+            xlua_roots.record_directory(&current_dir, &files, &subdirs);
+
             // First pass on files: identify plugin directories and aircraft directories
             for file_path in &files {
                 let file_ext = file_path.extension().and_then(|s| s.to_str());
 
                 if file_ext == Some("xpl") {
-                    if let Some(parent) = file_path.parent() {
-                        let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
-
-                        // Check if parent is platform-specific folder
-                        let plugin_root = if matches!(
-                            parent_name,
-                            "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
-                        ) {
-                            parent.parent().unwrap_or(parent).to_path_buf()
-                        } else {
-                            parent.to_path_buf()
-                        };
-
-                        plugin_dirs.insert(plugin_root);
+                    if let Some(root) = plugin_root(file_path) {
+                        plugin_dirs.insert(root.to_path_buf());
                     }
                 } else if file_ext == Some("acf") {
                     // Track aircraft directories to skip embedded plugins
@@ -652,9 +819,14 @@ impl Scanner {
                 }
 
                 let file_ext = file_path.extension().and_then(|s| s.to_str());
+                let is_scenery_marker = file_ext == Some("dsf")
+                    || file_path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.eq_ignore_ascii_case("apt.dat"));
 
-                // Skip .acf/.dsf files inside plugin directories
-                if (file_ext == Some("acf") || file_ext == Some("dsf")) && is_inside_plugin {
+                // Skip aircraft and scenery markers inside plugin directories
+                if (file_ext == Some("acf") || is_scenery_marker) && is_inside_plugin {
                     continue;
                 }
 
@@ -678,7 +850,8 @@ impl Scanner {
                     continue;
                 }
 
-                if let Some(item) = self.check_plugin(file_path, dir)? {
+                if let Some(mut item) = self.check_plugin(file_path, dir)? {
+                    xlua_roots.annotate_plugin(&mut item, false);
                     let root = PathBuf::from(&item.path);
                     skip_dirs.insert(root);
                     detected.push(item);
@@ -701,7 +874,9 @@ impl Scanner {
 
                 // Lua script detection (lowest priority - only standalone .lua files)
                 // Skip if a parent directory already has .lua files detected
-                if !Self::is_path_inside_dirs(file_path, &lua_dirs) {
+                if !Self::is_path_inside_dirs(file_path, &lua_dirs)
+                    && !xlua_roots.contains(file_path)
+                {
                     if let Some(item) = self.check_lua_script(file_path, dir)? {
                         // Record this directory so subdirectories' .lua files are skipped
                         if let Some(parent) = file_path.parent() {
@@ -788,6 +963,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -884,6 +1060,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -897,7 +1074,11 @@ impl Scanner {
         }
 
         if file_path.extension().and_then(|s| s.to_str()) == Some("dsf") {
-            return self.detect_scenery_by_dsf(file_path);
+            return self.detect_scenery_by_earth_nav_data_marker(file_path);
+        }
+
+        if file_name.eq_ignore_ascii_case("apt.dat") {
+            return self.detect_scenery_by_earth_nav_data_marker(file_path);
         }
 
         Ok(None)
@@ -925,14 +1106,17 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
 
-    fn detect_scenery_by_dsf(&self, file_path: &Path) -> Result<Option<DetectedItem>> {
-        // DSF structure: {Scenery}/Earth nav data/{...}/{file}.dsf
-        // Search upward for "Earth nav data" folder, then go one more level up
-        let install_dir = self.find_scenery_root_from_dsf(file_path);
+    fn detect_scenery_by_earth_nav_data_marker(
+        &self,
+        file_path: &Path,
+    ) -> Result<Option<DetectedItem>> {
+        // Scenery markers live under {Scenery}/Earth nav data/.
+        let install_dir = self.find_scenery_root_from_earth_nav_data_marker(file_path);
 
         if let Some(install_dir) = install_dir {
             let display_name = install_dir
@@ -951,6 +1135,7 @@ impl Scanner {
                 navdata_info: None,
                 livery_aircraft_type: None,
                 version_info: None,
+                is_xlua_runtime: false,
                 companion_paths: Vec::new(),
             }))
         } else {
@@ -959,13 +1144,13 @@ impl Scanner {
     }
 
     /// Find scenery root by searching upward for "Earth nav data" folder
-    fn find_scenery_root_from_dsf(&self, dsf_path: &Path) -> Option<PathBuf> {
-        let mut current = dsf_path.parent()?;
+    fn find_scenery_root_from_earth_nav_data_marker(&self, marker_path: &Path) -> Option<PathBuf> {
+        let mut current = marker_path.parent()?;
 
         // Search upward for "Earth nav data" folder (max 20 levels for deeply nested structures)
         for level in 0..20 {
             if let Some(name) = current.file_name().and_then(|s| s.to_str()) {
-                if name == "Earth nav data" {
+                if name.eq_ignore_ascii_case("Earth nav data") {
                     // Found it! Go one level up to get scenery root
                     return current.parent().map(|p| p.to_path_buf());
                 }
@@ -974,7 +1159,7 @@ impl Scanner {
             // Log warning if we're getting deep
             if level == 15 {
                 crate::logger::log_info(
-                    &format!("Deep directory nesting detected while searching for 'Earth nav data': {:?}", dsf_path),
+                    &format!("Deep directory nesting detected while searching for 'Earth nav data': {:?}", marker_path),
                     Some("scanner")
                 );
             }
@@ -1037,19 +1222,19 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
 
-    fn detect_scenery_dsf(
+    fn detect_scenery_in_archive(
         &self,
         file_path: &str,
         archive_path: &Path,
     ) -> Result<Option<DetectedItem>> {
         let path = PathBuf::from(file_path);
 
-        // DSF structure: {Scenery}/Earth nav data/{...}/{file}.dsf
-        // Search upward for "Earth nav data" folder, then go one more level up
+        // DSF and apt.dat markers both identify the parent scenery package.
         let scenery_root = self.find_scenery_root_from_archive_path(&path);
 
         let (display_name, internal_root) = if let Some(root) = scenery_root {
@@ -1088,18 +1273,19 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
 
     /// Find scenery root from archive path by searching for "Earth nav data"
-    fn find_scenery_root_from_archive_path(&self, dsf_path: &Path) -> Option<PathBuf> {
-        let mut current = dsf_path.parent()?;
+    fn find_scenery_root_from_archive_path(&self, marker_path: &Path) -> Option<PathBuf> {
+        let mut current = marker_path.parent()?;
 
         // Search upward for "Earth nav data" folder (max 20 levels for deeply nested structures)
         for level in 0..20 {
             if let Some(name) = current.file_name().and_then(|s| s.to_str()) {
-                if name == "Earth nav data" {
+                if name.eq_ignore_ascii_case("Earth nav data") {
                     // Found it! Go one level up to get scenery root
                     return current.parent().map(|p| p.to_path_buf());
                 }
@@ -1108,7 +1294,7 @@ impl Scanner {
             // Log warning if we're getting deep
             if level == 15 {
                 crate::logger::log_info(
-                    &format!("Deep directory nesting in archive while searching for 'Earth nav data': {:?}", dsf_path),
+                    &format!("Deep directory nesting in archive while searching for 'Earth nav data': {:?}", marker_path),
                     Some("scanner")
                 );
             }
@@ -1128,22 +1314,8 @@ impl Scanner {
             return Ok(None);
         }
 
-        let parent = file_path
-            .parent()
+        let install_path = plugin_root(file_path)
             .ok_or_else(|| anyhow::anyhow!("Failed to get parent directory"))?;
-
-        let parent_name = parent.file_name().and_then(|s| s.to_str()).unwrap_or("");
-
-        // Check if parent is a platform-specific folder
-        let install_path = if matches!(
-            parent_name,
-            "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
-        ) {
-            // Go up one more level
-            parent.parent().unwrap_or(parent).to_path_buf()
-        } else {
-            parent.to_path_buf()
-        };
 
         let display_name = install_path
             .file_name()
@@ -1152,7 +1324,7 @@ impl Scanner {
             .to_string();
 
         // Read version info from the install folder
-        let (version, _, _) = crate::management_index::read_version_info_with_url(&install_path);
+        let (version, _, _) = crate::management_index::read_version_info_with_url(install_path);
         let version_info = version.map(|v| crate::models::VersionInfo { version: Some(v) });
 
         Ok(Some(DetectedItem {
@@ -1165,6 +1337,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -1191,44 +1364,23 @@ impl Scanner {
         archive_path: &Path,
         include_version: bool,
     ) -> Result<Option<DetectedItem>> {
-        let path = PathBuf::from(file_path);
-        let parent = path.parent();
-
-        let (display_name, internal_root) = if let Some(p) = parent {
-            let parent_name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
-
-            // Check if parent is platform-specific
-            let plugin_root = if matches!(
-                parent_name,
-                "32" | "64" | "win" | "lin" | "mac" | "win_x64" | "mac_x64" | "lin_x64"
-            ) {
-                // Go up one more level
-                p.parent()
-            } else {
-                Some(p)
-            };
-
-            if let Some(root) = plugin_root {
-                if root.as_os_str().is_empty() {
-                    (
-                        archive_path
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("Unknown Plugin")
-                            .to_string(),
-                        None,
-                    )
-                } else {
-                    let root_str = root.to_string_lossy().to_string();
-                    let name = root
-                        .file_name()
+        let (display_name, internal_root) = if let Some(root) = plugin_root(Path::new(file_path)) {
+            if root.as_os_str().is_empty() {
+                (
+                    archive_path
+                        .file_stem()
                         .and_then(|s| s.to_str())
                         .unwrap_or("Unknown Plugin")
-                        .to_string();
-                    (name, Some(root_str))
-                }
+                        .to_string(),
+                    None,
+                )
             } else {
-                ("Unknown Plugin".to_string(), None)
+                let name = root
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Unknown Plugin")
+                    .to_string();
+                (name, Some(root.to_string_lossy().into_owned()))
             }
         } else {
             ("Unknown Plugin".to_string(), None)
@@ -1250,6 +1402,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -1315,6 +1468,7 @@ impl Scanner {
             navdata_info: Some(navdata_info),
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -1382,6 +1536,7 @@ impl Scanner {
             navdata_info: Some(navdata_info),
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths: Vec::new(),
         }))
     }
@@ -1420,6 +1575,7 @@ impl Scanner {
                 navdata_info: None,
                 livery_aircraft_type: Some(aircraft_type_id.clone()),
                 version_info: None,
+                is_xlua_runtime: false,
                 companion_paths: Vec::new(),
             }))
         } else {
@@ -1470,6 +1626,7 @@ impl Scanner {
                 navdata_info: None,
                 livery_aircraft_type: Some(aircraft_type_id.clone()),
                 version_info: None,
+                is_xlua_runtime: false,
                 companion_paths: Vec::new(),
             }))
         } else {
@@ -1574,6 +1731,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths,
         }))
     }
@@ -1663,6 +1821,7 @@ impl Scanner {
             navdata_info: None,
             livery_aircraft_type: None,
             version_info: None,
+            is_xlua_runtime: false,
             companion_paths,
         }))
     }
@@ -1846,7 +2005,7 @@ impl Scanner {
     }
 
     /// List all entries in an archive
-    fn list_archive_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
+    pub(crate) fn list_archive_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
         match detect_archive_format(archive_path) {
             Some(ArchiveFormat::Zip) => self.list_zip_entries(archive_path),
             Some(ArchiveFormat::SevenZ) => self.list_7z_entries(archive_path),
@@ -2250,7 +2409,8 @@ impl Scanner {
         Ok(archive
             .files
             .iter()
-            .filter(|entry| !entry.is_directory() && entry.has_stream())
+            // Empty regular files have no data stream but are still extracted.
+            .filter(|entry| !entry.is_directory() && !entry.is_anti_item())
             .map(|entry| entry.name().replace('\\', "/"))
             .collect())
     }
@@ -2532,11 +2692,25 @@ impl Scanner {
 mod tests {
     use super::{
         infer_version_from_name, plan_version_file_reads, resolve_nested_display_name, AddonType,
-        Scanner, VersionFileReadPlan,
+        AircraftSoundPacks, Scanner, VersionFileReadPlan,
     };
     use std::fs;
-    use std::io::Write;
+    use std::io::{Cursor, Write};
     use tempfile::tempdir;
+
+    const APT_DAT_FIXTURE: &[u8] = b"I\n1100 Generated by WorldEditor\n\n1 14 1 0 NTTH Huahine\n";
+
+    #[test]
+    fn sevenz_listing_keeps_empty_regular_files() {
+        let fixture = tempdir().unwrap();
+        let source = fixture.path().join("source");
+        fs::create_dir_all(source.join("empty-directory")).unwrap();
+        fs::write(source.join("empty.bank"), []).unwrap();
+        let archive = fixture.path().join("fixture.7z");
+        sevenz_rust2::compress_to_path(&source, &archive).unwrap();
+        let entries = Scanner::new().list_archive_entries(&archive).unwrap();
+        assert_eq!(entries, ["empty.bank"]);
+    }
 
     #[test]
     fn nested_archive_display_name_preserves_detected_name() {
@@ -2683,5 +2857,240 @@ mod tests {
             .expect("lua script should be detected");
 
         assert_eq!(lua.companion_paths, vec!["SimLoadManager".to_string()]);
+    }
+
+    #[test]
+    fn nested_xlua_release_keeps_the_runtime_together_as_one_plugin() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("release.zip");
+        let options = zip::write::FileOptions::<()>::default();
+        let mut inner = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        for file in [
+            "xlua2/init.lua",
+            "xlua2/include/XPLMPlugin.lua",
+            "xlua2/win_x64/xlua2.xpl",
+        ] {
+            inner.start_file(file, options).unwrap();
+            inner.write_all(b"fixture").unwrap();
+        }
+        let mut outer = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+        outer.start_file("xlua2.zip", options).unwrap();
+        outer
+            .write_all(&inner.finish().unwrap().into_inner())
+            .unwrap();
+        outer.finish().unwrap();
+
+        let items = Scanner::new().scan_path(&path, None).unwrap();
+        assert_eq!(items.len(), 1, "{items:?}");
+        let item = &items[0];
+        assert_eq!(item.addon_type, AddonType::Plugin);
+        assert!(item.is_xlua_runtime);
+        assert_eq!(item.display_name, "xlua2");
+        let chain = item.extraction_chain.as_ref().unwrap();
+        assert_eq!(chain.archives[0].internal_path, "xlua2.zip");
+        assert_eq!(chain.final_internal_root.as_deref(), Some("xlua2"));
+
+        let xplane = temp.path().join("X-Plane");
+        let analysis = crate::analyzer::Analyzer::new().analyze(
+            vec![path.to_string_lossy().into_owned()],
+            xplane.to_str().unwrap(),
+            None,
+            None,
+        );
+        assert!(analysis.errors.is_empty(), "{:?}", analysis.errors);
+        assert_eq!(analysis.tasks.len(), 1);
+        let task = &analysis.tasks[0];
+        assert!(task.is_xlua_runtime);
+        assert_eq!(
+            std::path::Path::new(&task.target_path),
+            xplane.join("Resources/plugins/xlua2"),
+        );
+    }
+
+    #[test]
+    fn xlua_is_flagged_only_when_the_aircraft_is_absent() {
+        let temp = tempdir().unwrap();
+        let aircraft = temp.path().join("A321");
+        let xlua = aircraft.join("plugins/xlua");
+        for file in ["init.lua", "64/win.xpl", "scripts/gear/gear.lua"] {
+            let path = xlua.join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, b"fixture").unwrap();
+        }
+        let scanner = Scanner::new();
+        let runtime = scanner.scan_path(&xlua, None).unwrap();
+        assert_eq!(runtime.len(), 1, "{runtime:?}");
+        assert_eq!(runtime[0].addon_type, AddonType::Plugin);
+        assert!(runtime[0].is_xlua_runtime);
+
+        fs::write(aircraft.join("a321.acf"), b"fixture").unwrap();
+        let installed_with = scanner.scan_path(&aircraft, None).unwrap();
+        assert_eq!(installed_with.len(), 1, "{installed_with:?}");
+        assert_eq!(installed_with[0].addon_type, AddonType::Aircraft);
+        assert!(!installed_with[0].is_xlua_runtime);
+    }
+
+    #[test]
+    fn zip_sound_pack_keeps_aircraft_plugin_files_out_of_standalone_installs() {
+        let temp = tempdir().unwrap();
+        let archive_path = temp.path().join("sound-pack.zip");
+        let mut writer = zip::ZipWriter::new(fs::File::create(&archive_path).unwrap());
+        for name in [
+            "Sound Pack/fmod/a321.snd",
+            "Sound Pack/fmod/Master Bank.bank",
+            "Sound Pack/plugins/xlua/init.lua",
+            "Sound Pack/plugins/xlua/64/win.xpl",
+            "Sound Pack/plugins/xlua/scripts/SBS.gear/SBS.gear.lua",
+        ] {
+            writer
+                .start_file(name, zip::write::FileOptions::<()>::default())
+                .unwrap();
+            writer.write_all(b"test").unwrap();
+        }
+        writer.finish().unwrap();
+
+        let items = Scanner::new().scan_path(&archive_path, None).unwrap();
+        assert!(items.is_empty(), "unexpected standalone add-ons: {items:?}");
+    }
+
+    #[test]
+    fn sound_pack_requires_fmod_files_beside_the_plugins_directory() {
+        let mut packs = AircraftSoundPacks::default();
+        let plugin = "Variant/PLUGINS/xlua/64/win.xpl";
+        packs.record_file("Variant/FMOD/a321.SND");
+        packs.record_file("Variant/other/Master Bank.bank");
+        packs.record_file("Alternate/fmod/Master Bank.bank");
+        packs.record_file("Variant/FMOD/._Master Bank.bank");
+        assert!(!packs.contains_plugin_marker(plugin, "xpl"));
+
+        packs.record_file("Variant/FMOD/Master Bank.BANK");
+        assert!(packs.contains_plugin_marker(plugin, "xpl"));
+        assert!(!packs.contains_plugin_marker("Variant/plugins-extra/tool.lua", "lua"));
+        assert!(!packs.contains_plugin_marker("Alternate/plugins/tool/64/win.xpl", "xpl"));
+
+        packs.record_file("fmod/a321.snd");
+        packs.record_file("fmod/Master Bank.bank");
+        assert!(packs.contains_plugin_marker("plugins/xlua/init.lua", "lua"));
+    }
+
+    #[test]
+    fn zip_scan_ignores_appledouble_and_library_filename_suffixes() {
+        let temp = tempdir().expect("tempdir");
+        let archive_path = temp.path().join("libraries.zip");
+        let file = fs::File::create(&archive_path).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        for name in [
+            "FalseLibrary/mylibrary.txt",
+            "FalseLibrary/._library.txt",
+            "MetadataOnly/._aircraft.acf",
+            "__MACOSX/RealLibrary/._library.txt",
+            "RealLibrary/library.txt",
+        ] {
+            writer
+                .start_file(name, zip::write::FileOptions::<()>::default())
+                .unwrap();
+            writer.write_all(b"I\n800\nLIBRARY\n").unwrap();
+        }
+        writer.finish().unwrap();
+
+        let items = Scanner::new().scan_path(&archive_path, None).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].addon_type, AddonType::SceneryLibrary);
+        assert_eq!(items[0].display_name, "RealLibrary");
+        assert_eq!(
+            items[0].archive_internal_root.as_deref(),
+            Some("RealLibrary")
+        );
+    }
+
+    #[test]
+    fn library_archive_marker_requires_exact_basename() {
+        assert!(Scanner::is_library_archive_path("Folder/library.txt"));
+        assert!(Scanner::is_library_archive_path("Folder\\library.txt"));
+        assert!(!Scanner::is_library_archive_path("Folder/mylibrary.txt"));
+        assert!(!Scanner::is_library_archive_path("Folder/._library.txt"));
+    }
+
+    #[test]
+    fn directory_scan_detects_apt_only_scenery() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let scenery_root = temp.path().join("NTTH_Scenery_Pack");
+        let earth_nav_data = scenery_root.join("Earth nav data");
+        fs::create_dir_all(&earth_nav_data).expect("failed to create Earth nav data");
+        fs::write(earth_nav_data.join("apt.dat"), APT_DAT_FIXTURE)
+            .expect("failed to write apt.dat");
+
+        let scanner = Scanner::new();
+        let items = scanner
+            .scan_path(&scenery_root, None)
+            .expect("directory scan should succeed");
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].addon_type, AddonType::Scenery);
+        assert_eq!(items[0].display_name, "NTTH_Scenery_Pack");
+        assert_eq!(items[0].path, scenery_root.to_string_lossy());
+    }
+
+    #[test]
+    fn nested_zip_scan_detects_gateway_apt_only_scenery_pack() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let outer_zip_path = temp.path().join("gateway_ntth.zip");
+
+        let inner_bytes = {
+            let cursor = Cursor::new(Vec::new());
+            let mut writer = zip::ZipWriter::new(cursor);
+            let options = zip::write::FileOptions::<()>::default();
+            writer
+                .start_file("NTTH_Scenery_Pack/Earth nav data/apt.dat", options)
+                .expect("failed to add nested apt.dat");
+            writer
+                .write_all(APT_DAT_FIXTURE)
+                .expect("failed to write nested apt.dat");
+            writer
+                .finish()
+                .expect("failed to finish inner zip")
+                .into_inner()
+        };
+
+        {
+            let file = fs::File::create(&outer_zip_path).expect("failed to create outer zip");
+            let mut writer = zip::ZipWriter::new(file);
+            let options = zip::write::FileOptions::<()>::default();
+            writer
+                .start_file("NTTH.dat", options)
+                .expect("failed to add Gateway apt source");
+            writer
+                .write_all(APT_DAT_FIXTURE)
+                .expect("failed to write Gateway apt source");
+            writer
+                .start_file("NTTH_Scenery_Pack.zip", options)
+                .expect("failed to add nested scenery zip");
+            writer
+                .write_all(&inner_bytes)
+                .expect("failed to write nested scenery zip");
+            writer.finish().expect("failed to finish outer zip");
+        }
+
+        let scanner = Scanner::new();
+        let items = scanner
+            .scan_path(&outer_zip_path, None)
+            .expect("Gateway-style nested ZIP scan should succeed");
+        let scenery = items
+            .iter()
+            .find(|item| item.addon_type == AddonType::Scenery)
+            .expect("apt-only scenery should be detected");
+
+        assert_eq!(scenery.display_name, "NTTH_Scenery_Pack");
+        assert!(scenery.archive_internal_root.is_none());
+        let chain = scenery
+            .extraction_chain
+            .as_ref()
+            .expect("nested scenery should retain its extraction chain");
+        assert_eq!(chain.archives.len(), 1);
+        assert_eq!(chain.archives[0].internal_path, "NTTH_Scenery_Pack.zip");
+        assert_eq!(
+            chain.final_internal_root.as_deref(),
+            Some("NTTH_Scenery_Pack")
+        );
     }
 }

@@ -79,7 +79,7 @@
                 {{ $t('activityLog.showDetails') }}
               </summary>
               <pre
-                class="mt-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto whitespace-pre-wrap"
+                class="select-text mt-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto whitespace-pre-wrap"
                 >{{ formatDetails(entry.details) }}</pre
               >
             </details>

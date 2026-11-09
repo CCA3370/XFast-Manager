@@ -1,0 +1,243 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import handler, { createErrorFingerprint } from './bug-report.js'
+import draftHandler from './issue-draft.js'
+
+function makeResponse() {
+  return {
+    statusCode: 200,
+    payload: undefined,
+    status(code) {
+      this.statusCode = code
+      return this
+    },
+    json(payload) {
+      this.payload = payload
+      return this
+    },
+  }
+}
+
+function makeRequest(body) {
+  return {
+    method: 'POST',
+    body,
+    headers: { host: 'example.test' },
+  }
+}
+
+function errorLog(context, message) {
+  return `[2026-11-07 23:12:01] [ERROR] [${context}] ${message}`
+}
+
+const deleteDenied = {
+  errorMessage: 'Fehler beim Löschen: Erlaubnis verweigert',
+  logs: [
+    errorLog(
+      'scenery',
+      'Failed to delete scenery entry [permission_denied]: Could not delete EGLC. Last error: Zugriff verweigert (os error 5)',
+    ),
+    errorLog('ui', '[Modal] Fehler beim Löschen: Erlaubnis verweigert'),
+  ].join('\n'),
+}
+
+const verificationBlocked = {
+  errorTitle: 'Aircraft',
+  errorMessage: 'Verification failed: Verification failed: 1 files still failing after retries',
+  logs: [
+    errorLog(
+      'verifier',
+      'Failed to compute hash for plugins/example.xpl: Access blocked (os error 225)',
+    ),
+    errorLog('installer', 'Verification failed: 1 files'),
+    errorLog(
+      'installer',
+      'Failed to install Aircraft: Verification failed: Verification failed: 1 files still failing after retries',
+    ),
+    errorLog('installation', 'All installation tasks failed'),
+    errorLog(
+      'installation',
+      'Aircraft: Verification failed: Verification failed: 1 files still failing after retries',
+    ),
+    errorLog(
+      'ui',
+      '[Modal] Aircraft: Verification failed: Verification failed: 1 files still failing after retries',
+    ),
+  ].join('\n'),
+}
+
+describe('bug report route', () => {
+  beforeEach(() => {
+    process.env.XFAST_GITHUB_TOKEN = 'test-token'
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    delete process.env.XFAST_GITHUB_TOKEN
+  })
+
+  it.each([
+    'Error performing inpage operation. (os error 999)',
+    'This scenery item may have been moved or deleted. The list has been refreshed.',
+    'Failed to scan (/Downloads/aircraft.7z.002): Missing split archive volume for aircraft.7z.002: aircraft.7z.001',
+  ])('rejects operational errors before contacting GitHub: %s', async (errorMessage) => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const response = makeResponse()
+
+    await handler(makeRequest({ errorMessage }), response)
+
+    expect(response.statusCode).toBe(422)
+    expect(response.payload.code).toBe('bug_report_not_allowed')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects X-Plane source guidance reported by an older client', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const response = makeResponse()
+
+    await handler(
+      makeRequest({
+        errorMessage:
+          'Failed to scan (C:\\X-Plane 12\\Custom Scenery\\AXP_Florida_2): Cannot install from X-Plane directory. Please drag files from outside X-Plane folder',
+        reportable: true,
+      }),
+      response,
+    )
+
+    expect(response.statusCode).toBe(422)
+    expect(response.payload.code).toBe('bug_report_not_allowed')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([deleteDenied, verificationBlocked])(
+    'rejects older operational reports with matching error logs: $errorMessage',
+    async (report) => {
+      const fetchMock = vi.fn()
+      vi.stubGlobal('fetch', fetchMock)
+      const response = makeResponse()
+
+      await handler(makeRequest(report), response)
+
+      expect(response.statusCode).toBe(422)
+      expect(response.payload.code).toBe('bug_report_not_allowed')
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  it('does not suppress a later verification failure based on a previous blocked file', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] })
+    vi.stubGlobal('fetch', fetchMock)
+    const response = makeResponse()
+    const { errorTitle, errorMessage, logs } = verificationBlocked
+
+    await handler(
+      makeRequest({
+        errorTitle,
+        errorMessage,
+        logs: [
+          logs,
+          errorLog('verifier', 'Hash mismatch for aircraft.acf'),
+          errorLog('installer', 'Verification failed: 1 files'),
+          errorLog('installer', `Failed to install ${errorTitle}: ${errorMessage}`),
+          errorLog('installation', `${errorTitle}: ${errorMessage}`),
+          errorLog('ui', `[Modal] ${errorTitle}: ${errorMessage}`),
+        ].join('\n'),
+      }),
+      response,
+    )
+
+    expect(response.statusCode).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects an automatic draft when its error was an operational failure', () => {
+    const response = makeResponse()
+    const { errorMessage, logs } = deleteDenied
+    draftHandler(
+      {
+        method: 'GET',
+        query: {
+          mode: 'json',
+          template: 'bug_report.yml',
+          title: `[Bug]: ${errorMessage}`,
+          body: [
+            '### Bug Report (Auto-submitted)',
+            '',
+            '**Error Message**',
+            '```',
+            errorMessage,
+            '```',
+            '',
+            '**Logs**',
+            logs,
+          ].join('\n'),
+        },
+      },
+      response,
+    )
+
+    expect(response.statusCode).toBe(422)
+    expect(response.payload.code).toBe('bug_report_not_allowed')
+  })
+
+  it('returns an existing open issue with the same fingerprint', async () => {
+    const body = {
+      errorCode: 'internal',
+      errorOrigin: 'application',
+      errorOperation: 'install',
+      errorMessage: 'Unexpected task invariant',
+    }
+    const fingerprint = createErrorFingerprint(body)
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => [
+        {
+          number: 321,
+          html_url: 'https://github.com/CCA3370/XFast-Manager/issues/321',
+          body: `<!-- xfast-fingerprint:${fingerprint} -->`,
+        },
+      ],
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const response = makeResponse()
+
+    await handler(makeRequest(body), response)
+
+    expect(response.statusCode).toBe(200)
+    expect(response.payload).toMatchObject({ issueNumber: 321, deduplicated: true })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('adds a fingerprint marker when creating a reportable issue', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          number: 322,
+          html_url: 'https://github.com/CCA3370/XFast-Manager/issues/322',
+        }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+    const response = makeResponse()
+
+    await handler(
+      makeRequest({
+        errorCode: 'internal',
+        errorOrigin: 'application',
+        errorMessage: 'Unexpected task invariant',
+      }),
+      response,
+    )
+
+    expect(response.statusCode).toBe(200)
+    expect(response.payload).toMatchObject({ issueNumber: 322, deduplicated: false })
+    const createRequest = fetchMock.mock.calls[1][1]
+    const payload = JSON.parse(createRequest.body)
+    expect(payload.body).toMatch(/<!-- xfast-fingerprint:[0-9a-f]{64} -->/)
+  })
+})

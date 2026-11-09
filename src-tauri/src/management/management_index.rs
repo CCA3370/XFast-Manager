@@ -19,7 +19,7 @@ use crate::x_updater_profile::{
     find_profile_in_folder, is_profile_file_name, tag_host_as_update_url, XUPDATER_URL_PREFIX,
 };
 use crate::zibo_updater;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -315,6 +315,105 @@ fn sync_aircraft_acf_state_for_selection(folder_path: &Path, entry: &AircraftInf
     write_aircraft_acf_state(folder_path, &disabled_stems)
 }
 
+fn write_aircraft_acf_state_best_effort(
+    folder_path: &Path,
+    folder_name: &str,
+    disabled_stems: &[String],
+) {
+    if let Err(error) = write_aircraft_acf_state(folder_path, disabled_stems) {
+        logger::log_error(
+            &format!(
+                "Aircraft '{}' was toggled successfully, but its variant selection could not be saved: {}",
+                folder_name, error
+            ),
+            Some("management"),
+        );
+    }
+}
+
+fn sync_aircraft_cfg_best_effort(xplane_path: &Path, folder_name: &str, disabled: bool) {
+    if let Err(error) = set_cfg_disabled(xplane_path, "aircraft", folder_name, disabled) {
+        logger::log_error(
+            &format!(
+                "Aircraft '{}' was toggled successfully, but its updater state could not be synchronized: {}",
+                folder_name, error
+            ),
+            Some("management"),
+        );
+    }
+}
+
+fn rename_files_transactionally(
+    rename_pairs: &[(PathBuf, PathBuf)],
+    item_description: &str,
+) -> Result<()> {
+    for (source, target) in rename_pairs {
+        let metadata = fs::metadata(source).with_context(|| {
+            format!(
+                "Source file not found while toggling {}: {}",
+                item_description,
+                source.display()
+            )
+        })?;
+        if !metadata.is_file() {
+            return Err(anyhow!(
+                "Source file not found while toggling {}: {}",
+                item_description,
+                source.display()
+            ));
+        }
+
+        match fs::symlink_metadata(target) {
+            Ok(_) => {
+                return Err(anyhow!(
+                    "Cannot toggle {} because the target already exists: {}",
+                    item_description,
+                    target.display()
+                ));
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(anyhow::Error::new(error).context(format!(
+                    "Failed to inspect toggle target for {}: {}",
+                    item_description,
+                    target.display()
+                )));
+            }
+        }
+    }
+
+    for (completed_count, (source, target)) in rename_pairs.iter().enumerate() {
+        if let Err(error) = fs::rename(source, target) {
+            let mut rollback_failures = Vec::new();
+            for (rollback_source, rollback_target) in rename_pairs[..completed_count].iter().rev() {
+                if let Err(rollback_error) = fs::rename(rollback_target, rollback_source) {
+                    rollback_failures.push(format!(
+                        "{} -> {}: {}",
+                        rollback_target.display(),
+                        rollback_source.display(),
+                        rollback_error
+                    ));
+                }
+            }
+
+            let rollback_context = if rollback_failures.is_empty() {
+                "all earlier renames were rolled back".to_string()
+            } else {
+                format!("rollback was incomplete: {}", rollback_failures.join("; "))
+            };
+            return Err(anyhow::Error::new(error).context(format!(
+                "Failed to toggle {} from '{}' to '{}'; {}",
+                item_description,
+                source.display(),
+                target.display(),
+                rollback_context
+            )));
+        }
+    }
+
+    Ok(())
+}
+
 /// Validate a folder name to prevent path traversal and separator injection
 fn validate_folder_name(folder_name: &str) -> Result<()> {
     if folder_name.is_empty()
@@ -608,7 +707,7 @@ fn scan_single_aircraft_folder(
         return None;
     }
 
-    acf_files.sort_by(|a, b| a.file_name.to_lowercase().cmp(&b.file_name.to_lowercase()));
+    acf_files.sort_by_key(|a| a.file_name.to_lowercase());
 
     let enabled_count = acf_files.iter().filter(|file| file.enabled).count();
     let enabled = enabled_count > 0;
@@ -687,7 +786,7 @@ fn rescan_aircraft_folder_entry(xplane_path: &Path, folder_name: &str) -> Result
         .ok_or_else(|| anyhow!("Invalid aircraft folder name: {}", folder_name))?;
 
     scan_single_aircraft_folder(&folder_path, &aircraft_path, display_name)
-        .ok_or_else(|| anyhow!("Aircraft folder does not contain any .acf or .xfma files"))
+        .ok_or_else(|| anyhow!("Aircraft files not found in folder: {}", folder_name))
 }
 
 pub fn get_aircraft_folder_state(xplane_path: &Path, folder_name: &str) -> Result<AircraftInfo> {
@@ -1048,7 +1147,8 @@ fn scan_single_plugin_folder(path: &Path, folder_name: &str) -> Option<PluginInf
         update_url,
         update_provider,
         latest_version: None, // Will be populated by check_plugins_updates
-        has_update: false,    // Will be set by check_plugins_updates
+        manual_update_url: None,
+        has_update: false, // Will be set by check_plugins_updates
         cfg_disabled,
         has_scripts,
         script_count,
@@ -1304,7 +1404,7 @@ pub fn toggle_aircraft_folder(xplane_path: &Path, folder_name: &str) -> Result<A
 
     let refreshed = rescan_aircraft_folder_entry(xplane_path, folder_name)?;
     let aggregate_disabled = !refreshed.enabled;
-    set_cfg_disabled(xplane_path, "aircraft", folder_name, aggregate_disabled)?;
+    sync_aircraft_cfg_best_effort(xplane_path, folder_name, aggregate_disabled);
     Ok(refreshed)
 }
 
@@ -1332,19 +1432,23 @@ pub fn toggle_aircraft_acf_file(
     };
 
     let target_path = source_path.with_extension(target_extension);
-    if target_path.exists() {
-        return Err(anyhow!(
-            "Cannot toggle aircraft file because target already exists: {}",
-            target_path.display()
-        ));
-    }
-
-    fs::rename(&source_path, &target_path)?;
+    rename_files_transactionally(
+        &[(source_path, target_path)],
+        &format!("aircraft file '{}::{}'", folder_name, file_name),
+    )?;
 
     let refreshed = rescan_aircraft_folder_entry(xplane_path, folder_name)?;
-    sync_aircraft_acf_state_for_selection(&folder_path, &refreshed)?;
+    if let Err(error) = sync_aircraft_acf_state_for_selection(&folder_path, &refreshed) {
+        logger::log_error(
+            &format!(
+                "Aircraft file '{}::{}' was toggled successfully, but its variant selection could not be saved: {}",
+                folder_name, file_name, error
+            ),
+            Some("management"),
+        );
+    }
     let aggregate_disabled = !refreshed.enabled;
-    set_cfg_disabled(xplane_path, "aircraft", folder_name, aggregate_disabled)?;
+    sync_aircraft_cfg_best_effort(xplane_path, folder_name, aggregate_disabled);
 
     logger::log_info(
         &format!(
@@ -1379,18 +1483,22 @@ fn toggle_aircraft_files(folder_path: &Path, folder_name: &str) -> Result<bool> 
         }
     }
 
+    acf_files.sort();
+    xfma_files.sort();
+
     let new_enabled = if !acf_files.is_empty() {
         let remembered_disabled_stems: Vec<String> = xfma_files
             .iter()
             .filter_map(|path| normalize_aircraft_variant_stem_from_path(path))
             .collect();
-        write_aircraft_acf_state(folder_path, &remembered_disabled_stems)?;
 
         // Currently enabled (has .acf files), disable by renaming to .xfma
-        for acf_path in &acf_files {
-            let new_path = acf_path.with_extension("xfma");
-            fs::rename(acf_path, &new_path)?;
-        }
+        let rename_pairs: Vec<(PathBuf, PathBuf)> = acf_files
+            .iter()
+            .map(|path| (path.clone(), path.with_extension("xfma")))
+            .collect();
+        rename_files_transactionally(&rename_pairs, &format!("aircraft '{}'", folder_name))?;
+        write_aircraft_acf_state_best_effort(folder_path, folder_name, &remembered_disabled_stems);
         logger::log_info(
             &format!(
                 "Disabled aircraft '{}': renamed {} .acf file(s) to .xfma",
@@ -1424,13 +1532,14 @@ fn toggle_aircraft_files(folder_path: &Path, folder_name: &str) -> Result<bool> 
         }
 
         // Currently disabled (has .xfma files), enable remembered active files.
-        for xfma_path in &files_to_enable {
-            let new_path = xfma_path.with_extension("acf");
-            fs::rename(xfma_path, &new_path)?;
-        }
+        let rename_pairs: Vec<(PathBuf, PathBuf)> = files_to_enable
+            .iter()
+            .map(|path| (path.clone(), path.with_extension("acf")))
+            .collect();
+        rename_files_transactionally(&rename_pairs, &format!("aircraft '{}'", folder_name))?;
 
         if fallback_enable_all || files_to_enable.len() == xfma_files.len() {
-            write_aircraft_acf_state(folder_path, &[])?;
+            write_aircraft_acf_state_best_effort(folder_path, folder_name, &[]);
         } else {
             let enabled_stems: HashSet<String> = files_to_enable
                 .iter()
@@ -1443,7 +1552,11 @@ fn toggle_aircraft_files(folder_path: &Path, folder_name: &str) -> Result<bool> 
                     (!enabled_stems.contains(&stem)).then_some(stem)
                 })
                 .collect();
-            write_aircraft_acf_state(folder_path, &remaining_disabled_stems)?;
+            write_aircraft_acf_state_best_effort(
+                folder_path,
+                folder_name,
+                &remaining_disabled_stems,
+            );
         }
 
         logger::log_info(
@@ -1456,7 +1569,10 @@ fn toggle_aircraft_files(folder_path: &Path, folder_name: &str) -> Result<bool> 
         );
         true
     } else {
-        return Err(anyhow!("No .acf or .xfma files found in aircraft folder"));
+        return Err(anyhow!(
+            "Aircraft files not found in folder: {}",
+            folder_name
+        ));
     };
 
     Ok(new_enabled)
@@ -1487,12 +1603,16 @@ fn toggle_plugin_files(folder_path: &Path, folder_name: &str) -> Result<bool> {
         }
     }
 
+    xpl_files.sort();
+    xfmp_files.sort();
+
     let new_enabled = if !xpl_files.is_empty() {
         // Currently enabled (has .xpl files), disable by renaming to .xfmp
-        for xpl_path in &xpl_files {
-            let new_path = xpl_path.with_extension("xfmp");
-            fs::rename(xpl_path, &new_path)?;
-        }
+        let rename_pairs: Vec<(PathBuf, PathBuf)> = xpl_files
+            .iter()
+            .map(|path| (path.clone(), path.with_extension("xfmp")))
+            .collect();
+        rename_files_transactionally(&rename_pairs, &format!("plugin '{}'", folder_name))?;
         logger::log_info(
             &format!(
                 "Disabled plugin '{}': renamed {} .xpl file(s) to .xfmp",
@@ -1504,10 +1624,11 @@ fn toggle_plugin_files(folder_path: &Path, folder_name: &str) -> Result<bool> {
         false
     } else if !xfmp_files.is_empty() {
         // Currently disabled (has .xfmp files), enable by renaming to .xpl
-        for xfmp_path in &xfmp_files {
-            let new_path = xfmp_path.with_extension("xpl");
-            fs::rename(xfmp_path, &new_path)?;
-        }
+        let rename_pairs: Vec<(PathBuf, PathBuf)> = xfmp_files
+            .iter()
+            .map(|path| (path.clone(), path.with_extension("xpl")))
+            .collect();
+        rename_files_transactionally(&rename_pairs, &format!("plugin '{}'", folder_name))?;
         logger::log_info(
             &format!(
                 "Enabled plugin '{}': renamed {} .xfmp file(s) to .xpl",
@@ -1518,7 +1639,7 @@ fn toggle_plugin_files(folder_path: &Path, folder_name: &str) -> Result<bool> {
         );
         true
     } else {
-        return Err(anyhow!("No .xpl or .xfmp files found in plugin folder"));
+        return Err(anyhow!("Plugin files not found in folder: {}", folder_name));
     };
 
     Ok(new_enabled)
@@ -1552,7 +1673,11 @@ pub fn open_management_folder(
     item_type: &str,
     folder_name: &str,
 ) -> Result<()> {
-    let target_path = resolve_management_path(xplane_path, item_type, folder_name)?;
+    let target_path = if item_type == "other" && folder_name.is_empty() {
+        xplane_path.to_path_buf()
+    } else {
+        resolve_management_path(xplane_path, item_type, folder_name)?
+    };
 
     #[cfg(target_os = "windows")]
     {
@@ -1701,6 +1826,7 @@ pub async fn check_plugins_updates(
     xplane_path: &Path,
     plugins: &mut [PluginInfo],
     beta_folders: &HashSet<String>,
+    check_migrations: bool,
 ) {
     use futures::future::join_all;
 
@@ -1728,17 +1854,19 @@ pub async fn check_plugins_updates(
     // Fetch all remote configs in parallel
     let fetch_futures: Vec<_> = update_tasks
         .iter()
-        .map(|(_, url)| fetch_remote_version(url.clone()))
+        .map(|(idx, url)| {
+            fetch_addon_version(url, plugins[*idx].version.as_deref(), check_migrations)
+        })
         .collect();
 
     let results = join_all(fetch_futures).await;
 
     // Update plugins with results
     for ((idx, _), result) in update_tasks.into_iter().zip(results) {
-        if let Some(remote_version) = result {
-            let local_version = plugins[idx].version.as_deref().unwrap_or("");
-            plugins[idx].latest_version = Some(remote_version.clone());
-            plugins[idx].has_update = remote_version != local_version;
+        if let Some((version, has_update, manual_url)) = result {
+            plugins[idx].latest_version = Some(version);
+            plugins[idx].has_update = has_update;
+            plugins[idx].manual_update_url = manual_url;
         }
     }
 }
@@ -1749,6 +1877,7 @@ pub async fn check_scenery_updates(
     xplane_path: &Path,
     scenery: &mut [SceneryManagerEntry],
     beta_folders: &HashSet<String>,
+    check_migrations: bool,
 ) {
     use futures::future::join_all;
 
@@ -1780,16 +1909,18 @@ pub async fn check_scenery_updates(
 
     let fetch_futures: Vec<_> = update_tasks
         .iter()
-        .map(|(_, url)| fetch_remote_version(url.clone()))
+        .map(|(idx, url)| {
+            fetch_addon_version(url, scenery[*idx].version.as_deref(), check_migrations)
+        })
         .collect();
 
     let results = join_all(fetch_futures).await;
 
     for ((idx, _), result) in update_tasks.into_iter().zip(results) {
-        if let Some(remote_version) = result {
-            let local_version = scenery[idx].version.as_deref().unwrap_or("");
-            scenery[idx].latest_version = Some(remote_version.clone());
-            scenery[idx].has_update = remote_version != local_version;
+        if let Some((version, has_update, manual_url)) = result {
+            scenery[idx].latest_version = Some(version);
+            scenery[idx].has_update = has_update;
+            scenery[idx].manual_update_url = manual_url;
         }
     }
 }
@@ -1839,6 +1970,41 @@ fn resolve_update_check_url(
             Some(fallback.to_string())
         }
     }
+}
+
+fn migrated_opensam_module(url: &str) -> Option<&'static str> {
+    match url.trim_end_matches('/') {
+        "https://raw.githubusercontent.com/hotbso/openSAM/refs/heads/release/release/XP12/openSAM" => {
+            Some("https://raw.githubusercontent.com/hotbso/openSAM/refs/heads/release/release/openSAM")
+        }
+        "https://raw.githubusercontent.com/hotbso/openSAM/refs/heads/release/release/XP12/openSAM_Library" => {
+            Some("https://raw.githubusercontent.com/hotbso/openSAM/refs/heads/release/release/openSAM_Library")
+        }
+        _ => None,
+    }
+}
+
+async fn fetch_addon_version(
+    url: &str,
+    installed: Option<&str>,
+    check_migrations: bool,
+) -> Option<(String, bool, Option<String>)> {
+    if let Some(version) = fetch_remote_version(url.to_owned()).await {
+        let has_update = Some(version.as_str()) != installed;
+        return Some((version, has_update, None));
+    }
+    if !check_migrations {
+        return None;
+    }
+
+    let module = migrated_opensam_module(url)?;
+    let installed = semver::Version::parse(installed?.trim().trim_start_matches('v')).ok()?;
+    let version = fetch_remote_version(module.to_owned()).await?;
+    let latest = semver::Version::parse(version.trim_start_matches('v')).ok()?;
+    let has_update = latest > installed;
+    // The upstream release recommends a fresh installation when migrating from v4.
+    let manual_url = has_update.then(|| "https://github.com/hotbso/openSAM/releases/latest".into());
+    Some((version, has_update, manual_url))
 }
 
 /// Fetch remote version from skunkcrafts_updater.cfg
@@ -2557,11 +2723,30 @@ pub fn delete_lua_script(xplane_path: &Path, file_name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        delete_management_item, remove_dir_all_with_permission_fix, resolve_management_path,
-        scan_aircraft, scan_navdata, toggle_aircraft_acf_file, toggle_management_item,
+        delete_management_item, migrated_opensam_module, remove_dir_all_with_permission_fix,
+        resolve_management_path, scan_aircraft, scan_navdata, toggle_aircraft_acf_file,
+        toggle_aircraft_folder, toggle_management_item,
     };
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn resolves_only_known_legacy_opensam_modules() {
+        for name in ["openSAM", "openSAM_Library"] {
+            let base =
+                "https://raw.githubusercontent.com/hotbso/openSAM/refs/heads/release/release";
+            let official = format!("{base}/{name}");
+            assert_eq!(
+                migrated_opensam_module(&format!("{base}/XP12/{name}/")),
+                Some(official.as_str())
+            );
+            assert_eq!(migrated_opensam_module(&official), None);
+        }
+        assert_eq!(
+            migrated_opensam_module("https://example.com/XP12/openSAM"),
+            None
+        );
+    }
 
     #[test]
     fn scan_aircraft_returns_empty_when_aircraft_folder_is_missing() {
@@ -2712,6 +2897,64 @@ mod tests {
         assert!(aircraft_dir.join("DemoPlane_cargo.acf").exists());
         assert!(entry.enabled);
         assert!(!entry.has_mixed_acf_states);
+    }
+
+    #[test]
+    fn aircraft_master_toggle_preflights_every_target_before_renaming() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let aircraft_dir = temp.path().join("Aircraft").join("DemoPlane");
+        fs::create_dir_all(&aircraft_dir).expect("failed to create aircraft dir");
+        fs::write(aircraft_dir.join("DemoPlane.acf"), "acf").expect("failed to write first acf");
+        fs::write(aircraft_dir.join("DemoPlane_cargo.acf"), "acf")
+            .expect("failed to write second acf");
+        fs::write(aircraft_dir.join("DemoPlane_cargo.xfma"), "collision")
+            .expect("failed to write collision");
+
+        let error = toggle_management_item(temp.path(), "aircraft", "DemoPlane")
+            .expect_err("target collision should prevent the toggle");
+
+        assert!(error.to_string().contains("target already exists"));
+        assert!(aircraft_dir.join("DemoPlane.acf").exists());
+        assert!(aircraft_dir.join("DemoPlane_cargo.acf").exists());
+        assert!(!aircraft_dir.join("DemoPlane.xfma").exists());
+    }
+
+    #[test]
+    fn plugin_toggle_preflights_every_target_before_renaming() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let plugin_dir = temp
+            .path()
+            .join("Resources")
+            .join("plugins")
+            .join("DemoPlugin");
+        fs::create_dir_all(&plugin_dir).expect("failed to create plugin dir");
+        fs::write(plugin_dir.join("a.xpl"), "xpl").expect("failed to write first xpl");
+        fs::write(plugin_dir.join("b.xpl"), "xpl").expect("failed to write second xpl");
+        fs::write(plugin_dir.join("b.xfmp"), "collision").expect("failed to write collision");
+
+        let error = toggle_management_item(temp.path(), "plugin", "DemoPlugin")
+            .expect_err("target collision should prevent the toggle");
+
+        assert!(error.to_string().contains("target already exists"));
+        assert!(plugin_dir.join("a.xpl").exists());
+        assert!(plugin_dir.join("b.xpl").exists());
+        assert!(!plugin_dir.join("a.xfmp").exists());
+    }
+
+    #[test]
+    fn aircraft_toggle_succeeds_when_updater_state_cannot_be_synchronized() {
+        let temp = tempdir().expect("failed to create tempdir");
+        let aircraft_dir = temp.path().join("Aircraft").join("DemoPlane");
+        fs::create_dir_all(aircraft_dir.join("skunkcrafts_updater.cfg"))
+            .expect("failed to create unreadable cfg substitute");
+        fs::write(aircraft_dir.join("DemoPlane.acf"), "acf").expect("failed to write acf");
+
+        let entry = toggle_aircraft_folder(temp.path(), "DemoPlane")
+            .expect("auxiliary updater state failure must not fail the file toggle");
+
+        assert!(!entry.enabled);
+        assert!(!aircraft_dir.join("DemoPlane.acf").exists());
+        assert!(aircraft_dir.join("DemoPlane.xfma").exists());
     }
 
     #[test]

@@ -12,6 +12,7 @@ use crate::models::{
     SceneryPackageInfo, GLOBAL_AIRPORTS_ENTRY_NAME,
 };
 use crate::scenery_classifier::classify_scenery;
+use crate::scenery_sorting::simheaven_layer_number;
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
 use sea_orm::DatabaseConnection;
@@ -267,6 +268,52 @@ fn should_promote_to_fixed_high_priority(folder_name: &str, info: &SceneryPackag
         && info.has_library_txt
         && !info.has_dsf
         && !info.has_apt_dat
+}
+
+fn has_manual_category_override(info: &SceneryPackageInfo) -> bool {
+    info.original_category.as_ref().is_some_and(|original| {
+        &info.category != original
+            && !(info.category == SceneryCategory::AirportMesh
+                && original == &SceneryCategory::Mesh)
+    })
+}
+
+fn preserve_user_managed_state(existing: &SceneryPackageInfo, classified: &mut SceneryPackageInfo) {
+    classified.enabled = existing.enabled;
+
+    if has_manual_category_override(existing) {
+        classified.category = existing.category.clone();
+        classified.sub_priority = existing.sub_priority;
+    }
+}
+
+fn apply_known_package_profiles(packages: &mut [SceneryPackageInfo]) -> bool {
+    let mut changed = false;
+
+    for package in packages {
+        let Some(layer_number) = simheaven_layer_number(&package.folder_name) else {
+            continue;
+        };
+
+        let has_manual_override = has_manual_category_override(package);
+        if package.original_category.as_ref() != Some(&SceneryCategory::RegionalOverlay) {
+            package.original_category = Some(SceneryCategory::RegionalOverlay);
+            changed = true;
+        }
+
+        if !has_manual_override && package.category != SceneryCategory::RegionalOverlay {
+            package.category = SceneryCategory::RegionalOverlay;
+            changed = true;
+        }
+        if package.category == SceneryCategory::RegionalOverlay
+            && package.sub_priority != layer_number
+        {
+            package.sub_priority = layer_number;
+            changed = true;
+        }
+    }
+
+    changed
 }
 
 fn read_scenery_update_info(folder_path: &Path) -> (Option<String>, Option<String>) {
@@ -529,8 +576,11 @@ fn sort_packages_with_special_rules(
     xplane_path: &Path,
     packages: &mut Vec<SceneryPackageInfo>,
 ) -> bool {
+    let known_profile_changed = apply_known_package_profiles(packages);
     let airport_mesh_matches = detect_airport_mesh_matches_with_path(xplane_path, packages);
     let category_changed = apply_airport_mesh_matches(packages, &airport_mesh_matches);
+
+    let airport_priority_changed = crate::scenery_sort_strategy::assign_sub_priorities(packages);
 
     let mut fixed_packages = Vec::new();
     let mut other_packages = Vec::new();
@@ -552,7 +602,7 @@ fn sort_packages_with_special_rules(
     apply_darkblue_airport_package_anchors(&mut fixed_packages, &airport_mesh_matches);
     *packages = fixed_packages;
 
-    category_changed
+    known_profile_changed || category_changed || airport_priority_changed
 }
 
 /// Manager for scenery index operations
@@ -758,7 +808,11 @@ impl SceneryIndexManager {
             }
 
             // Apply shared post-processing and sorting rules.
-            sort_packages_with_special_rules(&xplane_path, &mut packages_vec);
+            if crate::scenery_sorting::auto_sort_enabled() {
+                sort_packages_with_special_rules(&xplane_path, &mut packages_vec);
+            } else {
+                packages_vec.sort_by(|a, b| a.folder_name.cmp(&b.folder_name));
+            }
 
             // Assign sort_order and set default enabled state
             // Fresh rebuild: Unrecognized packages default to disabled, others default to enabled
@@ -799,6 +853,14 @@ impl SceneryIndexManager {
 
     /// Update missing libraries for all packages using the complete index
     async fn update_missing_libraries(&self, mut index: SceneryIndex) -> Result<SceneryIndex> {
+        if !crate::scenery_sorting::auto_sort_enabled() {
+            crate::scenery_packs_manager::SceneryPacksManager::new(
+                &self.xplane_path,
+                self.db.clone(),
+            )
+            .import_file_state(&mut index)
+            .await?;
+        }
         logger::log_info(
             "Updating missing libraries for all packages...",
             Some("scenery_index"),
@@ -1056,14 +1118,19 @@ impl SceneryIndexManager {
                         info.folder_name = shortcut_name.clone();
                         info.actual_path = Some(actual_path.clone());
                     }
+                    if let Some(existing) = index.packages.get(&info.folder_name) {
+                        preserve_user_managed_state(existing, &mut info);
+                    }
                     index.packages.insert(info.folder_name.clone(), info);
                 }
 
                 // After adding new packages, recalculate sort_order using the same logic as rebuild_index
                 // This ensures incremental updates produce the same ordering as full rebuilds
-                Self::recalculate_sort_order(&mut index, &xplane_path);
+                if crate::scenery_sorting::auto_sort_enabled() {
+                    Self::recalculate_sort_order(&mut index, &xplane_path);
+                }
 
-                if !locked_anchor_orders.is_empty() {
+                if crate::scenery_sorting::auto_sort_enabled() && !locked_anchor_orders.is_empty() {
                     let mut sorted_entries: Vec<(&String, &SceneryPackageInfo)> =
                         index.packages.iter().collect();
                     sorted_entries.sort_by(|(name_a, info_a), (name_b, info_b)| {
@@ -1099,7 +1166,7 @@ impl SceneryIndexManager {
             // (in case they weren't updated but the shortcut info needs to be preserved)
             for (folder_name, info) in index.packages.iter_mut() {
                 // Look up by folder_name in shortcut_target_map values (shortcut names)
-                for (_, (shortcut_name, actual_path)) in shortcut_target_map.iter() {
+                for (shortcut_name, actual_path) in shortcut_target_map.values() {
                     if folder_name == shortcut_name {
                         if info.actual_path.is_none()
                             || info.actual_path.as_ref() != Some(actual_path)
@@ -1166,10 +1233,13 @@ impl SceneryIndexManager {
         // Classify and update index
         let folder_path = folder_path.to_path_buf();
         let xplane_path = self.xplane_path.clone();
-        let info =
+        let mut info =
             tokio::task::spawn_blocking(move || classify_scenery(&folder_path, &xplane_path))
                 .await
                 .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
+        if let Some(existing) = self.get_package(&info.folder_name).await? {
+            preserve_user_managed_state(&existing, &mut info);
+        }
         self.update_package(info.clone()).await?;
         Ok(info)
     }
@@ -1572,9 +1642,9 @@ impl SceneryIndexManager {
             .filter(|name| !locked_applied.contains(*name))
             .cloned();
 
-        for slot in 0..total {
-            if final_order[slot].is_none() {
-                final_order[slot] = unlocked_iter.next();
+        for slot in final_order.iter_mut().take(total) {
+            if slot.is_none() {
+                *slot = unlocked_iter.next();
             }
         }
 
@@ -1596,13 +1666,19 @@ impl SceneryIndexManager {
 
     /// Get scenery manager data for UI
     pub async fn get_manager_data(&self) -> Result<SceneryManagerData> {
-        let index = self.load_index().await?;
+        let mut index = self.load_index().await?;
 
         // Check if ini is synced with index
         let packs_manager = crate::scenery_packs_manager::SceneryPacksManager::new(
             &self.xplane_path,
             self.db.clone(),
         );
+        if !crate::scenery_sorting::auto_sort_enabled() {
+            let changes = packs_manager.import_file_state(&mut index).await?;
+            if !changes.is_empty() {
+                self.batch_update_entries(&changes).await?;
+            }
+        }
         let needs_sync = !packs_manager.is_synced_with_index().await.unwrap_or(true);
 
         // Detect duplicate tiles within Mesh and AirportMesh categories
@@ -1646,6 +1722,7 @@ impl SceneryIndexManager {
                     update_provider,
                     version,
                     latest_version: None,
+                    manual_update_url: None,
                     has_update: false,
                     missing_libraries: info.missing_libraries.clone(),
                     required_libraries: info.required_libraries.clone(),
@@ -1682,6 +1759,7 @@ impl SceneryIndexManager {
                 update_provider: None,
                 version: None,
                 latest_version: None,
+                manual_update_url: None,
                 has_update: false,
                 missing_libraries: Vec::new(),
                 required_libraries: Vec::new(),
@@ -2217,7 +2295,7 @@ fn detect_raw_tile_overlaps(
         }
 
         // For each coordinate with multiple packages, record all overlaps
-        for (_coord, folder_names) in coord_map.iter() {
+        for folder_names in coord_map.values() {
             if folder_names.len() > 1 {
                 for folder in folder_names {
                     let others: Vec<String> = folder_names
@@ -2336,6 +2414,50 @@ fn extract_scenery_prefix(folder_name: &str) -> Option<String> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn auto_sort_off_rebuild_and_scan_preserve_file_order_and_enabled_state() {
+        let temp = tempfile::tempdir().unwrap();
+        write_test_airport(temp.path(), "Z First Airport", "ZBAA", 40.0, 116.0);
+        write_test_airport(temp.path(), "A Second Airport", "ZSPD", 31.0, 121.0);
+        let ini = temp.path().join("Custom Scenery/scenery_packs.ini");
+        let before = "# deliberate order\nSCENERY_PACK_DISABLED Custom Scenery/Z First Airport/\nSCENERY_PACK *GLOBAL_AIRPORTS*\nSCENERY_PACK Custom Scenery/A Second Airport/\nSCENERY_PACK E:/Unmanaged/Keep/\n";
+        fs::write(&ini, before).unwrap();
+        let db = crate::database::open_memory_connection().unwrap();
+        crate::database::apply_migrations(&db).unwrap();
+        let manager = SceneryIndexManager::new(temp.path(), db);
+        tauri::async_runtime::block_on(async {
+            let rebuilt = manager.rebuild_index().await.unwrap();
+            assert!(!rebuilt.packages["Z First Airport"].enabled);
+            assert!(
+                rebuilt.packages["Z First Airport"].sort_order
+                    < rebuilt.packages["A Second Airport"].sort_order
+            );
+            write_test_airport(temp.path(), "0 New Airport", "ZGGG", 23.0, 113.0);
+            let scanned = manager.update_index().await.unwrap();
+            assert!(!scanned.packages["Z First Airport"].enabled);
+            assert!(
+                scanned.packages["A Second Airport"].sort_order
+                    < scanned.packages["0 New Airport"].sort_order
+            );
+            assert_eq!(fs::read_to_string(&ini).unwrap(), before);
+            let data = manager.get_manager_data().await.unwrap();
+            let names: Vec<_> = data
+                .entries
+                .iter()
+                .map(|entry| entry.folder_name.as_str())
+                .collect();
+            assert_eq!(
+                names,
+                vec![
+                    "Z First Airport",
+                    GLOBAL_AIRPORTS_ENTRY_NAME,
+                    "A Second Airport",
+                    "0 New Airport"
+                ]
+            );
+        });
+    }
 
     fn make_package(
         folder_name: &str,
@@ -2547,6 +2669,81 @@ mod tests {
     }
 
     #[test]
+    fn test_sort_packages_places_simheaven_layers_between_other_and_libraries() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut stale_layer = make_package(
+            "simHeaven_X-World_Europe-10-network",
+            SceneryCategory::Airport,
+            0,
+        );
+        stale_layer.original_category = Some(SceneryCategory::Airport);
+
+        let mut packages = vec![
+            make_package(
+                "simHeaven_X-World_Vegetation_Library",
+                SceneryCategory::Library,
+                0,
+            ),
+            stale_layer,
+            make_package(
+                "simHeaven_X-World_Europe-2-regions",
+                SceneryCategory::Overlay,
+                0,
+            ),
+            make_package("Library A", SceneryCategory::Library, 0),
+            make_package("Regional City Pack", SceneryCategory::Other, 0),
+            make_package("yOrtho4XP_Overlays", SceneryCategory::Overlay, 0),
+        ];
+
+        assert!(sort_packages_with_special_rules(
+            temp_dir.path(),
+            &mut packages
+        ));
+
+        let ordered_names: Vec<&str> = packages
+            .iter()
+            .map(|package| package.folder_name.as_str())
+            .collect();
+        assert_eq!(
+            ordered_names,
+            vec![
+                "Regional City Pack",
+                "simHeaven_X-World_Europe-2-regions",
+                "simHeaven_X-World_Europe-10-network",
+                "Library A",
+                "simHeaven_X-World_Vegetation_Library",
+                "yOrtho4XP_Overlays",
+            ]
+        );
+        assert_eq!(packages[1].category, SceneryCategory::RegionalOverlay);
+        assert_eq!(packages[1].sub_priority, 2);
+        assert_eq!(packages[2].category, SceneryCategory::RegionalOverlay);
+        assert_eq!(packages[2].sub_priority, 10);
+    }
+
+    #[test]
+    fn test_reclassification_preserves_manual_category_and_enabled_state() {
+        let mut existing = make_package("Unknown Pack", SceneryCategory::Library, 7);
+        existing.original_category = Some(SceneryCategory::Unrecognized);
+        existing.enabled = false;
+        existing.sub_priority = 3;
+
+        let mut classified = make_package("Unknown Pack", SceneryCategory::Unrecognized, 0);
+        classified.original_category = Some(SceneryCategory::Unrecognized);
+        classified.enabled = true;
+
+        preserve_user_managed_state(&existing, &mut classified);
+
+        assert_eq!(classified.category, SceneryCategory::Library);
+        assert_eq!(
+            classified.original_category,
+            Some(SceneryCategory::Unrecognized)
+        );
+        assert_eq!(classified.sub_priority, 3);
+        assert!(!classified.enabled);
+    }
+
+    #[test]
     fn test_reset_sort_order_detects_darkblue_anchor_difference() {
         let temp_dir = tempfile::tempdir().unwrap();
         write_test_airport(temp_dir.path(), "KSEA Demo", "KSEA", 47.4489, -122.3094);
@@ -2596,5 +2793,94 @@ mod tests {
             ordered_names,
             vec!["KSEA Demo", "DarkBlue-KSEA Mesh", "MisterX Library"]
         );
+    }
+
+    #[test]
+    fn custom_airports_rank_above_aerosoft_and_global_airports() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut packages = vec![
+            make_package("Aerosoft - LFPG Paris", SceneryCategory::Airport, 0),
+            make_package("Global Airports", SceneryCategory::DefaultAirport, 1),
+            make_package("Z Custom KSEA", SceneryCategory::Airport, 2),
+            make_package("MyAerosoftReplacement", SceneryCategory::Airport, 3),
+            make_package("AerosoftReplacement", SceneryCategory::Airport, 4),
+        ];
+        sort_packages_with_special_rules(temp.path(), &mut packages);
+        let names: Vec<_> = packages.iter().map(|p| p.folder_name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "AerosoftReplacement",
+                "MyAerosoftReplacement",
+                "Z Custom KSEA",
+                "Aerosoft - LFPG Paris",
+                "Global Airports"
+            ]
+        );
+    }
+
+    #[test]
+    fn airport_priority_changes_are_reported_for_persistence() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut packages = vec![make_package(
+            "Aerosoft - LFPG Paris",
+            SceneryCategory::Airport,
+            0,
+        )];
+        assert!(sort_packages_with_special_rules(temp.path(), &mut packages));
+        assert_eq!(packages[0].sub_priority, 1);
+        assert!(!sort_packages_with_special_rules(
+            temp.path(),
+            &mut packages
+        ));
+    }
+
+    #[test]
+    fn airport_rule_preserves_non_airport_sub_priorities() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut mesh = make_package("Aerosoft Mesh", SceneryCategory::Mesh, 0);
+        mesh.sub_priority = 2;
+        let mut packages = vec![mesh];
+        assert!(!sort_packages_with_special_rules(
+            temp.path(),
+            &mut packages
+        ));
+        assert_eq!(packages[0].sub_priority, 2);
+    }
+
+    #[test]
+    fn orthophotos_stay_below_overlays_and_darkblue_anchors() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut packages = vec![
+            make_package("zOrtho4XP_+50+005", SceneryCategory::Mesh, 0),
+            make_package("DarkBlue-KSEA", SceneryCategory::Airport, 1),
+            make_package("MisterX Library", SceneryCategory::Library, 2),
+            make_package("DarkBlue-KSEA_Overlays", SceneryCategory::Overlay, 3),
+            make_package("Some Overlay", SceneryCategory::Overlay, 4),
+        ];
+        sort_packages_with_special_rules(temp.path(), &mut packages);
+        let names: Vec<_> = packages.iter().map(|p| p.folder_name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "DarkBlue-KSEA",
+                "DarkBlue-KSEA_Overlays",
+                "MisterX Library",
+                "Some Overlay",
+                "zOrtho4XP_+50+005"
+            ]
+        );
+    }
+
+    #[test]
+    fn no_overlay_keeps_orthophotos_above_unknown_packages() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut packages = vec![
+            make_package("zOrtho4XP_+50+005", SceneryCategory::Mesh, 0),
+            make_package("Unknown", SceneryCategory::Unrecognized, 1),
+        ];
+        sort_packages_with_special_rules(temp.path(), &mut packages);
+        assert_eq!(packages[0].folder_name, "zOrtho4XP_+50+005");
+        assert_eq!(packages[1].folder_name, "Unknown");
     }
 }

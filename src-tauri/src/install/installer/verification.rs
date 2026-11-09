@@ -1,5 +1,65 @@
 use super::*;
 
+fn format_verification_failure_summary(failed: &[crate::models::FileVerificationResult]) -> String {
+    const MAX_VISIBLE_FAILURES: usize = 3;
+
+    let mut details: Vec<String> = failed
+        .iter()
+        .take(MAX_VISIBLE_FAILURES)
+        .map(|result| match result.error.as_deref() {
+            Some(error) => format!("{}: {}", result.path, error),
+            None => format!(
+                "{}: file content does not match the downloaded package",
+                result.path
+            ),
+        })
+        .collect();
+
+    if failed.len() > MAX_VISIBLE_FAILURES {
+        details.push(format!(
+            "and {} more file(s)",
+            failed.len() - MAX_VISIBLE_FAILURES
+        ));
+    }
+
+    format!(
+        "File verification failed for {} file(s): {}",
+        failed.len(),
+        details.join("; ")
+    )
+}
+
+fn verify_scenery_markers(target: &Path) -> Result<()> {
+    let earth_nav_data = target.join("Earth nav data");
+    if !earth_nav_data.is_dir() {
+        return Err(anyhow::anyhow!(
+            "Installation verification failed: No 'Earth nav data' folder found in scenery directory: {:?}",
+            target
+        ));
+    }
+
+    // Gateway airports can contain only apt.dat, without any DSF tiles.
+    if earth_nav_data.join("apt.dat").is_file() {
+        return Ok(());
+    }
+    let found_dsf = walkdir::WalkDir::new(&earth_nav_data)
+        .max_depth(5)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .any(|entry| {
+            entry.file_type().is_file()
+                && !crate::package_artifacts::is_ignored_package_artifact_path(entry.path())
+                && entry.path().extension().and_then(|ext| ext.to_str()) == Some("dsf")
+        });
+    if !found_dsf {
+        return Err(anyhow::anyhow!(
+            "Installation verification failed: No apt.dat or .dsf file found in scenery directory: {:?}",
+            target
+        ));
+    }
+    Ok(())
+}
+
 impl Installer {
     /// Verify installation by checking marker files, verifying file hashes,
     /// and optionally verifying file hashes with retry logic
@@ -60,8 +120,14 @@ impl Installer {
 
         // Get expected hashes (must be available at this point)
         // Note: For 7z archives, hashes should have been computed during extraction if verification was enabled
-        let expected_hashes = match &task.file_hashes {
-            Some(hashes) if !hashes.is_empty() => hashes.clone(),
+        let expected_hashes: HashMap<_, _> = match &task.file_hashes {
+            Some(hashes) if !hashes.is_empty() => hashes
+                .iter()
+                .filter(|(path, _)| {
+                    !crate::package_artifacts::is_ignored_package_artifact_archive_path(path)
+                })
+                .map(|(path, hash)| (path.clone(), hash.clone()))
+                .collect(),
             _ => {
                 // No hashes available - this can happen for:
                 // 1. 7z/RAR archives (hashes computed during extraction)
@@ -74,6 +140,14 @@ impl Installer {
                 return Ok(None);
             }
         };
+
+        if expected_hashes.is_empty() {
+            logger::log_info(
+                "Only operating-system metadata was present in the verification list",
+                Some("installer"),
+            );
+            return Ok(None);
+        }
 
         let total_expected = expected_hashes.len();
 
@@ -151,10 +225,9 @@ impl Installer {
                 skipped_files: 0,
             };
 
-            return Err(anyhow::anyhow!(
-                "Verification failed: {} files still failing after retries",
-                failed_files.len()
-            ));
+            return Err(anyhow::anyhow!(format_verification_failure_summary(
+                &failed_files
+            )));
         }
 
         logger::log_info(
@@ -241,37 +314,7 @@ impl Installer {
                 }
             }
             crate::models::AddonType::Scenery => {
-                // Check for Earth nav data folder and .dsf files
-                let earth_nav_data = target.join("Earth nav data");
-                if !earth_nav_data.exists() {
-                    return Err(anyhow::anyhow!(
-                        "Installation verification failed: No 'Earth nav data' folder found in scenery directory: {:?}",
-                        target
-                    ));
-                }
-
-                // Check for at least one .dsf file
-                let mut found_dsf = false;
-                for entry in WalkDir::new(&earth_nav_data)
-                    .max_depth(5)
-                    .into_iter()
-                    .filter_map(|e| e.ok())
-                {
-                    if entry.file_type().is_file() {
-                        if let Some(ext) = entry.path().extension() {
-                            if ext == "dsf" {
-                                found_dsf = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if !found_dsf {
-                    return Err(anyhow::anyhow!(
-                        "Installation verification failed: No .dsf file found in scenery directory: {:?}",
-                        target
-                    ));
-                }
+                verify_scenery_markers(target)?;
             }
             crate::models::AddonType::SceneryLibrary => {
                 // Check for library.txt
@@ -348,6 +391,16 @@ impl Installer {
                     ));
                 }
             }
+            crate::models::AddonType::Patch => {
+                // Patches overlay arbitrary content into an existing aircraft folder;
+                // there is no universal marker file. Just confirm the target exists.
+                if !target.exists() || !target.is_dir() {
+                    return Err(anyhow::anyhow!(
+                        "Installation verification failed: Patch target directory not found: {:?}",
+                        target
+                    ));
+                }
+            }
         }
 
         Ok(())
@@ -393,10 +446,19 @@ impl Installer {
                     None,
                 );
 
+                let Some(safe_relative_path) =
+                    crate::package_artifacts::normalize_safe_relative_path(&failed.path)
+                else {
+                    failed.error =
+                        Some("Unsafe relative path in verification metadata".to_string());
+                    continue;
+                };
+                let safe_relative_path = safe_relative_path.to_string_lossy().replace('\\', "/");
+
                 match self.re_extract_single_file(
                     source,
                     target,
-                    &failed.path,
+                    &safe_relative_path,
                     task.archive_internal_root.as_deref(),
                     task.extraction_chain.as_ref(),
                     task.password.as_deref(),
@@ -432,8 +494,18 @@ impl Installer {
                         return Some(result);
                     }
 
-                    let file_path = target.join(&result.path);
-                    let expected = expected_hashes.get(&result.path)?;
+                    let Some(safe_relative_path) =
+                        crate::package_artifacts::normalize_safe_relative_path(&result.path)
+                    else {
+                        result.error =
+                            Some("Unsafe relative path in verification metadata".to_string());
+                        return Some(result);
+                    };
+                    let file_path = target.join(safe_relative_path);
+                    let Some(expected) = expected_hashes.get(&result.path) else {
+                        result.error = Some("Verification metadata is missing".to_string());
+                        return Some(result);
+                    };
 
                     let verification =
                         verifier.verify_single_file(&file_path, &result.path, expected);
@@ -447,6 +519,7 @@ impl Installer {
                     } else {
                         result.actual_hash = verification.actual_hash;
                         result.success = false;
+                        result.error = verification.error;
                         Some(result)
                     }
                 })
@@ -835,5 +908,71 @@ impl Installer {
                 None,
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_verification_failure_summary, verify_scenery_markers};
+    use crate::models::FileVerificationResult;
+
+    #[test]
+    fn scenery_verification_accepts_gateway_airports_without_dsf() {
+        let temp = tempfile::tempdir().unwrap();
+        let nav = temp.path().join("Earth nav data");
+        std::fs::create_dir_all(&nav).unwrap();
+        std::fs::write(nav.join("apt.dat"), b"I\n1100 Generated by WorldEditor\n").unwrap();
+        assert!(verify_scenery_markers(temp.path()).is_ok());
+    }
+
+    #[test]
+    fn scenery_verification_requires_real_scenery_files() {
+        let temp = tempfile::tempdir().unwrap();
+        assert!(verify_scenery_markers(temp.path()).is_err());
+        let nav = temp.path().join("Earth nav data");
+        std::fs::create_dir_all(&nav).unwrap();
+        std::fs::write(nav.join("._tile.dsf"), b"metadata").unwrap();
+        std::fs::create_dir(nav.join("apt.dat")).unwrap();
+        assert!(verify_scenery_markers(temp.path()).is_err());
+        let tiles = nav.join("+00+000");
+        std::fs::create_dir_all(&tiles).unwrap();
+        std::fs::write(tiles.join("+00+000.dsf"), b"XPLNEDSF").unwrap();
+        assert!(verify_scenery_markers(temp.path()).is_ok());
+    }
+
+    #[test]
+    fn failure_summary_keeps_file_and_operating_system_cause() {
+        let summary = format_verification_failure_summary(&[FileVerificationResult {
+            path: "plugins/blocked.xpl".to_string(),
+            expected_hash: "expected".to_string(),
+            actual_hash: None,
+            success: false,
+            retry_count: 3,
+            error: Some(
+                "The operation did not complete because the file contains a virus (os error 225)"
+                    .to_string(),
+            ),
+        }]);
+
+        assert!(summary.contains("plugins/blocked.xpl"));
+        assert!(summary.contains("contains a virus"));
+        assert!(summary.contains("os error 225"));
+    }
+
+    #[test]
+    fn failure_summary_describes_hash_mismatch_without_exposing_hashes() {
+        let summary = format_verification_failure_summary(&[FileVerificationResult {
+            path: "aircraft.acf".to_string(),
+            expected_hash: "secret-expected".to_string(),
+            actual_hash: Some("secret-actual".to_string()),
+            success: false,
+            retry_count: 3,
+            error: None,
+        }]);
+
+        assert!(summary.contains("aircraft.acf"));
+        assert!(summary.contains("does not match"));
+        assert!(!summary.contains("secret-expected"));
+        assert!(!summary.contains("secret-actual"));
     }
 }

@@ -1,0 +1,1376 @@
+<template>
+  <div
+    data-testid="health-page"
+    class="doctor-view flex h-full flex-col overflow-hidden px-6 pt-3 pb-6 text-gray-900 dark:text-white"
+  >
+    <header class="mb-3 flex flex-none flex-wrap items-center justify-between gap-3">
+      <div class="min-w-0">
+        <h1 class="text-xl font-bold text-gray-900 dark:text-white">
+          {{ t('doctor.center.heading') }}
+        </h1>
+        <div
+          v-if="run?.completedAt"
+          class="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-gray-500 dark:text-gray-400"
+        >
+          <span>{{
+            t('doctor.center.status.lastChecked', { time: formatDateTime(run.completedAt) })
+          }}</span>
+          <span aria-hidden="true">·</span>
+          <span>{{
+            t('doctor.center.status.duration', { duration: formatDuration(run.durationMs) })
+          }}</span>
+          <span v-if="store.selectedRunId" aria-hidden="true">·</span>
+          <span v-if="store.selectedRunId">{{ t('doctor.center.status.viewingHistory') }}</span>
+        </div>
+      </div>
+
+      <div v-if="appStore.xplanePath" class="flex flex-none items-center gap-2">
+        <button
+          v-if="store.isRunning"
+          type="button"
+          data-testid="cancel-health-scan"
+          class="inline-flex items-center gap-2 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 dark:border-red-900/70 dark:bg-gray-900 dark:text-red-300 dark:hover:bg-red-950/30"
+          @click="store.cancelRun()"
+        >
+          <span class="h-2 w-2 rounded-sm bg-current" aria-hidden="true" />
+          {{ t('doctor.center.cancel') }}
+        </button>
+        <template v-else>
+          <button
+            type="button"
+            data-testid="quick-health-scan"
+            :title="t('doctor.center.quickHint')"
+            :disabled="store.isBusy"
+            class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+            @click="runDiagnostics('quick')"
+          >
+            {{ t('doctor.center.quickCheck') }}
+          </button>
+          <button
+            type="button"
+            data-testid="full-health-scan"
+            :title="t('doctor.center.fullHint')"
+            :disabled="store.isBusy"
+            class="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+            @click="runDiagnostics('full')"
+          >
+            {{ t('doctor.center.fullCheck') }}
+          </button>
+        </template>
+      </div>
+    </header>
+
+    <main
+      class="@container flex min-h-0 flex-1 flex-col pr-1"
+      :class="run ? 'overflow-hidden' : 'overflow-y-auto'"
+      :aria-busy="store.isBusy || store.isHistoryLoading"
+    >
+      <div
+        v-if="store.error"
+        role="alert"
+        aria-live="assertive"
+        class="mb-3 flex flex-none items-center justify-between gap-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
+      >
+        <span>{{ errorMessage }}</span>
+        <button
+          type="button"
+          class="rounded px-1 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50"
+          :aria-label="t('common.close')"
+          @click="store.error = null"
+        >
+          ×
+        </button>
+      </div>
+
+      <section
+        v-if="!appStore.xplanePath"
+        class="flex min-h-[320px] items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center dark:border-gray-700 dark:bg-gray-900/40"
+      >
+        <div class="max-w-md">
+          <h2 class="text-base font-semibold">{{ t('doctor.center.messages.noPathTitle') }}</h2>
+          <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+            {{ t('doctor.center.messages.noPathDescription') }}
+          </p>
+          <router-link
+            to="/settings"
+            class="mt-4 inline-flex rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+          >
+            {{ t('doctor.center.messages.configurePath') }}
+          </router-link>
+        </div>
+      </section>
+
+      <template v-else>
+        <section
+          v-if="store.isHistoryLoading && !run && !store.isRunning"
+          data-testid="health-history-loading"
+          role="status"
+          aria-live="polite"
+          class="flex min-h-[240px] items-center justify-center rounded-lg border border-gray-200 bg-white text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400"
+        >
+          <span
+            class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"
+            aria-hidden="true"
+          />
+          {{ t('common.loading') }}
+        </section>
+
+        <section
+          v-if="run"
+          data-testid="health-summary"
+          aria-live="polite"
+          class="mb-3 flex-none overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
+        >
+          <div
+            class="flex flex-col gap-3 px-3 py-2.5 lg:flex-row lg:items-center lg:justify-between"
+          >
+            <div class="flex min-w-0 items-center gap-3">
+              <span
+                class="h-2.5 w-2.5 flex-none rounded-full"
+                :class="severityDotClass(run.summary.severity, run.summary.completeness)"
+                aria-hidden="true"
+              />
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ healthTitle }}
+                  </h2>
+                  <span
+                    class="rounded border px-1.5 py-0.5 text-xs font-semibold"
+                    :class="modeBadgeClass"
+                  >
+                    {{
+                      run.mode === 'quick'
+                        ? t('doctor.center.history.quick')
+                        : t('doctor.center.history.full')
+                    }}
+                  </span>
+                  <span
+                    v-if="store.xplaneRunning"
+                    class="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                  >
+                    {{ t('home.xplaneRunning') }}
+                  </span>
+                </div>
+                <div
+                  v-if="run.state === 'running'"
+                  data-testid="health-scan-progress"
+                  class="mt-1 text-xs text-gray-500 dark:text-gray-400"
+                >
+                  {{
+                    t('doctor.center.progress', {
+                      done: runtimeCompleted,
+                      total: store.checkRuntime.length,
+                    })
+                  }}
+                  <span class="px-1">·</span>
+                  <span class="font-semibold text-gray-600 dark:text-gray-300"
+                    >{{ runtimePercent }}%</span
+                  >
+                  <span class="px-1">·</span>
+                  {{
+                    store.phase === 'network'
+                      ? t('doctor.center.networkPhase')
+                      : t('doctor.center.localPhase')
+                  }}
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-if="run.state !== 'running'"
+              class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600 dark:text-gray-300"
+            >
+              <span class="inline-flex items-center gap-1.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                <span>{{ t('doctor.center.outcomes.pass') }}</span>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{
+                  run.summary.pass
+                }}</strong>
+              </span>
+              <span v-if="run.summary.info" class="inline-flex items-center gap-1.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-blue-500" aria-hidden="true" />
+                <span>{{ t('doctor.center.outcomes.info') }}</span>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{
+                  run.summary.info
+                }}</strong>
+              </span>
+              <span v-if="run.summary.warning" class="inline-flex items-center gap-1.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+                <span>{{ t('doctor.center.outcomes.warning') }}</span>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{
+                  run.summary.warning
+                }}</strong>
+              </span>
+              <span v-if="run.summary.critical" class="inline-flex items-center gap-1.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-red-500" aria-hidden="true" />
+                <span>{{ t('doctor.center.outcomes.critical') }}</span>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{
+                  run.summary.critical
+                }}</strong>
+              </span>
+              <span v-if="run.summary.unavailable" class="inline-flex items-center gap-1.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-gray-400" aria-hidden="true" />
+                <span>{{ t('doctor.center.outcomes.unavailable') }}</span>
+                <strong class="tabular-nums text-gray-800 dark:text-gray-100">{{
+                  run.summary.unavailable
+                }}</strong>
+              </span>
+              <span
+                class="border-l border-gray-200 pl-3 font-semibold tabular-nums text-gray-700 dark:border-gray-700 dark:text-gray-200"
+                :title="t('doctor.center.status.coverage')"
+              >
+                {{ run.summary.coveragePercent }}%
+              </span>
+            </div>
+          </div>
+
+          <div class="h-1 bg-gray-100 dark:bg-gray-800">
+            <div
+              class="h-full transition-all duration-300"
+              :class="run.state === 'running' ? 'bg-blue-600' : coverageBarClass"
+              :style="{
+                width: `${run.state === 'running' ? runtimePercent : run.summary.coveragePercent}%`,
+              }"
+            />
+          </div>
+
+          <div
+            v-if="
+              !store.isRunning && (displayedRunIsStale || run.summary.completeness !== 'complete')
+            "
+            class="flex flex-wrap gap-x-4 gap-y-1 border-t border-gray-100 px-3 py-2 text-xs text-gray-600 dark:border-gray-800 dark:text-gray-300"
+          >
+            <span v-if="displayedRunIsStale">
+              <strong>{{ t('doctor.center.status.stale') }}</strong>
+              — {{ t('doctor.center.status.staleDescription') }}
+            </span>
+            <span v-if="run.summary.completeness !== 'complete'">
+              <strong>{{ t('doctor.center.status.incomplete') }}</strong>
+              —
+              {{
+                run.summary.completeness === 'cancelled'
+                  ? t('doctor.center.status.cancelledDescription')
+                  : t('doctor.center.status.partialDescription')
+              }}
+            </span>
+          </div>
+        </section>
+
+        <section
+          v-if="!run && !store.isRunning && !store.isHistoryLoading"
+          class="flex min-h-[280px] items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center dark:border-gray-700 dark:bg-gray-900/40"
+        >
+          <div class="max-w-md">
+            <h2 class="text-base font-semibold">{{ t('doctor.center.messages.noResultTitle') }}</h2>
+            <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+              {{ t('doctor.center.messages.noResultDescription') }}
+            </p>
+            <div class="mt-4 flex justify-center gap-2">
+              <button
+                type="button"
+                class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
+                @click="runDiagnostics('quick')"
+              >
+                {{ t('doctor.center.quickCheck') }}
+              </button>
+              <button
+                type="button"
+                class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                @click="runDiagnostics('full')"
+              >
+                {{ t('doctor.center.fullCheck') }}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <div
+          v-if="run"
+          data-testid="health-workspace"
+          class="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] items-stretch gap-3 @3xl:grid-rows-1 @3xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)] @5xl:grid-cols-[minmax(0,1fr)_minmax(400px,0.85fr)]"
+        >
+          <section
+            data-testid="health-results-panel"
+            class="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
+          >
+            <header
+              class="flex min-h-11 flex-none flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-700"
+            >
+              <div class="flex min-w-0 items-center gap-2">
+                <h2 class="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  {{ t('doctor.center.status.currentResult') }}
+                </h2>
+                <span class="text-xs text-gray-400">
+                  {{ visibleCheckCount }}/{{ run.summary.total }}
+                </span>
+              </div>
+
+              <div class="flex flex-none items-center gap-2">
+                <div
+                  class="flex rounded-md border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-gray-900"
+                >
+                  <button
+                    type="button"
+                    data-testid="health-filter-all"
+                    class="rounded px-2 py-1 text-xs font-semibold transition-colors"
+                    :class="
+                      !issuesOnly
+                        ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-800 dark:text-gray-100'
+                        : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+                    "
+                    :aria-pressed="!issuesOnly"
+                    @click="issuesOnly = false"
+                  >
+                    {{ t('doctor.center.filters.all') }}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="health-filter-issues"
+                    class="rounded px-2 py-1 text-xs font-semibold transition-colors"
+                    :class="
+                      issuesOnly
+                        ? 'bg-white text-gray-800 shadow-sm dark:bg-gray-800 dark:text-gray-100'
+                        : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+                    "
+                    :aria-pressed="issuesOnly"
+                    @click="issuesOnly = true"
+                  >
+                    {{ t('doctor.center.filters.issues') }}
+                    <span class="ml-0.5 text-gray-400">{{ issueCount }}</span>
+                  </button>
+                </div>
+
+                <button
+                  v-if="safeFixCount > 0 && canRepair"
+                  type="button"
+                  :disabled="store.repairingAll || store.xplaneRunning"
+                  class="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
+                  @click="applyAllSafeFixes"
+                >
+                  {{
+                    store.repairingAll
+                      ? t('doctor.center.remediation.fixingAll')
+                      : `${t('doctor.center.remediation.fixAllSafe')} (${safeFixCount})`
+                  }}
+                </button>
+              </div>
+            </header>
+
+            <div class="flex-none border-b border-gray-100 px-3 py-2 dark:border-gray-800">
+              <input
+                v-model="searchQuery"
+                type="search"
+                data-testid="health-search"
+                :placeholder="t('management.searchPlaceholder')"
+                :aria-label="t('management.searchPlaceholder')"
+                class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-blue-400 dark:border-gray-700 dark:bg-gray-900"
+              />
+            </div>
+            <div data-testid="health-results-scroll" class="min-h-0 flex-1 overflow-y-auto">
+              <section
+                v-for="group in checkGroups"
+                :key="group.section"
+                :aria-labelledby="`health-section-${group.section}`"
+              >
+                <div
+                  class="flex h-8 items-center justify-between border-b border-gray-100 bg-gray-50/80 px-3 text-xs font-semibold text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
+                >
+                  <div class="flex min-w-0 items-center gap-2">
+                    <svg
+                      class="h-3.5 w-3.5 flex-none text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        :d="sectionIcon(group.section)"
+                      />
+                    </svg>
+                    <span :id="`health-section-${group.section}`">
+                      {{ sectionLabel(group.section) }}
+                    </span>
+                  </div>
+                  <span class="font-normal tabular-nums text-gray-400">
+                    {{
+                      issuesOnly ? `${group.checks.length}/${group.totalCount}` : group.totalCount
+                    }}
+                  </span>
+                </div>
+
+                <div class="divide-y divide-gray-100 dark:divide-gray-800">
+                  <div
+                    v-for="check in group.checks"
+                    :key="`${run.id}-${check.id}`"
+                    data-testid="health-check-row"
+                    :data-check-id="check.id"
+                    class="grid grid-cols-[minmax(0,1fr)_auto] items-stretch transition-colors"
+                    :class="
+                      selectedCheck?.id === check.id
+                        ? 'bg-blue-50/70 dark:bg-blue-950/20'
+                        : 'hover:bg-gray-50/70 dark:hover:bg-gray-800/35'
+                    "
+                  >
+                    <button
+                      type="button"
+                      class="grid min-w-0 grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-2.5 px-4 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40"
+                      :aria-pressed="selectedCheck?.id === check.id"
+                      @click="selectCheck(check)"
+                    >
+                      <span
+                        class="h-2 w-2 rounded-full"
+                        :class="outcomeDotClass(check.outcome)"
+                        aria-hidden="true"
+                      />
+                      <div class="min-w-0">
+                        <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span
+                            class="truncate text-[13px] font-medium text-gray-900 dark:text-gray-100"
+                          >
+                            {{ checkLabel(check) }}
+                          </span>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <span
+                          class="rounded px-1.5 py-0.5 text-xs font-semibold"
+                          :class="outcomeBadgeClass(check.outcome)"
+                        >
+                          {{ outcomeLabel(check.outcome) }}
+                        </span>
+                      </div>
+                    </button>
+
+                    <div
+                      v-if="check.remediation && check.remediation.kind !== 'guide'"
+                      class="hidden items-center border-l border-gray-100 px-2 dark:border-gray-800 lg:flex"
+                    >
+                      <button
+                        type="button"
+                        :disabled="
+                          store.fixingId === check.id ||
+                          store.isBusy ||
+                          (check.remediation.kind === 'automatic' && !canRepair)
+                        "
+                        class="rounded-md border px-2 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                        :class="remediationButtonClass(check.remediation)"
+                        @click="handleRemediation(check)"
+                      >
+                        {{
+                          store.fixingId === check.id
+                            ? t('doctor.fixes.applying')
+                            : remediationLabel(check.remediation)
+                        }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <div
+                v-if="visibleCheckCount === 0"
+                data-testid="health-no-issues"
+                class="flex min-h-40 items-center justify-center border-t border-gray-100 px-6 py-8 text-center dark:border-gray-800"
+              >
+                <div class="max-w-xs">
+                  <svg
+                    class="mx-auto h-5 w-5 text-emerald-600 dark:text-emerald-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <p class="mt-2 text-xs font-semibold text-gray-800 dark:text-gray-100">
+                    {{
+                      searchQuery.trim()
+                        ? recoveryCopy.noMatches
+                        : t('doctor.center.messages.noIssues')
+                    }}
+                  </p>
+                  <p class="mt-1 text-xs leading-4 text-gray-500 dark:text-gray-400">
+                    {{
+                      searchQuery.trim()
+                        ? recoveryCopy.trySearch
+                        : t('doctor.center.messages.noIssuesDescription')
+                    }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <aside
+            data-testid="health-detail-column"
+            class="min-h-0 min-w-0 overflow-y-auto rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/45"
+          >
+            <section
+              v-if="selectedCheck"
+              data-testid="health-detail-panel"
+              class="border-b border-gray-200 dark:border-gray-700"
+            >
+              <header
+                class="flex items-start justify-between gap-3 border-b border-gray-200 px-3 py-2.5 dark:border-gray-700"
+              >
+                <div class="min-w-0">
+                  <h2 class="text-sm font-semibold leading-5 text-gray-900 dark:text-white">
+                    {{ checkLabel(selectedCheck) }}
+                  </h2>
+                  <p class="mt-0.5 text-xs text-gray-400">
+                    {{ sectionLabel(selectedCheck.section) }}
+                  </p>
+                </div>
+                <span
+                  class="flex-none rounded px-1.5 py-0.5 text-xs font-semibold"
+                  :class="outcomeBadgeClass(selectedCheck.outcome)"
+                >
+                  {{ outcomeLabel(selectedCheck.outcome) }}
+                </span>
+              </header>
+
+              <div class="space-y-3 px-4 py-3 text-sm">
+                <p class="leading-5 text-gray-600 dark:text-gray-300">
+                  {{ checkDescription(selectedCheck) }}
+                </p>
+
+                <div
+                  v-if="selectedSuggestion"
+                  data-testid="health-suggestion"
+                  class="flex gap-2 rounded-md bg-blue-50 px-2.5 py-2 text-gray-700 dark:bg-blue-950/25 dark:text-blue-100"
+                >
+                  <svg
+                    class="mt-0.5 h-3.5 w-3.5 flex-none text-blue-600 dark:text-blue-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <p class="min-w-0 leading-5">
+                    {{ selectedSuggestion }}
+                  </p>
+                </div>
+
+                <dl
+                  v-if="Object.keys(selectedParams).length"
+                  class="grid grid-cols-[minmax(90px,auto)_minmax(0,1fr)] gap-x-3 gap-y-1.5 border-t border-gray-100 pt-3 text-xs dark:border-gray-800"
+                >
+                  <template v-for="(value, key) in selectedParams" :key="key">
+                    <dt class="text-gray-500 dark:text-gray-400">{{ key }}</dt>
+                    <dd
+                      class="min-w-0 break-words text-right font-mono text-gray-700 dark:text-gray-200"
+                    >
+                      {{ value }}
+                    </dd>
+                  </template>
+                </dl>
+
+                <details
+                  v-if="selectedCheck.evidence?.length"
+                  :key="`${run.id}-${selectedCheck.id}`"
+                  data-testid="health-evidence"
+                  class="group/evidence border-t border-gray-100 pt-3 dark:border-gray-800"
+                >
+                  <summary
+                    class="flex cursor-pointer list-none items-center justify-between gap-2 rounded-sm font-semibold text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:text-gray-200"
+                  >
+                    <span class="flex items-center gap-2">
+                      <svg
+                        class="h-3 w-3 flex-none text-gray-400 transition-transform group-open/evidence:rotate-90"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                      {{ t('doctor.center.evidence.title') }}
+                    </span>
+                    <span class="text-xs font-normal text-gray-400">
+                      {{ selectedCheck.evidence.length }}
+                    </span>
+                  </summary>
+                  <div
+                    class="select-text mt-2 max-h-80 space-y-1 overflow-auto rounded-md bg-gray-50 p-3 font-mono text-xs leading-5 text-gray-600 dark:bg-gray-950/60 dark:text-gray-300"
+                  >
+                    <div
+                      v-for="(item, index) in selectedCheck.evidence"
+                      :key="`${index}-${item.value}`"
+                      class="whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
+                    >
+                      <span v-if="item.label" class="font-semibold">{{ item.label }}: </span
+                      >{{ item.value }}
+                    </div>
+                  </div>
+                </details>
+
+                <button
+                  v-if="selectedCheck.remediation && selectedCheck.remediation.kind !== 'guide'"
+                  type="button"
+                  :disabled="
+                    store.fixingId === selectedCheck.id ||
+                    store.isBusy ||
+                    (selectedCheck.remediation.kind === 'automatic' && !canRepair)
+                  "
+                  class="w-full rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  :class="remediationButtonClass(selectedCheck.remediation)"
+                  @click="handleRemediation(selectedCheck)"
+                >
+                  {{
+                    store.fixingId === selectedCheck.id
+                      ? t('doctor.fixes.applying')
+                      : remediationLabel(selectedCheck.remediation)
+                  }}
+                </button>
+              </div>
+            </section>
+
+            <section data-testid="health-utilities" class="min-w-0">
+              <DoctorRecoveryPanel />
+              <div v-if="run.system" class="px-3 py-2.5">
+                <h2 class="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                  {{ t('doctor.center.system.title') }}
+                </h2>
+                <dl
+                  class="mt-2 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs"
+                >
+                  <div v-for="item in systemItems" :key="item.label" class="contents">
+                    <dt class="whitespace-nowrap text-gray-400">{{ item.label }}</dt>
+                    <dd
+                      class="min-w-0 truncate text-right text-gray-700 dark:text-gray-200"
+                      :title="item.value"
+                    >
+                      {{ item.value }}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+
+              <details class="group border-t border-gray-100 dark:border-gray-800">
+                <summary
+                  class="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-semibold text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:text-gray-200"
+                >
+                  <span>{{ t('doctor.center.history.title') }}</span>
+                  <span class="flex items-center gap-2 text-xs font-normal text-gray-400">
+                    {{ store.history.length }}/20
+                    <svg
+                      class="h-3 w-3 transition-transform group-open:rotate-180"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 9l6 6 6-6"
+                      />
+                    </svg>
+                  </span>
+                </summary>
+                <div class="border-t border-gray-100 px-2 py-2 dark:border-gray-800">
+                  <button
+                    v-if="store.selectedRunId"
+                    type="button"
+                    :disabled="store.isBusy"
+                    class="mb-2 w-full rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-xs font-semibold text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"
+                    @click="store.selectHistoryRun(null)"
+                  >
+                    {{ t('doctor.center.history.backToCurrent') }}
+                  </button>
+                  <div
+                    v-if="store.isHistoryLoading"
+                    role="status"
+                    class="py-3 text-center text-xs text-gray-400"
+                  >
+                    {{ t('common.loading') }}
+                  </div>
+                  <div
+                    v-else-if="store.history.length"
+                    class="max-h-52 divide-y divide-gray-100 overflow-y-auto dark:divide-gray-800"
+                  >
+                    <button
+                      v-for="item in store.history"
+                      :key="item.id"
+                      type="button"
+                      :disabled="store.isBusy"
+                      class="flex w-full items-center justify-between gap-3 rounded px-1.5 py-2 text-left text-xs transition-colors disabled:opacity-50"
+                      :class="
+                        store.selectedRunId === item.id
+                          ? 'bg-blue-50 text-blue-800 dark:bg-blue-950/30 dark:text-blue-200'
+                          : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                      "
+                      :aria-current="store.selectedRunId === item.id ? 'true' : undefined"
+                      @click="store.selectHistoryRun(item.id)"
+                    >
+                      <span class="min-w-0 truncate">
+                        {{ formatDateTime(item.startedAt) }}
+                      </span>
+                      <span class="flex flex-none items-center gap-2 text-gray-400">
+                        {{
+                          item.mode === 'quick'
+                            ? t('doctor.center.history.quick')
+                            : t('doctor.center.history.full')
+                        }}
+                        <span
+                          class="h-2 w-2 rounded-full"
+                          :class="
+                            severityDotClass(item.summary.severity, item.summary.completeness)
+                          "
+                          :title="
+                            historyStatusLabel(item.summary.severity, item.summary.completeness)
+                          "
+                        />
+                      </span>
+                    </button>
+                  </div>
+                  <p v-else class="py-3 text-center text-xs text-gray-400">
+                    {{ t('doctor.center.history.empty') }}
+                  </p>
+                </div>
+              </details>
+
+              <details class="group border-t border-gray-100 dark:border-gray-800">
+                <summary
+                  class="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-semibold text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:text-gray-200"
+                >
+                  <span>{{ t('doctor.center.export') }}</span>
+                  <svg
+                    class="h-3 w-3 text-gray-400 transition-transform group-open:rotate-180"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M6 9l6 6 6-6"
+                    />
+                  </svg>
+                </summary>
+                <div class="space-y-2 border-t border-gray-100 px-3 py-2.5 dark:border-gray-800">
+                  <p class="text-xs text-gray-500">{{ recoveryCopy.englishReport }}</p>
+                  <div class="flex items-center justify-between gap-3 text-xs">
+                    <span
+                      :class="
+                        includeSensitive
+                          ? 'text-amber-700 dark:text-amber-300'
+                          : 'text-gray-500 dark:text-gray-400'
+                      "
+                    >
+                      {{
+                        includeSensitive
+                          ? t('doctor.center.privacy.sensitive')
+                          : t('doctor.center.privacy.redacted')
+                      }}
+                    </span>
+                    <button
+                      type="button"
+                      class="flex-none font-semibold text-blue-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:text-blue-400"
+                      @click="toggleSensitivePaths"
+                    >
+                      {{
+                        includeSensitive
+                          ? t('doctor.center.excludeSensitive')
+                          : t('doctor.center.includeSensitive')
+                      }}
+                    </button>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      :disabled="store.isBusy"
+                      class="rounded-md border border-gray-300 px-2 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
+                      @click="exportReport('markdown')"
+                    >
+                      {{ t('doctor.center.exportMarkdown') }}
+                    </button>
+                    <button
+                      type="button"
+                      :disabled="store.isBusy"
+                      class="rounded-md border border-gray-300 px-2 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
+                      @click="exportReport('json')"
+                    >
+                      {{ t('doctor.center.exportJson') }}
+                    </button>
+                  </div>
+                </div>
+              </details>
+            </section>
+          </aside>
+        </div>
+      </template>
+    </main>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import DoctorRecoveryPanel from '@/components/DoctorRecoveryPanel.vue'
+import { DOCTOR_FINDINGS, HEALTH_RECOVERY_COPY } from '@/utils/doctorFindings'
+import { save } from '@tauri-apps/plugin-dialog'
+import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
+import { useAppStore } from '@/stores/app'
+import { useDoctorStore } from '@/stores/doctor'
+import { useModalStore } from '@/stores/modal'
+import { useToastStore } from '@/stores/toast'
+import { logError } from '@/services/logger'
+import { DOCTOR_SECTION_ORDER, isDoctorRunStale } from '@/utils/doctor'
+import {
+  describeDoctorCheck,
+  formatDoctorDuration,
+  suggestDoctorCheck,
+} from '@/utils/doctorPresentation'
+import { CHECK_NAME_KEYS, LEGACY_TEXT_ROOTS } from '@/utils/doctorCatalog'
+import type { DoctorReportFormat } from '@/utils/doctorReport'
+import type {
+  DoctorCheckOutcome,
+  DoctorCheckResult,
+  DoctorRemediation,
+  DoctorRunMode,
+  DoctorSection,
+} from '@/types/doctor'
+
+const { t, te, locale } = useI18n()
+const router = useRouter()
+const appStore = useAppStore()
+const store = useDoctorStore()
+const modalStore = useModalStore()
+const toastStore = useToastStore()
+const includeSensitive = ref(false)
+const selectedCheckId = ref<string | null>(null)
+const issuesOnly = ref(false)
+const searchQuery = ref('')
+const recoveryCopy = computed(() => HEALTH_RECOVERY_COPY[locale.value === 'zh' ? 'zh' : 'en'])
+
+const SECTION_ICONS: Record<DoctorSection, string> = {
+  installation: 'M4 7h16M6 3h12a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2z',
+  stability: 'M4 12h3l2-5 3 10 3-7 2 2h3',
+  scenery: 'M3 20l6-16 4 10 2-5 6 11H3z',
+  addons: 'M8 3v3m8-3v3M5 9h14v4a7 7 0 01-14 0V9z',
+  navdata: 'M12 21a9 9 0 100-18 9 9 0 000 18zm0-4l2-6-6 2 4 4z',
+  performance:
+    'M12 3v2m6.36.64l-1.42 1.42M21 12h-2M5.05 5.05L6.46 6.46M3 12h2m7 9a7 7 0 100-14 7 7 0 000 14z',
+  storage:
+    'M4 7c0 2.2 3.58 4 8 4s8-1.8 8-4-3.58-4-8-4-8 1.8-8 4zm0 0v10c0 2.2 3.58 4 8 4s8-1.8 8-4V7',
+  system: 'M9.75 3h4.5l.75 3H9l.75-3zM5 8h14v11H5V8zm3 4h8',
+  xfast: 'M13 2L3 14h8l-1 8 11-13h-8V2z',
+  updates: 'M4 4v6h6M20 20v-6h-6M5.6 15a7 7 0 0012.8 1M18.4 9A7 7 0 005.6 8',
+}
+
+const run = computed(() => store.displayedRun)
+const displayedRunIsStale = computed(() => isDoctorRunStale(run.value))
+const canRepair = computed(() => store.canRepairCurrentRun)
+const errorMessage = computed(() => {
+  if (store.error === 'xplane_running') return t('doctor.center.messages.xplaneRunning')
+  if (store.error === 'xplane_path_missing') return t('doctor.center.messages.noPathDescription')
+  return t('doctor.center.messages.fixFailed')
+})
+const safeFixCount = computed(
+  () =>
+    new Set(
+      run.value?.checks
+        .filter(
+          (check) => check.remediation?.kind === 'automatic' && check.remediation.risk === 'safe',
+        )
+        .map((check) => check.remediation?.id) ?? [],
+    ).size,
+)
+function isProblemCheck(check: DoctorCheckResult): boolean {
+  return ['warning', 'critical', 'unavailable', 'cancelled'].includes(check.outcome)
+}
+
+const issueCount = computed(() => run.value?.checks.filter(isProblemCheck).length ?? 0)
+const checkGroups = computed(() =>
+  DOCTOR_SECTION_ORDER.flatMap((section) => {
+    const sectionChecks = run.value?.checks.filter((check) => check.section === section) ?? []
+    const filtered = searchQuery.value.trim()
+      ? sectionChecks.filter((check) =>
+          [checkLabel(check), ...(check.evidence?.map((item) => item.value) ?? [])]
+            .join(' ')
+            .toLocaleLowerCase()
+            .includes(searchQuery.value.trim().toLocaleLowerCase()),
+        )
+      : sectionChecks
+    const checks = issuesOnly.value ? filtered.filter(isProblemCheck) : filtered
+    if (!checks.length) return []
+    return [{ section, checks, totalCount: sectionChecks.length }]
+  }),
+)
+const visibleCheckCount = computed(() =>
+  checkGroups.value.reduce((count, group) => count + group.checks.length, 0),
+)
+const selectedCheck = computed(() => {
+  const checks = checkGroups.value.flatMap((group) => group.checks)
+  if (!checks.length) return null
+  const explicit = selectedCheckId.value
+    ? checks.find((check) => check.id === selectedCheckId.value)
+    : null
+  if (explicit) return explicit
+  return (
+    checks.find(isProblemCheck) ?? checks.find((check) => check.outcome === 'info') ?? checks[0]
+  )
+})
+const selectedSuggestion = computed(() =>
+  selectedCheck.value
+    ? suggestDoctorCheck(selectedCheck.value, locale.value, run.value?.checks, (key, params) =>
+        te(key) ? t(key, params) : '',
+      )
+    : '',
+)
+const selectedParams = computed(() =>
+  Object.fromEntries(
+    Object.entries(selectedCheck.value?.params ?? {})
+      .filter(([key]) => key !== 'sessionEnd' && te(`healthDetails.fields.${key}`))
+      .map(([key, value]) => {
+        let text =
+          typeof value === 'number'
+            ? new Intl.NumberFormat(locale.value).format(value)
+            : String(value)
+        if (['capped', 'steam'].includes(key))
+          text = t(Number(value) ? 'healthDetails.yes' : 'healthDetails.no')
+        if (key === 'cause')
+          text = te(`logAnalysis.crashAnalysis.causes.${value}.name`)
+            ? t(`logAnalysis.crashAnalysis.causes.${value}.name`)
+            : t('common.unknown')
+        return [t(`healthDetails.fields.${key}`), text]
+      }),
+  ),
+)
+const runtimeCompleted = computed(
+  () =>
+    store.checkRuntime.filter((runtime) => ['completed', 'cancelled'].includes(runtime.state))
+      .length,
+)
+const runtimePercent = computed(() =>
+  store.checkRuntime.length
+    ? Math.round((runtimeCompleted.value / store.checkRuntime.length) * 100)
+    : 0,
+)
+const healthTitle = computed(() => {
+  if (!run.value) return ''
+  if (run.value.state === 'running') {
+    return store.phase === 'network'
+      ? t('doctor.center.networkPhase')
+      : t('doctor.center.localPhase')
+  }
+  if (run.value.summary.severity === 'critical') return t('doctor.center.status.critical')
+  if (run.value.summary.severity === 'warning') return t('doctor.center.status.attention')
+  if (run.value.summary.severity === 'info') return t('doctor.center.status.informational')
+  if (run.value.summary.completeness !== 'complete') return t('doctor.center.status.incomplete')
+  return t('doctor.center.status.allClear')
+})
+const systemItems = computed(() => {
+  const system = run.value?.system
+  if (!system) return []
+  return [
+    {
+      label: t('doctor.center.system.os'),
+      value: [system.os, system.osVersion, system.architecture].filter(Boolean).join(' · '),
+    },
+    {
+      label: t('doctor.center.system.cpu'),
+      value: `${system.cpuModel || t('common.unknown')} · ${system.logicalCores}`,
+    },
+    {
+      label: t('doctor.center.system.memory'),
+      value: `${formatBytes(system.availableMemoryBytes)} / ${formatBytes(system.totalMemoryBytes)}`,
+    },
+    {
+      label: t('doctor.center.system.gpu'),
+      value: [system.gpuModel, system.gpuDriver].filter(Boolean).join(' · ') || t('common.unknown'),
+    },
+    {
+      label: t('doctor.center.system.xplane'),
+      value: system.xplaneVersionRaw || t('common.unknown'),
+    },
+    {
+      label: t('doctor.center.system.xplaneDisk'),
+      value: formatDisk(system.xplaneFreeBytes, system.xplaneTotalBytes),
+    },
+    {
+      label: t('doctor.center.system.appDataDisk'),
+      value: formatDisk(system.appDataFreeBytes, system.appDataTotalBytes),
+    },
+  ]
+})
+
+watch(
+  () => appStore.xplanePath,
+  async (path) => {
+    await store.loadHistory()
+    if (path) {
+      void store.loadBackups(path)
+      await store.runAutomaticQuickCheck()
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => (run.value ? `${run.value.id}:${run.value.completedAt ?? 'running'}` : null),
+  () => {
+    includeSensitive.value = false
+  },
+)
+
+watch(
+  () => run.value?.id ?? null,
+  () => {
+    selectedCheckId.value = null
+    searchQuery.value = ''
+    issuesOnly.value = false
+  },
+)
+
+watch(issuesOnly, () => {
+  selectedCheckId.value = null
+})
+
+async function runDiagnostics(mode: DoctorRunMode) {
+  store.selectHistoryRun(null)
+  await store.runDiagnostics(mode)
+}
+
+function selectCheck(check: DoctorCheckResult) {
+  selectedCheckId.value = check.id
+}
+
+function sectionLabel(section: DoctorSection): string {
+  return t(`doctor.center.sections.${section}`)
+}
+
+function sectionIcon(section: DoctorSection): string {
+  return SECTION_ICONS[section]
+}
+
+function checkLabel(check: DoctorCheckResult): string {
+  if (DOCTOR_FINDINGS[check.id]) {
+    const key = `healthDetails.findings.${check.id.replaceAll('.', '_')}.title`
+    return te(key) ? t(key) : describeDoctorCheck(check, locale.value).title
+  }
+  const key = CHECK_NAME_KEYS[check.id]
+  if (key) return t(`doctor.center.checks.${key}`, check.params ?? {})
+  if (check.id.startsWith('log.')) {
+    const category = check.id.slice(4)
+    const logKey = `doctor.checks.log.${category}.title`
+    if (te(logKey)) return t(logKey, check.params ?? {})
+  }
+  if (check.id.startsWith('diagnostic.')) {
+    return sectionLabel(check.section)
+  }
+  return sectionLabel(check.section)
+}
+
+function legacyTextRoot(check: DoctorCheckResult): string | null {
+  if (check.id.startsWith('log.')) {
+    const root = `doctor.checks.log.${check.id.slice(4)}`
+    return te(`${root}.description`) ? root : null
+  }
+  return LEGACY_TEXT_ROOTS[check.id] ?? null
+}
+
+function checkDescription(check: DoctorCheckResult): string {
+  if (check.id === 'addons.binary_integrity') {
+    const root = 'healthDetails.findings.addons_binary_integrity'
+    if (check.params?.requiresRescan) return t(`${root}.outdated`)
+    if (check.outcome === 'pass') return t(`${root}.scope`)
+  }
+  if (check.id === 'stability.last_session') {
+    const state = String(check.params?.sessionEnd ?? 'unknown')
+    return t(
+      `healthDetails.sessions.${['crash', 'normal', 'unknown', 'running'].includes(state) ? state : 'unknown'}`,
+    )
+  }
+  if (check.id === 'updates.addons' && check.params && 'checked' in check.params) {
+    const summary = t('healthDetails.coverage.addonUpdates', check.params)
+    return check.params.manual
+      ? `${summary} ${t('healthDetails.coverage.manualUpdates', check.params)}`
+      : summary
+  }
+  if (check.id === 'updates.gateway' && check.outcome === 'notApplicable')
+    return t('healthDetails.coverage.gatewayNoManaged')
+  if (check.id === 'updates.csl' && ['pass', 'info'].includes(check.outcome) && check.params)
+    return t('healthDetails.coverage.cslUpdates', check.params)
+  if (check.id === 'installation.scan_access' && check.outcome === 'unavailable')
+    return t('healthDetails.findings.installation_scan_access.description')
+  if (['unavailable', 'cancelled', 'notApplicable'].includes(check.outcome))
+    return t(`doctor.center.checkDescriptions.${check.outcome}`)
+  if (check.id === 'navdata.cycles') {
+    const p = check.params ?? {}
+    if (Number(p.future) > 0) return t('healthDetails.coverage.navFuture')
+    if (Number(p.conflicts) > 0 && !Number(p.expired))
+      return t('healthDetails.coverage.navConflict')
+    const state =
+      Number(p.expired) > 0
+        ? 'expired'
+        : Number(p.expiring) > 0
+          ? 'expiring'
+          : !('unknown' in p) || Number(p.unknown) > 0
+            ? 'unknown'
+            : 'current'
+    return t(`healthDetails.nav.${state}`)
+  }
+  if (
+    ['stability.last_session', 'updates.gateway', 'system.injectors'].includes(check.id) &&
+    ['en', 'zh'].includes(locale.value)
+  )
+    return describeDoctorCheck(check, locale.value).description
+  if (DOCTOR_FINDINGS[check.id] && check.outcome !== 'pass') {
+    const key = `healthDetails.findings.${check.id.replaceAll('.', '_')}.description`
+    return te(key) ? t(key) : describeDoctorCheck(check, locale.value).description
+  }
+  const root = legacyTextRoot(check)
+  if (check.outcome !== 'pass' && root && te(`${root}.description`))
+    return t(`${root}.description`, check.params ?? {})
+  const purpose = `healthDetails.purposes.${check.id.replaceAll('.', '_')}`
+  if (te(purpose)) return t(purpose)
+  return t(`healthDetails.scope.${check.section}`)
+}
+
+function outcomeLabel(outcome: DoctorCheckOutcome): string {
+  return t(`doctor.center.outcomes.${outcome}`)
+}
+
+function formatDateTime(timestamp: number): string {
+  return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(
+    timestamp,
+  )
+}
+
+const formatDuration = formatDoctorDuration
+
+function formatBytes(bytes: number | null): string {
+  if (bytes === null || !Number.isFinite(bytes)) return t('common.unknown')
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value.toFixed(unit > 1 ? 1 : 0)} ${units[unit]}`
+}
+
+function formatDisk(free: number | null, total: number | null): string {
+  if (free === null || total === null) return t('common.unknown')
+  return `${formatBytes(free)} / ${formatBytes(total)}`
+}
+
+function severityDotClass(severity: string, completeness: string): string {
+  if (severity === 'critical') return 'bg-red-500'
+  if (severity === 'warning') return 'bg-amber-500'
+  if (severity === 'info') return 'bg-blue-500'
+  if (completeness !== 'complete') return 'bg-gray-400'
+  return 'bg-emerald-500'
+}
+
+function historyStatusLabel(severity: string, completeness: string): string {
+  if (severity === 'critical') return t('doctor.center.status.critical')
+  if (severity === 'warning') return t('doctor.center.status.attention')
+  if (severity === 'info') return t('doctor.center.status.informational')
+  if (completeness !== 'complete') return t('doctor.center.status.incomplete')
+  return t('doctor.center.status.allClear')
+}
+
+function outcomeDotClass(outcome: DoctorCheckOutcome): string {
+  return {
+    pass: 'bg-emerald-500',
+    warning: 'bg-amber-500',
+    critical: 'bg-red-500',
+    info: 'bg-blue-500',
+    unavailable: 'bg-gray-400',
+    notApplicable: 'bg-gray-300',
+    cancelled: 'bg-gray-400',
+  }[outcome]
+}
+
+function outcomeBadgeClass(outcome: DoctorCheckOutcome): string {
+  return {
+    pass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
+    info: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200',
+    warning: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200',
+    critical: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200',
+    unavailable: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200',
+    notApplicable: 'bg-gray-100 text-gray-500 dark:bg-gray-700/60 dark:text-gray-400',
+    cancelled: 'bg-gray-100 text-gray-500 dark:bg-gray-700/60 dark:text-gray-400',
+  }[outcome]
+}
+
+function remediationButtonClass(remediation: DoctorRemediation): string {
+  if (remediation.kind !== 'automatic')
+    return 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+  if (remediation.risk === 'safe')
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200'
+  return 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200'
+}
+
+function remediationLabel(remediation: DoctorRemediation): string {
+  if (remediation.kind === 'navigate') return t('doctor.center.remediation.open')
+  if (remediation.kind === 'guide') return t('doctor.center.remediation.guide')
+  return t('doctor.center.remediation.apply')
+}
+
+async function handleRemediation(check: DoctorCheckResult) {
+  const remediation = check.remediation
+  if (!remediation) return
+  if (remediation.kind === 'navigate' && remediation.route) {
+    await router.push(remediation.route)
+    return
+  }
+  if (remediation.kind === 'guide') {
+    if (remediation.route) await router.push(remediation.route)
+    return
+  }
+  if (!canRepair.value) {
+    toastStore.info(t('doctor.center.messages.historyOnly'))
+    return
+  }
+  if (remediation.risk !== 'safe') {
+    modalStore.showConfirm({
+      title: t('doctor.center.remediation.confirmTitle'),
+      message:
+        remediation.id === 'disable_injectors'
+          ? recoveryCopy.value.disable_injectorsBody
+          : t('doctor.center.remediation.confirmBody'),
+      confirmText: t('doctor.center.remediation.apply'),
+      cancelText: t('common.cancel'),
+      type: remediation.risk === 'destructive' ? 'danger' : 'warning',
+      onConfirm: () => void applyRepair(check),
+      onCancel: () => {},
+    })
+    return
+  }
+  await applyRepair(check)
+}
+
+async function applyRepair(check: DoctorCheckResult) {
+  const applied = await store.applyRemediation(check)
+  if (applied) toastStore.success(t('doctor.center.messages.fixSuccess'))
+  else
+    toastStore.error(
+      store.error === 'xplane_running'
+        ? t('doctor.center.messages.xplaneRunning')
+        : t('doctor.center.messages.fixFailed'),
+    )
+}
+
+async function applyAllSafeFixes() {
+  const result = await store.applyAllSafeFixes()
+  if (store.error === 'xplane_running') {
+    toastStore.error(t('doctor.center.messages.xplaneRunning'))
+    return
+  }
+  const message = t('doctor.center.messages.batchResult', {
+    applied: result.applied,
+    failed: result.failed,
+  })
+  if (result.failed) toastStore.error(message)
+  else toastStore.success(message)
+}
+
+function toggleSensitivePaths() {
+  if (includeSensitive.value) {
+    includeSensitive.value = false
+    return
+  }
+  modalStore.showConfirm({
+    title: t('doctor.center.privacy.confirmTitle'),
+    message: t('doctor.center.privacy.confirmBody'),
+    confirmText: t('doctor.center.includeSensitive'),
+    cancelText: t('common.cancel'),
+    type: 'warning',
+    onConfirm: () => {
+      includeSensitive.value = true
+    },
+    onCancel: () => {},
+  })
+}
+
+async function exportReport(format: DoctorReportFormat) {
+  if (!run.value) return
+  try {
+    const extension = format === 'markdown' ? 'md' : 'json'
+    const selected = await save({
+      defaultPath: `xfast-health-${new Date(run.value.startedAt).toISOString().slice(0, 10)}.${extension}`,
+      filters: [
+        {
+          name: format === 'markdown' ? 'Markdown' : 'JSON',
+          extensions: [extension],
+        },
+      ],
+    })
+    if (!selected || Array.isArray(selected)) return
+    await store.exportReport(selected, format, includeSensitive.value)
+    toastStore.success(t('doctor.center.messages.exportSuccess'))
+  } catch (reason) {
+    logError(`Health report export failed: ${reason}`, 'doctor')
+    toastStore.error(t('doctor.center.messages.exportFailed'))
+  }
+}
+
+const coverageBarClass = computed(() => {
+  if (run.value?.summary.completeness !== 'complete') return 'bg-gray-500'
+  if (run.value?.summary.severity === 'critical') return 'bg-red-500'
+  if (run.value?.summary.severity === 'warning') return 'bg-amber-500'
+  if (run.value?.summary.severity === 'info') return 'bg-blue-500'
+  return 'bg-emerald-500'
+})
+
+const modeBadgeClass = computed(() =>
+  run.value?.mode === 'full'
+    ? 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-200'
+    : 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200',
+)
+</script>
+
+<style scoped>
+.doctor-view {
+  font-size: 1rem;
+}
+.doctor-view :deep(.text-xs) {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+.doctor-view :deep(.text-sm) {
+  font-size: 1rem;
+  line-height: 1.5rem;
+}
+.doctor-view :deep(.text-base) {
+  font-size: 1.125rem;
+  line-height: 1.65rem;
+}
+.doctor-view :deep(.text-xl) {
+  font-size: 1.5rem;
+  line-height: 2rem;
+}
+.doctor-view :deep(.h-3.w-3) {
+  height: 0.875rem;
+  width: 0.875rem;
+}
+</style>

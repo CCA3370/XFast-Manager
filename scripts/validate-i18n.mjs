@@ -49,6 +49,10 @@ function isSuspiciousUntranslated(locale, key, baseValue, localeValue) {
     'geo.continents.Europe',
     'commandPalette.categoryNav',
     'map.procedures.tabs.sid',
+    // Brand/product names and loanwords that are legitimately identical across
+    // languages: "SimHeaven / X-World" is a scenery brand; German uses "Patch".
+    'sceneryManager.smartGroupKindSimHeaven',
+    'addonType.Patch',
   ])
 
   if (ignoredKeys.has(key)) {
@@ -72,9 +76,7 @@ function isSuspiciousUntranslated(locale, key, baseValue, localeValue) {
     /^ILS$/i,
     /^VATSIM$/i,
     /^Lua$/i,
-    /^SimBrief$/i,
     /^Navigraph$/i,
-    /^OpenStreetMap$/i,
   ]
 
   if (ignoredValues.some((pattern) => pattern.test(localeValue.trim()))) {
@@ -109,12 +111,12 @@ function detectPartialTranslation(locale, key, baseValue, localeValue) {
   // Strip placeholders and known brand names before checking
   const cleaned = localeValue
     .replace(/\{[^}]+\}/g, '')
-    .replace(/X-Plane|XFast Manager|SimBrief|Navigraph|OpenStreetMap|FlyWithLua|XPRealistic|FMOD/g, '')
+    .replace(/X-Plane|XFast Manager|Navigraph|FlyWithLua|XPRealistic|FMOD/g, '')
     .replace(/ICAO|IATA|VATSIM|IVAO|METAR|TAF|NOTAM/g, '')
     .replace(/VOR|NDB|DME|RNAV|RNP|ILS|SID|STAR/g, '')
     .replace(/CSL|OBJ8|SDK|API|CPU|GPU|DMP|ZIP|RAR/g, '')
     .replace(/Beta|RC|GND|TWR|APP|CTR|DSF|FMOD|SSL/g, '')
-    .replace(/Program Files/g, '')
+    .replace(/Program Files|Custom Data|Custom Scenery|Global Airports|ReShade|Vulkan|AIRAC|CIFP|Gateway|UAC/g, '')
     .replace(/https?:\/\/[^\s]*/g, '')
     .replace(/\.\w{1,4}\b/g, '') // file extensions like .cfg, .dmp
 

@@ -925,10 +925,27 @@ fn clear_readonly_recursive(root: &Path) {
             Ok(m) => m,
             Err(_) => return,
         };
-        let mut perms = meta.permissions();
-        if perms.readonly() {
-            perms.set_readonly(false);
-            if let Err(err) = fs::set_permissions(p, perms) {
+        if meta.permissions().readonly() {
+            #[cfg(target_os = "windows")]
+            #[allow(clippy::permissions_set_readonly_false)]
+            let permissions = {
+                let mut permissions = meta.permissions();
+                permissions.set_readonly(false);
+                permissions
+            };
+
+            #[cfg(unix)]
+            let permissions = {
+                use std::os::unix::fs::PermissionsExt;
+                let mut permissions = meta.permissions();
+                permissions.set_mode(permissions.mode() | 0o200);
+                permissions
+            };
+
+            #[cfg(not(any(target_os = "windows", unix)))]
+            let permissions = meta.permissions();
+
+            if let Err(err) = fs::set_permissions(p, permissions) {
                 logger::log_info(
                     &format!("Failed to clear read-only on {:?}: {}", p, err),
                     Some("atomic_installer"),
@@ -966,9 +983,7 @@ fn rename_with_retry(src: &Path, dst: &Path) -> std::io::Result<()> {
             Err(err) => last_err = Some(err),
         }
     }
-    Err(last_err.unwrap_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::Other, "rename failed without error")
-    }))
+    Err(last_err.unwrap_or_else(|| std::io::Error::other("rename failed without error")))
 }
 
 /// Atomic move operation (rename on same filesystem)
@@ -1463,6 +1478,47 @@ fn verify_backup_fast(backup_dir: &Path, entries: &[BackupFileEntry]) -> Result<
     Ok(())
 }
 
+/// Check disk space (Unix/Linux/macOS - using statvfs)
+#[cfg(not(target_os = "windows"))]
+fn check_disk_space(path: &Path) -> Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    // Convert path to C string
+    let path_bytes = path.as_os_str().as_bytes();
+    let c_path = CString::new(path_bytes).context("Failed to convert path to C string")?;
+
+    // Call statvfs
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    let result = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) };
+
+    if result != 0 {
+        return Err(anyhow::anyhow!("Failed to get filesystem statistics"));
+    }
+
+    // Calculate available space: f_bavail * f_frsize
+    // f_bavail is the number of free blocks available to non-privileged process
+    // f_frsize is the fragment size (preferred block size)
+    // Cast needed for macOS where f_bavail is u32, but on Linux it's already u64
+    #[allow(clippy::unnecessary_cast)]
+    let available_bytes = (stat.f_bavail as u64) * (stat.f_frsize as u64);
+    let available_gb = available_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+
+    logger::log_info(
+        &format!("Available disk space: {:.2} GB", available_gb),
+        Some("atomic_installer"),
+    );
+
+    if available_bytes < MIN_FREE_SPACE_BYTES {
+        return Err(anyhow::anyhow!(
+            "Insufficient disk space: {:.2} GB available, at least 1 GB required",
+            available_gb
+        ));
+    }
+
+    Ok(())
+}
+
 /// Check if there's sufficient disk space for atomic installation
 /// Requires at least MIN_FREE_SPACE_BYTES (1 GB) of free space
 #[cfg(target_os = "windows")]
@@ -1515,6 +1571,8 @@ fn check_disk_space(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use super::clear_readonly_recursive;
     use super::{atomic_staging_base_candidates, create_atomic_temp_dir};
     use tempfile::tempdir;
 
@@ -1546,45 +1604,28 @@ mod tests {
             .unwrap_or_default()
             .starts_with(".xfastmanager_temp_"));
     }
-}
 
-/// Check disk space (Unix/Linux/macOS - using statvfs)
-#[cfg(not(target_os = "windows"))]
-fn check_disk_space(path: &Path) -> Result<()> {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
+    #[cfg(unix)]
+    #[test]
+    fn clear_readonly_adds_only_owner_write_permission() {
+        use std::os::unix::fs::PermissionsExt;
 
-    // Convert path to C string
-    let path_bytes = path.as_os_str().as_bytes();
-    let c_path = CString::new(path_bytes).context("Failed to convert path to C string")?;
+        let temp = tempdir().expect("failed to create tempdir");
+        let file = temp.path().join("readonly.txt");
+        std::fs::write(&file, b"content").expect("write test file");
+        let mut permissions = std::fs::metadata(&file)
+            .expect("read test file metadata")
+            .permissions();
+        permissions.set_mode(0o444);
+        std::fs::set_permissions(&file, permissions).expect("make test file read-only");
 
-    // Call statvfs
-    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
-    let result = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) };
+        clear_readonly_recursive(&file);
 
-    if result != 0 {
-        return Err(anyhow::anyhow!("Failed to get filesystem statistics"));
+        let mode = std::fs::metadata(&file)
+            .expect("read updated test file metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o644);
     }
-
-    // Calculate available space: f_bavail * f_frsize
-    // f_bavail is the number of free blocks available to non-privileged process
-    // f_frsize is the fragment size (preferred block size)
-    // Cast needed for macOS where f_bavail is u32, but on Linux it's already u64
-    #[allow(clippy::unnecessary_cast)]
-    let available_bytes = (stat.f_bavail as u64) * (stat.f_frsize as u64);
-    let available_gb = available_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
-
-    logger::log_info(
-        &format!("Available disk space: {:.2} GB", available_gb),
-        Some("atomic_installer"),
-    );
-
-    if available_bytes < MIN_FREE_SPACE_BYTES {
-        return Err(anyhow::anyhow!(
-            "Insufficient disk space: {:.2} GB available, at least 1 GB required",
-            available_gb
-        ));
-    }
-
-    Ok(())
 }

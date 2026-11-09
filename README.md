@@ -128,13 +128,13 @@ Provide the archive password when prompted.
 ### Development
 
 **Requirements**
-- Node.js 18+
+- Node.js 22.13+ (22.x recommended to match CI) or 24+
 - Rust 1.70+
 
 **Commands**
 ```bash
 # Install dependencies
-npm install
+npm ci
 
 # Development mode
 npm run tauri:dev
@@ -145,7 +145,17 @@ npm run tauri:build
 
 ### Tests
 
+- Frontend unit tests: `npm test`
+- Frontend lint and production build: `npm run lint` and `npm run build`
+- Dependency security check: `npm audit`
 - Rust unit tests: `cargo test`
+
+The dependency overrides in `package.json` keep affected `minimatch` and `glob`
+versions on patched releases while upstream packages still require older major
+versions. Keep these overrides until upstream dependency ranges include the fixes
+(minimatch 11.0.1+ and glob 14.0.2+). After changing dependencies, verify a clean
+`npm ci`, `npm audit`, lint, tests, and build; avoid `npm audit fix --force`, which
+can downgrade the lint toolchain without resolving the remaining advisories.
 
 ### Testers
 

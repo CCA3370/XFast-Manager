@@ -15,7 +15,7 @@
             v-if="store.isLoadingInstalled"
             class="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"
           ></div>
-          {{ store.isLoadingInstalled ? $t('common.loading') : $t('map.gateway.refresh') }}
+          {{ store.isLoadingInstalled ? $t('common.loading') : $t('gatewayManager.refresh') }}
         </button>
         <button
           class="text-sm px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
@@ -85,18 +85,6 @@
       <button
         class="px-3 py-1.5 rounded-lg text-sm transition-colors"
         :class="
-          activeTab === 'installed'
-            ? 'bg-blue-600 text-white'
-            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-        "
-        @click="activeTab = 'installed'"
-      >
-        {{ $t('gatewayManager.installedTitle') }}
-        <span class="ml-1 text-xs opacity-70">({{ filteredInstalled.length }})</span>
-      </button>
-      <button
-        class="px-3 py-1.5 rounded-lg text-sm transition-colors"
-        :class="
           activeTab === 'search'
             ? 'bg-blue-600 text-white'
             : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -105,6 +93,18 @@
       >
         {{ $t('gatewayManager.results') }}
         <span class="ml-1 text-xs opacity-70">({{ store.searchResults.length }})</span>
+      </button>
+      <button
+        class="px-3 py-1.5 rounded-lg text-sm transition-colors"
+        :class="
+          activeTab === 'installed'
+            ? 'bg-blue-600 text-white'
+            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+        "
+        @click="activeTab = 'installed'"
+      >
+        {{ $t('gatewayManager.installedTitle') }}
+        <span class="ml-1 text-xs opacity-70">({{ filteredInstalled.length }})</span>
       </button>
       <div v-if="store.isSearching && activeTab === 'search'" class="ml-2">
         <div
@@ -223,7 +223,7 @@
               </div>
               <div>
                 {{
-                  $t('map.gateway.submissions', { count: airport.sceneryCount ?? 0 })
+                  $t('gatewayManager.submissions', { count: airport.sceneryCount ?? 0 })
                     .replace((airport.sceneryCount ?? 0).toString(), '')
                     .trim()
                 }}
@@ -285,7 +285,7 @@
                       v-if="store.airportDetail.recommendedSceneryId"
                       class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
                     >
-                      {{ $t('map.gateway.recommended') }} #{{
+                      {{ $t('gatewayManager.recommended') }} #{{
                         store.airportDetail.recommendedSceneryId
                       }}
                     </span>
@@ -337,7 +337,7 @@
                     class="px-3 pb-2 text-[11px] font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider border-b border-gray-200 dark:border-gray-600 mb-1.5"
                   >
                     {{
-                      $t('map.gateway.submissions', {
+                      $t('gatewayManager.submissions', {
                         count:
                           store.airportDetail.sceneryCount ?? store.airportDetail.sceneries.length,
                       })
@@ -470,14 +470,10 @@
                             @click="handleInstall()"
                           >
                             <div
-                              v-if="store.installingIcao === store.airportDetail.icao"
+                              v-if="isGatewayInstallBusy"
                               class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"
                             ></div>
-                            {{
-                              store.installingIcao === store.airportDetail.icao
-                                ? $t('common.loading')
-                                : installButtonText
-                            }}
+                            {{ isGatewayInstallBusy ? $t('common.loading') : installButtonText }}
                           </button>
                         </div>
                         <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[13px]">
@@ -485,7 +481,7 @@
                             class="rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5"
                           >
                             <div class="text-[11px] text-gray-700 dark:text-gray-300">
-                              {{ $t('map.gateway.artist') }}
+                              {{ $t('gatewayManager.artist') }}
                             </div>
                             <div class="font-medium text-gray-900 dark:text-white mt-1">
                               {{ store.sceneryDetail.artist || $t('common.unknown') }}
@@ -495,7 +491,7 @@
                             class="rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5"
                           >
                             <div class="text-[11px] text-gray-700 dark:text-gray-300">
-                              {{ $t('map.gateway.acceptedAt') }}
+                              {{ $t('gatewayManager.acceptedAt') }}
                             </div>
                             <div class="font-medium text-gray-900 dark:text-white mt-1">
                               {{
@@ -509,7 +505,7 @@
                             class="rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5"
                           >
                             <div class="text-[11px] text-gray-700 dark:text-gray-300">
-                              {{ $t('map.gateway.status') }}
+                              {{ $t('gatewayManager.status') }}
                             </div>
                             <div class="font-medium text-gray-900 dark:text-white mt-1">
                               {{ store.sceneryDetail.status || $t('common.unknown') }}
@@ -647,7 +643,7 @@
                         <div
                           class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-700 dark:text-gray-300 mb-2"
                         >
-                          {{ $t('map.gateway.features') }}
+                          {{ $t('gatewayManager.features') }}
                         </div>
                         <div class="flex flex-wrap gap-1.5">
                           <span
@@ -667,7 +663,7 @@
                         <div
                           class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-700 dark:text-gray-300 mb-2"
                         >
-                          {{ $t('map.gateway.comments') }}
+                          {{ $t('gatewayManager.comments') }}
                         </div>
                         <div
                           class="rounded-xl bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 px-3 py-2 text-[12px] text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto"
@@ -711,7 +707,7 @@
 <script setup lang="ts">
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import { CommandError, invokeVoidCommand } from '@/services/api'
-import { useGatewayStore } from '@/stores/gateway'
+import { useGatewayStore, type GatewayInstallSelection } from '@/stores/gateway'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
@@ -727,12 +723,20 @@ const store = useGatewayStore()
 const modal = useModalStore()
 const toast = useToastStore()
 
-const activeTab = ref<'installed' | 'search'>('installed')
+const activeTab = ref<'installed' | 'search'>('search')
 const searchText = ref('')
 const showAirportModal = ref(false)
 const showInstallWarning = ref(false)
 const installWarningMessage = ref('')
+const isPreparingInstall = ref(false)
+const pendingInstallIntent = ref<GatewayInstallIntent | null>(null)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+interface GatewayInstallIntent {
+  xplanePath: string
+  autoSortScenery: boolean
+  selection: GatewayInstallSelection
+}
 
 const filteredInstalled = computed(() => {
   if (!searchText.value) return store.installed
@@ -745,9 +749,13 @@ const filteredInstalled = computed(() => {
 const installDisabled = computed(() => {
   if (!appStore.xplanePath) return true
   if (!store.airportDetail || store.selectedSceneryId === null) return true
-  if (store.installingIcao === store.airportDetail.icao) return true
+  if (isGatewayInstallBusy.value) return true
   return store.selectedInstalledRecord?.sceneryId === store.selectedSceneryId
 })
+
+const isGatewayInstallBusy = computed(
+  () => isPreparingInstall.value || store.installingIcao !== null,
+)
 
 const installButtonText = computed(() => {
   if (!store.airportDetail) return t('common.install')
@@ -805,6 +813,8 @@ const selectedSceneryIsLatestUpdate = computed(
 watch(
   () => appStore.xplanePath,
   async (path) => {
+    showInstallWarning.value = false
+    pendingInstallIntent.value = null
     try {
       await store.loadReleaseContext(path)
       await store.loadInstalled(path)
@@ -981,12 +991,26 @@ async function handleCopyInstalledFolder() {
   }
 }
 
-async function installSelectedGateway(ignoreExternalConflict = false) {
-  if (!appStore.xplanePath) return
+function createInstallIntent(): GatewayInstallIntent | null {
+  const xplanePath = appStore.xplanePath
+  const selection = store.selectedInstallSelection
+  if (!xplanePath || !selection) return null
 
-  const installedRecord = await store.installSelected(
-    appStore.xplanePath,
-    appStore.autoSortScenery,
+  return {
+    xplanePath,
+    autoSortScenery: appStore.autoSortScenery,
+    selection: { ...selection },
+  }
+}
+
+async function installSelectedGateway(
+  intent: GatewayInstallIntent,
+  ignoreExternalConflict = false,
+) {
+  const installedRecord = await store.installSelection(
+    intent.xplanePath,
+    intent.selection,
+    intent.autoSortScenery,
     ignoreExternalConflict,
   )
   toast.success(
@@ -996,18 +1020,24 @@ async function installSelectedGateway(ignoreExternalConflict = false) {
   )
 }
 
-function showInstallBlockedWarning(message: string) {
+function showInstallBlockedWarning(message: string, intent: GatewayInstallIntent) {
   installWarningMessage.value = message
+  pendingInstallIntent.value = intent
   showInstallWarning.value = true
 }
 
 function cancelInstallWarning() {
   showInstallWarning.value = false
+  pendingInstallIntent.value = null
 }
 
 function confirmInstallWarning() {
+  const intent = pendingInstallIntent.value
   showInstallWarning.value = false
-  void handleInstall(true)
+  pendingInstallIntent.value = null
+  if (intent) {
+    void handleInstall(true, intent)
+  }
 }
 
 function getGatewayExternalConflictMessage(error: unknown): string | null {
@@ -1023,32 +1053,42 @@ function getGatewayExternalConflictMessage(error: unknown): string | null {
   return message
 }
 
-async function handleInstall(ignoreExternalConflict = false) {
-  if (!appStore.xplanePath) {
+async function handleInstall(
+  ignoreExternalConflict = false,
+  preparedIntent: GatewayInstallIntent | null = null,
+) {
+  if (isGatewayInstallBusy.value) return
+
+  const intent = preparedIntent ?? createInstallIntent()
+  if (!intent) {
     modal.showError(t('gatewayManager.pathRequiredHint'), t('gatewayManager.pathRequired'), {
       hideReport: true,
     })
     return
   }
 
-  if (!ignoreExternalConflict) {
-    try {
-      const warning = await store.checkInstallWarning(appStore.xplanePath)
-      if (warning?.kind === GATEWAY_EXTERNAL_CONFLICT_KIND) {
-        showInstallBlockedWarning(warning.message)
-        return
-      }
-    } catch {
-      // Fall back to install-time conflict handling if warning precheck is unavailable.
-    }
-  }
-
+  isPreparingInstall.value = true
   try {
-    await installSelectedGateway(ignoreExternalConflict)
+    if (!ignoreExternalConflict) {
+      try {
+        const warning = await store.checkInstallWarning(
+          intent.xplanePath,
+          intent.selection.airportIcao,
+        )
+        if (warning?.kind === GATEWAY_EXTERNAL_CONFLICT_KIND) {
+          showInstallBlockedWarning(warning.message, intent)
+          return
+        }
+      } catch {
+        // Fall back to install-time conflict handling if warning precheck is unavailable.
+      }
+    }
+
+    await installSelectedGateway(intent, ignoreExternalConflict)
   } catch (error) {
     const externalConflictMessage = getGatewayExternalConflictMessage(error)
     if (externalConflictMessage && !ignoreExternalConflict) {
-      showInstallBlockedWarning(externalConflictMessage)
+      showInstallBlockedWarning(externalConflictMessage, intent)
       return
     }
     if (
@@ -1056,14 +1096,16 @@ async function handleInstall(ignoreExternalConflict = false) {
       error.code === 'conflict_exists' &&
       !ignoreExternalConflict
     ) {
-      showInstallBlockedWarning(error.message)
+      showInstallBlockedWarning(error.message, intent)
       return
     }
     if (error instanceof CommandError && error.code === 'conflict_exists') {
       modal.showError(error.message, t('gatewayManager.installBlocked'), { hideReport: true })
       return
     }
-    modal.showError(`${t('gatewayManager.installFailed')}: ${getErrorMessage(error)}`)
+    modal.showError(error, t('gatewayManager.installFailed'))
+  } finally {
+    isPreparingInstall.value = false
   }
 }
 

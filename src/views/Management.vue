@@ -7,18 +7,21 @@ import { useToastStore } from '@/stores/toast'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
+import { usePatchStore } from '@/stores/patch'
+import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import { isDrawerUpdatable } from '@/utils/addonUpdate'
 import AircraftAcfManagerModal from '@/components/AircraftAcfManagerModal.vue'
+import PatchBackupModal from '@/components/PatchBackupModal.vue'
 import ManagementEntryCard from '@/components/ManagementEntryCard.vue'
 import SceneryTab from '@/views/SceneryTab.vue'
 import {
-  getErrorMessage,
   parseApiError,
   type AircraftInfo,
   type ManagementTab,
   type ManagementItemType,
   type NavdataBackupInfo,
+  type PatchRestoreResult,
   type AddonUpdatableItemType,
   type AddonUpdateDrawerTask,
 } from '@/types'
@@ -30,23 +33,17 @@ const managementStore = useManagementStore()
 const toastStore = useToastStore()
 const appStore = useAppStore()
 const modalStore = useModalStore()
+const patchStore = usePatchStore()
 const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
 
 // Tab state
 const activeTab = ref<ManagementTab>('aircraft')
 
-// Available tabs based on settings
-const availableTabs = computed(() => {
-  const tabs: ManagementTab[] = ['aircraft', 'plugin', 'navdata']
-  if (appStore.autoSortScenery) {
-    tabs.push('scenery')
-  }
-  return tabs
-})
+const availableTabs: ManagementTab[] = ['aircraft', 'plugin', 'navdata', 'scenery']
 
 // Active tab index for indicator position
 const activeTabIndex = computed(() => {
-  return availableTabs.value.indexOf(activeTab.value)
+  return availableTabs.indexOf(activeTab.value)
 })
 
 // Transition direction for tab switching
@@ -61,6 +58,11 @@ const togglingAcfItems = ref<Set<string>>(new Set())
 const acfManagerFolderName = ref<string | null>(null)
 const acfManagerAircraft = ref<AircraftInfo | null>(null)
 const pendingCloseAcfManager = ref(false)
+const patchBackupTarget = ref<{
+  xplanePath: string
+  folderName: string
+  displayName: string
+} | null>(null)
 let acfManagerSyncToken = 0
 
 // Filter state for non-scenery tabs
@@ -76,7 +78,7 @@ const selectedPlugins = ref<Set<string>>(new Set())
 // Initialize tab from route query
 onMounted(() => {
   const tabParam = route.query.tab as ManagementTab | undefined
-  if (tabParam && availableTabs.value.includes(tabParam)) {
+  if (tabParam && availableTabs.includes(tabParam)) {
     activeTab.value = tabParam
   }
 
@@ -87,8 +89,8 @@ onMounted(() => {
 // Watch for tab changes
 watch(activeTab, async (newTab, oldTab) => {
   // Determine transition direction
-  const oldIndex = availableTabs.value.indexOf(oldTab)
-  const newIndex = availableTabs.value.indexOf(newTab)
+  const oldIndex = availableTabs.indexOf(oldTab)
+  const newIndex = availableTabs.indexOf(newTab)
   tabTransitionName.value = newIndex > oldIndex ? 'tab-slide-left' : 'tab-slide-right'
 
   // Suppress loading during transition to prevent animation blocking
@@ -373,7 +375,9 @@ async function runBatchDeleteSelected() {
     }
 
     const summaryKey =
-      result.deleted.length > 0 ? 'management.batchDeletePartialFailed' : 'management.batchDeleteFailed'
+      result.deleted.length > 0
+        ? 'management.batchDeletePartialFailed'
+        : 'management.batchDeleteFailed'
     const failureLines = result.failed
       .map((failure) => `${failure.folderName}: ${failure.error}`)
       .join('\n')
@@ -482,6 +486,16 @@ function handleUpdateAll() {
   })
 }
 
+function showStaleManagementItemMessage() {
+  modalStore.showError({
+    code: 'not_found',
+    message: t('management.stalePathMessage'),
+    origin: 'environment',
+    operation: 'refresh_management_item',
+    reportable: false,
+  })
+}
+
 // Handle toggle for non-scenery items
 async function handleToggleEnabled(itemType: ManagementItemType, folderName: string) {
   // Prevent rapid clicks
@@ -495,8 +509,12 @@ async function handleToggleEnabled(itemType: ManagementItemType, folderName: str
     await managementStore.toggleEnabled(itemType, folderName)
   } catch (e) {
     // Reload to get the actual state
-    await loadTabData(activeTab.value)
-    modalStore.showError(t('management.toggleFailed') + ': ' + String(e))
+    await loadTabData(itemType)
+    if (parseApiError(e)?.code === 'not_found') {
+      showStaleManagementItemMessage()
+      return
+    }
+    modalStore.showError(e, t('management.toggleFailed'))
   } finally {
     togglingItems.value.delete(key)
   }
@@ -520,16 +538,63 @@ async function handleOpenFolder(itemType: ManagementItemType, folderName: string
     const apiError = parseApiError(e)
     if (apiError?.code === 'not_found') {
       await loadTabData(itemType)
-      modalStore.showError(t('management.stalePathMessage'))
+      showStaleManagementItemMessage()
       return
     }
-    modalStore.showError(t('management.openFolderFailed') + ': ' + getErrorMessage(e))
+    modalStore.showError(e, t('management.openFolderFailed'))
   }
 }
 
 // Handle view liveries for aircraft
 function handleViewLiveries(folderName: string) {
   router.push('/management/liveries?aircraft=' + encodeURIComponent(folderName))
+}
+
+// Pick a patch archive for this aircraft, then open the patch flow on Home
+// (which hosts the install progress overlay) pre-targeted to this aircraft.
+async function handleInstallPatch(folderName: string) {
+  const selected = await openFileDialog({
+    multiple: false,
+    directory: false,
+    filters: [{ name: 'Archives', extensions: ['zip', '7z', 'rar'] }],
+  })
+  const archive = Array.isArray(selected) ? selected[0] : selected
+  if (!archive) return
+  patchStore.open(archive, folderName)
+  router.push('/')
+}
+
+function handleRestorePatch(folderName: string) {
+  patchBackupTarget.value = {
+    xplanePath: appStore.xplanePath,
+    folderName,
+    displayName:
+      managementStore.aircraft.find((item) => item.folderName === folderName)?.displayName ||
+      folderName,
+  }
+}
+
+async function handlePatchRestored(result: PatchRestoreResult) {
+  patchBackupTarget.value = null
+  const messages = []
+  if (result.restoredCount)
+    messages.push(t('patch.restoreSuccess', { count: result.restoredCount }))
+  if (result.removedCount)
+    messages.push(t('patch.removedAddedFiles', { count: result.removedCount }))
+  if (result.skippedCount) {
+    messages.push(t('patch.skippedAddedFiles', { count: result.skippedCount }))
+  }
+  if (result.backupCleanupError) {
+    messages.push(t('patch.backupCleanupFailed', { reason: result.backupCleanupError }))
+  } else {
+    messages.push(t('patch.backupDeleted'))
+  }
+  if (result.skippedCount || result.backupCleanupError) {
+    toastStore.warning(messages.join(' · '))
+  } else {
+    toastStore.success(messages.join(' · '))
+  }
+  await loadTabData('aircraft')
 }
 
 function cloneAircraftInfo(aircraft: AircraftInfo): AircraftInfo {
@@ -564,7 +629,13 @@ async function handleManageAcfFiles(folderName: string) {
       setAcfManagerAircraftState(refreshed)
     }
   } catch (e) {
-    modalStore.showError(t('management.scanFailed') + ': ' + String(e))
+    if (parseApiError(e)?.code === 'not_found') {
+      await loadTabData('aircraft')
+      clearAcfManagerState()
+      showStaleManagementItemMessage()
+      return
+    }
+    modalStore.showError(e, t('management.scanFailed'))
   }
 }
 
@@ -610,7 +681,13 @@ async function handleToggleAircraftAcfFile(fileName: string) {
       setAcfManagerAircraftState(updated)
     }
   } catch (e) {
-    modalStore.showError(t('management.acfToggleFailed') + ': ' + String(e))
+    if (parseApiError(e)?.code === 'not_found') {
+      await loadTabData('aircraft')
+      clearAcfManagerState()
+      showStaleManagementItemMessage()
+      return
+    }
+    modalStore.showError(e, t('management.acfToggleFailed'))
   } finally {
     togglingAcfItems.value.delete(key)
 
@@ -1192,6 +1269,8 @@ const isLoading = computed(() => {
                   @manage-acf-files="handleManageAcfFiles"
                   @view-liveries="handleViewLiveries"
                   @toggle-select="toggleSelect"
+                  @install-patch="handleInstallPatch"
+                  @restore-patch="handleRestorePatch"
                   @update="
                     (fn) =>
                       handleOpenUpdate(
@@ -1271,6 +1350,14 @@ const isLoading = computed(() => {
         </Transition>
       </div>
     </template>
+    <PatchBackupModal
+      v-if="patchBackupTarget"
+      :xplane-path="patchBackupTarget.xplanePath"
+      :aircraft-folder="patchBackupTarget.folderName"
+      :aircraft-name="patchBackupTarget.displayName"
+      @close="patchBackupTarget = null"
+      @restored="handlePatchRestored"
+    />
     <AircraftAcfManagerModal
       :aircraft="acfManagerAircraft"
       :busy-files="busyAcfFiles"

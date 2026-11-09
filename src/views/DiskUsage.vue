@@ -204,6 +204,7 @@ const DISK_CATEGORY_KEY_MAP: Record<string, string> = {
   navdata: 'diskUsage.categoryNavdata',
   screenshot: 'diskUsage.categoryScreenshots',
   screenshots: 'diskUsage.categoryScreenshots',
+  other: 'diskUsage.categoryOther',
 }
 
 function diskCategoryLabel(category: string): string {

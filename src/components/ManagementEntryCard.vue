@@ -46,6 +46,8 @@ const emit = defineEmits<{
   (e: 'view-scripts', folderName: string): void
   (e: 'toggle-select', folderName: string): void
   (e: 'update', folderName: string): void
+  (e: 'install-patch', folderName: string): void
+  (e: 'restore-patch', folderName: string): void
 }>()
 
 const { t } = useI18n()
@@ -295,6 +297,19 @@ function handleContextMenu(event: MouseEvent) {
       : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>',
   })
 
+  if (props.itemType === 'aircraft') {
+    menuItems.push({
+      id: 'install-patch',
+      label: t('patch.installPatch'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/></svg>',
+    })
+    menuItems.push({
+      id: 'restore-patch',
+      label: t('patch.restoreBackup'),
+      icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.7L3 8m0-5v5h5m4-1v5l3 2"/></svg>',
+    })
+  }
+
   if (props.itemType !== 'navdata') {
     menuItems.push({
       id: 'delete',
@@ -323,6 +338,12 @@ function handleContextMenu(event: MouseEvent) {
         break
       case 'update':
         emit('update', props.entry.folderName)
+        break
+      case 'install-patch':
+        emit('install-patch', props.entry.folderName)
+        break
+      case 'restore-patch':
+        emit('restore-patch', props.entry.folderName)
         break
       case 'restore-backup':
         if (props.backupInfo) emit('restore-backup', props.backupInfo)

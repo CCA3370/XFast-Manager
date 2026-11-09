@@ -109,7 +109,7 @@ impl UpdateChecker {
             None,
         );
 
-        // Use tauri-plugin-http to make the request
+        // Fetch release metadata through the backend HTTP client.
         let client = reqwest::Client::builder()
             .user_agent("XFast Manager")
             .timeout(Duration::from_secs(10))

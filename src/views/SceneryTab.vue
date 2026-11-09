@@ -18,8 +18,9 @@ import { useIssueTrackerStore } from '@/stores/issueTracker'
 import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import { useLockStore } from '@/stores/lock'
 import { invoke } from '@tauri-apps/api/core'
+import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { logError } from '@/services/logger'
-import { airportFlattenSetState } from '@/services/airport-flatten-api'
+import { airportFlattenSetState, sceneryGetFlattenTarget } from '@/services/airport-flatten-api'
 import { buildVercelApiUrl } from '@/services/vercelApi'
 import { isDrawerUpdatable } from '@/utils/addonUpdate'
 import {
@@ -37,7 +38,7 @@ import type {
   SceneryIndexScanResult,
   AddonUpdateDrawerTask,
 } from '@/types'
-import { parseApiError, getErrorMessage } from '@/types'
+import { getErrorMessage } from '@/types'
 
 // Lazy load heavy components to reduce initial render time
 const SceneryEntryCard = defineAsyncComponent(() => import('@/components/SceneryEntryCard.vue'))
@@ -153,6 +154,7 @@ const localGroupedEntries = ref<Record<string, SceneryManagerEntry[]>>({
   FixedHighPriority: [],
   Airport: [],
   DefaultAirport: [],
+  RegionalOverlay: [],
   Library: [],
   Other: [],
   Overlay: [],
@@ -166,8 +168,9 @@ const categoryOrder = [
   'FixedHighPriority',
   'Airport',
   'DefaultAirport',
-  'Library',
   'Other',
+  'RegionalOverlay',
+  'Library',
   'Overlay',
   'AirportMesh',
   'Mesh',
@@ -720,10 +723,6 @@ function getSmartGroupKindTranslationKey(kind: SmartSceneryGroupKind): string {
   return smartGroupKindTranslationKeys[kind]
 }
 
-function isSmartGroupAllEnabled(group: SmartSceneryGroup): boolean {
-  return group.totalCount > 0 && group.entries.every((entry) => entry.enabled)
-}
-
 function setSmartGroupEnabled(group: SmartSceneryGroup, enabled: boolean) {
   for (const entry of group.entries) {
     if (entry.enabled !== enabled) {
@@ -1202,8 +1201,9 @@ async function handleMoveUp(folderName: string) {
     const currentEntry = entries[index]
     const targetEntry = entries[index - 1]
 
-    // Prevent moving into or out of Unrecognized
-    if (currentEntry.category === 'Unrecognized' || targetEntry.category === 'Unrecognized') return
+    // Recognized packages cannot be moved into Unrecognized, but an unrecognized
+    // package can be promoted into the category immediately above it.
+    if (currentEntry.category !== 'Unrecognized' && targetEntry.category === 'Unrecognized') return
 
     syncWarningDismissed.value = true
     if (currentEntry.category !== targetEntry.category) {
@@ -1222,8 +1222,7 @@ async function handleMoveDown(folderName: string) {
     const currentEntry = entries[index]
     const targetEntry = entries[index + 1]
 
-    // Prevent moving into or out of Unrecognized
-    if (currentEntry.category === 'Unrecognized' || targetEntry.category === 'Unrecognized') return
+    if (currentEntry.category !== 'Unrecognized' && targetEntry.category === 'Unrecognized') return
 
     syncWarningDismissed.value = true
     if (currentEntry.category !== targetEntry.category) {
@@ -1364,9 +1363,14 @@ async function handleToggleFlatten(entry: SceneryManagerEntry) {
   flattenBusyFolders.value = nextBusy
 
   try {
+    const target = await sceneryGetFlattenTarget(appStore.xplanePath, entry.folderName)
+    if (!target) {
+      handleOpenFlattenPage(entry)
+      return
+    }
     const updated = await airportFlattenSetState({
       xplanePath: appStore.xplanePath,
-      icao: entry.airportId,
+      icao: target.icao,
       sourceKind: 'custom',
       folderName: entry.folderName,
       enabled: !entry.flattened,
@@ -1398,28 +1402,30 @@ function handleShowDeleteConfirm(entry: SceneryManagerEntry) {
   showDeleteConfirmModal.value = true
 }
 
+async function copyLibraryNames(text: string, successMessage: string) {
+  try {
+    await writeText(text)
+    toastStore.success(successMessage)
+  } catch (error) {
+    logError(`Could not copy scenery library names: ${getErrorMessage(error)}`, 'scenery')
+    modalStore.showError(
+      `${t('sceneryManager.copyLibraryManually')}\n\n${text}`,
+      t('copy.copyFailed'),
+      {
+        hideReport: true,
+      },
+    )
+  }
+}
+
 function handleCopyMissingLibs() {
   if (!selectedModalEntry.value) return
   const libNames = selectedModalEntry.value.missingLibraries.join('\n')
-  navigator.clipboard
-    .writeText(libNames)
-    .then(() => {
-      toastStore.success(t('sceneryManager.missingLibsCopied'))
-    })
-    .catch(() => {
-      modalStore.showError(t('copy.copyFailed'))
-    })
+  return copyLibraryNames(libNames, t('sceneryManager.missingLibsCopied'))
 }
 
 function handleCopySingleLib(libName: string) {
-  navigator.clipboard
-    .writeText(libName)
-    .then(() => {
-      toastStore.success(t('sceneryManager.libNameCopied'))
-    })
-    .catch(() => {
-      modalStore.showError(t('copy.copyFailed'))
-    })
+  return copyLibraryNames(libName, t('sceneryManager.libNameCopied'))
 }
 
 async function handleDirectDownload(url: string) {
@@ -1569,14 +1575,7 @@ async function handleDeleteEntryConfirm() {
     toastStore.success(t('sceneryManager.deleteSuccess'))
     showDeleteConfirmModal.value = false
   } catch (error) {
-    const apiError = parseApiError(error)
-    if (apiError) {
-      const errorKey = `errors.${apiError.code}`
-      const localizedMessage = t(errorKey) !== errorKey ? t(errorKey) : apiError.message
-      modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + localizedMessage)
-    } else {
-      modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + getErrorMessage(error))
-    }
+    modalStore.showError(error, t('sceneryManager.deleteFailed'))
   } finally {
     isDeletingEntry.value = false
   }
@@ -1639,7 +1638,7 @@ function handleReset() {
 }
 
 async function performAutoSort() {
-  if (!sceneryStore.indexExists) return
+  if (!appStore.autoSortScenery || !sceneryStore.indexExists) return
   isSortingScenery.value = true
   try {
     if (!lockStore.isInitialized) {
@@ -1669,7 +1668,13 @@ async function performAutoSort() {
 }
 
 function handleSortSceneryNow() {
-  if (isSortingScenery.value || !appStore.xplanePath || !sceneryStore.indexExists) return
+  if (
+    !appStore.autoSortScenery ||
+    isSortingScenery.value ||
+    !appStore.xplanePath ||
+    !sceneryStore.indexExists
+  )
+    return
 
   showMoreMenu.value = false
 
@@ -2115,7 +2120,11 @@ onBeforeUnmount(() => {
 
       <!-- Scenery-specific action buttons -->
       <!-- Auto-sort button (shown for all locales, only when index exists) -->
-      <Transition v-if="sceneryStore.indexExists" name="button-fade" mode="out-in">
+      <Transition
+        v-if="appStore.autoSortScenery && sceneryStore.indexExists"
+        name="button-fade"
+        mode="out-in"
+      >
         <button
           key="auto-sort-button"
           :disabled="isSortingScenery || !appStore.xplanePath || !sceneryStore.indexExists"
@@ -3538,11 +3547,7 @@ onBeforeUnmount(() => {
               <div v-if="isGroupExpanded(category)" style="overflow: visible">
                 <draggable
                   v-model="localGroupedEntries[category]"
-                  :group="
-                    category === 'Unrecognized'
-                      ? { name: 'unrecognized', pull: false, put: false }
-                      : { name: 'scenery', pull: true, put: true }
-                  "
+                  :group="{ name: 'scenery', pull: true, put: category !== 'Unrecognized' }"
                   item-key="folderName"
                   handle=".drag-handle"
                   :animation="180"
@@ -3551,9 +3556,7 @@ onBeforeUnmount(() => {
                   :fallback-on-body="true"
                   :fallback-tolerance="5"
                   :direction="'vertical'"
-                  :disabled="
-                    scenerySelectionMode || !sceneryStore.indexExists || category === 'Unrecognized'
-                  "
+                  :disabled="scenerySelectionMode || !sceneryStore.indexExists"
                   ghost-class="drag-ghost"
                   drag-class="sortable-drag"
                   class="space-y-1.5"
@@ -3586,11 +3589,7 @@ onBeforeUnmount(() => {
                           :entry="element"
                           :index="getGlobalIndex(element.folderName)"
                           :total-count="sceneryStore.totalCount"
-                          :disable-reorder="
-                            scenerySelectionMode ||
-                            !sceneryStore.indexExists ||
-                            category === 'Unrecognized'
-                          "
+                          :disable-reorder="scenerySelectionMode || !sceneryStore.indexExists"
                           :disable-move-down="element.folderName === lastEntryBeforeUnrecognized"
                           :flatten-busy="flattenBusyFolders.has(element.folderName)"
                           :selected="selectedScenery.has(element.folderName)"
@@ -3707,7 +3706,7 @@ onBeforeUnmount(() => {
                   <!-- Copy -->
                   <button
                     class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                    :title="t('sceneryManager.copyAllLibNames')"
+                    :title="t('copy.copy')"
                     @click="handleCopySingleLib(lib)"
                   >
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

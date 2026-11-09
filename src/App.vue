@@ -97,6 +97,14 @@
                         ></path>
                       </svg>
                       <AnimatedText>{{ item.label }}</AnimatedText>
+                      <span
+                        v-if="item.id === 'doctor' && doctorNavBadge"
+                        class="min-w-4 rounded-full px-1 py-0.5 text-center text-[9px] font-bold leading-none"
+                        :class="doctorNavBadge.className"
+                        :title="doctorNavBadge.label"
+                      >
+                        {{ doctorNavBadge.text }}
+                      </span>
                     </span>
                   </router-link>
                 </template>
@@ -331,6 +339,14 @@
                     ></path>
                   </svg>
                   <AnimatedText>{{ item.label }}</AnimatedText>
+                  <span
+                    v-if="item.id === 'doctor' && doctorNavBadge"
+                    class="min-w-4 rounded-full px-1 py-0.5 text-center text-[9px] font-bold leading-none"
+                    :class="doctorNavBadge.className"
+                    :title="doctorNavBadge.label"
+                  >
+                    {{ doctorNavBadge.text }}
+                  </span>
                 </span>
               </router-link>
             </template>
@@ -357,6 +373,13 @@
                     ></path>
                   </svg>
                   <span>{{ item.label }}</span>
+                  <span
+                    v-if="item.id === 'doctor' && doctorNavBadge"
+                    class="min-w-4 rounded-full px-1 py-0.5 text-center text-[9px] font-bold leading-none"
+                    :class="doctorNavBadge.className"
+                  >
+                    {{ doctorNavBadge.text }}
+                  </span>
                 </span>
               </div>
             </div>
@@ -426,14 +449,7 @@
 </template>
 
 <script setup lang="ts">
-import {
-  computed,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  watch,
-  type ComponentPublicInstance,
-} from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -445,6 +461,7 @@ import { useFeedbackStore } from '@/stores/feedback'
 import { useManagementStore } from '@/stores/management'
 import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import { useCslStore } from '@/stores/csl'
+import { useDoctorStore } from '@/stores/doctor'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -475,6 +492,7 @@ const feedbackStore = useFeedbackStore()
 const managementStore = useManagementStore()
 const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
 const cslStore = useCslStore()
+const doctorStore = useDoctorStore()
 const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
@@ -498,8 +516,9 @@ const showSponsor = ref(false)
 type NavId =
   | 'home'
   | 'management'
+  | 'flight-plans'
   | 'screenshots'
-  | 'log-analysis'
+  | 'doctor'
   | 'activity'
   | 'disk-usage'
   | 'presets'
@@ -523,8 +542,9 @@ const NAV_USAGE_STORAGE_KEY = 'xfast.navUsageCounts'
 const DEFAULT_NAV_ORDER: NavId[] = [
   'home',
   'management',
+  'flight-plans',
   'screenshots',
-  'log-analysis',
+  'doctor',
   'activity',
   'disk-usage',
   'presets',
@@ -549,12 +569,15 @@ const NAV_ICON_PATHS: Record<NavId, string[]> = {
   management: [
     'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
   ],
+  'flight-plans': ['M4 4h16v16H4zM8 8h8M8 12h8M8 16h4'],
   screenshots: [
     'M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z',
     'M15 13a3 3 0 11-6 0 3 3 0 016 0z',
   ],
-  'log-analysis': [
-    'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+  doctor: [
+    // Heart with pulse line (health/diagnostics)
+    'M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z',
+    'M7 11h2l2-3 2 6 2-3h2',
   ],
   activity: ['M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'],
   'disk-usage': [
@@ -590,6 +613,53 @@ const moreNavLabel = computed(() =>
 const primaryVisibleNavIdSet = computed(() => new Set(primaryVisibleNavIds.value))
 const overflowNavIdSet = computed(() => new Set(overflowNavIds.value))
 const hasOverflowNav = computed(() => overflowNavIds.value.length > 0)
+const doctorNavBadge = computed(() => {
+  if (doctorStore.isRunning) {
+    return {
+      text: '…',
+      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200',
+      label: t('doctor.running'),
+    }
+  }
+  const run = doctorStore.lastCompletedRun
+  if (!run) return null
+  if (run.summary.critical > 0) {
+    return {
+      text: String(run.summary.critical),
+      className: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200',
+      label: t('doctor.center.status.critical'),
+    }
+  }
+  if (run.summary.warning > 0) {
+    return {
+      text: String(run.summary.warning),
+      className: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200',
+      label: t('doctor.center.status.attention'),
+    }
+  }
+  if (run.summary.completeness !== 'complete') {
+    return {
+      text: '!',
+      className: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-100',
+      label: t('doctor.center.status.incomplete'),
+    }
+  }
+  if (doctorStore.isStale) {
+    return {
+      text: '•',
+      className: 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-200',
+      label: t('doctor.center.status.stale'),
+    }
+  }
+  if (run.summary.info > 0) {
+    return {
+      text: String(run.summary.info),
+      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200',
+      label: t('doctor.center.status.informational'),
+    }
+  }
+  return null
+})
 const navItemsById = computed<Record<NavId, NavItem>>(() => ({
   home: {
     id: 'home',
@@ -605,6 +675,13 @@ const navItemsById = computed<Record<NavId, NavItem>>(() => ({
     active: route.path.startsWith('/management'),
     iconPaths: NAV_ICON_PATHS.management,
   },
+  'flight-plans': {
+    id: 'flight-plans',
+    to: '/flight-plans',
+    label: t('flightPlans.title'),
+    active: route.path === '/flight-plans',
+    iconPaths: NAV_ICON_PATHS['flight-plans'],
+  },
   screenshots: {
     id: 'screenshots',
     to: '/screenshots',
@@ -612,12 +689,12 @@ const navItemsById = computed<Record<NavId, NavItem>>(() => ({
     active: route.path === '/screenshots',
     iconPaths: NAV_ICON_PATHS.screenshots,
   },
-  'log-analysis': {
-    id: 'log-analysis',
-    to: '/log-analysis',
-    label: t('logAnalysis.navTitle'),
-    active: route.path === '/log-analysis',
-    iconPaths: NAV_ICON_PATHS['log-analysis'],
+  doctor: {
+    id: 'doctor',
+    to: '/doctor',
+    label: t('doctor.navTitle'),
+    active: route.path === '/doctor',
+    iconPaths: NAV_ICON_PATHS.doctor,
   },
   activity: {
     id: 'activity',
@@ -767,10 +844,7 @@ function navLinkBackgroundClass(item: NavItem) {
     : 'scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-50'
 }
 
-function setNavMeasureRef(
-  id: NavMeasureId,
-  target: Element | ComponentPublicInstance | null,
-) {
+function setNavMeasureRef(id: NavMeasureId, target: Element | ComponentPublicInstance | null) {
   navMeasureRefs[id] = target instanceof HTMLElement ? target : null
 }
 
@@ -906,8 +980,9 @@ function getRouteOrder(path: string): number {
   if (path === '/onboarding') return -1
   if (path === '/' || path === '') return navOrderIndex.value.home
   if (path.startsWith('/management')) return navOrderIndex.value.management
+  if (path === '/flight-plans') return navOrderIndex.value['flight-plans']
   if (path === '/screenshots') return navOrderIndex.value.screenshots
-  if (path === '/log-analysis') return navOrderIndex.value['log-analysis']
+  if (path === '/doctor') return navOrderIndex.value.doctor
   if (path === '/activity') return navOrderIndex.value.activity
   if (path === '/disk-usage') return navOrderIndex.value['disk-usage']
   if (path === '/disk-usage/output-cleanup') return navOrderIndex.value['disk-usage'] + 0.1
@@ -945,7 +1020,20 @@ watch(
 )
 
 watch(
-  [() => route.fullPath, () => locale.value, () => navExpanded.value],
+  () => store.xplanePath,
+  () => {
+    void doctorStore.loadHistory()
+  },
+  { immediate: true },
+)
+
+watch(
+  [
+    () => route.fullPath,
+    () => locale.value,
+    () => navExpanded.value,
+    () => doctorNavBadge.value?.text,
+  ],
   () => {
     schedulePrimaryNavLayout()
     scheduleOverflowNavHeightUpdate()
@@ -1084,11 +1172,11 @@ onMounted(async () => {
     action: () => router.push('/screenshots'),
   })
   registerShortcut({
-    id: 'nav-log-analysis',
+    id: 'nav-doctor',
     keys: 'ctrl+4',
-    label: t('logAnalysis.navTitle'),
+    label: t('doctor.navTitle'),
     category: t('commandPalette.categoryNav'),
-    action: () => router.push('/log-analysis'),
+    action: () => router.push('/doctor'),
   })
   registerShortcut({
     id: 'nav-gateway',
