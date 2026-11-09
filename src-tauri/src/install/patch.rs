@@ -397,8 +397,8 @@ fn plan_patch(
     let mut previews = Vec::with_capacity(mappings.len());
     let mut archive_prefixes = Vec::with_capacity(mappings.len());
     for mapping in mappings {
-        let archive_sub = safe_relative_subpath(&mapping.archive_subpath)?;
-        let dest_sub = safe_relative_subpath(&mapping.dest_subpath)?;
+        let archive_sub = mapping_subpath(&mapping.archive_subpath)?;
+        let dest_sub = mapping_subpath(&mapping.dest_subpath)?;
         let start = writes.len();
         for file in files {
             let Some(relative) = mapping_relative_file(file, &archive_sub) else {
@@ -502,6 +502,11 @@ fn mapping_relative_file<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
     } else {
         strip_offset(path, prefix)
     }
+}
+
+/// A single leading slash in a mapping starts at its archive or aircraft root.
+fn mapping_subpath(value: &str) -> Result<String> {
+    safe_relative_subpath(value.strip_prefix('/').unwrap_or(value))
 }
 
 /// Validate paths with Windows semantics too, even on Unix. This prevents a
@@ -1778,7 +1783,10 @@ mod tests {
         for invalid in [
             "../OtherPlane",
             "objects/../../OtherPlane",
-            "/tmp/plane",
+            "//tmp/plane",
+            "/../OtherPlane",
+            "/C:/Aircraft",
+            "/\\server\\share",
             "C:\\Aircraft",
             "C:plane",
             "\\\\server\\share",
@@ -1797,6 +1805,29 @@ mod tests {
                 invalid
             );
         }
+    }
+
+    #[test]
+    fn mapping_slash_refers_to_the_archive_or_aircraft_root() {
+        let ac = make_aircraft(&["fmod/panel.obj"]);
+        let files = to_owned(&["pack/panel.obj"]);
+        let plan = |source: &str, destination: &str| {
+            plan_install_files(
+                &files,
+                ac.path(),
+                &[PatchMappingInput {
+                    archive_subpath: source.into(),
+                    dest_subpath: destination.into(),
+                }],
+            )
+            .unwrap()
+        };
+        let rooted = plan("/pack", "/fmod");
+        assert_eq!(rooted[0].destination, "fmod/panel.obj");
+        assert!(rooted[0].overwrite);
+        assert_eq!(plan("/pack", "/")[0].destination, "panel.obj");
+        assert_eq!(plan("/", "/")[0].destination, "pack/panel.obj");
+        assert!(safe_relative_subpath("/fmod").is_err());
     }
 
     #[test]
