@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.0] - 2026-11-09
 
+<div class="changelog-important">
+  <p class="changelog-important-label">IMPORTANT FOR USERS</p>
+  <p class="changelog-important-title">About Scenery Auto Sorting</p>
+  <p class="changelog-important-body">The automatic scenery sorting feature has not yet been significantly improved. However, you can now manually manage the scenery order even when automatic sorting is disabled in Settings. Previously, disabling automatic sorting also prevented manual sorting.</p>
+</div>
+
 ### Added
 
 - **Aircraft Patches** - Install aircraft patches with a preview of affected files, optional backups and restoration.
