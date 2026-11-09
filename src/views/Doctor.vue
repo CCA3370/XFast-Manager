@@ -544,7 +544,8 @@
                 </p>
 
                 <div
-                  v-if="checkSuggestion(selectedCheck)"
+                  v-if="selectedSuggestion"
+                  data-testid="health-suggestion"
                   class="flex gap-2 rounded-md bg-blue-50 px-2.5 py-2 text-gray-700 dark:bg-blue-950/25 dark:text-blue-100"
                 >
                   <svg
@@ -562,7 +563,7 @@
                     />
                   </svg>
                   <p class="min-w-0 leading-5">
-                    {{ checkSuggestion(selectedCheck) }}
+                    {{ selectedSuggestion }}
                   </p>
                 </div>
 
@@ -840,7 +841,11 @@ import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import { logError } from '@/services/logger'
 import { DOCTOR_SECTION_ORDER, isDoctorRunStale } from '@/utils/doctor'
-import { describeDoctorCheck, formatDoctorDuration } from '@/utils/doctorPresentation'
+import {
+  describeDoctorCheck,
+  formatDoctorDuration,
+  suggestDoctorCheck,
+} from '@/utils/doctorPresentation'
 import { CHECK_NAME_KEYS, LEGACY_TEXT_ROOTS } from '@/utils/doctorCatalog'
 import type { DoctorReportFormat } from '@/utils/doctorReport'
 import type {
@@ -931,6 +936,13 @@ const selectedCheck = computed(() => {
     checks.find(isProblemCheck) ?? checks.find((check) => check.outcome === 'info') ?? checks[0]
   )
 })
+const selectedSuggestion = computed(() =>
+  selectedCheck.value
+    ? suggestDoctorCheck(selectedCheck.value, locale.value, run.value?.checks, (key, params) =>
+        te(key) ? t(key, params) : '',
+      )
+    : '',
+)
 const selectedParams = computed(() =>
   Object.fromEntries(
     Object.entries(selectedCheck.value?.params ?? {})
@@ -1139,16 +1151,6 @@ function checkDescription(check: DoctorCheckResult): string {
   const purpose = `healthDetails.purposes.${check.id.replaceAll('.', '_')}`
   if (te(purpose)) return t(purpose)
   return t(`healthDetails.scope.${check.section}`)
-}
-
-function checkSuggestion(check: DoctorCheckResult): string {
-  if (locale.value === 'en' || locale.value === 'zh') {
-    return describeDoctorCheck(check, locale.value).suggestion
-  }
-  const root = legacyTextRoot(check)
-  return root && ['info', 'warning', 'critical'].includes(check.outcome) && te(`${root}.suggestion`)
-    ? t(`${root}.suggestion`, check.params ?? {})
-    : ''
 }
 
 function outcomeLabel(outcome: DoctorCheckOutcome): string {

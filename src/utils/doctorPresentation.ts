@@ -1,6 +1,8 @@
 import type { DoctorCheckResult } from '@/types/doctor'
 import en from '@/i18n/en'
 import zh from '@/i18n/zh'
+import { doctorAdvice } from '@/i18n/doctorAdvice'
+import { getDoctorAdvice } from './doctorAdvice'
 import { DOCTOR_FINDINGS } from './doctorFindings'
 import { CHECK_NAME_KEYS, LEGACY_TEXT_ROOTS } from './doctorCatalog'
 
@@ -17,6 +19,22 @@ function message(
   return typeof value === 'string'
     ? value.replace(/\{(\w+)\}/g, (token, name: string) => String(params[name] ?? token))
     : ''
+}
+
+export function suggestDoctorCheck(
+  check: DoctorCheckResult,
+  locale: string,
+  checks: readonly DoctorCheckResult[] = [],
+  translateLegacy = (key: string, params: Record<string, string | number>) =>
+    message(locale, key, params),
+): string {
+  const advice = getDoctorAdvice(check, checks)
+  if (advice) return advice.map((key) => doctorAdvice[key][locale === 'zh' ? 1 : 0]).join(' ')
+  if (!['info', 'warning', 'critical'].includes(check.outcome)) return ''
+  const root = check.id.startsWith('log.')
+    ? `doctor.checks.log.${check.id.slice(4)}`
+    : LEGACY_TEXT_ROOTS[check.id]
+  return root ? translateLegacy(`${root}.suggestion`, check.params ?? {}) : ''
 }
 
 export function describeDoctorCheck(check: DoctorCheckResult, locale = 'en') {
@@ -37,7 +55,7 @@ export function describeDoctorCheck(check: DoctorCheckResult, locale = 'en') {
     const root = 'healthDetails.findings.addons_binary_integrity'
     if (params.requiresRescan || check.outcome === 'pass') {
       const key = params.requiresRescan ? 'outdated' : 'scope'
-      return { title, description: message(locale, `${root}.${key}`), suggestion: '' }
+      return { title, description: message(locale, `${root}.${key}`) }
     }
   }
   if (check.id === 'stability.last_session') {
@@ -59,7 +77,6 @@ export function describeDoctorCheck(check: DoctorCheckResult, locale = 'en') {
     return {
       title,
       description: descriptions[String(params.sessionEnd)] ?? descriptions.unknown!,
-      suggestion: '',
     }
   }
   if (check.id === 'updates.addons' && 'checked' in params) {
@@ -69,14 +86,12 @@ export function describeDoctorCheck(check: DoctorCheckResult, locale = 'en') {
       description: params.manual
         ? `${summary} ${message(locale, 'healthDetails.coverage.manualUpdates', params)}`
         : summary,
-      suggestion: '',
     }
   }
   if (check.id === 'updates.gateway' && check.outcome === 'notApplicable') {
     return {
       title,
       description: message(locale, 'healthDetails.coverage.gatewayNoManaged'),
-      suggestion: '',
     }
   }
   if (
@@ -87,31 +102,28 @@ export function describeDoctorCheck(check: DoctorCheckResult, locale = 'en') {
     return {
       title,
       description: message(locale, 'healthDetails.coverage.cslUpdates', params),
-      suggestion: '',
     }
   }
   if (check.id === 'navdata.cycles' && Number(params.future) > 0) {
     return {
       title,
       description: message(locale, 'healthDetails.coverage.navFuture'),
-      suggestion: '',
     }
   }
   if (check.id === 'navdata.cycles' && Number(params.conflicts) > 0) {
     return {
       title,
       description: message(locale, 'healthDetails.coverage.navConflict'),
-      suggestion: '',
     }
   }
   if (check.id === 'installation.scan_access' && check.outcome === 'unavailable' && finding) {
-    return { title, description: finding[1], suggestion: '' }
+    return { title, description: finding[1] }
   }
   if (['unavailable', 'notApplicable', 'cancelled'].includes(check.outcome)) {
-    return { title, description: generic, suggestion: '' }
+    return { title, description: generic }
   }
   if (finding) {
-    return { title, description: check.outcome === 'pass' ? generic : finding[1], suggestion: '' }
+    return { title, description: check.outcome === 'pass' ? generic : finding[1] }
   }
   if (check.id === 'updates.gateway') {
     return {
@@ -119,7 +131,6 @@ export function describeDoctorCheck(check: DoctorCheckResult, locale = 'en') {
       description: chinese
         ? `已安装 ${params.installed ?? 0} 个机场，完成 ${params.checked ?? 0} 个更新查询，${params.count ?? 0} 个有更新。`
         : `Installed airports: ${params.installed ?? 0}; successfully checked: ${params.checked ?? 0}; updates available: ${params.count ?? 0}.`,
-      suggestion: '',
     }
   }
   if (check.id === 'system.injectors') {
@@ -131,14 +142,12 @@ export function describeDoctorCheck(check: DoctorCheckResult, locale = 'en') {
           : chinese
             ? 'X-Plane 根目录存在代理 DLL 和 ReShade 配置。文件存在不代表它已被加载。'
             : 'Proxy DLLs and ReShade configuration are present in the X-Plane root. Presence does not prove they were loaded.',
-      suggestion: '',
     }
   }
   const hasFinding = check.outcome !== 'pass'
   return {
     title,
     description: (hasFinding && root && message(locale, `${root}.description`, params)) || generic,
-    suggestion: (hasFinding && root && message(locale, `${root}.suggestion`, params)) || '',
   }
 }
 

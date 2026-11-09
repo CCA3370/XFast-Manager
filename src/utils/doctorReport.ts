@@ -1,5 +1,5 @@
 import type { DoctorCheckResult, DoctorRun } from '@/types/doctor'
-import { describeDoctorCheck } from './doctorPresentation'
+import { describeDoctorCheck, suggestDoctorCheck } from './doctorPresentation'
 
 export type DoctorReportFormat = 'markdown' | 'json'
 
@@ -55,7 +55,11 @@ export function redactDoctorText(value: string, options: DoctorReportOptions): s
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '<EMAIL>')
 }
 
-function reportCheck(check: DoctorCheckResult, options: DoctorReportOptions) {
+function reportCheck(
+  check: DoctorCheckResult,
+  checks: readonly DoctorCheckResult[],
+  options: DoctorReportOptions,
+) {
   const text = describeDoctorCheck(check, 'en')
   return {
     id: check.id,
@@ -64,7 +68,7 @@ function reportCheck(check: DoctorCheckResult, options: DoctorReportOptions) {
     durationMs: check.durationMs,
     title: redactDoctorText(text.title, options),
     description: redactDoctorText(text.description, options),
-    suggestion: redactDoctorText(text.suggestion, options),
+    suggestion: redactDoctorText(suggestDoctorCheck(check, 'en', checks), options),
     params: redactParams(check.params, options),
     evidence: check.evidence?.map((evidence) => ({
       ...evidence,
@@ -87,7 +91,7 @@ export function buildDoctorReport(
 ): string {
   const report = {
     ...run,
-    checks: run.checks.map((check) => reportCheck(check, options)),
+    checks: run.checks.map((check) => reportCheck(check, run.checks, options)),
   }
   if (format === 'json') return JSON.stringify(report, null, 2)
 

@@ -109,6 +109,7 @@ describe('doctor report export', () => {
       const output = buildDoctorReport(run, format, { xplanePath: '/xplane' })
       expect(output).toContain('Last X-Plane session')
       expect(output).toContain('cannot be determined')
+      expect(output).toContain('If X-Plane closed unexpectedly, save the current Log.txt')
     }
   })
 

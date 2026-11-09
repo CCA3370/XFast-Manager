@@ -146,6 +146,30 @@ describe('Health page', () => {
     i18n.global.locale.value = 'en'
   })
 
+  it('uses the age of the log when giving crash guidance in Chinese', async () => {
+    const { wrapper, doctorStore } = await mountDoctor('/xplane')
+    i18n.global.locale.value = 'zh'
+    doctorStore.currentRun = runFixture('completed', [
+      {
+        id: 'stability.last_session',
+        section: 'stability',
+        outcome: 'critical',
+        durationMs: 1,
+        params: { sessionEnd: 'crash' },
+      },
+      {
+        id: 'stability.log_freshness',
+        section: 'stability',
+        outcome: 'info',
+        durationMs: 1,
+        params: { days: 8 },
+      },
+    ])
+    await nextTick()
+    expect(wrapper.get('[data-testid="health-suggestion"]').text()).toContain('较早的会话')
+    wrapper.unmount()
+  })
+
   it('renders a scenery limit as reached with zero read errors', async () => {
     const { wrapper, doctorStore } = await mountDoctor('/xplane')
     i18n.global.locale.value = 'zh'
