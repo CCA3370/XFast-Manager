@@ -77,7 +77,7 @@
       <div
         class="flex-1 min-h-0 bg-white/60 dark:bg-gray-800/40 backdrop-blur-xl border-2 border-dashed border-gray-300 dark:border-gray-600/50 rounded-2xl p-6 text-center transition-all duration-500 hover:border-blue-400 dark:hover:border-blue-500/50 hover:bg-white/80 dark:hover:bg-gray-800/60 shadow-sm dark:shadow-none flex flex-col items-center justify-center relative drop-zone-card"
         :class="{
-          'drag-over ring-4 ring-4-blue-500/20 border-blue-500 scale-[1.02]': isDragging,
+          'drag-over': isDragging,
           'animate-pulse border-blue-400': store.isAnalyzing,
           'debug-drop': debugDropFlash,
         }"
@@ -1429,8 +1429,7 @@ function handleCompletionConfirm() {
 .drop-zone-card.drag-over {
   border-color: #3b82f6;
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(147, 51, 234, 0.1));
-  transform: scale(1.02);
-  box-shadow: 0 0 40px rgba(59, 130, 246, 0.3);
+  box-shadow: inset 0 0 40px rgba(59, 130, 246, 0.2);
 }
 
 .icon-container {
