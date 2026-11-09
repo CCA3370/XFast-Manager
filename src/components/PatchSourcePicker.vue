@@ -1,12 +1,12 @@
 <template>
-  <div class="min-w-0" @focusout="closeOnBlur" @keydown.esc.stop.prevent="close(true)">
+  <div class="min-w-0" @keydown.esc.stop.prevent="close(true)">
     <button
       ref="trigger"
       type="button"
       :disabled="disabled"
       :aria-label="$t('patch.sourcePath') + ' · ' + (model || $t('patch.archiveRoot'))"
       :aria-expanded="open"
-      :aria-controls="optionsId"
+      :aria-controls="open ? optionsId : undefined"
       class="flex w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-start text-xs text-gray-900 hover:border-orange-400 focus-visible:outline-2 focus-visible:outline-orange-500 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900/70 dark:text-white"
       @click="open ? close() : openPicker()"
     >
@@ -24,10 +24,12 @@
         <path d="m5 8 5 5 5-5" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
       </svg>
     </button>
-    <div
-      v-if="open"
+    <PatchPathPopover
+      v-if="open && !disabled"
       :id="optionsId"
-      class="mt-1 rounded-lg border border-orange-200 bg-white p-1.5 shadow-sm dark:border-orange-500/30 dark:bg-gray-900"
+      :anchor="trigger"
+      @close="close()"
+      @escape="close(true)"
     >
       <input
         ref="searchField"
@@ -54,12 +56,13 @@
       <p v-else class="px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400">
         {{ $t('patch.noSourceResults') }}
       </p>
-    </div>
+    </PatchPathPopover>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, ref, useId } from 'vue'
+import PatchPathPopover from './PatchPathPopover.vue'
 
 const props = defineProps<{ paths: string[]; disabled: boolean }>()
 const model = defineModel<string>({ required: true })
@@ -70,9 +73,14 @@ const trigger = ref<HTMLButtonElement | null>(null)
 const searchField = ref<HTMLInputElement | null>(null)
 
 const choices = computed(() => {
-  const search = query.value.trim().replaceAll('\\', '/').toLowerCase()
+  const input = query.value.trim().replaceAll('\\', '/').toLowerCase()
+  const rooted = input.startsWith('/')
+  const search = rooted ? input.slice(1) : input
   if (!search) return ['', ...props.paths.slice(0, 59)]
-  const matches = props.paths.filter((path) => path.toLowerCase().includes(search))
+  const matches = props.paths.filter((path) => {
+    const lower = path.toLowerCase()
+    return rooted ? lower.startsWith(search) : lower.includes(search)
+  })
   const exact = matches.find((path) => path.toLowerCase() === search)
   return exact
     ? [exact, ...matches.filter((path) => path !== exact).slice(0, 59)]
@@ -89,11 +97,6 @@ async function openPicker() {
 function close(restoreFocus = false) {
   open.value = false
   if (restoreFocus) trigger.value?.focus()
-}
-
-function closeOnBlur(event: FocusEvent) {
-  const picker = event.currentTarget
-  if (picker instanceof HTMLElement && !picker.contains(event.relatedTarget as Node | null)) close()
 }
 
 function choose(path: string) {

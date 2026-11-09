@@ -2,9 +2,9 @@
   <Teleport to="body">
     <transition name="modal">
       <div class="modal-overlay" @click="handleCancel">
-        <div class="modal-content animate-scale-in" @click.stop>
+        <div class="modal-content" @click.stop>
           <!-- Header -->
-          <div class="flex items-center space-x-2 mb-4">
+          <div class="flex shrink-0 items-center space-x-2 mb-4">
             <div class="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center">
               <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -28,15 +28,16 @@
             </div>
           </div>
 
-          <!-- Error -->
           <div
-            v-if="errorMsg"
-            class="mb-3 p-2 bg-red-100 dark:bg-red-500/20 border border-red-300 dark:border-red-500/50 rounded-lg text-xs font-medium text-red-600 dark:text-red-400"
+            class="patch-scroll-body min-h-0 flex-1 space-y-4 overflow-y-auto custom-scrollbar pr-1"
           >
-            {{ errorMsg }}
-          </div>
-
-          <div class="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
+            <div
+              v-if="errorMsg"
+              role="alert"
+              class="sticky top-0 z-10 max-h-24 overflow-y-auto break-words rounded-lg border border-red-300 bg-red-100 p-2 text-xs font-medium text-red-700 dark:border-red-500/50 dark:bg-gray-900 dark:text-red-400"
+            >
+              {{ errorMsg }}
+            </div>
             <!-- Apply to -->
             <section>
               <label class="block text-xs font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
@@ -84,7 +85,7 @@
             </section>
 
             <!-- What will happen -->
-            <section v-if="selectedFolder">
+            <section v-if="selectedFolder" class="min-h-36">
               <label class="block text-xs font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
                 {{ $t('patch.summaryTitle') }}
               </label>
@@ -263,7 +264,12 @@
                     </div>
                     <p class="mt-1.5 break-all text-[11px] text-gray-500 dark:text-gray-400">
                       {{ m.archiveSubpath || $t('patch.archiveRoot') }} →
-                      {{ m.destSubpath || $t('patch.aircraftRoot') }} ·
+                      {{
+                        m.destSubpath && m.destSubpath !== '/'
+                          ? m.destSubpath
+                          : $t('patch.aircraftRoot')
+                      }}
+                      ·
                       {{ describeMapping(mappingPreviews[i]) }}
                     </p>
                   </div>
@@ -294,7 +300,7 @@
           </div>
 
           <!-- Actions -->
-          <div class="flex justify-end gap-2 pt-4">
+          <div class="flex shrink-0 justify-end gap-2 pt-4">
             <button
               class="px-3 py-2 bg-gray-200 dark:bg-gray-700/80 hover:bg-gray-300 dark:hover:bg-gray-600/80 rounded-lg text-xs font-medium text-gray-700 dark:text-white"
               @click="handleCancel"
@@ -675,29 +681,11 @@ function handleCancel() {
 <style scoped>
 .modal-enter-active,
 .modal-leave-active {
-  transition: all 0.3s ease;
+  transition: opacity 0.3s ease;
 }
 .modal-enter-from,
 .modal-leave-to {
   opacity: 0;
-}
-.modal-enter-from .modal-content,
-.modal-leave-to .modal-content {
-  opacity: 0;
-  transform: scale(0.9) translateY(-20px);
-}
-@keyframes scale-in {
-  from {
-    opacity: 0;
-    transform: scale(0.95) translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-.animate-scale-in {
-  animation: scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .modal-overlay {
   position: fixed;
@@ -710,6 +698,9 @@ function handleCancel() {
   z-index: 1000;
 }
 .modal-content {
+  display: flex;
+  flex-direction: column;
+  height: min(40rem, calc(100% - 2rem));
   background: white;
   border-radius: 1.25rem;
   padding: 1.75rem;

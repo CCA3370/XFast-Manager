@@ -279,14 +279,20 @@ describe('patch installation confirmation', () => {
     expect(wrapper.get('select').text()).not.toContain('patch.matchingFiles')
     expect(wrapper.text()).toContain('patch.mappingExistingFolder')
     const destination = destinationInputs()[0]!
-    await destination.setValue('objects/deep/parts/')
+    await destination.setValue('/objects/deep/parts/')
     const suggestions = destination.element.parentElement!.querySelectorAll('ul button')
     expect([...suggestions].map((option) => option.textContent)).toEqual([
-      'objects/deep/parts/left',
-      'objects/deep/parts/right',
+      '/objects/deep/parts/left',
+      '/objects/deep/parts/right',
     ])
-    await button('objects/deep/parts/left').trigger('click')
-    expect(destination.element.value).toBe('objects/deep/parts/left')
+    await button('/objects/deep/parts/left').trigger('click')
+    expect(destination.element.value).toBe('/objects/deep/parts/left')
+    await preview()
+    expect(api.summarizePatchInstall).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        mappings: [{ archiveSubpath: 'A', destSubpath: '/objects/deep/parts/left' }],
+      }),
+    )
     await destination.setValue('custom/deep/new')
     expect(wrapper.text()).toContain('custom/deep/new · patch.mappingChecking')
     expect(wrapper.text()).not.toContain('patch.mappingExistingFolder')
@@ -306,7 +312,7 @@ describe('patch installation confirmation', () => {
     await button('+ patch.addMapping').trigger('click')
     await wrapper.findAll('button[aria-expanded]')[1]!.trigger('click')
     const search = wrapper.get('input[type="search"]')
-    await search.setValue('deep/a.obj')
+    await search.setValue('/extras/deep/a.obj')
     await search.trigger('keydown.enter')
     await destinationInputs()[1]!.setValue('custom/deep/folder')
     await preview()
