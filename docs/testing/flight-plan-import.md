@@ -9,10 +9,10 @@ npm test
 npm run lint
 npm run build
 node scripts/verify-flight-plan-core.mjs
-cargo test --locked --no-run
+cargo test --locked
 ```
 
-`verify-flight-plan-core.mjs` 直接执行生产文件管理代码的 Rust 测试，避开本机 Windows Tauri 测试程序在启动前报 `STATUS_ENTRYPOINT_NOT_FOUND` 的限制。
+`verify-flight-plan-core.mjs` 可以单独执行生产文件管理代码的 Rust 测试，无需编译 Tauri 桌面程序。
 
 请在测试安装副本中准备多个合法 `.fms` 文件，至少包含同内容异名、同名不同内容和普通新文件。
 

@@ -9,12 +9,10 @@ npm test
 npm run lint
 npm run build
 node scripts/verify-health-core.mjs
-cargo test --locked --no-run
+cargo test --locked
 ```
 
 `verify-health-core.mjs` 直接编译并执行生产代码中的文件检查和备份修复测试，不依赖 Tauri。它覆盖启动文件、原厂机模、翼型引用、目录权限、Vulkan 版本、地景文件、插件入口、导航数据和备份恢复。
-
-Windows 的 Tauri Rust 测试程序可能在进入测试框架前以 `0xc0000139 / STATUS_ENTRYPOINT_NOT_FOUND` 退出。`cargo test --no-run` 只能证明测试编译和链接成功；不能代替实际运行。
 
 ## 需要手工执行的场景
 
