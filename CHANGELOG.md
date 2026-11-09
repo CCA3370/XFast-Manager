@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Install Drop Zone** - Expands slightly when dragging files in and stays clear of the edges, even in wide windows.
+- **Missing Scenery Libraries** - Copy a single library name or the full list to the system clipboard. If the clipboard is unavailable, the names are shown for manual copying.
+- **File Access Guidance** - Installation and scenery deletion errors explain how to recover when a file is in use, access is denied, or security software blocks an add-on.
 
 ## [1.3.0] - 2026-11-09
 
