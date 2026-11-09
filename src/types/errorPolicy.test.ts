@@ -13,6 +13,7 @@ const operationalErrors = [
   'Cannot install an add-on from inside the X-Plane directory',
   'Failed to scan (C:\\X-Plane 12\\Custom Scenery\\AXP_Florida_2): Cannot install from X-Plane directory. Please drag files from outside X-Plane folder',
   'Operation did not complete successfully because the file contains a virus (os error 225)',
+  'Failed to delete existing file: "D:\\FlyWithLua\\Scripts\\example.lua": Die Datei wird von einem anderen Prozess verwendet. (os error 32)',
   'Invalid or incomplete 7z archive',
   'Failed to scan (/Downloads/aircraft.7z.002): Missing split archive volume for aircraft.7z.002: aircraft.7z.001',
   'File verification failed for 1 file(s): aircraft.acf: file content does not match the downloaded package',
@@ -45,5 +46,11 @@ describe('error report policy', () => {
         message: 'Unexpected invariant violation while building an installation task',
       }).reportable,
     ).toBe(true)
+  })
+
+  it('keeps an unrelated broken pipe reportable', () => {
+    expect(getErrorReportPolicy('Unexpected command stream failure (os error 32)').reportable).toBe(
+      true,
+    )
   })
 })

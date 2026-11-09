@@ -275,6 +275,26 @@ fn format_install_error_for_display(error: &anyhow::Error) -> String {
     let raw = format!("{:#}", error);
     let lower = raw.to_ascii_lowercase();
 
+    if cfg!(windows)
+        && error.chain().any(|cause| {
+            cause
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|io_error| matches!(io_error.raw_os_error(), Some(32 | 33)))
+        })
+    {
+        return format!(
+            "A file needed for this installation is in use. Close X-Plane and any other program using the file, then try installing again.\n{}",
+            raw
+        );
+    }
+
+    if cfg!(windows) && lower.contains("(os error 225)") {
+        return format!(
+            "Security software blocked access to an add-on file. Check the detection history and verify the add-on with its publisher before trying again.\n{}",
+            raw
+        );
+    }
+
     if lower.contains("missing split archive volume")
         || lower.contains("could not open next volume")
         || lower.contains("unexpected eof")
@@ -2565,6 +2585,18 @@ impl Installer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn locked_install_file_explains_how_to_retry() {
+        let error = anyhow::Error::new(std::io::Error::from_raw_os_error(32))
+            .context("Failed to delete existing file: example.lua");
+        let message = format_install_error_for_display(&error);
+
+        assert!(message.contains("Close X-Plane"));
+        assert!(message.contains("example.lua"));
+        assert!(message.contains("(os error 32)"));
+    }
 
     fn install_task(addon_type: AddonType, target_path: &str) -> InstallTask {
         InstallTask {

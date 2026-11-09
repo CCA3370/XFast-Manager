@@ -37,7 +37,7 @@ import type {
   SceneryIndexScanResult,
   AddonUpdateDrawerTask,
 } from '@/types'
-import { parseApiError, getErrorMessage } from '@/types'
+import { getErrorMessage } from '@/types'
 
 // Lazy load heavy components to reduce initial render time
 const SceneryEntryCard = defineAsyncComponent(() => import('@/components/SceneryEntryCard.vue'))
@@ -1572,14 +1572,7 @@ async function handleDeleteEntryConfirm() {
     toastStore.success(t('sceneryManager.deleteSuccess'))
     showDeleteConfirmModal.value = false
   } catch (error) {
-    const apiError = parseApiError(error)
-    if (apiError) {
-      const errorKey = `errors.${apiError.code}`
-      const localizedMessage = t(errorKey) !== errorKey ? t(errorKey) : apiError.message
-      modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + localizedMessage)
-    } else {
-      modalStore.showError(t('sceneryManager.deleteFailed') + ': ' + getErrorMessage(error))
-    }
+      modalStore.showError(error, t('sceneryManager.deleteFailed'))
   } finally {
     isDeletingEntry.value = false
   }

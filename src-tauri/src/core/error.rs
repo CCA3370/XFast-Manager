@@ -270,7 +270,7 @@ impl std::error::Error for ApiError {}
 fn classify_windows_raw_os_error(code: i32) -> Option<ApiErrorCode> {
     match code {
         5 => Some(ApiErrorCode::PermissionDenied),
-        21 | 999 => Some(ApiErrorCode::EnvironmentError),
+        21 | 32 | 33 | 999 => Some(ApiErrorCode::EnvironmentError),
         225 | 483 => Some(ApiErrorCode::ExternalSoftwareBlocked),
         _ => None,
     }
@@ -614,17 +614,15 @@ mod tests {
 
     #[test]
     fn windows_environment_codes_have_non_reportable_categories() {
-        assert_eq!(
-            classify_windows_raw_os_error(21),
-            Some(ApiErrorCode::EnvironmentError)
-        );
+        for code in [21, 32, 33, 999] {
+            assert_eq!(
+                classify_windows_raw_os_error(code),
+                Some(ApiErrorCode::EnvironmentError)
+            );
+        }
         assert_eq!(
             classify_windows_raw_os_error(225),
             Some(ApiErrorCode::ExternalSoftwareBlocked)
-        );
-        assert_eq!(
-            classify_windows_raw_os_error(999),
-            Some(ApiErrorCode::EnvironmentError)
         );
     }
 }

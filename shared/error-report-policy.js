@@ -59,6 +59,7 @@ const OPERATIONAL_ERROR_PATTERNS = Object.freeze([
   'cannot install from x-plane directory',
   'cannot install from the x-plane directory',
   'no gateway scenery selected',
+  'close x-plane and any other program using the file, then try installing again.',
   '[permission_denied]',
   '(os error 1)',
   '(os error 2)',
@@ -95,6 +96,11 @@ export function isOperationalErrorMessage(message) {
   const lower = String(message || '').toLowerCase()
 
   if (OPERATIONAL_ERROR_PATTERNS.some((pattern) => lower.includes(pattern))) {
+    return true
+  }
+
+  // Legacy Windows installers included the raw sharing error after this operation.
+  if (/\bfailed to delete existing (?:file|folder): [^\r\n]+ \(os error (?:32|33)\)/.test(lower)) {
     return true
   }
 
