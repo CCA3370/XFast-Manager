@@ -169,10 +169,63 @@
       </section>
 
       <section v-show="activeGroup === 'scenery'" id="settings-scenery" :class="panel">
-        <p :class="helpStyle">{{ t('sceneryManager.subtitle') }}</p>
-        <RouterLink :to="{ path: '/management', query: { tab: 'scenery' } }" :class="primaryStyle">
-          {{ t('sceneryManager.openManager') }}
-        </RouterLink>
+        <div class="space-y-2">
+          <h2 :class="sectionTitle">{{ t('settingsPanels.scenery') }}</h2>
+          <p :class="helpStyle">{{ t('sceneryManager.subtitle') }}</p>
+        </div>
+        <SettingToggle
+          :label="t('settings.sceneryAutoSort')"
+          :description="
+            t(
+              store.autoSortScenery
+                ? 'settings.sceneryAutoSortDesc'
+                : 'settingsPanels.sceneryManualHelp',
+            )
+          "
+          :model-value="store.autoSortScenery"
+          :disabled="savingAutoSort || isRebuilding || sceneryStore.isSaving"
+          @update:model-value="confirmAutoSort"
+        />
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            v-if="!sceneryStore.needsDatabaseReset"
+            type="button"
+            :disabled="
+              isRebuilding ||
+              !store.xplanePath ||
+              sceneryStore.isSaving ||
+              sceneryStore.hasLocalChanges
+            "
+            :title="
+              t(
+                sceneryStore.indexExists
+                  ? 'settings.rebuildIndexTooltip'
+                  : 'settings.createIndexTooltip',
+              )
+            "
+            :class="buttonStyle"
+            @click="handleRebuildIndex"
+          >
+            {{
+              t(
+                isRebuilding
+                  ? 'settings.rebuilding'
+                  : sceneryStore.indexExists
+                    ? 'settings.rebuildIndex'
+                    : 'settings.createIndex',
+              )
+            }}
+          </button>
+          <RouterLink
+            :to="{ path: '/management', query: { tab: 'scenery' } }"
+            :class="primaryStyle"
+          >
+            {{ t('sceneryManager.openManager') }}
+          </RouterLink>
+        </div>
+        <p v-if="!store.xplanePath" :class="helpStyle">
+          {{ t('settings.sceneryAutoSortNeedPath') }}
+        </p>
       </section>
 
       <section v-show="activeGroup === 'updates'" id="settings-updates" :class="panel">
@@ -366,6 +419,7 @@ import { logger, logDebug, logError } from '@/services/logger'
 import { useAppStore, type LogLevel } from '@/stores/app'
 import { useManagementStore } from '@/stores/management'
 import { useModalStore } from '@/stores/modal'
+import { useSceneryStore } from '@/stores/scenery'
 import { useToastStore } from '@/stores/toast'
 import { useUpdateStore } from '@/stores/update'
 import { AddonType, getErrorMessage } from '@/types'
@@ -377,6 +431,7 @@ const managementStore = useManagementStore()
 const toast = useToastStore()
 const modal = useModalStore()
 const updateStore = useUpdateStore()
+const sceneryStore = useSceneryStore()
 
 const groups = [
   { id: 'xplane', title: 'settingsPanels.xplane' },
@@ -615,6 +670,51 @@ async function handleCopyLogs() {
     toast.success(t('settings.logsCopied'))
   } else {
     modal.showError(t('common.error'))
+  }
+}
+
+const savingAutoSort = ref(false)
+const isRebuilding = ref(false)
+
+function confirmAutoSort(enabled: boolean) {
+  if (!enabled) {
+    void saveAutoSort(false)
+    return
+  }
+  modal.showConfirm({
+    title: t('settings.sceneryAutoSort'),
+    message: t('settingsPanels.enableSceneryHelp'),
+    confirmText: t('common.confirm'),
+    cancelText: t('common.cancel'),
+    type: 'warning',
+    onConfirm: () => void saveAutoSort(true),
+    onCancel: () => {},
+  })
+}
+
+async function saveAutoSort(enabled: boolean) {
+  if (savingAutoSort.value) return
+  savingAutoSort.value = true
+  try {
+    await store.setAutoSortScenery(enabled)
+  } catch (error) {
+    modal.showError(error)
+  } finally {
+    savingAutoSort.value = false
+  }
+}
+
+async function handleRebuildIndex() {
+  if (isRebuilding.value || !store.xplanePath) return
+  isRebuilding.value = true
+  try {
+    await invoke('rebuild_scenery_index', { xplanePath: store.xplanePath })
+    await sceneryStore.loadData()
+    toast.success(t('settings.indexRebuilt'))
+  } catch (e) {
+    modal.showError(t('settings.indexRebuildFailed') + ': ' + String(e))
+  } finally {
+    isRebuilding.value = false
   }
 }
 

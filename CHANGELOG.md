@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Installation Progress** - See when the app is preparing an installation, before files start copying.
 - **Faster Installation** - Large ZIP archives and add-on folders take less time to prepare and install.
 - **Refreshed Settings Page** - Settings tabs, switches, input fields, buttons and collapsible sections now share one consistent look, with clearer highlights for the active tab and primary actions, and smoother hover and focus feedback.
+- **Scenery Settings Moved to Settings** - The scenery auto-sort switch and the rebuild/create index action now live in the Settings page under Scenery, so you no longer need to open the Scenery Manager to change them.
 
 ### Fixed
 
