@@ -41,6 +41,7 @@
 
           <div
             class="px-5 py-4 max-h-[55vh] overflow-y-auto text-sm leading-relaxed text-gray-700 dark:text-gray-200 markdown-content will-change-transform"
+            @click="openImage"
             v-html="renderedMarkdown"
           ></div>
 
@@ -79,11 +80,27 @@ const updateStore = useUpdateStore()
 
 const renderedMarkdown = computed(() => {
   const markdown = updateStore.postUpdateReleaseNotes || ''
-  return marked(markdown)
+  return (marked(markdown) as string).replace(/<img(?=[\s>])/g, '<img loading="lazy"')
 })
 
 function close() {
   updateStore.dismissPostUpdateChangelog()
+}
+
+// Remote changelog images are rendered from GitHub release notes / the bundled
+// changelog. A click opens the full-size image in the user's browser.
+async function openImage(event: MouseEvent) {
+  const target = event.target as HTMLElement | null
+  if (!target || target.tagName !== 'IMG') return
+  const src = target.getAttribute('src')
+  if (!src) return
+
+  try {
+    await invoke('open_url', { url: src })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    logError(`Failed to open changelog image: ${message}`, 'update')
+  }
 }
 
 async function openRelease() {
@@ -331,5 +348,21 @@ async function openRelease() {
 
 .markdown-content :deep(em) {
   font-style: italic;
+}
+
+.markdown-content :deep(img) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.75em 0;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(229 231 235);
+  background-color: rgb(243 244 246);
+  cursor: zoom-in;
+}
+
+:root.dark .markdown-content :deep(img) {
+  border-color: rgb(55 65 81);
+  background-color: rgb(31 41 55);
 }
 </style>
