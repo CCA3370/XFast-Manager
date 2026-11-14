@@ -358,7 +358,9 @@ impl Installer {
             })
             .collect();
         for directory in directories {
-            fs::create_dir_all(target.join(directory))?;
+            let directory = target.join(directory);
+            validate_archive_parent(target, &directory)?;
+            fs::create_dir_all(directory)?;
         }
 
         let write_file = |entry: &ZipInstallEntry<'_>,
@@ -457,70 +459,82 @@ impl Installer {
         let entries = sevenz_install_entries(package, internal_root);
         anyhow::ensure!(!entries.is_empty(), "No files match the selected 7z root");
         let mut files = HashMap::new();
+        let mut directories = std::collections::HashSet::new();
         for (index, relative) in entries {
             let entry = &package.archive.files[index];
             if entry.is_directory() {
-                fs::create_dir_all(target.join(relative))?;
+                directories.insert(relative);
             } else {
                 if let Some(parent) = relative.parent() {
-                    fs::create_dir_all(target.join(parent))?;
+                    directories.insert(parent.to_path_buf());
                 }
                 files.insert(index, relative);
             }
         }
+        for directory in directories {
+            let directory = target.join(directory);
+            validate_archive_parent(target, &directory)?;
+            fs::create_dir_all(directory)?;
+        }
         let groups = package.groups(files.keys().copied());
         let compute_hashes = ctx.inline_hash_collection_enabled.load(Ordering::SeqCst);
-        let write_group = |block, indices: &[usize], discard: &mut [u8], buffer: &mut [u8]| {
-            package.read_group(
-                block,
-                indices,
-                discard,
-                || check_archive_cancelled(&self.task_control),
-                |index, entry, input| {
-                    let relative = &files[&index];
-                    let destination = target.join(relative);
-                    let mut output = tempfile::NamedTempFile::new_in(
-                        destination.parent().expect("target parent"),
-                    )?;
-                    let mut hasher = compute_hashes.then(Sha256::new);
-                    let display = relative
-                        .file_name()
-                        .map(|name| name.to_string_lossy().into_owned());
-                    let written = copy_with_buffer(input, &mut output, buffer, |bytes| {
-                        check_archive_cancelled(&self.task_control)?;
-                        if let Some(hasher) = &mut hasher {
-                            hasher.update(bytes);
+        let write_group =
+            |block,
+             indices: &[usize],
+             reader: &mut std::io::BufReader<crate::archive_reader::ArchiveReader>,
+             discard: &mut [u8],
+             buffer: &mut [u8]| {
+                package.read_group(
+                    block,
+                    indices,
+                    reader,
+                    discard,
+                    || check_archive_cancelled(&self.task_control),
+                    |index, entry, input| {
+                        let relative = &files[&index];
+                        let destination = target.join(relative);
+                        let mut output = tempfile::NamedTempFile::new_in(
+                            destination.parent().expect("target parent"),
+                        )?;
+                        let mut hasher = compute_hashes.then(Sha256::new);
+                        let display = relative
+                            .file_name()
+                            .map(|name| name.to_string_lossy().into_owned());
+                        let written = copy_with_buffer(input, &mut output, buffer, |bytes| {
+                            check_archive_cancelled(&self.task_control)?;
+                            if let Some(hasher) = &mut hasher {
+                                hasher.update(bytes);
+                            }
+                            ctx.add_bytes(bytes.len() as u64);
+                            ctx.emit_progress(display.clone(), InstallPhase::Installing);
+                            Ok(())
+                        })?;
+                        if written != entry.size {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::UnexpectedEof,
+                                "Truncated 7z member",
+                            ));
                         }
-                        ctx.add_bytes(bytes.len() as u64);
-                        ctx.emit_progress(display.clone(), InstallPhase::Installing);
+                        check_archive_cancelled(&self.task_control)?;
+                        if destination.is_file() {
+                            let _ = remove_readonly_attribute(&destination);
+                        }
+                        output.persist(&destination).map_err(|error| error.error)?;
+                        if let Some(hasher) = hasher {
+                            let path = relative.to_string_lossy().replace('\\', "/");
+                            ctx.inline_hashes.lock().unwrap().insert(
+                                path.clone(),
+                                crate::models::FileHash {
+                                    path,
+                                    hash: format!("{:x}", hasher.finalize()),
+                                    algorithm: crate::models::HashAlgorithm::Sha256,
+                                },
+                            );
+                        }
                         Ok(())
-                    })?;
-                    if written != entry.size {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::UnexpectedEof,
-                            "Truncated 7z member",
-                        ));
-                    }
-                    check_archive_cancelled(&self.task_control)?;
-                    if destination.is_file() {
-                        let _ = remove_readonly_attribute(&destination);
-                    }
-                    output.persist(&destination).map_err(|error| error.error)?;
-                    if let Some(hasher) = hasher {
-                        let path = relative.to_string_lossy().replace('\\', "/");
-                        ctx.inline_hashes.lock().unwrap().insert(
-                            path.clone(),
-                            crate::models::FileHash {
-                                path,
-                                hash: format!("{:x}", hasher.finalize()),
-                                algorithm: crate::models::HashAlgorithm::Sha256,
-                            },
-                        );
-                    }
-                    Ok(())
-                },
-            )
-        };
+                    },
+                )
+            };
         let groups: Vec<_> = groups.into_iter().collect();
         let mut destinations = std::collections::HashSet::with_capacity(files.len());
         let unique = files.values().all(|path| {
@@ -537,13 +551,20 @@ impl Installer {
         if let Some(pool) = pool {
             pool.install(|| {
                 groups.par_iter().try_for_each_init(
-                    || (vec![0; STREAM_BUFFER_SIZE], vec![0; STREAM_BUFFER_SIZE]),
-                    |(discard, buffer), (block, indices)| {
-                        write_group(*block, indices, discard, buffer)
+                    || {
+                        (
+                            package.buffered_input(),
+                            vec![0; STREAM_BUFFER_SIZE],
+                            vec![0; STREAM_BUFFER_SIZE],
+                        )
+                    },
+                    |(reader, discard, buffer), (block, indices)| {
+                        write_group(*block, indices, reader, discard, buffer)
                     },
                 )
             })?;
         } else {
+            let mut reader = package.buffered_input();
             let mut discard = vec![0; STREAM_BUFFER_SIZE];
             let mut buffer = vec![0; STREAM_BUFFER_SIZE];
             // Empty files follow streamed blocks, matching archive extraction order.
@@ -552,7 +573,7 @@ impl Installer {
                 .filter(|(block, _)| block.is_some())
                 .chain(groups.iter().filter(|(block, _)| block.is_none()))
             {
-                write_group(*block, indices, &mut discard, &mut buffer)?;
+                write_group(*block, indices, &mut reader, &mut discard, &mut buffer)?;
             }
         }
         package.check_source()?;
@@ -581,7 +602,7 @@ impl Installer {
     ) -> Result<()> {
         let temp_dir = tempfile::Builder::new()
             .prefix("xfastmanager_7z_fallback_")
-            .tempdir()
+            .tempdir_in(target.parent().unwrap_or(target))
             .context("Failed to create temp directory for 7z fallback")?;
 
         let extracted_root = temp_dir.path();
@@ -589,12 +610,12 @@ impl Installer {
 
         let source_path = if let Some(root) = internal_root {
             let normalized = root.replace('\\', "/").trim_matches('/').to_string();
-            let candidate =
-                extracted_root.join(normalized.replace('/', std::path::MAIN_SEPARATOR_STR));
+            let root = sanitize_path(Path::new(&normalized)).context("Unsafe 7z fallback root")?;
+            let candidate = extracted_root.join(&root);
             if !candidate.exists() {
                 return Err(anyhow::anyhow!(
                     "7z fallback extracted successfully, but internal root not found: {}",
-                    root
+                    root.display()
                 ));
             }
             candidate
@@ -695,9 +716,28 @@ impl Installer {
                 }
             }
 
-            match cmd.output() {
-                Ok(output) => {
-                    if output.status.success() {
+            cmd.stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x08000000);
+            }
+            match cmd.spawn() {
+                Ok(mut child) => {
+                    let status = loop {
+                        if let Err(error) = check_archive_cancelled(&self.task_control) {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            return Err(error.into());
+                        }
+                        if let Some(status) = child.try_wait()? {
+                            break status;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    };
+                    if status.success() {
                         logger::log_info(
                             &format!("7z fallback succeeded with executable: {}", key),
                             Some("installer"),
@@ -705,15 +745,7 @@ impl Installer {
                         return Ok(());
                     }
 
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    failed.push(format!(
-                        "{} -> exit {} stderr='{}' stdout='{}'",
-                        key,
-                        output.status,
-                        truncate_for_log(stderr.as_ref(), 240),
-                        truncate_for_log(stdout.as_ref(), 240)
-                    ));
+                    failed.push(format!("{key} -> exit {status}"));
                 }
                 Err(err) => {
                     failed.push(format!("{} -> {}", key, err));
@@ -801,6 +833,7 @@ impl Installer {
         fs::create_dir_all(target)?;
         let mut reader = crate::rar_stream::RarStream::open(archive, password)?;
         let mut files = 0;
+        let mut directories = std::collections::HashSet::new();
         while let Some(entry) = reader.next()? {
             check_archive_cancelled(&self.task_control)?;
             let relative = archive_entry_destination(&entry.name, internal_root);
@@ -810,7 +843,10 @@ impl Installer {
             };
             let path = target.join(&relative);
             let parent = path.parent().context("Missing RAR output parent")?;
-            fs::create_dir_all(parent)?;
+            if directories.insert(parent.to_path_buf()) {
+                validate_archive_parent(target, parent)?;
+                fs::create_dir_all(parent)?;
+            }
             let mut output = tempfile::NamedTempFile::new_in(parent)?;
             let mut remaining = entry.size;
             let display = relative
@@ -856,14 +892,6 @@ impl Installer {
         anyhow::ensure!(files > 0, "No files match the selected RAR root");
         Ok(())
     }
-}
-
-fn truncate_for_log(text: &str, max_chars: usize) -> String {
-    if text.chars().count() <= max_chars {
-        return text.to_string();
-    }
-    let truncated: String = text.chars().take(max_chars).collect();
-    format!("{}...", truncated)
 }
 
 #[cfg(test)]

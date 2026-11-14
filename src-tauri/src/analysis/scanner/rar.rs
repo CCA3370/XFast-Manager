@@ -125,12 +125,10 @@ impl Scanner {
                         Ok(nested_items) => {
                             detected.extend(nested_items);
                         }
-                        Err(e) => {
-                            if e.downcast_ref::<PasswordRequiredError>().is_some() {
-                                return Err(anyhow::anyhow!(NestedPasswordRequiredError {
-                                    parent_archive: archive_path.to_string_lossy().to_string(),
-                                    nested_archive: nested_path.clone(),
-                                }));
+                        Err(error) => {
+                            let e = ctx.nested_scan_error(error, archive_path, &nested_path);
+                            if e.downcast_ref::<NestedPasswordRequiredError>().is_some() {
+                                return Err(e);
                             }
                             crate::logger::log_info(
                                 &format!("Failed to scan nested archive {}: {}", nested_path, e),
@@ -526,48 +524,28 @@ impl Scanner {
         target_file: &str,
         password: Option<&str>,
     ) -> Result<String> {
-        let normalized_archive_path =
-            crate::archive_input::normalize_archive_entry_path(archive_path);
-
-        // Create secure temp directory using tempfile crate
-        let temp_dir = tempfile::Builder::new()
-            .prefix("xfi_rar_read_")
-            .tempdir()
-            .context("Failed to create secure temp directory")?;
-
-        // Extract to temp using the typestate pattern (with password if provided)
-        let archive_builder = if let Some(pwd) = password {
-            unrar::Archive::with_password(&normalized_archive_path, pwd)
-        } else {
-            unrar::Archive::new(&normalized_archive_path)
-        };
-
-        let mut archive = archive_builder
-            .open_for_processing()
-            .map_err(|e| anyhow::anyhow!("Failed to open RAR for processing: {:?}", e))?;
-
-        while let Some(header) = archive
-            .read_header()
-            .map_err(|e| anyhow::anyhow!("Failed to read RAR header: {:?}", e))?
-        {
-            archive = if header.entry().is_file() {
-                header
-                    .extract_with_base(temp_dir.path())
-                    .map_err(|e| anyhow::anyhow!("Failed to extract RAR entry: {:?}", e))?
-            } else {
-                header
-                    .skip()
-                    .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
-            };
+        let normalized = crate::archive_input::normalize_archive_entry_path(archive_path);
+        let name = target_file.replace('\\', "/");
+        crate::installer::sanitize_path(Path::new(&name)).context("Unsafe RAR text entry")?;
+        let mut archive = crate::rar_stream::RarStream::open(&normalized, password)?;
+        while let Some(entry) = archive.next()? {
+            if !entry.directory && !entry.redirected && entry.name == name {
+                anyhow::ensure!(entry.size <= 1024 * 1024, "RAR text entry exceeds 1 MiB");
+                let mut bytes = Vec::with_capacity(entry.size as usize);
+                archive.read(|chunk| {
+                    if bytes.len() + chunk.len() > entry.size as usize {
+                        return Err(std::io::Error::other(
+                            "RAR text entry exceeds its declared size",
+                        ));
+                    }
+                    bytes.extend_from_slice(chunk);
+                    Ok(())
+                })?;
+                anyhow::ensure!(bytes.len() as u64 == entry.size, "Truncated RAR text entry");
+                return Ok(String::from_utf8(bytes)?);
+            }
+            archive.skip()?;
         }
-
-        // Sanitize the file path to prevent path traversal using proper sanitization
-        let safe_path = crate::installer::sanitize_path(Path::new(target_file))
-            .ok_or_else(|| anyhow::anyhow!("Unsafe path in RAR archive: {}", target_file))?;
-        let file_path = temp_dir.path().join(safe_path);
-        let content = fs::read_to_string(&file_path).context("Failed to read file from RAR")?;
-
-        // TempDir automatically cleans up when dropped
-        Ok(content)
+        anyhow::bail!("RAR member not found: {name}")
     }
 }

@@ -276,6 +276,35 @@ fn archive_entry_destination(name: &str, internal_root: Option<&str>) -> Option<
     sanitize_path(Path::new(relative)).filter(|path| !path.as_os_str().is_empty())
 }
 
+fn validate_archive_parent(root: &Path, parent: &Path) -> Result<()> {
+    let relative = parent
+        .strip_prefix(root)
+        .context("Archive path escaped the install root")?;
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        current.push(component);
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) => {
+                #[cfg(windows)]
+                let is_link = {
+                    use std::os::windows::fs::MetadataExt;
+                    metadata.file_attributes() & 0x400 != 0
+                };
+                #[cfg(not(windows))]
+                let is_link = metadata.file_type().is_symlink();
+                anyhow::ensure!(
+                    !is_link,
+                    "Archive output path crosses a filesystem link: {}",
+                    current.display()
+                );
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
+}
+
 fn sevenz_install_entries(
     package: &SevenzPackage,
     internal_root: Option<&str>,
@@ -2044,7 +2073,7 @@ impl Installer {
         for (index, (task, preparation)) in tasks.into_iter().zip(prepared).enumerate() {
             let sem = semaphore.clone();
             let ctx = ctx.clone();
-            let tc = task_control.child_session();
+            let tc = task_control.clone();
             let ah = app_handle.clone();
             let xp = xplane_path.clone();
             let atomic = atomic_install_enabled;
@@ -2124,7 +2153,7 @@ impl Installer {
                     progress_ctx.sevenz_package = preparation.sevenz;
                     progress_ctx.directory_plan = preparation.directory;
                     let mut installer = Installer::new(ah);
-                    installer.task_control = tc;
+                    installer.task_control = tc.child_session();
 
                     let mut task = task;
                     let install_started = Instant::now();

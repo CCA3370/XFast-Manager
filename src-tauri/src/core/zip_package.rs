@@ -279,6 +279,36 @@ mod tests {
         fs::write(&path, b"PK\x03\x04").unwrap();
         assert!(ZipPackage::open(&path, None).is_err());
     }
+
+    #[test]
+    fn numbered_zip_parts_share_one_index_and_track_the_complete_revision() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("original.zip");
+        write_zip(
+            &path,
+            &[("Addon/plane.acf", b"the file crosses volume boundaries")],
+        );
+        let bytes = fs::read(path).unwrap();
+        let first = temp.path().join("addon.zip.001");
+        let second = temp.path().join("addon.zip.002");
+        fs::write(&first, &bytes[..48]).unwrap();
+        fs::write(&second, &bytes[48..]).unwrap();
+        let zip = ZipPackage::open(&second, None).unwrap();
+        let summary = zip.summary();
+        assert_eq!(summary.compressed_size, bytes.len() as u64);
+        let revision = summary.source.unwrap();
+        assert_eq!(revision.volumes.len(), 1);
+        let mut data = Vec::new();
+        zip.reader()
+            .by_index(0)
+            .unwrap()
+            .read_to_end(&mut data)
+            .unwrap();
+        assert_eq!(data, b"the file crosses volume boundaries");
+        fs::write(&second, b"replacement").unwrap();
+        assert!(zip.check_source().is_err());
+        assert!(ZipPackage::open(&first, Some(&revision)).is_err());
+    }
 }
 
 #[cfg(test)]

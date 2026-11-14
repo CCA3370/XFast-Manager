@@ -586,7 +586,14 @@ impl Installer {
             "installer_timing"
         );
 
-        if task.extraction_chain.is_none() {
+        if task.selected_scenery_option.is_some() {
+            return self.install_task_atomic(task, ctx, xplane_path);
+        }
+
+        if atomic_install_enabled && task.extraction_chain.is_some() {
+            return self.install_task_atomic(task, ctx, xplane_path);
+        }
+        if task.extraction_chain.is_none() && !atomic_install_enabled {
             crate::archive_input::archive_workspace_space(
                 target.parent().unwrap_or(target),
                 ctx.task_sizes
@@ -594,13 +601,6 @@ impl Installer {
                     .copied()
                     .unwrap_or_default(),
             )?;
-        }
-        if task.selected_scenery_option.is_some() {
-            return self.install_task_atomic(task, ctx, xplane_path);
-        }
-
-        if atomic_install_enabled && task.extraction_chain.is_some() {
-            return self.install_task_atomic(task, ctx, xplane_path);
         }
         // Check if this is a nested archive installation
         if let Some(ref chain) = task.extraction_chain {
@@ -879,10 +879,12 @@ impl Installer {
                 check_nested_output_space(target, entries.iter().map(|entry| entry.source.size))?;
                 self.extract_zip_with_progress(&zip, target, root, ctx, password)?;
                 if ctx.inline_hash_collection_enabled.load(Ordering::SeqCst) {
-                    ctx.inline_hashes
-                        .lock()
-                        .unwrap()
-                        .extend(zip_expected_hashes(&zip, root));
+                    let hashes = zip_expected_hashes(&zip, root);
+                    if !hashes.is_empty() {
+                        ctx.inline_verified_count
+                            .store(hashes.len() as u64, Ordering::SeqCst);
+                        ctx.inline_verified.store(true, Ordering::SeqCst);
+                    }
                 }
                 Ok(())
             }
@@ -2076,6 +2078,17 @@ impl Installer {
 
         if let Some(zip) = &ctx.zip_package {
             zip.check_source()?;
+            if task.extraction_chain.is_none() && task.scenery_option().is_none() {
+                if let Some(hashes) = task
+                    .file_hashes
+                    .as_ref()
+                    .filter(|hashes| !hashes.is_empty())
+                {
+                    ctx.inline_verified_count
+                        .store(hashes.len() as u64, Ordering::SeqCst);
+                    ctx.inline_verified.store(true, Ordering::SeqCst);
+                }
+            }
         }
         if let Some(sevenz) = &ctx.sevenz_package {
             sevenz.check_source()?;

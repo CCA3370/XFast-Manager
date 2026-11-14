@@ -66,6 +66,7 @@ pub(super) struct ScanContext {
     passwords: HashMap<String, String>,
     zip_summary: Option<ZipSummary>,
     sevenz_summary: Option<ZipSummary>,
+    root_archive: Option<PathBuf>,
 }
 
 impl ScanContext {
@@ -77,6 +78,7 @@ impl ScanContext {
             passwords: HashMap::new(),
             zip_summary: None,
             sevenz_summary: None,
+            root_archive: None,
         }
     }
 
@@ -101,6 +103,18 @@ impl ScanContext {
     /// Get password for a nested archive by checking the password map
     /// Tries multiple key formats: full path, nested path, and filename
     fn get_nested_password(&self, parent_path: &str, nested_path: &str) -> Option<String> {
+        let root = self
+            .root_archive
+            .as_ref()
+            .map(|path| path.to_string_lossy());
+        let chain = self.member_path(nested_path);
+        if let Some(password) = root
+            .as_ref()
+            .and_then(|root| self.passwords.get(&format!("{root}/{chain}")))
+        {
+            return Some(password.clone());
+        }
+
         // Try full nested path: "parent.zip/nested.zip"
         let full_key = format!("{}/{}", parent_path, nested_path);
         if let Some(pwd) = self.passwords.get(&full_key) {
@@ -122,6 +136,41 @@ impl ScanContext {
         }
 
         None
+    }
+    fn member_path(&self, path: &str) -> String {
+        self.parent_chain
+            .iter()
+            .map(|member| member.internal_path.as_str())
+            .chain(std::iter::once(path))
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
+    fn nested_scan_error(
+        &self,
+        error: anyhow::Error,
+        parent: &Path,
+        member: &str,
+    ) -> anyhow::Error {
+        if error
+            .downcast_ref::<NestedPasswordRequiredError>()
+            .is_some()
+        {
+            return error;
+        }
+        if error.downcast_ref::<PasswordRequiredError>().is_some() {
+            return NestedPasswordRequiredError {
+                parent_archive: self
+                    .root_archive
+                    .as_deref()
+                    .unwrap_or(parent)
+                    .to_string_lossy()
+                    .into_owned(),
+                nested_archive: self.member_path(member),
+            }
+            .into();
+        }
+        error
     }
 }
 
@@ -661,7 +710,10 @@ impl Scanner {
         passwords: Option<&HashMap<String, String>>,
     ) -> Result<ScannedInput> {
         let original_input_path = path.to_string_lossy().to_string();
-        let mut ctx = ScanContext::new();
+        let mut ctx = ScanContext {
+            root_archive: Some(path.to_path_buf()),
+            ..ScanContext::new()
+        };
         // Insert all provided passwords into context
         // This includes outer archive passwords (key = archive path)
         // and nested archive passwords (key = "parent_path/nested_name")
@@ -3064,6 +3116,44 @@ mod tests {
         );
         assert_eq!(chain.final_internal_root.as_deref(), Some("Example"));
         assert_eq!(scenery.path, outer.to_string_lossy());
+        Ok(())
+    }
+
+    #[test]
+    fn nested_password_request_uses_the_complete_chain() -> anyhow::Result<()> {
+        use sevenz_rust2::{ArchiveEntry, ArchiveWriter, Password};
+        let temp = tempdir()?;
+        let inner = temp.path().join("locked.7z");
+        let mut writer = ArchiveWriter::create(&inner)?;
+        writer.set_content_methods(vec![
+            sevenz_rust2::encoder_options::AesEncoderOptions::new(Password::from("test")).into(),
+            sevenz_rust2::EncoderMethod::LZMA2.into(),
+        ]);
+        writer.set_encrypt_header(true);
+        writer.push_archive_entry(
+            ArchiveEntry::new_file("Example/Earth nav data/apt.dat"),
+            Some(APT_DAT_FIXTURE),
+        )?;
+        writer.finish()?;
+
+        let middle = temp.path().join("wrapper.zip");
+        let outer = temp.path().join("outer.zip");
+        crate::zip_package::write_zip(&middle, &[("files/locked.7z", &fs::read(inner)?)]);
+        crate::zip_package::write_zip(&outer, &[("wrapper.zip", &fs::read(middle)?)]);
+        let scanner = Scanner::new();
+        let result = scanner.scan_input(&outer, None).err().unwrap();
+        let password = result
+            .downcast_ref::<super::NestedPasswordRequiredError>()
+            .unwrap();
+        assert_eq!(password.nested_archive, "wrapper.zip/files/locked.7z");
+        let passwords = std::collections::HashMap::from([(
+            format!("{}/{}", outer.display(), password.nested_archive),
+            "test".to_string(),
+        )]);
+        let scan = scanner.scan_input(&outer, Some(&passwords))?;
+        assert_eq!(scan.items.len(), 1);
+        let chain = scan.items[0].extraction_chain.as_ref().unwrap();
+        assert_eq!(chain.archives[1].password.as_deref(), Some("test"));
         Ok(())
     }
 

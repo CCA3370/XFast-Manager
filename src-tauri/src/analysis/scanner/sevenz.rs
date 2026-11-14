@@ -348,12 +348,10 @@ impl Scanner {
                     Ok(nested_items) => {
                         detected.extend(nested_items);
                     }
-                    Err(e) => {
-                        if e.downcast_ref::<PasswordRequiredError>().is_some() {
-                            return Err(anyhow::anyhow!(NestedPasswordRequiredError {
-                                parent_archive: archive_path.to_string_lossy().to_string(),
-                                nested_archive: nested_path.clone(),
-                            }));
+                    Err(error) => {
+                        let e = ctx.nested_scan_error(error, archive_path, &nested_path);
+                        if e.downcast_ref::<NestedPasswordRequiredError>().is_some() {
+                            return Err(e);
                         }
                         crate::logger::log_info(
                             &format!("Failed to scan nested archive {}: {}", nested_path, e),

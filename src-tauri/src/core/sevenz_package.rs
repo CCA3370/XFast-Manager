@@ -120,10 +120,15 @@ impl SevenzPackage {
         groups
     }
 
+    pub fn buffered_input(&self) -> BufReader<ArchiveReader> {
+        BufReader::with_capacity(256 * 1024, self.input.clone())
+    }
+
     pub fn read_group(
         &self,
         block: Option<usize>,
         indices: &[usize],
+        input: &mut BufReader<ArchiveReader>,
         discard: &mut [u8],
         mut check: impl FnMut() -> io::Result<()>,
         mut visit: impl FnMut(usize, &ArchiveEntry, &mut dyn Read) -> io::Result<()>,
@@ -135,11 +140,10 @@ impl SevenzPackage {
             }
             return Ok(());
         };
-        let mut input = BufReader::with_capacity(256 * 1024, self.input.clone());
         let mut index = self.archive.stream_map.block_first_file_index[block];
         let mut pending = indices.iter().copied().peekable();
         let mut callback_error = None;
-        let decode = BlockDecoder::new(1, block, &self.archive, &self.password, &mut input)
+        let decode = BlockDecoder::new(1, block, &self.archive, &self.password, input)
             .for_each_entries(&mut |entry, reader| {
                 let result = (|| -> io::Result<bool> {
                     check()?;
@@ -196,6 +200,7 @@ impl SevenzPackage {
         self.read_group(
             block,
             &[index],
+            &mut self.buffered_input(),
             &mut discard,
             || (check.borrow_mut())(),
             |_, entry, input| {
@@ -234,10 +239,12 @@ impl SevenzPackage {
             });
         let mut texts = HashMap::new();
         let mut discard = vec![0; 256 * 1024];
+        let mut input = self.buffered_input();
         for (block, entries) in self.groups(indices) {
             let _ = self.read_group(
                 block,
                 &entries,
+                &mut input,
                 &mut discard,
                 || {
                     if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
