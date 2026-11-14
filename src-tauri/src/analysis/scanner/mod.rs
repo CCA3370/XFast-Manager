@@ -545,16 +545,6 @@ impl Scanner {
         false
     }
 
-    /// Check if a path is inside any of the given directories
-    fn is_path_inside_dirs(file_path: &Path, dirs: &HashSet<PathBuf>) -> bool {
-        for ancestor in file_path.ancestors().skip(1) {
-            if dirs.contains(ancestor) {
-                return true;
-            }
-        }
-        false
-    }
-
     /// Check if a string path is inside any aircraft directory (for archive paths)
     /// Used to skip .xpl files that are embedded inside aircraft packages
     #[inline]
@@ -738,8 +728,6 @@ impl Scanner {
         let mut aircraft_dirs: HashSet<PathBuf> = HashSet::new();
         let mut skip_dirs: HashSet<PathBuf> = HashSet::new();
         let mut xlua_roots = XluaRuntimeRoots::default();
-        // Track directories where Lua scripts were found, so subdirectories' .lua files are skipped
-        let mut lua_dirs: HashSet<PathBuf> = HashSet::new();
 
         // Queue for breadth-first traversal: (directory_path, current_depth)
         let mut queue: VecDeque<(PathBuf, usize)> = VecDeque::new();
@@ -872,18 +860,9 @@ impl Scanner {
                     continue;
                 }
 
-                // Lua script detection (lowest priority - only standalone .lua files)
-                // Skip if a parent directory already has .lua files detected
-                if !Self::is_path_inside_dirs(file_path, &lua_dirs)
-                    && !xlua_roots.contains(file_path)
-                {
+                if !xlua_roots.contains(file_path) {
                     if let Some(item) = self.check_lua_script(file_path, dir)? {
-                        // Record this directory so subdirectories' .lua files are skipped
-                        if let Some(parent) = file_path.parent() {
-                            lua_dirs.insert(parent.to_path_buf());
-                        }
                         detected.push(item);
-                        continue;
                     }
                 }
             }
@@ -1856,6 +1835,7 @@ impl Scanner {
             format!("{}/", lua_parent.trim_matches('/'))
         };
 
+        let mut has_other_script = false;
         let mut inferred: HashMap<String, bool> = HashMap::new(); // candidate -> has_nested_entry
 
         for entry in entries {
@@ -1891,6 +1871,9 @@ impl Scanner {
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_ascii_lowercase();
+            if first_lower.ends_with(".lua") && !relative.contains('/') {
+                has_other_script = true;
+            }
             if first_lower.ends_with(".lua")
                 || first_lower.ends_with(".txt")
                 || first_lower.ends_with(".md")
@@ -1953,6 +1936,10 @@ impl Scanner {
             if !exact_stem.is_empty() {
                 return exact_stem;
             }
+        }
+
+        if has_other_script {
+            return Vec::new();
         }
 
         result.sort();

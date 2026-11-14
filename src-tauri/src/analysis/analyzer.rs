@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -466,7 +466,64 @@ impl Analyzer {
         // Apply priority filtering: remove plugins inside aircraft/scenery
         result = self.filter_by_priority(result);
 
-        result
+        self.filter_lua_companion_scripts(result)
+    }
+
+    fn lua_script_location(item: &DetectedItem) -> (Vec<&str>, PathBuf) {
+        if let Some(chain) = &item.extraction_chain {
+            let mut archives = vec![item.path.as_str()];
+            archives.extend(
+                chain
+                    .archives
+                    .iter()
+                    .map(|entry| entry.internal_path.as_str()),
+            );
+            let root = chain.final_internal_root.as_deref().unwrap_or_default();
+            (archives, Path::new(root).join(&item.display_name))
+        } else if crate::archive_input::detect_archive_format(Path::new(&item.path)).is_some() {
+            let root = item.archive_internal_root.as_deref().unwrap_or_default();
+            (vec![&item.path], Path::new(root).join(&item.display_name))
+        } else {
+            (Vec::new(), PathBuf::from(&item.path))
+        }
+    }
+
+    fn filter_lua_companion_scripts(&self, mut items: Vec<DetectedItem>) -> Vec<DetectedItem> {
+        let hidden: HashSet<_> = {
+            let mut companions: HashMap<_, HashSet<PathBuf>> = HashMap::new();
+            let scripts: Vec<_> = items
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| item.addon_type == AddonType::LuaScript)
+                .map(|(index, item)| (index, item, Self::lua_script_location(item)))
+                .collect();
+            for (_, item, (archive, script)) in &scripts {
+                if let Some(parent) = script.parent() {
+                    companions.entry(archive).or_default().extend(
+                        item.companion_paths
+                            .iter()
+                            .map(|path| parent.join(path))
+                            .filter(|path| path != script),
+                    );
+                }
+            }
+            scripts
+                .iter()
+                .filter(|(_, _, (archive, script))| {
+                    companions
+                        .get(archive)
+                        .is_some_and(|roots| script.ancestors().any(|path| roots.contains(path)))
+                })
+                .map(|(index, _, _)| *index)
+                .collect()
+        };
+        let mut index = 0;
+        items.retain(|_| {
+            let keep = !hidden.contains(&index);
+            index += 1;
+            keep
+        });
+        items
     }
 
     /// Resolve conflicts between Scenery and SceneryLibrary
@@ -511,8 +568,11 @@ impl Analyzer {
     /// Deduplicate items of the same type based on path hierarchy
     /// Optimized algorithm: O(n log n) instead of O(n²)
     fn deduplicate_same_type(&self, items: Vec<DetectedItem>) -> Vec<DetectedItem> {
-        if items.is_empty() {
-            return Vec::new();
+        if items
+            .first()
+            .is_none_or(|item| item.addon_type == AddonType::LuaScript)
+        {
+            return items;
         }
 
         // Sort by path depth (shallow to deep) for efficient processing
@@ -1641,6 +1701,39 @@ mod tests {
             .exists());
 
         let _ = fs::remove_dir_all(staged_path.parent().unwrap());
+    }
+
+    #[test]
+    fn lua_companion_modules_are_kept_in_the_bundle_without_hiding_independent_scripts() {
+        use std::io::Write;
+
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("scripts.zip");
+        let mut writer = zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+        for (name, content) in [
+            (
+                "Release/Simple Ground Service.lua",
+                "dofile(SCRIPT_DIRECTORY .. 'Simple Ground Service/profiles.lua')",
+            ),
+            ("Release/Simple Ground Service/profiles.lua", "return {}"),
+            ("Release/Independent.lua", "return true"),
+        ] {
+            writer
+                .start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(content.as_bytes()).unwrap();
+        }
+        writer.finish().unwrap();
+
+        let analyzer = Analyzer::new();
+        let items = analyzer.scanner.scan_path(&archive, None).unwrap();
+        let mut names: Vec<_> = analyzer
+            .deduplicate(items)
+            .into_iter()
+            .map(|item| item.display_name)
+            .collect();
+        names.sort();
+        assert_eq!(names, ["Independent.lua", "Simple Ground Service.lua"]);
     }
 
     #[test]

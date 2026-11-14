@@ -429,12 +429,14 @@ impl Scanner {
                 xlua_roots.annotate_plugin(&mut item, true);
                 // Add to skip prefixes
                 if let Some(ref internal_root) = item.archive_internal_root {
-                    let prefix: String = if internal_root.ends_with('/') {
-                        internal_root.clone()
-                    } else {
-                        format!("{}/", internal_root)
-                    };
-                    skip_prefixes.push(prefix);
+                    if item.addon_type != AddonType::LuaScript {
+                        let prefix: String = if internal_root.ends_with('/') {
+                            internal_root.clone()
+                        } else {
+                            format!("{}/", internal_root)
+                        };
+                        skip_prefixes.push(prefix);
+                    }
                 } else if item.addon_type == AddonType::Aircraft {
                     // Aircraft at archive root: skip all other markers in this archive
                     skip_prefixes.push(String::new());
@@ -944,12 +946,14 @@ impl Scanner {
                 xlua_roots.annotate_plugin(&mut item, true);
                 // Add to skip prefixes
                 if let Some(ref internal_root) = item.archive_internal_root {
-                    let prefix: String = if internal_root.ends_with('/') {
-                        internal_root.clone()
-                    } else {
-                        format!("{}/", internal_root)
-                    };
-                    skip_prefixes.push(prefix);
+                    if item.addon_type != AddonType::LuaScript {
+                        let prefix: String = if internal_root.ends_with('/') {
+                            internal_root.clone()
+                        } else {
+                            format!("{}/", internal_root)
+                        };
+                        skip_prefixes.push(prefix);
+                    }
                 } else if item.addon_type == AddonType::Aircraft {
                     // Aircraft at archive root: skip all other markers in this archive
                     skip_prefixes.push(String::new());
@@ -1263,12 +1267,14 @@ impl Scanner {
                 xlua_roots.annotate_plugin(&mut item, true);
                 // Add to skip prefixes
                 if let Some(ref internal_root) = item.archive_internal_root {
-                    let prefix: String = if internal_root.ends_with('/') {
-                        internal_root.clone()
-                    } else {
-                        format!("{}/", internal_root)
-                    };
-                    skip_prefixes.push(prefix);
+                    if item.addon_type != AddonType::LuaScript {
+                        let prefix: String = if internal_root.ends_with('/') {
+                            internal_root.clone()
+                        } else {
+                            format!("{}/", internal_root)
+                        };
+                        skip_prefixes.push(prefix);
+                    }
                 } else if item.addon_type == AddonType::Aircraft {
                     // Aircraft at archive root: skip all other markers in this archive
                     skip_prefixes.push(String::new());

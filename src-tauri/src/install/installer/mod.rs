@@ -1971,7 +1971,12 @@ impl Installer {
                     let installer = Installer::new(ah);
 
                     let mut task = task;
-                    match installer.install_task_with_progress(&task, &progress_ctx, atomic, &xp) {
+                    match installer.install_task_with_progress(
+                        &mut task,
+                        &progress_ctx,
+                        atomic,
+                        &xp,
+                    ) {
                         Ok(_) => {
                             {
                                 let inline = progress_ctx.inline_hashes.lock().unwrap();
@@ -2609,7 +2614,7 @@ mod tests {
         assert!(message.contains("(os error 32)"));
     }
 
-    fn install_task(addon_type: AddonType, target_path: &str) -> InstallTask {
+    pub(super) fn install_task(addon_type: AddonType, target_path: &str) -> InstallTask {
         InstallTask {
             id: target_path.to_string(),
             addon_type,

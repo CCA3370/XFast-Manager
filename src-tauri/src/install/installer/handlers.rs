@@ -493,17 +493,38 @@ impl Installer {
         Ok(companions)
     }
 
+    fn prepare_lua_bundle(
+        task: &InstallTask,
+        source_dir: &Path,
+        bundle_entries: &[PathBuf],
+    ) -> Result<Option<HashMap<String, crate::models::FileHash>>> {
+        let script = source_dir.join(&bundle_entries[0]);
+        if !script.is_file() {
+            anyhow::bail!(
+                "Lua script not found in installation source: {}",
+                script.display()
+            );
+        }
+        if task.enable_verification {
+            crate::hash_collector::HashCollector::new()
+                .collect_directory_hashes(source_dir, bundle_entries)
+                .map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Install Lua script task (script + detected companions).
     fn install_lua_task_with_companions(
         &self,
-        task: &InstallTask,
-        source: &Path,
-        target: &Path,
+        task: &mut InstallTask,
         ctx: &ProgressContext,
-        password: Option<&str>,
     ) -> Result<()> {
         use tempfile::TempDir;
 
+        let source = super::task_source_path(task);
+        let target = Path::new(&task.target_path);
+        let password = task.password.as_deref();
         let scripts_dir = target
             .parent()
             .ok_or_else(|| anyhow::anyhow!("Lua target path has no parent: {:?}", target))?;
@@ -513,10 +534,6 @@ impl Installer {
         ))?;
 
         let mut bundle_entries = Self::get_lua_bundle_entries(task, target)?;
-
-        if !task.should_overwrite {
-            self.remove_lua_bundle_targets(scripts_dir, &bundle_entries)?;
-        }
 
         // Archive source (including nested archive chain): extract to staging first.
         if source.is_file()
@@ -540,7 +557,7 @@ impl Installer {
                     task.archive_internal_root.as_deref(),
                     ctx,
                     password,
-                    task.file_hashes.as_ref(),
+                    None,
                 )?;
             }
 
@@ -567,6 +584,7 @@ impl Installer {
                 bundle_entries = resolved_entries;
             }
 
+            task.file_hashes = Self::prepare_lua_bundle(task, staging.path(), &bundle_entries)?;
             if !task.should_overwrite {
                 self.remove_lua_bundle_targets(scripts_dir, &bundle_entries)?;
             }
@@ -580,47 +598,44 @@ impl Installer {
             return Ok(());
         }
 
-        // Direct file source: copy from the .lua parent directory.
-        if source.is_file() {
-            let source_dir = source
+        let source_dir = if source.is_file() {
+            source
                 .parent()
-                .ok_or_else(|| anyhow::anyhow!("Lua source file has no parent directory"))?;
-            self.copy_lua_bundle_from_directory_with_progress(
-                source_dir,
-                scripts_dir,
-                &bundle_entries,
-                ctx,
-                task.should_overwrite,
-            )?;
-            return Ok(());
-        }
-
-        // Directory source (fallback): copy directly from source directory.
-        if source.is_dir() {
-            self.copy_lua_bundle_from_directory_with_progress(
-                source,
-                scripts_dir,
-                &bundle_entries,
-                ctx,
-                task.should_overwrite,
-            )?;
-            return Ok(());
-        }
-
-        Err(anyhow::anyhow!(
-            "Source path is not a regular file or directory: {}",
-            source.display()
-        ))
+                .ok_or_else(|| anyhow::anyhow!("Lua source file has no parent directory"))?
+        } else if source.is_dir() {
+            source
+        } else {
+            anyhow::bail!(
+                "Source path is not a regular file or directory: {}",
+                source.display()
+            );
+        };
+        let hashes = Self::prepare_lua_bundle(task, source_dir, &bundle_entries)?;
+        self.copy_lua_bundle_from_directory_with_progress(
+            source_dir,
+            scripts_dir,
+            &bundle_entries,
+            ctx,
+            task.should_overwrite,
+        )?;
+        task.file_hashes = hashes;
+        Ok(())
     }
 
     /// Install a single task with progress tracking
     pub(super) fn install_task_with_progress(
         &self,
-        task: &InstallTask,
+        task: &mut InstallTask,
         ctx: &ProgressContext,
         atomic_install_enabled: bool,
         xplane_path: &str,
     ) -> Result<()> {
+        if task.addon_type == AddonType::LuaScript {
+            ctx.inline_hash_collection_enabled
+                .store(false, Ordering::SeqCst);
+            return self.install_lua_task_with_companions(task, ctx);
+        }
+
         let source = super::task_source_path(task);
         let target = Path::new(&task.target_path);
         let password = task.password.as_deref();
@@ -662,14 +677,6 @@ impl Installer {
             ),
             "installer_timing"
         );
-
-        // Lua scripts are treated as a file bundle: script + detected companions.
-        // Handle them with a dedicated path so archives install into Scripts root
-        // (not into a "script.lua/" directory).
-        if task.addon_type == AddonType::LuaScript {
-            self.install_lua_task_with_companions(task, source, target, ctx, password)?;
-            return Ok(());
-        }
 
         // Check if this is a nested archive installation
         if let Some(ref chain) = task.extraction_chain {
@@ -2495,6 +2502,52 @@ mod tests {
         }
 
         entries
+    }
+
+    #[test]
+    fn lua_verification_covers_exactly_the_selected_bundle() {
+        let source = tempfile::tempdir().unwrap();
+        let scripts = tempfile::tempdir().unwrap();
+        let script_name = "Simple Ground Service.lua";
+        let module_path = "Simple Ground Service/profiles.lua";
+        let files: [(&str, &[u8]); 3] = [
+            (script_name, b"script"),
+            (module_path, b"module"),
+            ("Independent.lua", b"independent"),
+        ];
+        for (name, contents) in files {
+            let path = source.path().join(name);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, contents).unwrap();
+        }
+
+        let target = scripts.path().join(script_name);
+        let mut task =
+            super::super::tests::install_task(AddonType::LuaScript, target.to_str().unwrap());
+        task.companion_paths = vec!["Simple Ground Service".into()];
+        let entries = Installer::get_lua_bundle_entries(&task, &target).unwrap();
+        let hashes = Installer::prepare_lua_bundle(&task, source.path(), &entries)
+            .unwrap()
+            .unwrap();
+        assert_eq!(hashes.len(), 2);
+        assert!(hashes.contains_key(script_name));
+        assert!(hashes.contains_key(module_path));
+
+        let installed_module = scripts.path().join(module_path);
+        fs::create_dir_all(installed_module.parent().unwrap()).unwrap();
+        fs::write(&target, b"script").unwrap();
+        fs::write(&installed_module, b"module").unwrap();
+        let verifier = crate::verifier::FileVerifier::new();
+        let verification_root = Installer::verification_target(&task).unwrap();
+        assert!(verifier
+            .verify_files(verification_root, &hashes)
+            .unwrap()
+            .is_empty());
+
+        fs::write(installed_module, b"wrong content").unwrap();
+        let failed = verifier.verify_files(verification_root, &hashes).unwrap();
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].path, module_path);
     }
 
     #[test]

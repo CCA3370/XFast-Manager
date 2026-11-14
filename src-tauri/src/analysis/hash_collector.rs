@@ -1,11 +1,11 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use crate::models::{FileHash, HashAlgorithm, InstallTask};
+use crate::models::{AddonType, FileHash, HashAlgorithm, InstallTask};
 
 pub struct HashCollector;
 
@@ -20,6 +20,10 @@ impl HashCollector {
 
     /// Collect hashes for a task based on source type
     pub fn collect_hashes(&self, task: &InstallTask) -> Result<HashMap<String, FileHash>> {
+        // The Lua installer resolves and hashes the actual bundle after extraction.
+        if task.addon_type == AddonType::LuaScript {
+            return Ok(HashMap::new());
+        }
         if !self.should_collect_hashes(task) {
             crate::logger::log_info(
                 &format!(
@@ -39,7 +43,7 @@ impl HashCollector {
 
         if source.is_dir() {
             // Direct directory: compute SHA256 for all files
-            self.collect_directory_hashes(source)
+            self.collect_directory_hashes(source, &[])
         } else if source.is_file() {
             // Archive: extract hashes based on format
             let ext = source.extension().and_then(|s| s.to_str()).unwrap_or("");
@@ -85,7 +89,11 @@ impl HashCollector {
     ) -> Result<HashMap<String, FileHash>> {
         use zip::ZipArchive;
 
-        let file = fs::File::open(archive_path)?;
+        let prepared = crate::archive_input::prepare_archive_for_read(
+            archive_path,
+            crate::archive_input::ArchiveFormat::Zip,
+        )?;
+        let file = fs::File::open(prepared.read_path())?;
         let mut archive = ZipArchive::new(file)?;
         let mut hashes = HashMap::new();
 
@@ -159,7 +167,11 @@ impl HashCollector {
 
     /// Collect SHA256 hashes from directory
     /// Uses parallel processing for better performance on large directories
-    fn collect_directory_hashes(&self, source_dir: &Path) -> Result<HashMap<String, FileHash>> {
+    pub(crate) fn collect_directory_hashes(
+        &self,
+        source_dir: &Path,
+        bundle_entries: &[PathBuf],
+    ) -> Result<HashMap<String, FileHash>> {
         use rayon::prelude::*;
         use walkdir::WalkDir;
 
@@ -173,6 +185,11 @@ impl HashCollector {
                     .strip_prefix(source_dir)
                     .map_or(true, |relative| {
                         !crate::package_artifacts::is_ignored_package_artifact_path(relative)
+                            && (bundle_entries.is_empty()
+                                || bundle_entries.iter().any(|bundle_entry| {
+                                    relative.starts_with(bundle_entry)
+                                        || bundle_entry.starts_with(relative)
+                                }))
                     })
             })
             .filter_map(|e| e.ok())
@@ -209,6 +226,11 @@ impl HashCollector {
                     );
                 }
                 Err(e) => {
+                    if !bundle_entries.is_empty() {
+                        return Err(e).with_context(|| {
+                            format!("Failed to hash Lua bundle file: {relative_str}")
+                        });
+                    }
                     crate::logger::log_error(
                         &format!("Failed to compute hash for {}: {}", relative_str, e),
                         Some("hash_collector"),
@@ -334,7 +356,7 @@ mod tests {
         fs::write(source.path().join("Aircraft/plane.acf"), b"aircraft").unwrap();
 
         let hashes = HashCollector::new()
-            .collect_directory_hashes(source.path())
+            .collect_directory_hashes(source.path(), &[])
             .unwrap();
 
         assert_eq!(hashes.len(), 1);

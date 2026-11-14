@@ -69,7 +69,7 @@ impl Installer {
         task: &InstallTask,
         ctx: &ProgressContext,
     ) -> Result<Option<crate::models::VerificationStats>> {
-        let target = Path::new(&task.target_path);
+        let target = Self::verification_target(task)?;
 
         // Phase 1: Basic marker file verification (10% of verification progress)
         ctx.set_verification_progress(0.0);
@@ -191,7 +191,7 @@ impl Installer {
         let mut retried_count = 0;
 
         // Phase 3: Retry failed files (up to 3 times) (70% -> 95%)
-        if !failed_files.is_empty() {
+        if !failed_files.is_empty() && task.extraction_chain.is_none() {
             logger::log_info(
                 &format!(
                     "Retrying {} failed files (max 3 attempts)",
@@ -251,6 +251,17 @@ impl Installer {
         };
 
         Ok(Some(stats))
+    }
+
+    pub(super) fn verification_target(task: &InstallTask) -> Result<&Path> {
+        let target = Path::new(&task.target_path);
+        if task.addon_type == AddonType::LuaScript {
+            target
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("Lua target path has no parent: {:?}", target))
+        } else {
+            Ok(target)
+        }
     }
 
     /// Verify marker files (existing logic, extracted)
@@ -384,7 +395,7 @@ impl Installer {
             }
             crate::models::AddonType::LuaScript => {
                 // For Lua scripts, check that the file exists
-                if !target.exists() {
+                if !target.is_file() {
                     return Err(anyhow::anyhow!(
                         "Installation verification failed: Lua script not found: {:?}",
                         target
@@ -415,7 +426,15 @@ impl Installer {
     ) -> Result<Vec<crate::models::FileVerificationResult>> {
         const MAX_RETRIES: u8 = 3;
         let source = super::task_source_path(task);
-        let target = Path::new(&task.target_path);
+        let source = if task.addon_type == AddonType::LuaScript
+            && crate::archive_input::detect_archive_format(source).is_none()
+            && source.is_file()
+        {
+            source.parent().context("Lua source path has no parent")?
+        } else {
+            source
+        };
+        let target = Self::verification_target(task)?;
 
         // Reuse verifier instance across retries for better performance
         let verifier = crate::verifier::FileVerifier::new();
