@@ -823,10 +823,14 @@ function getTypeBadgeClass(type: AddonType) {
   }
 
   .scenery-select option {
-    padding: 0.375rem 0.5rem;
+    padding: 0.25rem 0.5rem;
     border-radius: 0.375rem;
     white-space: normal;
     overflow-wrap: anywhere;
+  }
+
+  .scenery-select option + option {
+    margin-block-start: 0.25rem;
   }
 
   .scenery-select option:checked,
