@@ -1,9 +1,11 @@
+import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsSetup: directoryMessages.es,
   healthDetails: healthDetailMessages.es,
   flightPlanDetails: flightPlanDetailMessages.es,
   flightPlans: {

@@ -1119,13 +1119,8 @@ onMounted(async () => {
 
   logDebug(`Log level: ${store.logLevel}`, 'app')
 
-  // Detect platform and context menu status at startup (once)
+  // Check Explorer integration after app settings have loaded.
   try {
-    logDebug('Detecting platform...', 'app')
-    const platform = await invoke<string>('get_platform')
-    store.isWindows = platform === 'windows'
-    logDebug(`Platform detected: ${platform}`, 'app')
-
     // Check context menu registration status (Windows only)
     if (store.isWindows) {
       store.isContextMenuRegistered = await invoke<boolean>('is_context_menu_registered')
@@ -1144,7 +1139,7 @@ onMounted(async () => {
       }
     }
   } catch (error) {
-    logError(`Failed to detect platform: ${error}`, 'app')
+    logError(`Failed to check context menu status: ${error}`, 'app')
   }
 
   // Non-blocking sync locale to backend (moved from i18n module top-level)

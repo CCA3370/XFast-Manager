@@ -7,126 +7,7 @@
         class="bg-white/80 dark:bg-gray-800/40 backdrop-blur-md border border-gray-200 dark:border-white/5 rounded-xl shadow-sm dark:shadow-md transition-colors duration-300"
       >
         <div class="p-4 space-y-3">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-              <div
-                class="w-8 h-8 bg-blue-100 dark:bg-blue-500/10 rounded-lg flex items-center justify-center flex-shrink-0 text-blue-600 dark:text-blue-400"
-              >
-                <!-- Folder icon -->
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                  ></path>
-                </svg>
-              </div>
-              <div class="flex-1">
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-                  <AnimatedText>{{ $t('settings.xplanePath') }}</AnimatedText>
-                </h3>
-              </div>
-            </div>
-
-            <!-- Status indicators on the right side of title -->
-            <div class="flex items-center space-x-2">
-              <!-- Error indicator -->
-              <transition name="fade">
-                <div
-                  v-if="pathError"
-                  class="flex items-center text-[10px] font-medium space-x-1 text-red-500 dark:text-red-400"
-                >
-                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    ></path>
-                  </svg>
-                  <span>{{ pathError }}</span>
-                </div>
-              </transition>
-
-              <!-- Save status -->
-              <transition name="fade">
-                <div
-                  v-if="saveStatus"
-                  class="flex items-center text-[10px] font-medium space-x-1"
-                  :class="saveStatus === 'saved' ? 'text-emerald-500' : 'text-gray-400'"
-                >
-                  <svg
-                    v-if="saveStatus === 'saved'"
-                    class="w-3 h-3"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M5 13l4 4L19 7"
-                    ></path>
-                  </svg>
-                  <svg
-                    v-else
-                    class="w-3 h-3 animate-spin"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                    ></path>
-                  </svg>
-                  <span>{{
-                    saveStatus === 'saved' ? $t('settings.saved') : $t('settings.saving')
-                  }}</span>
-                </div>
-              </transition>
-            </div>
-          </div>
-
-          <div class="relative">
-            <div
-              class="flex items-center bg-gray-50 dark:bg-gray-900/50 border rounded-lg overflow-hidden focus-within:border-blue-500 dark:focus-within:border-blue-500 transition-colors duration-200"
-              :class="
-                pathError
-                  ? 'border-red-500 dark:border-red-500'
-                  : 'border-gray-200 dark:border-gray-700/50'
-              "
-            >
-              <input
-                v-model="xplanePathInput"
-                type="text"
-                placeholder="C:\X-Plane 12"
-                class="flex-1 px-4 py-2.5 bg-transparent border-none text-sm text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-0"
-                @blur="handlePathBlur"
-              />
-              <button
-                type="button"
-                class="px-4 py-2 m-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-md transition-colors duration-200 flex items-center space-x-1.5 flex-shrink-0 border border-gray-300 dark:border-gray-600"
-                @click.stop.prevent="selectFolder"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"
-                  ></path>
-                </svg>
-                <span
-                  ><AnimatedText>{{ $t('common.browse') }}</AnimatedText></span
-                >
-              </button>
-            </div>
-          </div>
+          <XplaneDirectoryForm />
 
           <!-- Launch Arguments -->
           <div class="space-y-1.5">
@@ -2290,7 +2171,7 @@ import { useUpdateStore } from '@/stores/update'
 import { validateGlobPattern } from '@/utils/validation'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
-import { open } from '@tauri-apps/plugin-dialog'
+import XplaneDirectoryForm from '@/components/XplaneDirectoryForm.vue'
 import AnimatedText from '@/components/AnimatedText.vue'
 import FlightPlanImportPreference from '@/components/FlightPlanImportPreference.vue'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
@@ -2307,11 +2188,8 @@ const toast = useToastStore()
 const modal = useModalStore()
 const updateStore = useUpdateStore()
 
-const xplanePathInput = ref('')
 const launchArgsInput = ref('')
 const isProcessing = ref(false)
-const saveStatus = ref<'saving' | 'saved' | null>(null)
-const pathError = ref<string | null>(null)
 const appVersion = ref('0.1.1')
 const updateCheckExpanded = ref(false)
 
@@ -2319,9 +2197,6 @@ const updateCheckExpanded = ref(false)
 // Using Set for O(1) add/delete operations instead of array
 const activeTimeoutIds = new Set<ReturnType<typeof setTimeout>>()
 
-// Debounce timer for path validation
-let pathValidationDebounceTimer: ReturnType<typeof setTimeout> | null = null
-const PATH_VALIDATION_DEBOUNCE_MS = 300
 const SAVE_STATUS_DISPLAY_DURATION_MS = 2000 // Duration to show "Saved" status
 
 // Logs state
@@ -2431,7 +2306,6 @@ function getTypeName(type: AddonType): string {
 }
 
 onMounted(async () => {
-  xplanePathInput.value = store.xplanePath
   launchArgsInput.value = store.xplaneLaunchArgs
 
   // Load addon update options for chunked download settings
@@ -2474,76 +2348,13 @@ onBeforeUnmount(() => {
   // Clear all tracked timeouts
   activeTimeoutIds.forEach((id) => clearTimeout(id))
   activeTimeoutIds.clear()
-  // Clear path validation debounce timer
-  if (pathValidationDebounceTimer) {
-    clearTimeout(pathValidationDebounceTimer)
-    pathValidationDebounceTimer = null
-  }
 })
-
-// Handle X-Plane path input blur - validate and save with debounce
-function handlePathBlur() {
-  // Clear existing debounce timer
-  if (pathValidationDebounceTimer) {
-    clearTimeout(pathValidationDebounceTimer)
-  }
-
-  // Debounce to prevent excessive API calls on rapid blur events
-  pathValidationDebounceTimer = setTimeout(async () => {
-    pathValidationDebounceTimer = null
-    await validateAndSavePath()
-  }, PATH_VALIDATION_DEBOUNCE_MS)
-}
 
 // Handle launch args input blur - save to store
 function handleLaunchArgsBlur() {
   const newValue = launchArgsInput.value.trim()
   if (newValue !== store.xplaneLaunchArgs) {
     store.setXplaneLaunchArgs(newValue)
-  }
-}
-
-// Internal function to validate and save path
-async function validateAndSavePath() {
-  const newValue = xplanePathInput.value
-
-  // Clear previous error
-  pathError.value = null
-
-  // Only save if different from store
-  if (newValue !== store.xplanePath) {
-    saveStatus.value = 'saving'
-
-    // If path is not empty, validate it
-    if (newValue.trim() !== '') {
-      try {
-        const isValid = await invoke<boolean>('validate_xplane_path', { path: newValue })
-        if (!isValid) {
-          // Check if path exists first
-          const exists = await invoke<boolean>('check_path_exists', { path: newValue })
-          if (!exists) {
-            pathError.value = t('settings.pathNotExist')
-          } else {
-            pathError.value = t('settings.notValidXplanePath')
-          }
-          saveStatus.value = null
-          return
-        }
-      } catch (error) {
-        logError(`Failed to validate path: ${error}`, 'settings')
-      }
-    }
-
-    // Save the path
-    store.setXplanePath(newValue)
-    saveStatus.value = 'saved'
-    setTrackedTimeout(
-      () => {
-        saveStatus.value = null
-      },
-      SAVE_STATUS_DISPLAY_DURATION_MS,
-      activeTimeoutIds,
-    )
   }
 }
 
@@ -2614,58 +2425,6 @@ function removePattern(index: number) {
     SAVE_STATUS_DISPLAY_DURATION_MS,
     activeTimeoutIds,
   )
-}
-
-async function selectFolder() {
-  try {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: t('settings.selectXplaneFolder'),
-    })
-
-    // Type guard: with multiple: false, selected is string | null (not array)
-    if (selected && typeof selected === 'string') {
-      const selectedPath = selected
-
-      // Validate path before saving
-      pathError.value = null
-      saveStatus.value = 'saving'
-
-      try {
-        const isValid = await invoke<boolean>('validate_xplane_path', { path: selectedPath })
-        if (!isValid) {
-          const exists = await invoke<boolean>('check_path_exists', { path: selectedPath })
-          if (!exists) {
-            pathError.value = t('settings.pathNotExist')
-          } else {
-            pathError.value = t('settings.notValidXplanePath')
-          }
-          saveStatus.value = null
-          // Still update input to show what was selected
-          xplanePathInput.value = selectedPath
-          return
-        }
-      } catch (error) {
-        logError(`Failed to validate path: ${error}`, 'settings')
-      }
-
-      // Path is valid, save it
-      xplanePathInput.value = selectedPath
-      store.setXplanePath(selectedPath)
-      saveStatus.value = 'saved'
-      setTrackedTimeout(
-        () => {
-          saveStatus.value = null
-        },
-        SAVE_STATUS_DISPLAY_DURATION_MS,
-        activeTimeoutIds,
-      )
-    }
-  } catch (error) {
-    logError(`Failed to open folder dialog: ${error}`, 'settings')
-    modal.showError(t('common.error') + ': ' + getErrorMessage(error))
-  }
 }
 
 async function toggleContextMenu() {

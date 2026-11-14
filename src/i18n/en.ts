@@ -1,8 +1,10 @@
+import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsSetup: directoryMessages.en,
   healthDetails: healthDetailMessages.en,
   flightPlanDetails: flightPlanDetailMessages.en,
   flightPlans: {

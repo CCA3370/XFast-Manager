@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { AddonType, type InstallTask, type InstallResult } from '@/types'
-import { invokeVoidCommand } from '@/services/api'
+import { invokeVoidCommand, tryInvokeCommand } from '@/services/api'
 import { useLockStore } from './lock'
-import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
+import { getItem, saveSettings, setItem, STORAGE_KEYS } from '@/services/storage'
 
 export type LogLevel = 'basic' | 'full' | 'debug'
 
@@ -210,6 +210,8 @@ export const useAppStore = defineStore('app', () => {
   async function initStore(): Promise<void> {
     if (isInitialized.value) return
 
+    isWindows.value = (await tryInvokeCommand<string>('get_platform')) === 'windows'
+
     // Load xplanePath
     const savedPath = await getItem<string>(STORAGE_KEYS.XPLANE_PATH)
     if (savedPath) xplanePath.value = savedPath
@@ -250,6 +252,9 @@ export const useAppStore = defineStore('app', () => {
     const savedAtomicInstall = await getItem<boolean>(STORAGE_KEYS.ATOMIC_INSTALL_ENABLED)
     if (typeof savedAtomicInstall === 'boolean') {
       atomicInstallEnabled.value = savedAtomicInstall
+    } else if (isWindows.value && (await getItem(STORAGE_KEYS.ONBOARDING_COMPLETED)) !== 'true') {
+      await setItem(STORAGE_KEYS.ATOMIC_INSTALL_ENABLED, true)
+      atomicInstallEnabled.value = true
     }
 
     // Load delete source after install setting
@@ -311,9 +316,12 @@ export const useAppStore = defineStore('app', () => {
     ])
   }
 
-  async function setXplanePath(path: string) {
+  async function setXplanePath(path: string, completeOnboarding = false) {
+    await saveSettings({
+      [STORAGE_KEYS.XPLANE_PATH]: path,
+      ...(completeOnboarding ? { [STORAGE_KEYS.ONBOARDING_COMPLETED]: 'true' } : {}),
+    })
     xplanePath.value = path
-    await setItem(STORAGE_KEYS.XPLANE_PATH, path)
   }
 
   async function loadXplanePath() {
