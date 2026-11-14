@@ -16,7 +16,7 @@ const props = withDefaults(
     ariaLabel: '',
     size: 'md',
     activeClass: 'bg-blue-500 hover:bg-blue-600 dark:bg-blue-500 dark:hover:bg-blue-400',
-    inactiveClass: 'bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500',
+    inactiveClass: 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500',
     stopPropagation: true,
   },
 )
@@ -31,7 +31,7 @@ const sizeConfig = computed(() => {
       return {
         track: 'h-4 w-7 p-0.5',
         knob: 'h-3 w-3',
-        on: 'translate-x-3.5',
+        on: 'translate-x-3',
       }
     case 'lg':
       return {
@@ -42,8 +42,8 @@ const sizeConfig = computed(() => {
     default:
       return {
         track: 'h-5 w-9 p-0.5',
-        knob: 'h-3.5 w-3.5',
-        on: 'translate-x-4.5',
+        knob: 'h-4 w-4',
+        on: 'translate-x-4',
       }
   }
 })
@@ -63,13 +63,13 @@ function handleToggle(event: MouseEvent) {
     role="switch"
     :aria-checked="modelValue"
     :aria-label="ariaLabel || undefined"
-    class="relative inline-flex shrink-0 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none"
+    class="relative inline-flex shrink-0 items-center rounded-full transition-colors duration-200 ease-out disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-gray-800"
     :class="[sizeConfig.track, modelValue ? activeClass : inactiveClass]"
     :disabled="disabled"
     @click="handleToggle"
   >
     <span
-      class="rounded-full bg-white shadow-sm ring-1 ring-black/5 transition-transform dark:ring-white/10"
+      class="rounded-full bg-white shadow-sm transition-transform duration-200 ease-out"
       :class="[sizeConfig.knob, modelValue ? sizeConfig.on : 'translate-x-0']"
     />
   </button>

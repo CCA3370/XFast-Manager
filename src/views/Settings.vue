@@ -2,49 +2,64 @@
   <div
     class="settings-view mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden p-4 sm:p-6"
   >
-    <h1 class="mb-3 shrink-0 text-xl font-semibold">{{ t('common.settings') }}</h1>
+    <h1 class="mb-4 shrink-0 text-xl font-semibold text-gray-900 dark:text-gray-100">
+      {{ t('common.settings') }}
+    </h1>
     <nav
       :aria-label="t('common.settings')"
-      class="mb-4 flex shrink-0 flex-wrap gap-1 rounded-xl border border-gray-200 bg-gray-100/70 p-1 dark:border-gray-700/60 dark:bg-gray-800/60"
+      class="mb-4 flex shrink-0 gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-800/60"
     >
       <button
         v-for="group in groups"
         :key="group.id"
         type="button"
-        class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        class="relative rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
         :class="
           activeGroup === group.id
-            ? 'bg-white text-blue-700 shadow-sm dark:bg-gray-700 dark:text-blue-300'
-            : 'text-gray-600 hover:bg-white/70 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/70 dark:hover:text-gray-100'
+            ? 'bg-white text-blue-600 shadow-sm dark:bg-gray-700 dark:text-blue-400'
+            : 'text-gray-500 hover:bg-white/60 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/50 dark:hover:text-gray-100'
         "
         :aria-current="activeGroup === group.id ? 'page' : undefined"
         :aria-controls="`settings-${group.id}`"
-        @click="activeGroup = group.id"
+        @click="switchGroup(group.id)"
       >
-        {{ t(group.title) }}
+        <span class="relative z-10">{{ t(group.title) }}</span>
       </button>
     </nav>
 
     <div class="min-h-0 flex-1 overflow-y-auto pb-4 pr-1">
-      <section v-show="activeGroup === 'xplane'" id="settings-xplane" :class="panel">
-        <XplaneDirectoryForm />
-        <CollapsibleSection :title="t('settingsPanels.advanced')">
-          <label for="launch-args" class="block text-sm font-medium">
-            {{ t('settings.xplaneLaunchArgs') }}
-          </label>
-          <input
-            id="launch-args"
-            v-model="launchArgsInput"
-            type="text"
-            :class="inputStyle"
-            :placeholder="t('settings.xplaneLaunchArgsPlaceholder')"
-            aria-describedby="launch-args-help"
-            @blur="handleLaunchArgsBlur"
-            @keydown.enter.prevent="handleLaunchArgsBlur"
-          />
-          <p id="launch-args-help" :class="helpStyle">{{ t('settings.xplaneLaunchArgsDesc') }}</p>
-        </CollapsibleSection>
-      </section>
+      <Transition
+        mode="out-in"
+        enter-active-class="transition-all duration-200 ease-out"
+        enter-from-class="opacity-0 translate-y-1"
+        enter-to-class="opacity-100 translate-y-0"
+        leave-active-class="transition-all duration-150 ease-in"
+        leave-from-class="opacity-100 translate-y-0"
+        leave-to-class="opacity-0 translate-y-1"
+      >
+        <section v-show="activeGroup === 'xplane'" id="settings-xplane" :class="panel">
+          <XplaneDirectoryForm />
+          <CollapsibleSection :title="t('settingsPanels.advanced')">
+            <label
+              for="launch-args"
+              class="block text-sm font-medium text-gray-900 dark:text-gray-100"
+            >
+              {{ t('settings.xplaneLaunchArgs') }}
+            </label>
+            <input
+              id="launch-args"
+              v-model="launchArgsInput"
+              type="text"
+              :class="inputStyle"
+              :placeholder="t('settings.xplaneLaunchArgsPlaceholder')"
+              aria-describedby="launch-args-help"
+              @blur="handleLaunchArgsBlur"
+              @keydown.enter.prevent="handleLaunchArgsBlur"
+            />
+            <p id="launch-args-help" :class="helpStyle">{{ t('settings.xplaneLaunchArgsDesc') }}</p>
+          </CollapsibleSection>
+        </section>
+      </Transition>
 
       <section v-show="activeGroup === 'installation'" id="settings-installation" :class="panel">
         <div>
@@ -55,7 +70,7 @@
             :model-value="allPreferencesEnabled"
             @update:model-value="toggleAllPreferences"
           />
-          <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+          <div class="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
             <SettingToggle
               v-for="[type, label] in addonTypes"
               :key="type"
@@ -67,7 +82,7 @@
         </div>
         <div
           v-if="store.isWindows"
-          class="space-y-2 border-t border-gray-200 pt-3 dark:border-gray-700"
+          class="space-y-1 border-t border-gray-200 pt-2 dark:border-gray-700"
         >
           <SettingToggle
             :label="t('settings.windowsIntegration')"
@@ -90,7 +105,7 @@
             <div>
               <h2 :class="sectionTitle">{{ t('settings.verificationPreferences') }}</h2>
               <p :class="helpStyle">{{ t('settings.verificationPreferencesDesc') }}</p>
-              <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+              <div class="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
                 <SettingToggle
                   v-for="[type, label] in verificationTypes"
                   :key="type"
@@ -280,33 +295,35 @@
         />
         <CollapsibleSection :title="t('settingsPanels.advanced')">
           <div class="grid gap-3 sm:grid-cols-3">
-            <label class="block text-sm font-medium">
+            <label class="block text-sm font-medium text-gray-900 dark:text-gray-100">
               {{ t('settings.maxParallelTasks') }}
-              <select
-                :class="inputStyle"
-                :value="store.maxParallelTasks"
-                :disabled="!store.parallelInstallEnabled"
-                @change="store.setMaxParallelTasks(selectedNumber($event))"
-              >
-                <option v-for="n in 9" :key="n" :value="n + 1">{{ n + 1 }}</option>
-              </select>
+              <div class="mt-1">
+                <SelectDropdown
+                  :model-value="store.maxParallelTasks"
+                  :options="parallelTaskOptions"
+                  :disabled="!store.parallelInstallEnabled"
+                  :aria-label="t('settings.maxParallelTasks')"
+                  @update:model-value="store.setMaxParallelTasks(Number($event))"
+                />
+              </div>
             </label>
             <label
               v-for="option in downloadLimits"
               :key="option.key"
-              class="block text-sm font-medium"
+              class="block text-sm font-medium text-gray-900 dark:text-gray-100"
             >
               {{ t(option.label) }}
-              <select
-                :class="inputStyle"
-                :value="managementStore.addonUpdateOptions[option.key] ?? option.fallback"
-                :disabled="!chunkedDownloads"
-                @change="
-                  managementStore.setAddonUpdateOptions({ [option.key]: selectedNumber($event) })
-                "
-              >
-                <option v-for="n in option.max" :key="n" :value="n">{{ n }}</option>
-              </select>
+              <div class="mt-1">
+                <SelectDropdown
+                  :model-value="managementStore.addonUpdateOptions[option.key] ?? option.fallback"
+                  :options="downloadLimitOptions(option.max)"
+                  :disabled="!chunkedDownloads"
+                  :aria-label="t(option.label)"
+                  @update:model-value="
+                    managementStore.setAddonUpdateOptions({ [option.key]: Number($event) })
+                  "
+                />
+              </div>
             </label>
           </div>
           <p class="mt-3" :class="helpStyle">{{ t('settings.chunkedDownloadNote') }}</p>
@@ -331,13 +348,16 @@
         </CollapsibleSection>
         <CollapsibleSection :title="t('settings.logs')" @toggle="handleLogDetails">
           <div class="space-y-3">
-            <label class="block text-sm font-medium">
+            <label class="block text-sm font-medium text-gray-900 dark:text-gray-100">
               {{ t('settings.logLevel') }}
-              <select :class="inputStyle" :value="store.logLevel" @change="changeLogLevel">
-                <option v-for="[level, label] in logLevels" :key="level" :value="level">
-                  {{ t(label) }}
-                </option>
-              </select>
+              <div class="mt-1">
+                <SelectDropdown
+                  :model-value="store.logLevel"
+                  :options="logLevelOptions"
+                  :aria-label="t('settings.logLevel')"
+                  @update:model-value="store.setLogLevel($event as LogLevel)"
+                />
+              </div>
             </label>
             <p :class="helpStyle">{{ t('settings.logLevelDesc') }}</p>
             <div class="flex flex-wrap gap-2">
@@ -355,7 +375,7 @@
               ref="logContainer"
               tabindex="0"
               :aria-label="t('settings.logs')"
-              class="h-48 select-text overflow-y-auto rounded-lg bg-gray-900 p-3 font-mono text-xs ring-1 ring-black/10"
+              class="h-48 select-text overflow-y-auto rounded-lg bg-slate-800 p-3 font-mono text-xs ring-1 ring-slate-700"
             >
               <p v-if="recentLogs.length === 0" class="text-gray-400">{{ t('settings.noLogs') }}</p>
               <p
@@ -377,7 +397,7 @@
           <img
             src="/icon.png"
             alt=""
-            class="h-12 w-12 rounded-xl shadow-sm ring-1 ring-black/5 dark:ring-white/10"
+            class="h-12 w-12 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-600"
           />
           <div>
             <h2 :class="sectionTitle">XFast Manager</h2>
@@ -413,6 +433,7 @@ import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import CollapsibleSection from '@/components/CollapsibleSection.vue'
 import FlightPlanImportPreference from '@/components/FlightPlanImportPreference.vue'
+import SelectDropdown from '@/components/SelectDropdown.vue'
 import SettingToggle from '@/components/SettingToggle.vue'
 import XplaneDirectoryForm from '@/components/XplaneDirectoryForm.vue'
 import { logger, logDebug, logError } from '@/services/logger'
@@ -444,17 +465,21 @@ const groups = [
 ] as const
 const activeGroup = ref<(typeof groups)[number]['id']>('xplane')
 
+function switchGroup(id: (typeof groups)[number]['id']) {
+  activeGroup.value = id
+}
+
 const panel =
-  'space-y-4 rounded-xl border border-gray-200 bg-white/90 p-4 shadow-sm dark:border-gray-700/60 dark:bg-gray-800/70 sm:p-5'
-const sectionTitle = 'text-base font-semibold'
-const subTitle = 'text-sm font-semibold'
+  'space-y-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800 sm:p-5'
+const sectionTitle = 'text-base font-semibold text-gray-900 dark:text-gray-100'
+const subTitle = 'text-sm font-semibold text-gray-900 dark:text-gray-100'
 const inputStyle =
-  'mt-1 block w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900/70 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-blue-400 dark:focus:ring-blue-400/30'
-const helpStyle = 'text-sm text-gray-500 dark:text-gray-400'
+  'mt-1 block w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition-all duration-150 placeholder:text-gray-400 hover:border-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500 dark:hover:border-gray-500 dark:focus:border-blue-400 dark:focus:ring-blue-400/20'
+const helpStyle = 'text-xs text-gray-500 dark:text-gray-400'
 const buttonStyle =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 dark:hover:text-white'
+  'inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-all duration-150 hover:border-gray-400 hover:bg-gray-50 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-gray-500 dark:hover:bg-gray-700 dark:hover:text-white'
 const primaryStyle =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50'
+  'inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-all duration-150 hover:bg-blue-700 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500'
 
 const launchArgsInput = ref(store.xplaneLaunchArgs)
 const isProcessing = ref(false)
@@ -491,12 +516,24 @@ const chunkedDownloads = computed(
   () => managementStore.addonUpdateOptions.chunkedDownloadEnabled ?? true,
 )
 
+const parallelTaskOptions = computed(() =>
+  Array.from({ length: 9 }, (_, i) => ({ value: i + 2, label: String(i + 2) })),
+)
+
+function downloadLimitOptions(max: number) {
+  return Array.from({ length: max }, (_, i) => ({ value: i + 1, label: String(i + 1) }))
+}
+
 const testers = ['SINO1660', 'enenY', '🍊', 'Tong Wu', 'HTony03', 'CHN131']
 const logLevels = [
   ['basic', 'settings.logLevelBasic'],
   ['full', 'settings.logLevelFull'],
   ['debug', 'settings.logLevelDebug'],
 ] as const
+
+const logLevelOptions = computed(() =>
+  logLevels.map(([value, label]) => ({ value, label: t(label) })),
+)
 
 onMounted(async () => {
   void managementStore.loadAddonUpdateOptions()
@@ -558,10 +595,6 @@ async function handlePatternBlur() {
   }
 }
 
-function selectedNumber(event: Event) {
-  return Number((event.target as HTMLSelectElement).value)
-}
-
 function confirmDeleteSource(enabled: boolean) {
   if (!enabled) {
     void saveDeleteSource(false)
@@ -602,22 +635,16 @@ async function refreshLogs() {
   if (logContainer.value) logContainer.value.scrollTop = logContainer.value.scrollHeight
 }
 
-function changeLogLevel(event: Event) {
-  return store.setLogLevel((event.target as HTMLSelectElement).value as LogLevel)
-}
-
 async function toggleContextMenu() {
   if (isProcessing.value) return
   isProcessing.value = true
   try {
     if (!store.isContextMenuRegistered) {
-      // Register context menu
       try {
         await invoke('register_context_menu')
         toast.success(t('settings.contextMenuRegistered'))
         store.isContextMenuRegistered = true
       } catch (error) {
-        // If already registered, just update the state
         const errorMsg = getErrorMessage(error).toLowerCase()
         if (errorMsg.includes('already') || errorMsg.includes('exist')) {
           logDebug('Context menu already registered, updating state', 'settings')
@@ -628,13 +655,11 @@ async function toggleContextMenu() {
         }
       }
     } else {
-      // Unregister context menu
       try {
         await invoke('unregister_context_menu')
         toast.success(t('settings.contextMenuUnregistered'))
         store.isContextMenuRegistered = false
       } catch (error) {
-        // If already unregistered, just update the state
         const errorMsg = getErrorMessage(error).toLowerCase()
         if (
           errorMsg.includes('not found') ||
