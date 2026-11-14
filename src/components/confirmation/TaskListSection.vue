@@ -79,20 +79,42 @@
 
           <label
             v-if="task.sceneryOptions?.length"
-            class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-700 dark:text-gray-200"
+            class="mt-2 inline-flex max-w-full flex-wrap items-center gap-x-3 gap-y-1.5 text-xs"
             @click.stop
           >
-            <span>{{ $t('modal.sceneryOption') }}</span>
-            <select
-              v-model="store.getTaskState(task.id).sceneryOption"
-              :disabled="!store.getTaskEnabled(task.id) || isTaskDisabled(task)"
-              class="max-w-full rounded border border-gray-300 bg-white px-2 py-1 text-xs dark:border-white/20 dark:bg-gray-800 disabled:opacity-50"
-            >
-              <option :value="undefined">{{ $t('modal.defaultSceneryOption') }}</option>
-              <option v-for="option in task.sceneryOptions" :key="option.root" :value="option.root">
-                {{ option.name }}
-              </option>
-            </select>
+            <span class="font-medium text-slate-600 dark:text-slate-300">
+              {{ $t('modal.sceneryOption') }}
+            </span>
+            <span class="scenery-select-field relative w-56 max-w-full">
+              <select
+                v-model="store.getTaskState(task.id).sceneryOption"
+                :disabled="!store.getTaskEnabled(task.id) || isTaskDisabled(task)"
+                class="scenery-select w-full min-w-0 cursor-pointer appearance-none truncate rounded-lg border py-1.5 ps-3 pe-9 text-xs leading-5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none"
+                :class="{ 'scenery-select--variant': store.getTaskState(task.id).sceneryOption }"
+              >
+                <option :value="undefined">{{ $t('modal.defaultSceneryOption') }}</option>
+                <option
+                  v-for="option in task.sceneryOptions"
+                  :key="option.root"
+                  :value="option.root"
+                >
+                  {{ option.name }}
+                </option>
+              </select>
+              <span
+                aria-hidden="true"
+                class="scenery-select-arrow pointer-events-none absolute inset-y-1.5 end-0.5 grid w-8 place-items-center border-s"
+              >
+                <svg class="size-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor">
+                  <path
+                    d="m4 6 4 4 4-4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                </svg>
+              </span>
+            </span>
           </label>
 
           <!-- Lua companion files/folders -->
@@ -705,6 +727,114 @@ function getTypeBadgeClass(type: AddonType) {
   transition:
     border-color 0.2s ease,
     opacity 0.2s ease;
+}
+
+.scenery-select-field {
+  --select-surface: var(--color-slate-50);
+  --select-menu: white;
+  --select-border: var(--color-slate-300);
+  --select-text: var(--color-slate-900);
+  --select-arrow: var(--color-slate-500);
+  --select-focus: var(--color-blue-600);
+  --select-highlight: var(--color-blue-50);
+  --select-accent: var(--color-blue-800);
+  --select-shadow: 0 8px 20px rgb(15 23 42 / 14%);
+  color-scheme: light;
+}
+
+.dark .scenery-select-field {
+  --select-surface: var(--color-slate-900);
+  --select-menu: var(--color-slate-900);
+  --select-border: var(--color-slate-600);
+  --select-text: var(--color-slate-100);
+  --select-arrow: var(--color-slate-400);
+  --select-focus: var(--color-blue-400);
+  --select-highlight: var(--color-blue-950);
+  --select-accent: var(--color-blue-200);
+  --select-shadow: 0 8px 20px rgb(0 0 0 / 35%);
+  color-scheme: dark;
+}
+
+.scenery-select {
+  background-color: var(--select-surface);
+  border-color: var(--select-border);
+  color: var(--select-text);
+  outline-color: var(--select-focus);
+}
+
+.scenery-select:enabled:hover {
+  border-color: var(--select-focus);
+}
+
+.scenery-select--variant {
+  background-color: var(--select-highlight);
+  color: var(--select-accent);
+}
+
+.scenery-select option {
+  background-color: var(--select-menu);
+  color: var(--select-text);
+}
+
+.scenery-select-arrow {
+  border-color: var(--select-border);
+  color: var(--select-arrow);
+}
+
+.scenery-select:disabled + .scenery-select-arrow {
+  opacity: 0.6;
+}
+
+@supports selector(::picker(select)) {
+  .scenery-select,
+  .scenery-select::picker(select) {
+    appearance: base-select;
+  }
+
+  .scenery-select::picker-icon {
+    display: none;
+  }
+
+  .scenery-select:open + .scenery-select-arrow {
+    color: var(--select-focus);
+  }
+
+  .scenery-select:open + .scenery-select-arrow svg {
+    rotate: 180deg;
+  }
+
+  .scenery-select::picker(select) {
+    position-area: block-end span-inline-end;
+    position-try-order: normal;
+    position-try-fallbacks:
+      flip-block,
+      flip-inline,
+      flip-block flip-inline;
+    align-self: start;
+    justify-self: start;
+    margin-block: 4px;
+    inline-size: anchor-size(width);
+    max-block-size: min(16rem, 50vh);
+    padding: 4px;
+    border: 1px solid var(--select-border);
+    border-radius: 0.625rem;
+    background-color: var(--select-menu);
+    box-shadow: var(--select-shadow);
+  }
+
+  .scenery-select option {
+    padding: 0.375rem 0.5rem;
+    border-radius: 0.375rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .scenery-select option:checked,
+  .scenery-select option:hover,
+  .scenery-select option:focus-visible {
+    background-color: var(--select-highlight);
+    color: var(--select-accent);
+  }
 }
 
 /* Custom checkbox */
